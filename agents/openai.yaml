@@ -1,0 +1,4 @@
+interface:
+  display_name: "GetBrolls · engenheiro de vídeo"
+  short_description: "Coleta de B-rolls e revisão com prévias"
+  default_prompt: "Use $get-brolls para buscar e coletar B-rolls para meu vídeo, preparar prévias e apresentar o storyboard para minha revisão."

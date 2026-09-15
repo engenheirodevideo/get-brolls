@@ -1,0 +1,27 @@
+# Local settings, footage and generated projects
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.DS_Store
+brolls/
+*.mp4
+*.mov
+*.gif
+*.zip
+assets/storyboard-case/
+assets/storyboard-gifs/
+assets/storyboard-images/
+assets/storyboard-case.json
+assets/storyboard-data.js
+assets/storyboard-template.html
+dist/
+
+.venv/
+node_modules/
+.getbrolls-sources/
+*.conf
+.playwright-cli/
+
+.tools/

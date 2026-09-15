@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Get B-rolls Candidate v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "provider",
+    "source_id",
+    "source_url",
+    "media",
+    "preview",
+    "segment",
+    "rights",
+    "acquisition",
+    "approval",
+    "output",
+    "state"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "id": {
+      "type": "string"
+    },
+    "provider": {
+      "enum": [
+        "local",
+        "youtube",
+        "instagram",
+        "tiktok",
+        "pexels",
+        "pixabay",
+        "commons",
+        "nasa"
+      ]
+    },
+    "source_id": {
+      "type": "string"
+    },
+    "source_url": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "state": {
+      "enum": [
+        "candidate",
+        "preview_ready",
+        "awaiting_approval",
+        "approved",
+        "acquired",
+        "verified",
+        "rejected",
+        "reference_only",
+        "blocked",
+        "failed"
+      ]
+    },
+    "segment": {
+      "type": "object",
+      "required": [
+        "start_s",
+        "end_s",
+        "revision"
+      ],
+      "properties": {
+        "start_s": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "end_s": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        }
+      }
+    },
+    "rights": {
+      "type": "object",
+      "required": [
+        "status",
+        "evidence"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "unknown",
+            "permitted",
+            "restricted"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "required": [
+        "path",
+        "sha256",
+        "verified"
+      ],
+      "properties": {
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "verified": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
