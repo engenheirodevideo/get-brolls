@@ -62,7 +62,7 @@ tags: [get-brolls]
 
 - Configuração `.env`: GIF ou estático, largura, FPS, cores, limite de duração/tamanho e quantidade de frames.
 - Poster/contact sheet e GIF nativo sem upscale; limite de bytes com fallback explícito para estático.
-- Storyboard V2 com revisão, sugestões, exportação/importação JSON e impressão estática; galeria estática e nenhum player incorporado.
+- Storyboard com revisão, sugestões, exportação/importação JSON e impressão estática; galeria estática e nenhum player incorporado.
 - Identidade do projeto e verificação de assinatura de fonte/intervalo na importação.
 - Inserts independentes com `resolve --shot`.
 - README, licença MIT, avisos OFL, política de segurança, contribuição, CI e distribuição por allowlist sem mídia real/segredos/legado.

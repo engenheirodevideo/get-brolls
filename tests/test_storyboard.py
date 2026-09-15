@@ -1,4 +1,4 @@
-import re, sys, unittest
+import re, struct, sys, unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -31,12 +31,17 @@ class StoryboardTest(unittest.TestCase):
         self.assertIn('id="shot-0"', page)
         self.assertIn("Fala &amp; contexto", page)
 
-    def test_delivery_includes_v2_storyboard_artifact_with_current_logo(self):
+    def test_delivery_includes_storyboard_artifact_with_current_logo(self):
         artifact = ROOT / "assets" / "storyboard-template.html"
         logo = ROOT / "assets" / "brand-logo.png"
 
         self.assertTrue(artifact.is_file())
         self.assertTrue(logo.is_file())
+        data = logo.read_bytes()
+        self.assertEqual(b"\x89PNG\r\n\x1a\n", data[:8])
+        width, height, _, color_type, _, _, _ = struct.unpack(">IIBBBBB", data[16:29])
+        self.assertEqual((334, 333), (width, height))
+        self.assertIn(color_type, (4, 6), "A logo precisa manter transparência.")
         page = artifact.read_text()
         self.assertIn('class="brand-logo"', page)
         self.assertIn('src="brand-logo.png"', page)

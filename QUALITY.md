@@ -52,7 +52,7 @@ Revisor independente conferiu os transportes e apontou problemas de runtime, par
 
 YouTube, Instagram e TikTok têm agora pelo menos um ensaio real concluído nesta rodada. Isso não garante qualquer URL/sessão: o primeiro link TikTok estava indisponível no site e o extrator retornou bloqueio em tentativas anteriores. Reteste com URL disponível pelo navegador e com as dependências instaladas pelo [guia](GUIDE.md#instalação). Não confundir esses erros com ausência de implementação.
 
-macOS/Linux usam Bash e fcntl; Windows nativo não validado. Descoberta automática em novas sessões Codex/Claude e CI remoto não foram executados nesta rodada. O template visual V2 foi incorporado à entrega e precisa permanecer portátil, sem depender de mídia privada do caso usado no desenvolvimento. A revisão usa fontes do sistema; sem fontes baixadas ou bibliotecas embutidas. Aprovação editorial continua humana.
+macOS/Linux usam Bash e fcntl; Windows nativo não validado. Descoberta automática em novas sessões Codex/Claude e CI remoto não foram executados nesta rodada. O template visual do Storyboard foi incorporado à entrega e precisa permanecer portátil, sem depender de mídia privada do caso usado no desenvolvimento. A revisão usa fontes do sistema; sem fontes baixadas ou bibliotecas embutidas. Aprovação editorial continua humana.
 
 Comandos para repetir na pasta da skill:
 

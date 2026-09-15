@@ -8,7 +8,7 @@ tags: [get-brolls, guide, installation, providers, storyboard]
 
 # Guia completo — Get B-rolls
 
-Este é o manual operacional único da entrega: instalação, compatibilidade, fluxo editorial, provedores, navegador, Instagram, tipos de asset e Storyboard V2. O conteúdo foi consolidado sem remover os procedimentos do produto de origem; nomes internos foram neutralizados para que a entrega seja autônoma.
+Este é o manual operacional único da entrega: instalação, compatibilidade, fluxo editorial, provedores, navegador, Instagram, tipos de asset e Storyboard. O conteúdo foi consolidado sem remover os procedimentos do produto de origem; nomes internos foram neutralizados para que a entrega seja autônoma.
 
 ## Navegação rápida
 
@@ -19,7 +19,7 @@ Este é o manual operacional único da entrega: instalação, compatibilidade, f
 - [Tipos de assets](#tipos-de-assets-e-formatos)
 - [Captura pelo navegador](#captura-de-notícias-e-páginas-pelo-navegador)
 - [Instagram](#instagram--navegadorplaywright-dois-streams-e-mp4)
-- [Storyboard V2](#storyboard-v2)
+- [Storyboard](#storyboard)
 
 ## Instalação
 
@@ -122,10 +122,10 @@ Se `--check` falhar, instale o executável/versão apontado. Se a extração fal
 ## Compatibilidade
 
 - Python 3.11+, FFmpeg/ffprobe; yt-dlp[default]/EJS e runtime JS para fontes sociais. Navegador/Playwright e curl no processo Instagram.
-- Storyboard V2 usa navegador moderno com JavaScript, Blob e localStorage. Se armazenamento local falhar, exporte o JSON antes de fechar.
+- O Storyboard usa navegador moderno com JavaScript, Blob e localStorage. Se armazenamento local falhar, exporte o JSON antes de fechar.
 - Caminhos de prévias são relativos: compartilhe `brolls/` completo.
 - CLI preserva schema do manifest v1 e adiciona `project_id`, metadados de prévia e revisão. Exportação de revisão usa `templateVersion: 2`.
-- Artefatos do protótipo V2 anterior não têm assinatura de fonte/intervalo; não podem ser importados. Regenere o storyboard com `review`.
+- Artefatos do protótipo anterior não têm assinatura de fonte/intervalo; não podem ser importados. Regenere o storyboard com `review`.
 - `--shot` permite múltiplos inserts da mesma fonte; sem ele, a resolução deduplica por fonte.
 - Helpers originais e coletor Instagram incluídos na 2.3.4. Review usa GIF/imagens, sem player remoto incorporado.
 - Projeto local confiável, uso serial. Comandos simultâneos no mesmo projeto são recusados. Não há colaboração multiusuário; evidências remotas por fonte estão em QUALITY.
@@ -554,7 +554,7 @@ Executar nesta ordem:
 
 Não ler nem imprimir cookies, `.env`, browser credential stores ou tokens. Usar signed CDN URLs já capturadas em `.conf` como fonte operacional temporária. A solicitação de coleta autoriza a captura das URLs do post na sessão indicada. Reutilize essa autorização; peça acesso somente se faltar sessão/autorização necessária. A captura é temporária e operada pelo agente, conforme a seção [Instagram pelo navegador](#instagram--navegadorplaywright-dois-streams-e-mp4).
 
-## Storyboard V2
+## Storyboard
 
 Entregável de revisão independente da landing page. `gb.py review` gera `brolls/review.html` com CSS e JavaScript próprios incorporados; a tipografia usa fontes do sistema; imagens/GIF ficam em `previews/`.
 

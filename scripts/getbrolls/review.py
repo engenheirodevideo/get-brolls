@@ -1,4 +1,4 @@
-"""Review V2 exchange. Human decisions never grant media usage rights."""
+"""Storyboard review exchange. Human decisions never grant media usage rights."""
 
 import hashlib, json, copy
 from pathlib import Path
@@ -32,8 +32,8 @@ def enhance(page, ledger, records):
         .replace(">", "\\u003e")
         .replace("&", "\\u0026")
     )
-    css = (ASSETS / "review-v2.css").read_text()
-    js = (ASSETS / "review-v2.js").read_text()
+    css = (ASSETS / "review.css").read_text()
+    js = (ASSETS / "review.js").read_text()
     toolbar = '<section class="review-toolbar"><strong data-summary></strong><button id="export-review">Exportar revisão</button><button id="print-review">Imprimir / PDF</button><span data-storage-status role="status"></span></section>'
     return (
         page.replace("</style>", css + "</style>")

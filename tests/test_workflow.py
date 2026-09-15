@@ -95,7 +95,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("LICENSE", files)
         self.assertIn("GUIDE.md", files)
         self.assertIn("QUALITY.md", files)
-        self.assertIn("assets/review-v2.js", files)
+        self.assertIn("assets/review.js", files)
         self.assertFalse(any(path.startswith("references/") for path in files))
         internal_label = "auto" + "edit"
         self.assertFalse(
@@ -171,3 +171,4 @@ class WorkflowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

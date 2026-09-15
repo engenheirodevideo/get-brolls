@@ -33,8 +33,8 @@ def files():
         "assets/storyboard.js",
         "assets/storyboard-template.html",
         "assets/brand-logo.png",
-        "assets/review-v2.css",
-        "assets/review-v2.js",
+        "assets/review.css",
+        "assets/review.js",
     ]
     result = [ROOT / p for p in exact]
     for directory, pattern in [

@@ -4,7 +4,7 @@
   <p><strong>Da ideia ao trecho certo para a sua edição.</strong></p>
   <p>Encontre imagens de apoio, veja o movimento e revise cada escolha<br>antes de receber os cortes finais com suas fontes.</p>
   <p>v2.3.4 · Codex e Claude Code · macOS e Linux</p>
-  <p><a href="#comece-aqui">Comece aqui</a> · <a href="#storyboard-v2">Storyboard V2</a> · <a href="#fontes">Fontes</a> · <a href="GUIDE.md#instalação">Guia completo</a></p>
+  <p><a href="#comece-aqui">Comece aqui</a> · <a href="#storyboard">Storyboard</a> · <a href="#fontes">Fontes</a> · <a href="GUIDE.md#instalação">Guia completo</a></p>
 </div>
 
 Get B-rolls é uma skill para coletar os vídeos e imagens que apoiam uma fala, ilustram uma ideia ou mostram exatamente a pessoa, o produto e o acontecimento citados no roteiro. Você descreve o que precisa; o agente pesquisa, prepara as prévias e reúne as escolhas em um storyboard para sua revisão.
@@ -65,7 +65,7 @@ Use a pasta /caminho/meu-video para guardar o projeto.
 
 No Claude Code, troque a primeira chamada por `/get-brolls`. Substitua a pasta pelo caminho real do seu projeto, fora da instalação da skill. Você também pode fornecer uma URL específica ou um arquivo local.
 
-## Storyboard V2
+## Storyboard
 
 O comando `review` gera `brolls/review.html`: uma página local para avaliar a coleta, navegar entre os trechos e devolver decisões ao agente.
 
@@ -79,7 +79,7 @@ O comando `review` gera `brolls/review.html`: uma página local para avaliar a c
 
 A galeria permanece estática; a animação acontece no quadro selecionado e respeita a preferência por movimento reduzido. Um print opcional da pessoa serve de contexto e permanece estático. Para avaliar uma composição pronta do mesmo insert, use `GB_GIF_SCOPE=full` com `--full-preview-file`.
 
-Compartilhe a pasta **`brolls/` completa**, para manter as imagens e os GIFs acessíveis. Para continuar editando ou regenerar prévias, preserve também os originais e `.getbrolls-sources/`. [Detalhes da revisão.](GUIDE.md#storyboard-v2)
+Compartilhe a pasta **`brolls/` completa**, para manter as imagens e os GIFs acessíveis. Para continuar editando ou regenerar prévias, preserve também os originais e `.getbrolls-sources/`. [Detalhes da revisão.](GUIDE.md#storyboard)
 
 ## Fontes
 
@@ -163,3 +163,4 @@ Execute um comando por projeto de cada vez. Preserve originais, cache e históri
 Para manter o projeto, comece por [CONTRIBUTING](CONTRIBUTING.md) e [AGENTS](AGENTS.md). Consulte [QUALITY](QUALITY.md), [CHANGELOG](CHANGELOG.md) e [SECURITY](SECURITY.md) para evidências, mudanças e tratamento de dados privados. `dist/` guarda pacotes gerados em momentos específicos; confira a versão e o conteúdo antes de distribuí-los.
 
 Código sob [licença MIT](LICENSE). Dependências externas mantêm suas próprias condições, descritas nos [avisos de terceiros](THIRD_PARTY_NOTICES.md).
+
