@@ -1,11 +1,3 @@
----
-type: documentation
-status: current
-created: 2026-09-15
-updated: 2026-09-15
-tags: [get-brolls, product, getting-started]
----
-
 <div align="center">
   <img src="assets/brand-logo.png" alt="Engenheiro de vídeo" width="104">
   <h1>Get B-rolls</h1>
