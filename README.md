@@ -3,20 +3,54 @@ type: documentation
 status: current
 created: 2026-09-15
 updated: 2026-09-15
-tags: [get-brolls, recovery]
+tags: [get-brolls, product, getting-started]
 ---
 
-# Get B-rolls 2.3.4
+<div align="center">
+  <img src="assets/brand-logo.png" alt="Engenheiro de vídeo" width="104">
+  <h1>Get B-rolls</h1>
+  <p><strong>Da ideia ao trecho certo para a sua edição.</strong></p>
+  <p>Encontre imagens de apoio, veja o movimento e revise cada escolha<br>antes de receber os cortes finais com suas fontes.</p>
+  <p>v2.3.4 · Codex e Claude Code · macOS e Linux</p>
+  <p><a href="#comece-aqui">Comece aqui</a> · <a href="#storyboard-v2">Storyboard V2</a> · <a href="#fontes">Fontes</a> · <a href="GUIDE.md#instalação">Guia completo</a></p>
+</div>
 
-Busca, prévia, revisão e coleta de trechos. YouTube usa **yt-dlp sem API key**. Instagram preserva o fluxo **navegador/Playwright → vídeo + áudio → curl → FFmpeg**. TikTok recebe URL completa pelo extrator yt-dlp. Pexels/Pixabay são fontes adicionais via API.
+---
 
-Instale conforme [INSTALL](INSTALL.md). Esta pasta reúne a skill, os comandos/scripts próprios, documentação e UI. Dependências são instaladas pelo destinatário conforme INSTALL. [QA](QA.md) separa testes reais de fixtures.
+Get B-rolls é uma skill para coletar os vídeos e imagens que apoiam uma fala, ilustram uma ideia ou mostram exatamente a pessoa, o produto e o acontecimento citados no roteiro. Você descreve o que precisa; o agente pesquisa, prepara as prévias e reúne as escolhas em um storyboard para sua revisão.
 
-## Começar
+- **Escolha com contexto.** Cada trecho pode reunir fala, motivo da escolha, intervalo, autor e fonte original.
+- **Veja antes de decidir.** GIFs e sequências de quadros ajudam a avaliar ação, enquadramento e textos sobrepostos.
+- **Receba uma coleta organizada.** Os cortes finais ficam junto de um registro de origem, revisão e condições de uso.
 
-1. Copie a pasta da skill para o destino do seu agente conforme [INSTALL](INSTALL.md).
-2. Instale os pré-requisitos do sistema e execute os comandos abaixo na pasta da skill.
-3. Invoque `$get-brolls` no Codex ou `/get-brolls` no Claude Code, informando roteiro/objetivo e pasta do projeto.
+## Como funciona
+
+```text
+Seu roteiro ou pedido → Pesquisa → Prévias → Sua revisão → Cortes finais
+```
+
+O agente prioriza fontes literais quando você cita uma entidade real. Para ideias ilustrativas, também pode pesquisar bancos de vídeo. Um único insert funciona sem roteiro completo: basta explicar o que precisa aparecer.
+
+A prévia pode baixar mídia de trabalho para mostrar o movimento. A entrega final depende da decisão humana e do registro das condições de uso da fonte. Se o intervalo ou o contexto mudar, o trecho volta para revisão.
+
+## Comece aqui
+
+### 1. Coloque a skill no seu agente
+
+Copie a pasta completa `get-brolls/` para **um** destes destinos:
+
+| Agente | Instalação pessoal | Dentro de um projeto | Como chamar |
+|---|---|---|---|
+| Codex | `~/.agents/skills/get-brolls/` | `.agents/skills/get-brolls/` | `$get-brolls` |
+| Claude Code | `~/.claude/skills/get-brolls/` | `.claude/skills/get-brolls/` | `/get-brolls` |
+
+Ao copiar uma pasta de desenvolvimento, exclua `dist/`, `.venv/`, `.tools/`, caches, projetos e arquivos privados. Instale as dependências no destino final e abra uma nova sessão do agente. [Veja instalação, atualização e compatibilidade.](GUIDE.md#instalação)
+
+### 2. Prepare o ambiente
+
+Pré-requisitos: Python 3.11+, FFmpeg/ffprobe, Node 22+, npm/npx, curl e Bash. Em macOS com Homebrew, comece com `brew install python ffmpeg node`. Para Linux e conexão do navegador, siga o [guia de instalação](GUIDE.md#instalação).
+
+Na pasta instalada da skill:
 
 ```sh
 bash scripts/install.sh --check
@@ -24,101 +58,118 @@ bash scripts/install.sh
 python3 scripts/gb.py doctor
 ```
 
-O instalador obtém yt-dlp/EJS pelo PyPI e Playwright CLI pelo npm. Não distribua os ambientes gerados `.venv/` e `.tools/`. Para Instagram, use a sessão de navegador autorizada; a instalação não transfere login de outra pessoa.
+O instalador cria os ambientes locais e obtém yt-dlp/EJS e Playwright CLI. `doctor` confere a disponibilidade das ferramentas; o acesso a cada fonte depende da URL e, quando necessário, da sua sessão de navegador.
+
+**YouTube funciona sem API key.** Pexels e Pixabay usam suas próprias chaves opcionais, configuradas no ambiente ou no `.env` privado da skill. As opções estão em [.env.example](.env.example).
+
+### 3. Faça seu primeiro pedido
+
+No Codex:
+
+```text
+$get-brolls Preciso de três inserts para um vídeo sobre o lançamento Artemis.
+Procure imagens reais do foguete e da decolagem, com trechos de 3 a 5 segundos.
+Prepare as prévias e um storyboard para eu revisar.
+Use a pasta /caminho/meu-video para guardar o projeto.
+```
+
+No Claude Code, troque a primeira chamada por `/get-brolls`. Substitua a pasta pelo caminho real do seu projeto, fora da instalação da skill. Você também pode fornecer uma URL específica ou um arquivo local.
+
+## Storyboard V2
+
+O comando `review` gera `brolls/review.html`: uma página local para avaliar a coleta, navegar entre os trechos e devolver decisões ao agente.
+
+| Na revisão | O que você faz |
+|---|---|
+| Quadro selecionado | Alterna entre imagem estática e GIF, mantendo a proporção original. |
+| Contexto e origem | Consulta fala fornecida, intervalo, motivo da escolha, autor e link da fonte. |
+| Decisão por trecho | Aprova, pede ajuste com comentário ou sugere outra fonte. |
+| Exportar revisão | Salva um JSON para o agente importar no projeto. |
+| Imprimir / PDF | Gera uma versão estática com quadros, fontes e comentários. |
+
+A galeria permanece estática; a animação acontece no quadro selecionado e respeita a preferência por movimento reduzido. Um print opcional da pessoa serve de contexto e permanece estático. Para avaliar uma composição pronta do mesmo insert, use `GB_GIF_SCOPE=full` com `--full-preview-file`.
+
+Compartilhe a pasta **`brolls/` completa**, para manter as imagens e os GIFs acessíveis. Para continuar editando ou regenerar prévias, preserve também os originais e `.getbrolls-sources/`. [Detalhes da revisão.](GUIDE.md#storyboard-v2)
 
 ## Fontes
 
-| Fonte | Descoberta | Obtenção da mídia |
+| Fonte | Como encontrar | Como obter |
 |---|---|---|
-| YouTube | Busca da CLI ou URL | yt-dlp + FFmpeg, sem API key |
-| Instagram | Navegador e URL do Reel | Captura dos dois canais e coletor próprio |
-| TikTok | Navegador e URL completa | yt-dlp + FFmpeg, sem API key |
-| Pexels / Pixabay | API com chave do próprio banco | HTTPS, original em cache para prévia |
-| Commons / NASA | API sem chave | HTTPS |
-| Arquivo local | `resolve --file` | Leitura local, sem upload |
+| **YouTube** | Busca por palavras ou URL | yt-dlp + FFmpeg; sem API key. |
+| **Instagram** | Reel encontrado no navegador | Captura de vídeo e áudio do mesmo Reel; coletor incluído une os canais. |
+| **TikTok** | URL completa descoberta no navegador | yt-dlp + FFmpeg; sem API key. |
+| **Pexels / Pixabay** | Busca nas APIs dos bancos | Chave do respectivo banco; download HTTPS. |
+| **Wikimedia Commons / NASA** | Busca nas APIs públicas | Download HTTPS; sem chave. |
+| **Arquivo local** | Vídeo, imagem ou captura fornecida | Importação local com origem e autoria, quando informadas. |
 
-YouTube, Instagram, TikTok, Pexels e Pixabay tiveram aquisição real testada; Commons/NASA tiveram busca, refresh e HEAD de mídia. Resultados e limites estão no [QA](QA.md). Disponibilidade de uma URL pode mudar.
+Para Instagram, o agente opera o navegador autorizado e entrega os dois streams ao coletor; o script não captura a sessão sozinho. O [guia Instagram](GUIDE.md#instagram--navegadorplaywright-dois-streams-e-mp4) cobre seleção dos pares, download, áudio e recuperação. Instagram e TikTok dependem da descoberta da URL no navegador; não há busca global por palavra-chave na CLI.
 
-## Fluxo principal
+Os ensaios registrados incluem aquisição real de YouTube, Instagram, TikTok, Pexels e Pixabay. Para Commons/NASA, a evidência cobre busca e disponibilidade do arquivo, sem download integral naquele ensaio. Consulte os resultados e seus limites em [Qualidade e evidências](QUALITY.md).
 
-```sh
-python3 scripts/gb.py doctor
-python3 scripts/gb.py rules --project /caminho/video
-python3 scripts/gb.py references --project /caminho/video
-python3 scripts/gb.py search --provider youtube --query "NASA Artemis launch" --limit 3 --intent literal --project /caminho/video
-```
+## Usar pelo terminal
 
-Para URL direta, `resolve --url URL --shot insert-01 --project /caminho/video`. Para bancos, troque o provider por pexels/pixabay e configure a chave correspondente. Use o ID retornado:
+Execute os exemplos abaixo na pasta da skill. Troque `/caminho/meu-video` pelo seu projeto e `ID` pelo identificador retornado na busca.
 
 ```sh
-python3 scripts/gb.py preview --candidate ID --start 0 --end 5 --reason "Ação citada na fala" --project /caminho/video
-python3 scripts/gb.py review --project /caminho/video
-python3 -m http.server 8767 --bind 127.0.0.1 --directory /caminho/video
+python3 scripts/gb.py rules --project /caminho/meu-video
+python3 scripts/gb.py references --project /caminho/meu-video
+python3 scripts/gb.py search --provider youtube --query "NASA Artemis launch" --limit 3 --intent literal --project /caminho/meu-video
+python3 scripts/gb.py preview --candidate ID --start 0 --end 5 --reason "Mostrar a decolagem citada no vídeo" --project /caminho/meu-video
+python3 scripts/gb.py review --project /caminho/meu-video
+python3 -m http.server 8767 --bind 127.0.0.1 --directory /caminho/meu-video/brolls
 ```
 
-Abra `http://127.0.0.1:8767/brolls/review.html`. Preview remoto obtém mídia de trabalho em `.getbrolls-sources/`, gera GIF/contact sheet e mantém aprovação pendente. Na rota yt-dlp de YouTube/TikTok, baixa o intervalo selecionado; em bancos, obtém o original disponível. Instagram segue primeiro o fluxo de captura e junção abaixo. O cache liga os bytes ao ID/fonte e intervalo. Não é aprovação nem entrega final.
-
-O usuário aprova, pede ajuste ou sugere fonte e exporta o JSON. Registre a decisão real:
+Abra [o storyboard local](http://127.0.0.1:8767/review.html), revise os trechos e exporte as decisões. Depois, em outro terminal na pasta da skill:
 
 ```sh
-python3 scripts/gb.py import-review --file /caminho/revisao.json --by "Nome de quem revisou" --project /caminho/video
-python3 scripts/gb.py permit --candidate ID --evidence "Evidência real das condições de uso deste material" --project /caminho/video
-python3 scripts/gb.py fetch --candidate ID --project /caminho/video
-python3 scripts/gb.py verify --project /caminho/video
+python3 scripts/gb.py import-review --file /caminho/revisao.json --by "Nome de quem revisou" --project /caminho/meu-video
+python3 scripts/gb.py permit --candidate ID --evidence "Evidência real das condições de uso" --project /caminho/meu-video
+python3 scripts/gb.py fetch --candidate ID --project /caminho/meu-video
+python3 scripts/gb.py verify --project /caminho/meu-video
 ```
 
-`approve --candidate ID --start 0 --end 5 --by "Nome" --project /caminho/video` registra aprovação explícita já recebida. Não invente decisões. Os exemplos de evidência e nomes precisam ser substituídos pelos dados reais. `fetch` conserva o gate de aprovação/condições do projeto e usa o arquivo de trabalho revisado. Mudança de intervalo ou contexto exige nova revisão. `--reference-only` no preview é escolha explícita para referência estática sem aquisição.
+Substitua o nome, o arquivo exportado e a evidência pelos dados reais. Repita `permit` e `fetch` para cada candidato aprovado. `approve` também pode registrar uma decisão explícita já recebida. `verify` confere integridade e decodificação dos arquivos; a avaliação editorial é sua.
 
-## Instagram — processo completo preservado
+<details>
+<summary>URLs, arquivos locais e configurações</summary>
 
-Leia [INSTAGRAM-BROWSER](references/INSTAGRAM-BROWSER.md). Capture no navegador os streams separados do mesmo Reel, gere os dois configs privados e execute `scripts/instagram/ig_curl_pair_downloader.py`. Ele baixa/junta vídeo e áudio, verifica codecs/streams e detecta áudio duplicado em batch. Importe o MP4 resultante com `resolve --file --source-url --creator --shot`; depois preview/review seguem o fluxo comum.
+- URL específica: `resolve --url URL_REAL --shot insert-01 --project /caminho/meu-video`.
+- Arquivo local: `resolve --file /caminho/original.mp4 --source-url URL_REAL --creator "Autor" --shot insert-01 --project /caminho/meu-video`. Use metadados reais; uma fonte sem URL pode omitir `--source-url`.
+- Fala exata: acrescente `--narration` à prévia quando houver roteiro fornecido.
+- Regras do projeto: `init-rules --project /caminho/meu-video` cria um [RULES.md](RULES.md) editável com formatos, fontes preferidas e bloqueios.
+- Memória de escolhas: `remember` registra referências aprovadas ou rejeitadas; `references` consulta o histórico daquele projeto.
+- Imagens e notícias: importe o arquivo ou a captura com sua procedência. Veja [tipos de mídia](GUIDE.md#tipos-de-assets-e-formatos) e [capturas pelo navegador](GUIDE.md#captura-de-notícias-e-páginas-pelo-navegador).
+- GIF padrão: 360 px, 8 fps, 128 cores, até 10 segundos e 5 MB. Intervalo acima do limite de duração é recusado; tamanho excessivo gera prévia estática com aviso. `GB_PREVIEW_MODE=static` usa poster e sequência de quadros.
+- `--reference-only` prepara uma referência estática sem obter mídia remota; um poster isolado não comprova movimento.
+- Os helpers em `scripts/broll/` oferecem busca, quadros, cortes e verificação de YouTube por `VIDEO_ID`. Seus resultados precisam ser importados pela CLI para integrar o registro e a revisão do projeto.
 
-O coletor original não captura sozinho a sessão do navegador: a skill orienta a etapa pelo agente/Playwright. yt-dlp pode ser uma rota alternativa para um URL público que funcione, mas não substitui o método de captura de pares.
+Use `python3 scripts/gb.py --help` e `python3 scripts/gb.py preview --help` para consultar os argumentos. Fora da pasta da skill, use o caminho absoluto de `scripts/gb.py`.
 
-## Compatibilidade com os comandos originais
+</details>
 
-Ative `.venv` conforme INSTALL e use `bash`:
+## Limites e privacidade
 
-```sh
-bash scripts/broll/gb_search.sh "NASA Artemis launch" 3
-bash scripts/broll/gb_contact.sh VIDEO_ID 00:00-00:05 /caminho/contact.jpg
-# Após aprovação do trecho:
-bash scripts/broll/gb_fetch.sh VIDEO_ID 00:00-00:05 01_nasa_launch /caminho/video/brolls
-bash scripts/broll/gb_verify.sh /caminho/video/brolls
-```
+Os arquivos de projeto e os originais importados ficam locais. Pesquisa e aquisição remotas se conectam aos provedores escolhidos. Guarde chaves, sessão do navegador, configs Instagram e URLs assinadas em ambiente privado; esses dados não pertencem à pasta distribuída da skill.
 
-Esses helpers foram copiados do autoedit e preservam a interface YouTube por ID. Não passe URL Instagram/TikTok no campo VIDEO_ID. Eles não gravam automaticamente o ledger Python; importe o resultado no CLI para integrar a revisão. `gb_vertical.sh` é a conversão opcional para fundo borrado. A CLI aceita URLs sociais; os helpers mantêm os argumentos originais e recebem apenas a resolução da venv/runtime.
+O storyboard é destinado a projetos locais confiáveis e não possui autenticação de revisor. Compartilhe apenas o material necessário à revisão. As condições de uso pertencem a cada fonte; o registro de uma decisão não verifica automaticamente sua licença.
 
-## Arquivos locais, contexto e formatos
+A resolução final depende da fonte: prefira 1080p quando disponível e confira as dimensões reais. A ferramenta preserva a proporção e sinaliza incompatibilidades de formato. Ela não monta automaticamente o vídeo completo, não faz busca de imagens via API nem entrega áudio isolado como asset final.
 
-`resolve --file /original.mp4 --source-url URL_REAL --creator "Autor" --shot insert-01 --project /caminho/video` preserva a procedência. Um insert isolado não exige roteiro inteiro; omita `--narration` quando não houver fala. Para contexto estático, acrescente `--context-image /pessoa.png`. `GB_GIF_SCOPE=full` exige `--full-preview-file` com composição pronta do mesmo insert; a skill não monta vídeo automaticamente.
+Execute um comando por projeto de cada vez. Preserve originais, cache e histórico de eventos. Se o registro for salvo e a geração da página falhar, execute `review` novamente. Windows nativo ainda não foi validado; veja [compatibilidade](GUIDE.md#compatibilidade).
 
-GIF padrão: 360 px, 8 fps, 128 cores, até 10 s e 5 MB; preserve proporção. Intervalos acima de 10 s são recusados. Se o GIF exceder 5 MB, entrega prévia estática com aviso. `GB_PREVIEW_MODE=static` usa poster/contact sheet. `.env.example` contém as opções; `--help` mostra argumentos. Imagens e notícias entram por arquivo/captura: [ASSETS](references/ASSETS.md), [BROWSER](references/BROWSER.md).
+## Dentro do repositório
 
-## Regras e memória
-
-`init-rules --project` cria RULES editável; `rules` mostra padrões ou regras do projeto. Fonte/tipo/domínios bloqueados continuam bloqueados. `remember --candidate ID --decision approved|rejected --reason TEXTO --by NOME --project /caminho/video` guarda referências do projeto; decisão positiva exige aprovação vigente. Declaração de condições preenchida pelo usuário é diferente de licença verificada.
-
-## Entrega, recuperação e limites
-
-Compartilhe `brolls/` inteiro para visualização. Para continuar editando/regerar prévias, preserve também `.getbrolls-sources/` e originais; caminhos locais são absolutos. Cortes finais ficam em `brolls/clips/`; MP4 de trabalho não integra a pasta distribuída da skill.
-
-Execute um comando por projeto. Ledger usa journal recuperável e trava; não apague originais/eventos/journal. `diagnostics.jsonl` registra operação/erro/avisos sem argumentos completos. Se o estado foi salvo e a página falhou, execute `review`. Projetos são locais confiáveis, sem autenticação de revisor. `verify` checa hash e decodificação, não qualidade editorial.
-
-Suporte de sites depende do conteúdo, disponibilidade e sessão. Não há busca global Instagram/TikTok implementada: descubra a URL pelo navegador. Escolha fonte 1080p quando disponível; nunca declare HD só porque o seletor pediu até 1080p. Veja o resultado ffprobe.
-
-## Documentação e manutenção
-
-| Documento | Conteúdo |
+| Entrada | Para que serve |
 |---|---|
-| [SKILL](SKILL.md) | Instruções de execução para o agente |
-| [INSTALL](INSTALL.md) | Dependências, instalação e conexão do navegador |
-| [AGENTS](AGENTS.md) | Contratos do produto e manutenção do código |
-| [Instagram](references/INSTAGRAM-BROWSER.md) | Captura e junção de vídeo/áudio |
-| [Storyboard](references/STORYBOARD.md) | Revisão visual, retorno JSON e impressão |
-| [QA](QA.md) / [Rotas](references/API-STATUS.md) | Evidências e limites dos testes |
-| [Compatibilidade](COMPATIBILITY.md) | Sistemas, agentes e migração de projetos |
-| [CHANGELOG](CHANGELOG.md) | Histórico de mudanças |
-| [Contribuição](CONTRIBUTING.md) / [Segurança](SECURITY.md) | Manutenção e arquivos privados |
+| **[README.md](README.md)** | Visão do produto e primeiro uso. |
+| [GUIDE.md](GUIDE.md) · [SKILL.md](SKILL.md) | Manual completo e instruções de execução para o agente. |
+| [QUALITY.md](QUALITY.md) | Testes, evidências reais e limites conhecidos. |
+| [RULES.md](RULES.md) · [.env.example](.env.example) | Regras editoriais e opções de configuração. |
+| `scripts/` | CLI, busca, aquisição, revisão e utilitários. |
+| `assets/` | Arquivos da interface e artefato visual de storyboard. |
+| `agents/` · `schemas/` | Apresentação no agente e contrato de dados. |
+| `tests/` · `.github/workflows/` | Testes e automação de qualidade. |
 
-Para contribuir, execute `python3 -m unittest discover -s tests -v` e siga AGENTS/CONTRIBUTING. A versão atual é a desta pasta. `dist/` contém snapshots históricos; não faz parte da entrega atual. Bibliotecas, fontes tipográficas externas, configurações pessoais e mídias de ensaio não integram os arquivos distribuídos da skill. Consulte [avisos de dependências](THIRD_PARTY_NOTICES.md).
+Para manter o projeto, comece por [CONTRIBUTING](CONTRIBUTING.md) e [AGENTS](AGENTS.md). Consulte [QUALITY](QUALITY.md), [CHANGELOG](CHANGELOG.md) e [SECURITY](SECURITY.md) para evidências, mudanças e tratamento de dados privados. `dist/` guarda pacotes gerados em momentos específicos; confira a versão e o conteúdo antes de distribuí-los.
+
+Código sob [licença MIT](LICENSE). Dependências externas mantêm suas próprias condições, descritas nos [avisos de terceiros](THIRD_PARTY_NOTICES.md).

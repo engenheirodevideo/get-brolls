@@ -1,4 +1,4 @@
-import sys, unittest
+import re, sys, unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -41,6 +41,11 @@ class StoryboardTest(unittest.TestCase):
         self.assertIn('class="brand-logo"', page)
         self.assertIn('src="brand-logo.png"', page)
         self.assertNotIn('<div class="brand"><svg', page)
+        self.assertNotIn("<base ", page)
+
+        local_refs = re.findall(r'(?:src|href)="(?!https?:|data:|#)([^"?]+)', page)
+        missing = [ref for ref in local_refs if not (artifact.parent / ref).is_file()]
+        self.assertEqual([], missing, f"Recursos ausentes no template: {missing}")
 
 
 if __name__ == "__main__":

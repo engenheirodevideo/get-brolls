@@ -8,23 +8,23 @@ metadata:
   status: "current"
   created: "2026-09-15"
   updated: "2026-09-15"
-  tags: "b-roll, autoedit, youtube, instagram, tiktok"
+  tags: "b-roll, youtube, instagram, tiktok, storyboard"
 ---
 
 # Get B-rolls
 
-Preserva o processo autoedit: planejar fontes literais, mostrar sequência do trecho, receber decisão humana, obter corte final e verificar. YouTube usa yt-dlp **sem API key**. Instagram usa navegador/Playwright com streams separados de vídeo e áudio.
+Preserva o processo editorial original: planejar fontes literais, mostrar a sequência do trecho, receber decisão humana, obter o corte final e verificar. YouTube usa yt-dlp **sem API key**. Instagram usa navegador/Playwright com streams separados de vídeo e áudio.
 
 ## Instalação e contexto
 
-Localize esta pasta completa. Leia [INSTALL](INSTALL.md), instale os pré-requisitos faltantes pelos gerenciadores oficiais indicados e execute `bash scripts/install.sh` para obter yt-dlp/EJS e Playwright na máquina do destinatário; nunca copie `.venv`, `.tools` ou bibliotecas de outra instalação. Execute `python3 scripts/gb.py doctor`. Use caminho absoluto do CLI e `--project` ao trabalhar de outra pasta. O `.env` é da raiz da skill. Pexels/Pixabay têm chaves opcionais próprias.
+Localize esta pasta completa. Leia a seção de [instalação do guia](GUIDE.md#instalação), instale os pré-requisitos faltantes pelos gerenciadores oficiais indicados e execute `bash scripts/install.sh` para obter yt-dlp/EJS e Playwright na máquina do destinatário; nunca copie `.venv`, `.tools` ou bibliotecas de outra instalação. Execute `python3 scripts/gb.py doctor`. Use caminho absoluto do CLI e `--project` ao trabalhar de outra pasta. O `.env` é da raiz da skill. Pexels/Pixabay têm chaves opcionais próprias.
 
 ## Fontes e preparação
 
-1. Consulte `rules --project` e `references --project`. Use fala/objetivo fornecidos, sem inventar citação. Insert isolado não exige roteiro completo. Para roteiro completo, padrão autoedit: buscar 8+ clipes literais quando o conteúdo comportar; prefira pessoas/produtos/fatos nomeados e 1080p quando disponível. Não preencha com stock genérico para atingir uma contagem.
-2. **YouTube:** `search --provider youtube --query "entidade ação"`; para URL use `resolve --url`. Leia [YouTube](references/providers/youtube.md).
-3. **Instagram:** leia [INSTAGRAM-BROWSER](references/INSTAGRAM-BROWSER.md). Reutilize o Chrome logado indicado pelo usuário; abra o Reel nesse navegador/Playwright, identifique os streams do mesmo post, salve pares privados `_video.conf`/`_audio.conf` e execute `scripts/instagram/ig_curl_pair_downloader.py`. Ele baixa/junta/verifica os dois canais. Importe o MP4 com `resolve --file --source-url --creator --shot`. Em batch, use `--fail-on-duplicate-audio`. Preserve a sessão e nunca publique URLs assinadas/configs. yt-dlp é outra rota possível, não substitui o processo do navegador.
-4. **TikTok:** descubra URL completa pelo navegador e use `resolve --url`; leia [TikTok](references/providers/tiktok.md). **Bancos:** `search --provider pexels|pixabay`; leia [STOCK](references/STOCK.md). Outras fontes: [ROUTER](references/ROUTER.md).
+1. Consulte `rules --project` e `references --project`. Use fala/objetivo fornecidos, sem inventar citação. Insert isolado não exige roteiro completo. Para roteiro completo, o padrão editorial é buscar 8+ clipes literais quando o conteúdo comportar; prefira pessoas/produtos/fatos nomeados e 1080p quando disponível. Não preencha com stock genérico para atingir uma contagem.
+2. **YouTube:** `search --provider youtube --query "entidade ação"`; para URL use `resolve --url`. Leia a seção [YouTube](GUIDE.md#provedor--youtube).
+3. **Instagram:** leia a seção [Instagram](GUIDE.md#instagram--navegadorplaywright-dois-streams-e-mp4). Reutilize o Chrome logado indicado pelo usuário; abra o Reel nesse navegador/Playwright, identifique os streams do mesmo post, salve pares privados `_video.conf`/`_audio.conf` e execute `scripts/instagram/ig_curl_pair_downloader.py`. Ele baixa/junta/verifica os dois canais. Importe o MP4 com `resolve --file --source-url --creator --shot`. Em batch, use `--fail-on-duplicate-audio`. Preserve a sessão e nunca publique URLs assinadas/configs. yt-dlp é outra rota possível, não substitui o processo do navegador.
+4. **TikTok:** descubra URL completa pelo navegador e use `resolve --url`; leia a seção [TikTok](GUIDE.md#provedor--tiktok). **Bancos:** `search --provider pexels|pixabay`; leia [Bancos](GUIDE.md#bancos--busca-prévia-e-coleta). Veja também [Fontes e transportes](GUIDE.md#fontes-e-transportes).
 
 ## Revisão e entrega
 
@@ -34,4 +34,4 @@ Localize esta pasta completa. Leia [INSTALL](INSTALL.md), instale os pré-requis
 
 Helpers originais estão em `scripts/broll/`; o [README](README.md) mostra os comandos e explica sua relação com o ledger. Contexto da pessoa permanece estático; GIF padrão anima só B-roll. Full exige composição pronta do insert. Preserve originais, cache, eventos e journal. Página falhou após salvar: regenere `review`.
 
-Para manutenção do código/documentação, siga [AGENTS](AGENTS.md). Leia [QA](QA.md) antes de declarar rotas testadas. Falha de extração é reportada com a fonte real; não invente indisponibilidade permanente nem mude para outra arquitetura.
+Para manutenção do código/documentação, siga [AGENTS](AGENTS.md). Leia [Qualidade e evidências](QUALITY.md) antes de declarar rotas testadas. Falha de extração é reportada com a fonte real; não invente indisponibilidade permanente nem mude para outra arquitetura.

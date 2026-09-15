@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Download/merge Instagram Reel video+audio curl config pairs.
 
-This tool ports the 2026-07-08 Codex workflow into autoedit:
+This tool preserves the validated 2026-07-08 Codex workflow:
 Instagram browser/devtools captures direct CDN URLs as curl config files, one
 video-only config and one audio-only config. This script downloads or reuses the
 parts, merges them with ffmpeg, and verifies output streams/audio hashes.
@@ -194,7 +194,7 @@ def ffprobe_json(path: Path) -> dict:
 
 
 def audio_hash(path: Path) -> str:
-    with tempfile.TemporaryDirectory(prefix="autoedit-ig-audiohash-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="getbrolls-ig-audiohash-") as tmp:
         audio = Path(tmp) / "audio.aac"
         run(["ffmpeg", "-nostdin", "-v", "error", "-i", str(path), "-map", "0:a:0", "-c", "copy", str(audio)], quiet=True)
         h = hashlib.sha256()

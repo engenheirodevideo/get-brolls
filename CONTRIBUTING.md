@@ -8,13 +8,13 @@ tags: [get-brolls, documentation]
 
 # Contribuição
 
-Leia [AGENTS](AGENTS.md) antes de alterar o código e [INSTALL](INSTALL.md) para preparar dependências. O fluxo YouTube sem API key e o processo Instagram de dois canais fazem parte do contrato do produto.
+Leia [AGENTS](AGENTS.md) antes de alterar o código e [GUIDE](GUIDE.md#instalação) para preparar dependências. O fluxo YouTube sem API key e o processo Instagram de dois canais fazem parte do contrato do produto.
 
 ## Alterações
 
 Descreva o problema, o comportamento resultante e a validação realizada. Para bugs, reproduza a falha e adicione regressão relevante. Atualize a referência da rota afetada e o CHANGELOG. Comandos de um mesmo projeto devem ser executados serialmente.
 
-Testes automatizados usam mídia sintética e mocks, sem segredos ou conteúdo privado. Ensaios reais de plataforma ficam fora da pasta da skill e registram resultado técnico em QA/API-STATUS; falha de rede não deve ser escondida por fixture.
+Testes automatizados usam mídia sintética e mocks, sem segredos ou conteúdo privado. Ensaios reais de plataforma ficam fora da pasta da skill e registram resultado técnico em [QUALITY](QUALITY.md); falha de rede não deve ser escondida por fixture.
 
 ```sh
 python3 -m unittest discover -s tests -v
@@ -25,6 +25,6 @@ Mudanças na revisão visual exigem conferir aprovação/ajuste/sugestão, expor
 
 ## Arquivos de distribuição
 
-Inclua skill, AGENTS, documentação, scripts próprios e interface. Dependências são instaladas pelos comandos do INSTALL; não incorporar bibliotecas, fontes externas, binários, ambientes virtuais, cookies, configs CDN ou exemplos preenchidos. Novos arquivos necessários devem entrar na seleção mantida em `scripts/package_release.py`, mesmo quando a entrega atual for somente a pasta. Não execute esse empacotador sem pedido de empacotamento.
+Inclua skill, AGENTS, documentação, scripts próprios e interface. Dependências são instaladas pelos comandos do GUIDE; não incorporar bibliotecas, fontes externas, binários, ambientes virtuais, cookies, configs CDN ou exemplos preenchidos. Novos arquivos necessários devem entrar na seleção mantida em `scripts/package_release.py`, mesmo quando a entrega atual for somente a pasta. Não execute esse empacotador sem pedido de empacotamento.
 
 Código próprio sob MIT, conforme LICENSE. Dependências mantêm suas licenças, descritas em THIRD_PARTY_NOTICES. Publicação, push e atualização de instalação pessoal são ações separadas da revisão local.

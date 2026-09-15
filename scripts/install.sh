@@ -17,7 +17,7 @@ if command -v node >/dev/null 2>&1; then
   fi
 fi
 if [ "$missing" -ne 0 ]; then
-  printf 'Instale os executáveis conforme INSTALL.md e repita.\n'; exit 1
+  printf 'Instale os executáveis conforme GUIDE.md e repita.\n'; exit 1
 fi
 python3 -c 'import sys; assert sys.version_info >= (3,11), "Python 3.11+ obrigatório"'
 if [ "${1:-}" = "--check" ]; then
@@ -32,4 +32,4 @@ npm --cache "$ROOT/.tools/npm-cache" install --prefix "$ROOT/.tools" --no-audit 
 bash "$ROOT/scripts/playwright.sh" --version
 PATH="$ROOT/.venv/bin:$PATH" "$ROOT/.venv/bin/python" "$ROOT/scripts/gb.py" doctor
 printf '\nDependências instaladas em .venv/ e .tools/, não fazem parte dos arquivos de distribuição.\n'
-printf 'Navegador existente: siga INSTALL.md para reutilizar a sessão autorizada.\n'
+printf 'Navegador existente: siga GUIDE.md para reutilizar a sessão autorizada.\n'

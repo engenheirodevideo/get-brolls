@@ -15,7 +15,6 @@ assets/storyboard-gifs/
 assets/storyboard-images/
 assets/storyboard-case.json
 assets/storyboard-data.js
-assets/storyboard-template.html
 dist/
 
 .venv/

@@ -89,12 +89,26 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotEqual(signature(c), original)
 
     def test_release_contains_skill_only(self):
-        files = [
-            str(p.relative_to(package_release.ROOT)) for p in package_release.files()
-        ]
+        selected = package_release.files()
+        files = [str(p.relative_to(package_release.ROOT)) for p in selected]
         self.assertIn(".env.example", files)
         self.assertIn("LICENSE", files)
+        self.assertIn("GUIDE.md", files)
+        self.assertIn("QUALITY.md", files)
         self.assertIn("assets/review-v2.js", files)
+        self.assertFalse(any(path.startswith("references/") for path in files))
+        internal_label = "auto" + "edit"
+        self.assertFalse(
+            any(internal_label in path.lower() for path in files),
+            "A entrega pública não deve expor nomes internos em caminhos.",
+        )
+        for path in selected:
+            if path.suffix in {".md", ".py", ".sh", ".yaml", ".yml"}:
+                self.assertNotIn(
+                    internal_label,
+                    path.read_text(errors="ignore").lower(),
+                    f"Nome interno encontrado em {path.relative_to(package_release.ROOT)}",
+                )
         self.assertFalse(
             any(
                 x.endswith((".gif", ".mp4", ".jpg"))

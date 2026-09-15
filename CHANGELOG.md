@@ -11,13 +11,13 @@ tags: [get-brolls]
 ## 2.3.4 — 2026-09-15
 
 - Corrige a regressão de escopo da distribuição 2.3.3: YouTube volta a buscar/baixar via yt-dlp sem API key; redes sociais deixam de ser classificadas como somente referência.
-- Integra os seis helpers próprios de B-roll e o coletor próprio Instagram do autoedit. Instagram mantém navegador/Playwright → dois streams CDN → curl → FFmpeg → verificação e hash de áudio.
+- Integra os seis helpers próprios de B-roll e o coletor próprio Instagram do fluxo original. Instagram mantém navegador/Playwright → dois streams CDN → curl → FFmpeg → verificação e hash de áudio.
 - Instala dependências oficiais via PyPI e npm na máquina do destinatário. Valida Node 22+, Python e executáveis. Nenhuma biblioteca de runtime é distribuída com a skill.
 - Preview remoto prepara mídia de trabalho, retém origem/autoria e intervalo absoluto. Fetch recorta os mesmos bytes revisados, sem deslocamento de tempo.
 - Corrige reuso de parcial após falha curl; helpers encontram a venv e habilitam runtime JavaScript. Aceita URLs Instagram com nome do perfil.
 - Reescreve instalação, skill, rotas, recuperação e evidências; mantém aprovação editorial humana e não inventa licença.
 - Remove fontes tipográficas externas da distribuição; HTML usa fontes do sistema.
-- Reteste real concluiu Instagram (captura Chrome, dois canais, merge/decodificação) e TikTok (trecho/GIF usando instalação limpa); QA atualizado sem embutir mídias/configs.
+- Reteste real concluiu Instagram (captura no navegador, dois canais, merge/decodificação) e TikTok (trecho/GIF usando instalação limpa); QUALITY atualizado sem embutir mídias/configs.
 - Consolida AGENTS.md com os contratos do produto, manutenção e verificação; revisa README, instalação, compatibilidade, segurança e guias contra a CLI atual.
 - Entrega atual em pasta, sem gerar/atualizar ZIP.
 - Versão 2.3.3 preservada como histórico; não representa a distribuição recuperada.
@@ -28,7 +28,7 @@ tags: [get-brolls]
 - Regenerar uma prévia preserva rejeição/pendência; estado verificado depende de aprovação vigente.
 - Testes reais autenticados de busca, refresh e download Pexels/Pixabay; GIF e storyboard produzidos com os dois originais.
 - Fluxo de bancos documentado explicitamente: obtenção externa do original para GIF e coleta final aprovada são etapas diferentes.
-- A revisão original classificou esta versão como beta local; o parecer foi retirado porque ela não preservava os transportes sociais do autoedit. Correção na 2.3.4.
+- A revisão original classificou esta versão como beta local; o parecer foi retirado porque ela não preservava os transportes sociais do produto de origem. Correção na 2.3.4.
 
 ## 2.3.2 — organização da skill
 

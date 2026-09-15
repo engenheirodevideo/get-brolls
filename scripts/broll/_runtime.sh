@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared yt-dlp runtime while preserving autoedit helper arguments.
+# Shared yt-dlp runtime preserving the original helper arguments.
 GB_RUNTIME_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 gb_ytdlp() {
   local exe="yt-dlp"

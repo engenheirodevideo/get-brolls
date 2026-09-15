@@ -12,7 +12,7 @@ def command():
     local = Path(__file__).resolve().parents[2] / '.venv/bin/yt-dlp'
     exe = str(local) if local.is_file() else shutil.which('yt-dlp')
     if not exe:
-        raise ProviderError('yt-dlp ausente: siga INSTALL.md e instale requirements.txt.')
+        raise ProviderError('yt-dlp ausente: siga GUIDE.md e instale requirements.txt.')
     args = [exe, '--ignore-config', '--no-playlist', '--no-progress', '--no-warnings',
             '--socket-timeout', '20', '--retries', '1', '--fragment-retries', '1']
     if shutil.which('deno'):
@@ -34,7 +34,7 @@ def run(arguments, timeout=180):
             raise ProviderError('A fonte exige uma sessão de acesso. Use o navegador autorizado conforme o guia da plataforma.') from None
         raise ProviderError('yt-dlp não concluiu a extração; confira disponibilidade do post e siga o guia da plataforma.') from None
     except (subprocess.SubprocessError, OSError):
-        raise ProviderError('yt-dlp não concluiu: confira dependências, disponibilidade do vídeo e sessão exigida pela fonte. Para Instagram, use o fluxo navegador → pares CDN em references/providers/instagram.md.') from None
+        raise ProviderError('yt-dlp não concluiu: confira dependências, disponibilidade do vídeo e sessão exigida pela fonte. Para Instagram, use o fluxo navegador → pares CDN descrito em GUIDE.md.') from None
 
 
 def search(query, limit):
