@@ -4,6 +4,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from getbrolls.storyboard import render_page
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 class StoryboardTest(unittest.TestCase):
     def test_empty_and_escaped_portable_review(self):
@@ -28,6 +30,17 @@ class StoryboardTest(unittest.TestCase):
         self.assertIn('data-index="0"', page)
         self.assertIn('id="shot-0"', page)
         self.assertIn("Fala &amp; contexto", page)
+
+    def test_delivery_includes_v2_storyboard_artifact_with_current_logo(self):
+        artifact = ROOT / "assets" / "storyboard-template.html"
+        logo = ROOT / "assets" / "brand-logo.png"
+
+        self.assertTrue(artifact.is_file())
+        self.assertTrue(logo.is_file())
+        page = artifact.read_text()
+        self.assertIn('class="brand-logo"', page)
+        self.assertIn('src="brand-logo.png"', page)
+        self.assertNotIn('<div class="brand"><svg', page)
 
 
 if __name__ == "__main__":

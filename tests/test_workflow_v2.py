@@ -97,7 +97,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("assets/review-v2.js", files)
         self.assertFalse(
             any(
-                x.endswith((".gif", ".mp4", ".jpg", ".html"))
+                x.endswith((".gif", ".mp4", ".jpg"))
+                or (x.endswith(".html") and x != "assets/storyboard-template.html")
                 or x == ".env"
                 or "storyboard-case" in x
                 or "landing" in x

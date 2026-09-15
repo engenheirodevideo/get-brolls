@@ -32,6 +32,8 @@ def files():
         "scripts/package_release.py",
         "assets/storyboard.css",
         "assets/storyboard.js",
+        "assets/storyboard-template.html",
+        "assets/brand-logo.png",
         "assets/review-v2.css",
         "assets/review-v2.js",
     ]
