@@ -1,7 +1,6 @@
 <div align="center">
   <img src="assets/brand-logo.png" alt="Engenheiro de vídeo" width="104">
   <h1>GET B-ROLLS</h1>
-  <p><strong>ENGENHEIRO DE VÍDEO</strong></p>
   <p><strong>Da ideia ao trecho certo para a sua edição.</strong></p>
   <p>Encontre imagens de apoio, veja o movimento e revise cada escolha<br>antes de receber os cortes finais com suas fontes.</p>
   <p>v2.3.4 · Codex e Claude Code · macOS e Windows</p>
