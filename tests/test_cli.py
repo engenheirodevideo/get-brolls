@@ -53,21 +53,34 @@ class CliTest(unittest.TestCase):
             c = self.call("resolve", "--file", src, "--project", root)
             id = c["id"]
             base = ["--candidate", id, "--project", root]
+            # Cada comando do fluxo também diz, em uma linha, o que acabou de fazer.
+            self.assertIn("Registrei o candidato", c["summary"])
             self.call("fetch", *base, ok=False)
-            self.call("preview", *base, "--start", 0.5, "--end", 1.5)
-            self.call(
+            preview = self.call("preview", *base, "--start", 0.5, "--end", 1.5)
+            self.assertIn("Gerei a prévia", preview["summary"])
+            approved = self.call(
                 "approve", *base, "--start", 0.5, "--end", 1.5, "--by", "Fixture humano"
             )
+            self.assertIn("Registrei a aprovação humana", approved["summary"])
             self.call("fetch", *base, ok=False)
-            self.call(
+            permitted = self.call(
                 "permit",
                 *base,
                 "--evidence",
                 "Vídeo sintético de teste gerado localmente",
             )
+            self.assertIn("condições de uso", permitted["summary"])
             out = self.call("fetch", *base)
             self.assertTrue(out["output"]["verified"])
-            self.assertEqual(self.call("verify", "--project", root)["count"], 1)
+            self.assertIn("Coletei o corte final", out["summary"])
+            verified = self.call("verify", "--project", root)
+            self.assertEqual(verified["count"], 1)
+            self.assertIn("1 arquivo coletado: íntegro e decodificável", verified["summary"])
+            reviewed = self.call("review", "--project", root)
+            self.assertIn("Gerei o Storyboard", reviewed["summary"])
+            state = self.call("status", "--project", root)
+            self.assertEqual(1, state["counts"]["verified"])
+            self.assertIn("completo", state["summary"]["next"])
             self.call("fetch", *base, ok=False)
             self.assertTrue((root / "brolls/review.html").exists())
             self.assertIn(
@@ -179,6 +192,13 @@ class CliTest(unittest.TestCase):
                 tmp,
                 ok=False,
             )
+
+    def test_resolve_rejects_an_empty_file_or_url(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for flag in ("--file", "--url"):
+                failure = self.call("resolve", flag, "", "--project", tmp, ok=False)
+                self.assertIn(flag, failure["message"])
+                self.assertIn("não pode ser vazio", failure["message"])
 
     def test_youtube_review_inline_segment_safe(self):
         from html.parser import HTMLParser

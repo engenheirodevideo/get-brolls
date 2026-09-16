@@ -43,7 +43,14 @@ if ($Check) {
 
 Invoke-Native -Label 'Criação da venv' -File 'python' -Arguments @('-m', 'venv', (Join-Path $Root '.venv'))
 $VenvPython = Join-Path $Root '.venv\Scripts\python.exe'
-Invoke-Native -Label 'Instalação Python' -File $VenvPython -Arguments @('-m', 'pip', 'install', '-r', (Join-Path $Root 'requirements.txt'))
+$PythonVersion = (& $VenvPython -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])').Trim()
+try {
+    Invoke-Native -Label 'Instalação Python' -File $VenvPython -Arguments @('-m', 'pip', 'install', '-r', (Join-Path $Root 'requirements.txt'))
+} catch {
+    Write-Host "Falha ao instalar as dependências Python: seu Python é $PythonVersion; o conjunto fixado foi validado em Python 3.11-3.13."
+    Write-Host 'Crie a venv com um interpretador dessa faixa ou atualize requirements.txt como um conjunto revisado.'
+    throw
+}
 Invoke-Native -Label 'Importação yt-dlp/EJS' -File $VenvPython -Arguments @('-c', 'import yt_dlp, yt_dlp_ejs; print("yt-dlp e EJS importados")')
 $Tools = Join-Path $Root '.tools'
 New-Item -ItemType Directory -Path $Tools -Force | Out-Null

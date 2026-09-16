@@ -8,6 +8,27 @@ tags: [get-brolls, documentation]
 
 # Instruções para agentes — Get B-rolls
 
+## Mapa do repositório
+
+Este arquivo é o índice central para agentes e mantenedores: tudo que um agente precisa encontrar está roteado abaixo. Cada assunto tem um destino único; não duplique a instrução aqui nem no destino.
+
+| Preciso de | Destino |
+|---|---|
+| Operar a skill (coletar, prever, revisar, entregar) | [SKILL.md](SKILL.md) — contrato de operação e fonte canônica; no plugin do Claude Code a skill descoberta é o espelho [skills/get-brolls/SKILL.md](skills/get-brolls/SKILL.md). |
+| Instalar no Codex | Clone o repositório, apresente-o pelo [agents/openai.yaml](agents/openai.yaml) e acione com `$get-brolls`. |
+| Instalar no Claude Code como skill | Clone o repositório na pasta de skills do agente e acione com `/get-brolls`. |
+| Instalar no Claude Code como plugin | `/plugin marketplace add engenheirodevideo/get-brolls`, acione com `/get-brolls:get-brolls` e prepare o ambiente com [`/get-brolls-setup`](commands/get-brolls-setup.md). |
+| Instalar no Gemini CLI | [GEMINI.md](GEMINI.md) — o snippet de importação `@` que o usuário acrescenta ao próprio `GEMINI.md`. |
+| Guia operacional (instalação, provedores, navegador, Storyboard, `status`) | [GUIDE.md](GUIDE.md) |
+| Qualidade, evidências reais e limites conhecidos | [QUALITY.md](QUALITY.md) |
+| Contribuir (fluxo de mudança, revisão, PR) | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Segurança, egress e dados privados | [SECURITY.md](SECURITY.md) |
+| O que mudou em cada versão | [CHANGELOG.md](CHANGELOG.md) |
+| Visão do produto e primeiro uso | [README.md](README.md) · [README.en.md](README.en.md) |
+| Regras editoriais e configuração do projeto | [RULES.md](RULES.md) · [.env.example](.env.example) |
+
+Os roteadores por agente ([CLAUDE.md](CLAUDE.md) e [GEMINI.md](GEMINI.md)) apontam para este mapa; as regras de manutenção do repositório continuam nas seções abaixo.
+
 ## Escopo e entrada
 
 Esta pasta contém o produto **GET B-ROLLS — ENGENHEIRO DE VÍDEO**: skill, CLI, utilitários, interface de revisão e documentação. Leia [SKILL](SKILL.md) para executar uma coleta e [GUIDE](GUIDE.md#instalação) para preparar o ambiente. Nenhum outro repositório é necessário.
@@ -37,6 +58,8 @@ Execute comandos do mesmo projeto serialmente. Preserve originais, eventos e jou
 - A versão executável vem de `scripts/getbrolls/__init__.py`; mantenha `SKILL.md`, `skills/get-brolls/SKILL.md`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, README, GUIDE, QUALITY e CHANGELOG coerentes quando houver mudança de versão. `SKILL.md` da raiz é a fonte canônica; o espelho em `skills/get-brolls/` mantém `description` idêntica e o mesmo conteúdo com caminhos `${CLAUDE_PLUGIN_ROOT}` (invariante coberto por teste). Revisão documental sem alteração de versão deve aparecer no changelog vigente.
 - Atualize a seção correspondente de `GUIDE.md` junto com o código da rota afetada. O guia é a referência operacional única do produto.
 - Corrija a causa e adicione regressão quando houver bug. Não escreva testes que exijam retirar uma capacidade existente.
+- `status` é o único comando somente leitura: abre o ledger com `recover=False`, não cria a árvore `brolls/` e não pega a trava exclusiva do projeto. Ao mexer nele, preserve esse contrato — nada de recuperar pendência, sincronizar formatos ou escrever para relatar. Comandos de escrita continuam serializados pela trava.
+- Um pin `GB_*_PATH` é promessa, não sugestão: resolva para caminho absoluto e falhe nomeando variável e caminho em vez de voltar à descoberta. A exceção é o `doctor`, que transforma o pin inválido em item de `summary.missing` para continuar diagnosticando.
 - Use mídia sintética e mocks em testes automatizados. Ensaios de rede ficam fora da fonte e registram URL pública, versão utilizada, resultado, dimensão/duração e limites.
 - Valide comandos documentados com `--help` e links relativos. Documentos operacionais que usam frontmatter mantêm `type`, `status`, `created`, `updated` e `tags`; no SKILL esses campos ficam em `metadata`.
 - Não execute publicação, push ou instalação pessoal da skill como parte automática de uma revisão. Faça essas ações somente quando incluídas no pedido do usuário. A árvore do repositório é a fonte oficial da entrega.

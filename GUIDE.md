@@ -15,6 +15,7 @@ Este é o manual operacional único do **GET B-ROLLS — ENGENHEIRO DE VÍDEO**:
 - [Instalação](#instalação)
 - [Compatibilidade](#compatibilidade)
 - [Fluxo editorial](#fluxo-editorial)
+- [Estado do projeto e progresso](#estado-do-projeto-e-progresso)
 - [Fontes e transportes](#fontes-e-transportes)
 - [Tipos de assets](#tipos-de-assets-e-formatos)
 - [Captura pelo navegador](#captura-de-notícias-e-páginas-pelo-navegador)
@@ -34,7 +35,7 @@ Este é o manual operacional único do **GET B-ROLLS — ENGENHEIRO DE VÍDEO**:
 | Node/npm/npx + Playwright CLI + navegador | Captura de streams Instagram e inspeção pelo navegador |
 | curl | Baixar os dois streams Instagram capturados |
 | Bash e awk | Somente os helpers opcionais em `scripts/getbrolls/tools/youtube/`; a CLI principal não depende deles |
-| Fonte DejaVu, Liberation ou Arial | Título, índice e tempo no contact sheet; use `GB_FONT_FILE` para indicar outra fonte TrueType |
+| Fonte DejaVu, Liberation ou Arial | Título, índice e tempo no contact sheet **dos helpers Bash opcionais**; use `GB_FONT_FILE` para indicar outra fonte TrueType. A CLI principal não usa essa variável |
 
 Git é opcional. API key YouTube não é necessária. Pexels/Pixabay usam apenas suas próprias chaves opcionais. `curl-cffi` é extra opcional do yt-dlp, não requisito universal.
 
@@ -112,7 +113,24 @@ Referências de instalação: [yt-dlp/EJS](https://github.com/yt-dlp/yt-dlp/wiki
 
 ### Configuração
 
-Copiar `.env.example` para `.env` é opcional (`cp .env.example .env` no macOS; `Copy-Item .env.example .env` no PowerShell). O `.env` pertence à raiz da skill, independentemente da pasta atual. Ambiente do processo prevalece. `--env-file CAMINHO` vem antes do subcomando. Nunca distribua `.env`, cookies, configs CDN ou perfis do navegador.
+Copiar `.env.example` para `.env` é opcional (`cp .env.example .env` no macOS; `Copy-Item .env.example .env` no PowerShell). O `.env` pertence à raiz da skill, independentemente da pasta atual. Ambiente do processo prevalece. `--env-file` é opção da raiz do parser e vem antes do subcomando: `python3 scripts/gb.py --env-file CAMINHO <subcomando> …`. Nunca distribua `.env`, cookies, configs CDN ou perfis do navegador.
+
+#### Caminhos explícitos de ferramentas
+
+Quatro variáveis opcionais fixam onde cada ferramenta está, úteis quando há mais de uma instalação na máquina, quando o `PATH` do agente difere do seu ou quando a venv fica fora da pasta da skill. Valem pelo ambiente do processo, pelo `.env` da skill ou por `python3 scripts/gb.py --env-file CAMINHO <subcomando> …`, como as demais `GB_*`.
+
+| Variável | Fixa | Descoberta padrão quando ausente |
+|---|---|---|
+| `GB_YTDLP_PATH` | Executável do yt-dlp | `.venv/Scripts/yt-dlp.exe`, `.venv/Scripts/yt-dlp`, `.venv/bin/yt-dlp` e depois o `PATH` |
+| `GB_VENV_PATH` | Pasta `.venv` usada para localizar o yt-dlp | `.venv/` na raiz da skill |
+| `GB_FFMPEG_PATH` | Executável do FFmpeg | `ffmpeg` no `PATH` |
+| `GB_FFPROBE_PATH` | Executável do ffprobe | `ffprobe` no `PATH` |
+
+Precedência: a variável explícita vence a descoberta. Ausente ou vazia, o comportamento é exatamente o anterior. O valor é resolvido para caminho absoluto antes de qualquer validação, então um pin relativo não muda de significado conforme a pasta atual. Definida e apontando para um caminho inexistente, para algo que não é arquivo executável, sem permissão de execução ou — no caso de `GB_VENV_PATH` — que não seja diretório, o comando falha nomeando a variável e o caminho, em vez de voltar em silêncio à descoberta. `GB_VENV_PATH` apontando para uma venv **sem** yt-dlp também falha nomeando a variável, a pasta e os layouts procurados: o pin é uma promessa, não uma sugestão, e não há queda silenciosa para o `PATH`. `doctor` lista os pins ativos em `tool_paths`, uma linha por variável, mostra `{}` quando nenhum está definido e publica em `resolved` o executável absoluto realmente usado por ferramenta. Um pin inválido não derruba o `doctor`: ele aparece em `summary.missing` com a mensagem do erro, para que o diagnóstico continue legível. Não existe variável para o interpretador Python: a skill não reinvoca o Python em nenhum ponto.
+
+```sh
+GB_FFMPEG_PATH=/opt/homebrew/bin/ffmpeg python3 scripts/gb.py doctor
+```
 
 ### Codex e Claude Code
 
@@ -172,7 +190,21 @@ A partir da 2.3.6, o repositório também é um marketplace de plugin do Claude 
 /plugin install get-brolls@engenheirodevideo
 ```
 
-A skill do plugin fica em `skills/get-brolls/SKILL.md` e referencia os arquivos por `${CLAUDE_PLUGIN_ROOT}`, a raiz do plugin instalado — um diretório de cache versionado (`~/.claude/plugins/cache/engenheirodevideo/get-brolls/<versão>/`). Execute o instalador e o `doctor` pelo caminho absoluto dessa pasta, de qualquer cwd. As dependências ficam em `.venv/` e `.tools/` dentro da pasta do plugin: repita o instalador após cada `/plugin update` ou reinstalação, e prefira variáveis de ambiente ou `--env-file CAMINHO` fora da pasta gerenciada para as chaves opcionais. O fluxo clone-como-skill continua suportado sem mudanças para Codex e instalações manuais, com o SKILL.md da raiz como fonte canônica.
+Na primeira sessão, execute `/get-brolls-setup`: o comando em `commands/get-brolls-setup.md` roda `scripts/install.sh --check`, o instalador completo do sistema e o `doctor` pela raiz do plugin, e devolve o veredito em uma linha. A skill é acionada pelo contexto do pedido; a forma explícita é `/get-brolls:get-brolls`.
+
+A skill do plugin fica em `skills/get-brolls/SKILL.md` e referencia os arquivos por `${CLAUDE_PLUGIN_ROOT}`, a raiz do plugin instalado — um diretório de cache versionado (`~/.claude/plugins/cache/engenheirodevideo/get-brolls/<versão>/`). Execute o instalador e o `doctor` pelo caminho absoluto dessa pasta, de qualquer cwd. As dependências ficam em `.venv/` e `.tools/` dentro da pasta do plugin: repita o instalador após cada `/plugin update` ou reinstalação, e prefira variáveis de ambiente ou um `.env` fora da pasta gerenciada para as chaves opcionais, apontado na raiz do parser: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" --env-file CAMINHO <subcomando> …`. O fluxo clone-como-skill continua suportado sem mudanças para Codex e instalações manuais, com o SKILL.md da raiz como fonte canônica.
+
+#### Permissões (opcional)
+
+Se você não quiser confirmar cada execução do CLI, registre uma permissão própria com `/permissions` na sessão do Claude Code:
+
+```text
+/permissions
+Allow → Bash
+python3 */gb.py *
+```
+
+É uma escolha do usuário, não um requisito da skill: sem ela, cada comando é apenas confirmado na hora. A regra vale para o CLI do plugin em qualquer pasta; não conceda permissão ampla de shell.
 
 ### Migração para 2.3.5
 
@@ -193,6 +225,8 @@ A matriz da 2.3.4 passou em macOS e Windows em Python 3.11/3.13, com Linux/Pytho
 Coleta B-roll dirigida pelo contrato de edição. Confirma no navegador antes de baixar; nunca autora vídeo.
 
 ### Fluxo
+> **Literal primeiro.** O material padrão é footage, print ou imagem real do fato, da pessoa, do produto, da notícia ou da tela que a narração cita. Bancos de stock (Pexels/Pixabay) entram **somente quando o usuário pedir stock explicitamente** — nunca como preenchimento automático de um beat sem fonte literal. A responsabilidade pelas condições de uso do material é de quem produz o vídeo; a skill responde pela fidelidade/literalidade e pelo registro de origem de cada asset, feito por `permit` e pela proveniência gravada no ledger.
+>
 > **Meta editorial: 8+ clipes literais por roteiro quando o conteúdo comportar.** Se os beats óbvios não fecham 8, amplie: mais empresas/pessoas citadas, cobertura de telejornal do mesmo fato, produto nomeado, pregão/mercado real ou segmentos extras da mesma fonte forte. Prefira 1080p quando disponível e confirme com ffprobe; não faça upscale para simular qualidade.
 1. **plan** — dos blocos do contrato (`clips[].bloco_roteiro` / `fala`), derive N beats visuais (query em inglês). Prefira **entidade literal nomeada** (pessoa/produto/logo do que a fala cita: Sam Altman, OpenAI, SoftBank, Codex…) — é onde o YouTube dá material real e limpo. Beats abstratos (back-office, "dev", "automação") caem em tutorial/vlog/stock/desenho; use no máximo um demo de produto real (ex.: dashboard ERP) ou deixe no rosto do talento.
 2. **search** — YouTube sem baixar: `search.sh "<query>" [n]` → `ID | DURATION | TITLE`.
@@ -214,6 +248,24 @@ Dependências: `yt-dlp` + FFmpeg. Capturas de página usam a integração de nav
 
 ### Saída
 `<PROJETO>/brolls/NN_entity_context.mp4`. Registrar no ledger (`step: get-brolls`, outputs = arquivos baixados).
+
+## Estado do projeto e progresso
+
+`status` responde "onde estamos?" para um projeto, sem alterar nada. Ele lê o que já está gravado — manifesto, candidatos, decisões e journal — e devolve contagem e lista de IDs por etapa: candidatos encontrados, prévias geradas, decisões pendentes/aprovadas/rejeitadas, itens com `permit` registrado, itens entregues e itens verificados.
+
+```sh
+python3 scripts/gb.py status --project /caminho/meu-video
+```
+
+O JSON segue a convenção dos demais comandos e traz, como no `doctor`, um objeto `summary` na frente: `line` (uma frase com as contagens), `stages` (rótulo, contagem e IDs de cada etapa) e `next` (o próximo passo real do fluxo). Abaixo dele vêm `counts`, `stages`, `items` (um resumo por candidato: estado, aprovação, direitos, prévia e arquivo final), `references`, `review_page` e `journal` (eventos registrados, último evento e se houve recuperação de gravação).
+
+`status` é somente leitura: não grava manifesto, candidatos, prévias, clipes nem eventos, e não cria a árvore `brolls/` — num projeto inexistente ele responde "Projeto não encontrado em …; nenhum arquivo foi criado." sem escrever nada. O único arquivo tocado num projeto existente é o `brolls/diagnostics.jsonl` da auditoria. Também **não pega a trava exclusiva do projeto**: pode ser executado enquanto um `fetch` longo está em andamento, sem esperar nem falhar. Uma regressão offline compara o conteúdo e o mtime de todos os arquivos do projeto antes e depois da execução.
+
+Como só lê, `status` nunca completa uma gravação interrompida: quando existe `.pending-transaction.json`, ele reporta `journal.recovered_write: "pending"`, avisa na linha do resumo e deixa a pendência para o próximo comando de escrita. Pelo mesmo motivo ele não aplica `sync_formats`: se as regras editoriais passaram a mirar outro formato, o relatório traz `format_pending` (total e por item) e `next` avisa quantas aprovações o próximo comando invalidará. `RULES.md` ilegível vira `rules_error` no lugar de uma falha, e `events.jsonl` ou `references.json` corrompidos degradam para contagem com `error`, preservando os arquivos.
+
+### Convenção do campo `summary`
+
+Os comandos do fluxo — `search`, `resolve`, `preview`, `review`, `import-review`, `permit`, `fetch` e `verify` — acrescentam ao próprio JSON um campo `summary` com uma linha em português no formato **verbo + objeto + resultado** (por exemplo, "Coletei o corte final de local:abc em clips/….mp4."). O campo é aditivo: nenhuma chave existente muda de nome, tipo ou posição, e integrações que já leem o JSON continuam válidas. Use essa linha para dizer ao usuário o que acabou de acontecer e `status` para o quadro completo da coleta.
 
 ## Fontes e transportes
 
@@ -281,7 +333,7 @@ Diagnóstico: `python3 scripts/gb.py providers`. Falha de credencial não ativa 
 
 ## Bancos — busca, prévia e coleta
 
-Pexels/Pixabay usam suas próprias chaves no ambiente ou `.env` privado da skill. YouTube não depende delas. Execute `search --provider pexels|pixabay --query coffee --limit 2 --intent illustrative --project /projeto`.
+Bancos são rota opcional, acionada **somente quando o usuário pedir stock explicitamente**; o padrão editorial continua sendo a fonte literal do que a narração cita. Pexels/Pixabay usam suas próprias chaves no ambiente ou `.env` privado da skill. YouTube não depende delas. Execute `search --provider pexels|pixabay --query coffee --limit 2 --intent illustrative --project /projeto`.
 
 `preview --candidate ID --start 0 --end 5 --project /projeto` atualiza a URL de mídia, obtém o original em `.getbrolls-sources/` e gera GIF/contact sheet. Preserva o ID remoto, fonte e autoria; não precisa aprovar um poster antes de ver o movimento. Aprovação fica pendente. Depois de review/decisão/condições, fetch usa a fonte revisada.
 

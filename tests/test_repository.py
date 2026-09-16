@@ -14,6 +14,55 @@ def github_slug(heading):
     return value.replace(" ", "-")
 
 
+# Destinos que o hub de AGENTS.md precisa rotear: um por público/finalidade.
+HUB_TARGETS = (
+    "SKILL.md",
+    "skills/get-brolls/SKILL.md",
+    "agents/openai.yaml",
+    "commands/get-brolls-setup.md",
+    "GEMINI.md",
+    "GUIDE.md",
+    "QUALITY.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "README.md",
+    "README.en.md",
+)
+
+# Acionamento por agente: o hub nomeia o comando real de cada instalação.
+HUB_INVOCATIONS = (
+    "$get-brolls",
+    "/get-brolls",
+    "/plugin marketplace add engenheirodevideo/get-brolls",
+    "/get-brolls:get-brolls",
+    "/get-brolls-setup",
+)
+
+
+class AgentsHubTests(unittest.TestCase):
+    def test_hub_links_every_entry_point_and_names_each_invocation(self):
+        agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        links = {
+            raw.strip().strip("<>").partition("#")[0]
+            for raw in re.findall(r"\[[^\]]+\]\(([^)]+)\)", agents)
+        }
+        missing = [target for target in HUB_TARGETS if target not in links]
+        self.assertEqual([], missing, "hub sem link para: " + ", ".join(missing))
+        for marker in HUB_INVOCATIONS:
+            self.assertIn(marker, agents, f"hub sem o acionamento: {marker}")
+
+    def test_agent_routers_point_to_the_hub(self):
+        for name in ("CLAUDE.md", "GEMINI.md", "README.md", "README.en.md"):
+            text = (ROOT / name).read_text(encoding="utf-8")
+            self.assertIn("(AGENTS.md)", text, f"{name} não referencia AGENTS.md")
+
+    def test_routers_stay_thin_and_do_not_restate_the_hub(self):
+        claude = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertIn("(SKILL.md)", claude, "CLAUDE.md deve nomear o contrato de operação")
+        self.assertLess(len(claude.splitlines()), 20, "CLAUDE.md deixou de ser roteador")
+
+
 class RepositoryDocumentationTests(unittest.TestCase):
     def test_relative_markdown_links_and_anchors_resolve(self):
         documents = {
@@ -101,6 +150,77 @@ class RepositoryDocumentationTests(unittest.TestCase):
             ):
                 problems.append(str(path.relative_to(ROOT)))
         self.assertEqual([], problems)
+
+    def test_security_documents_egress_and_absence_of_telemetry(self):
+        security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+        for marker in (
+            "PyPI",
+            "npm ci --ignore-scripts",
+            "yt-dlp/curl",
+            "Sem telemetria",
+        ):
+            self.assertIn(marker, security, marker)
+
+    def test_installers_name_the_validated_python_range(self):
+        shell = (ROOT / "scripts/install.sh").read_text(encoding="utf-8")
+        powershell = (ROOT / "scripts/install.ps1").read_text(encoding="utf-8")
+        self.assertIn("validado em Python 3.11–3.13", shell)
+        self.assertIn("validado em Python 3.11-3.13", powershell)
+        self.assertIn("exit 1", shell)
+        self.assertIn("throw", powershell)
+
+    def test_contribution_templates_are_present(self):
+        bug = ROOT / ".github/ISSUE_TEMPLATE/bug_report.md"
+        config = ROOT / ".github/ISSUE_TEMPLATE/config.yml"
+        pull_request = ROOT / ".github/PULL_REQUEST_TEMPLATE.md"
+        for path in (bug, config, pull_request):
+            self.assertTrue(path.is_file(), str(path))
+        report = bug.read_text(encoding="utf-8")
+        for marker in ("Sistema operacional", "python3 --version", "gb.py doctor"):
+            self.assertIn(marker, report, marker)
+        self.assertIn("blank_issues_enabled: true", config.read_text(encoding="utf-8"))
+        template = pull_request.read_text(encoding="utf-8")
+        for command in (
+            "bash scripts/install.sh --check",
+            "python3 scripts/gb.py doctor",
+            "python3 -m unittest discover -s tests -v",
+        ):
+            self.assertIn(command, template, command)
+
+    def test_release_workflow_uses_gh_cli_and_the_pinned_checkout(self):
+        release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+        tests = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
+        pinned = re.search(r"actions/checkout@[0-9a-f]{40}", tests)
+        self.assertIsNotNone(
+            pinned, "test.yml sem actions/checkout fixado por SHA de 40 dígitos"
+        )
+        checkout = pinned.group(0)
+        self.assertIn(checkout, release)
+        for marker in (
+            "tags:",
+            "contents: write",
+            "ubuntu-latest",
+            "GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}",
+            "gh release view",
+            "--verify-tag",
+            "--notes-file",
+            "CHANGELOG.md",
+            # Portões antes de publicar: versão igual à tag e suíte offline verde.
+            "__version__",
+            "python3 -m unittest discover -s tests",
+            "--prerelease",
+        ):
+            self.assertIn(marker, release, marker)
+        # O comentário da versão acompanha a Action; o contrato é só o SHA.
+        self.assertEqual(
+            [f"uses: {checkout}"],
+            [
+                re.sub(r"\s*#.*$", "", line).strip().lstrip("- ").strip()
+                for line in release.splitlines()
+                if "uses:" in line
+            ],
+            "release.yml deve usar apenas o checkout já fixado por SHA",
+        )
 
     def test_python_text_io_declares_utf8_explicitly(self):
         problems = []

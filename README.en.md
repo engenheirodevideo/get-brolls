@@ -4,7 +4,7 @@
   <h1>GET B-ROLLS</h1>
   <p><strong>From an idea to the right shot for your edit.</strong></p>
   <p>Find supporting footage, preview the motion, and review every choice<br>before receiving the final clips with their sources.</p>
-  <p>v2.3.6 · Codex and Claude Code · macOS and Windows</p>
+  <p>v2.3.7 · Codex and Claude Code · macOS and Windows</p>
   <p><a href="#getting-started">Getting started</a> · <a href="#storyboard">Storyboard</a> · <a href="#sources">Sources</a> · <a href="GUIDE.md#instalação">Full guide</a></p>
 </div>
 
@@ -20,7 +20,7 @@ Get B-rolls is a skill for collecting the videos and images that support a line,
 Your script or request → Research → Previews → Your review → Final clips
 ```
 
-The agent prioritizes literal sources when you mention a real entity. For illustrative ideas, it can also search stock-footage libraries. You do not need a complete script to request a single insert: simply explain what should appear.
+The agent looks for the literal source of what you mention: the actual fact, person, product, news item, or screen. Stock-footage libraries are used only when you explicitly ask for stock. You do not need a complete script to request a single insert: simply explain what should appear.
 
 A preview may download working media so you can see the motion. Final delivery requires a human decision and a record of the source's conditions of use. If the time range or context changes, the shot returns to review.
 
@@ -40,7 +40,7 @@ cd get-brolls
 | Codex | `~/.agents/skills/get-brolls/` | `.agents/skills/get-brolls/` | `$get-brolls` |
 | Claude Code | `~/.claude/skills/get-brolls/` | `.claude/skills/get-brolls/` | `/get-brolls` |
 
-When copying a development folder, exclude `.venv/`, `.tools/`, caches, projects, and private files. Install dependencies in the final destination and open a new agent session. [See installation, updates, and compatibility.](GUIDE.md#instalação)
+When copying a development folder, exclude `.venv/`, `.tools/`, caches, projects, and private files. `skills/` and `.claude-plugin/` are Claude Code plugin artifacts and can be omitted when copying to Codex. Install dependencies in the final destination and open a new agent session. [See installation, updates, and compatibility.](GUIDE.md#instalação)
 
 #### Install as a Claude Code plugin
 
@@ -51,7 +51,9 @@ In Claude Code, you can also install the skill as a plugin, without cloning manu
 /plugin install get-brolls@engenheirodevideo
 ```
 
-Then follow step 2 in the installed plugin folder — `~/.claude/plugins/cache/engenheirodevideo/get-brolls/<version>/` (or ask Claude to run the installer). Re-run the installer after each `/plugin update`. For Codex, the full-folder clone described above remains the way to install.
+Then run `/get-brolls-setup` in the session: the command runs the installer inside the plugin folder — `~/.claude/plugins/cache/engenheirodevideo/get-brolls/<version>/` — and reports the `doctor` verdict. You can also follow step 2 manually in that folder. Repeat the setup after each `/plugin update`. For Codex, the full-folder clone described above remains the way to install.
+
+The skill triggers from the context of your request ("collect b-roll for this video"); the explicit form is `/get-brolls:get-brolls`, and setup is `/get-brolls-setup`. Do not confuse it with generic download skills: this one is the complete pipeline, with human review and a recorded license.
 
 ### 2. Prepare the environment
 
@@ -92,6 +94,28 @@ Use /path/to/my-video to store the project.
 
 In Claude Code, replace the first invocation with `/get-brolls`. Replace the folder with the real path to your project, outside the skill installation. You may also provide a specific URL or a local file.
 
+### First B-roll in 5 minutes
+
+The shortest command-line sequence, using a keyless source (NASA). Replace `/path/to/my-video` with your project and `<ID>` with the identifier returned by the search — keep the quotes, because identifiers may contain spaces.
+
+```sh
+python3 scripts/gb.py search --provider nasa --query "Artemis launch" --limit 3 --intent literal --project /path/to/my-video
+python3 scripts/gb.py preview --candidate "<ID>" --start 0 --end 4 --project /path/to/my-video
+python3 scripts/gb.py review --project /path/to/my-video
+python3 -m http.server 8767 --bind 127.0.0.1 --directory /path/to/my-video/brolls
+```
+
+Open [the local storyboard](http://127.0.0.1:8767/review.html), decide on the shots, and export the JSON. Then, from another terminal:
+
+```sh
+python3 scripts/gb.py import-review --file /path/to/review.json --by "Your name" --project /path/to/my-video
+python3 scripts/gb.py permit --candidate "<ID>" --evidence "Real conditions of use for this source" --project /path/to/my-video
+python3 scripts/gb.py fetch --candidate "<ID>" --project /path/to/my-video
+python3 scripts/gb.py verify --project /path/to/my-video
+```
+
+At the end, `verify` answers `"count": 1` and the approved clip is in `/path/to/my-video/brolls/clips/`, with origin, creator, and decision recorded in `brolls/credits.md`. Replacing `nasa` with `commons` follows the same flow.
+
 ## Storyboard
 
 The `review` command generates `brolls/review.html`: a local page where you can evaluate the collection, move between shots, and send decisions back to the agent.
@@ -119,6 +143,8 @@ Share the complete **`brolls/` folder** so that its images and GIFs remain acces
 | **Wikimedia Commons / NASA** | Search public APIs | HTTPS download; no key. |
 | **Local file** | Supplied video, image, or screenshot | Local import with origin and creator when provided. |
 
+Pexels and Pixabay are an optional route: the agent turns to stock libraries only when you explicitly ask for stock. The default is the literal source of what the narration cites.
+
 For Instagram, the agent operates the authorized browser and passes both streams to the collector; the script does not capture the session by itself. The [Instagram guide](GUIDE.md#instagram--navegadorplaywright-dois-streams-e-mp4) covers stream pairing, download, audio, and recovery. Instagram and TikTok depend on URL discovery in the browser; the CLI does not implement global keyword search for those platforms.
 
 The collector accepts only public HTTPS URLs without credentials, rejects hostnames that resolve to local networks, pins downloads to the validated address, and does not follow redirects. Files declared through `output=` must remain inside `--config-output-root`; batch outputs stay in the selected directory, and existing files are never overwritten.
@@ -127,13 +153,14 @@ Recorded trials include real acquisition from YouTube, Instagram, TikTok, Pexels
 
 ## Command-line usage
 
-Run the examples below from the skill folder. Replace `/path/to/my-video` with your project folder and `ID` with the identifier returned by the search.
+Run the examples below from the skill folder. Replace `/path/to/my-video` with your project folder and `<ID>` with the identifier returned by the search — keep the quotes, because identifiers may contain spaces.
 
 ```sh
+python3 scripts/gb.py status --project /path/to/my-video
 python3 scripts/gb.py rules --project /path/to/my-video
 python3 scripts/gb.py references --project /path/to/my-video
 python3 scripts/gb.py search --provider youtube --query "NASA Artemis launch" --limit 3 --intent literal --project /path/to/my-video
-python3 scripts/gb.py preview --candidate ID --start 0 --end 5 --reason "Show the liftoff mentioned in the video" --project /path/to/my-video
+python3 scripts/gb.py preview --candidate "<ID>" --start 0 --end 5 --reason "Show the liftoff mentioned in the video" --project /path/to/my-video
 python3 scripts/gb.py review --project /path/to/my-video
 python3 -m http.server 8767 --bind 127.0.0.1 --directory /path/to/my-video/brolls
 ```
@@ -142,12 +169,14 @@ Open [the local storyboard](http://127.0.0.1:8767/review.html), review the shots
 
 ```sh
 python3 scripts/gb.py import-review --file /path/to/review.json --by "Reviewer's name" --project /path/to/my-video
-python3 scripts/gb.py permit --candidate ID --evidence "Real evidence of the conditions of use" --project /path/to/my-video
-python3 scripts/gb.py fetch --candidate ID --project /path/to/my-video
+python3 scripts/gb.py permit --candidate "<ID>" --evidence "Real evidence of the conditions of use" --project /path/to/my-video
+python3 scripts/gb.py fetch --candidate "<ID>" --project /path/to/my-video
 python3 scripts/gb.py verify --project /path/to/my-video
 ```
 
 Replace the name, exported file, and evidence with real data. Repeat `permit` and `fetch` for every approved candidate. `approve` can also record an explicit decision you have already received. `verify` checks file integrity and decoding; the editorial judgment remains yours.
+
+`status` answers where the collection stands at any moment — candidates, previews, decisions, permissions, and deliveries, with the suggested next step — and never changes the project. Flow commands also return a `summary` field with a one-line account of what just happened. [Project state and progress.](GUIDE.md#estado-do-projeto-e-progresso)
 
 <details>
 <summary>URLs, local files, and settings</summary>
@@ -172,7 +201,7 @@ When upgrading to 2.3.5, regenerate the Storyboard and export a current review. 
 
 Project files and imported originals remain local. Remote search and acquisition connect to the selected providers. Keep API keys, browser sessions, Instagram configs, and signed URLs in a private environment; that data does not belong in the distributed skill folder.
 
-The storyboard is intended for trusted local projects and does not authenticate reviewers. Share only the material required for review. Conditions of use belong to each source; recording a decision does not automatically verify its license.
+The storyboard is intended for trusted local projects and does not authenticate reviewers. Share only the material required for review. Conditions of use belong to each source; recording a decision does not automatically verify its license. Responsibility for the conditions of use of the material lies with whoever produces the video; the skill answers for source fidelity and for recording the provenance of every asset.
 
 Final resolution depends on the source: prefer 1080p when available and inspect the actual dimensions. The tool preserves aspect ratio and reports format mismatches. It does not automatically assemble the complete video, perform image search through an API, or deliver isolated audio as a final asset.
 
@@ -184,6 +213,7 @@ Run one command per project at a time. Preserve originals, cache, and event hist
 |---|---|
 | [README.md](README.md) | Product overview and first use in Portuguese. |
 | **[README.en.md](README.en.md)** | Product overview and first use in English. |
+| [AGENTS.md](AGENTS.md) | Index for agents and maintainers: repository map, per-agent installation, and maintenance rules. |
 | [GUIDE.md](GUIDE.md) · [SKILL.md](SKILL.md) | Complete operating guide and agent execution instructions. |
 | [QUALITY.md](QUALITY.md) | Tests, real-world evidence, and known limitations. |
 | [RULES.md](RULES.md) · [.env.example](.env.example) | Editorial rules and configuration options. |

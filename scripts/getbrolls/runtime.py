@@ -90,6 +90,10 @@ def project_lock(project):
             _release_lock(lock)
 
 
+# Comandos que só leem o projeto: sem trava exclusiva e sem criar a árvore.
+READ_ONLY_COMMANDS = ("status",)
+
+
 def audited(args, execute):
     started = time.monotonic()
     event = {
@@ -101,11 +105,12 @@ def audited(args, execute):
     }
     token = ACTIVE.set(event)
     project = getattr(args, "project", None)
+    read_only = args.command in READ_ONLY_COMMANDS
     log = Path(project).resolve() / "brolls/diagnostics.jsonl" if project else None
     result = None
     failure = None
     try:
-        with project_lock(project):
+        with project_lock(None if read_only else project):
             result = execute(args)
             event["status"] = "success"
             if event["warnings"] and isinstance(result, dict):
@@ -150,7 +155,8 @@ def audited(args, execute):
         raise failure from None
     finally:
         event["duration_ms"] = round((time.monotonic() - started) * 1000)
-        if log:
+        # Um comando somente leitura nunca cria a árvore do projeto só para logar.
+        if log and (not read_only or log.parent.is_dir()):
             try:
                 log.parent.mkdir(parents=True, exist_ok=True)
                 with log.open("a", encoding="utf-8") as stream:

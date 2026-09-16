@@ -6,18 +6,32 @@ import shutil
 import subprocess
 import tempfile
 from .http import ProviderError
+from .config import executable_override, venv_override
+
+
+LAYOUTS = ('Scripts/yt-dlp.exe', 'Scripts/yt-dlp', 'bin/yt-dlp')
 
 
 def local_ytdlp(root=None):
-    root = Path(root) if root is not None else Path(__file__).resolve().parents[2]
-    for relative in (
-        '.venv/Scripts/yt-dlp.exe',
-        '.venv/Scripts/yt-dlp',
-        '.venv/bin/yt-dlp',
-    ):
-        candidate = root / relative
+    pinned = executable_override('GB_YTDLP_PATH')
+    if pinned:
+        return Path(pinned)
+    base = venv_override()
+    explicit = base is not None
+    if not explicit:
+        root = Path(root) if root is not None else Path(__file__).resolve().parents[2]
+        base = root / '.venv'
+    for relative in LAYOUTS:
+        candidate = base / relative
         if candidate.is_file():
             return candidate
+    if explicit:
+        # Pin explícito é promessa: sem yt-dlp dentro, nada de voltar ao PATH.
+        raise ValueError(
+            f'GB_VENV_PATH: {base} não contém yt-dlp (procurado em '
+            + ', '.join(LAYOUTS)
+            + '). Instale o yt-dlp nessa venv ou remova a variável.'
+        )
     return None
 
 
@@ -25,7 +39,10 @@ def command():
     local = local_ytdlp()
     exe = str(local) if local else shutil.which('yt-dlp')
     if not exe:
-        raise ProviderError('yt-dlp ausente: siga GUIDE.md e instale requirements.txt.')
+        raise ProviderError(
+            'yt-dlp ausente: execute bash scripts/install.sh (ou install.ps1) na raiz da skill/plugin; '
+            'após /plugin update é preciso reinstalar. Confira com python3 scripts/gb.py doctor.'
+        )
     args = [exe, '--ignore-config', '--no-playlist', '--no-progress', '--no-warnings',
             '--socket-timeout', '20', '--retries', '1', '--fragment-retries', '1']
     if shutil.which('deno'):

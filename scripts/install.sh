@@ -25,7 +25,12 @@ if [ "${1:-}" = "--check" ]; then
   exit 0
 fi
 python3 -m venv "$ROOT/.venv"
-"$ROOT/.venv/bin/python" -m pip install -r "$ROOT/requirements.txt"
+python_version="$("$ROOT/.venv/bin/python" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])')"
+if ! "$ROOT/.venv/bin/python" -m pip install -r "$ROOT/requirements.txt"; then
+  printf 'Falha ao instalar as dependências Python: seu Python é %s; o conjunto fixado foi validado em Python 3.11–3.13.\n' "$python_version" >&2
+  printf 'Crie a venv com um interpretador dessa faixa ou atualize requirements.txt como um conjunto revisado.\n' >&2
+  exit 1
+fi
 "$ROOT/.venv/bin/python" -c 'import yt_dlp, yt_dlp_ejs; print("yt-dlp e EJS importados")'
 # Install the reviewed dependency tree locally, without global npm changes.
 mkdir -p "$ROOT/.tools"

@@ -2,16 +2,361 @@
 
 import json, sys, hashlib, shutil, os, re
 from pathlib import Path
+from . import __version__
 from .models import candidate, set_segment, approve, require_fetch, signature
 from .ledger import Ledger, digest
 from .media import probe, cut, run
 from .rendering import render
 
+# Raiz real da skill/plugin: o comando sugerido não pode depender da pasta atual.
+SKILL_ROOT = Path(__file__).resolve().parents[2]
+INSTALLER = (
+    f'bash "{SKILL_ROOT / "scripts" / "install.sh"}" '
+    f'(ou "{SKILL_ROOT / "scripts" / "install.ps1"}" no Windows)'
+)
+SYSTEM_TOOLS = "instale pelo gerenciador do sistema; veja GUIDE.md#instalação"
+
+# Executável obrigatório → (comando que resolve, impacto real da ausência).
+REQUIRED_EXECUTABLES = {
+    "ffmpeg": (SYSTEM_TOOLS, "Prévia, corte e verificação ficam indisponíveis"),
+    "ffprobe": (SYSTEM_TOOLS, "Prévia, corte e verificação ficam indisponíveis"),
+    "curl": (SYSTEM_TOOLS, "Download dos pares CDN do Instagram fica indisponível"),
+    "node": (SYSTEM_TOOLS, "Playwright CLI e runtime EJS do yt-dlp ficam indisponíveis"),
+    "npx": (SYSTEM_TOOLS, "Instalação e execução do Playwright CLI ficam indisponíveis"),
+    "yt-dlp": (INSTALLER, "YouTube e TikTok ficam indisponíveis sem ele"),
+    "playwright-cli": (INSTALLER, "Instagram indisponível sem ele"),
+}
+
+# Ausência esperada em parte dos ambientes: não bloqueia o fluxo principal.
+OPTIONAL_EXECUTABLES = {
+    "deno": "Alternativa ao Node apenas para o runtime EJS",
+    "bash": "Somente os helpers opcionais de YouTube; a CLI não depende dele",
+}
+
+OPTIONAL_KEYS = {
+    "PEXELS_API_KEY": "Busca no Pexels desativada; defina a chave no ambiente ou no .env",
+    "PIXABAY_API_KEY": "Busca no Pixabay desativada; defina a chave no ambiente ou no .env",
+}
+
+
+# Todo executável que o doctor sonda: obrigatórios mais opcionais, sem duplicar.
+PROBED_EXECUTABLES = tuple(
+    sorted(set(REQUIRED_EXECUTABLES) | set(OPTIONAL_EXECUTABLES))
+)
+
+
+def doctor_overrides():
+    """Pins válidos e pins inválidos: um pin quebrado não derruba o diagnóstico."""
+    from getbrolls.config import PATH_KEYS, pin_override
+
+    active = {}
+    problems = []
+    for key in PATH_KEYS:
+        try:
+            value = pin_override(key)
+        except ValueError as exc:
+            problems.append({"item": key, "fix": INSTALLER, "note": str(exc)})
+            continue
+        if value:
+            active[key] = str(value)
+    return active, problems
+
+
+def doctor_resolved(overrides):
+    """Executável absoluto realmente usado por ferramenta, ou None quando ausente."""
+    from getbrolls.config import TOOL_PATH_KEYS
+
+    resolved = {}
+    for name in PROBED_EXECUTABLES:
+        found = overrides.get(TOOL_PATH_KEYS.get(name) or "") or shutil.which(name)
+        if not found and name == "yt-dlp":
+            from .social import local_ytdlp
+
+            try:
+                found = local_ytdlp()
+            except ValueError:
+                found = None
+        if not found and name == "playwright-cli":
+            found = _local_playwright()
+        resolved[name] = str(Path(found).resolve()) if found else None
+    return resolved
+
+
+def doctor_summary(executables, pins=()):
+    """Veredito humano do doctor: o que funciona, o que falta e o que é opcional."""
+    ok = sorted(name for name, present in executables.items() if present)
+    missing = [
+        {"item": name, "fix": REQUIRED_EXECUTABLES[name][0], "note": REQUIRED_EXECUTABLES[name][1]}
+        for name in sorted(REQUIRED_EXECUTABLES)
+        if not executables.get(name)
+    ]
+    missing += list(pins)
+    optional = [
+        {"item": name, "note": note}
+        for name, note in sorted(OPTIONAL_EXECUTABLES.items())
+        if not executables.get(name)
+    ]
+    optional += [
+        {"item": key, "note": note}
+        for key, note in sorted(OPTIONAL_KEYS.items())
+        if not os.environ.get(key)
+    ]
+    return {"ok": ok, "missing": missing, "optional": optional}
+
+
+# Etapas do fluxo, na ordem coleta → revisão → entrega, com singular e plural.
+STATUS_STAGES = (
+    ("candidates", "candidato encontrado", "candidatos encontrados"),
+    ("previews", "prévia gerada", "prévias geradas"),
+    ("pending", "decisão pendente", "decisões pendentes"),
+    ("approved", "decisão aprovada", "decisões aprovadas"),
+    ("rejected", "decisão rejeitada", "decisões rejeitadas"),
+    ("permitted", "item com permit registrado", "itens com permit registrado"),
+    ("delivered", "item entregue", "itens entregues"),
+    ("verified", "item verificado", "itens verificados"),
+)
+
+PREVIEW_ARTIFACTS = ("gif_path", "contact_sheet_path", "poster_path")
+
+
+def _count(value, singular, plural):
+    return f"{value} {singular if value == 1 else plural}"
+
+
+def _identifier(result):
+    return result.get("id") or "candidato"
+
+
+def _note(result):
+    """Observação do provedor, quando houver, colada ao fim da linha humana."""
+    note = result.get("note")
+    return f" {note}" if note else ""
+
+
+def _status_line(result):
+    counts = result.get("counts") or {}
+    stages = ", ".join(
+        _count(counts.get(key, 0), singular, plural)
+        for key, singular, plural in STATUS_STAGES
+    )
+    return f"Resumi o projeto: {stages}."
+
+
+# Uma linha por comando do fluxo: verbo + objeto + resultado, sempre em PT-BR.
+FLOW_SUMMARIES = {
+    "search": lambda r: f"Pesquisei candidatos: "
+    f"{_count(len(r.get('items') or []), 'registrado', 'registrados')}, "
+    f"{_count(r.get('excluded_by_rules') or 0, 'excluído pelas regras', 'excluídos pelas regras')}, "
+    f"{_count(len(r.get('errors') or []), 'fonte com erro', 'fontes com erro')}."
+    f"{_note(r)}",
+    "resolve": lambda r: f"Registrei o candidato {_identifier(r)}: estado {r.get('state')}.",
+    "preview": lambda r: (
+        f"Gerei somente a referência estática de {_identifier(r)}: "
+        f"estado {r.get('state')}, aprovação {(r.get('approval') or {}).get('status')}."
+        if r.get("state") == "reference_only"
+        else f"Gerei a prévia de {_identifier(r)}: "
+        f"estado {r.get('state')}, aprovação {(r.get('approval') or {}).get('status')}."
+    ),
+    "approve": lambda r: f"Registrei a aprovação humana de {_identifier(r)}: "
+    f"estado {r.get('state')}, por {(r.get('approval') or {}).get('by')}.",
+    "reject": lambda r: f"Rejeitei {_identifier(r)}: estado {r.get('state')}, revisão invalidada.",
+    "review": lambda r: f"Gerei o Storyboard em {r.get('review')}.",
+    "import-review": lambda r: f"Importei "
+    f"{_count(r.get('imported') or 0, 'decisão', 'decisões')} assinada(s) por {r.get('by')}.",
+    "permit": lambda r: f"Registrei as condições de uso de {_identifier(r)}: "
+    f"direitos {(r.get('rights') or {}).get('status')}.",
+    "fetch": lambda r: f"Coletei o corte final de {_identifier(r)} em "
+    f"{(r.get('output') or {}).get('path')}.",
+    "verify": lambda r: f"Verifiquei "
+    f"{_count(r.get('count') or 0, 'arquivo coletado', 'arquivos coletados')}: "
+    f"{'íntegro e decodificável' if (r.get('count') or 0) == 1 else 'íntegros e decodificáveis'}.",
+    "status": _status_line,
+}
+
+
+def with_summary(command, result):
+    """Acrescenta a linha humana ao JSON do comando sem tocar nas chaves existentes."""
+    formatter = FLOW_SUMMARIES.get(command)
+    if formatter is None or not isinstance(result, dict) or "summary" in result:
+        return result
+    return {**result, "summary": formatter(result)}
+
+
+# Escada do fluxo: a primeira condição verdadeira nomeia o próximo passo real.
+STATUS_LADDER = (
+    (
+        lambda c: not c["candidates"],
+        "Nenhum candidato ainda: registre fontes com search ou resolve.",
+    ),
+    (
+        lambda c: c["previews"] < c["candidates"],
+        "Gere prévias com preview para os candidatos ainda sem quadro.",
+    ),
+    (
+        lambda c: not c["approved"],
+        "Gere o Storyboard com review e importe a decisão humana com import-review.",
+    ),
+    (
+        lambda c: c["permitted"] < c["approved"],
+        "Registre as condições reais de uso com permit nos itens aprovados.",
+    ),
+    (
+        lambda c: c["delivered"] < c["permitted"],
+        "Colete os cortes aprovados e permitidos com fetch.",
+    ),
+    (
+        lambda c: c["verified"] < c["delivered"],
+        "Confira os arquivos coletados com verify.",
+    ),
+)
+
+
+def status_next(counts, format_pending=0):
+    """Próximo passo real do fluxo, derivado das contagens por etapa."""
+    if format_pending:
+        return (
+            "As regras editoriais mudaram: o próximo comando invalidará "
+            + _count(format_pending, "aprovação", "aprovações")
+            + "; gere prévia e revisão novamente antes de coletar."
+        )
+    for matches, step in STATUS_LADDER:
+        if matches(counts):
+            return step
+    return "Fluxo completo: os itens aprovados estão coletados e verificados."
+
+
+def _has_preview(c):
+    return any((c.get("preview") or {}).get(key) for key in PREVIEW_ARTIFACTS)
+
+
+def _stage_status(c, field):
+    return (c.get(field) or {}).get("status")
+
+
+# Um predicado por etapa: a mesma leitura serve para contagem, lista e item.
+STAGE_TESTS = {
+    "candidates": lambda c: True,
+    "previews": _has_preview,
+    "pending": lambda c: _stage_status(c, "approval") not in ("approved", "rejected"),
+    "approved": lambda c: _stage_status(c, "approval") == "approved",
+    "rejected": lambda c: _stage_status(c, "approval") == "rejected",
+    "permitted": lambda c: _stage_status(c, "rights") == "permitted",
+    "delivered": lambda c: bool((c.get("output") or {}).get("path")),
+    "verified": lambda c: bool((c.get("output") or {}).get("verified")),
+}
+
+
+def status_journal(root):
+    """Leitura do journal append-only: quantos eventos e qual foi o último."""
+    path = root / "events.jsonl"
+    if not path.is_file():
+        return {"events": 0, "last": None}
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    try:
+        last = json.loads(lines[-1]) if lines else None
+    except json.JSONDecodeError:
+        # Relatar o estado não pode falhar por causa de um log corrompido.
+        return {
+            "events": len(lines),
+            "last": None,
+            "error": "events.jsonl contém JSON inválido no último registro. Preserve o histórico e restaure o log.",
+        }
+    return {"events": len(lines), "last": last}
+
+
+def status_references(root):
+    """Quantas referências memorizadas o projeto tem, sem derrubar o relatório."""
+    path = root / "references.json"
+    if not path.is_file():
+        return 0, None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        data = None
+    items = data.get("items") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        return 0, (
+            "references.json inválido ou incompatível. Preserve o arquivo e restaure uma cópia válida."
+        )
+    return len(items), None
+
+
+def _format_pending(c, rules):
+    """True quando as regras atuais mudariam o formato-alvo já gravado no item."""
+    if rules is None:
+        return None
+    from getbrolls.rules import format_report
+
+    return c.get("format", {}).get("target", "native") != format_report(c, rules)["target"]
+
+
+def status_report(ledger, rules=None, rules_error=None):
+    """Onde o projeto está, por etapa. Somente leitura: não grava nada."""
+    items = ledger.data["items"]
+    listing = {
+        key: [c["id"] for c in items if STAGE_TESTS[key](c)]
+        for key, _, _ in STATUS_STAGES
+    }
+    counts = {key: len(listing[key]) for key, _, _ in STATUS_STAGES}
+    pending_format = {c["id"]: _format_pending(c, rules) for c in items}
+    format_pending = sum(1 for value in pending_format.values() if value)
+    remembered, references_error = status_references(ledger.root)
+    review_page = ledger.root / "review.html"
+    line = _status_line({"counts": counts})
+    if ledger.recovered:
+        line += (
+            " Há uma gravação interrompida pendente; o próximo comando de escrita a concluirá."
+        )
+    # Veredito primeiro, como no doctor: o JSON completo continua logo abaixo.
+    summary = {
+        "line": line,
+        "stages": [
+            {"stage": plural, "count": counts[key], "items": listing[key]}
+            for key, _, plural in STATUS_STAGES
+        ],
+        "next": status_next(counts, format_pending),
+    }
+    return {
+        "summary": summary,
+        "project": str(ledger.root),
+        "counts": counts,
+        "stages": listing,
+        "items": [
+            {
+                "id": c["id"],
+                "title": c.get("title"),
+                "provider": c.get("provider"),
+                "source_url": c.get("source_url"),
+                "state": c.get("state"),
+                "segment": c.get("segment"),
+                "approval": (c.get("approval") or {}).get("status"),
+                "rights": (c.get("rights") or {}).get("status"),
+                "preview": _has_preview(c),
+                "format_pending": pending_format[c["id"]],
+                "output": (c.get("output") or {}).get("path"),
+            }
+            for c in items
+        ],
+        "format_pending": format_pending,
+        "rules_error": rules_error,
+        "references": remembered,
+        "references_error": references_error,
+        "review_page": str(review_page) if review_page.is_file() else None,
+        "journal": {
+            **status_journal(ledger.root),
+            "recovered_write": "pending" if ledger.recovered else False,
+        },
+    }
+
 
 def _local_playwright(root=None):
-    root = Path(root) if root is not None else Path(__file__).resolve().parents[2]
+    """Playwright CLI instalado em `.tools`, ou None quando não há um."""
+    root = Path(root) if root is not None else SKILL_ROOT
     root = root / ".tools/node_modules/.bin"
-    return any((root / name).is_file() for name in ("playwright-cli.cmd", "playwright-cli"))
+    for name in ("playwright-cli.cmd", "playwright-cli"):
+        if (root / name).is_file():
+            return root / name
+    return None
 
 
 def execute(args):
@@ -26,34 +371,58 @@ def execute(args):
     if args.command in ("providers", "doctor"):
         result = providers.capabilities()
         if args.command == "doctor":
-            result = {
-                "preview": config,
-                "runtime": sys.version.split()[0],
-                "executables": {
-                    x: bool(shutil.which(x))
-                    for x in ("ffmpeg", "ffprobe", "yt-dlp", "curl", "bash", "node", "deno", "npx")
-                },
-                "providers": result,
-            }
-        if args.command == "doctor":
+            from getbrolls.config import TOOL_PATH_KEYS
             from .social import doctor as social_doctor
-            result["social"] = social_doctor()
-            result["executables"]["yt-dlp"] = result["social"]["installed"]
-            result["executables"]["playwright-cli"] = _local_playwright() or bool(shutil.which("playwright-cli"))
-        if args.command == "doctor" and args.live:
-            from getbrolls.health import live_checks
 
-            result["live"] = live_checks()
+            # Pin inválido vira item de `missing`, não morte do diagnóstico.
+            overrides, pin_problems = doctor_overrides()
+            resolved = doctor_resolved(overrides)
+            try:
+                social = social_doctor()
+            except ValueError as exc:
+                social = {"engine": "yt-dlp", "installed": False, "error": str(exc)}
+            executables = {
+                name: bool(overrides.get(TOOL_PATH_KEYS.get(name) or "") or shutil.which(name))
+                for name in PROBED_EXECUTABLES
+            }
+            executables["yt-dlp"] = social["installed"]
+            executables["playwright-cli"] = bool(
+                _local_playwright() or shutil.which("playwright-cli")
+            )
+            result = {
+                # Veredito primeiro: o JSON continua completo logo abaixo dele.
+                "summary": doctor_summary(executables, pin_problems),
+                "get_brolls": __version__,
+                "preview": config,
+                "python": sys.version.split()[0],
+                "tool_paths": overrides,
+                "executables": executables,
+                "resolved": resolved,
+                "providers": result,
+                "social": social,
+            }
+            if args.live:
+                from getbrolls.health import live_checks
+
+                result["live"] = live_checks()
         return result
     cmd = args.command
-    from getbrolls.rules import (
-        load_rules,
-        allowed,
-        domain_matches,
-        format_report,
-        ROOT as SKILL_ROOT,
-    )
+    from getbrolls.rules import load_rules, allowed, domain_matches, format_report
 
+    if cmd == "status":
+        # Somente leitura: nada é criado, nem a árvore do projeto, nem pendências.
+        project = Path(args.project).expanduser().resolve()
+        if not (project / "brolls").is_dir():
+            raise ValueError(
+                f"Projeto não encontrado em {project}; nenhum arquivo foi criado."
+            )
+        rules = None
+        rules_error = None
+        try:
+            rules = load_rules(args.project)
+        except (ValueError, OSError) as exc:
+            rules_error = str(exc)
+        return status_report(Ledger(project, recover=False), rules, rules_error)
     if cmd == "init-rules":
         dest = Path(args.project) / "RULES.md"
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -132,6 +501,11 @@ def execute(args):
             "editorial_rules": rules["editorial_rules"],
         }
     if cmd == "resolve":
+        for flag, value in (("--file", args.file), ("--url", args.url)):
+            if value is not None and not value.strip():
+                raise ValueError(
+                    f"{flag} não pode ser vazio: informe o caminho ou a URL real."
+                )
         if args.file:
             path = Path(args.file).expanduser().resolve()
             if not path.is_file():
