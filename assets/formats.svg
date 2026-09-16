@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 823 1428" width="823" height="1428" role="img" aria-label="Cadeia de formatos: encontra o insert, ramifica em vídeo, imagem e captura de página, gera prévia, você aprova e recebe MP4 1080p, original intacto ou PNG/JPG com procedência">
+  <defs>
+    <pattern id="dots2" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="4" cy="4" r="1.2" fill="#8a7f6a" fill-opacity="0.1"/>
+    </pattern>
+    <marker id="arr2" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#4a4a48"/>
+    </marker>
+  </defs>
+  <style>
+    .mono2{font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;letter-spacing:.08em}
+    .t2{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-weight:700;font-size:17px;fill:#1c1917;text-anchor:middle}
+    .tw2{fill:#fff}
+    .s2{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:12.5px;fill:#44403c;text-anchor:middle}
+    .sw2{fill:#fff7ed}
+    .ln2{stroke:#4a4a48;stroke-width:1.8;fill:none}
+    .chip{fill:#1c1917}
+    .chipt{font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-size:11px;font-weight:700;fill:#faf6ee;text-anchor:middle;letter-spacing:.05em}
+  </style>
+
+  <rect x="0" y="0" width="823" height="1428" fill="#faf6ee"/>
+  <rect x="0" y="0" width="823" height="58" fill="#1c1917"/>
+  <text class="mono2" x="36" y="35" font-size="12" fill="#ffffff">GET B-ROLLS / FORMATOS</text>
+  <text class="mono2" x="787" y="35" font-size="12" fill="#ffffff" text-anchor="end">Encontra → revisa → entrega ↓</text>
+  <rect x="18" y="76" width="787" height="1312" fill="url(#dots2)"/>
+
+  <!-- Encontra o insert -->
+  <rect x="301" y="94" width="220" height="80" rx="14" fill="#f4511e" stroke="#c2410c"/>
+  <text class="t2 tw2" x="411" y="128">Encontra o insert</text>
+  <text class="s2 sw2" x="411" y="150">a partir do roteiro ou pedido</text>
+
+  <!-- split -->
+  <path class="ln2" d="M411 174 V202"/>
+  <path class="ln2" d="M158 202 H664"/>
+  <path class="ln2" d="M158 202 V228" marker-end="url(#arr2)"/>
+  <path class="ln2" d="M411 202 V228" marker-end="url(#arr2)"/>
+  <path class="ln2" d="M664 202 V228" marker-end="url(#arr2)"/>
+
+  <!-- tipos -->
+  <rect x="48" y="234" width="220" height="96" rx="14" fill="#f0a175" stroke="#d97d4a"/>
+  <text class="t2" x="158" y="268">Vídeo</text>
+  <text class="s2" x="158" y="290">YouTube · TikTok · Instagram</text>
+  <text class="s2" x="158" y="307">Pexels · Pixabay · NASA · local</text>
+
+  <rect x="301" y="234" width="220" height="96" rx="14" fill="#f0a175" stroke="#d97d4a"/>
+  <text class="t2" x="411" y="268">Imagem local</text>
+  <text class="s2" x="411" y="290">PNG · JPG · JPEG · WebP</text>
+  <text class="s2" x="411" y="307">BMP · TIFF</text>
+
+  <rect x="554" y="234" width="220" height="96" rx="14" fill="#f0a175" stroke="#d97d4a"/>
+  <text class="t2" x="664" y="268">Captura de página</text>
+  <text class="s2" x="664" y="290">Playwright, com a URL real</text>
+  <text class="s2" x="664" y="307">manchete ou site</text>
+
+  <!-- video: seleciona o trecho -->
+  <path class="ln2" d="M158 330 V362" marker-end="url(#arr2)"/>
+  <rect x="48" y="368" width="220" height="76" rx="14" fill="#fdf1e3" stroke="#d8cdb8"/>
+  <text class="t2" x="158" y="398">Seleciona o trecho</text>
+  <text class="s2" x="158" y="420">intervalo de 3 a 5 segundos</text>
+  <path class="ln2" d="M158 444 V476" marker-end="url(#arr2)"/>
+  <path class="ln2" d="M158 444 V462 H480 V476" marker-end="url(#arr2)"/>
+
+  <!-- imagem e captura vão direto para a prévia estática -->
+  <path class="ln2" d="M411 330 V450 H520 V476" marker-end="url(#arr2)"/>
+  <path class="ln2" d="M664 330 V450 H610 V476" marker-end="url(#arr2)"/>
+
+  <!-- prévias -->
+  <rect x="48" y="482" width="220" height="104" rx="14" fill="#fdf1e3" stroke="#d8cdb8"/>
+  <text class="t2" x="158" y="512">Prévia em movimento</text>
+  <text class="s2" x="158" y="533">GIF animado ou contact sheet</text>
+  <rect class="chip" x="96" y="548" width="52" height="22" rx="6"/>
+  <text class="chipt" x="122" y="563">.GIF</text>
+  <rect class="chip" x="156" y="548" width="66" height="22" rx="6"/>
+  <text class="chipt" x="189" y="563">SHEET</text>
+
+  <rect x="430" y="482" width="246" height="104" rx="14" fill="#fdf1e3" stroke="#d8cdb8"/>
+  <text class="t2" x="553" y="512">Prévia estática</text>
+  <text class="s2" x="553" y="533">poster, imagem ou captura,</text>
+  <text class="s2" x="553" y="550">direto no storyboard</text>
+  <rect class="chip" x="517" y="558" width="72" height="22" rx="6"/>
+  <text class="chipt" x="553" y="573">STILL</text>
+
+  <!-- merge to approval -->
+  <path class="ln2" d="M158 586 V618 H553 V586"/>
+  <path class="ln2" d="M411 618 V646" marker-end="url(#arr2)"/>
+  <rect x="286" y="652" width="250" height="72" rx="24" fill="#ffffff" stroke="#c2410c" stroke-width="2"/>
+  <text class="t2" x="411" y="682">Você aprova?</text>
+  <text class="s2" x="411" y="704">fala, motivo, autor e fonte juntos</text>
+
+  <!-- split to deliveries -->
+  <path class="ln2" d="M411 724 V748"/>
+  <path class="ln2" d="M158 748 H664"/>
+  <path class="ln2" d="M158 748 V770" marker-end="url(#arr2)"/>
+  <path class="ln2" d="M411 748 V770" marker-end="url(#arr2)"/>
+  <path class="ln2" d="M664 748 V770" marker-end="url(#arr2)"/>
+  <text class="mono2" x="440" y="742" font-size="11" fill="#1c1917">SIM</text>
+
+  <!-- entregas -->
+  <rect x="48" y="776" width="220" height="76" rx="14" fill="#f4511e" stroke="#c2410c"/>
+  <rect class="chip" x="86" y="792" width="98" height="24" rx="6"/>
+  <text class="chipt" x="135" y="808" font-size="12">.MP4 1080p</text>
+  <text class="s2 sw2" x="158" y="838">só o trecho aprovado, trimado</text>
+
+  <rect x="301" y="776" width="220" height="76" rx="14" fill="#f4511e" stroke="#c2410c"/>
+  <rect class="chip" x="352" y="792" width="118" height="24" rx="6"/>
+  <text class="chipt" x="411" y="808" font-size="12">ORIGINAL</text>
+  <text class="s2 sw2" x="411" y="838">copiado sem alteração</text>
+
+  <rect x="554" y="776" width="220" height="76" rx="14" fill="#f4511e" stroke="#c2410c"/>
+  <rect class="chip" x="592" y="792" width="60" height="24" rx="6"/>
+  <text class="chipt" x="622" y="808" font-size="12">.PNG</text>
+  <rect class="chip" x="660" y="792" width="60" height="24" rx="6"/>
+  <text class="chipt" x="690" y="808" font-size="12">.JPG</text>
+  <text class="s2 sw2" x="664" y="838">com procedência no ledger</text>
+
+  <!-- convergência -->
+  <path class="ln2" d="M158 852 V884 H664 V852"/>
+  <path class="ln2" d="M411 884 V916" marker-end="url(#arr2)"/>
+  <!-- coleta organizada: code block dentro do grafo -->
+  <rect x="48" y="922" width="726" height="470" rx="16" fill="#f4511e" stroke="#c2410c" stroke-width="2"/>
+  <text class="t2 tw2" x="411" y="958" font-size="20">Coleta organizada — o que vai onde</text>
+  <rect x="66" y="976" width="690" height="398" rx="10" fill="#1c1917"/>
+  <text x="94" y="1014" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#fb8a4d">video-01/</tspan></text>
+  <text x="372" y="1014" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#fb8a4d">a pasta do seu projeto</tspan></text>
+  <text x="94" y="1045" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">├── RULES.md</tspan></text>
+  <text x="372" y="1045" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">regras editoriais do projeto</tspan></text>
+  <text x="94" y="1076" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">├── output/playwright/</tspan></text>
+  <text x="372" y="1076" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">screenshots de trabalho</tspan></text>
+  <text x="94" y="1107" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#fb8a4d">└── brolls/</tspan></text>
+  <text x="372" y="1107" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#fb8a4d">tudo que a skill cria fica aqui</tspan></text>
+  <text x="94" y="1138" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── manifest.json</tspan></text>
+  <text x="372" y="1138" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">tipo, formato e procedência</tspan></text>
+  <text x="94" y="1169" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── references.json</tspan></text>
+  <text x="372" y="1169" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">referências e seus motivos</tspan></text>
+  <text x="94" y="1200" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── events.jsonl</tspan></text>
+  <text x="372" y="1200" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">trilha de eventos da coleta</tspan></text>
+  <text x="94" y="1231" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── candidates/</tspan></text>
+  <text x="372" y="1231" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">opções encontradas na pesquisa</tspan></text>
+  <text x="94" y="1262" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── previews/</tspan></text>
+  <text x="372" y="1262" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">poster, contact sheet e GIF</tspan></text>
+  <text x="94" y="1293" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#fb8a4d">    ├── clips/</tspan></text>
+  <text x="372" y="1293" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#fb8a4d">arquivos finais: MP4, PNG, JPG</tspan></text>
+  <text x="94" y="1324" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── credits.md</tspan></text>
+  <text x="372" y="1324" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">autores e condições de uso</tspan></text>
+  <text x="94" y="1355" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    └── review.html</tspan></text>
+  <text x="372" y="1355" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">o storyboard da sua revisão</tspan></text>
+</svg>

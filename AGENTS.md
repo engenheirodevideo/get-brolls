@@ -19,27 +19,27 @@ Este arquivo é o índice central para agentes e mantenedores: tudo que um agent
 | Instalar no Claude Code como skill | Clone o repositório na pasta de skills do agente e acione com `/get-brolls`. |
 | Instalar no Claude Code como plugin | `/plugin marketplace add engenheirodevideo/get-brolls`, acione com `/get-brolls:get-brolls` e prepare o ambiente com [`/get-brolls-setup`](commands/get-brolls-setup.md). |
 | Instalar no Gemini CLI | [GEMINI.md](GEMINI.md) — o snippet de importação `@` que o usuário acrescenta ao próprio `GEMINI.md`. |
-| Guia operacional (instalação, provedores, navegador, Storyboard, `status`) | [GUIDE.md](GUIDE.md) |
-| Qualidade, evidências reais e limites conhecidos | [QUALITY.md](QUALITY.md) |
+| Guia operacional (instalação, provedores, navegador, Storyboard, `status`) | [GUIDE.md](docs/GUIDE.md) |
+| Qualidade, evidências reais e limites conhecidos | [QUALITY.md](docs/QUALITY.md) |
 | Medir qualidade editorial (blind tests) | [eval/README.md](eval/README.md) — processo, rubrica, corpus e rodadas; execute um caso com [`/get-brolls-eval`](commands/get-brolls-eval.md). |
 | Contribuir (fluxo de mudança, revisão, PR) | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| Segurança, egress e dados privados | [SECURITY.md](SECURITY.md) |
+| Segurança, egress e dados privados | [SECURITY.md](docs/SECURITY.md) |
 | O que mudou em cada versão | [CHANGELOG.md](CHANGELOG.md) |
 | Visão do produto e primeiro uso | [README.md](README.md) · [README.en.md](README.en.md) |
-| Regras editoriais e configuração do projeto | [RULES.md](RULES.md) · [.env.example](.env.example) |
+| Regras editoriais e configuração do projeto | [RULES.md](docs/RULES.md) · [.env.example](.env.example) |
 
 Os roteadores por agente ([CLAUDE.md](CLAUDE.md) e [GEMINI.md](GEMINI.md)) apontam para este mapa; as regras de manutenção do repositório continuam nas seções abaixo.
 
 ## Escopo e entrada
 
-Esta pasta contém o produto **GET B-ROLLS — ENGENHEIRO DE VÍDEO**: skill, CLI, utilitários, interface de revisão e documentação. Leia [SKILL](SKILL.md) para executar uma coleta e [GUIDE](GUIDE.md#instalação) para preparar o ambiente. Nenhum outro repositório é necessário.
+Esta pasta contém o produto **GET B-ROLLS — ENGENHEIRO DE VÍDEO**: skill, CLI, utilitários, interface de revisão e documentação. Leia [SKILL](SKILL.md) para executar uma coleta e [GUIDE](docs/GUIDE.md#instalação) para preparar o ambiente. Nenhum outro repositório é necessário.
 
 Use a pasta da skill como base para scripts e um `--project` explícito para a coleta. Fora desta pasta, execute o CLI pelo caminho absoluto. Não grave projetos/mídias dentro da fonte da skill. Mantenha esta entrega isolada de outras instalações do autor.
 
 ## Contratos do produto
 
 - YouTube busca e baixa com yt-dlp/FFmpeg, **sem YouTube API key**. Pexels/Pixabay usam somente suas próprias chaves opcionais.
-- Instagram preserva o fluxo navegador/Playwright → vídeo e áudio do mesmo Reel → configs temporários → coletor próprio → FFmpeg/ffprobe. Leia a seção [Instagram](GUIDE.md#instagram--navegadorplaywright-dois-streams-e-mp4). Use o navegador logado indicado pelo usuário quando disponível. O script não captura sozinho o navegador.
+- Instagram preserva o fluxo navegador/Playwright → vídeo e áudio do mesmo Reel → configs temporários → coletor próprio → FFmpeg/ffprobe. Leia a seção [Instagram](docs/GUIDE.md#instagram--navegadorplaywright-dois-streams-e-mp4). Use o navegador logado indicado pelo usuário quando disponível. O script não captura sozinho o navegador.
 - TikTok usa URL completa descoberta no navegador e yt-dlp. Não declare busca global por palavra-chave implementada na CLI.
 - Fonte literal nomeada tem prioridade quando a fala citar pessoa, produto ou fato. Prefira 1080p quando disponível; confirme dimensões reais, sem upscale para simular qualidade.
 - `preview` pode obter mídia de trabalho antes da decisão editorial. `--reference-only` é uma escolha explícita. `fetch` publica o corte final depois da decisão humana e das condições de uso registradas.
@@ -48,7 +48,7 @@ Use a pasta da skill como base para scripts e um `--project` explícito para a c
 
 ## Dependências e arquivos privados
 
-Distribua instruções, comandos e código próprio. O destinatário instala bibliotecas oficiais conforme [GUIDE](GUIDE.md#instalação). Nunca copie `.venv/`, `.tools/`, `node_modules/`, bibliotecas, executáveis externos ou perfis de navegador para a fonte de distribuição.
+Distribua instruções, comandos e código próprio. O destinatário instala bibliotecas oficiais conforme [GUIDE](docs/GUIDE.md#instalação). Nunca copie `.venv/`, `.tools/`, `node_modules/`, bibliotecas, executáveis externos ou perfis de navegador para a fonte de distribuição.
 
 Não grave chaves, cookies, URLs assinadas, configs CDN, originais ou projetos de clientes nos exemplos, logs públicos ou documentação. Mantenha os pares Instagram em pasta privada do projeto; relatórios mostram fonte pública e resultado técnico, sem assinatura CDN. Credenciais de Pexels/Pixabay pertencem ao ambiente do usuário ou ao `.env` privado.
 
@@ -57,7 +57,7 @@ Execute comandos do mesmo projeto serialmente. Preserve originais, eventos e jou
 ## Manutenção
 
 - A versão executável vem de `scripts/getbrolls/__init__.py`; mantenha `SKILL.md`, `skills/get-brolls/SKILL.md`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, README, GUIDE, QUALITY e CHANGELOG coerentes quando houver mudança de versão. `SKILL.md` da raiz é a fonte canônica; o espelho em `skills/get-brolls/` mantém `description` idêntica e o mesmo conteúdo com caminhos `${CLAUDE_PLUGIN_ROOT}` (invariante coberto por teste). Revisão documental sem alteração de versão deve aparecer no changelog vigente.
-- Atualize a seção correspondente de `GUIDE.md` junto com o código da rota afetada. O guia é a referência operacional única do produto.
+- Atualize a seção correspondente de `docs/GUIDE.md` junto com o código da rota afetada. O guia é a referência operacional única do produto.
 - Corrija a causa e adicione regressão quando houver bug. Não escreva testes que exijam retirar uma capacidade existente.
 - `status` é o único comando somente leitura: abre o ledger com `recover=False`, não cria a árvore `brolls/` e não pega a trava exclusiva do projeto. Ao mexer nele, preserve esse contrato — nada de recuperar pendência, sincronizar formatos ou escrever para relatar. Comandos de escrita continuam serializados pela trava.
 - Um pin `GB_*_PATH` é promessa, não sugestão: resolva para caminho absoluto e falhe nomeando variável e caminho em vez de voltar à descoberta. A exceção é o `doctor`, que transforma o pin inválido em item de `summary.missing` para continuar diagnosticando.
@@ -77,4 +77,4 @@ No Windows PowerShell, troque o primeiro comando por `powershell -ExecutionPolic
 
 `--check` valida pré-requisitos do instalador; não instala bibliotecas nem testa sessão/rede. `doctor` informa disponibilidade; `doctor --live` faz buscas/refresh limitados e pode consumir quota. Nenhum deles substitui teste de aquisição, prévia e decodificação da fonte afetada.
 
-Consulte [QUALITY](QUALITY.md) antes de afirmar que algo foi validado. Distingua testes locais, ensaios reais e verificação de descoberta nativa do agente. Não transforme uma falha de URL/sessão em afirmação de indisponibilidade permanente da plataforma.
+Consulte [QUALITY](docs/QUALITY.md) antes de afirmar que algo foi validado. Distingua testes locais, ensaios reais e verificação de descoberta nativa do agente. Não transforme uma falha de URL/sessão em afirmação de indisponibilidade permanente da plataforma.

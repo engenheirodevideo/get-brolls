@@ -26,7 +26,7 @@ foreach ($Tool in @('python', 'ffmpeg', 'ffprobe', 'curl', 'node', 'npm', 'npx')
     }
 }
 if ($Missing) {
-    throw 'Instale os executáveis conforme GUIDE.md e repita.'
+    throw 'Instale os executáveis conforme docs/GUIDE.md e repita.'
 }
 
 Invoke-Native -Label 'Verificação do Python' -File 'python' -Arguments @('-c', 'import sys; assert sys.version_info >= (3,11), "Python 3.11+ obrigatório"')
@@ -62,4 +62,4 @@ $env:PATH = "$(Join-Path $Root '.venv\Scripts');$env:PATH"
 Invoke-Native -Label 'Doctor' -File $VenvPython -Arguments @((Join-Path $Root 'scripts\gb.py'), 'doctor')
 
 Write-Host "`nDependências instaladas em .venv\ e .tools\; não fazem parte do repositório."
-Write-Host 'Navegador existente: siga GUIDE.md para reutilizar a sessão autorizada.'
+Write-Host 'Navegador existente: siga docs/GUIDE.md para reutilizar a sessão autorizada.'

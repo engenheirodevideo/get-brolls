@@ -8,13 +8,13 @@ tags: [get-brolls, documentation]
 
 # Contribuição
 
-Leia [AGENTS](AGENTS.md) antes de alterar o código e [GUIDE](GUIDE.md#instalação) para preparar dependências. O fluxo YouTube sem API key e o processo Instagram de dois canais fazem parte do contrato do produto.
+Leia [AGENTS](AGENTS.md) antes de alterar o código e [GUIDE](docs/GUIDE.md#instalação) para preparar dependências. O fluxo YouTube sem API key e o processo Instagram de dois canais fazem parte do contrato do produto.
 
 ## Alterações
 
 Descreva o problema, o comportamento resultante e a validação realizada. Para bugs, reproduza a falha e adicione regressão relevante. Atualize a referência da rota afetada e o CHANGELOG. Comandos de um mesmo projeto devem ser executados serialmente.
 
-Testes automatizados usam mídia sintética e mocks, sem segredos ou conteúdo privado. Ensaios reais de plataforma ficam fora da pasta da skill e registram resultado técnico em [QUALITY](QUALITY.md); falha de rede não deve ser escondida por fixture.
+Testes automatizados usam mídia sintética e mocks, sem segredos ou conteúdo privado. Ensaios reais de plataforma ficam fora da pasta da skill e registram resultado técnico em [QUALITY](docs/QUALITY.md); falha de rede não deve ser escondida por fixture.
 
 ```sh
 python3 -m unittest discover -s tests -v
