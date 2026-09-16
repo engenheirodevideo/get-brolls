@@ -6,9 +6,13 @@ updated: 2026-09-16
 tags: [get-brolls, quality, qa, evidence]
 ---
 
-# Qualidade e evidências — GET B-ROLLS 2.3.5
+# Qualidade e evidências — GET B-ROLLS 2.3.6
 
 Este documento reúne o estado de qualidade, as regressões cobertas, os limites conhecidos e as evidências reais por provedor. Resultados ao vivo são registros datados, não promessa de disponibilidade futura nem aprovação editorial.
+
+## QA da versão 2.3.6 — 16/09/2026
+
+A 2.3.6 é uma release de empacotamento: adiciona o plugin do Claude Code (`.claude-plugin/` e `skills/get-brolls/`) e documentação, sem nenhuma mudança de código do produto ou de testes. As evidências de código da 2.3.5 abaixo permanecem válidas para esta versão.
 
 ## QA da versão 2.3.5 — 16/09/2026
 

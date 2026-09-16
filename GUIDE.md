@@ -163,6 +163,17 @@ Entrada no padrão Agent Skills (`name`, `description`, `license`, `metadata`). 
 
 Codex e Claude Code usam a mesma pasta, com destinos e invocações descritos em GUIDE.md. `agents/openai.yaml` é opcional e específico do Codex. Não há dependência de hooks, MCP, permissões preaprovadas ou sintaxe de interpolação exclusiva do Claude. Validação estrutural não equivale a teste de descoberta em uma sessão nativa de cada produto.
 
+### Plugin do Claude Code — 2.3.6
+
+A partir da 2.3.6, o repositório também é um marketplace de plugin do Claude Code (`.claude-plugin/plugin.json` e `.claude-plugin/marketplace.json`). A instalação usa dois comandos na sessão do Claude Code:
+
+```text
+/plugin marketplace add engenheirodevideo/get-brolls
+/plugin install get-brolls@engenheirodevideo
+```
+
+A skill do plugin fica em `skills/get-brolls/SKILL.md` e referencia os arquivos por `${CLAUDE_PLUGIN_ROOT}`, a raiz do plugin instalado; execute o instalador e o `doctor` dentro dessa pasta, como em qualquer outra instalação. O fluxo clone-como-skill continua suportado sem mudanças para Codex e instalações manuais, com o SKILL.md da raiz como fonte canônica.
+
 ### Migração para 2.3.5
 
 Preserve `.env`, projetos, originais e `.getbrolls-sources/`. Atualize a pasta da skill e repita o instalador do seu sistema para aplicar o conjunto de dependências registrado. Gere novamente o Storyboard com `review`, confira as decisões e exporte um novo JSON. O importador agora confere `reviewEpoch`: um JSON sem esse campo ou baseado numa decisão substituída é recusado, mesmo que vídeo e intervalo sejam os mesmos. Isso também impede reimportar o mesmo JSON depois de sua primeira importação; exporte novamente do Storyboard atualizado. Nenhum item é salvo quando o lote contém uma decisão obsoleta. A atribuição `--by` continua sendo humana e não autentica o revisor.

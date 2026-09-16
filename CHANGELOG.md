@@ -8,6 +8,14 @@ tags: [get-brolls]
 
 # Changelog
 
+## 2.3.6 — proposta para revisão
+
+- Empacota a skill como plugin do Claude Code: `.claude-plugin/plugin.json` descreve o plugin e `.claude-plugin/marketplace.json` transforma o próprio repositório em marketplace.
+- Espelha a skill no layout `skills/get-brolls/SKILL.md`, com os caminhos internos resolvidos via `${CLAUDE_PLUGIN_ROOT}` a partir da raiz do plugin instalado.
+- Documenta a instalação via `/plugin marketplace add engenheirodevideo/get-brolls` e `/plugin install get-brolls@engenheirodevideo` nos READMEs e no GUIDE.
+- Preserva o fluxo clone-como-skill (Codex e instalações manuais) sem mudanças; o SKILL.md da raiz continua sendo a fonte canônica desse fluxo.
+- Nenhuma mudança de lógica do produto, scripts ou testes.
+
 ## 2.3.5 — 2026-09-16
 
 - Recusa JSONs de revisão baseados em decisões antigas, inclusive depois de rejeição ou de outra importação. Valida `reviewEpoch` além da assinatura do conteúdo, sem gravar parcialmente os itens de um lote inválido.
