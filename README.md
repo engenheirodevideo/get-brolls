@@ -28,7 +28,7 @@ A prévia pode baixar mídia de trabalho para mostrar o movimento. A entrega fin
 
 ## Atualizações
 
-- **2.3.7 — em revisão.** Comando `status --project` ("onde estamos?"), CLI autoexplicativa com `--version`, comando de plugin `/get-brolls-setup`, quickstart "Primeiro B-roll em 5 minutos", caminhos de ferramentas fixáveis via `GB_*_PATH` e [AGENTS.md](AGENTS.md) como hub do repositório.
+- **2.3.7** Comando `status --project` ("onde estamos?"), CLI autoexplicativa com `--version`, comando de plugin `/get-brolls-setup`, quickstart "Primeiro B-roll em 5 minutos", caminhos de ferramentas fixáveis via `GB_*_PATH` e [AGENTS.md](AGENTS.md) como hub do repositório.
 - **2.3.6.** Instalação como plugin do Claude Code — o próprio repositório é o marketplace da skill.
 - **2.3.5.** Primeira release oficial no GitHub, endurecimento de rede (HTTPS/DNS) e dependências fixadas.
 
@@ -47,7 +47,15 @@ Histórico completo no [CHANGELOG.md](CHANGELOG.md).
 
 ### 1. Coloque a skill no seu agente
 
-O repositório oficial é [engenheirodevideo/get-brolls](https://github.com/engenheirodevideo/get-brolls). Clone a fonte e copie a pasta completa `get-brolls/` para **um** dos destinos abaixo:
+#### Instalação como plugin do Claude Code
+
+No Claude Code, você também pode instalar a skill como plugin, sem clonar manualmente:
+
+```text
+/plugin marketplace add engenheirodevideo/get-brolls
+/plugin install get-brolls@engenheirodevideo
+```
+#### Instalação como plugin do Codex e Outros
 
 ```sh
 git clone https://github.com/engenheirodevideo/get-brolls.git
@@ -60,84 +68,11 @@ cd get-brolls
 | Claude Code | `~/.claude/skills/get-brolls/` | `.claude/skills/get-brolls/` | `/get-brolls` |
 
 Ao copiar uma pasta de desenvolvimento, exclua `.venv/`, `.tools/`, caches, projetos e arquivos privados. `skills/` e `.claude-plugin/` são artefatos do plugin do Claude Code e podem ser omitidos ao copiar para o Codex. Instale as dependências no destino final e abra uma nova sessão do agente. [Veja instalação, atualização e compatibilidade.](docs/GUIDE.md#instalação)
-
-#### Instalação como plugin do Claude Code
-
-No Claude Code, você também pode instalar a skill como plugin, sem clonar manualmente:
-
-```text
-/plugin marketplace add engenheirodevideo/get-brolls
-/plugin install get-brolls@engenheirodevideo
-```
-
-Depois, execute `/get-brolls-setup` na sessão: o comando roda o instalador na pasta do plugin — `~/.claude/plugins/cache/engenheirodevideo/get-brolls/<versão>/` — e reporta o veredito do `doctor`. Você também pode seguir o passo 2 manualmente nessa pasta. Repita a configuração após cada `/plugin update`. Para o Codex, o caminho continua sendo o clone da pasta completa descrito acima.
-
-A skill é acionada pelo contexto do pedido ("colete b-roll para este vídeo"); a forma explícita é `/get-brolls:get-brolls` e a configuração é `/get-brolls-setup`. Não confunda com skills genéricas de download: esta é a pipeline completa com revisão humana e registro de licença.
-
 ### 2. Prepare o ambiente
 
-Pré-requisitos: Python 3.11+, FFmpeg/ffprobe, Node 22+, npm/npx e curl. Em macOS com Homebrew, comece com `brew install python ffmpeg node`. No Windows, instale as versões oficiais e confirme que os executáveis estão no `PATH`. O [guia de instalação](docs/GUIDE.md#instalação) traz os dois caminhos completos.
+### Comandos
 
-Na pasta instalada da skill, use o instalador do seu sistema.
-
-macOS:
-
-```sh
-bash scripts/install.sh --check
-bash scripts/install.sh
-python3 scripts/gb.py doctor
-```
-
-Windows PowerShell:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -Check
-powershell -ExecutionPolicy Bypass -File scripts/install.ps1
-python scripts/gb.py doctor
-```
-
-O instalador cria os ambientes locais e obtém as versões registradas de yt-dlp/EJS e Playwright CLI. `doctor` confere a disponibilidade das ferramentas; o acesso a cada fonte depende da URL e, quando necessário, da sua sessão de navegador.
-
-**YouTube funciona sem API key.** Pexels e Pixabay usam suas próprias chaves opcionais, configuradas no ambiente ou no `.env` privado da skill. As opções estão em [.env.example](.env.example).
-
-### 3. Faça seu primeiro pedido
-
-No Codex:
-
-```text
-$get-brolls Preciso de três inserts para um vídeo sobre o lançamento Artemis.
-Procure imagens reais do foguete e da decolagem, com trechos de 3 a 5 segundos.
-Prepare as prévias e um storyboard para eu revisar.
-Use a pasta /caminho/meu-video para guardar o projeto.
-```
-
-No Claude Code, troque a primeira chamada por `/get-brolls`. Substitua a pasta pelo caminho real do seu projeto, fora da instalação da skill. Você também pode fornecer uma URL específica ou um arquivo local.
-
-### Primeiro B-roll em 5 minutos
-
-Sequência mínima pelo terminal, com uma fonte sem chave (NASA). Troque `/caminho/meu-video` pelo seu projeto e `<ID>` pelo identificador devolvido na busca — mantenha as aspas, porque os identificadores podem conter espaços.
-
-```sh
-python3 scripts/gb.py search --provider nasa --query "Artemis launch" --limit 3 --intent literal --project /caminho/meu-video
-python3 scripts/gb.py preview --candidate "<ID>" --start 0 --end 4 --project /caminho/meu-video
-python3 scripts/gb.py review --project /caminho/meu-video
-python3 -m http.server 8767 --bind 127.0.0.1 --directory /caminho/meu-video/brolls
-```
-
-Abra [o storyboard local](http://127.0.0.1:8767/review.html), decida os trechos e exporte o JSON. Em outro terminal:
-
-```sh
-python3 scripts/gb.py import-review --file /caminho/revisao.json --by "Seu nome" --project /caminho/meu-video
-python3 scripts/gb.py permit --candidate "<ID>" --evidence "Condições reais de uso desta fonte" --project /caminho/meu-video
-python3 scripts/gb.py fetch --candidate "<ID>" --project /caminho/meu-video
-python3 scripts/gb.py verify --project /caminho/meu-video
-```
-
-Ao final, `verify` responde `"count": 1` e o corte aprovado está em `/caminho/meu-video/brolls/clips/`, com origem, autor e decisão em `brolls/credits.md`. Com `commons` no lugar de `nasa`, o fluxo é idêntico.
-
-## Comandos
-
-Na ordem de uso — do primeiro contato à entrega:
+Na ordem de uso, do primeiro contato à entrega:
 
 **1. Instale o ambiente** (uma vez, na pasta do plugin ou do clone):
 
@@ -182,7 +117,6 @@ python3 scripts/gb.py status --project /caminho/meu-video   # resumo por etapa, 
 ```
 
 Cada subcomando aceita `help`; a sintaxe completa está em [Usar pelo terminal](#usar-pelo-terminal).
-
 
 ## Destaques
 
