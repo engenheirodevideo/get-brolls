@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -27,6 +26,7 @@ AUDIT_FILES = {"diagnostics.jsonl", ".command.lock"}
 
 
 def run_cli(test, *args):
+    """Chamada barata de CLI: o ciclo real com FFmpeg vive em tests/test_cli.py."""
     done = subprocess.run(
         [sys.executable, str(CLI), *map(str, args)],
         capture_output=True,
@@ -285,6 +285,8 @@ class ProgressSummaryTests(unittest.TestCase):
             "search",
             "resolve",
             "preview",
+            "approve",
+            "reject",
             "review",
             "import-review",
             "permit",
@@ -329,47 +331,46 @@ class ProgressSummaryTests(unittest.TestCase):
         self.assertEqual({"a": 1}, with_summary("doctor", {"a": 1}))
         self.assertEqual({"summary": {"line": "x"}}, with_summary("status", {"summary": {"line": "x"}}))
 
-    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
-    def test_real_lifecycle_reports_progress_at_every_step(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            src = root / "original.mp4"
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-v",
-                    "error",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    "testsrc=size=320x180:duration=3:rate=10",
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
-                    str(src),
-                ],
-                check=True,
-            )
-            resolved = run_cli(self, "resolve", "--file", src, "--project", root)
-            base = ["--candidate", resolved["id"], "--project", root]
-            self.assertIn("Registrei o candidato", resolved["summary"])
-            preview = run_cli(self, "preview", *base, "--start", 0, "--end", 1)
-            self.assertIn("Gerei a prévia", preview["summary"])
-            run_cli(self, "approve", *base, "--start", 0, "--end", 1, "--by", "Humano")
-            permitted = run_cli(
-                self, "permit", *base, "--evidence", "Vídeo sintético do teste"
-            )
-            self.assertIn("condições de uso", permitted["summary"])
-            fetched = run_cli(self, "fetch", *base)
-            self.assertIn("Coletei o corte final", fetched["summary"])
-            verified = run_cli(self, "verify", "--project", root)
-            self.assertIn("1 arquivo coletado", verified["summary"])
-            reviewed = run_cli(self, "review", "--project", root)
-            self.assertIn("Gerei o Storyboard", reviewed["summary"])
-            state = run_cli(self, "status", "--project", root)
-            self.assertEqual(1, state["counts"]["verified"])
-            self.assertIn("completo", state["summary"]["next"])
+    def test_search_summary_keeps_the_provider_note(self):
+        enriched = with_summary(
+            "search",
+            {"items": [], "errors": [], "note": "APIs atuais pesquisam vídeos."},
+        )
+        self.assertIn("0 registrados", enriched["summary"])
+        self.assertIn("APIs atuais pesquisam vídeos.", enriched["summary"])
+
+    def test_reference_only_preview_says_it_generated_static_reference(self):
+        line = with_summary(
+            "preview",
+            {"id": "local:a", "state": "reference_only", "approval": {"status": "pending"}},
+        )["summary"]
+        self.assertIn("somente a referência estática", line)
+
+    def test_singular_and_plural_agree_with_the_counts(self):
+        self.assertIn(
+            "1 arquivo coletado: íntegro e decodificável",
+            with_summary("verify", {"verified": [], "count": 1})["summary"],
+        )
+        self.assertIn(
+            "2 arquivos coletados: íntegros e decodificáveis",
+            with_summary("verify", {"verified": [], "count": 2})["summary"],
+        )
+        line = FLOW_SUMMARIES["status"]({"counts": {"candidates": 1, "previews": 2}})
+        self.assertIn("1 candidato encontrado", line)
+        self.assertIn("2 prévias geradas", line)
+
+    def test_approve_and_reject_have_their_own_summary(self):
+        self.assertIn(
+            "Registrei a aprovação humana de local:a",
+            with_summary(
+                "approve",
+                {"id": "local:a", "state": "approved", "approval": {"by": "Humano"}},
+            )["summary"],
+        )
+        self.assertIn(
+            "Rejeitei local:a",
+            with_summary("reject", {"id": "local:a", "state": "rejected"})["summary"],
+        )
 
 
 if __name__ == "__main__":

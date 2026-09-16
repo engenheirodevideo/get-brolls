@@ -44,8 +44,18 @@ class PluginManifestTests(unittest.TestCase):
         self.assertEqual(entries[0].get("version"), __version__)
 
 
-# Único trecho que pode divergir: a instalação descreve contextos diferentes.
+# Único trecho que pode divergir, e só nas linhas de mecânica de instalação.
 DIVERGENT_SECTION = "Instalação e contexto"
+
+# Mecânica de instalação: o que legitimamente muda entre clone-como-skill e plugin.
+INSTALLATION_MARKERS = (
+    "CLAUDE_PLUGIN_ROOT",
+    "scripts/",
+    ".env",
+    "--env-file",
+    "/plugin",
+    'python3 "',
+)
 
 
 def skill_body(path):
@@ -59,7 +69,8 @@ def normalize(line):
     """Reduz o espelho ao mesmo texto da raiz: prefixo do plugin e invocação explícita."""
     line = line.replace('"${CLAUDE_PLUGIN_ROOT}/', '"').replace("${CLAUDE_PLUGIN_ROOT}/", "")
     line = re.sub(r'`python3 "([^"`]+)"`', r"`\1`", line)
-    return line.strip()
+    # Só o fim da linha é ruído: a indentação faz parte do texto comparado.
+    return line.rstrip()
 
 
 def normalized_sections(path):
@@ -71,10 +82,20 @@ def normalized_sections(path):
             current = line[3:].strip()
             sections[current] = []
             continue
-        normalized = normalize(line)
-        if normalized:
-            sections[current].append(normalized)
+        if not line.strip():
+            continue
+        # Linha que some ao normalizar é mantida: some como divergência, não em silêncio.
+        sections[current].append(normalize(line))
     return sections
+
+
+def editorial_only(lines):
+    """Linhas da seção de instalação que não descrevem mecânica de instalação."""
+    return [
+        line
+        for line in lines
+        if not any(marker in line for marker in INSTALLATION_MARKERS)
+    ]
 
 
 class SetupCommandTests(unittest.TestCase):
@@ -133,6 +154,17 @@ class SkillMirrorTests(unittest.TestCase):
                 mirror[section],
                 f"espelho fora de sincronia na seção: {section or 'introdução'}",
             )
+
+    def test_installation_section_may_diverge_only_on_installation_mechanics(self):
+        root = normalized_sections(ROOT_SKILL)[DIVERGENT_SECTION]
+        mirror = normalized_sections(MIRROR_SKILL)[DIVERGENT_SECTION]
+        self.assertEqual(
+            editorial_only(root),
+            editorial_only(mirror),
+            "seção de instalação divergindo fora da mecânica de instalação: "
+            "só linhas sobre ${CLAUDE_PLUGIN_ROOT}, scripts/, .env, --env-file, "
+            "/plugin ou python3 podem diferir entre raiz e espelho",
+        )
 
 
 if __name__ == "__main__":

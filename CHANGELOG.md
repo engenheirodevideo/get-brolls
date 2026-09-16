@@ -10,7 +10,7 @@ tags: [get-brolls]
 
 ## 2.3.7 — proposta para revisão
 
-- Adiciona variáveis opcionais que fixam caminhos de ferramentas: `GB_YTDLP_PATH`, `GB_VENV_PATH`, `GB_FFMPEG_PATH` e `GB_FFPROBE_PATH`. Valem tanto pelo ambiente do processo quanto pelo `.env` da skill ou `--env-file CAMINHO`.
+- Adiciona variáveis opcionais que fixam caminhos de ferramentas: `GB_YTDLP_PATH`, `GB_VENV_PATH`, `GB_FFMPEG_PATH` e `GB_FFPROBE_PATH`. Valem tanto pelo ambiente do processo quanto pelo `.env` da skill ou por `python3 scripts/gb.py --env-file CAMINHO <subcomando> …`, com `--env-file` na raiz do parser, antes do subcomando.
 - Define a precedência: variável explícita vence a descoberta atual. Com a variável ausente ou vazia, o comportamento é idêntico ao anterior — `.venv/Scripts` e `.venv/bin` para yt-dlp, `PATH` para ffmpeg/ffprobe.
 - Recusa caminho inválido em vez de voltar em silêncio à descoberta: um destino inexistente, sem permissão de execução ou, no caso de `GB_VENV_PATH`, que não seja diretório, encerra o comando com erro nomeando a variável e o caminho.
 - `doctor` passa a listar os pins ativos em `tool_paths`, uma linha por variável, e reflete o pin em `executables`. Sem variáveis definidas, `tool_paths` sai vazio.
@@ -45,7 +45,7 @@ tags: [get-brolls]
 - Espelha a skill no layout `skills/get-brolls/SKILL.md`, com os caminhos internos resolvidos via `${CLAUDE_PLUGIN_ROOT}` a partir da raiz do plugin instalado.
 - Documenta a instalação via `/plugin marketplace add engenheirodevideo/get-brolls` e `/plugin install get-brolls@engenheirodevideo` nos READMEs e no GUIDE.
 - Preserva o fluxo clone-como-skill (Codex e instalações manuais) sem mudanças; o SKILL.md da raiz continua sendo a fonte canônica desse fluxo.
-- Orienta o contexto de plugin instalado: resolução de `${CLAUDE_PLUGIN_ROOT}`, `--project` obrigatório, chaves via `--env-file` fora da pasta gerenciada e reinstalação das dependências após `/plugin update`.
+- Orienta o contexto de plugin instalado: resolução de `${CLAUDE_PLUGIN_ROOT}`, `--project` obrigatório, chaves via `python3 scripts/gb.py --env-file CAMINHO <subcomando> …` fora da pasta gerenciada e reinstalação das dependências após `/plugin update`.
 - Adiciona testes offline que validam os manifestos do plugin, a igualdade da `description` entre os dois SKILL.md, a existência dos alvos `${CLAUDE_PLUGIN_ROOT}` e as regras operacionais do espelho.
 - Atualiza SECURITY: o relatório privado de vulnerabilidades do GitHub está habilitado no repositório.
 - Adiciona roteadores `CLAUDE.md` e `GEMINI.md` apontando para SKILL.md (operação) e AGENTS.md (manutenção), para descoberta de contexto no Claude Code e no Gemini CLI sem duplicar instruções.

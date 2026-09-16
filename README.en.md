@@ -96,11 +96,11 @@ In Claude Code, replace the first invocation with `/get-brolls`. Replace the fol
 
 ### First B-roll in 5 minutes
 
-The shortest command-line sequence, using a keyless source (NASA). Replace `/path/to/my-video` with your project and `ID` with the identifier returned by the search.
+The shortest command-line sequence, using a keyless source (NASA). Replace `/path/to/my-video` with your project and `<ID>` with the identifier returned by the search — keep the quotes, because identifiers may contain spaces.
 
 ```sh
 python3 scripts/gb.py search --provider nasa --query "Artemis launch" --limit 3 --intent literal --project /path/to/my-video
-python3 scripts/gb.py preview --candidate ID --start 0 --end 4 --project /path/to/my-video
+python3 scripts/gb.py preview --candidate "<ID>" --start 0 --end 4 --project /path/to/my-video
 python3 scripts/gb.py review --project /path/to/my-video
 python3 -m http.server 8767 --bind 127.0.0.1 --directory /path/to/my-video/brolls
 ```
@@ -109,8 +109,8 @@ Open [the local storyboard](http://127.0.0.1:8767/review.html), decide on the sh
 
 ```sh
 python3 scripts/gb.py import-review --file /path/to/review.json --by "Your name" --project /path/to/my-video
-python3 scripts/gb.py permit --candidate ID --evidence "Real conditions of use for this source" --project /path/to/my-video
-python3 scripts/gb.py fetch --candidate ID --project /path/to/my-video
+python3 scripts/gb.py permit --candidate "<ID>" --evidence "Real conditions of use for this source" --project /path/to/my-video
+python3 scripts/gb.py fetch --candidate "<ID>" --project /path/to/my-video
 python3 scripts/gb.py verify --project /path/to/my-video
 ```
 
@@ -153,14 +153,14 @@ Recorded trials include real acquisition from YouTube, Instagram, TikTok, Pexels
 
 ## Command-line usage
 
-Run the examples below from the skill folder. Replace `/path/to/my-video` with your project folder and `ID` with the identifier returned by the search.
+Run the examples below from the skill folder. Replace `/path/to/my-video` with your project folder and `<ID>` with the identifier returned by the search — keep the quotes, because identifiers may contain spaces.
 
 ```sh
 python3 scripts/gb.py status --project /path/to/my-video
 python3 scripts/gb.py rules --project /path/to/my-video
 python3 scripts/gb.py references --project /path/to/my-video
 python3 scripts/gb.py search --provider youtube --query "NASA Artemis launch" --limit 3 --intent literal --project /path/to/my-video
-python3 scripts/gb.py preview --candidate ID --start 0 --end 5 --reason "Show the liftoff mentioned in the video" --project /path/to/my-video
+python3 scripts/gb.py preview --candidate "<ID>" --start 0 --end 5 --reason "Show the liftoff mentioned in the video" --project /path/to/my-video
 python3 scripts/gb.py review --project /path/to/my-video
 python3 -m http.server 8767 --bind 127.0.0.1 --directory /path/to/my-video/brolls
 ```
@@ -169,8 +169,8 @@ Open [the local storyboard](http://127.0.0.1:8767/review.html), review the shots
 
 ```sh
 python3 scripts/gb.py import-review --file /path/to/review.json --by "Reviewer's name" --project /path/to/my-video
-python3 scripts/gb.py permit --candidate ID --evidence "Real evidence of the conditions of use" --project /path/to/my-video
-python3 scripts/gb.py fetch --candidate ID --project /path/to/my-video
+python3 scripts/gb.py permit --candidate "<ID>" --evidence "Real evidence of the conditions of use" --project /path/to/my-video
+python3 scripts/gb.py fetch --candidate "<ID>" --project /path/to/my-video
 python3 scripts/gb.py verify --project /path/to/my-video
 ```
 

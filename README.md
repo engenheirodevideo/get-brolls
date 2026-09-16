@@ -96,11 +96,11 @@ No Claude Code, troque a primeira chamada por `/get-brolls`. Substitua a pasta p
 
 ### Primeiro B-roll em 5 minutos
 
-Sequência mínima pelo terminal, com uma fonte sem chave (NASA). Troque `/caminho/meu-video` pelo seu projeto e `ID` pelo identificador devolvido na busca.
+Sequência mínima pelo terminal, com uma fonte sem chave (NASA). Troque `/caminho/meu-video` pelo seu projeto e `<ID>` pelo identificador devolvido na busca — mantenha as aspas, porque os identificadores podem conter espaços.
 
 ```sh
 python3 scripts/gb.py search --provider nasa --query "Artemis launch" --limit 3 --intent literal --project /caminho/meu-video
-python3 scripts/gb.py preview --candidate ID --start 0 --end 4 --project /caminho/meu-video
+python3 scripts/gb.py preview --candidate "<ID>" --start 0 --end 4 --project /caminho/meu-video
 python3 scripts/gb.py review --project /caminho/meu-video
 python3 -m http.server 8767 --bind 127.0.0.1 --directory /caminho/meu-video/brolls
 ```
@@ -109,8 +109,8 @@ Abra [o storyboard local](http://127.0.0.1:8767/review.html), decida os trechos 
 
 ```sh
 python3 scripts/gb.py import-review --file /caminho/revisao.json --by "Seu nome" --project /caminho/meu-video
-python3 scripts/gb.py permit --candidate ID --evidence "Condições reais de uso desta fonte" --project /caminho/meu-video
-python3 scripts/gb.py fetch --candidate ID --project /caminho/meu-video
+python3 scripts/gb.py permit --candidate "<ID>" --evidence "Condições reais de uso desta fonte" --project /caminho/meu-video
+python3 scripts/gb.py fetch --candidate "<ID>" --project /caminho/meu-video
 python3 scripts/gb.py verify --project /caminho/meu-video
 ```
 
@@ -153,14 +153,14 @@ Os ensaios registrados incluem aquisição real de YouTube, Instagram, TikTok, P
 
 ## Usar pelo terminal
 
-Execute os exemplos abaixo na pasta da skill. Troque `/caminho/meu-video` pelo seu projeto e `ID` pelo identificador retornado na busca.
+Execute os exemplos abaixo na pasta da skill. Troque `/caminho/meu-video` pelo seu projeto e `<ID>` pelo identificador retornado na busca — mantenha as aspas, porque os identificadores podem conter espaços.
 
 ```sh
 python3 scripts/gb.py status --project /caminho/meu-video
 python3 scripts/gb.py rules --project /caminho/meu-video
 python3 scripts/gb.py references --project /caminho/meu-video
 python3 scripts/gb.py search --provider youtube --query "NASA Artemis launch" --limit 3 --intent literal --project /caminho/meu-video
-python3 scripts/gb.py preview --candidate ID --start 0 --end 5 --reason "Mostrar a decolagem citada no vídeo" --project /caminho/meu-video
+python3 scripts/gb.py preview --candidate "<ID>" --start 0 --end 5 --reason "Mostrar a decolagem citada no vídeo" --project /caminho/meu-video
 python3 scripts/gb.py review --project /caminho/meu-video
 python3 -m http.server 8767 --bind 127.0.0.1 --directory /caminho/meu-video/brolls
 ```
@@ -169,8 +169,8 @@ Abra [o storyboard local](http://127.0.0.1:8767/review.html), revise os trechos 
 
 ```sh
 python3 scripts/gb.py import-review --file /caminho/revisao.json --by "Nome de quem revisou" --project /caminho/meu-video
-python3 scripts/gb.py permit --candidate ID --evidence "Evidência real das condições de uso" --project /caminho/meu-video
-python3 scripts/gb.py fetch --candidate ID --project /caminho/meu-video
+python3 scripts/gb.py permit --candidate "<ID>" --evidence "Evidência real das condições de uso" --project /caminho/meu-video
+python3 scripts/gb.py fetch --candidate "<ID>" --project /caminho/meu-video
 python3 scripts/gb.py verify --project /caminho/meu-video
 ```
 

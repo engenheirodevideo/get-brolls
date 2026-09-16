@@ -113,11 +113,11 @@ Referências de instalação: [yt-dlp/EJS](https://github.com/yt-dlp/yt-dlp/wiki
 
 ### Configuração
 
-Copiar `.env.example` para `.env` é opcional (`cp .env.example .env` no macOS; `Copy-Item .env.example .env` no PowerShell). O `.env` pertence à raiz da skill, independentemente da pasta atual. Ambiente do processo prevalece. `--env-file CAMINHO` vem antes do subcomando. Nunca distribua `.env`, cookies, configs CDN ou perfis do navegador.
+Copiar `.env.example` para `.env` é opcional (`cp .env.example .env` no macOS; `Copy-Item .env.example .env` no PowerShell). O `.env` pertence à raiz da skill, independentemente da pasta atual. Ambiente do processo prevalece. `--env-file` é opção da raiz do parser e vem antes do subcomando: `python3 scripts/gb.py --env-file CAMINHO <subcomando> …`. Nunca distribua `.env`, cookies, configs CDN ou perfis do navegador.
 
 #### Caminhos explícitos de ferramentas
 
-Quatro variáveis opcionais fixam onde cada ferramenta está, úteis quando há mais de uma instalação na máquina, quando o `PATH` do agente difere do seu ou quando a venv fica fora da pasta da skill. Valem pelo ambiente do processo, pelo `.env` da skill ou por `--env-file CAMINHO`, como as demais `GB_*`.
+Quatro variáveis opcionais fixam onde cada ferramenta está, úteis quando há mais de uma instalação na máquina, quando o `PATH` do agente difere do seu ou quando a venv fica fora da pasta da skill. Valem pelo ambiente do processo, pelo `.env` da skill ou por `python3 scripts/gb.py --env-file CAMINHO <subcomando> …`, como as demais `GB_*`.
 
 | Variável | Fixa | Descoberta padrão quando ausente |
 |---|---|---|
@@ -192,7 +192,7 @@ A partir da 2.3.6, o repositório também é um marketplace de plugin do Claude 
 
 Na primeira sessão, execute `/get-brolls-setup`: o comando em `commands/get-brolls-setup.md` roda `scripts/install.sh --check`, o instalador completo do sistema e o `doctor` pela raiz do plugin, e devolve o veredito em uma linha. A skill é acionada pelo contexto do pedido; a forma explícita é `/get-brolls:get-brolls`.
 
-A skill do plugin fica em `skills/get-brolls/SKILL.md` e referencia os arquivos por `${CLAUDE_PLUGIN_ROOT}`, a raiz do plugin instalado — um diretório de cache versionado (`~/.claude/plugins/cache/engenheirodevideo/get-brolls/<versão>/`). Execute o instalador e o `doctor` pelo caminho absoluto dessa pasta, de qualquer cwd. As dependências ficam em `.venv/` e `.tools/` dentro da pasta do plugin: repita o instalador após cada `/plugin update` ou reinstalação, e prefira variáveis de ambiente ou `--env-file CAMINHO` fora da pasta gerenciada para as chaves opcionais. O fluxo clone-como-skill continua suportado sem mudanças para Codex e instalações manuais, com o SKILL.md da raiz como fonte canônica.
+A skill do plugin fica em `skills/get-brolls/SKILL.md` e referencia os arquivos por `${CLAUDE_PLUGIN_ROOT}`, a raiz do plugin instalado — um diretório de cache versionado (`~/.claude/plugins/cache/engenheirodevideo/get-brolls/<versão>/`). Execute o instalador e o `doctor` pelo caminho absoluto dessa pasta, de qualquer cwd. As dependências ficam em `.venv/` e `.tools/` dentro da pasta do plugin: repita o instalador após cada `/plugin update` ou reinstalação, e prefira variáveis de ambiente ou um `.env` fora da pasta gerenciada para as chaves opcionais, apontado na raiz do parser: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" --env-file CAMINHO <subcomando> …`. O fluxo clone-como-skill continua suportado sem mudanças para Codex e instalações manuais, com o SKILL.md da raiz como fonte canônica.
 
 #### Permissões (opcional)
 
