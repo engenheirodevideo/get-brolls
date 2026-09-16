@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Shared yt-dlp runtime preserving the original helper arguments.
-GB_RUNTIME_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Shared yt-dlp runtime for the Get B-rolls YouTube helpers.
+GB_RUNTIME_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 gb_ytdlp() {
   local exe="yt-dlp"
   if [ -x "$GB_RUNTIME_ROOT/.venv/bin/yt-dlp" ]; then exe="$GB_RUNTIME_ROOT/.venv/bin/yt-dlp"; fi

@@ -4,15 +4,59 @@ permissions:
   contents: read
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ['3.11', '3.12', '3.13']
+        include:
+          - os: macos-latest
+            python-version: '3.11'
+          - os: macos-latest
+            python-version: '3.13'
+          - os: windows-latest
+            python-version: '3.11'
+          - os: windows-latest
+            python-version: '3.13'
+          - os: ubuntu-latest
+            python-version: '3.13'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install FFmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+      - name: Install FFmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg --no-progress -y
+      - name: Install FFmpeg (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Check installer (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: bash scripts/install.sh --check
+      - name: Check installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/install.ps1 -Check
+      - name: Install dependencies (macOS primary)
+        if: runner.os == 'macOS' && matrix.python-version == '3.13'
+        run: bash scripts/install.sh
+      - name: Install dependencies (Windows primary)
+        if: runner.os == 'Windows' && matrix.python-version == '3.13'
+        shell: pwsh
+        run: ./scripts/install.ps1
+      - name: Exercise PowerShell launcher
+        if: runner.os == 'Windows' && matrix.python-version == '3.13'
+        shell: pwsh
+        run: ./scripts/playwright.ps1 --version
       - run: python -m unittest discover -s tests -v
-      - run: python scripts/package_release.py
+      - name: Check Bash scripts
+        if: runner.os != 'Windows'
+        run: find scripts -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+      - run: node --check assets/storyboard.js
+      - run: node --check assets/review.js

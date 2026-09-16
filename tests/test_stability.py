@@ -9,6 +9,27 @@ from getbrolls.rules import load_rules
 
 
 class StabilityTests(unittest.TestCase):
+    def test_windows_lock_backend_locks_and_unlocks_one_byte(self):
+        from getbrolls.runtime import _acquire_lock, _release_lock
+
+        calls = []
+
+        class WindowsLock:
+            LK_NBLCK = 1
+            LK_UNLCK = 2
+
+            @staticmethod
+            def locking(descriptor, mode, size):
+                calls.append((descriptor, mode, size))
+
+        with tempfile.TemporaryFile(mode="w+") as stream:
+            _acquire_lock(stream, platform="nt", windows=WindowsLock)
+            _release_lock(stream, platform="nt", windows=WindowsLock)
+            stream.seek(0, os.SEEK_END)
+            self.assertEqual(stream.tell(), 1)
+        self.assertEqual([WindowsLock.LK_NBLCK, WindowsLock.LK_UNLCK], [c[1] for c in calls])
+        self.assertEqual([1, 1], [c[2] for c in calls])
+
     def test_invalid_rules_have_actionable_errors(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = load_rules(tmp)

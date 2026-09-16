@@ -8,7 +8,6 @@ from getbrolls.models import candidate, set_segment, signature, require_fetch
 from getbrolls.ledger import Ledger
 from getbrolls.review import import_review, project_id
 from getbrolls.media import review_preview, probe
-import package_release
 
 
 class WorkflowTests(unittest.TestCase):
@@ -88,38 +87,6 @@ class WorkflowTests(unittest.TestCase):
         c["id"] += ":shot:two"
         self.assertNotEqual(signature(c), original)
 
-    def test_release_contains_skill_only(self):
-        selected = package_release.files()
-        files = [str(p.relative_to(package_release.ROOT)) for p in selected]
-        self.assertIn(".env.example", files)
-        self.assertIn("LICENSE", files)
-        self.assertIn("GUIDE.md", files)
-        self.assertIn("QUALITY.md", files)
-        self.assertIn("assets/review.js", files)
-        self.assertFalse(any(path.startswith("references/") for path in files))
-        internal_label = "auto" + "edit"
-        self.assertFalse(
-            any(internal_label in path.lower() for path in files),
-            "A entrega pública não deve expor nomes internos em caminhos.",
-        )
-        for path in selected:
-            if path.suffix in {".md", ".py", ".sh", ".yaml", ".yml"}:
-                self.assertNotIn(
-                    internal_label,
-                    path.read_text(errors="ignore").lower(),
-                    f"Nome interno encontrado em {path.relative_to(package_release.ROOT)}",
-                )
-        self.assertFalse(
-            any(
-                x.endswith((".gif", ".mp4", ".jpg"))
-                or (x.endswith(".html") and x != "assets/storyboard-template.html")
-                or x == ".env"
-                or "storyboard-case" in x
-                or "landing" in x
-                for x in files
-            )
-        )
-
     @unittest.skipUnless(
         shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg required"
     )
@@ -171,4 +138,3 @@ class WorkflowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GetBrolls CLI. Run from any working directory."""
+"""GET B-ROLLS CLI. Run from any working directory."""
 
 from getbrolls.cli import main, entrypoint
 

@@ -10,13 +10,6 @@ brolls/
 *.mov
 *.gif
 *.zip
-assets/storyboard-case/
-assets/storyboard-gifs/
-assets/storyboard-images/
-assets/storyboard-case.json
-assets/storyboard-data.js
-dist/
-
 .venv/
 node_modules/
 .getbrolls-sources/

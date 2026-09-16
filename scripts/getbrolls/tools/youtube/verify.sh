@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# gb_verify.sh — list duration + resolution of every mp4 in a folder.
-# Usage: gb_verify.sh [dir]
+# verify.sh — list duration + resolution of every mp4 in a folder.
+# Usage: verify.sh [dir]
 set -euo pipefail
 dir="${1:-.}"
 for f in "$dir"/*.mp4; do

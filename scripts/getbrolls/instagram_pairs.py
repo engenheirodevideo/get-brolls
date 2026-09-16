@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Download/merge Instagram Reel video+audio curl config pairs.
+"""Download and merge Instagram Reel video/audio curl config pairs.
 
-This tool preserves the validated 2026-07-08 Codex workflow:
-Instagram browser/devtools captures direct CDN URLs as curl config files, one
+An authorized browser captures direct CDN URLs as curl config files, one
 video-only config and one audio-only config. This script downloads or reuses the
 parts, merges them with ffmpeg, and verifies output streams/audio hashes.
 
@@ -12,18 +11,26 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import urlsplit
 
 URL_RE = re.compile(r'^\s*url\s*=\s*"(.*)"\s*$')
 OUTPUT_RE = re.compile(r'^\s*output\s*=\s*"(.*)"\s*$')
+HOST_RE = re.compile(
+    r"^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*"
+    r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$"
+)
+STEM_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,119}$")
 
 
 def die(message: str, code: int = 1) -> None:
@@ -45,6 +52,53 @@ def sh_quote(value: str) -> str:
     return "'" + value.replace("'", "'\\''") + "'"
 
 
+def _curl_resolution(host: str, source: Path) -> str | None:
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        try:
+            rows = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+        except OSError:
+            die(f"curl config hostname could not be resolved: {source}")
+        addresses = sorted({row[4][0] for row in rows})
+        if not addresses:
+            die(f"curl config hostname has no address: {source}")
+        parsed = [ipaddress.ip_address(item) for item in addresses]
+        if any(not item.is_global for item in parsed):
+            die(f"curl config hostname resolved to a private address: {source}")
+        selected = parsed[0]
+        target = f"[{selected}]" if selected.version == 6 else str(selected)
+        return f"{host}:443:{target}"
+    if not address.is_global:
+        die(f"curl config URL must not target a private address: {source}")
+    return None
+
+
+def validate_media_url(value: str, source: Path) -> tuple[str, str | None]:
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError:
+        die(f"invalid URL in curl config: {source}")
+    if parsed.scheme.lower() != "https" or not parsed.hostname:
+        die(f"curl config URL must use public HTTPS: {source}")
+    if parsed.username is not None or parsed.password is not None:
+        die(f"curl config URL must not contain credentials: {source}")
+    if port not in (None, 443):
+        die(f"curl config URL must use the standard HTTPS port: {source}")
+    host = parsed.hostname.lower()
+    if host.endswith("."):
+        die(f"curl config hostname must not end with a dot: {source}")
+    if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
+        die(f"curl config URL must not target a local host: {source}")
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        if not HOST_RE.fullmatch(host):
+            die(f"invalid hostname in curl config: {source}")
+    return value, _curl_resolution(host, source)
+
+
 def parse_curl_config(path: Path) -> dict[str, str | None]:
     text = path.read_text(errors="replace")
     url: str | None = None
@@ -59,19 +113,26 @@ def parse_curl_config(path: Path) -> dict[str, str | None]:
             output = output_match.group(1)
     if not url:
         die(f"missing url line in curl config: {path}")
-    return {"url": url, "output": output}
+    url, curl_resolve = validate_media_url(url, path)
+    return {"url": url, "output": output, "curl_resolve": curl_resolve}
 
 
 def resolve_config_output(config_output: str | None, root: Path) -> Path | None:
     if not config_output:
         return None
+    root = root.resolve()
     output = Path(config_output)
-    if output.is_absolute():
-        return output
-    return root / output
+    candidate = output.resolve() if output.is_absolute() else (root / output).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        die("config output must remain inside --config-output-root")
+    return candidate
 
 
 def infer_output_for_stem(stem: str, output_dir: Path, layout: str) -> Path:
+    if not STEM_RE.fullmatch(stem) or ".." in stem:
+        die(f"unsafe config stem: {stem}")
     if layout == "flat":
         return output_dir / f"{stem}.mp4"
     student_match = re.match(r"^(.+)_([0-9]{2})_(.+)$", stem)
@@ -80,8 +141,14 @@ def infer_output_for_stem(stem: str, output_dir: Path, layout: str) -> Path:
         if not student_match:
             die(f"layout=student requires stem '<username>_<rank>_<code>', got: {stem}")
         username, rank, code = student_match.groups()
-        return output_dir / username / f"{rank}_{code}.mp4"
-    return output_dir / f"{stem}.mp4"
+        candidate = output_dir / username / f"{rank}_{code}.mp4"
+    else:
+        candidate = output_dir / f"{stem}.mp4"
+    try:
+        candidate.resolve().relative_to(output_dir.resolve())
+    except ValueError:
+        die(f"batch output must remain inside --output-dir: {stem}")
+    return candidate
 
 
 def pair_configs(config_dir: Path) -> list[tuple[str, Path, Path]]:
@@ -127,9 +194,12 @@ def download_or_reuse(
     # Keep valid existing parts until the replacement transfer succeeds.
     with tempfile.TemporaryDirectory(dir=part_path.parent) as stage:
         pending = Path(stage) / "download.part"
-        cmd = ["curl", "--fail", "--location", "--retry", "3",
+        cmd = ["curl", "--fail", "--proto", "=https", "--retry", "3",
                "--retry-all-errors", "--connect-timeout", "20", "--max-time", "180",
-               "--output", str(pending), str(parsed["url"])]
+               "--output", str(pending)]
+        if parsed["curl_resolve"]:
+            cmd += ["--resolve", str(parsed["curl_resolve"])]
+        cmd.append(str(parsed["url"]))
         print(f"+ curl <url-from {cfg_path}> --output {part_path}", file=sys.stderr)
         try:
             subprocess.run(cmd, check=True, capture_output=True, timeout=600)
@@ -144,11 +214,11 @@ def download_or_reuse(
 def merge_parts(video_part: Path, audio_part: Path, output: Path, *, copy_streams: bool) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     if copy_streams:
-        cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(video_part), "-i", str(audio_part), "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", str(output)]
+        cmd = ["ffmpeg", "-n", "-v", "error", "-i", str(video_part), "-i", str(audio_part), "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", str(output)]
     else:
         cmd = [
             "ffmpeg",
-            "-y",
+            "-n",
             "-v",
             "error",
             "-i",
@@ -228,6 +298,22 @@ def verify_output(path: Path) -> dict:
     }
 
 
+def publish_exclusive(source: Path, destination: Path) -> None:
+    created = False
+    try:
+        with source.open("rb") as incoming, destination.open("xb") as outgoing:
+            created = True
+            shutil.copyfileobj(incoming, outgoing)
+            outgoing.flush()
+            os.fsync(outgoing.fileno())
+    except FileExistsError:
+        die(f"output already exists; nothing was overwritten: {destination}")
+    except BaseException:
+        if created:
+            destination.unlink(missing_ok=True)
+        raise
+
+
 def process_one(
     *,
     stem: str,
@@ -240,7 +326,11 @@ def process_one(
     prefer_config_output: bool,
     copy_streams: bool,
 ) -> dict:
-    safe_stem = stem.replace("/", "_")
+    if not STEM_RE.fullmatch(stem) or ".." in stem:
+        die(f"unsafe config stem: {stem}")
+    if output.exists():
+        die(f"output already exists; nothing was overwritten: {output}")
+    safe_stem = stem
     video_part = parts_dir / f"{safe_stem}_video.mp4"
     audio_part = parts_dir / f"{safe_stem}_audio.mp4"
     video_action = download_or_reuse(
@@ -257,8 +347,13 @@ def process_one(
         force_download=force_download,
         prefer_config_output=prefer_config_output,
     )
-    merge_parts(video_part, audio_part, output, copy_streams=copy_streams)
-    verification = verify_output(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=output.parent) as stage:
+        pending = Path(stage) / "merged.mp4"
+        merge_parts(video_part, audio_part, pending, copy_streams=copy_streams)
+        verification = verify_output(pending)
+        publish_exclusive(pending, output)
+    verification["output"] = str(output)
     verification.update({
         "stem": stem,
         "video_config": str(video_config),

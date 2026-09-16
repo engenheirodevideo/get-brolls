@@ -8,13 +8,13 @@ tags: [get-brolls]
 
 # Avisos de terceiros
 
-O processo editorial, os helpers Bash e o coletor Instagram incorporados são de autoria de Bruno e foram incluídos nesta entrega. O código da skill usa MIT conforme `LICENSE`; dependências externas mantêm suas próprias licenças.
+O processo editorial, os utilitários Bash e o coletor Instagram fazem parte do **GET B-ROLLS — ENGENHEIRO DE VÍDEO**. O código da skill usa MIT conforme `LICENSE`; dependências externas mantêm suas próprias licenças.
 
 A distribuição contém instruções, comandos, scripts customizados e interface própria. Não inclui bibliotecas, executáveis ou fontes tipográficas de terceiros; o HTML usa as fontes do sistema.
 
 - Python e FFmpeg são dependências externas, não distribuídas com a skill. Suas licenças continuam aplicáveis às respectivas distribuições.
-- Nenhum vídeo, poster ou imagem do caso PET/biscoito integra o release público. Novas coletas retêm condições dos provedores e precisam de créditos/evidências no projeto.
+- Nenhum vídeo, poster ou material de coleta real integra o repositório. Novas coletas retêm condições dos provedores e precisam de créditos/evidências no projeto.
 
 - yt-dlp e EJS são dependências externas, instaladas pelo instalador via PyPI; licenças próprias.
-- Helpers Bash e coletor Instagram são scripts customizados fornecidos por Bruno e integrados a esta skill. Não são cópias das bibliotecas yt-dlp, Playwright ou FFmpeg.
+- Os utilitários Bash e o coletor Instagram são código próprio do projeto. Não são cópias das bibliotecas yt-dlp, Playwright ou FFmpeg.
 - Playwright/navegador, Node/Deno e curl são dependências externas, não incluídas como binários.

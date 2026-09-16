@@ -1,9 +1,10 @@
 <div align="center">
   <img src="assets/brand-logo.png" alt="Engenheiro de vídeo" width="104">
-  <h1>Get B-rolls</h1>
+  <h1>GET B-ROLLS</h1>
+  <p><strong>ENGENHEIRO DE VÍDEO</strong></p>
   <p><strong>Da ideia ao trecho certo para a sua edição.</strong></p>
   <p>Encontre imagens de apoio, veja o movimento e revise cada escolha<br>antes de receber os cortes finais com suas fontes.</p>
-  <p>v2.3.4 · Codex e Claude Code · macOS e Linux</p>
+  <p>v2.3.4 · Codex e Claude Code · macOS e Windows</p>
   <p><a href="#comece-aqui">Comece aqui</a> · <a href="#storyboard">Storyboard</a> · <a href="#fontes">Fontes</a> · <a href="GUIDE.md#instalação">Guia completo</a></p>
 </div>
 
@@ -27,25 +28,40 @@ A prévia pode baixar mídia de trabalho para mostrar o movimento. A entrega fin
 
 ### 1. Coloque a skill no seu agente
 
-Copie a pasta completa `get-brolls/` para **um** destes destinos:
+O repositório oficial é [engenheirodevideo/get-brolls](https://github.com/engenheirodevideo/get-brolls). Clone a fonte e copie a pasta completa `get-brolls/` para **um** dos destinos abaixo:
+
+```sh
+git clone https://github.com/engenheirodevideo/get-brolls.git
+cd get-brolls
+```
 
 | Agente | Instalação pessoal | Dentro de um projeto | Como chamar |
 |---|---|---|---|
 | Codex | `~/.agents/skills/get-brolls/` | `.agents/skills/get-brolls/` | `$get-brolls` |
 | Claude Code | `~/.claude/skills/get-brolls/` | `.claude/skills/get-brolls/` | `/get-brolls` |
 
-Ao copiar uma pasta de desenvolvimento, exclua `dist/`, `.venv/`, `.tools/`, caches, projetos e arquivos privados. Instale as dependências no destino final e abra uma nova sessão do agente. [Veja instalação, atualização e compatibilidade.](GUIDE.md#instalação)
+Ao copiar uma pasta de desenvolvimento, exclua `.venv/`, `.tools/`, caches, projetos e arquivos privados. Instale as dependências no destino final e abra uma nova sessão do agente. [Veja instalação, atualização e compatibilidade.](GUIDE.md#instalação)
 
 ### 2. Prepare o ambiente
 
-Pré-requisitos: Python 3.11+, FFmpeg/ffprobe, Node 22+, npm/npx, curl e Bash. Em macOS com Homebrew, comece com `brew install python ffmpeg node`. Para Linux e conexão do navegador, siga o [guia de instalação](GUIDE.md#instalação).
+Pré-requisitos: Python 3.11+, FFmpeg/ffprobe, Node 22+, npm/npx e curl. Em macOS com Homebrew, comece com `brew install python ffmpeg node`. No Windows, instale as versões oficiais e confirme que os executáveis estão no `PATH`. O [guia de instalação](GUIDE.md#instalação) traz os dois caminhos completos.
 
-Na pasta instalada da skill:
+Na pasta instalada da skill, use o instalador do seu sistema.
+
+macOS:
 
 ```sh
 bash scripts/install.sh --check
 bash scripts/install.sh
 python3 scripts/gb.py doctor
+```
+
+Windows PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -Check
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1
+python scripts/gb.py doctor
 ```
 
 O instalador cria os ambientes locais e obtém yt-dlp/EJS e Playwright CLI. `doctor` confere a disponibilidade das ferramentas; o acesso a cada fonte depende da URL e, quando necessário, da sua sessão de navegador.
@@ -94,6 +110,8 @@ Compartilhe a pasta **`brolls/` completa**, para manter as imagens e os GIFs ace
 
 Para Instagram, o agente opera o navegador autorizado e entrega os dois streams ao coletor; o script não captura a sessão sozinho. O [guia Instagram](GUIDE.md#instagram--navegadorplaywright-dois-streams-e-mp4) cobre seleção dos pares, download, áudio e recuperação. Instagram e TikTok dependem da descoberta da URL no navegador; não há busca global por palavra-chave na CLI.
 
+O coletor aceita somente URLs públicas HTTPS sem credenciais, rejeita resolução para redes locais, fixa o download no endereço validado e não segue redirecionamentos. Arquivos indicados por `output=` permanecem dentro de `--config-output-root`; outputs em lote ficam no diretório escolhido e arquivos existentes não são sobrescritos.
+
 Os ensaios registrados incluem aquisição real de YouTube, Instagram, TikTok, Pexels e Pixabay. Para Commons/NASA, a evidência cobre busca e disponibilidade do arquivo, sem download integral naquele ensaio. Consulte os resultados e seus limites em [Qualidade e evidências](QUALITY.md).
 
 ## Usar pelo terminal
@@ -131,7 +149,7 @@ Substitua o nome, o arquivo exportado e a evidência pelos dados reais. Repita `
 - Imagens e notícias: importe o arquivo ou a captura com sua procedência. Veja [tipos de mídia](GUIDE.md#tipos-de-assets-e-formatos) e [capturas pelo navegador](GUIDE.md#captura-de-notícias-e-páginas-pelo-navegador).
 - GIF padrão: 360 px, 8 fps, 128 cores, até 10 segundos e 5 MB. Intervalo acima do limite de duração é recusado; tamanho excessivo gera prévia estática com aviso. `GB_PREVIEW_MODE=static` usa poster e sequência de quadros.
 - `--reference-only` prepara uma referência estática sem obter mídia remota; um poster isolado não comprova movimento.
-- Os helpers em `scripts/broll/` oferecem busca, quadros, cortes e verificação de YouTube por `VIDEO_ID`. Seus resultados precisam ser importados pela CLI para integrar o registro e a revisão do projeto.
+- Os utilitários em `scripts/getbrolls/tools/youtube/` oferecem busca, quadros, cortes e verificação de YouTube por `VIDEO_ID`. Seus resultados precisam ser importados pela CLI para integrar o registro e a revisão do projeto.
 
 Use `python3 scripts/gb.py --help` e `python3 scripts/gb.py preview --help` para consultar os argumentos. Fora da pasta da skill, use o caminho absoluto de `scripts/gb.py`.
 
@@ -145,7 +163,7 @@ O storyboard é destinado a projetos locais confiáveis e não possui autentica�
 
 A resolução final depende da fonte: prefira 1080p quando disponível e confira as dimensões reais. A ferramenta preserva a proporção e sinaliza incompatibilidades de formato. Ela não monta automaticamente o vídeo completo, não faz busca de imagens via API nem entrega áudio isolado como asset final.
 
-Execute um comando por projeto de cada vez. Preserve originais, cache e histórico de eventos. Se o registro for salvo e a geração da página falhar, execute `review` novamente. Windows nativo ainda não foi validado; veja [compatibilidade](GUIDE.md#compatibilidade).
+Execute um comando por projeto de cada vez. Preserve originais, cache e histórico de eventos. Se o registro for salvo e a geração da página falhar, execute `review` novamente. A CLI e o instalador são nativos em macOS e Windows; os helpers Bash de YouTube são opcionais e têm equivalentes no fluxo principal da CLI. Veja [compatibilidade](GUIDE.md#compatibilidade).
 
 ## Dentro do repositório
 
@@ -155,12 +173,11 @@ Execute um comando por projeto de cada vez. Preserve originais, cache e históri
 | [GUIDE.md](GUIDE.md) · [SKILL.md](SKILL.md) | Manual completo e instruções de execução para o agente. |
 | [QUALITY.md](QUALITY.md) | Testes, evidências reais e limites conhecidos. |
 | [RULES.md](RULES.md) · [.env.example](.env.example) | Regras editoriais e opções de configuração. |
-| `scripts/` | CLI, busca, aquisição, revisão e utilitários. |
-| `assets/` | Arquivos da interface e artefato visual de storyboard. |
+| `scripts/getbrolls/` | Núcleo único: CLI, provedores, Storyboard, coletor Instagram e utilitários YouTube. |
+| `assets/` | Logo, estilos e scripts usados pelo Storyboard gerado. |
 | `agents/` · `schemas/` | Apresentação no agente e contrato de dados. |
 | `tests/` · `.github/workflows/` | Testes e automação de qualidade. |
 
-Para manter o projeto, comece por [CONTRIBUTING](CONTRIBUTING.md) e [AGENTS](AGENTS.md). Consulte [QUALITY](QUALITY.md), [CHANGELOG](CHANGELOG.md) e [SECURITY](SECURITY.md) para evidências, mudanças e tratamento de dados privados. `dist/` guarda pacotes gerados em momentos específicos; confira a versão e o conteúdo antes de distribuí-los.
+Para manter o projeto, comece por [CONTRIBUTING](CONTRIBUTING.md) e [AGENTS](AGENTS.md). Consulte [QUALITY](QUALITY.md), [CHANGELOG](CHANGELOG.md) e [SECURITY](SECURITY.md) para evidências, mudanças e tratamento de dados privados. O repositório clonado é a fonte oficial da entrega.
 
 Código sob [licença MIT](LICENSE). Dependências externas mantêm suas próprias condições, descritas nos [avisos de terceiros](THIRD_PARTY_NOTICES.md).
-

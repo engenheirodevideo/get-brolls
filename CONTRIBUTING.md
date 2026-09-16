@@ -23,8 +23,8 @@ python3 scripts/gb.py doctor
 
 Mudanças na revisão visual exigem conferir aprovação/ajuste/sugestão, exportação/importação, impressão e largura móvel conforme o impacto. Revisões apenas documentais precisam validar frontmatter, links e exemplos de CLI, sem refazer downloads desnecessariamente.
 
-## Arquivos de distribuição
+## Arquivos publicados
 
-Inclua skill, AGENTS, documentação, scripts próprios e interface. Dependências são instaladas pelos comandos do GUIDE; não incorporar bibliotecas, fontes externas, binários, ambientes virtuais, cookies, configs CDN ou exemplos preenchidos. Novos arquivos necessários devem entrar na seleção mantida em `scripts/package_release.py`, mesmo quando a entrega atual for somente a pasta. Não execute esse empacotador sem pedido de empacotamento.
+O próprio repositório é a entrega. Inclua skill, AGENTS, documentação, código e interface necessários para um clone funcional. Dependências são instaladas pelos comandos do GUIDE; não incorpore bibliotecas, fontes externas, binários, ambientes virtuais, cookies, configs CDN, mídia de clientes ou exemplos preenchidos com dados reais.
 
 Código próprio sob MIT, conforme LICENSE. Dependências mantêm suas licenças, descritas em THIRD_PARTY_NOTICES. Publicação, push e atualização de instalação pessoal são ações separadas da revisão local.

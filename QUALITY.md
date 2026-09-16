@@ -6,7 +6,7 @@ updated: 2026-09-15
 tags: [get-brolls, quality, qa, evidence]
 ---
 
-# Qualidade e evidências — Get B-rolls 2.3.4
+# Qualidade e evidências — GET B-ROLLS 2.3.4
 
 Este documento reúne o estado de qualidade, as regressões cobertas, os limites conhecidos e as evidências reais por provedor. Resultados ao vivo são registros datados, não promessa de disponibilidade futura nem aprovação editorial.
 
@@ -14,11 +14,9 @@ Este documento reúne o estado de qualidade, as regressões cobertas, os limites
 
 ### Estado atual
 
-**Validação desta entrega consolidada: 53 testes passaram localmente em 15/09/2026.** A seleção do pacote também impede a volta da pasta antiga de referências, de rótulos internos e de recursos ausentes no template do storyboard.
+**Validação da árvore consolidada: 66 testes passaram localmente em 15/09/2026.** O repositório é a fonte oficial da entrega; não existe uma seleção paralela de arquivos ou pacote ZIP para manter sincronizado.
 
-O fluxo próprio de Bruno foi reintegrado à pasta da skill. A afirmação anterior de que a 2.3.3 preservava o produto estava errada e foi retirada. O pacote de distribuição só deve ser gerado depois que a suíte, os links e a seleção de arquivos passarem.
-
-**Validação histórica: 52 testes passaram na fonte e os mesmos 52 passaram na cópia limpa instalada, em macOS/Python 3.14.6 com FFmpeg.** Instalação numa cópia limpa da pasta, sem qualquer instalação do produto de origem nela: yt-dlp/EJS pelo PyPI e Playwright CLI 0.1.20 pelo npm passaram. Nenhuma biblioteca externa faz parte do código distribuído; o [guia](GUIDE.md#instalação) orienta a instalação na máquina de cada pessoa.
+Uma revisão adversarial executou a suíte em fonte e cópia limpa, instalação completa, `doctor`, `--help`, sintaxe Bash e JavaScript, busca de caminhos locais/segredos e inspeção do branding. A instalação limpa reconheceu yt-dlp 2026.08.19, EJS 0.8.0, Playwright CLI 0.1.20, FFmpeg e ffprobe. Nenhuma biblioteca externa, credencial ou sessão de navegador faz parte do repositório.
 
 ### Evidência por capacidade
 
@@ -39,20 +37,25 @@ O fluxo próprio de Bruno foi reintegrado à pasta da skill. A afirmação anter
 - URL Instagram pode conter perfil antes de `/reel/`.
 - Preview remoto mantém origem, autor, aprovação pendente e intervalo original.
 - Cache é reutilizado por hash e o fetch desconta `local_start_s`, preservando o trecho visto.
-- Helpers próprios encontram yt-dlp local e habilitam Node; coletor não reutiliza parcial de download fracassado.
+- A CLI encontra yt-dlp nos layouts `.venv/bin` e `.venv/Scripts`; a trava serial usa backend nativo de macOS/Linux e Windows.
+- Utilitários opcionais YouTube encontram yt-dlp local, habilitam Node e usam arquivo temporário portátil em macOS/Linux; o coletor não reutiliza parcial de download fracassado.
+- O coletor Instagram rejeita DNS privado/misto e IPv6 local, fixa o curl em IP público validado, recusa redirects, confina saídas batch e nunca sobrescreve um MP4 existente.
 - Node antigo é rejeitado antes de instalar dependências.
-- Arquivos de bibliotecas, fontes externas, mídia e credenciais não estão na seleção de distribuição.
+- O instalador PowerShell valida o código de saída de venv, pip, imports, npm, Playwright e `doctor`; a CI executa instalação real em macOS e Windows/Python 3.13.
+- CLI, coletor Instagram e utilitários YouTube vivem sob a única raiz `scripts/getbrolls/`.
+- O Storyboard produzido por `review` incorpora a logo oficial e usa a mesma implementação coberta pela suíte; não há snapshot HTML paralelo preenchido com caso real.
+- Arquivos de bibliotecas, fontes externas, mídia e credenciais não integram o repositório.
 - Permanecem testes de recuperação do ledger, revisão obsoleta, rejeição, interrupção, proporção, GIF, regras e logs sem segredos.
 
 ### Verificação documental
 
-Revisor independente conferiu os transportes e apontou problemas de runtime, parcial curl, instalação e reuso de sessão. Corrigidos com regressões e documentação. O guia Instagram agora diferencia plugin do agente e extensão Playwright, mostra attach/tab-list/tab-select e captura por requests/response-body ou CDP. Não existe promessa de parser automático de captura: como no processo original, o agente opera o navegador e entrega pares ao coletor.
+Revisor independente conferiu transportes, runtime, download parcial, instalação, reuso de sessão, estrutura pública, Storyboard e documentação. O guia Instagram diferencia plugin do agente e extensão Playwright, mostra attach/tab-list/tab-select e captura por requests/response-body ou CDP. Não existe promessa de parser automático de captura: o agente opera o navegador autorizado e entrega os pares ao coletor.
 
 ### Limites preservados
 
 YouTube, Instagram e TikTok têm agora pelo menos um ensaio real concluído nesta rodada. Isso não garante qualquer URL/sessão: o primeiro link TikTok estava indisponível no site e o extrator retornou bloqueio em tentativas anteriores. Reteste com URL disponível pelo navegador e com as dependências instaladas pelo [guia](GUIDE.md#instalação). Não confundir esses erros com ausência de implementação.
 
-macOS/Linux usam Bash e fcntl; Windows nativo não validado. Descoberta automática em novas sessões Codex/Claude e CI remoto não foram executados nesta rodada. O template visual do Storyboard foi incorporado à entrega e precisa permanecer portátil, sem depender de mídia privada do caso usado no desenvolvimento. A revisão usa fontes do sistema; sem fontes baixadas ou bibliotecas embutidas. Aprovação editorial continua humana.
+macOS e Windows são as plataformas principais. O Windows tem instalador e launcher Playwright em PowerShell, layout de venv próprio e trava nativa; os helpers Bash de YouTube são opcionais e ficam no caminho macOS/Linux. A matriz executa instalação real em uma combinação atual de cada plataforma principal; o resultado remoto e a descoberta automática em novas sessões Codex/Claude precisam ser confirmados após a publicação. O Storyboard é gerado pelo próprio CLI, incorpora apenas a logo oficial e usa fontes do sistema. Aprovação editorial continua humana.
 
 Comandos para repetir na pasta da skill:
 
@@ -63,13 +66,13 @@ python3 -m unittest discover -s tests -v
 python3 scripts/gb.py doctor
 ```
 
+No Windows PowerShell, use `scripts/install.ps1 -Check`, `scripts/install.ps1` e `python` nos comandos da suíte/CLI.
+
 `doctor --live` executa buscas limitadas reais e pode consumir quota dos bancos configurados; não testa toda a captura Instagram/TikTok. Os detalhes de origem aparecem na seção [Rotas e evidências](#rotas-e-evidências--15092026).
 
-### Revisão final de documentação — 2.3.4
+### Revisão documental
 
-README, GUIDE, AGENTS, CHANGELOG, CONTRIBUTING, SECURITY e guias de navegação/revisão conferidos contra a implementação. AGENTS.md integra a seleção dos arquivos necessários à skill; `agents/openai.yaml` mantém a invocação `$get-brolls`.
-
-Validação: 28 documentos com frontmatter e links relativos válidos; 13 exemplos de comandos principais aceitos pelo parser; scripts Bash com sintaxe válida. Revisão independente identificou e corrigiu dois pontos no README: `--project` obrigatório no exemplo local e distinção entre duração excedida (erro) e GIF acima do limite de bytes (fallback estático). Nenhum ZIP gerado/alterado. Essa revisão documental não altera a versão 2.3.4 nem substitui os ensaios ao vivo já registrados.
+README, GUIDE, SKILL, AGENTS, CHANGELOG, CONTRIBUTING, SECURITY e avisos de terceiros foram conferidos contra a árvore atual. `agents/openai.yaml` mantém a invocação `$get-brolls`; caminhos documentados apontam para o núcleo `scripts/getbrolls/`. A validação documental não substitui os ensaios ao vivo registrados abaixo.
 
 ## Rotas e evidências — 15/09/2026
 

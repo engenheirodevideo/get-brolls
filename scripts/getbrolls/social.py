@@ -8,9 +8,22 @@ import tempfile
 from .http import ProviderError
 
 
+def local_ytdlp(root=None):
+    root = Path(root) if root is not None else Path(__file__).resolve().parents[2]
+    for relative in (
+        '.venv/Scripts/yt-dlp.exe',
+        '.venv/Scripts/yt-dlp',
+        '.venv/bin/yt-dlp',
+    ):
+        candidate = root / relative
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def command():
-    local = Path(__file__).resolve().parents[2] / '.venv/bin/yt-dlp'
-    exe = str(local) if local.is_file() else shutil.which('yt-dlp')
+    local = local_ytdlp()
+    exe = str(local) if local else shutil.which('yt-dlp')
     if not exe:
         raise ProviderError('yt-dlp ausente: siga GUIDE.md e instale requirements.txt.')
     args = [exe, '--ignore-config', '--no-playlist', '--no-progress', '--no-warnings',
@@ -78,8 +91,8 @@ def download_segment(url, target, start, end):
 
 
 def doctor():
-    return {'engine': 'yt-dlp', 'installed': bool((Path(__file__).resolve().parents[2] / '.venv/bin/yt-dlp').is_file() or shutil.which('yt-dlp')),
+    return {'engine': 'yt-dlp', 'installed': bool(local_ytdlp() or shutil.which('yt-dlp')),
             'javascript_runtime': 'deno' if shutil.which('deno') else 'node' if shutil.which('node') else None,
             'youtube_api_key_required': False,
-            'instagram': 'Navegador/Playwright → configs vídeo+áudio → scripts/instagram/ig_curl_pair_downloader.py',
+            'instagram': 'Navegador/Playwright → configs vídeo+áudio → scripts/getbrolls/instagram_pairs.py',
             'scope': 'Disponibilidade de executáveis; não comprova extração ao vivo nem versão/runtime EJS.'}

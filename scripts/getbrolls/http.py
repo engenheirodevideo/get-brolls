@@ -103,7 +103,7 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
             pass
     _safe_network(url)
     request_headers = {
-        "User-Agent": "GetBrolls/2.0 (video research; contact: local operator)",
+        "User-Agent": "Get-Brolls/2.3.4 (video research; contact: local operator)",
         "Accept": "application/json",
     }
     request_headers.update(headers or {})
@@ -159,7 +159,7 @@ def download(url, target, max_bytes=512 * 1024 * 1024):
         raise ProviderError("Limite de bytes inválido")
     created = False
     try:
-        request = urllib.request.Request(url, headers={"User-Agent": "GetBrolls/2.0"})
+        request = urllib.request.Request(url, headers={"User-Agent": "Get-Brolls/2.3.4"})
         with urllib.request.build_opener(_NoRedirect()).open(
             request, timeout=30
         ) as response:

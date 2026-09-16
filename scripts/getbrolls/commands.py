@@ -8,6 +8,12 @@ from .media import probe, cut, run
 from .rendering import render
 
 
+def _local_playwright(root=None):
+    root = Path(root) if root is not None else Path(__file__).resolve().parents[2]
+    root = root / ".tools/node_modules/.bin"
+    return any((root / name).is_file() for name in ("playwright-cli.cmd", "playwright-cli"))
+
+
 def execute(args):
     from getbrolls.config import load_env, settings
 
@@ -33,7 +39,7 @@ def execute(args):
             from .social import doctor as social_doctor
             result["social"] = social_doctor()
             result["executables"]["yt-dlp"] = result["social"]["installed"]
-            result["executables"]["playwright-cli"] = (Path(__file__).resolve().parents[2] / ".tools/node_modules/.bin/playwright-cli").is_file() or bool(shutil.which("playwright-cli"))
+            result["executables"]["playwright-cli"] = _local_playwright() or bool(shutil.which("playwright-cli"))
         if args.command == "doctor" and args.live:
             from getbrolls.health import live_checks
 

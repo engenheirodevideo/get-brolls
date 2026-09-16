@@ -10,7 +10,7 @@ tags: [get-brolls, documentation]
 
 ## Escopo e entrada
 
-Esta pasta contém a skill `get-brolls`, seus comandos, scripts customizados, interface de revisão e documentação. O processo e os helpers incorporados são de autoria de Bruno e fazem parte desta entrega. Leia [SKILL](SKILL.md) para executar uma coleta e [GUIDE](GUIDE.md#instalação) para preparar o ambiente. Nenhum produto externo de origem é necessário.
+Esta pasta contém o produto **GET B-ROLLS — ENGENHEIRO DE VÍDEO**: skill, CLI, utilitários, interface de revisão e documentação. Leia [SKILL](SKILL.md) para executar uma coleta e [GUIDE](GUIDE.md#instalação) para preparar o ambiente. Nenhum outro repositório é necessário.
 
 Use a pasta da skill como base para scripts e um `--project` explícito para a coleta. Fora desta pasta, execute o CLI pelo caminho absoluto. Não grave projetos/mídias dentro da fonte da skill. Mantenha esta entrega isolada de outras instalações do autor.
 
@@ -22,7 +22,7 @@ Use a pasta da skill como base para scripts e um `--project` explícito para a c
 - Fonte literal nomeada tem prioridade quando a fala citar pessoa, produto ou fato. Prefira 1080p quando disponível; confirme dimensões reais, sem upscale para simular qualidade.
 - `preview` pode obter mídia de trabalho antes da decisão editorial. `--reference-only` é uma escolha explícita. `fetch` publica o corte final depois da decisão humana e das condições de uso registradas.
 - Não invente fala, autor, licença ou aprovação. `approve` registra decisão explícita já recebida. Preserve origem, hash, intervalo e contexto; mudanças relevantes invalidam revisão.
-- Os helpers Bash usam VIDEO_ID do YouTube e não gravam automaticamente o ledger. Importe seus resultados no fluxo comum quando precisar do registro/revisão.
+- Os helpers Bash usam VIDEO_ID do YouTube e não gravam automaticamente o ledger. São opcionais no macOS/Linux; no Windows nativo, use os comandos equivalentes da CLI principal. Importe os resultados dos helpers no fluxo comum quando precisar do registro/revisão.
 
 ## Dependências e arquivos privados
 
@@ -35,11 +35,11 @@ Execute comandos do mesmo projeto serialmente. Preserve originais, eventos e jou
 ## Manutenção
 
 - A versão executável vem de `scripts/getbrolls/__init__.py`; mantenha `SKILL.md`, README, GUIDE, QUALITY e CHANGELOG coerentes quando houver mudança de versão. Revisão documental sem alteração de versão deve aparecer no changelog vigente.
-- Atualize a seção correspondente de `GUIDE.md` junto com o código da rota afetada. O guia consolidado preserva tanto o processo de origem quanto as instruções atuais.
+- Atualize a seção correspondente de `GUIDE.md` junto com o código da rota afetada. O guia é a referência operacional única do produto.
 - Corrija a causa e adicione regressão quando houver bug. Não escreva testes que exijam retirar uma capacidade existente.
 - Use mídia sintética e mocks em testes automatizados. Ensaios de rede ficam fora da fonte e registram URL pública, versão utilizada, resultado, dimensão/duração e limites.
-- Valide comandos documentados com `--help`, links relativos e frontmatter. Markdown usa `type`, `status`, `created`, `updated`, `tags`; no SKILL esses campos ficam em `metadata`.
-- Não execute empacotamento, publicação, push ou instalação pessoal da skill como parte automática de uma revisão. Faça essas ações somente quando incluídas no pedido do usuário. `dist/` contém snapshots antigos, não a versão atual desta pasta.
+- Valide comandos documentados com `--help` e links relativos. Documentos operacionais que usam frontmatter mantêm `type`, `status`, `created`, `updated` e `tags`; no SKILL esses campos ficam em `metadata`.
+- Não execute publicação, push ou instalação pessoal da skill como parte automática de uma revisão. Faça essas ações somente quando incluídas no pedido do usuário. A árvore do repositório é a fonte oficial da entrega.
 
 ## Verificação
 
@@ -48,6 +48,8 @@ bash scripts/install.sh --check
 python3 scripts/gb.py doctor
 python3 -m unittest discover -s tests -v
 ```
+
+No Windows PowerShell, troque o primeiro comando por `powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -Check` e use `python` nos dois seguintes.
 
 `--check` valida pré-requisitos do instalador; não instala bibliotecas nem testa sessão/rede. `doctor` informa disponibilidade; `doctor --live` faz buscas/refresh limitados e pode consumir quota. Nenhum deles substitui teste de aquisição, prévia e decodificação da fonte afetada.
 

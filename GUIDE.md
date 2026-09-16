@@ -8,13 +8,13 @@ tags: [get-brolls, guide, installation, providers, storyboard]
 
 # Guia completo — Get B-rolls
 
-Este é o manual operacional único da entrega: instalação, compatibilidade, fluxo editorial, provedores, navegador, Instagram, tipos de asset e Storyboard. O conteúdo foi consolidado sem remover os procedimentos do produto de origem; nomes internos foram neutralizados para que a entrega seja autônoma.
+Este é o manual operacional único do **GET B-ROLLS — ENGENHEIRO DE VÍDEO**: instalação, compatibilidade, fluxo editorial, provedores, navegador, Instagram, tipos de asset e Storyboard.
 
 ## Navegação rápida
 
 - [Instalação](#instalação)
 - [Compatibilidade](#compatibilidade)
-- [Fluxo editorial](#fluxo-editorial-de-origem)
+- [Fluxo editorial](#fluxo-editorial)
 - [Fontes e transportes](#fontes-e-transportes)
 - [Tipos de assets](#tipos-de-assets-e-formatos)
 - [Captura pelo navegador](#captura-de-notícias-e-páginas-pelo-navegador)
@@ -33,19 +33,18 @@ Este é o manual operacional único da entrega: instalação, compatibilidade, f
 | Node 22+ | Playwright CLI e EJS do yt-dlp; Deno 2.3+ é alternativa apenas ao runtime EJS |
 | Node/npm/npx + Playwright CLI + navegador | Captura de streams Instagram e inspeção pelo navegador |
 | curl | Baixar os dois streams Instagram capturados |
-| Bash e awk | Helpers originais `scripts/broll/gb_*.sh` |
+| Bash e awk | Somente os helpers opcionais em `scripts/getbrolls/tools/youtube/`; a CLI principal não depende deles |
+| Fonte DejaVu, Liberation ou Arial | Título, índice e tempo no contact sheet; use `GB_FONT_FILE` para indicar outra fonte TrueType |
 
 Git é opcional. API key YouTube não é necessária. Pexels/Pixabay usam apenas suas próprias chaves opcionais. `curl-cffi` é extra opcional do yt-dlp, não requisito universal.
 
-### macOS / Linux
+### macOS
 
 Instale Python, FFmpeg, curl e Node pelo gerenciador de pacotes do sistema. Em macOS com Homebrew:
 
 ```sh
 brew install python ffmpeg node
 ```
-
-Em Ubuntu/Debian, instale a base com `sudo apt-get install python3 python3-venv ffmpeg curl`; instale também Node 22+ pela distribuição oficial. Confirme versões; não presuma que o Node do repositório do sistema é recente.
 
 Dentro da pasta da skill `get-brolls/`:
 
@@ -54,12 +53,26 @@ bash scripts/install.sh --check
 bash scripts/install.sh
 ```
 
-O instalador cria `.venv` e instala `yt-dlp[default]`/EJS do PyPI via `requirements.txt`; instala também `@playwright/cli@0.1.20` do npm em `.tools`. Valida Python 3.11+, Node 22+, npm/npx e os executáveis base. Essas pastas de dependências ficam somente na máquina de quem instala e não fazem parte da distribuição da skill. Não instala executáveis do sistema nem altera a instalação do agente. A CLI procura primeiro `.venv/bin/yt-dlp`, depois o PATH. Os helpers também localizam a venv; ativá-la é opcional:
+O instalador cria `.venv` e instala `yt-dlp[default]`/EJS do PyPI via `requirements.txt`; instala também `@playwright/cli@0.1.20` do npm em `.tools`. Valida Python 3.11+, Node 22+, npm/npx e os executáveis base. Essas pastas de dependências ficam somente na máquina de quem instala e não fazem parte do repositório. Não instala executáveis do sistema nem altera a instalação do agente. A CLI procura primeiro o yt-dlp da `.venv`, depois o `PATH`. Ativar a venv é opcional:
 
 ```sh
 source .venv/bin/activate
 python scripts/gb.py doctor
 ```
+
+### Windows
+
+Instale Python 3.11+, FFmpeg e Node 22+ pelos instaladores oficiais ou pelo gerenciador de pacotes da sua preferência. Durante a instalação, habilite o `PATH`. Abra PowerShell na pasta `get-brolls/` e execute:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -Check
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1
+python scripts/gb.py doctor
+```
+
+O instalador usa `.venv\Scripts\python.exe` e o launcher `.cmd` do Playwright; não exige Git Bash nem WSL. Se a política local já permite scripts, também é possível executar `& .\scripts\install.ps1`. Os helpers `.sh` de YouTube são opcionais; no Windows, use `search`, `preview`, `fetch` e `verify` pela CLI principal.
+
+Linux continua compatível como plataforma secundária. Em Ubuntu/Debian, instale `python3`, `python3-venv`, `ffmpeg` e `curl`, além de Node 22+, e use `scripts/install.sh` como no macOS.
 
 `doctor` lista executáveis e transporte; não certifica login, acesso a cada site ou extração ao vivo. `doctor --live` faz buscas remotas explicitamente e pode consumir quota dos bancos configurados.
 
@@ -75,6 +88,14 @@ bash scripts/playwright.sh -s=getbrolls-instagram tab-list
 bash scripts/playwright.sh -s=getbrolls-instagram tab-select INDICE_OBSERVADO
 ```
 
+No Windows PowerShell, use os mesmos argumentos pelo launcher nativo:
+
+```powershell
+& .\scripts\playwright.ps1 -s=getbrolls-instagram attach --extension=chrome
+& .\scripts\playwright.ps1 -s=getbrolls-instagram tab-list
+& .\scripts\playwright.ps1 -s=getbrolls-instagram tab-select INDICE_OBSERVADO
+```
+
 A extensão Playwright e o plugin de navegador do agente são integrações diferentes. Use a que estiver disponível; não tente conectar a extensão de uma ferramenta com a CLI da outra. A instalação da CLI não instala extensões nem importa cookies. Consulte a [documentação oficial da extensão](https://github.com/microsoft/playwright/blob/main/packages/extension/README.md) quando precisar configurar essa alternativa.
 
 Sem navegador existente, crie sessão própria:
@@ -83,7 +104,7 @@ Sem navegador existente, crie sessão própria:
 bash scripts/playwright.sh -s=getbrolls-instagram open https://www.instagram.com/ --headed
 ```
 
-Se faltar o navegador, execute `bash scripts/playwright.sh install-browser chrome`, conforme `--help` da CLI. Login ocorre nessa sessão e depende da conta do destinatário. Nunca distribua perfil/sessão de Bruno.
+Se faltar o navegador, execute `bash scripts/playwright.sh install-browser chrome` no macOS ou `& .\scripts\playwright.ps1 install-browser chrome` no Windows, conforme `--help` da CLI. Login ocorre nessa sessão e depende da conta do usuário. Nunca distribua perfis, cookies ou sessões de outra pessoa.
 
 O método completo está na seção [Instagram pelo navegador](#instagram--navegadorplaywright-dois-streams-e-mp4): navegador → streams vídeo/áudio → configs privados → curl → FFmpeg → ffprobe. O script de pares não substitui a etapa de captura operada pelo agente.
 
@@ -91,11 +112,11 @@ Referências de instalação: [yt-dlp/EJS](https://github.com/yt-dlp/yt-dlp/wiki
 
 ### Configuração
 
-`cp .env.example .env` é opcional. O `.env` pertence à raiz da skill, independentemente da pasta atual. Ambiente do processo prevalece. `--env-file /caminho/.env` vem antes do subcomando. Nunca distribua `.env`, cookies, configs CDN ou perfis do navegador.
+Copiar `.env.example` para `.env` é opcional (`cp .env.example .env` no macOS; `Copy-Item .env.example .env` no PowerShell). O `.env` pertence à raiz da skill, independentemente da pasta atual. Ambiente do processo prevalece. `--env-file CAMINHO` vem antes do subcomando. Nunca distribua `.env`, cookies, configs CDN ou perfis do navegador.
 
 ### Codex e Claude Code
 
-Copie os arquivos da skill, incluindo `AGENTS.md`, `scripts/broll/` e `scripts/instagram/`, para **um** dos destinos abaixo. Escolha instalação pessoal ou por projeto para evitar duplicatas com o mesmo nome. Ao partir de uma pasta de desenvolvimento, exclua `dist/`, `.venv/`, `.tools/`, `__pycache__/`, projetos e arquivos privados. Execute o instalador no destino final; não mova uma venv entre pastas:
+Use o repositório oficial [engenheirodevideo/get-brolls](https://github.com/engenheirodevideo/get-brolls): `git clone https://github.com/engenheirodevideo/get-brolls.git`. Clone ou copie a pasta completa da skill para **um** dos destinos abaixo. Escolha instalação pessoal ou por projeto para evitar duplicatas com o mesmo nome. Exclua `.venv/`, `.tools/`, `__pycache__/`, projetos e arquivos privados ao copiar uma árvore de desenvolvimento. Execute o instalador no destino final; não mova uma venv entre pastas:
 
 | Agente | Pessoal | Projeto | Invocação |
 |---|---|---|---|
@@ -109,11 +130,11 @@ python3 "$GB_SKILL_DIR/scripts/gb.py" doctor
 python3 "$GB_SKILL_DIR/scripts/gb.py" search --provider youtube --query "NASA Artemis" --limit 3 --project "$GB_PROJECT"
 ```
 
-Defina GB_SKILL_DIR e GB_PROJECT com os caminhos reais. O pacote completo usa `fcntl` para trava e Bash nos helpers: macOS/Linux. Windows nativo não foi validado; WSL precisa dos executáveis instalados dentro do Linux e deve ser testado nesse ambiente.
+Defina `GB_SKILL_DIR` e `GB_PROJECT` com os caminhos reais. A trava de projeto usa o mecanismo nativo de cada sistema (`flock` em macOS/Linux e `msvcrt` no Windows). A CLI principal funciona sem Bash; Bash fica restrito aos helpers opcionais de YouTube.
 
 ### Verificação e atualização
 
-Após instalar, confirme `yt-dlp` e `playwright-cli` em `doctor`. Para a CLI Playwright local, execute `bash scripts/playwright.sh --version`. Um status positivo indica disponibilidade, não que todas as URLs serão acessíveis.
+Após instalar, confirme `yt-dlp` e `playwright-cli` em `doctor`. Para a CLI Playwright local, execute `bash scripts/playwright.sh --version` no macOS ou `& .\scripts\playwright.ps1 --version` no Windows. Um status positivo indica disponibilidade, não que todas as URLs serão acessíveis.
 
 O conjunto ensaiado nesta versão foi yt-dlp 2026.08.19, EJS 0.8.0 e Playwright CLI 0.1.20. `requirements.txt` aceita yt-dlp a partir de 2026.8.19 e pode resolver uma versão mais nova; o npm instala a versão de Playwright indicada no instalador. Preserve configurações privadas antes de atualizar a skill e repita um ensaio da rota utilizada se as dependências mudarem.
 
@@ -127,12 +148,12 @@ Se `--check` falhar, instale o executável/versão apontado. Se a extração fal
 - CLI preserva schema do manifest v1 e adiciona `project_id`, metadados de prévia e revisão. Exportação de revisão usa `templateVersion: 2`.
 - Artefatos do protótipo anterior não têm assinatura de fonte/intervalo; não podem ser importados. Regenere o storyboard com `review`.
 - `--shot` permite múltiplos inserts da mesma fonte; sem ele, a resolução deduplica por fonte.
-- Helpers originais e coletor Instagram incluídos na 2.3.4. Review usa GIF/imagens, sem player remoto incorporado.
+- Utilitários YouTube e coletor Instagram fazem parte do mesmo núcleo `scripts/getbrolls/`. Review usa GIF/imagens, sem player remoto incorporado.
 - Projeto local confiável, uso serial. Comandos simultâneos no mesmo projeto são recusados. Não há colaboração multiusuário; evidências remotas por fonte estão em QUALITY.
 
 Versão 2.3: asset_type/image, RULES e biblioteca de referências por projeto. APIs pesquisam vídeos; imagens e screenshots entram por arquivo local. Regras usam JSON embutido em Markdown; nenhum parser YAML externo é necessário.
 
-2.3.1 centraliza a assinatura incluindo o escopo da prévia e arquivos de contexto. Regenere o storyboard de versões anteriores e solicite nova revisão; JSON antigo pode ser recusado como desatualizado. Suporte da trava local: macOS/Linux (`fcntl`).
+2.3.1 centraliza a assinatura incluindo o escopo da prévia e arquivos de contexto. Regenere o storyboard de versões anteriores e solicite nova revisão; JSON antigo pode ser recusado como desatualizado. A trava local tem backend nativo para macOS, Windows e Linux.
 
 ### Agentes — revisão 2.3.2
 
@@ -146,34 +167,31 @@ A prévia remota agora pode adquirir um trecho e guardar `local_start_s` junto a
 
 Projetos que já possuíam arquivo local continuam usando esse arquivo. Preserve os caminhos dos originais e `.getbrolls-sources/` para regenerar prévias; compartilhar só `brolls/` permite visualizar o storyboard, não continuar toda a edição em outro computador.
 
-A suíte atual passou em macOS/Python 3.14.6. A matriz CI de Python 3.11/3.12/3.13 no Ubuntu está configurada, mas sua execução remota não foi verificada nesta rodada. Windows nativo não é suportado pelo uso de `fcntl`; WSL é um ambiente Linux separado e ainda precisa de validação própria. As versões de dependências ensaiadas estão na seção [Instalação](#instalação).
+A suíte local atual passou em macOS. A matriz CI cobre macOS e Windows em Python 3.11/3.13, com Linux/Python 3.13 como plataforma secundária. O Windows usa instalador PowerShell, layout `.venv\Scripts` e trava nativa; os helpers Bash opcionais não fazem parte do caminho principal nesse sistema. A primeira execução remota da nova matriz ainda precisa ser confirmada após a publicação. As versões de dependências ensaiadas estão na seção [Instalação](#instalação).
 
-## Fluxo editorial de origem
-
-> Referência de origem do processo original. Para execução nesta versão, siga SKILL.md e os guias de rotas atuais; nomes específicos de ferramentas e limitações históricas abaixo não substituem a capacidade da sessão atual.
-
+## Fluxo editorial
 
 Coleta B-roll dirigida pelo contrato de edição. Confirma no navegador antes de baixar; nunca autora vídeo.
 
 ### Fluxo
-> **Meta: 8+ clipes literais por roteiro** (padrão do Bruno). Se os beats óbvios não fecham 8, amplie: mais empresas/pessoas citadas, cobertura de telejornal do mesmo fato, produto nomeado (ex.: Agentforce), pregão/mercado real, segmentos extras da mesma fonte forte. Todos 1080p (cheque com ffprobe; troque fontes 360/720 quando houver 1080).
+> **Meta editorial: 8+ clipes literais por roteiro quando o conteúdo comportar.** Se os beats óbvios não fecham 8, amplie: mais empresas/pessoas citadas, cobertura de telejornal do mesmo fato, produto nomeado, pregão/mercado real ou segmentos extras da mesma fonte forte. Prefira 1080p quando disponível e confirme com ffprobe; não faça upscale para simular qualidade.
 1. **plan** — dos blocos do contrato (`clips[].bloco_roteiro` / `fala`), derive N beats visuais (query em inglês). Prefira **entidade literal nomeada** (pessoa/produto/logo do que a fala cita: Sam Altman, OpenAI, SoftBank, Codex…) — é onde o YouTube dá material real e limpo. Beats abstratos (back-office, "dev", "automação") caem em tutorial/vlog/stock/desenho; use no máximo um demo de produto real (ex.: dashboard ERP) ou deixe no rosto do talento.
-2. **search** — YouTube sem baixar: `gb_search.sh "<query>" [n]` → `ID | DURATION | TITLE`.
-3. **confirm** — preview por **contact sheet** (NÃO 1 frame solto): `gb_contact.sh <id> <START-END> <out.jpg> [interval_seg=1.5] [cols=4]` amostra N frames igualmente espaçados no segmento e tila num grid numerado → dá pra ler o MOVIMENTO/sequência e pegar legenda queimada/overlay antes de baixar. Default `1.5s` (visão ampla); `0.5s` quando precisar densidade. `gb_frame.sh` (1 still) vira fallback. **Gate: Bruno aprova antes de baixar.**
-4. **download** — segmento trimado 1080p: `gb_fetch.sh <id> <START-END> <NN_entity_context> <PROJETO>/brolls`.
-5. **verify** — `gb_verify.sh <PROJETO>/brolls` (tabela ffprobe + tamanho).
-6. **(opcional) vertical** — `gb_vertical.sh <in>` pra 9:16 com fundo borrado.
+2. **search** — YouTube sem baixar: `search.sh "<query>" [n]` → `ID | DURATION | TITLE`.
+3. **confirm** — preview por **contact sheet** (não um frame solto): `contact.sh <id> <START-END> <out.jpg> [interval_seg=1.5] [cols=4]` amostra quadros igualmente espaçados e organiza uma grade numerada para ler movimento, sequência e overlays antes de baixar. Use `1.5s` como visão ampla e `0.5s` quando precisar de densidade. `frame.sh` é o fallback. **Gate: o usuário ou revisor aprova antes do corte final.**
+4. **download** — segmento trimado 1080p: `fetch.sh <id> <START-END> <NN_entity_context> <PROJETO>/brolls`.
+5. **verify** — `verify.sh <PROJETO>/brolls` (tabela ffprobe + tamanho).
+6. **(opcional) vertical** — `vertical.sh <in>` pra 9:16 com fundo borrado.
 
 ### Imagens de notícia (manchete/dado)
-- **Print de site não vira arquivo utilizável.** O `save_to_disk` do `claude-in-chrome` guarda no sandbox da extensão (só devolve `ss_<id>`, sem path no filesystem); `screencapture -R` da janela falhou ("could not create image from rect" — falta permissão de Screen Recording pro processo). Não prometa baixar manchete estática.
+- **Print de site precisa virar arquivo local verificável.** Use a captura do navegador autorizado, confira o arquivo visualmente e importe com URL, manchete, autor e data reais. Se a integração só devolver um identificador interno sem caminho acessível, registre a limitação em vez de prometer o asset.
 - **Prefira notícia em VÍDEO**: cobertura real (Reuters/CNBC/Bloomberg) no YouTube pelo mesmo fluxo (vira mp4 no projeto).
 - **Estático** = entregar **lista de links + o que grifar** num `BROLL-MAP.md`, pro humano printar. Alguns sites (PYMNTS) caem em Cloudflare; Benzinga abre normal.
 
 ### Engine / scripts
-Os helpers `gb_*.sh` agora acompanham a própria skill, sem depender do componente externo `get-broll`:
-`${GB_SKILL_DIR}/scripts/broll/gb_search.sh`, `gb_contact.sh` (contact sheet — preview padrão),
-`gb_frame.sh` (still fallback), `gb_fetch.sh`, `gb_verify.sh`, `gb_vertical.sh`.
-Deps: `yt-dlp` + `ffmpeg` + `screencapture`(macOS quando houver preview/browser).
+Os utilitários YouTube acompanham a própria skill:
+`${GB_SKILL_DIR}/scripts/getbrolls/tools/youtube/search.sh`, `contact.sh` (contact sheet — preview padrão),
+`frame.sh` (still fallback), `fetch.sh`, `verify.sh`, `vertical.sh`.
+Dependências: `yt-dlp` + FFmpeg. Capturas de página usam a integração de navegador autorizada ou o launcher Playwright do sistema.
 
 ### Saída
 `<PROJETO>/brolls/NN_entity_context.mp4`. Registrar no ledger (`step: get-brolls`, outputs = arquivos baixados).
@@ -196,13 +214,13 @@ Fluxo único: descobrir → obter mídia de trabalho/mostrar sequência → revi
 
 ## Provedor — YouTube
 
-Motor original: yt-dlp + FFmpeg, **sem API key**. `search --provider youtube` usa ytsearch. `resolve --url` aceita URL de vídeo/shorts; `preview` obtém o intervalo e gera GIF/contact sheet, mantendo aprovação pendente. `fetch` publica os bytes revisados após decisão humana e registro de condições do projeto.
+Motor: yt-dlp + FFmpeg, **sem API key**. `search --provider youtube` usa ytsearch. `resolve --url` aceita URL de vídeo/shorts; `preview` obtém o intervalo e gera GIF/contact sheet, mantendo aprovação pendente. `fetch` publica os bytes revisados após decisão humana e registro de condições do projeto.
 
-Helpers originais em `scripts/broll/`: gb_search.sh, gb_contact.sh, gb_frame.sh, gb_fetch.sh, gb_verify.sh e gb_vertical.sh. Interface antiga usa VIDEO_ID; o CLI novo aceita URL. Configure EJS/runtime conforme GUIDE. Se o site exigir sessão ou negar mídia, reporte o erro real; não troque silenciosamente para API com chave.
+Utilitários em `scripts/getbrolls/tools/youtube/`: `search.sh`, `contact.sh`, `frame.sh`, `fetch.sh`, `verify.sh` e `vertical.sh`. Eles usam `VIDEO_ID`; a CLI principal aceita URL e integra ledger/revisão. Configure EJS/runtime conforme este guia. Se o site exigir sessão ou negar mídia, reporte o erro real; não troque silenciosamente para API com chave.
 
 ## Provedor — Instagram
 
-Rota principal: **navegador/Playwright → URL CDN de vídeo + URL CDN de áudio → curl → FFmpeg → ffprobe**. Leia a seção [Instagram pelo navegador](#instagram--navegadorplaywright-dois-streams-e-mp4) e use o coletor incluído em `scripts/instagram/ig_curl_pair_downloader.py`.
+Rota principal: **navegador/Playwright → URL CDN de vídeo + URL CDN de áudio → curl → FFmpeg → ffprobe**. Leia a seção [Instagram pelo navegador](#instagram--navegadorplaywright-dois-streams-e-mp4) e use o coletor incluído em `scripts/getbrolls/instagram_pairs.py`.
 
 O MP4 unido entra com `resolve --file --source-url --creator --shot`; depois preview/review/fetch. O browser captura os streams; o script baixa/junta. Não exige chave da API oficial Instagram. A página pode exigir sessão. yt-dlp também está disponível via URL completa, se funcionar para aquele post; falha dessa rota não remove o fluxo de navegador.
 
@@ -300,9 +318,19 @@ python3 scripts/gb.py references --project ./video-01
 python3 scripts/gb.py browser-plan --url https://www.nasa.gov/news/recently-published/ --project ./video-01
 ```
 
+Windows PowerShell:
+
+```powershell
+python scripts/gb.py rules --project .\video-01
+python scripts/gb.py references --project .\video-01
+python scripts/gb.py browser-plan --url https://www.nasa.gov/news/recently-published/ --project .\video-01
+```
+
 Leia primeiro as regras editoriais e referências aprovadas/rejeitadas. Priorize `preferred_domains` nas pesquisas do navegador e não use `blocked_domains`. Exemplos de queries: assunto + entidade + site preferido. Confira a URL real encontrada; não invente resultados.
 
 Defina `GB_SKILL_DIR` com a pasta instalada. Os exemplos abaixo usam a CLI local preparada conforme a seção [Instalação](#instalação). `browser-plan` também pode emitir a forma equivalente via `npx`, que obtém a CLI do npm quando necessário.
+
+Os blocos desta seção mostram a forma macOS. No Windows PowerShell, troque `bash "$GB_SKILL_DIR/scripts/playwright.sh"` por `& "$env:GB_SKILL_DIR\scripts\playwright.ps1"`; os argumentos seguintes são os mesmos. Use caminhos do seu sistema para o projeto.
 
 O plano devolve comandos `open`, `resize`, `snapshot` e `screenshot`, caminho único e tipo habilitado para a captura. Execute em ordem e inspecione o snapshot antes de interações. Exemplo operacional:
 
@@ -315,6 +343,15 @@ bash "$GB_SKILL_DIR/scripts/playwright.sh" -s=getbrolls snapshot
 # ... snapshot
 # Use o caminho de captura fornecido por browser-plan:
 bash "$GB_SKILL_DIR/scripts/playwright.sh" -s=getbrolls screenshot --filename=./video-01/output/playwright/news.png
+```
+
+Windows PowerShell:
+
+```powershell
+& "$env:GB_SKILL_DIR\scripts\playwright.ps1" -s=getbrolls open https://www.nasa.gov/news/recently-published/ --headed
+& "$env:GB_SKILL_DIR\scripts\playwright.ps1" -s=getbrolls resize 390 844
+& "$env:GB_SKILL_DIR\scripts\playwright.ps1" -s=getbrolls snapshot
+& "$env:GB_SKILL_DIR\scripts\playwright.ps1" -s=getbrolls screenshot --filename="$env:GB_PROJECT\output\playwright\news.png"
 ```
 
 `resize` muda a área visível para layout móvel. Não é emulação completa de dispositivo/touch/user-agent. Para horizontal, configure viewport desktop no RULES. Full-page é configurável, mas prints longos não cabem automaticamente num insert 9:16: selecione trecho legível, mantendo a origem. Não distorça a página para preencher o frame.
@@ -332,17 +369,21 @@ python3 scripts/gb.py preview --candidate ID --narration "Fala do roteiro" --rea
 python3 scripts/gb.py review --project ./video-01
 ```
 
+No Windows, use `python` e caminhos PowerShell, por exemplo `python scripts/gb.py resolve --file "$env:GB_PROJECT\output\playwright\news.png" ... --project "$env:GB_PROJECT"`.
+
 Substitua os metadados de exemplo pelos dados reais. Imagem estática não exige `--start/--end`. Se apenas `web_screenshot` estiver habilitado, use esse tipo. Revisão, decisão de direitos, fetch e referência seguem o fluxo normal.
 
 Não execute `close-all` nem feche abas de outros projetos. Encerre somente a sessão criada para a captura quando terminar. Se o ambiente do agente exigir outro transporte de navegador, mantenha a mesma sequência e metadados usando suas ferramentas autorizadas.
 
 ## Instagram — navegador/Playwright, dois streams e MP4
 
-Processo portado de fluxo Instagram de origem. O motor de download/merge é uma cópia do script existente, em `scripts/instagram/ig_curl_pair_downloader.py`. A captura acontece na sessão do navegador operada pelo agente; o script Python consome os pares capturados. [Instruções originais portadas](#instagram--recuperacao-e-auditoria).
+O fluxo Instagram usa o módulo `scripts/getbrolls/instagram_pairs.py`. A captura acontece na sessão do navegador autorizada pelo usuário; o módulo consome os pares de vídeo e áudio capturados. Consulte também [recuperação e auditoria](#instagram--recuperação-e-auditoria).
 
 ### 1. Abrir o Reel e capturar as fontes
 
 Use a URL real do Reel na sessão autorizada. **Se há Chrome logado indicado pelo usuário, reutilize esse Chrome pelo plugin do agente.** Não abra outra sessão sem necessidade. Com a extensão oficial Playwright disponível, a alternativa executável é:
+
+Os exemplos abaixo usam macOS. No Windows PowerShell, substitua o início `bash "$GB_SKILL_DIR/scripts/playwright.sh"` por `& "$env:GB_SKILL_DIR\scripts\playwright.ps1"`, mantendo os argumentos.
 
 ```sh
 bash "$GB_SKILL_DIR/scripts/playwright.sh" -s=getbrolls-instagram attach --extension=chrome
@@ -350,6 +391,16 @@ bash "$GB_SKILL_DIR/scripts/playwright.sh" -s=getbrolls-instagram tab-list
 bash "$GB_SKILL_DIR/scripts/playwright.sh" -s=getbrolls-instagram tab-select INDICE_OBSERVADO
 bash "$GB_SKILL_DIR/scripts/playwright.sh" -s=getbrolls-instagram goto "$REEL_URL"
 bash "$GB_SKILL_DIR/scripts/playwright.sh" -s=getbrolls-instagram snapshot
+```
+
+Windows PowerShell:
+
+```powershell
+& "$env:GB_SKILL_DIR\scripts\playwright.ps1" -s=getbrolls-instagram attach --extension=chrome
+& "$env:GB_SKILL_DIR\scripts\playwright.ps1" -s=getbrolls-instagram tab-list
+& "$env:GB_SKILL_DIR\scripts\playwright.ps1" -s=getbrolls-instagram tab-select INDICE_OBSERVADO
+& "$env:GB_SKILL_DIR\scripts\playwright.ps1" -s=getbrolls-instagram goto "$env:REEL_URL"
+& "$env:GB_SKILL_DIR\scripts\playwright.ps1" -s=getbrolls-instagram snapshot
 ```
 
 `INDICE_OBSERVADO` vem de `tab-list`. A extensão Playwright não é a extensão do plugin Codex; quando só esta estiver conectada, controle o Chrome por ela. Sem sessão existente, `open "$REEL_URL" --headed` cria uma sessão própria. Login necessário é realizado pelo humano nessa sessão.
@@ -373,6 +424,18 @@ bash "$GB_SKILL_DIR/scripts/playwright.sh" -s=getbrolls-instagram requests > "$G
 bash "$GB_SKILL_DIR/scripts/playwright.sh" -s=getbrolls-instagram --raw response-body INDICE_OBSERVADO > "$GB_PROJECT/work/instagram-configs/reel-response.private.txt"
 ```
 
+Windows PowerShell cria a pasta dentro do projeto e restringe sua ACL ao usuário atual antes de gravar as respostas:
+
+```powershell
+$ConfigDir = Join-Path $env:GB_PROJECT 'work\instagram-configs'
+New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
+icacls $ConfigDir /inheritance:r /grant:r "${env:USERNAME}:(OI)(CI)F" | Out-Null
+& "$env:GB_SKILL_DIR\scripts\playwright.ps1" -s=getbrolls-instagram requests |
+  Set-Content -Encoding UTF8 (Join-Path $ConfigDir 'requests.private.txt')
+& "$env:GB_SKILL_DIR\scripts\playwright.ps1" -s=getbrolls-instagram --raw response-body INDICE_OBSERVADO |
+  Set-Content -Encoding UTF8 (Join-Path $ConfigDir 'reel-response.private.txt')
+```
+
 `response-body` salva corpos binários em arquivo e informa o caminho. Em resposta textual, o agente analisa JSON/XML observado e escreve os configs a seguir; não há parser de captura automática embutido. Se a ferramenta não oferece respostas/manifesto, informe essa limitação e use a integração autorizada que ofereça, sem substituir a origem por stock.
 
 Escolha as duas representações **do mesmo Reel** pelo manifesto/identificador e conteúdo, não simplesmente os dois primeiros MP4 da página. Recomendações e pré-carregamento podem pertencer a outros vídeos. URL `blob:` é referência interna do player e não serve ao curl; use a URL HTTPS real de CDN que a página requisitou. Preserve query assinada necessária à requisição.
@@ -386,12 +449,24 @@ url = "URL_HTTPS_REAL_DO_STREAM_DE_VIDEO"
 url = "URL_HTTPS_REAL_DO_STREAM_DE_AUDIO"
 ```
 
-São **dois arquivos**, com o mesmo prefixo e sufixos `_video.conf` / `_audio.conf`. O coletor lê `url` e opcionalmente `output`; não repassa headers arbitrários do config ao curl. Se a fonte exigir headers/cookies além da URL, não invente suporte: registre a necessidade e use a ferramenta de navegador autorizada para obter as partes, registrando `output` no config para reaproveitá-las. Não exponha cookies/URLs assinadas nos relatórios, HTML ou ZIP.
+São **dois arquivos**, com o mesmo prefixo e sufixos `_video.conf` / `_audio.conf`. O coletor lê `url` e opcionalmente `output`; aceita somente HTTPS público, sem credenciais, host local ou IP privado, resolve todos os endereços do host e fixa o curl num IP público validado. Redirecionamentos são recusados. `output` fica confinado à raiz configurada e outputs batch ficam confinados ao diretório pedido; arquivos existentes não são sobrescritos. Ele não repassa headers arbitrários ao curl. Se a fonte exigir headers/cookies além da URL, não invente suporte: registre a necessidade e use a ferramenta de navegador autorizada para obter as partes dentro do projeto, registrando `output` no config para reaproveitá-las. Não exponha cookies ou URLs assinadas nos relatórios e no Storyboard.
 
 ### 2. Baixar os dois canais, juntar e verificar
 
 ```sh
-python3 "$GB_SKILL_DIR/scripts/instagram/ig_curl_pair_downloader.py"   --video-config "$GB_PROJECT/work/instagram-configs/01_REEL_video.conf"   --audio-config "$GB_PROJECT/work/instagram-configs/01_REEL_audio.conf"   --output "$GB_PROJECT/sources/instagram/01_REEL.mp4"   --parts-dir "$GB_PROJECT/work/instagram-parts"   --config-output-root "$GB_PROJECT"   --summary-json "$GB_PROJECT/work/instagram-summary.json"
+python3 "$GB_SKILL_DIR/scripts/getbrolls/instagram_pairs.py"   --video-config "$GB_PROJECT/work/instagram-configs/01_REEL_video.conf"   --audio-config "$GB_PROJECT/work/instagram-configs/01_REEL_audio.conf"   --output "$GB_PROJECT/sources/instagram/01_REEL.mp4"   --parts-dir "$GB_PROJECT/work/instagram-parts"   --config-output-root "$GB_PROJECT"   --summary-json "$GB_PROJECT/work/instagram-summary.json"
+```
+
+Windows PowerShell:
+
+```powershell
+python "$env:GB_SKILL_DIR\scripts\getbrolls\instagram_pairs.py" `
+  --video-config "$env:GB_PROJECT\work\instagram-configs\01_REEL_video.conf" `
+  --audio-config "$env:GB_PROJECT\work\instagram-configs\01_REEL_audio.conf" `
+  --output "$env:GB_PROJECT\sources\instagram\01_REEL.mp4" `
+  --parts-dir "$env:GB_PROJECT\work\instagram-parts" `
+  --config-output-root "$env:GB_PROJECT" `
+  --summary-json "$env:GB_PROJECT\work\instagram-summary.json"
 ```
 
 O script baixa com curl, mapeia vídeo do primeiro input e áudio do segundo, normaliza H.264/yuv420p + AAC e verifica streams via ffprobe. Se a URL expirou, recapture no navegador. Um erro de acesso não significa que a plataforma é somente referência.
@@ -399,7 +474,19 @@ O script baixa com curl, mapeia vídeo do primeiro input e áudio do segundo, no
 ### 3. Batch e áudio duplicado
 
 ```sh
-python3 "$GB_SKILL_DIR/scripts/instagram/ig_curl_pair_downloader.py"   --config-dir "$GB_PROJECT/work/instagram-configs"   --output-dir "$GB_PROJECT/sources/instagram"   --parts-dir "$GB_PROJECT/work/instagram-parts"   --config-output-root "$GB_PROJECT"   --layout flat --fail-on-duplicate-audio   --summary-json "$GB_PROJECT/work/instagram-summary.json"
+python3 "$GB_SKILL_DIR/scripts/getbrolls/instagram_pairs.py"   --config-dir "$GB_PROJECT/work/instagram-configs"   --output-dir "$GB_PROJECT/sources/instagram"   --parts-dir "$GB_PROJECT/work/instagram-parts"   --config-output-root "$GB_PROJECT"   --layout flat --fail-on-duplicate-audio   --summary-json "$GB_PROJECT/work/instagram-summary.json"
+```
+
+Windows PowerShell:
+
+```powershell
+python "$env:GB_SKILL_DIR\scripts\getbrolls\instagram_pairs.py" `
+  --config-dir "$env:GB_PROJECT\work\instagram-configs" `
+  --output-dir "$env:GB_PROJECT\sources\instagram" `
+  --parts-dir "$env:GB_PROJECT\work\instagram-parts" `
+  --config-output-root "$env:GB_PROJECT" `
+  --layout flat --fail-on-duplicate-audio `
+  --summary-json "$env:GB_PROJECT\work\instagram-summary.json"
 ```
 
 Em batch, mantenha o gate de hash de áudio. Dois Reels podem ter áudio igual legitimamente; uma colisão exige conferir o par correto, não ignorar a detecção automaticamente. `--force-download` obtém novamente; `--no-prefer-config-output` evita somente o arquivo apontado no config; ainda pode reutilizar `parts-dir`. Para descartar uma parte suspeita, use `--force-download` após recapturar os URLs ou um novo diretório de partes. Preserve arquivos anteriores antes de substituir.
@@ -412,11 +499,13 @@ python3 "$GB_SKILL_DIR/scripts/gb.py" preview --candidate "$LOCAL_ID" --start 0 
 python3 "$GB_SKILL_DIR/scripts/gb.py" review --project "$GB_PROJECT"
 ```
 
+Windows PowerShell usa os mesmos argumentos com `python "$env:GB_SKILL_DIR\scripts\gb.py"`, `$env:GB_PROJECT`, `$env:REEL_URL` e `$env:CREATOR`.
+
 Use o ID local retornado e um intervalo que caiba no vídeo. Confira visualmente sincronização, identidade e conteúdo; áudio presente não comprova que é o áudio correto. O candidato fica pendente; não se autoaprove. O download das partes para inspecionar a mídia é preparação, distinta do corte final aprovado.
 
 ### Teste de instalação
 
-`python3 scripts/instagram/ig_curl_pair_downloader.py --help` precisa funcionar a partir da pasta da skill, sem qualquer instalação do produto de origem. A suíte testa pares locais distintos, junção real e detecção de áudio duplicado. Teste local não prova captura/login/CDN ao vivo; [Qualidade e evidências](QUALITY.md) identifica separadamente essa evidência.
+`python3 scripts/getbrolls/instagram_pairs.py --help` no macOS ou `python scripts/getbrolls/instagram_pairs.py --help` no Windows precisa funcionar a partir da pasta da skill. A suíte testa pares locais distintos, junção real, confinamento de caminhos, pinagem DNS pública e detecção de áudio duplicado. Teste local não prova captura/login/CDN ao vivo; [Qualidade e evidências](QUALITY.md) identifica separadamente essa evidência.
 
 ### Evidência ao vivo desta versão
 
@@ -424,10 +513,7 @@ Em 15/09/2026, a sessão Chrome indicada pelo usuário abriu o Reel `DcMXl1IPNtB
 
 ## Instagram — recuperação e auditoria
 
-> Referência de origem do processo original. Para execução nesta versão, siga SKILL.md e os guias de rotas atuais; nomes específicos de ferramentas e limitações históricas abaixo não substituem a capacidade da sessão atual.
-
-
-Baixar e organizar Reels do Instagram para o fluxo Get B-rolls usando o método validado na campanha Codex de 2026-07-08: capturar URLs diretas de CDN como pares `*_video.conf` + `*_audio.conf`, baixar as partes separadas, mesclar com `ffmpeg`, e validar que o MP4 final tem vídeo + áudio corretos.
+Baixar e organizar Reels no fluxo Get B-rolls: capturar URLs diretas de CDN como pares `*_video.conf` + `*_audio.conf`, baixar as partes separadas, mesclar com `ffmpeg` e validar que o MP4 final tem vídeo e áudio corretos.
 
 ### Quando usar
 
@@ -438,13 +524,13 @@ Usar quando:
 - Houver suspeita de áudio duplicado/trocado em MP4 local.
 - For necessário redownload organizado de Reels antes de transcrever, fazer curated/tagged ou aprender formato/motion.
 
-### Fonte preservada
+### Referência operacional
 
-A fonte que originou este método está documentada em:
+O processo completo está documentado em:
 
 [Processo de captura e download](#instagram--navegadorplaywright-dois-streams-e-mp4)
 
-Consultar a referência antes de mudar o script. Ela preserva os comandos originais da pasta:
+Consulte a referência antes de mudar o módulo. Os arquivos privados ficam na pasta de trabalho do projeto:
 
 `<projeto>/work`
 
@@ -454,11 +540,11 @@ Não copiar signed CDN URLs para a skill. Elas expiram, podem carregar sessão/a
 
 Usar:
 
-`$GB_SKILL_DIR/scripts/instagram/ig_curl_pair_downloader.py`
+`$GB_SKILL_DIR/scripts/getbrolls/instagram_pairs.py`
 
 Dependências:
 
-- `python3`
+- Python 3.11+ (`python3` no macOS; `python` no Windows)
 - `curl`
 - `ffmpeg`
 - `ffprobe`
@@ -470,7 +556,7 @@ O script nunca imprime a URL assinada; ele só mostra o arquivo `.conf` de orige
 Para um par de configs:
 
 ```bash
-python3 "$GB_SKILL_DIR/scripts/instagram/ig_curl_pair_downloader.py" \
+python3 "$GB_SKILL_DIR/scripts/getbrolls/instagram_pairs.py" \
   --video-config /path/to/01_CODE_video.conf \
   --audio-config /path/to/01_CODE_audio.conf \
   --output /path/to/output/01_CODE.mp4 \
@@ -484,7 +570,7 @@ python3 "$GB_SKILL_DIR/scripts/instagram/ig_curl_pair_downloader.py" \
 Para uma pasta de configs:
 
 ```bash
-python3 "$GB_SKILL_DIR/scripts/instagram/ig_curl_pair_downloader.py" \
+python3 "$GB_SKILL_DIR/scripts/getbrolls/instagram_pairs.py" \
   --config-dir /path/to/curl_configs \
   --output-dir /path/to/outputs \
   --parts-dir /path/to/work/instagram_parts \
@@ -502,7 +588,7 @@ Layouts:
 
 ### Reuso dos outputs dos configs
 
-O método original gravava `output = "work/..."` dentro de cada `.conf`. Por padrão, o script tenta reaproveitar esse arquivo se ele já existir, resolvendo o caminho via `--config-output-root`. Se não existir, baixa pela URL assinada do `.conf`.
+O config pode gravar `output = "work/..."`. Por padrão, o módulo tenta reaproveitar esse arquivo se ele já existir, resolvendo o caminho via `--config-output-root`. Se não existir, baixa pela URL assinada do `.conf`.
 
 Usar `--force-download` quando for obrigatório redownloadar a partir da URL assinada.
 
@@ -510,7 +596,7 @@ Usar `--no-prefer-config-output` (para invalidar também partes já salvas, use 
 
 ### Gate anti-áudio-duplicado
 
-Sempre usar `--fail-on-duplicate-audio` em batch. Esse gate extrai o AAC dos outputs e falha se dois MP4 finais tiverem o mesmo SHA-256 de áudio. Foi exatamente esse o bug encontrado na track `07-15-2026/03-metodo-audience2-review`: quatro MP4s tinham vídeo diferente e o mesmo stream de áudio.
+Sempre use `--fail-on-duplicate-audio` em batch. Esse gate extrai o AAC dos outputs e falha se dois MP4 finais tiverem o mesmo SHA-256 de áudio, evitando que vídeos diferentes recebam por engano o mesmo stream.
 
 Para auditoria manual:
 

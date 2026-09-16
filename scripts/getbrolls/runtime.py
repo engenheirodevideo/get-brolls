@@ -12,6 +12,42 @@ from .models import now
 ACTIVE = contextvars.ContextVar("getbrolls_operation", default=None)
 
 
+def _acquire_lock(stream, platform=None, windows=None):
+    """Acquire a non-blocking, one-byte lock on Windows or a flock elsewhere."""
+    platform = platform or os.name
+    if platform == "nt":
+        if windows is None:
+            import msvcrt as windows
+
+        stream.seek(0, os.SEEK_END)
+        if stream.tell() == 0:
+            stream.write("\0")
+            stream.flush()
+        stream.seek(0)
+        try:
+            windows.locking(stream.fileno(), windows.LK_NBLCK, 1)
+        except OSError as exc:
+            raise BlockingIOError from exc
+        return
+    import fcntl
+
+    fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _release_lock(stream, platform=None, windows=None):
+    platform = platform or os.name
+    if platform == "nt":
+        if windows is None:
+            import msvcrt as windows
+
+        stream.seek(0)
+        windows.locking(stream.fileno(), windows.LK_UNLCK, 1)
+        return
+    import fcntl
+
+    fcntl.flock(stream, fcntl.LOCK_UN)
+
+
 def record_warning(code, message):
     current = ACTIVE.get()
     if current is not None:
@@ -42,10 +78,8 @@ def project_lock(project):
     root = Path(project).resolve() / "brolls"
     root.mkdir(parents=True, exist_ok=True)
     with (root / ".command.lock").open("a+") as lock:
-        import fcntl
-
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            _acquire_lock(lock)
         except BlockingIOError:
             raise ValueError(
                 "Outro comando está usando este projeto. Aguarde terminar antes de repetir."
@@ -53,7 +87,7 @@ def project_lock(project):
         try:
             yield
         finally:
-            fcntl.flock(lock, fcntl.LOCK_UN)
+            _release_lock(lock)
 
 
 def audited(args, execute):

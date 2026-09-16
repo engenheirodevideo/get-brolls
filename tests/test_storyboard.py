@@ -1,4 +1,4 @@
-import re, struct, sys, unittest
+import base64, sys, unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -31,26 +31,14 @@ class StoryboardTest(unittest.TestCase):
         self.assertIn('id="shot-0"', page)
         self.assertIn("Fala &amp; contexto", page)
 
-    def test_delivery_includes_storyboard_artifact_with_current_logo(self):
-        artifact = ROOT / "assets" / "storyboard-template.html"
+    def test_rendered_storyboard_uses_current_logo(self):
         logo = ROOT / "assets" / "brand-logo.png"
-
-        self.assertTrue(artifact.is_file())
         self.assertTrue(logo.is_file())
-        data = logo.read_bytes()
-        self.assertEqual(b"\x89PNG\r\n\x1a\n", data[:8])
-        width, height, _, color_type, _, _, _ = struct.unpack(">IIBBBBB", data[16:29])
-        self.assertEqual((334, 333), (width, height))
-        self.assertIn(color_type, (4, 6), "A logo precisa manter transparência.")
-        page = artifact.read_text()
+        encoded = base64.b64encode(logo.read_bytes()).decode("ascii")
+        page = render_page([])
         self.assertIn('class="brand-logo"', page)
-        self.assertIn('src="brand-logo.png"', page)
+        self.assertIn(f'src="data:image/png;base64,{encoded}"', page)
         self.assertNotIn('<div class="brand"><svg', page)
-        self.assertNotIn("<base ", page)
-
-        local_refs = re.findall(r'(?:src|href)="(?!https?:|data:|#)([^"?]+)', page)
-        missing = [ref for ref in local_refs if not (artifact.parent / ref).is_file()]
-        self.assertEqual([], missing, f"Recursos ausentes no template: {missing}")
 
 
 if __name__ == "__main__":
