@@ -16,6 +16,8 @@ tags: [get-brolls]
 - `doctor` passa a listar os pins ativos em `tool_paths`, uma linha por variável, e reflete o pin em `executables`. Sem variáveis definidas, `tool_paths` sai vazio.
 - Não há `GB_PYTHON_PATH`: o código não reinvoca o interpretador Python em nenhum ponto.
 - Adiciona `tests/test_env_paths.py` com 16 regressões offline de precedência, padrão inalterado, erro de caminho inválido e layouts `.venv` POSIX e Windows.
+- Torna a CLI autoexplicativa: `help` em todos os subcomandos e argumentos, `--version` na raiz e `doctor` com veredito `summary` (ok, missing com o comando que resolve, optional) além de `get_brolls` e `python` — a chave `runtime` passou a se chamar `python`.
+- Nomeia o instalador no erro de yt-dlp ausente e separa "FFmpeg/ffprobe não encontrado" de "arquivo/intervalo inválido", apontando `doctor` nos dois casos.
 
 ## 2.3.6 — proposta para revisão
 

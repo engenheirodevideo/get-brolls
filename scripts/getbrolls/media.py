@@ -4,14 +4,21 @@ from .config import tool_path
 
 
 def run(args):
-    args = [tool_path(args[0]), *args[1:]]
+    name = args[0]
+    args = [tool_path(name), *args[1:]]
     try:
         return subprocess.run(
             args, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180
         ).stdout
+    except FileNotFoundError as e:
+        # Executável ausente é outro problema que arquivo ou intervalo inválido.
+        raise ValueError(
+            f"{name} não encontrado: instale FFmpeg/ffprobe ou aponte GB_FFMPEG_PATH/GB_FFPROBE_PATH; "
+            "verifique python3 scripts/gb.py doctor."
+        ) from e
     except (subprocess.SubprocessError, OSError) as e:
         raise ValueError(
-            "Falha de mídia: confirme arquivo, intervalo e FFmpeg/ffprobe instalados."
+            "Falha de mídia: confirme arquivo e intervalo; verifique python3 scripts/gb.py doctor."
         ) from e
 
 

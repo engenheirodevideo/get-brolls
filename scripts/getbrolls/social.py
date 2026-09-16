@@ -32,7 +32,10 @@ def command():
     local = local_ytdlp()
     exe = str(local) if local else shutil.which('yt-dlp')
     if not exe:
-        raise ProviderError('yt-dlp ausente: siga GUIDE.md e instale requirements.txt.')
+        raise ProviderError(
+            'yt-dlp ausente: execute bash scripts/install.sh (ou install.ps1) na raiz da skill/plugin; '
+            'após /plugin update é preciso reinstalar. Confira com python3 scripts/gb.py doctor.'
+        )
     args = [exe, '--ignore-config', '--no-playlist', '--no-progress', '--no-warnings',
             '--socket-timeout', '20', '--retries', '1', '--fragment-retries', '1']
     if shutil.which('deno'):

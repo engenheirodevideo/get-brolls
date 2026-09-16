@@ -2,10 +2,57 @@
 
 import json, sys, hashlib, shutil, os, re
 from pathlib import Path
+from . import __version__
 from .models import candidate, set_segment, approve, require_fetch, signature
 from .ledger import Ledger, digest
 from .media import probe, cut, run
 from .rendering import render
+
+INSTALLER = "bash scripts/install.sh (ou scripts/install.ps1 no Windows)"
+SYSTEM_TOOLS = "instale pelo gerenciador do sistema; veja GUIDE.md#instalação"
+
+# Executável obrigatório → (comando que resolve, impacto real da ausência).
+REQUIRED_EXECUTABLES = {
+    "ffmpeg": (SYSTEM_TOOLS, "Prévia, corte e verificação ficam indisponíveis"),
+    "ffprobe": (SYSTEM_TOOLS, "Prévia, corte e verificação ficam indisponíveis"),
+    "curl": (SYSTEM_TOOLS, "Download dos pares CDN do Instagram fica indisponível"),
+    "node": (SYSTEM_TOOLS, "Playwright CLI e runtime EJS do yt-dlp ficam indisponíveis"),
+    "npx": (SYSTEM_TOOLS, "Instalação e execução do Playwright CLI ficam indisponíveis"),
+    "yt-dlp": (INSTALLER, "YouTube e TikTok ficam indisponíveis sem ele"),
+    "playwright-cli": (INSTALLER, "Instagram indisponível sem ele"),
+}
+
+# Ausência esperada em parte dos ambientes: não bloqueia o fluxo principal.
+OPTIONAL_EXECUTABLES = {
+    "deno": "Alternativa ao Node apenas para o runtime EJS",
+    "bash": "Somente os helpers opcionais de YouTube; a CLI não depende dele",
+}
+
+OPTIONAL_KEYS = {
+    "PEXELS_API_KEY": "Busca no Pexels desativada; defina a chave no ambiente ou no .env",
+    "PIXABAY_API_KEY": "Busca no Pixabay desativada; defina a chave no ambiente ou no .env",
+}
+
+
+def doctor_summary(executables):
+    """Veredito humano do doctor: o que funciona, o que falta e o que é opcional."""
+    ok = sorted(name for name, present in executables.items() if present)
+    missing = [
+        {"item": name, "fix": REQUIRED_EXECUTABLES[name][0], "note": REQUIRED_EXECUTABLES[name][1]}
+        for name in sorted(REQUIRED_EXECUTABLES)
+        if not executables.get(name)
+    ]
+    optional = [
+        {"item": name, "note": note}
+        for name, note in sorted(OPTIONAL_EXECUTABLES.items())
+        if not executables.get(name)
+    ]
+    optional += [
+        {"item": key, "note": note}
+        for key, note in sorted(OPTIONAL_KEYS.items())
+        if not os.environ.get(key)
+    ]
+    return {"ok": ok, "missing": missing, "optional": optional}
 
 
 def _local_playwright(root=None):
@@ -30,8 +77,9 @@ def execute(args):
 
             overrides = active_overrides()
             result = {
+                "get_brolls": __version__,
                 "preview": config,
-                "runtime": sys.version.split()[0],
+                "python": sys.version.split()[0],
                 "tool_paths": overrides,
                 "executables": {
                     x: bool(overrides.get(TOOL_PATH_KEYS.get(x)) or shutil.which(x))
@@ -44,6 +92,8 @@ def execute(args):
             result["social"] = social_doctor()
             result["executables"]["yt-dlp"] = result["social"]["installed"]
             result["executables"]["playwright-cli"] = _local_playwright() or bool(shutil.which("playwright-cli"))
+            # Veredito primeiro: o JSON continua completo logo abaixo dele.
+            result = {"summary": doctor_summary(result["executables"]), **result}
         if args.command == "doctor" and args.live:
             from getbrolls.health import live_checks
 
