@@ -239,7 +239,6 @@ Para manter o projeto, comece por [CONTRIBUTING](CONTRIBUTING.md) e [AGENTS](AGE
 
 ## Autor
 
-Criado e mantido por **Bruno Moreira — Engenheiro de Vídeo**.  
-Instagram: **[@zbrunomoreira](https://www.instagram.com/zbrunomoreira/)**.
+Criado e mantido por **Bruno Moreira — Engenheiro de Vídeo**.  Instagram: **[@zbrunomoreira](https://www.instagram.com/zbrunomoreira/)**.
 
 Código sob [licença MIT](LICENSE). Dependências externas mantêm suas próprias condições, descritas nos [avisos de terceiros](THIRD_PARTY_NOTICES.md).
