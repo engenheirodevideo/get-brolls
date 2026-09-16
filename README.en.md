@@ -11,6 +11,7 @@
     <img src="https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square" alt="Python 3.11+">
     <img src="https://img.shields.io/badge/node-22%2B-green?style=flat-square" alt="Node 22+">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
+    <img src="https://img.shields.io/github/actions/workflow/status/engenheirodevideo/get-brolls/test.yml?branch=main&style=flat-square&label=tests" alt="Tests status">
     <img src="https://img.shields.io/badge/version-2.3.7-blue?style=flat-square" alt="Version 2.3.7">
   </p>
 </div>
