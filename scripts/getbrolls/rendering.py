@@ -1,7 +1,8 @@
 """Storyboard and credits generated from the canonical manifest."""
 
-import hashlib, html, json
+import html
 from pathlib import Path
+from .review import review_epoch
 
 
 def safe_preview_url(value):
@@ -87,11 +88,7 @@ def render(ledger):
                         else "pending",
                     }
                 ),
-                "reviewEpoch": hashlib.sha256(
-                    json.dumps(
-                        [c["approval"], c.get("review")], sort_keys=True
-                    ).encode()
-                ).hexdigest(),
+                "reviewEpoch": review_epoch(c),
             }
         )
         content += '<section class="review-panel"><h2>Revisar trecho</h2><label>Comentário ou sugestão<textarea data-comment rows="3" placeholder="O que precisa mudar?"></textarea></label><label>Outra fonte (opcional)<input data-suggestion type="url" placeholder="https://…"></label><div class="review-buttons"><button data-decision="approved">Aprovar</button><button data-decision="changes">Pedir ajuste</button><button data-decision="alternative">Outra fonte</button><button data-decision="pending">Desfazer</button></div><p data-review-status role="status"></p></section>'

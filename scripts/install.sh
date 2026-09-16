@@ -27,8 +27,10 @@ fi
 python3 -m venv "$ROOT/.venv"
 "$ROOT/.venv/bin/python" -m pip install -r "$ROOT/requirements.txt"
 "$ROOT/.venv/bin/python" -c 'import yt_dlp, yt_dlp_ejs; print("yt-dlp e EJS importados")'
-# Local npm cache avoids changing permissions or global npm configuration.
-npm --cache "$ROOT/.tools/npm-cache" install --prefix "$ROOT/.tools" --no-audit --no-fund --save-exact @playwright/cli@0.1.20
+# Install the reviewed dependency tree locally, without global npm changes.
+mkdir -p "$ROOT/.tools"
+cp "$ROOT/package.json" "$ROOT/package-lock.json" "$ROOT/.tools/"
+npm --cache "$ROOT/.tools/npm-cache" ci --prefix "$ROOT/.tools" --ignore-scripts --no-audit --no-fund
 bash "$ROOT/scripts/playwright.sh" --version
 PATH="$ROOT/.venv/bin:$PATH" "$ROOT/.venv/bin/python" "$ROOT/scripts/gb.py" doctor
 printf '\nDependências instaladas em .venv/ e .tools/, não fazem parte dos arquivos de distribuição.\n'

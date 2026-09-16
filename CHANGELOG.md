@@ -2,11 +2,19 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-15
+updated: 2026-09-16
 tags: [get-brolls]
 ---
 
 # Changelog
+
+## 2.3.5 — proposta para revisão
+
+- Recusa JSONs de revisão baseados em decisões antigas, inclusive depois de rejeição ou de outra importação. Valida `reviewEpoch` além da assinatura do conteúdo, sem gravar parcialmente os itens de um lote inválido.
+- Fixa conexões HTTP de APIs e downloads nos endereços públicos validados, preservando SNI, hostname e certificados HTTPS. Revalida DNS a cada nova tentativa; mantém redirects bloqueados e conecta diretamente, sem proxies automáticos do ambiente.
+- Fixa as dependências Python nas versões instaladas pela CI anterior, registra o conjunto npm em `package-lock.json` e instala com `npm ci`. Os instaladores continuam usando `.venv/` e `.tools/` locais.
+- Fixa as Actions pelos commits já utilizados na CI e prepara atualizações de dependências por PR com Dependabot.
+- Acrescenta regressões offline para decisões obsoletas, DNS rebinding IPv4/IPv6, proxy, retries, redirects e validação TLS. Atualiza a orientação de migração.
 
 ## 2.3.4 — 2026-09-15
 

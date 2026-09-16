@@ -1,6 +1,7 @@
 """Bounded HTTPS JSON transport. Cache is private and never part of reports."""
 
 import hashlib
+import http.client
 import ipaddress
 import json
 import os
@@ -10,6 +11,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from . import __version__
 
 
 class ProviderError(ValueError):
@@ -47,7 +49,7 @@ def public_url(url):
     return url
 
 
-def _safe_network(url):
+def _network_url(url):
     p = urllib.parse.urlsplit(url)
     if (
         p.scheme != "https"
@@ -57,6 +59,11 @@ def _safe_network(url):
         or p.port not in (None, 443)
     ):
         raise ProviderError("HTTPS público obrigatório")
+    return p
+
+
+def _safe_network(url):
+    p = _network_url(url)
     try:
         addresses = socket.getaddrinfo(p.hostname, 443, type=socket.SOCK_STREAM)
     except OSError:
@@ -65,6 +72,50 @@ def _safe_network(url):
         not ipaddress.ip_address(row[4][0]).is_global for row in addresses
     ):
         raise ProviderError("Destino de rede não permitido")
+    return addresses
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    """Resolve once per request; connect to those IPs with normal hostname TLS."""
+
+    def https_open(self, request):
+        addresses = _safe_network(request.full_url)
+
+        def connect_pinned(address, timeout=30, source_address=None):
+            # Do not call create_connection(): it performs another DNS lookup.
+            last_error = None
+            for family, kind, protocol, _, sockaddr in addresses:
+                sock = socket.socket(family, kind, protocol)
+                try:
+                    sock.settimeout(timeout)
+                    if source_address:
+                        sock.bind(source_address)
+                    sock.connect(sockaddr)
+                    return sock
+                except OSError as error:
+                    last_error = error
+                    sock.close()
+                except BaseException:
+                    sock.close()
+                    raise
+            raise last_error or OSError("Nenhum endereço público disponível")
+
+        def connection(host, **kwargs):
+            conn = http.client.HTTPSConnection(host, **kwargs)
+            # HTTPSConnection still performs certificate/hostname validation and
+            # uses the original hostname for SNI; only TCP resolution is replaced.
+            conn._create_connection = connect_pinned
+            return conn
+
+        return self.do_open(connection, request, context=self._context)
+
+
+def _opener():
+    # Environment proxies would bypass the checked destination. This transport
+    # connects directly; redirects remain forbidden.
+    return urllib.request.build_opener(
+        urllib.request.ProxyHandler({}), _PinnedHTTPSHandler(), _NoRedirect()
+    )
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -86,6 +137,7 @@ def _scrub(value):
 
 
 def get_json(url, params=None, headers=None, cache_ttl=0):
+    _network_url(url)
     if params:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
     cache_root = Path(
@@ -101,13 +153,12 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
             return json.loads(cache_path.read_text(encoding="utf-8"))
         except (ValueError, OSError):
             pass
-    _safe_network(url)
     request_headers = {
-        "User-Agent": "Get-Brolls/2.3.4 (video research; contact: local operator)",
+        "User-Agent": f"Get-Brolls/{__version__} (video research; contact: local operator)",
         "Accept": "application/json",
     }
     request_headers.update(headers or {})
-    opener = urllib.request.build_opener(_NoRedirect())
+    opener = _opener()
     for attempt in range(3):
         try:
             with opener.open(
@@ -144,6 +195,8 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
                 raise ProviderError(
                     "Provedor indisponível após três tentativas"
                 ) from None
+        except ProviderError:
+            raise
         except (ValueError, UnicodeError):
             raise ProviderError("Resposta JSON inválida do provedor") from None
         time.sleep(0.5 * (2**attempt))
@@ -153,14 +206,13 @@ def download(url, target, max_bytes=512 * 1024 * 1024):
     """Stream only public HTTPS to an exclusive file; remove partials on failure."""
     if not public_url(url):
         raise ProviderError("URL de mídia pública sem credenciais obrigatória")
-    _safe_network(url)
     target = Path(target)
     if max_bytes <= 0:
         raise ProviderError("Limite de bytes inválido")
     created = False
     try:
-        request = urllib.request.Request(url, headers={"User-Agent": "Get-Brolls/2.3.4"})
-        with urllib.request.build_opener(_NoRedirect()).open(
+        request = urllib.request.Request(url, headers={"User-Agent": f"Get-Brolls/{__version__}"})
+        with _opener().open(
             request, timeout=30
         ) as response:
             length = response.headers.get("Content-Length")

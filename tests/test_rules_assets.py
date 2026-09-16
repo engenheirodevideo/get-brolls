@@ -78,7 +78,7 @@ class RulesTests(unittest.TestCase):
 
     def test_rule_changes_invalidate_and_block_import(self):
         from getbrolls.rules import sync_formats
-        from getbrolls.review import import_review, project_id
+        from getbrolls.review import import_review, project_id, review_epoch
         from getbrolls.models import signature
 
         with tempfile.TemporaryDirectory() as d:
@@ -94,7 +94,7 @@ class RulesTests(unittest.TestCase):
                 "templateVersion": 2,
                 "project": project_id(l),
                 "items": [
-                    {"id": c["id"], "signature": signature(c), "state": "approved"}
+                    {"id": c["id"], "signature": signature(c), "reviewEpoch": review_epoch(c), "state": "approved"}
                 ],
             }
             path = Path(d) / "review.json"
