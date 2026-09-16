@@ -13,7 +13,7 @@ Prepare a instalação do plugin nesta máquina e devolva um veredito curto ao u
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/install.sh" --check
 ```
 
-No Windows, use `powershell -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/install.ps1" -Check`. Se algum executável estiver ausente (`MISSING:`), peça ao usuário que o instale pelo gerenciador oficial do sistema conforme `${CLAUDE_PLUGIN_ROOT}/GUIDE.md` e repita esta etapa.
+No Windows, use `powershell -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/install.ps1" -Check`. Se algum executável estiver ausente (`MISSING:`), peça ao usuário que o instale pelo gerenciador oficial do sistema conforme `${CLAUDE_PLUGIN_ROOT}/docs/GUIDE.md` e repita esta etapa.
 
 2. Rode o instalador completo do sistema operacional:
 

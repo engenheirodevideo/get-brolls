@@ -13,7 +13,7 @@ def load_rules(project):
     if not path.exists():
         if os.environ.get("GB_RULES_FILE"):
             raise ValueError("GB_RULES_FILE não existe.")
-        path = ROOT / "RULES.md"
+        path = ROOT / "docs" / "RULES.md"
     raw = path.read_text(encoding="utf-8")
     blocks = re.findall(r"```json\s*\n(.*?)\n```", raw, re.S)
     if len(blocks) != 1:

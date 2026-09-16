@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 823 985" width="823" height="985" role="img" aria-label="Mapa da skill: seu pedido, Get B-rolls, fontes, candidatos, sua aprovação, coleta organizada">
+  <defs>
+    <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="4" cy="4" r="1.2" fill="#ffffff" fill-opacity="0.06"/>
+    </pattern>
+    <marker id="arr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#8a8477"/>
+    </marker>
+    <marker id="arrR" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#c2410c"/>
+    </marker>
+  </defs>
+  <style>
+    .mono{font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;letter-spacing:.08em}
+    .t{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-weight:700;font-size:19px;fill:#1c1917;text-anchor:middle}
+    .tw{fill:#fff}
+    .s{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:13px;fill:#44403c;text-anchor:middle}
+    .sw{fill:#fff7ed}
+    .ln{stroke:#8a8477;stroke-width:1.8;fill:none}
+    .red{stroke:#c2410c;stroke-width:1.6;fill:none;stroke-dasharray:6 5}
+  </style>
+
+  <!-- frame -->
+  <rect x="0" y="0" width="823" height="985" fill="#141210"/>
+  <rect x="0" y="0" width="823" height="58" fill="#1c1917"/>
+  <text class="mono" x="36" y="35" font-size="12" fill="#ffffff">GET B-ROLLS / MAPA DA SKILL</text>
+  <text class="mono" x="787" y="35" font-size="12" fill="#ffffff" text-anchor="end">Do pedido à coleta ↓</text>
+  <rect x="18" y="76" width="787" height="873" fill="url(#dots)"/>
+
+  <!-- Seu pedido -->
+  <rect x="301" y="90" width="220" height="80" rx="14" fill="#f4511e" stroke="#c2410c"/>
+  <text class="t tw" x="411" y="124">Seu pedido</text>
+  <text class="s sw" x="411" y="148">Roteiro, tema, link ou arquivo</text>
+  <path class="ln" d="M411 170 V222" marker-end="url(#arr)"/>
+
+  <!-- Get B-rolls -->
+  <rect x="301" y="228" width="220" height="96" rx="14" fill="#f0a175" stroke="#d97d4a"/>
+  <text class="t" x="411" y="264">Get B-rolls</text>
+  <text class="s" x="411" y="288">Identifica a fonte e a forma</text>
+  <text class="s" x="411" y="306">de coleta</text>
+
+  <!-- split to 3 -->
+  <path class="ln" d="M411 324 V352"/>
+  <path class="ln" d="M158 352 H664"/>
+  <path class="ln" d="M158 352 V378" marker-end="url(#arr)"/>
+  <path class="ln" d="M411 352 V378" marker-end="url(#arr)"/>
+  <path class="ln" d="M664 352 V378" marker-end="url(#arr)"/>
+
+  <!-- 3 sources -->
+  <rect x="48" y="384" width="220" height="88" rx="14" fill="#fdf1e3" stroke="#d8cdb8"/>
+  <text class="t" x="158" y="420">Bancos de vídeo</text>
+  <text class="s" x="158" y="444">Pexels · Pixabay</text>
+
+  <rect x="301" y="384" width="220" height="88" rx="14" fill="#fdf1e3" stroke="#d8cdb8"/>
+  <text class="t" x="411" y="420">Redes sociais</text>
+  <text class="s" x="411" y="444">YouTube · Instagram · TikTok</text>
+
+  <rect x="554" y="384" width="220" height="88" rx="14" fill="#fdf1e3" stroke="#d8cdb8"/>
+  <text class="t" x="664" y="420">Acervos e arquivos</text>
+  <text class="s" x="664" y="440">Commons · NASA · arquivos</text>
+  <text class="s" x="664" y="458">locais</text>
+
+  <!-- merge -->
+  <path class="ln" d="M158 472 V512 H664 V472"/>
+  <path class="ln" d="M411 512 V546" marker-end="url(#arr)"/>
+
+  <!-- candidatos -->
+  <rect x="301" y="552" width="220" height="96" rx="14" fill="#f0a175" stroke="#d97d4a"/>
+  <text class="t" x="411" y="588">Veja os candidatos</text>
+  <text class="s" x="411" y="612">Imagens, player e trecho</text>
+  <text class="s" x="411" y="630">selecionado</text>
+  <path class="ln" d="M411 648 V696" marker-end="url(#arr)"/>
+
+  <!-- aprovação -->
+  <rect x="301" y="702" width="220" height="100" rx="28" fill="#ffffff" stroke="#c2410c" stroke-width="2"/>
+  <text class="t" x="411" y="740">Você aprova?</text>
+  <text class="s" x="411" y="764">Confere a imagem e escolhe</text>
+  <text class="s" x="411" y="782">o trecho</text>
+
+  <!-- NÃO loop -->
+  <path class="red" d="M521 752 H560"/>
+  <text class="mono" x="572" y="757" font-size="12" fill="#c2410c">NÃO → REFAZER BUSCA</text>
+  <path class="red" d="M725 752 H778 V276 H529" marker-end="url(#arrR)"/>
+
+  <!-- SIM -->
+  <path class="ln" d="M411 802 V852" marker-end="url(#arr)"/>
+  <text class="mono" x="425" y="833" font-size="12" fill="#faf6ee">SIM</text>
+
+  <!-- coleta -->
+  <rect x="246" y="858" width="330" height="80" rx="14" fill="#f4511e" stroke="#c2410c"/>
+  <text class="t tw" x="411" y="892">Coleta organizada</text>
+  <text class="s sw" x="411" y="916">Arquivo disponível → recorte e verificação</text>
+</svg>

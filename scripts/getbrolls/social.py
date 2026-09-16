@@ -64,7 +64,7 @@ def run(arguments, timeout=180):
             raise ProviderError('A fonte exige uma sessão de acesso. Use o navegador autorizado conforme o guia da plataforma.') from None
         raise ProviderError('yt-dlp não concluiu a extração; confira disponibilidade do post e siga o guia da plataforma.') from None
     except (subprocess.SubprocessError, OSError):
-        raise ProviderError('yt-dlp não concluiu: confira dependências, disponibilidade do vídeo e sessão exigida pela fonte. Para Instagram, use o fluxo navegador → pares CDN descrito em GUIDE.md.') from None
+        raise ProviderError('yt-dlp não concluiu: confira dependências, disponibilidade do vídeo e sessão exigida pela fonte. Para Instagram, use o fluxo navegador → pares CDN descrito em docs/GUIDE.md.') from None
 
 
 def search(query, limit):

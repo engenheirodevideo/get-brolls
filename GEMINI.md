@@ -24,10 +24,10 @@ A linha `@/caminho/...` importa o conteúdo do [SKILL.md](SKILL.md) no contexto 
 
 Alternativa sem importação: cole o conteúdo de [SKILL.md](SKILL.md) diretamente no seu `GEMINI.md`. Nesse caso, repita a cópia a cada atualização da skill — a importação por caminho não precisa disso.
 
-Depois de configurar, prepare o ambiente pela seção de [instalação do guia](GUIDE.md#instalação) e confirme com `python3 scripts/gb.py doctor`. Use o caminho absoluto do CLI e `--project` ao trabalhar de outra pasta.
+Depois de configurar, prepare o ambiente pela seção de [instalação do guia](docs/GUIDE.md#instalação) e confirme com `python3 scripts/gb.py doctor`. Use o caminho absoluto do CLI e `--project` ao trabalhar de outra pasta.
 
 ## Manutenção
 
-[AGENTS.md](AGENTS.md) é o hub central do repositório: mapa dos arquivos, instalação por agente e regras de manutenção. Comece por ele para manter código ou documentação; o guia operacional único do produto é [GUIDE.md](GUIDE.md).
+[AGENTS.md](AGENTS.md) é o hub central do repositório: mapa dos arquivos, instalação por agente e regras de manutenção. Comece por ele para manter código ou documentação; o guia operacional único do produto é [GUIDE.md](docs/GUIDE.md).
 
 Não duplique instruções aqui: este arquivo apenas roteia e explica a importação. As regras de aprovação humana, licença e proveniência de [SKILL.md](SKILL.md) valem integralmente no Gemini CLI.

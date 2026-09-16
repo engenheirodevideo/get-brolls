@@ -14,7 +14,7 @@ INSTALLER = (
     f'bash "{SKILL_ROOT / "scripts" / "install.sh"}" '
     f'(ou "{SKILL_ROOT / "scripts" / "install.ps1"}" no Windows)'
 )
-SYSTEM_TOOLS = "instale pelo gerenciador do sistema; veja GUIDE.md#instalação"
+SYSTEM_TOOLS = "instale pelo gerenciador do sistema; veja docs/GUIDE.md#instalação"
 
 # Executável obrigatório → (comando que resolve, impacto real da ausência).
 REQUIRED_EXECUTABLES = {
@@ -428,7 +428,7 @@ def execute(args):
         dest.parent.mkdir(parents=True, exist_ok=True)
         if dest.exists():
             raise ValueError("RULES.md já existe; edite sem sobrescrever suas regras.")
-        shutil.copyfile(SKILL_ROOT / "RULES.md", dest)
+        shutil.copyfile(SKILL_ROOT / "docs" / "RULES.md", dest)
         return {"rules": str(dest)}
     rules = load_rules(args.project)
     if cmd == "rules":

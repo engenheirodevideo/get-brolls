@@ -10,7 +10,7 @@ tags: [get-brolls, eval, blind-tests, quality]
 
 Esta pasta guarda o processo de **teste cego**: o jeito de medir se a skill entrega o que promete a um criador de conteúdo real. É medição **editorial**, não de código. A suíte `python3 -m unittest discover -s tests` responde se o programa funciona; o teste cego responde outra pergunta: *dado um roteiro que o agente nunca viu, ele acha a fonte literal certa, mostra a prévia certa e para na hora certa?*
 
-Nada aqui substitui [QUALITY.md](../QUALITY.md). Lá ficam as evidências de código e os ensaios por provedor; aqui fica o comportamento do conjunto skill + CLI + agente diante de um roteiro.
+Nada aqui substitui [QUALITY.md](../docs/QUALITY.md). Lá ficam as evidências de código e os ensaios por provedor; aqui fica o comportamento do conjunto skill + CLI + agente diante de um roteiro.
 
 ## O que estamos medindo — o propósito do produto
 
