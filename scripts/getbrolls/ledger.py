@@ -122,7 +122,7 @@ class Ledger:
             )
         try:
             self.data = (
-                validate_manifest(json.loads(self.path.read_text()))
+                validate_manifest(json.loads(self.path.read_text(encoding="utf-8")))
                 if self.path.exists()
                 else {"schema_version": 1, "items": []}
             )
@@ -188,7 +188,7 @@ class Ledger:
 
     def _finish_transaction(self):
         try:
-            transaction = json.loads(self.pending.read_text())
+            transaction = json.loads(self.pending.read_text(encoding="utf-8"))
             data = validate_manifest(transaction["data"])
             events = transaction["events"]
             if not isinstance(events, list) or any(
@@ -209,7 +209,7 @@ class Ledger:
             )
             atomic_write(path, json.dumps(c, ensure_ascii=False, indent=2))
         event_path = self.root / "events.jsonl"
-        prior = event_path.read_text() if event_path.exists() else ""
+        prior = event_path.read_text(encoding="utf-8") if event_path.exists() else ""
         try:
             known = {
                 json.loads(line).get("transaction")

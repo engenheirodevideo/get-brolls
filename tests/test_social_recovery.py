@@ -54,12 +54,12 @@ class RemotePreviewTests(unittest.TestCase):
             root = Path(tmp)
             windows = root / '.venv/Scripts/yt-dlp.exe'
             windows.parent.mkdir(parents=True)
-            windows.write_text('fixture')
+            windows.write_text('fixture', encoding='utf-8')
             self.assertEqual(windows, social.local_ytdlp(root))
             windows.unlink()
             posix = root / '.venv/bin/yt-dlp'
             posix.parent.mkdir(parents=True)
-            posix.write_text('fixture')
+            posix.write_text('fixture', encoding='utf-8')
             self.assertEqual(posix, social.local_ytdlp(root))
 
     def test_local_playwright_accepts_windows_command_shim(self):
@@ -67,7 +67,7 @@ class RemotePreviewTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             shim = Path(tmp) / '.tools/node_modules/.bin/playwright-cli.cmd'
             shim.parent.mkdir(parents=True)
-            shim.write_text('fixture')
+            shim.write_text('fixture', encoding='utf-8')
             self.assertTrue(_local_playwright(tmp))
 
     def test_youtube_search_without_key_uses_ytdlp_metadata(self):
@@ -114,9 +114,9 @@ class HelperRuntimeTests(unittest.TestCase):
             root=Path(tmp); helpers=root/'scripts/getbrolls/tools/youtube';shutil.copytree(ROOT/'scripts/getbrolls/tools/youtube',helpers)
             bindir=root/'bin';bindir.mkdir()
             for name in ('yt-dlp','node'):
-                p=bindir/name;p.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n');p.chmod(0o755)
+                p=bindir/name;p.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n', encoding='utf-8');p.chmod(0o755)
             (bindir/'dirname').symlink_to('/usr/bin/dirname')
-            result=subprocess.run(['/bin/bash',str(helpers/'search.sh'),'literal','1'],env={'PATH':str(bindir)},capture_output=True,text=True)
+            result=subprocess.run(['/bin/bash',str(helpers/'search.sh'),'literal','1'],env={'PATH':str(bindir)},capture_output=True,text=True,encoding='utf-8')
             self.assertEqual(result.returncode,0,result.stderr)
             self.assertIn('--js-runtimes\nnode\n',result.stdout)
 
@@ -134,15 +134,15 @@ class HelperRuntimeTests(unittest.TestCase):
                 'mktemp': '#!/bin/sh\ncase "$1" in *XXXXXX) p="${1%XXXXXX}ABC123"; : > "$p"; echo "$p";; *) exit 64;; esac\n',
                 'ffmpeg': '#!/bin/sh\nprintf "%s\\n" "$@" > "$FFMPEG_ARGS_FILE"\nfor last do :; done\n: > "$last"\n',
             }.items():
-                path=bindir/name;path.write_text(body);path.chmod(0o755)
+                path=bindir/name;path.write_text(body, encoding='utf-8');path.chmod(0o755)
             output=root/'contact.jpg'
             result=subprocess.run(
                 ['/bin/bash',str(helpers/'contact.sh'),'abcdefghijk','00:00-00:02',str(output)],
-                env={'PATH':str(bindir),'TMPDIR':str(root),'GB_FONT_FILE':str(font),'FFMPEG_ARGS_FILE':str(ffmpeg_args)},capture_output=True,text=True,
+                env={'PATH':str(bindir),'TMPDIR':str(root),'GB_FONT_FILE':str(font),'FFMPEG_ARGS_FILE':str(ffmpeg_args)},capture_output=True,text=True,encoding='utf-8',
             )
             self.assertEqual(result.returncode,0,result.stderr)
             self.assertTrue(output.is_file())
-            args=ffmpeg_args.read_text()
+            args=ffmpeg_args.read_text(encoding='utf-8')
             self.assertIn(f'drawtext=fontfile={font}',args)
             self.assertIn("text='%{n}'",args)
             self.assertIn('textfile=',args)
@@ -156,8 +156,8 @@ class InstallerTests(unittest.TestCase):
             for name in ('bash','dirname','python3','ffmpeg','ffprobe','curl','awk','npm','npx'):
                 actual=shutil.which(name)
                 if actual: (bindir/name).symlink_to(actual)
-            node=bindir/'node'; node.write_text('#!/bin/sh\nprintf "v20.0.0\\n"\n'); node.chmod(0o755)
-            r=subprocess.run(['/bin/bash',str(ROOT/'scripts/install.sh'),'--check'],env={'PATH':str(bindir)},capture_output=True,text=True)
+            node=bindir/'node'; node.write_text('#!/bin/sh\nprintf "v20.0.0\\n"\n', encoding='utf-8'); node.chmod(0o755)
+            r=subprocess.run(['/bin/bash',str(ROOT/'scripts/install.sh'),'--check'],env={'PATH':str(bindir)},capture_output=True,text=True,encoding='utf-8')
             self.assertNotEqual(r.returncode,0,r.stdout)
             self.assertIn('22',r.stdout+r.stderr)
 

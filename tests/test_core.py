@@ -64,7 +64,7 @@ class CoreTests(unittest.TestCase):
             preview(src, p / "preview.jpg", 0, 2)
             self.assertTrue((p / "preview.jpg").stat().st_size > 0)
             bad = p / "bad.mp4"
-            bad.write_text("bad")
+            bad.write_text("bad", encoding="utf-8")
             with self.assertRaises(ValueError):
                 probe(bad)
 

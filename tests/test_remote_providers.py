@@ -226,7 +226,9 @@ class HTTPTests(unittest.TestCase):
             )
             self.assertEqual(first, second)
             self.assertEqual(builder.return_value.open.call_count, 1)
-            self.assertNotIn("secret", next(Path(cache).iterdir()).read_text())
+            self.assertNotIn(
+                "secret", next(Path(cache).iterdir()).read_text(encoding="utf-8")
+            )
 
     @patch.object(http, "_safe_network")
     @patch.object(http.urllib.request, "build_opener")

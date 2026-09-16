@@ -41,7 +41,7 @@ def die(message: str, code: int = 1) -> None:
 def run(cmd: list[str], *, quiet: bool = False) -> subprocess.CompletedProcess[str]:
     if not quiet:
         print("+ " + " ".join(sh_quote(x) for x in cmd), file=sys.stderr)
-    return subprocess.run(cmd, text=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return subprocess.run(cmd, text=True, encoding="utf-8", errors="replace", check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
 def sh_quote(value: str) -> str:
@@ -100,7 +100,7 @@ def validate_media_url(value: str, source: Path) -> tuple[str, str | None]:
 
 
 def parse_curl_config(path: Path) -> dict[str, str | None]:
-    text = path.read_text(errors="replace")
+    text = path.read_text(encoding="utf-8", errors="replace")
     url: str | None = None
     output: str | None = None
     for line in text.splitlines():
@@ -436,7 +436,7 @@ def main(argv: list[str] | None = None) -> int:
     summary = {"count": len(results), "results": results}
     if args.summary_json:
         args.summary_json.parent.mkdir(parents=True, exist_ok=True)
-        args.summary_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
+        args.summary_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0
 

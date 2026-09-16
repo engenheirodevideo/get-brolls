@@ -14,7 +14,7 @@ Este documento reúne o estado de qualidade, as regressões cobertas, os limites
 
 ### Estado atual
 
-**Validação da árvore consolidada: 66 testes passaram localmente em 15/09/2026.** O repositório é a fonte oficial da entrega; não existe uma seleção paralela de arquivos ou pacote ZIP para manter sincronizado.
+**Validação da árvore consolidada: 69 testes passaram localmente em 15/09/2026.** O repositório é a fonte oficial da entrega; não existe uma seleção paralela de arquivos ou pacote ZIP para manter sincronizado.
 
 Uma revisão adversarial executou a suíte em fonte e cópia limpa, instalação completa, `doctor`, `--help`, sintaxe Bash e JavaScript, busca de caminhos locais/segredos e inspeção do branding. A instalação limpa reconheceu yt-dlp 2026.08.19, EJS 0.8.0, Playwright CLI 0.1.20, FFmpeg e ffprobe. Nenhuma biblioteca externa, credencial ou sessão de navegador faz parte do repositório.
 
@@ -42,6 +42,7 @@ Uma revisão adversarial executou a suíte em fonte e cópia limpa, instalação
 - O coletor Instagram rejeita DNS privado/misto e IPv6 local, fixa o curl em IP público validado, recusa redirects, confina saídas batch e nunca sobrescreve um MP4 existente.
 - Node antigo é rejeitado antes de instalar dependências.
 - O instalador PowerShell valida o código de saída de venv, pip, imports, npm, Playwright e `doctor`; a CI executa instalação real em macOS e Windows/Python 3.13.
+- Leitura, escrita, subprocessos e saída da CLI declaram UTF-8 explicitamente, sem depender da página de código padrão do Windows.
 - CLI, coletor Instagram e utilitários YouTube vivem sob a única raiz `scripts/getbrolls/`.
 - O Storyboard produzido por `review` incorpora a logo oficial e usa a mesma implementação coberta pela suíte; não há snapshot HTML paralelo preenchido com caso real.
 - Arquivos de bibliotecas, fontes externas, mídia e credenciais não integram o repositório.

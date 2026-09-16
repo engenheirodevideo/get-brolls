@@ -113,6 +113,11 @@ def main(argv=None):
 
 
 def entrypoint():
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, OSError):
+            pass
     try:
         print(json.dumps(main(), ensure_ascii=False, indent=2))
         return 0

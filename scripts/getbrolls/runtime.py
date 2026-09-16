@@ -77,7 +77,7 @@ def project_lock(project):
         return
     root = Path(project).resolve() / "brolls"
     root.mkdir(parents=True, exist_ok=True)
-    with (root / ".command.lock").open("a+") as lock:
+    with (root / ".command.lock").open("a+", encoding="utf-8") as lock:
         try:
             _acquire_lock(lock)
         except BlockingIOError:

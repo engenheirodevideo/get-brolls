@@ -19,6 +19,7 @@ tags: [get-brolls]
 - Promove macOS e Windows à matriz principal de CI; Linux permanece como plataforma secundária.
 - Endurece o coletor Instagram com pinagem de DNS público, redirects desativados, nomes batch validados, saída confinada e publicação sem sobrescrever arquivos existentes.
 - Torna o instalador PowerShell fail-fast e exercita a instalação completa em macOS e Windows na CI.
+- Define UTF-8 explicitamente na CLI, nos arquivos e nos subprocessos para funcionar de forma consistente no Windows.
 - Restringe configs Instagram a HTTPS público e impede que `output=` escape de `--config-output-root`.
 - Mantém YouTube via yt-dlp sem API key e Instagram via navegador autorizado, dois streams, curl, FFmpeg e ffprobe.
 - Instala dependências oficiais via PyPI e npm na máquina do usuário; nenhuma biblioteca de runtime ou sessão de navegador integra o repositório.

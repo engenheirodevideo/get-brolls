@@ -1,4 +1,4 @@
-import unittest, subprocess, sys, tempfile, shutil, json
+import unittest, subprocess, sys, tempfile, shutil, json, os
 from pathlib import Path
 
 CLI = Path(__file__).resolve().parents[1] / "scripts/gb.py"
@@ -7,10 +7,26 @@ CLI = Path(__file__).resolve().parents[1] / "scripts/gb.py"
 class CliTest(unittest.TestCase):
     def call(self, *args, ok=True):
         p = subprocess.run(
-            [sys.executable, str(CLI), *map(str, args)], capture_output=True, text=True
+            [sys.executable, str(CLI), *map(str, args)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
         )
         self.assertEqual(p.returncode, 0 if ok else 2, p.stderr)
         return json.loads(p.stdout if ok else p.stderr)
+
+    def test_cli_forces_utf8_when_parent_requests_cp1252(self):
+        environment = {**os.environ, "PYTHONIOENCODING": "cp1252"}
+        result = subprocess.run(
+            [sys.executable, str(CLI), "doctor"],
+            capture_output=True,
+            env=environment,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        output = result.stdout.decode("utf-8")
+        self.assertIn("→", output)
+        self.assertNotIn("�", output)
+        self.assertEqual("broll", json.loads(output)["preview"]["scope"])
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
     def test_complete_local_lifecycle(self):
@@ -54,7 +70,10 @@ class CliTest(unittest.TestCase):
             self.assertEqual(self.call("verify", "--project", root)["count"], 1)
             self.call("fetch", *base, ok=False)
             self.assertTrue((root / "brolls/review.html").exists())
-            self.assertIn("Vídeo sintético", (root / "brolls/credits.md").read_text())
+            self.assertIn(
+                "Vídeo sintético",
+                (root / "brolls/credits.md").read_text(encoding="utf-8"),
+            )
             self.call("reject", *base)
             rejected = self.call("preview", *base, "--start", 0.5, "--end", 1.5)
             self.assertEqual(rejected["approval"]["status"], "rejected")
@@ -111,7 +130,7 @@ class CliTest(unittest.TestCase):
             self.call("approve", *base, "--start", 0, "--end", 1, "--by", "Human")
 
             def payload():
-                page = (root / "brolls/review.html").read_text()
+                page = (root / "brolls/review.html").read_text(encoding="utf-8")
                 return json.loads(
                     re.search(r"window.GETBROLLS_REVIEW=(.*?);</script>", page).group(1)
                 )
@@ -120,7 +139,7 @@ class CliTest(unittest.TestCase):
             self.assertEqual(data["items"][0]["review"]["state"], "approved")
             data["items"] = [{**data["items"][0], "state": "approved"}]
             review = root / "decision.json"
-            review.write_text(json.dumps(data))
+            review.write_text(json.dumps(data), encoding="utf-8")
             self.call(
                 "import-review", "--file", review, "--by", "Human", "--project", root
             )
@@ -193,14 +212,14 @@ class CliTest(unittest.TestCase):
                 tmp,
             )
             manifest = Path(tmp) / "brolls/manifest.json"
-            data = json.loads(manifest.read_text())
+            data = json.loads(manifest.read_text(encoding="utf-8"))
             data["items"][0]["title"] = "<img src=x onerror=alert(1)>"
             data["items"][0]["preview"]["poster_url"] = (
                 "https://example.org/poster.jpg?access_token=SECRET_TEST"
             )
-            manifest.write_text(json.dumps(data))
+            manifest.write_text(json.dumps(data), encoding="utf-8")
             self.call("review", "--project", tmp)
-            page = (Path(tmp) / "brolls/review.html").read_text()
+            page = (Path(tmp) / "brolls/review.html").read_text(encoding="utf-8")
             dom = DOM()
             dom.feed(page)
             self.assertFalse(

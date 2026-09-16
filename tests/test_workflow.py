@@ -18,7 +18,8 @@ class WorkflowTests(unittest.TestCase):
         ):
             p = Path(d) / ".env"
             p.write_text(
-                'GB_GIF_FPS=8\nGB_PREVIEW_MODE=static\nPEXELS_API_KEY="$(echo DO_NOT_RUN)"\n'
+                'GB_GIF_FPS=8\nGB_PREVIEW_MODE=static\nPEXELS_API_KEY="$(echo DO_NOT_RUN)"\n',
+                encoding="utf-8",
             )
             load_env(p)
             self.assertEqual(settings()["fps"], 6)
@@ -34,7 +35,7 @@ class WorkflowTests(unittest.TestCase):
                 settings()
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / ".env"
-            p.write_text("UNKNOWN=secret")
+            p.write_text("UNKNOWN=secret", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "variável desconhecida"):
                 load_env(p)
 
@@ -58,14 +59,14 @@ class WorkflowTests(unittest.TestCase):
             }
             path = Path(d) / "review.json"
             payload["items"][1]["signature"] = "stale"
-            path.write_text(json.dumps(payload))
+            path.write_text(json.dumps(payload), encoding="utf-8")
             before = ledger.path.read_bytes()
             with self.assertRaisesRegex(ValueError, "desatualizada"):
                 import_review(ledger, path, "Human")
             self.assertEqual(before, ledger.path.read_bytes())
             self.assertEqual(ledger.get("local:0")["approval"]["status"], "pending")
             payload["items"][1]["signature"] = signature(ledger.get("local:1"))
-            path.write_text(json.dumps(payload))
+            path.write_text(json.dumps(payload), encoding="utf-8")
             import_review(ledger, path, "Human")
             self.assertEqual(ledger.get("local:0")["approval"]["status"], "approved")
             with self.assertRaisesRegex(ValueError, "autorização"):

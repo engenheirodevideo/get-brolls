@@ -14,7 +14,7 @@ def load_rules(project):
         if os.environ.get("GB_RULES_FILE"):
             raise ValueError("GB_RULES_FILE não existe.")
         path = ROOT / "RULES.md"
-    raw = path.read_text()
+    raw = path.read_text(encoding="utf-8")
     blocks = re.findall(r"```json\s*\n(.*?)\n```", raw, re.S)
     if len(blocks) != 1:
         raise ValueError("RULES.md precisa de exatamente um bloco JSON.")

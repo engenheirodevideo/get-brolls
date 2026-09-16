@@ -74,7 +74,7 @@ def execute(args):
         return plan(ledger, args.url, rules)
     if cmd == "references":
         path = ledger.root / "references.json"
-        return json.loads(path.read_text()) if path.exists() else {"items": []}
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"items": []}
 
     if cmd == "search":
         if "video" not in rules["asset_types"]:

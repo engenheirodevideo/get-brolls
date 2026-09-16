@@ -98,7 +98,7 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
         and time.time() - cache_path.stat().st_mtime < cache_ttl
     ):
         try:
-            return json.loads(cache_path.read_text())
+            return json.loads(cache_path.read_text(encoding="utf-8"))
         except (ValueError, OSError):
             pass
     _safe_network(url)
@@ -120,7 +120,7 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
                 if cache_ttl:
                     cache_root.mkdir(parents=True, exist_ok=True, mode=0o700)
                     temp = cache_path.with_suffix(".tmp")
-                    temp.write_text(json.dumps(data, ensure_ascii=False))
+                    temp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
                     temp.chmod(0o600)
                     temp.replace(cache_path)
                 return data

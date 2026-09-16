@@ -32,8 +32,8 @@ def enhance(page, ledger, records):
         .replace(">", "\\u003e")
         .replace("&", "\\u0026")
     )
-    css = (ASSETS / "review.css").read_text()
-    js = (ASSETS / "review.js").read_text()
+    css = (ASSETS / "review.css").read_text(encoding="utf-8")
+    js = (ASSETS / "review.js").read_text(encoding="utf-8")
     toolbar = '<section class="review-toolbar"><strong data-summary></strong><button id="export-review">Exportar revisão</button><button id="print-review">Imprimir / PDF</button><span data-storage-status role="status"></span></section>'
     return (
         page.replace("</style>", css + "</style>")
@@ -55,7 +55,7 @@ def import_review(ledger, file, by, rules=None):
     path = Path(file)
     if path.stat().st_size > 2000000:
         raise ValueError("Revisão excede 2 MB.")
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     if (
         not isinstance(data, dict)
         or data.get("type") != "getbrolls-review"

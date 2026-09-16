@@ -41,7 +41,7 @@ class StabilityTests(unittest.TestCase):
             ):
                 rule = {**base, **change}
                 Path(tmp, "RULES.md").write_text(
-                    "```json\n" + json.dumps(rule) + "\n```"
+                    "```json\n" + json.dumps(rule) + "\n```", encoding="utf-8"
                 )
                 with self.subTest(change=change), self.assertRaises(ValueError):
                     load_rules(tmp)
@@ -50,7 +50,9 @@ class StabilityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp, "brolls")
             root.mkdir()
-            (root / "manifest.json").write_text('{"items": [1]}')
+            (root / "manifest.json").write_text(
+                '{"items": [1]}', encoding="utf-8"
+            )
             with self.assertRaisesRegex(ValueError, "manifest"):
                 Ledger(tmp)
 
@@ -83,12 +85,19 @@ class StabilityTests(unittest.TestCase):
             self.assertEqual(recovered.get(c["id"])["title"], "One")
             events = [
                 json.loads(line)
-                for line in (recovered.root / "events.jsonl").read_text().splitlines()
+                for line in (recovered.root / "events.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
             ]
             self.assertEqual(len(events), 1)
             Ledger(tmp)
             self.assertEqual(
-                len((recovered.root / "events.jsonl").read_text().splitlines()), 1
+                len(
+                    (recovered.root / "events.jsonl")
+                    .read_text(encoding="utf-8")
+                    .splitlines()
+                ),
+                1,
             )
 
     def test_log_redaction_and_single_json_warning(self):
@@ -106,7 +115,7 @@ class StabilityTests(unittest.TestCase):
 
             with self.assertRaises(OperationError) as failure:
                 audited(args, fail)
-            log = Path(tmp, "brolls/diagnostics.jsonl").read_text()
+            log = Path(tmp, "brolls/diagnostics.jsonl").read_text(encoding="utf-8")
             self.assertNotIn("fixture-private-key", log)
             self.assertNotIn("?key=", log)
             self.assertEqual(json.loads(log)["status"], "error")

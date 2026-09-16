@@ -5,7 +5,7 @@ from pathlib import Path
 def run(args):
     try:
         return subprocess.run(
-            args, check=True, capture_output=True, text=True, timeout=180
+            args, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180
         ).stdout
     except (subprocess.SubprocessError, OSError) as e:
         raise ValueError(

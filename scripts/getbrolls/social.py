@@ -38,7 +38,7 @@ def command():
 def run(arguments, timeout=180):
     try:
         return subprocess.run(command() + arguments, check=True, capture_output=True,
-                              text=True, timeout=timeout).stdout
+                              text=True, encoding="utf-8", errors="replace", timeout=timeout).stdout
     except subprocess.CalledProcessError as exc:
         detail = (exc.stderr or '').lower()
         if 'ip address is blocked' in detail:

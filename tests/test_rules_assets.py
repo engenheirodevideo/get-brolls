@@ -42,7 +42,9 @@ class RulesTests(unittest.TestCase):
             self.assertEqual(format_report(c, r)["fit"], "needs_layout_review")
             r["copyright"]["mode"] = "user_declaration"
             p = Path(d) / "RULES.md"
-            p.write_text("```json\n" + json.dumps(r) + "\n```")
+            p.write_text(
+                "```json\n" + json.dumps(r) + "\n```", encoding="utf-8"
+            )
             with self.assertRaisesRegex(ValueError, "preencher"):
                 load_rules(d)
 
@@ -66,7 +68,12 @@ class RulesTests(unittest.TestCase):
             remember(l, c, "approved", "Good", "Human")
             remember(l, c, "rejected", "Bad fit elsewhere", "Human")
             self.assertEqual(
-                len(json.loads((l.root / "references.json").read_text())["items"]), 2
+                len(
+                    json.loads(
+                        (l.root / "references.json").read_text(encoding="utf-8")
+                    )["items"]
+                ),
+                2,
             )
 
     def test_rule_changes_invalidate_and_block_import(self):
@@ -91,7 +98,7 @@ class RulesTests(unittest.TestCase):
                 ],
             }
             path = Path(d) / "review.json"
-            path.write_text(json.dumps(data))
+            path.write_text(json.dumps(data), encoding="utf-8")
             r["blocked_domains"] = ["example.org"]
             with self.assertRaisesRegex(ValueError, "bloqueado"):
                 import_review(l, path, "Human", r)
@@ -131,6 +138,7 @@ class RulesTests(unittest.TestCase):
                     [sys.executable, str(CLI), *map(str, args), "--project", d],
                     text=True,
                     capture_output=True,
+                    encoding="utf-8",
                 )
                 self.assertEqual(run.returncode, 0 if ok else 2, run.stderr)
                 return json.loads(run.stdout if ok else run.stderr)
@@ -160,7 +168,9 @@ class RulesTests(unittest.TestCase):
                 "responsible_person": "Fixture User",
                 "declaration": "Synthetic test image authored locally.",
             }
-            (root / "RULES.md").write_text("```json\n" + json.dumps(r) + "\n```")
+            (root / "RULES.md").write_text(
+                "```json\n" + json.dumps(r) + "\n```", encoding="utf-8"
+            )
             out = call("permit", *base, "--declaration")
             self.assertEqual(out["rights"]["basis"], "user_declaration")
             out = call("fetch", *base)
