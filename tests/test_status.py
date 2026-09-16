@@ -255,7 +255,7 @@ class StatusCommandTests(unittest.TestCase):
             fixture(tmp)
             rules = Path(tmp) / "RULES.md"
             source = json.loads(
-                (ROOT / "RULES.md").read_text(encoding="utf-8").split("```json")[1].split("```")[0]
+                (ROOT / "docs" / "RULES.md").read_text(encoding="utf-8").split("```json")[1].split("```")[0]
             )
             source["video_format"] = "reels"
             rules.write_text(

@@ -21,10 +21,10 @@ HUB_TARGETS = (
     "agents/openai.yaml",
     "commands/get-brolls-setup.md",
     "GEMINI.md",
-    "GUIDE.md",
-    "QUALITY.md",
+    "docs/GUIDE.md",
+    "docs/QUALITY.md",
     "CONTRIBUTING.md",
-    "SECURITY.md",
+    "docs/SECURITY.md",
     "CHANGELOG.md",
     "README.md",
     "README.en.md",
@@ -168,7 +168,7 @@ class RepositoryDocumentationTests(unittest.TestCase):
         self.assertEqual([], problems)
 
     def test_security_documents_egress_and_absence_of_telemetry(self):
-        security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+        security = (ROOT / "docs" / "SECURITY.md").read_text(encoding="utf-8")
         for marker in (
             "PyPI",
             "npm ci --ignore-scripts",
