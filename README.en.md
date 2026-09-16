@@ -181,4 +181,9 @@ Run one command per project at a time. Preserve originals, cache, and event hist
 
 To maintain the project, start with [CONTRIBUTING](CONTRIBUTING.md) and [AGENTS](AGENTS.md). See [QUALITY](QUALITY.md), [CHANGELOG](CHANGELOG.md), and [SECURITY](SECURITY.md) for evidence, changes, and handling of private data. The cloned repository is the official source of the deliverable.
 
+## Author
+
+Created and maintained by **Bruno Moreira — Engenheiro de Vídeo**.  
+Instagram: **[@zbrunomoreira](https://www.instagram.com/zbrunomoreira/)**.
+
 Code is available under the [MIT License](LICENSE). External dependencies retain their own terms, listed in [Third-party notices](THIRD_PARTY_NOTICES.md).

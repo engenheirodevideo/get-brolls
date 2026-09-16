@@ -181,4 +181,9 @@ Execute um comando por projeto de cada vez. Preserve originais, cache e históri
 
 Para manter o projeto, comece por [CONTRIBUTING](CONTRIBUTING.md) e [AGENTS](AGENTS.md). Consulte [QUALITY](QUALITY.md), [CHANGELOG](CHANGELOG.md) e [SECURITY](SECURITY.md) para evidências, mudanças e tratamento de dados privados. O repositório clonado é a fonte oficial da entrega.
 
+## Autor
+
+Criado e mantido por **Bruno Moreira — Engenheiro de Vídeo**.  
+Instagram: **[@zbrunomoreira](https://www.instagram.com/zbrunomoreira/)**.
+
 Código sob [licença MIT](LICENSE). Dependências externas mantêm suas próprias condições, descritas nos [avisos de terceiros](THIRD_PARTY_NOTICES.md).
