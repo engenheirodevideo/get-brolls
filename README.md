@@ -20,7 +20,7 @@ Get B-rolls é uma skill para coletar os vídeos e imagens que apoiam uma fala, 
 Seu roteiro ou pedido → Pesquisa → Prévias → Sua revisão → Cortes finais
 ```
 
-O agente prioriza fontes literais quando você cita uma entidade real. Para ideias ilustrativas, também pode pesquisar bancos de vídeo. Um único insert funciona sem roteiro completo: basta explicar o que precisa aparecer.
+O agente procura a fonte literal do que você cita: o fato, a pessoa, o produto, a notícia ou a tela reais. Bancos de vídeo entram somente quando você pedir stock explicitamente. Um único insert funciona sem roteiro completo: basta explicar o que precisa aparecer.
 
 A prévia pode baixar mídia de trabalho para mostrar o movimento. A entrega final depende da decisão humana e do registro das condições de uso da fonte. Se o intervalo ou o contexto mudar, o trecho volta para revisão.
 
@@ -143,6 +143,8 @@ Compartilhe a pasta **`brolls/` completa**, para manter as imagens e os GIFs ace
 | **Wikimedia Commons / NASA** | Busca nas APIs públicas | Download HTTPS; sem chave. |
 | **Arquivo local** | Vídeo, imagem ou captura fornecida | Importação local com origem e autoria, quando informadas. |
 
+Pexels e Pixabay são rota opcional: o agente recorre a bancos somente quando você pede stock explicitamente. O padrão é a fonte literal do que a narração cita.
+
 Para Instagram, o agente opera o navegador autorizado e entrega os dois streams ao coletor; o script não captura a sessão sozinho. O [guia Instagram](GUIDE.md#instagram--navegadorplaywright-dois-streams-e-mp4) cobre seleção dos pares, download, áudio e recuperação. Instagram e TikTok dependem da descoberta da URL no navegador; não há busca global por palavra-chave na CLI.
 
 O coletor aceita somente URLs públicas HTTPS sem credenciais, rejeita resolução para redes locais, fixa o download no endereço validado e não segue redirecionamentos. Arquivos indicados por `output=` permanecem dentro de `--config-output-root`; outputs em lote ficam no diretório escolhido e arquivos existentes não são sobrescritos.
@@ -199,7 +201,7 @@ Ao atualizar para 2.3.5, regenere o Storyboard e exporte uma revisão atual. JSO
 
 Os arquivos de projeto e os originais importados ficam locais. Pesquisa e aquisição remotas se conectam aos provedores escolhidos. Guarde chaves, sessão do navegador, configs Instagram e URLs assinadas em ambiente privado; esses dados não pertencem à pasta distribuída da skill.
 
-O storyboard é destinado a projetos locais confiáveis e não possui autenticação de revisor. Compartilhe apenas o material necessário à revisão. As condições de uso pertencem a cada fonte; o registro de uma decisão não verifica automaticamente sua licença.
+O storyboard é destinado a projetos locais confiáveis e não possui autenticação de revisor. Compartilhe apenas o material necessário à revisão. As condições de uso pertencem a cada fonte; o registro de uma decisão não verifica automaticamente sua licença. A responsabilidade pelas condições de uso do material é de quem produz o vídeo; a skill responde pela fidelidade da fonte e pelo registro da origem de cada asset.
 
 A resolução final depende da fonte: prefira 1080p quando disponível e confira as dimensões reais. A ferramenta preserva a proporção e sinaliza incompatibilidades de formato. Ela não monta automaticamente o vídeo completo, não faz busca de imagens via API nem entrega áudio isolado como asset final.
 

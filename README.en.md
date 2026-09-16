@@ -20,7 +20,7 @@ Get B-rolls is a skill for collecting the videos and images that support a line,
 Your script or request → Research → Previews → Your review → Final clips
 ```
 
-The agent prioritizes literal sources when you mention a real entity. For illustrative ideas, it can also search stock-footage libraries. You do not need a complete script to request a single insert: simply explain what should appear.
+The agent looks for the literal source of what you mention: the actual fact, person, product, news item, or screen. Stock-footage libraries are used only when you explicitly ask for stock. You do not need a complete script to request a single insert: simply explain what should appear.
 
 A preview may download working media so you can see the motion. Final delivery requires a human decision and a record of the source's conditions of use. If the time range or context changes, the shot returns to review.
 
@@ -143,6 +143,8 @@ Share the complete **`brolls/` folder** so that its images and GIFs remain acces
 | **Wikimedia Commons / NASA** | Search public APIs | HTTPS download; no key. |
 | **Local file** | Supplied video, image, or screenshot | Local import with origin and creator when provided. |
 
+Pexels and Pixabay are an optional route: the agent turns to stock libraries only when you explicitly ask for stock. The default is the literal source of what the narration cites.
+
 For Instagram, the agent operates the authorized browser and passes both streams to the collector; the script does not capture the session by itself. The [Instagram guide](GUIDE.md#instagram--navegadorplaywright-dois-streams-e-mp4) covers stream pairing, download, audio, and recovery. Instagram and TikTok depend on URL discovery in the browser; the CLI does not implement global keyword search for those platforms.
 
 The collector accepts only public HTTPS URLs without credentials, rejects hostnames that resolve to local networks, pins downloads to the validated address, and does not follow redirects. Files declared through `output=` must remain inside `--config-output-root`; batch outputs stay in the selected directory, and existing files are never overwritten.
@@ -199,7 +201,7 @@ When upgrading to 2.3.5, regenerate the Storyboard and export a current review. 
 
 Project files and imported originals remain local. Remote search and acquisition connect to the selected providers. Keep API keys, browser sessions, Instagram configs, and signed URLs in a private environment; that data does not belong in the distributed skill folder.
 
-The storyboard is intended for trusted local projects and does not authenticate reviewers. Share only the material required for review. Conditions of use belong to each source; recording a decision does not automatically verify its license.
+The storyboard is intended for trusted local projects and does not authenticate reviewers. Share only the material required for review. Conditions of use belong to each source; recording a decision does not automatically verify its license. Responsibility for the conditions of use of the material lies with whoever produces the video; the skill answers for source fidelity and for recording the provenance of every asset.
 
 Final resolution depends on the source: prefer 1080p when available and inspect the actual dimensions. The tool preserves aspect ratio and reports format mismatches. It does not automatically assemble the complete video, perform image search through an API, or deliver isolated audio as a final asset.
 

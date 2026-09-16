@@ -225,6 +225,8 @@ A matriz da 2.3.4 passou em macOS e Windows em Python 3.11/3.13, com Linux/Pytho
 Coleta B-roll dirigida pelo contrato de edição. Confirma no navegador antes de baixar; nunca autora vídeo.
 
 ### Fluxo
+> **Literal primeiro.** O material padrão é footage, print ou imagem real do fato, da pessoa, do produto, da notícia ou da tela que a narração cita. Bancos de stock (Pexels/Pixabay) entram **somente quando o usuário pedir stock explicitamente** — nunca como preenchimento automático de um beat sem fonte literal. A responsabilidade pelas condições de uso do material é de quem produz o vídeo; a skill responde pela fidelidade/literalidade e pelo registro de origem de cada asset, feito por `permit` e pela proveniência gravada no ledger.
+>
 > **Meta editorial: 8+ clipes literais por roteiro quando o conteúdo comportar.** Se os beats óbvios não fecham 8, amplie: mais empresas/pessoas citadas, cobertura de telejornal do mesmo fato, produto nomeado, pregão/mercado real ou segmentos extras da mesma fonte forte. Prefira 1080p quando disponível e confirme com ffprobe; não faça upscale para simular qualidade.
 1. **plan** — dos blocos do contrato (`clips[].bloco_roteiro` / `fala`), derive N beats visuais (query em inglês). Prefira **entidade literal nomeada** (pessoa/produto/logo do que a fala cita: Sam Altman, OpenAI, SoftBank, Codex…) — é onde o YouTube dá material real e limpo. Beats abstratos (back-office, "dev", "automação") caem em tutorial/vlog/stock/desenho; use no máximo um demo de produto real (ex.: dashboard ERP) ou deixe no rosto do talento.
 2. **search** — YouTube sem baixar: `search.sh "<query>" [n]` → `ID | DURATION | TITLE`.
@@ -329,7 +331,7 @@ Diagnóstico: `python3 scripts/gb.py providers`. Falha de credencial não ativa 
 
 ## Bancos — busca, prévia e coleta
 
-Pexels/Pixabay usam suas próprias chaves no ambiente ou `.env` privado da skill. YouTube não depende delas. Execute `search --provider pexels|pixabay --query coffee --limit 2 --intent illustrative --project /projeto`.
+Bancos são rota opcional, acionada **somente quando o usuário pedir stock explicitamente**; o padrão editorial continua sendo a fonte literal do que a narração cita. Pexels/Pixabay usam suas próprias chaves no ambiente ou `.env` privado da skill. YouTube não depende delas. Execute `search --provider pexels|pixabay --query coffee --limit 2 --intent illustrative --project /projeto`.
 
 `preview --candidate ID --start 0 --end 5 --project /projeto` atualiza a URL de mídia, obtém o original em `.getbrolls-sources/` e gera GIF/contact sheet. Preserva o ID remoto, fonte e autoria; não precisa aprovar um poster antes de ver o movimento. Aprovação fica pendente. Depois de review/decisão/condições, fetch usa a fonte revisada.
 
