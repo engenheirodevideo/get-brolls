@@ -1,4 +1,5 @@
 <div align="center">
+  <p><strong>Português</strong> · <a href="README.en.md">English</a></p>
   <img src="assets/brand-logo.png" alt="Engenheiro de vídeo" width="104">
   <h1>GET B-ROLLS</h1>
   <p><strong>Da ideia ao trecho certo para a sua edição.</strong></p>
@@ -169,6 +170,7 @@ Execute um comando por projeto de cada vez. Preserve originais, cache e históri
 | Entrada | Para que serve |
 |---|---|
 | **[README.md](README.md)** | Visão do produto e primeiro uso. |
+| [README.en.md](README.en.md) | Product overview and first use in English. |
 | [GUIDE.md](GUIDE.md) · [SKILL.md](SKILL.md) | Manual completo e instruções de execução para o agente. |
 | [QUALITY.md](QUALITY.md) | Testes, evidências reais e limites conhecidos. |
 | [RULES.md](RULES.md) · [.env.example](.env.example) | Regras editoriais e opções de configuração. |

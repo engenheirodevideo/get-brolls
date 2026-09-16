@@ -27,6 +27,7 @@ tags: [get-brolls]
 - Corrige reuso de download parcial, descoberta da venv, runtime JavaScript e URLs Instagram com perfil antes de `/reel/`.
 - Consolida README, GUIDE, QUALITY, AGENTS, segurança, contribuição e avisos de terceiros como documentação autônoma do produto.
 - Define o repositório GitHub como fonte oficial da entrega; não há fluxo paralelo de pacote ZIP.
+- Publica um README completo em inglês e adiciona navegação de idioma entre as duas versões.
 
 ## Histórico anterior
 

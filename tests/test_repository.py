@@ -44,6 +44,14 @@ class RepositoryDocumentationTests(unittest.TestCase):
         self.assertIn("https://github.com/engenheirodevideo/get-brolls", readme)
         self.assertIn("git clone", readme)
 
+    def test_readme_language_switch_is_reciprocal(self):
+        portuguese = (ROOT / "README.md").read_text(encoding="utf-8")
+        english = (ROOT / "README.en.md").read_text(encoding="utf-8")
+        self.assertIn('href="README.en.md">English</a>', portuguese)
+        self.assertIn('href="README.md">Português</a>', english)
+        self.assertIn("<h1>GET B-ROLLS</h1>", portuguese)
+        self.assertIn("<h1>GET B-ROLLS</h1>", english)
+
     def test_native_windows_entrypoints_are_present_and_documented(self):
         installer = ROOT / "scripts/install.ps1"
         playwright = ROOT / "scripts/playwright.ps1"

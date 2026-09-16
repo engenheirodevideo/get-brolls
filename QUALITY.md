@@ -14,7 +14,7 @@ Este documento reúne o estado de qualidade, as regressões cobertas, os limites
 
 ### Estado atual
 
-**Validação da árvore consolidada: 69 testes passaram localmente em 15/09/2026.** O repositório é a fonte oficial da entrega; não existe uma seleção paralela de arquivos ou pacote ZIP para manter sincronizado.
+**Validação da árvore consolidada: 70 testes passaram localmente em 15/09/2026.** O repositório é a fonte oficial da entrega; não existe uma seleção paralela de arquivos ou pacote ZIP para manter sincronizado.
 
 Uma revisão adversarial executou a suíte em fonte e cópia limpa, instalação completa, `doctor`, `--help`, sintaxe Bash e JavaScript, busca de caminhos locais/segredos e inspeção do branding. A instalação limpa reconheceu yt-dlp 2026.08.19, EJS 0.8.0, Playwright CLI 0.1.20, FFmpeg e ffprobe. Nenhuma biblioteca externa, credencial ou sessão de navegador faz parte do repositório.
 
