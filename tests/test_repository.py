@@ -14,6 +14,55 @@ def github_slug(heading):
     return value.replace(" ", "-")
 
 
+# Destinos que o hub de AGENTS.md precisa rotear: um por público/finalidade.
+HUB_TARGETS = (
+    "SKILL.md",
+    "skills/get-brolls/SKILL.md",
+    "agents/openai.yaml",
+    "commands/get-brolls-setup.md",
+    "GEMINI.md",
+    "GUIDE.md",
+    "QUALITY.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "README.md",
+    "README.en.md",
+)
+
+# Acionamento por agente: o hub nomeia o comando real de cada instalação.
+HUB_INVOCATIONS = (
+    "$get-brolls",
+    "/get-brolls",
+    "/plugin marketplace add engenheirodevideo/get-brolls",
+    "/get-brolls:get-brolls",
+    "/get-brolls-setup",
+)
+
+
+class AgentsHubTests(unittest.TestCase):
+    def test_hub_links_every_entry_point_and_names_each_invocation(self):
+        agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        links = {
+            raw.strip().strip("<>").partition("#")[0]
+            for raw in re.findall(r"\[[^\]]+\]\(([^)]+)\)", agents)
+        }
+        missing = [target for target in HUB_TARGETS if target not in links]
+        self.assertEqual([], missing, "hub sem link para: " + ", ".join(missing))
+        for marker in HUB_INVOCATIONS:
+            self.assertIn(marker, agents, f"hub sem o acionamento: {marker}")
+
+    def test_agent_routers_point_to_the_hub(self):
+        for name in ("CLAUDE.md", "GEMINI.md", "README.md", "README.en.md"):
+            text = (ROOT / name).read_text(encoding="utf-8")
+            self.assertIn("(AGENTS.md)", text, f"{name} não referencia AGENTS.md")
+
+    def test_routers_stay_thin_and_do_not_restate_the_hub(self):
+        claude = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertIn("(SKILL.md)", claude, "CLAUDE.md deve nomear o contrato de operação")
+        self.assertLess(len(claude.splitlines()), 20, "CLAUDE.md deixou de ser roteador")
+
+
 class RepositoryDocumentationTests(unittest.TestCase):
     def test_relative_markdown_links_and_anchors_resolve(self):
         documents = {

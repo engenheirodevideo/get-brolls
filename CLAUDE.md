@@ -8,7 +8,7 @@ tags: [get-brolls]
 
 # GET B-ROLLS — Claude Code
 
-- **Operar a skill** (coletar B-rolls, prévias, revisão, entrega): siga [SKILL.md](SKILL.md). Instalado como plugin do Claude Code, a skill descoberta é `skills/get-brolls/SKILL.md`.
-- **Manter código ou documentação deste repositório**: siga [AGENTS.md](AGENTS.md). O guia operacional único do produto é [GUIDE.md](GUIDE.md).
+- **Comece pelo índice**: [AGENTS.md](AGENTS.md) é o hub central do repositório — mapa dos arquivos, instalação por agente e regras de manutenção.
+- **Operar a skill** (coletar B-rolls, prévias, revisão, entrega): o contrato de operação é [SKILL.md](SKILL.md). Instalado como plugin do Claude Code, a skill descoberta é o espelho [skills/get-brolls/SKILL.md](skills/get-brolls/SKILL.md).
 
-Não duplique instruções aqui: este arquivo apenas roteia. Regras de qualidade e evidências ficam em [QUALITY.md](QUALITY.md).
+Não duplique instruções aqui: este arquivo apenas roteia. Guia operacional ([GUIDE.md](GUIDE.md)), qualidade ([QUALITY.md](QUALITY.md)) e os demais destinos estão indexados no hub.

@@ -28,6 +28,6 @@ Depois de configurar, prepare o ambiente pela seção de [instalação do guia](
 
 ## Manutenção
 
-Para manter código ou documentação deste repositório, siga [AGENTS.md](AGENTS.md). O guia operacional único do produto é [GUIDE.md](GUIDE.md).
+[AGENTS.md](AGENTS.md) é o hub central do repositório: mapa dos arquivos, instalação por agente e regras de manutenção. Comece por ele para manter código ou documentação; o guia operacional único do produto é [GUIDE.md](GUIDE.md).
 
 Não duplique instruções aqui: este arquivo apenas roteia e explica a importação. As regras de aprovação humana, licença e proveniência de [SKILL.md](SKILL.md) valem integralmente no Gemini CLI.

@@ -208,6 +208,7 @@ Run one command per project at a time. Preserve originals, cache, and event hist
 |---|---|
 | [README.md](README.md) | Product overview and first use in Portuguese. |
 | **[README.en.md](README.en.md)** | Product overview and first use in English. |
+| [AGENTS.md](AGENTS.md) | Index for agents and maintainers: repository map, per-agent installation, and maintenance rules. |
 | [GUIDE.md](GUIDE.md) · [SKILL.md](SKILL.md) | Complete operating guide and agent execution instructions. |
 | [QUALITY.md](QUALITY.md) | Tests, real-world evidence, and known limitations. |
 | [RULES.md](RULES.md) · [.env.example](.env.example) | Editorial rules and configuration options. |
