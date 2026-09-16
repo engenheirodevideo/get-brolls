@@ -8,7 +8,12 @@ from .ledger import Ledger, digest
 from .media import probe, cut, run
 from .rendering import render
 
-INSTALLER = "bash scripts/install.sh (ou scripts/install.ps1 no Windows)"
+# Raiz real da skill/plugin: o comando sugerido não pode depender da pasta atual.
+SKILL_ROOT = Path(__file__).resolve().parents[2]
+INSTALLER = (
+    f'bash "{SKILL_ROOT}/scripts/install.sh" '
+    f'(ou "{SKILL_ROOT}/scripts/install.ps1" no Windows)'
+)
 SYSTEM_TOOLS = "instale pelo gerenciador do sistema; veja GUIDE.md#instalação"
 
 # Executável obrigatório → (comando que resolve, impacto real da ausência).
@@ -34,7 +39,50 @@ OPTIONAL_KEYS = {
 }
 
 
-def doctor_summary(executables):
+# Todo executável que o doctor sonda: obrigatórios mais opcionais, sem duplicar.
+PROBED_EXECUTABLES = tuple(
+    sorted(set(REQUIRED_EXECUTABLES) | set(OPTIONAL_EXECUTABLES))
+)
+
+
+def doctor_overrides():
+    """Pins válidos e pins inválidos: um pin quebrado não derruba o diagnóstico."""
+    from getbrolls.config import PATH_KEYS, pin_override
+
+    active = {}
+    problems = []
+    for key in PATH_KEYS:
+        try:
+            value = pin_override(key)
+        except ValueError as exc:
+            problems.append({"item": key, "fix": INSTALLER, "note": str(exc)})
+            continue
+        if value:
+            active[key] = str(value)
+    return active, problems
+
+
+def doctor_resolved(overrides):
+    """Executável absoluto realmente usado por ferramenta, ou None quando ausente."""
+    from getbrolls.config import TOOL_PATH_KEYS
+
+    resolved = {}
+    for name in PROBED_EXECUTABLES:
+        found = overrides.get(TOOL_PATH_KEYS.get(name) or "") or shutil.which(name)
+        if not found and name == "yt-dlp":
+            from .social import local_ytdlp
+
+            try:
+                found = local_ytdlp()
+            except ValueError:
+                found = None
+        if not found and name == "playwright-cli":
+            found = _local_playwright()
+        resolved[name] = str(Path(found).resolve()) if found else None
+    return resolved
+
+
+def doctor_summary(executables, pins=()):
     """Veredito humano do doctor: o que funciona, o que falta e o que é opcional."""
     ok = sorted(name for name, present in executables.items() if present)
     missing = [
@@ -42,6 +90,7 @@ def doctor_summary(executables):
         for name in sorted(REQUIRED_EXECUTABLES)
         if not executables.get(name)
     ]
+    missing += list(pins)
     optional = [
         {"item": name, "note": note}
         for name, note in sorted(OPTIONAL_EXECUTABLES.items())
@@ -301,9 +350,13 @@ def status_report(ledger, rules=None, rules_error=None):
 
 
 def _local_playwright(root=None):
-    root = Path(root) if root is not None else Path(__file__).resolve().parents[2]
+    """Playwright CLI instalado em `.tools`, ou None quando não há um."""
+    root = Path(root) if root is not None else SKILL_ROOT
     root = root / ".tools/node_modules/.bin"
-    return any((root / name).is_file() for name in ("playwright-cli.cmd", "playwright-cli"))
+    for name in ("playwright-cli.cmd", "playwright-cli"):
+        if (root / name).is_file():
+            return root / name
+    return None
 
 
 def execute(args):
@@ -318,40 +371,43 @@ def execute(args):
     if args.command in ("providers", "doctor"):
         result = providers.capabilities()
         if args.command == "doctor":
-            from getbrolls.config import TOOL_PATH_KEYS, active_overrides
+            from getbrolls.config import TOOL_PATH_KEYS
+            from .social import doctor as social_doctor
 
-            overrides = active_overrides()
+            # Pin inválido vira item de `missing`, não morte do diagnóstico.
+            overrides, pin_problems = doctor_overrides()
+            resolved = doctor_resolved(overrides)
+            try:
+                social = social_doctor()
+            except ValueError as exc:
+                social = {"engine": "yt-dlp", "installed": False, "error": str(exc)}
+            executables = {
+                name: bool(overrides.get(TOOL_PATH_KEYS.get(name) or "") or shutil.which(name))
+                for name in PROBED_EXECUTABLES
+            }
+            executables["yt-dlp"] = social["installed"]
+            executables["playwright-cli"] = bool(
+                _local_playwright() or shutil.which("playwright-cli")
+            )
             result = {
+                # Veredito primeiro: o JSON continua completo logo abaixo dele.
+                "summary": doctor_summary(executables, pin_problems),
                 "get_brolls": __version__,
                 "preview": config,
                 "python": sys.version.split()[0],
                 "tool_paths": overrides,
-                "executables": {
-                    x: bool(overrides.get(TOOL_PATH_KEYS.get(x)) or shutil.which(x))
-                    for x in ("ffmpeg", "ffprobe", "yt-dlp", "curl", "bash", "node", "deno", "npx")
-                },
+                "executables": executables,
+                "resolved": resolved,
                 "providers": result,
+                "social": social,
             }
-        if args.command == "doctor":
-            from .social import doctor as social_doctor
-            result["social"] = social_doctor()
-            result["executables"]["yt-dlp"] = result["social"]["installed"]
-            result["executables"]["playwright-cli"] = _local_playwright() or bool(shutil.which("playwright-cli"))
-            # Veredito primeiro: o JSON continua completo logo abaixo dele.
-            result = {"summary": doctor_summary(result["executables"]), **result}
-        if args.command == "doctor" and args.live:
-            from getbrolls.health import live_checks
+            if args.live:
+                from getbrolls.health import live_checks
 
-            result["live"] = live_checks()
+                result["live"] = live_checks()
         return result
     cmd = args.command
-    from getbrolls.rules import (
-        load_rules,
-        allowed,
-        domain_matches,
-        format_report,
-        ROOT as SKILL_ROOT,
-    )
+    from getbrolls.rules import load_rules, allowed, domain_matches, format_report
 
     if cmd == "status":
         # Somente leitura: nada é criado, nem a árvore do projeto, nem pendências.

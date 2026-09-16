@@ -9,22 +9,29 @@ from .http import ProviderError
 from .config import executable_override, venv_override
 
 
+LAYOUTS = ('Scripts/yt-dlp.exe', 'Scripts/yt-dlp', 'bin/yt-dlp')
+
+
 def local_ytdlp(root=None):
     pinned = executable_override('GB_YTDLP_PATH')
     if pinned:
         return Path(pinned)
     base = venv_override()
-    if base is None:
+    explicit = base is not None
+    if not explicit:
         root = Path(root) if root is not None else Path(__file__).resolve().parents[2]
         base = root / '.venv'
-    for relative in (
-        'Scripts/yt-dlp.exe',
-        'Scripts/yt-dlp',
-        'bin/yt-dlp',
-    ):
+    for relative in LAYOUTS:
         candidate = base / relative
         if candidate.is_file():
             return candidate
+    if explicit:
+        # Pin explícito é promessa: sem yt-dlp dentro, nada de voltar ao PATH.
+        raise ValueError(
+            f'GB_VENV_PATH: {base} não contém yt-dlp (procurado em '
+            + ', '.join(LAYOUTS)
+            + '). Instale o yt-dlp nessa venv ou remova a variável.'
+        )
     return None
 
 

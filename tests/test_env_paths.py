@@ -16,18 +16,25 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from getbrolls import config, media, social
 
 CLI = ROOT / "scripts/gb.py"
-PATH_KEYS = ("GB_YTDLP_PATH", "GB_VENV_PATH", "GB_FFMPEG_PATH", "GB_FFPROBE_PATH")
+PATH_KEYS = config.PATH_KEYS
+
+
+def clean_environ(**values):
+    """Environment dict with every GB_*_PATH removed, plus the given overrides."""
+    return {
+        **{k: v for k, v in os.environ.items() if k not in PATH_KEYS},
+        **values,
+    }
 
 
 def clean_env(**values):
     """Environment with every GB_*_PATH removed, plus the given overrides."""
-    environment = {k: v for k, v in os.environ.items() if k not in PATH_KEYS}
-    environment.update(values)
-    return patch.dict(os.environ, environment, clear=True)
+    return patch.dict(os.environ, clean_environ(**values), clear=True)
 
 
 def make_executable(directory, name):
-    path = Path(directory) / name
+    # Caminho real: os pins resolvem symlinks, e /var é symlink no macOS.
+    path = Path(directory).resolve() / name
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
@@ -51,9 +58,10 @@ class DefaultsUnchangedTests(unittest.TestCase):
             self.assertEqual(runner.call_args[0][0], ["ffprobe", "-v", "error"])
 
     def test_local_ytdlp_keeps_venv_discovery(self):
-        with clean_env(), tempfile.TemporaryDirectory() as root:
+        with clean_env(), tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
             self.assertIsNone(social.local_ytdlp(root))
-            binary = make_executable(Path(root) / ".venv/bin", "yt-dlp")
+            binary = make_executable(root / ".venv/bin", "yt-dlp")
             self.assertEqual(social.local_ytdlp(root), binary)
 
 
@@ -73,7 +81,7 @@ class ExecutableOverrideTests(unittest.TestCase):
 
     def test_ytdlp_pin_wins_over_venv(self):
         with tempfile.TemporaryDirectory() as d:
-            root = Path(d) / "skill"
+            root = Path(d).resolve() / "skill"
             make_executable(root / ".venv/bin", "yt-dlp")
             pinned = make_executable(Path(d) / "pinned", "yt-dlp")
             with clean_env(GB_YTDLP_PATH=str(pinned)):
@@ -103,11 +111,34 @@ class ExecutableOverrideTests(unittest.TestCase):
             self.assertEqual(config.tool_path("ffmpeg"), "ffmpeg")
             self.assertIsNone(config.venv_override())
 
+    def test_relative_pin_resolves_to_an_absolute_path(self):
+        with tempfile.TemporaryDirectory() as d:
+            directory = Path(d).resolve()
+            ffmpeg = make_executable(directory, "ffmpeg-pinned")
+            cwd = os.getcwd()
+            os.chdir(directory)
+            try:
+                with clean_env(GB_FFMPEG_PATH="ffmpeg-pinned"):
+                    resolved = config.tool_path("ffmpeg")
+            finally:
+                os.chdir(cwd)
+            self.assertEqual(str(ffmpeg), resolved)
+            self.assertTrue(Path(resolved).is_absolute())
+
+    def test_directory_pin_says_it_is_not_an_executable_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            with clean_env(GB_FFMPEG_PATH=d):
+                with self.assertRaises(ValueError) as caught:
+                    config.tool_path("ffmpeg")
+            message = str(caught.exception)
+            self.assertIn("não é um arquivo executável", message)
+            self.assertNotIn("não existe", message)
+
 
 class VenvOverrideTests(unittest.TestCase):
     def test_posix_layout(self):
         with tempfile.TemporaryDirectory() as d:
-            venv = Path(d) / "shared-venv"
+            venv = Path(d).resolve() / "shared-venv"
             binary = make_executable(venv / "bin", "yt-dlp")
             with clean_env(GB_VENV_PATH=str(venv)):
                 self.assertEqual(social.local_ytdlp(Path(d) / "ignored"), binary)
@@ -116,19 +147,24 @@ class VenvOverrideTests(unittest.TestCase):
         # The Windows layout is probed by path, so it resolves on any host.
         for name in ("yt-dlp.exe", "yt-dlp"):
             with tempfile.TemporaryDirectory() as d:
-                venv = Path(d) / "shared-venv"
+                venv = Path(d).resolve() / "shared-venv"
                 binary = make_executable(venv / "Scripts", name)
                 with clean_env(GB_VENV_PATH=str(venv)):
                     self.assertEqual(social.local_ytdlp(Path(d) / "ignored"), binary)
 
-    def test_pinned_venv_without_ytdlp_does_not_use_default_venv(self):
+    def test_pinned_venv_without_ytdlp_fails_instead_of_falling_back(self):
         with tempfile.TemporaryDirectory() as d:
-            root = Path(d) / "skill"
+            root = Path(d).resolve() / "skill"
             make_executable(root / ".venv/bin", "yt-dlp")
-            empty = Path(d) / "vazia"
+            empty = Path(d).resolve() / "vazia"
             empty.mkdir()
             with clean_env(GB_VENV_PATH=str(empty)):
-                self.assertIsNone(social.local_ytdlp(root))
+                with self.assertRaises(ValueError) as caught:
+                    social.local_ytdlp(root)
+            message = str(caught.exception)
+            self.assertIn("GB_VENV_PATH", message)
+            self.assertIn(str(empty), message)
+            self.assertIn("yt-dlp", message)
 
     def test_missing_directory_fails(self):
         missing = str(Path(tempfile.gettempdir()) / "gb-inexistente-venv")
@@ -193,40 +229,62 @@ class EnvFileVocabularyTests(unittest.TestCase):
 
 
 class DoctorReportTests(unittest.TestCase):
+    def doctor(self, directory, **values):
+        """doctor com `.env` neutro: o `.env` do desenvolvedor não entra no teste."""
+        empty = Path(directory) / "vazio.env"
+        empty.write_text("", encoding="utf-8")
+        done = subprocess.run(
+            [sys.executable, str(CLI), "--env-file", str(empty), "doctor"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=clean_environ(**values),
+            timeout=120,
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return json.loads(done.stdout)
+
     def test_doctor_reports_active_override(self):
         with tempfile.TemporaryDirectory() as d:
             ffmpeg = make_executable(d, "ffmpeg-pinned")
-            environment = {
-                k: v for k, v in os.environ.items() if k not in PATH_KEYS
-            }
-            environment["GB_FFMPEG_PATH"] = str(ffmpeg)
-            done = subprocess.run(
-                [sys.executable, str(CLI), "doctor"],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                env=environment,
-                timeout=120,
-            )
-            self.assertEqual(done.returncode, 0, done.stderr)
-            payload = json.loads(done.stdout)
+            payload = self.doctor(d, GB_FFMPEG_PATH=str(ffmpeg))
             self.assertEqual(
-                payload["tool_paths"], {"GB_FFMPEG_PATH": str(ffmpeg)}
+                payload["tool_paths"], {"GB_FFMPEG_PATH": str(ffmpeg.resolve())}
             )
             self.assertTrue(payload["executables"]["ffmpeg"])
 
     def test_doctor_without_override_reports_nothing(self):
-        environment = {k: v for k, v in os.environ.items() if k not in PATH_KEYS}
-        done = subprocess.run(
-            [sys.executable, str(CLI), "doctor"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            env=environment,
-            timeout=120,
-        )
-        self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertEqual(json.loads(done.stdout)["tool_paths"], {})
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(self.doctor(d)["tool_paths"], {})
+
+    def test_doctor_turns_an_invalid_pin_into_a_missing_entry(self):
+        with tempfile.TemporaryDirectory() as d:
+            missing = str(Path(d) / "gb-inexistente-ffmpeg")
+            payload = self.doctor(d, GB_FFMPEG_PATH=missing)
+            entry = next(
+                e for e in payload["summary"]["missing"] if e["item"] == "GB_FFMPEG_PATH"
+            )
+            self.assertIn(missing, entry["note"])
+            self.assertEqual({}, payload["tool_paths"])
+
+    def test_doctor_fix_names_the_installer_by_absolute_path(self):
+        with tempfile.TemporaryDirectory() as d:
+            payload = self.doctor(d, GB_VENV_PATH=str(Path(d) / "sem-venv"))
+            for entry in payload["summary"]["missing"]:
+                self.assertIn("install.sh", entry["fix"])
+                self.assertIn(str(ROOT / "scripts/install.sh"), entry["fix"])
+
+    def test_doctor_resolves_each_tool_to_an_absolute_executable(self):
+        with tempfile.TemporaryDirectory() as d:
+            ffmpeg = make_executable(d, "ffmpeg-pinned")
+            payload = self.doctor(d, GB_FFMPEG_PATH=str(ffmpeg))
+            resolved = payload["resolved"]
+            for name in ("ffmpeg", "ffprobe", "yt-dlp"):
+                self.assertIn(name, resolved)
+            self.assertEqual(str(ffmpeg.resolve()), resolved["ffmpeg"])
+            for name, path in resolved.items():
+                if path is not None:
+                    self.assertTrue(Path(path).is_absolute(), name)
 
 
 if __name__ == "__main__":

@@ -30,7 +30,7 @@ TOOL_PATH_KEYS = {
     "ffprobe": "GB_FFPROBE_PATH",
     "yt-dlp": "GB_YTDLP_PATH",
 }
-PATH_KEYS = ("GB_YTDLP_PATH", "GB_VENV_PATH", "GB_FFMPEG_PATH", "GB_FFPROBE_PATH")
+PATH_KEYS = (*TOOL_PATH_KEYS.values(), "GB_VENV_PATH")
 
 
 def load_env(path):
@@ -58,15 +58,22 @@ def load_env(path):
         os.environ.setdefault(key, value)
 
 
+def _pinned(key):
+    """Trimmed value of the pin, or None when the variable is unset or empty."""
+    return (os.environ.get(key) or "").strip() or None
+
+
 def executable_override(key):
-    """Executable pinned by key, or None when the variable is unset or empty."""
-    value = (os.environ.get(key) or "").strip()
-    if not value:
+    """Executable pinned by key, resolved to an absolute path; None when unset."""
+    value = _pinned(key)
+    if value is None:
         return None
-    path = Path(value)
+    # Absoluto antes de validar: o pin não pode depender da pasta atual.
+    path = Path(value).expanduser().resolve()
     if not path.is_file():
+        detail = "não é um arquivo executável" if path.exists() else "não existe"
         raise ValueError(
-            f"{key}: {value} não existe. Aponte para o executável correto ou remova a variável."
+            f"{key}: {value} {detail}. Aponte para o executável correto ou remova a variável."
         )
     if not os.access(path, os.X_OK):
         raise ValueError(
@@ -76,11 +83,11 @@ def executable_override(key):
 
 
 def venv_override():
-    """Directory pinned by GB_VENV_PATH, or None when unset or empty."""
-    value = (os.environ.get("GB_VENV_PATH") or "").strip()
-    if not value:
+    """Directory pinned by GB_VENV_PATH, resolved to an absolute path; None when unset."""
+    value = _pinned("GB_VENV_PATH")
+    if value is None:
         return None
-    path = Path(value)
+    path = Path(value).expanduser().resolve()
     if not path.is_dir():
         raise ValueError(
             f"GB_VENV_PATH: {value} não é um diretório existente. Aponte para a pasta .venv ou remova a variável."
@@ -96,14 +103,15 @@ def tool_path(name):
     return executable_override(key) or name
 
 
+def pin_override(key):
+    """Resolved value of one GB_*_PATH pin, whatever kind of path it holds."""
+    return venv_override() if key == "GB_VENV_PATH" else executable_override(key)
+
+
 def active_overrides():
     """Validated GB_*_PATH pins currently in effect, for doctor reporting."""
-    result = {}
-    for key in PATH_KEYS:
-        value = venv_override() if key == "GB_VENV_PATH" else executable_override(key)
-        if value:
-            result[key] = str(value)
-    return result
+    resolved = {key: pin_override(key) for key in PATH_KEYS}
+    return {key: str(value) for key, value in resolved.items() if value}
 
 
 def settings():
