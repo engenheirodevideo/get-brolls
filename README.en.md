@@ -5,6 +5,14 @@
   <p><strong>From an idea to the right shot for your edit.</strong></p>
   <p>Find supporting footage, preview the motion, and review every choice<br>before receiving the final clips with their sources.</p>
   <p><a href="#getting-started">Getting started</a> · <a href="#highlights">Highlights</a> · <a href="#documentation">Documentation</a> · <a href="docs/GUIDE.md#instalação">Full guide</a></p>
+  <p align="center">
+    <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey?style=flat-square" alt="macOS and Windows">
+    <img src="https://img.shields.io/badge/agents-Codex%20%7C%20Claude%20Code-orange?style=flat-square" alt="Codex and Claude Code">
+    <img src="https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square" alt="Python 3.11+">
+    <img src="https://img.shields.io/badge/node-22%2B-green?style=flat-square" alt="Node 22+">
+    <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
+    <img src="https://img.shields.io/badge/version-2.3.7-blue?style=flat-square" alt="Version 2.3.7">
+  </p>
 </div>
 
 Get B-rolls is a skill for collecting the videos and images that support a line, illustrate an idea, or show the exact person, product, or event mentioned in a script. You describe what you need; the agent researches, prepares previews, and gathers the options into a storyboard for your review.
@@ -13,11 +21,19 @@ Get B-rolls is a skill for collecting the videos and images that support a line,
 - **See it before deciding.** GIFs and contact sheets help you evaluate action, framing, and on-screen text.
 - **Receive an organized collection.** Final clips are delivered with a record of their origin, review decision, and conditions of use.
 
-## How it works
-
 The agent looks for the literal source of what you mention: the actual fact, person, product, news item, or screen. Stock-footage libraries are used only when you explicitly ask for stock. You do not need a complete script to request a single insert: simply explain what should appear.
 
 A preview may download working media so you can see the motion. Final delivery requires a human decision and a record of the source's conditions of use. If the time range or context changes, the shot returns to review.
+
+## Updates
+
+- **2.3.7 — under review.** `status --project` command ("where are we?"), self-explanatory CLI with `--version`, `/get-brolls-setup` plugin command, "First B-roll in 5 minutes" quickstart, pinnable tool paths via `GB_*_PATH`, and [AGENTS.md](AGENTS.md) as the repository hub.
+- **2.3.6.** Claude Code plugin install — the repository is its own skill marketplace.
+- **2.3.5.** First official GitHub release, network hardening (HTTPS/DNS) and pinned dependencies.
+
+Full history in [CHANGELOG.md](CHANGELOG.md).
+
+## How it works
 
 <p align="center"><img src="assets/flow.en.svg" alt="Skill map: from request to organized collection" width="700"></p>
 
@@ -25,14 +41,6 @@ A preview may download working media so you can see the motion. Final delivery r
 
 <p align="center"><img src="assets/formats.en.svg" alt="Formats: video becomes an MP4 at 1080p of the approved range; local images are copied unchanged; page captures come out as PNG/JPG with provenance" width="700"></p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey?style=flat-square" alt="macOS and Windows">
-  <img src="https://img.shields.io/badge/agents-Codex%20%7C%20Claude%20Code-orange?style=flat-square" alt="Codex and Claude Code">
-  <img src="https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/node-22%2B-green?style=flat-square" alt="Node 22+">
-  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
-  <img src="https://img.shields.io/badge/version-2.3.7-blue?style=flat-square" alt="Version 2.3.7">
-</p>
 
 ## Getting started
 

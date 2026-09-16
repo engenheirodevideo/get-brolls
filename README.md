@@ -5,6 +5,14 @@
   <p><strong>Da ideia ao trecho certo para a sua edição.</strong></p>
   <p>Encontre imagens de apoio, veja o movimento e revise cada escolha<br>antes de receber os cortes finais com suas fontes.</p>
   <p><a href="#comece-aqui">Comece aqui</a> · <a href="#destaques">Destaques</a> · <a href="#documentação">Documentação</a> · <a href="docs/GUIDE.md#instalação">Guia completo</a></p>
+  <p align="center">
+    <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey?style=flat-square" alt="macOS e Windows">
+    <img src="https://img.shields.io/badge/agents-Codex%20%7C%20Claude%20Code-orange?style=flat-square" alt="Codex e Claude Code">
+    <img src="https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square" alt="Python 3.11+">
+    <img src="https://img.shields.io/badge/node-22%2B-green?style=flat-square" alt="Node 22+">
+    <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="Licença MIT">
+    <img src="https://img.shields.io/badge/version-2.3.7-blue?style=flat-square" alt="Versão 2.3.7">
+  </p>
 </div>
 
 Get B-rolls é uma skill para coletar os vídeos e imagens que apoiam uma fala, ilustram uma ideia ou mostram exatamente a pessoa, o produto e o acontecimento citados no roteiro. Você descreve o que precisa; o agente pesquisa, prepara as prévias e reúne as escolhas em um storyboard para sua revisão.
@@ -13,11 +21,19 @@ Get B-rolls é uma skill para coletar os vídeos e imagens que apoiam uma fala, 
 - **Veja antes de decidir.** GIFs e sequências de quadros ajudam a avaliar ação, enquadramento e textos sobrepostos.
 - **Receba uma coleta organizada.** Os cortes finais ficam junto de um registro de origem, revisão e condições de uso.
 
-## Como funciona
-
 O agente procura a fonte literal do que você cita: o fato, a pessoa, o produto, a notícia ou a tela reais. Bancos de vídeo entram somente quando você pedir stock explicitamente. Um único insert funciona sem roteiro completo: basta explicar o que precisa aparecer.
 
 A prévia pode baixar mídia de trabalho para mostrar o movimento. A entrega final depende da decisão humana e do registro das condições de uso da fonte. Se o intervalo ou o contexto mudar, o trecho volta para revisão.
+
+## Atualizações
+
+- **2.3.7 — em revisão.** Comando `status --project` ("onde estamos?"), CLI autoexplicativa com `--version`, comando de plugin `/get-brolls-setup`, quickstart "Primeiro B-roll em 5 minutos", caminhos de ferramentas fixáveis via `GB_*_PATH` e [AGENTS.md](AGENTS.md) como hub do repositório.
+- **2.3.6.** Instalação como plugin do Claude Code — o próprio repositório é o marketplace da skill.
+- **2.3.5.** Primeira release oficial no GitHub, endurecimento de rede (HTTPS/DNS) e dependências fixadas.
+
+Histórico completo no [CHANGELOG.md](CHANGELOG.md).
+
+## Como funciona
 
 <p align="center"><img src="assets/flow.svg" alt="Mapa da skill: do pedido à coleta organizada" width="700"></p>
 
@@ -25,14 +41,6 @@ A prévia pode baixar mídia de trabalho para mostrar o movimento. A entrega fin
 
 <p align="center"><img src="assets/formats.svg" alt="Formatos: video vira MP4 1080p do intervalo aprovado; imagens locais são copiadas sem alteração; capturas de página saem em PNG/JPG com procedência" width="700"></p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey?style=flat-square" alt="macOS e Windows">
-  <img src="https://img.shields.io/badge/agents-Codex%20%7C%20Claude%20Code-orange?style=flat-square" alt="Codex e Claude Code">
-  <img src="https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/node-22%2B-green?style=flat-square" alt="Node 22+">
-  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="Licença MIT">
-  <img src="https://img.shields.io/badge/version-2.3.7-blue?style=flat-square" alt="Versão 2.3.7">
-</p>
 
 ## Comece aqui
 
@@ -243,7 +251,7 @@ Execute um comando por projeto de cada vez. Preserve originais, cache e históri
 | `agents/` · `schemas/` | Apresentação no agente e contrato de dados. |
 | `tests/` · `.github/workflows/` | Testes e automação de qualidade. |
 
-Para manter o projeto, comece por [CONTRIBUTING](CONTRIBUTING.md) e [AGENTS](AGENTS.md). Consulte [QUALITY](docs/QUALITY.md), [CHANGELOG](CHANGELOG.md) e [SECURITY](docs/SECURITY.md) para evidências, mudanças e tratamento de dados privados. O repositório clonado (ou instalado como plugin) é a fonte oficial da entrega.
+Para manter o projeto, comece por [CONTRIBUTING](CONTRIBUTING.md) e [AGENTS](AGENTS.md). Consulte [QUALITY](docs/QUALITY.md), [CHANGELOG](CHANGELOG.md) e [SECURITY](docs/SECURITY.md) para evidências, mudanças e tratamento de dados privados.
 
 ## Autor
 
