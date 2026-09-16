@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 823 1428" width="823" height="1428" role="img" aria-label="Cadeia de formatos: encontra o insert, ramifica em vídeo, imagem e captura de página, gera prévia, você aprova e recebe MP4 1080p, original intacto ou PNG/JPG com procedência">
   <defs>
     <pattern id="dots2" width="28" height="28" patternUnits="userSpaceOnUse">
-      <circle cx="4" cy="4" r="1.2" fill="#8a7f6a" fill-opacity="0.1"/>
+      <circle cx="4" cy="4" r="1.2" fill="#ffffff" fill-opacity="0.06"/>
     </pattern>
     <marker id="arr2" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-      <path d="M0 0 L10 5 L0 10 z" fill="#4a4a48"/>
+      <path d="M0 0 L10 5 L0 10 z" fill="#8a8477"/>
     </marker>
   </defs>
   <style>
@@ -13,12 +13,12 @@
     .tw2{fill:#fff}
     .s2{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:12.5px;fill:#44403c;text-anchor:middle}
     .sw2{fill:#fff7ed}
-    .ln2{stroke:#4a4a48;stroke-width:1.8;fill:none}
+    .ln2{stroke:#8a8477;stroke-width:1.8;fill:none}
     .chip{fill:#1c1917}
     .chipt{font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-size:11px;font-weight:700;fill:#faf6ee;text-anchor:middle;letter-spacing:.05em}
   </style>
 
-  <rect x="0" y="0" width="823" height="1428" fill="#faf6ee"/>
+  <rect x="0" y="0" width="823" height="1428" fill="#141210"/>
   <rect x="0" y="0" width="823" height="58" fill="#1c1917"/>
   <text class="mono2" x="36" y="35" font-size="12" fill="#ffffff">GET B-ROLLS / FORMATOS</text>
   <text class="mono2" x="787" y="35" font-size="12" fill="#ffffff" text-anchor="end">Encontra → revisa → entrega ↓</text>
@@ -93,7 +93,7 @@
   <path class="ln2" d="M158 748 V770" marker-end="url(#arr2)"/>
   <path class="ln2" d="M411 748 V770" marker-end="url(#arr2)"/>
   <path class="ln2" d="M664 748 V770" marker-end="url(#arr2)"/>
-  <text class="mono2" x="440" y="742" font-size="11" fill="#1c1917">SIM</text>
+  <text class="mono2" x="440" y="742" font-size="11" fill="#faf6ee">SIM</text>
 
   <!-- entregas -->
   <rect x="48" y="776" width="220" height="76" rx="14" fill="#f4511e" stroke="#c2410c"/>

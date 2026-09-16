@@ -134,6 +134,26 @@ python3 scripts/gb.py verify --project /path/to/my-video
 
 At the end, `verify` answers `"count": 1` and the approved clip is in `/path/to/my-video/brolls/clips/`, with origin, creator, and decision recorded in `brolls/credits.md`. Replacing `nasa` with `commons` follows the same flow.
 
+## Commands
+
+```text
+/get-brolls <request>                 # invoke the skill in Claude Code
+$get-brolls <request>                 # invoke the skill in Codex
+/get-brolls-setup                     # plugin: install dependencies and run doctor
+
+python3 scripts/gb.py doctor          # check the environment and tools
+python3 scripts/gb.py search   ...    # search candidates in the chosen source
+python3 scripts/gb.py preview  ...    # build GIF/contact sheet for the range
+python3 scripts/gb.py review   ...    # assemble the brolls/review.html storyboard
+python3 scripts/gb.py import-review . # import your storyboard decisions
+python3 scripts/gb.py permit   ...    # record the source usage conditions
+python3 scripts/gb.py fetch    ...    # download the approved final cut
+python3 scripts/gb.py verify   ...    # verify the delivery in the project
+python3 scripts/gb.py status --project ...  # where are we? (read-only)
+```
+
+Every subcommand accepts `help`; full syntax lives in the terminal section.
+
 ## Highlights
 
 - **Local storyboard.** `review` generates `brolls/review.html`: a page to switch between a still image and a GIF, see the narration, time range, selection rationale, creator, and source, and approve, request an adjustment, or suggest another source per shot. [Storyboard details.](#storyboard)

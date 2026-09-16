@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 823 985" width="823" height="985" role="img" aria-label="Mapa da skill: seu pedido, Get B-rolls, fontes, candidatos, sua aprovação, coleta organizada">
   <defs>
     <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse">
-      <circle cx="4" cy="4" r="1.2" fill="#8a7f6a" fill-opacity="0.1"/>
+      <circle cx="4" cy="4" r="1.2" fill="#ffffff" fill-opacity="0.06"/>
     </pattern>
     <marker id="arr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-      <path d="M0 0 L10 5 L0 10 z" fill="#4a4a48"/>
+      <path d="M0 0 L10 5 L0 10 z" fill="#8a8477"/>
     </marker>
     <marker id="arrR" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 z" fill="#c2410c"/>
@@ -16,12 +16,12 @@
     .tw{fill:#fff}
     .s{font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:13px;fill:#44403c;text-anchor:middle}
     .sw{fill:#fff7ed}
-    .ln{stroke:#4a4a48;stroke-width:1.8;fill:none}
+    .ln{stroke:#8a8477;stroke-width:1.8;fill:none}
     .red{stroke:#c2410c;stroke-width:1.6;fill:none;stroke-dasharray:6 5}
   </style>
 
   <!-- frame -->
-  <rect x="0" y="0" width="823" height="985" fill="#faf6ee"/>
+  <rect x="0" y="0" width="823" height="985" fill="#141210"/>
   <rect x="0" y="0" width="823" height="58" fill="#1c1917"/>
   <text class="mono" x="36" y="35" font-size="12" fill="#ffffff">GET B-ROLLS / MAPA DA SKILL</text>
   <text class="mono" x="787" y="35" font-size="12" fill="#ffffff" text-anchor="end">Do pedido à coleta ↓</text>
@@ -84,7 +84,7 @@
 
   <!-- SIM -->
   <path class="ln" d="M411 802 V852" marker-end="url(#arr)"/>
-  <text class="mono" x="425" y="833" font-size="12" fill="#1c1917">SIM</text>
+  <text class="mono" x="425" y="833" font-size="12" fill="#faf6ee">SIM</text>
 
   <!-- coleta -->
   <rect x="246" y="858" width="330" height="80" rx="14" fill="#f4511e" stroke="#c2410c"/>

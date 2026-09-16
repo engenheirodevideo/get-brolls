@@ -134,6 +134,26 @@ python3 scripts/gb.py verify --project /caminho/meu-video
 
 Ao final, `verify` responde `"count": 1` e o corte aprovado está em `/caminho/meu-video/brolls/clips/`, com origem, autor e decisão em `brolls/credits.md`. Com `commons` no lugar de `nasa`, o fluxo é idêntico.
 
+## Comandos
+
+```text
+/get-brolls <pedido>                  # chama a skill no Claude Code
+$get-brolls <pedido>                  # chama a skill no Codex
+/get-brolls-setup                     # plugin: instala dependências e roda o doctor
+
+python3 scripts/gb.py doctor          # confere o ambiente e as ferramentas
+python3 scripts/gb.py search   ...    # pesquisa candidatos na fonte escolhida
+python3 scripts/gb.py preview  ...    # gera GIF/contact sheet do intervalo
+python3 scripts/gb.py review   ...    # monta o storyboard brolls/review.html
+python3 scripts/gb.py import-review . # importa suas decisões do storyboard
+python3 scripts/gb.py permit   ...    # registra as condições de uso da fonte
+python3 scripts/gb.py fetch    ...    # baixa o corte final aprovado
+python3 scripts/gb.py verify   ...    # confere a entrega no projeto
+python3 scripts/gb.py status --project ...  # onde estamos? (só leitura)
+```
+
+Cada subcomando aceita `help`; a sintaxe completa está em [Usar pelo terminal](#usar-pelo-terminal).
+
 ## Destaques
 
 - **Storyboard local.** `review` gera `brolls/review.html`: uma página para alternar entre imagem estática e GIF, ver fala, intervalo, motivo da escolha, autor e fonte, e aprovar, pedir ajuste ou sugerir outra fonte por trecho. [Detalhes do storyboard.](#storyboard)
