@@ -154,6 +154,7 @@ Recorded trials include real acquisition from YouTube, Instagram, TikTok, Pexels
 Run the examples below from the skill folder. Replace `/path/to/my-video` with your project folder and `ID` with the identifier returned by the search.
 
 ```sh
+python3 scripts/gb.py status --project /path/to/my-video
 python3 scripts/gb.py rules --project /path/to/my-video
 python3 scripts/gb.py references --project /path/to/my-video
 python3 scripts/gb.py search --provider youtube --query "NASA Artemis launch" --limit 3 --intent literal --project /path/to/my-video
@@ -172,6 +173,8 @@ python3 scripts/gb.py verify --project /path/to/my-video
 ```
 
 Replace the name, exported file, and evidence with real data. Repeat `permit` and `fetch` for every approved candidate. `approve` can also record an explicit decision you have already received. `verify` checks file integrity and decoding; the editorial judgment remains yours.
+
+`status` answers where the collection stands at any moment — candidates, previews, decisions, permissions, and deliveries, with the suggested next step — and never changes the project. Flow commands also return a `summary` field with a one-line account of what just happened. [Project state and progress.](GUIDE.md#estado-do-projeto-e-progresso)
 
 <details>
 <summary>URLs, local files, and settings</summary>

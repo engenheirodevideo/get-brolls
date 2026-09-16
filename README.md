@@ -154,6 +154,7 @@ Os ensaios registrados incluem aquisição real de YouTube, Instagram, TikTok, P
 Execute os exemplos abaixo na pasta da skill. Troque `/caminho/meu-video` pelo seu projeto e `ID` pelo identificador retornado na busca.
 
 ```sh
+python3 scripts/gb.py status --project /caminho/meu-video
 python3 scripts/gb.py rules --project /caminho/meu-video
 python3 scripts/gb.py references --project /caminho/meu-video
 python3 scripts/gb.py search --provider youtube --query "NASA Artemis launch" --limit 3 --intent literal --project /caminho/meu-video
@@ -172,6 +173,8 @@ python3 scripts/gb.py verify --project /caminho/meu-video
 ```
 
 Substitua o nome, o arquivo exportado e a evidência pelos dados reais. Repita `permit` e `fetch` para cada candidato aprovado. `approve` também pode registrar uma decisão explícita já recebida. `verify` confere integridade e decodificação dos arquivos; a avaliação editorial é sua.
+
+`status` responde onde a coleta está a qualquer momento — candidatos, prévias, decisões, permissões e entregas, com o próximo passo sugerido — e não altera o projeto. Os comandos do fluxo também devolvem um campo `summary` com uma linha dizendo o que acabou de acontecer. [Detalhes do estado e do progresso.](GUIDE.md#estado-do-projeto-e-progresso)
 
 <details>
 <summary>URLs, arquivos locais e configurações</summary>

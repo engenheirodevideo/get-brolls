@@ -8,6 +8,7 @@ from .runtime import audited, OperationError
 SUMMARIES = {
     "providers": "Listar fontes disponíveis, transporte e chaves configuradas",
     "doctor": "Diagnosticar dependências, caminhos fixados e fontes utilizáveis",
+    "status": "Resumir onde o projeto está por etapa, sem alterar arquivos",
     "search": "Pesquisar candidatos numa fonte e registrá-los no projeto",
     "resolve": "Registrar um candidato a partir de URL pública ou arquivo local",
     "preview": "Gerar prévia (GIF/contact sheet) do intervalo escolhido",
@@ -50,6 +51,7 @@ def build_parser():
                 help="Testar buscas reais/refresh; pode consumir quota de API",
             )
     for name in (
+        "status",
         "search",
         "resolve",
         "preview",
@@ -172,10 +174,10 @@ def parse_args(argv=None):
 
 
 def main(argv=None):
-    from .commands import execute
+    from .commands import execute, with_summary
 
     args = parse_args(argv)
-    return audited(args, execute)
+    return audited(args, lambda parsed: with_summary(parsed.command, execute(parsed)))
 
 
 def entrypoint():

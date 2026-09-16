@@ -15,6 +15,7 @@ Este é o manual operacional único do **GET B-ROLLS — ENGENHEIRO DE VÍDEO**:
 - [Instalação](#instalação)
 - [Compatibilidade](#compatibilidade)
 - [Fluxo editorial](#fluxo-editorial)
+- [Estado do projeto e progresso](#estado-do-projeto-e-progresso)
 - [Fontes e transportes](#fontes-e-transportes)
 - [Tipos de assets](#tipos-de-assets-e-formatos)
 - [Captura pelo navegador](#captura-de-notícias-e-páginas-pelo-navegador)
@@ -245,6 +246,22 @@ Dependências: `yt-dlp` + FFmpeg. Capturas de página usam a integração de nav
 
 ### Saída
 `<PROJETO>/brolls/NN_entity_context.mp4`. Registrar no ledger (`step: get-brolls`, outputs = arquivos baixados).
+
+## Estado do projeto e progresso
+
+`status` responde "onde estamos?" para um projeto, sem alterar nada. Ele lê o que já está gravado — manifesto, candidatos, decisões e journal — e devolve contagem e lista de IDs por etapa: candidatos encontrados, prévias geradas, decisões pendentes/aprovadas/rejeitadas, itens com `permit` registrado, itens entregues e itens verificados.
+
+```sh
+python3 scripts/gb.py status --project /caminho/meu-video
+```
+
+O JSON segue a convenção dos demais comandos e traz, como no `doctor`, um objeto `summary` na frente: `line` (uma frase com as contagens), `stages` (rótulo, contagem e IDs de cada etapa) e `next` (o próximo passo real do fluxo). Abaixo dele vêm `counts`, `stages`, `items` (um resumo por candidato: estado, aprovação, direitos, prévia e arquivo final), `references`, `review_page` e `journal` (eventos registrados, último evento e se houve recuperação de gravação).
+
+`status` é somente leitura: não grava manifesto, candidatos, prévias, clipes nem eventos. Os únicos arquivos tocados são os de auditoria que a CLI escreve em qualquer comando — `brolls/diagnostics.jsonl` e a trava `brolls/.command.lock`. Uma regressão offline compara o conteúdo e o mtime de todos os arquivos do projeto antes e depois da execução.
+
+### Convenção do campo `summary`
+
+Os comandos do fluxo — `search`, `resolve`, `preview`, `review`, `import-review`, `permit`, `fetch` e `verify` — acrescentam ao próprio JSON um campo `summary` com uma linha em português no formato **verbo + objeto + resultado** (por exemplo, "Coletei o corte final de local:abc em clips/….mp4."). O campo é aditivo: nenhuma chave existente muda de nome, tipo ou posição, e integrações que já leem o JSON continuam válidas. Use essa linha para dizer ao usuário o que acabou de acontecer e `status` para o quadro completo da coleta.
 
 ## Fontes e transportes
 
