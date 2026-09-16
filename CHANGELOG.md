@@ -30,6 +30,7 @@ tags: [get-brolls]
 - Adiciona `.github/ISSUE_TEMPLATE/bug_report.md` (SO, versão do Python e saída completa do `doctor`), `config.yml` com issues em branco habilitadas e `PULL_REQUEST_TEMPLATE.md` com o bloco de verificação do AGENTS.
 - Adiciona `.github/workflows/release.yml`: em tags `v*`, extrai a seção da versão no CHANGELOG e publica a release pelo `gh`, sem sobrescrever uma release existente e sem novas actions de terceiros.
 - Documenta que `skills/` e `.claude-plugin/` são artefatos do plugin e podem ser omitidos ao copiar para o Codex, e registra no GUIDE a permissão opcional `python3 */gb.py *`.
+- Aceita `GB_FONT_FILE` no `.env` (fonte TrueType do contact sheet dos helpers Bash opcionais) e faz o erro de variável desconhecida nomear a variável recusada e o conjunto aceito.
 
 ## 2.3.6 — proposta para revisão
 

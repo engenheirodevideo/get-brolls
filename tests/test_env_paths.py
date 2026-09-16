@@ -165,6 +165,33 @@ class EnvFileTests(unittest.TestCase):
                 self.assertEqual(config.tool_path("ffmpeg"), str(from_process))
 
 
+class EnvFileVocabularyTests(unittest.TestCase):
+    def test_unknown_variable_names_itself_and_the_accepted_set(self):
+        with tempfile.TemporaryDirectory() as d:
+            env_file = Path(d) / ".env"
+            env_file.write_text("GB_INVENTADA=1\n", encoding="utf-8")
+            with self.assertRaises(ValueError) as raised:
+                config.load_env(env_file)
+        message = str(raised.exception)
+        self.assertIn("GB_INVENTADA", message)
+        self.assertIn("GB_FONT_FILE", message)
+        self.assertIn("PEXELS_API_KEY", message)
+
+    def test_font_file_is_accepted_by_the_env_loader(self):
+        with tempfile.TemporaryDirectory() as d:
+            font = Path(d) / "fonte.ttf"
+            font.write_text("fixture", encoding="utf-8")
+            env_file = Path(d) / ".env"
+            env_file.write_text(f"GB_FONT_FILE={font}\n", encoding="utf-8")
+            environment = {
+                k: v for k, v in os.environ.items() if k != "GB_FONT_FILE"
+            }
+            with patch.dict(os.environ, environment, clear=True):
+                config.load_env(env_file)
+                self.assertEqual(str(font), os.environ["GB_FONT_FILE"])
+        self.assertIn("GB_FONT_FILE", config.KEYS)
+
+
 class DoctorReportTests(unittest.TestCase):
     def test_doctor_reports_active_override(self):
         with tempfile.TemporaryDirectory() as d:

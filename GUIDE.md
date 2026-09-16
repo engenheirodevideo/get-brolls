@@ -34,7 +34,7 @@ Este é o manual operacional único do **GET B-ROLLS — ENGENHEIRO DE VÍDEO**:
 | Node/npm/npx + Playwright CLI + navegador | Captura de streams Instagram e inspeção pelo navegador |
 | curl | Baixar os dois streams Instagram capturados |
 | Bash e awk | Somente os helpers opcionais em `scripts/getbrolls/tools/youtube/`; a CLI principal não depende deles |
-| Fonte DejaVu, Liberation ou Arial | Título, índice e tempo no contact sheet; use `GB_FONT_FILE` para indicar outra fonte TrueType |
+| Fonte DejaVu, Liberation ou Arial | Título, índice e tempo no contact sheet **dos helpers Bash opcionais**; use `GB_FONT_FILE` para indicar outra fonte TrueType. A CLI principal não usa essa variável |
 
 Git é opcional. API key YouTube não é necessária. Pexels/Pixabay usam apenas suas próprias chaves opcionais. `curl-cffi` é extra opcional do yt-dlp, não requisito universal.
 

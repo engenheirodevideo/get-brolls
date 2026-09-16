@@ -20,6 +20,8 @@ KEYS = {
     "GB_VENV_PATH",
     "GB_FFMPEG_PATH",
     "GB_FFPROBE_PATH",
+    # Lida apenas pelos helpers Bash opcionais de YouTube (contact sheet).
+    "GB_FONT_FILE",
 }
 
 # Optional pins: an explicit path always wins over the usual discovery.
@@ -45,7 +47,10 @@ def load_env(path):
         key = key.strip()
         value = value.strip()
         if key not in KEYS:
-            raise ValueError(f".env: variável desconhecida na linha {number}.")
+            raise ValueError(
+                f".env: variável desconhecida na linha {number}: {key}. "
+                "Aceitas: " + ", ".join(sorted(KEYS)) + "."
+            )
         if value[:1] in ('"', "'"):
             if len(value) < 2 or value[-1] != value[0]:
                 raise ValueError(f".env: aspas inválidas na linha {number}.")
