@@ -29,7 +29,7 @@ Revise `requirements.txt` e `package-lock.json` junto com mudanças nas dependê
 
 A branch principal deve exigir a matriz `Tests` antes do merge. Essa proteção é uma configuração do GitHub feita pelo mantenedor; o arquivo do workflow não a ativa. Verifique os nomes dos checks no PR ao configurar a regra.
 
-Uma correção de código incrementa a versão em `scripts/getbrolls/__init__.py`, SKILL, READMEs, manifestos npm, GUIDE, QUALITY e CHANGELOG. Após a aprovação e o merge, publique uma tag/release apontando para o commit aprovado; nunca mova uma tag já distribuída para outro código. Releases não são publicadas automaticamente; a publicação é sempre um ato manual do mantenedor.
+Uma correção de código incrementa a versão em `scripts/getbrolls/__init__.py`, SKILL, READMEs, manifestos npm, GUIDE, QUALITY e CHANGELOG. Após a aprovação e o merge, empurre uma tag `vX.Y.Z` apontando para o commit aprovado; nunca mova uma tag já distribuída para outro código. **O ato manual do mantenedor é o push da tag.** A partir dele, `.github/workflows/release.yml` publica sozinho: confere que `__version__` é igual à versão da tag, roda `python3 -m unittest discover -s tests`, extrai as notas da seção correspondente do CHANGELOG — que precisa começar exatamente com `## <versão> — ` (travessão em em dash, não hífen) — e cria a release com `gh`, marcada como pré-lançamento quando a tag tem hífen (por exemplo `v2.4.0-rc1`). Sem a seção no formato esperado, sem a suíte verde ou com a versão divergente, nada é publicado.
 
 ## Arquivos publicados
 

@@ -190,7 +190,11 @@ class RepositoryDocumentationTests(unittest.TestCase):
     def test_release_workflow_uses_gh_cli_and_the_pinned_checkout(self):
         release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
         tests = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
-        checkout = re.search(r"actions/checkout@[0-9a-f]{40}", tests).group(0)
+        pinned = re.search(r"actions/checkout@[0-9a-f]{40}", tests)
+        self.assertIsNotNone(
+            pinned, "test.yml sem actions/checkout fixado por SHA de 40 dígitos"
+        )
+        checkout = pinned.group(0)
         self.assertIn(checkout, release)
         for marker in (
             "tags:",
@@ -201,11 +205,20 @@ class RepositoryDocumentationTests(unittest.TestCase):
             "--verify-tag",
             "--notes-file",
             "CHANGELOG.md",
+            # Portões antes de publicar: versão igual à tag e suíte offline verde.
+            "__version__",
+            "python3 -m unittest discover -s tests",
+            "--prerelease",
         ):
             self.assertIn(marker, release, marker)
+        # O comentário da versão acompanha a Action; o contrato é só o SHA.
         self.assertEqual(
-            [f"uses: {checkout} # v4"],
-            [line.strip("- ").strip() for line in release.splitlines() if "uses:" in line],
+            [f"uses: {checkout}"],
+            [
+                re.sub(r"\s*#.*$", "", line).strip().lstrip("- ").strip()
+                for line in release.splitlines()
+                if "uses:" in line
+            ],
             "release.yml deve usar apenas o checkout já fixado por SHA",
         )
 

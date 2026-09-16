@@ -11,14 +11,35 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Extract changelog section
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check version against the tag
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
-          awk -v version="$VERSION" '
-            $0 ~ "^## " version " —" { inside = 1; next }
+          python3 - "$VERSION" <<'PY'
+          import re, sys
+          from pathlib import Path
+
+          expected = sys.argv[1]
+          source = Path("scripts/getbrolls/__init__.py").read_text(encoding="utf-8")
+          found = re.search(r'__version__\s*=\s*"([^"]+)"', source)
+          if found is None:
+              sys.exit("scripts/getbrolls/__init__.py sem __version__.")
+          if found.group(1) != expected:
+              sys.exit(
+                  f"Tag {expected} não corresponde a __version__ {found.group(1)}."
+              )
+          PY
+          printf 'TAG=%s\n' "$TAG" >> "$GITHUB_ENV"
+          printf 'VERSION=%s\n' "$VERSION" >> "$GITHUB_ENV"
+      - name: Run the offline test suite
+        run: python3 -m unittest discover -s tests
+      - name: Extract changelog section
+        run: |
+          set -euo pipefail
+          awk -v header="## $VERSION — " '
+            index($0, header) == 1 { inside = 1; next }
             inside && /^## / { exit }
             inside { print }
           ' CHANGELOG.md > release-notes.md
@@ -26,8 +47,6 @@ jobs:
             printf 'CHANGELOG.md não tem a seção "## %s —".\n' "$VERSION" >&2
             exit 1
           fi
-          printf 'TAG=%s\n' "$TAG" >> "$GITHUB_ENV"
-          printf 'VERSION=%s\n' "$VERSION" >> "$GITHUB_ENV"
       - name: Create release
         run: |
           set -euo pipefail
@@ -35,7 +54,12 @@ jobs:
             printf 'Release %s já existe; nada a fazer.\n' "$TAG"
             exit 0
           fi
+          PRERELEASE=()
+          case "$TAG" in
+            *-*) PRERELEASE=(--prerelease) ;;
+          esac
           gh release create "$TAG" \
             --title "GET B-ROLLS $VERSION" \
             --notes-file release-notes.md \
-            --verify-tag
+            --verify-tag \
+            "${PRERELEASE[@]}"
