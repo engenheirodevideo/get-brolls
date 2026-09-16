@@ -70,6 +70,26 @@ cd get-brolls
 Ao copiar uma pasta de desenvolvimento, exclua `.venv/`, `.tools/`, caches, projetos e arquivos privados. `skills/` e `.claude-plugin/` são artefatos do plugin do Claude Code e podem ser omitidos ao copiar para o Codex. Instale as dependências no destino final e abra uma nova sessão do agente. [Veja instalação, atualização e compatibilidade.](docs/GUIDE.md#instalação)
 ### 2. Prepare o ambiente
 
+Na pasta instalada da skill, use o instalador do seu sistema.
+
+macOS:
+
+```sh
+bash scripts/install.sh --check
+bash scripts/install.sh
+python3 scripts/gb.py doctor
+```
+
+Windows PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -Check
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1
+python scripts/gb.py doctor
+```
+
+O instalador cria os ambientes locais e obtém as versões registradas de yt-dlp/EJS e Playwright CLI. `doctor` confere a disponibilidade das ferramentas; o acesso a cada fonte depende da URL e, quando necessário, da sua sessão de navegador.
+
 ### Comandos
 
 Na ordem de uso, do primeiro contato à entrega:
