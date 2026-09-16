@@ -12,7 +12,7 @@ Este documento reúne o estado de qualidade, as regressões cobertas, os limites
 
 ## QA da versão 2.3.6 — 16/09/2026
 
-A 2.3.6 é uma release de empacotamento: adiciona o plugin do Claude Code (`.claude-plugin/` e `skills/get-brolls/`) e documentação, sem nenhuma mudança de código do produto ou de testes. As evidências de código da 2.3.5 abaixo permanecem válidas para esta versão.
+A 2.3.6 é uma release de empacotamento: adiciona o plugin do Claude Code (`.claude-plugin/` e `skills/get-brolls/`) e documentação, sem nenhuma mudança de código do produto. 86 testes passaram localmente (80 da 2.3.5 mais 6 novos de empacotamento em `tests/test_plugin_packaging.py`, que validam manifestos, igualdade da `description` root↔espelho, alvos `${CLAUDE_PLUGIN_ROOT}` e regras operacionais do espelho). A estrutura foi validada por revisão dupla independente (estrutura do plugin e qualidade da skill). As evidências de código da 2.3.5 abaixo permanecem válidas para esta versão.
 
 ## QA da versão 2.3.5 — 16/09/2026
 

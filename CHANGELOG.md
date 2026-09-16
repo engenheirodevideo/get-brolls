@@ -14,7 +14,10 @@ tags: [get-brolls]
 - Espelha a skill no layout `skills/get-brolls/SKILL.md`, com os caminhos internos resolvidos via `${CLAUDE_PLUGIN_ROOT}` a partir da raiz do plugin instalado.
 - Documenta a instalação via `/plugin marketplace add engenheirodevideo/get-brolls` e `/plugin install get-brolls@engenheirodevideo` nos READMEs e no GUIDE.
 - Preserva o fluxo clone-como-skill (Codex e instalações manuais) sem mudanças; o SKILL.md da raiz continua sendo a fonte canônica desse fluxo.
-- Nenhuma mudança de lógica do produto, scripts ou testes.
+- Orienta o contexto de plugin instalado: resolução de `${CLAUDE_PLUGIN_ROOT}`, `--project` obrigatório, chaves via `--env-file` fora da pasta gerenciada e reinstalação das dependências após `/plugin update`.
+- Adiciona testes offline que validam os manifestos do plugin, a igualdade da `description` entre os dois SKILL.md, a existência dos alvos `${CLAUDE_PLUGIN_ROOT}` e as regras operacionais do espelho.
+- Atualiza SECURITY: o relatório privado de vulnerabilidades do GitHub está habilitado no repositório.
+- Nenhuma mudança de lógica do produto ou dos scripts.
 
 ## 2.3.5 — 2026-09-16
 

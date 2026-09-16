@@ -51,7 +51,7 @@ In Claude Code, you can also install the skill as a plugin, without cloning manu
 /plugin install get-brolls@engenheirodevideo
 ```
 
-Then follow step 2 inside the installed plugin folder. For Codex, the full-folder clone described above remains the way to install.
+Then follow step 2 in the installed plugin folder — `~/.claude/plugins/cache/engenheirodevideo/get-brolls/<version>/` (or ask Claude to run the installer). Re-run the installer after each `/plugin update`. For Codex, the full-folder clone described above remains the way to install.
 
 ### 2. Prepare the environment
 

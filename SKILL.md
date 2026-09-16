@@ -11,6 +11,8 @@ metadata:
   tags: "b-roll, youtube, instagram, tiktok, storyboard"
 ---
 
+<!-- Fonte canônica do fluxo clone-como-skill. Espelhado em skills/get-brolls/SKILL.md (plugin do Claude Code). Ao editar um, sincronize o outro. -->
+
 # GET B-ROLLS — ENGENHEIRO DE VÍDEO
 
 Fluxo editorial completo para planejar fontes literais, mostrar a sequência do trecho, receber decisão humana, obter o corte final e verificar. YouTube usa yt-dlp **sem API key**. Instagram usa navegador/Playwright com streams separados de vídeo e áudio.

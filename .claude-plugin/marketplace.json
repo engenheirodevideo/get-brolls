@@ -1,4 +1,5 @@
 {
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "engenheirodevideo",
   "owner": {
     "name": "Bruno Moreira — Engenheiro de Vídeo"
@@ -7,6 +8,11 @@
     {
       "name": "get-brolls",
       "source": "./",
+      "version": "2.3.6",
+      "author": {
+        "name": "Bruno Moreira — Engenheiro de Vídeo",
+        "url": "https://www.instagram.com/zbrunomoreira/"
+      },
       "description": "B-roll planning and sourcing from YouTube, Instagram, TikTok and stock providers, with Storyboard human review and licensed delivery with provenance."
     }
   ]
