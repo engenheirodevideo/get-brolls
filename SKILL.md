@@ -3,13 +3,15 @@ name: get-brolls
 description: Use when the user asks to collect B-roll, download supporting footage from YouTube, Instagram or TikTok, search stock videos, or review inserts for an edit.
 license: MIT
 metadata:
-  version: "2.3.5"
+  version: "2.3.6"
   type: "skill"
   status: "current"
   created: "2026-09-15"
   updated: "2026-09-16"
   tags: "b-roll, youtube, instagram, tiktok, storyboard"
 ---
+
+<!-- Fonte canônica do fluxo clone-como-skill. Espelhado em skills/get-brolls/SKILL.md (plugin do Claude Code). Ao editar um, sincronize o outro. -->
 
 # GET B-ROLLS — ENGENHEIRO DE VÍDEO
 

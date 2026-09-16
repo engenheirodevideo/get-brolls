@@ -161,7 +161,18 @@ Versão 2.3: asset_type/image, RULES e biblioteca de referências por projeto. A
 
 Entrada no padrão Agent Skills (`name`, `description`, `license`, `metadata`). Metadados operacionais do vault ficam em `metadata`, sem campos próprios no nível superior do SKILL.md. Os demais documentos mantêm seu frontmatter operacional.
 
-Codex e Claude Code usam a mesma pasta, com destinos e invocações descritos em GUIDE.md. `agents/openai.yaml` é opcional e específico do Codex. Não há dependência de hooks, MCP, permissões preaprovadas ou sintaxe de interpolação exclusiva do Claude. Validação estrutural não equivale a teste de descoberta em uma sessão nativa de cada produto.
+Codex e Claude Code usam a mesma pasta, com destinos e invocações descritos em GUIDE.md. `agents/openai.yaml` é opcional e específico do Codex. `CLAUDE.md` e `GEMINI.md` na raiz apenas roteiam para SKILL.md (operação) e AGENTS.md (manutenção), cobrindo a descoberta de contexto do Claude Code e do Gemini CLI sem duplicar instruções. Não há dependência de hooks, MCP, permissões preaprovadas ou sintaxe de interpolação exclusiva do Claude. Validação estrutural não equivale a teste de descoberta em uma sessão nativa de cada produto.
+
+### Plugin do Claude Code — 2.3.6
+
+A partir da 2.3.6, o repositório também é um marketplace de plugin do Claude Code (`.claude-plugin/plugin.json` e `.claude-plugin/marketplace.json`). A instalação usa dois comandos na sessão do Claude Code:
+
+```text
+/plugin marketplace add engenheirodevideo/get-brolls
+/plugin install get-brolls@engenheirodevideo
+```
+
+A skill do plugin fica em `skills/get-brolls/SKILL.md` e referencia os arquivos por `${CLAUDE_PLUGIN_ROOT}`, a raiz do plugin instalado — um diretório de cache versionado (`~/.claude/plugins/cache/engenheirodevideo/get-brolls/<versão>/`). Execute o instalador e o `doctor` pelo caminho absoluto dessa pasta, de qualquer cwd. As dependências ficam em `.venv/` e `.tools/` dentro da pasta do plugin: repita o instalador após cada `/plugin update` ou reinstalação, e prefira variáveis de ambiente ou `--env-file CAMINHO` fora da pasta gerenciada para as chaves opcionais. O fluxo clone-como-skill continua suportado sem mudanças para Codex e instalações manuais, com o SKILL.md da raiz como fonte canônica.
 
 ### Migração para 2.3.5
 

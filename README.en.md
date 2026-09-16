@@ -4,7 +4,7 @@
   <h1>GET B-ROLLS</h1>
   <p><strong>From an idea to the right shot for your edit.</strong></p>
   <p>Find supporting footage, preview the motion, and review every choice<br>before receiving the final clips with their sources.</p>
-  <p>v2.3.5 · Codex and Claude Code · macOS and Windows</p>
+  <p>v2.3.6 · Codex and Claude Code · macOS and Windows</p>
   <p><a href="#getting-started">Getting started</a> · <a href="#storyboard">Storyboard</a> · <a href="#sources">Sources</a> · <a href="GUIDE.md#instalação">Full guide</a></p>
 </div>
 
@@ -41,6 +41,17 @@ cd get-brolls
 | Claude Code | `~/.claude/skills/get-brolls/` | `.claude/skills/get-brolls/` | `/get-brolls` |
 
 When copying a development folder, exclude `.venv/`, `.tools/`, caches, projects, and private files. Install dependencies in the final destination and open a new agent session. [See installation, updates, and compatibility.](GUIDE.md#instalação)
+
+#### Install as a Claude Code plugin
+
+In Claude Code, you can also install the skill as a plugin, without cloning manually:
+
+```text
+/plugin marketplace add engenheirodevideo/get-brolls
+/plugin install get-brolls@engenheirodevideo
+```
+
+Then follow step 2 in the installed plugin folder — `~/.claude/plugins/cache/engenheirodevideo/get-brolls/<version>/` (or ask Claude to run the installer). Re-run the installer after each `/plugin update`. For Codex, the full-folder clone described above remains the way to install.
 
 ### 2. Prepare the environment
 

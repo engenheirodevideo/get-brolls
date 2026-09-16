@@ -34,7 +34,7 @@ Execute comandos do mesmo projeto serialmente. Preserve originais, eventos e jou
 
 ## Manutenção
 
-- A versão executável vem de `scripts/getbrolls/__init__.py`; mantenha `SKILL.md`, README, GUIDE, QUALITY e CHANGELOG coerentes quando houver mudança de versão. Revisão documental sem alteração de versão deve aparecer no changelog vigente.
+- A versão executável vem de `scripts/getbrolls/__init__.py`; mantenha `SKILL.md`, `skills/get-brolls/SKILL.md`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, README, GUIDE, QUALITY e CHANGELOG coerentes quando houver mudança de versão. `SKILL.md` da raiz é a fonte canônica; o espelho em `skills/get-brolls/` mantém `description` idêntica e o mesmo conteúdo com caminhos `${CLAUDE_PLUGIN_ROOT}` (invariante coberto por teste). Revisão documental sem alteração de versão deve aparecer no changelog vigente.
 - Atualize a seção correspondente de `GUIDE.md` junto com o código da rota afetada. O guia é a referência operacional única do produto.
 - Corrija a causa e adicione regressão quando houver bug. Não escreva testes que exijam retirar uma capacidade existente.
 - Use mídia sintética e mocks em testes automatizados. Ensaios de rede ficam fora da fonte e registram URL pública, versão utilizada, resultado, dimensão/duração e limites.

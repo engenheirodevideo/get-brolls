@@ -14,4 +14,4 @@ Projetos/JSON são dados locais confiáveis. Não execute a skill como serviço 
 
 A revisão não autentica quem clicou: importação exige atribuição humana com `--by`. O importador confere assinatura do conteúdo e versão da decisão (`reviewEpoch`) para impedir que exports antigos substituam decisões posteriores. Arquivos sem versão da decisão devem ser regenerados pelo Storyboard; não edite o JSON para contornar uma recusa.
 
-Para reportar vulnerabilidades, use o canal privado de segurança do repositório quando habilitado pelo mantenedor. Até existir um canal privado, não publique segredos ou dados de clientes em issues. Nenhum endereço de contato é presumido neste pacote.
+Para reportar vulnerabilidades, use o relatório privado do GitHub em **Security → Report a vulnerability**, habilitado neste repositório. Não publique segredos ou dados de clientes em issues públicas. Nenhum endereço de contato é presumido neste pacote.
