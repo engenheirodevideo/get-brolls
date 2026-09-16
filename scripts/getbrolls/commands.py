@@ -11,8 +11,8 @@ from .rendering import render
 # Raiz real da skill/plugin: o comando sugerido não pode depender da pasta atual.
 SKILL_ROOT = Path(__file__).resolve().parents[2]
 INSTALLER = (
-    f'bash "{SKILL_ROOT}/scripts/install.sh" '
-    f'(ou "{SKILL_ROOT}/scripts/install.ps1" no Windows)'
+    f'bash "{SKILL_ROOT / "scripts" / "install.sh"}" '
+    f'(ou "{SKILL_ROOT / "scripts" / "install.ps1"}" no Windows)'
 )
 SYSTEM_TOOLS = "instale pelo gerenciador do sistema; veja GUIDE.md#instalação"
 

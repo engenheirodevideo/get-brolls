@@ -75,7 +75,8 @@ def executable_override(key):
         raise ValueError(
             f"{key}: {value} {detail}. Aponte para o executável correto ou remova a variável."
         )
-    if not os.access(path, os.X_OK):
+    # No Windows a executabilidade vem da extensão; os.access(X_OK) aceita qualquer legível.
+    if os.name != "nt" and not os.access(path, os.X_OK):
         raise ValueError(
             f"{key}: {value} não é executável. Ajuste as permissões ou remova a variável."
         )

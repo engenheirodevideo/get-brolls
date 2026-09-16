@@ -95,6 +95,7 @@ class ExecutableOverrideTests(unittest.TestCase):
             self.assertIn("GB_FFMPEG_PATH", str(caught.exception))
             self.assertIn(missing, str(caught.exception))
 
+    @unittest.skipIf(os.name == "nt", "No Windows a executabilidade vem da extensão.")
     def test_non_executable_path_fails(self):
         with tempfile.TemporaryDirectory() as d:
             plain = Path(d) / "ffprobe.txt"
