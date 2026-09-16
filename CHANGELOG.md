@@ -39,6 +39,18 @@ tags: [get-brolls]
 - Registra a divisão de responsabilidade editorial: as condições de uso do material são de quem produz o vídeo; a skill responde pela fidelidade/literalidade e pelo registro de origem de cada asset. O fluxo de `permit` e proveniência continua sendo o mecanismo desse registro, sem alteração de lógica.
 - Adiciona `tests/test_status.py` (9 regressões offline do `status`, do campo `summary` e da garantia de somente leitura) e três regressões do hub em `tests/test_repository.py`.
 
+### Correções da revisão tripla
+
+- `status` passa a ser somente leitura de verdade: abre o ledger sem criar `brolls/candidates`, `previews` e `clips`, relata uma gravação interrompida como `journal.recovered_write: "pending"` sem concluí-la e recusa um projeto inexistente com "Projeto não encontrado em …; nenhum arquivo foi criado.", sem escrever nada — nem diagnóstico.
+- `status` deixa de pedir a trava exclusiva do projeto: agora responde mesmo durante um `fetch` em andamento, em vez de falhar com "Outro comando está usando este projeto".
+- `status` deixa de morrer com o projeto: `RULES.md` inválido vira `rules_error` no relatório, `events.jsonl` e `references.json` corrompidos degradam para contagem com `error`, e uma mudança de formato-alvo nas regras vira `format_pending` mais um aviso de que o próximo comando invalidará as aprovações.
+- `release.yml` ganha portões antes de publicar: confere `__version__` contra a tag, roda `python3 -m unittest discover -s tests`, extrai a seção do CHANGELOG por comparação literal (a versão não é mais tratada como expressão regular) e marca `--prerelease` quando a tag tem hífen.
+- Restaura as GitHub Actions fixadas nas v7 (`actions/checkout` 7.0.1 e `actions/setup-node` 7.0.0) que uma alteração anterior havia rebaixado para v4, e passa a usar o mesmo checkout no `release.yml`. A regressão compara apenas a referência fixada por SHA, sem exigir o comentário da versão.
+- Os pins `GB_*_PATH` resolvem para caminho absoluto antes de validar, então um valor relativo não muda de significado conforme a pasta atual; um diretório fixado informa "não é um arquivo executável"; e `GB_VENV_PATH` sem yt-dlp dentro falha nomeando a variável, a pasta e os layouts procurados, em vez de cair em silêncio no `PATH`.
+- `doctor` fica resiliente a pin inválido: em vez de encerrar com erro, publica o pin quebrado em `summary.missing` com a mensagem do erro, sugere o instalador pelo caminho absoluto da skill e acrescenta o bloco `resolved` com o executável absoluto realmente usado por ferramenta. Os demais comandos continuam falhando de imediato.
+- O teste do espelho passa a cobrir também a seção "Instalação e contexto": só linhas de mecânica de instalação podem divergir da raiz, a indentação conta e uma linha que normaliza para vazio falha em vez de sumir.
+- Ajustes de relato: o `summary` de `search` mantém a observação do provedor, `approve` e `reject` ganham a própria linha, singular e plural concordam com as contagens, `preview` diz quando gerou somente referência estática e `resolve` recusa `--file`/`--url` vazios nomeando a opção.
+
 ## 2.3.6 — proposta para revisão
 
 - Empacota a skill como plugin do Claude Code: `.claude-plugin/plugin.json` descreve o plugin e `.claude-plugin/marketplace.json` transforma o próprio repositório em marketplace.

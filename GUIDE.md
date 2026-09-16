@@ -259,7 +259,9 @@ python3 scripts/gb.py status --project /caminho/meu-video
 
 O JSON segue a convenção dos demais comandos e traz, como no `doctor`, um objeto `summary` na frente: `line` (uma frase com as contagens), `stages` (rótulo, contagem e IDs de cada etapa) e `next` (o próximo passo real do fluxo). Abaixo dele vêm `counts`, `stages`, `items` (um resumo por candidato: estado, aprovação, direitos, prévia e arquivo final), `references`, `review_page` e `journal` (eventos registrados, último evento e se houve recuperação de gravação).
 
-`status` é somente leitura: não grava manifesto, candidatos, prévias, clipes nem eventos. Os únicos arquivos tocados são os de auditoria que a CLI escreve em qualquer comando — `brolls/diagnostics.jsonl` e a trava `brolls/.command.lock`. Uma regressão offline compara o conteúdo e o mtime de todos os arquivos do projeto antes e depois da execução.
+`status` é somente leitura: não grava manifesto, candidatos, prévias, clipes nem eventos, e não cria a árvore `brolls/` — num projeto inexistente ele responde "Projeto não encontrado em …; nenhum arquivo foi criado." sem escrever nada. O único arquivo tocado num projeto existente é o `brolls/diagnostics.jsonl` da auditoria. Também **não pega a trava exclusiva do projeto**: pode ser executado enquanto um `fetch` longo está em andamento, sem esperar nem falhar. Uma regressão offline compara o conteúdo e o mtime de todos os arquivos do projeto antes e depois da execução.
+
+Como só lê, `status` nunca completa uma gravação interrompida: quando existe `.pending-transaction.json`, ele reporta `journal.recovered_write: "pending"`, avisa na linha do resumo e deixa a pendência para o próximo comando de escrita. Pelo mesmo motivo ele não aplica `sync_formats`: se as regras editoriais passaram a mirar outro formato, o relatório traz `format_pending` (total e por item) e `next` avisa quantas aprovações o próximo comando invalidará. `RULES.md` ilegível vira `rules_error` no lugar de uma falha, e `events.jsonl` ou `references.json` corrompidos degradam para contagem com `error`, preservando os arquivos.
 
 ### Convenção do campo `summary`
 
