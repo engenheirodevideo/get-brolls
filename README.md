@@ -136,23 +136,52 @@ Ao final, `verify` responde `"count": 1` e o corte aprovado está em `/caminho/m
 
 ## Comandos
 
-```text
-/get-brolls <pedido>                  # chama a skill no Claude Code
-$get-brolls <pedido>                  # chama a skill no Codex
-/get-brolls-setup                     # plugin: instala dependências e roda o doctor
+Na ordem de uso — do primeiro contato à entrega:
 
-python3 scripts/gb.py doctor          # confere o ambiente e as ferramentas
-python3 scripts/gb.py search   ...    # pesquisa candidatos na fonte escolhida
-python3 scripts/gb.py preview  ...    # gera GIF/contact sheet do intervalo
-python3 scripts/gb.py review   ...    # monta o storyboard brolls/review.html
-python3 scripts/gb.py import-review . # importa suas decisões do storyboard
-python3 scripts/gb.py permit   ...    # registra as condições de uso da fonte
-python3 scripts/gb.py fetch    ...    # baixa o corte final aprovado
-python3 scripts/gb.py verify   ...    # confere a entrega no projeto
-python3 scripts/gb.py status --project ...  # onde estamos? (só leitura)
+**1. Instale o ambiente** (uma vez, na pasta do plugin ou do clone):
+
+```text
+/get-brolls-setup   # instala as dependências e roda o doctor
+```
+
+**2. Chame a skill** com o que você precisa:
+
+```text
+/get-brolls <seu pedido>   # Claude Code — descreva os inserts e a pasta do projeto
+$get-brolls <seu pedido>   # Codex — mesma coisa
+```
+
+**3. Confira o ambiente** quando algo não funcionar:
+
+```text
+python3 scripts/gb.py doctor   # verifica ferramentas e diz o que falta
+```
+
+**4. Pesquise e escolha** (o agente executa por você, mas dá pra rodar na mão):
+
+```text
+python3 scripts/gb.py search ...    # pesquisa candidatos na fonte escolhida
+python3 scripts/gb.py preview ...   # gera GIF/contact sheet do intervalo
+python3 scripts/gb.py review ...    # monta o storyboard brolls/review.html
+```
+
+**5. Decida e receba**:
+
+```text
+python3 scripts/gb.py import-review ...   # importa suas decisões do storyboard
+python3 scripts/gb.py permit ...          # registra as condições de uso da fonte
+python3 scripts/gb.py fetch ...           # baixa o corte final aprovado
+python3 scripts/gb.py verify ...          # confere a entrega no projeto
+```
+
+**6. Se perdeu?** Pergunte onde o projeto está:
+
+```text
+python3 scripts/gb.py status --project /caminho/meu-video   # resumo por etapa, só leitura
 ```
 
 Cada subcomando aceita `help`; a sintaxe completa está em [Usar pelo terminal](#usar-pelo-terminal).
+
 
 ## Destaques
 

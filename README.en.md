@@ -136,23 +136,52 @@ At the end, `verify` answers `"count": 1` and the approved clip is in `/path/to/
 
 ## Commands
 
-```text
-/get-brolls <request>                 # invoke the skill in Claude Code
-$get-brolls <request>                 # invoke the skill in Codex
-/get-brolls-setup                     # plugin: install dependencies and run doctor
+In order of use — from first contact to delivery:
 
-python3 scripts/gb.py doctor          # check the environment and tools
-python3 scripts/gb.py search   ...    # search candidates in the chosen source
-python3 scripts/gb.py preview  ...    # build GIF/contact sheet for the range
-python3 scripts/gb.py review   ...    # assemble the brolls/review.html storyboard
-python3 scripts/gb.py import-review . # import your storyboard decisions
-python3 scripts/gb.py permit   ...    # record the source usage conditions
-python3 scripts/gb.py fetch    ...    # download the approved final cut
-python3 scripts/gb.py verify   ...    # verify the delivery in the project
-python3 scripts/gb.py status --project ...  # where are we? (read-only)
+**1. Install the environment** (once, in the plugin or clone folder):
+
+```text
+/get-brolls-setup   # installs dependencies and runs doctor
+```
+
+**2. Invoke the skill** with what you need:
+
+```text
+/get-brolls <your request>   # Claude Code — describe the inserts and the project folder
+$get-brolls <your request>   # Codex — same thing
+```
+
+**3. Check the environment** when something misbehaves:
+
+```text
+python3 scripts/gb.py doctor   # verifies tools and names what is missing
+```
+
+**4. Search and choose** (the agent runs these for you, but they work by hand):
+
+```text
+python3 scripts/gb.py search ...    # search candidates in the chosen source
+python3 scripts/gb.py preview ...   # build GIF/contact sheet for the range
+python3 scripts/gb.py review ...    # assemble the brolls/review.html storyboard
+```
+
+**5. Decide and receive**:
+
+```text
+python3 scripts/gb.py import-review ...   # import your storyboard decisions
+python3 scripts/gb.py permit ...          # record the source usage conditions
+python3 scripts/gb.py fetch ...           # download the approved final cut
+python3 scripts/gb.py verify ...          # verify the delivery in the project
+```
+
+**6. Lost?** Ask where the project stands:
+
+```text
+python3 scripts/gb.py status --project /path/my-video   # per-stage summary, read-only
 ```
 
 Every subcommand accepts `help`; full syntax lives in the terminal section.
+
 
 ## Highlights
 
