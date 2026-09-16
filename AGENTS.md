@@ -2,7 +2,7 @@
 type: instructions
 status: current
 created: 2026-09-15
-updated: 2026-09-15
+updated: 2026-09-16
 tags: [get-brolls, documentation]
 ---
 
@@ -21,6 +21,7 @@ Este arquivo é o índice central para agentes e mantenedores: tudo que um agent
 | Instalar no Gemini CLI | [GEMINI.md](GEMINI.md) — o snippet de importação `@` que o usuário acrescenta ao próprio `GEMINI.md`. |
 | Guia operacional (instalação, provedores, navegador, Storyboard, `status`) | [GUIDE.md](GUIDE.md) |
 | Qualidade, evidências reais e limites conhecidos | [QUALITY.md](QUALITY.md) |
+| Medir qualidade editorial (blind tests) | [eval/README.md](eval/README.md) — processo, rubrica, corpus e rodadas; execute um caso com [`/get-brolls-eval`](commands/get-brolls-eval.md). |
 | Contribuir (fluxo de mudança, revisão, PR) | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | Segurança, egress e dados privados | [SECURITY.md](SECURITY.md) |
 | O que mudou em cada versão | [CHANGELOG.md](CHANGELOG.md) |

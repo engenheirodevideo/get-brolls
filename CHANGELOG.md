@@ -51,6 +51,15 @@ tags: [get-brolls]
 - O teste do espelho passa a cobrir também a seção "Instalação e contexto": só linhas de mecânica de instalação podem divergir da raiz, a indentação conta e uma linha que normaliza para vazio falha em vez de sumir.
 - Ajustes de relato: o `summary` de `search` mantém a observação do provedor, `approve` e `reject` ganham a própria linha, singular e plural concordam com as contagens, `preview` diz quando gerou somente referência estática e `resolve` recusa `--file`/`--url` vazios nomeando a opção.
 
+### Revisão documental — testes cegos (sem alteração de versão)
+
+- Institucionaliza o teste cego como medição **editorial** do produto, em `eval/`: `eval/README.md` descreve o processo (executor recebe só o roteiro, juiz e amostragem humana aplicam a rubrica), a cadência (rodada completa por release candidate, smoke de 3 casos após mudança de SKILL/prompt) e por que ele fica fora do CI — precisa de rede, sessão e tempo de agente.
+- Adiciona `eval/rubric.md`: pontuação 0/0.5/1 por beat em quatro eixos (Reach, Literalidade, Preview, Disciplina), métricas da rodada e a separação obrigatória entre **ambiente** (URL/rede/sessão/quota) e **comportamento** (stock sem pedido, licença inventada, aprovação pelo próprio agente). Metas atuais: ≥80% de reach literal, 0 stock sem pedido, 100% de origem registrada e ≥90% de previews corretos.
+- Adiciona `eval/corpus/` com 14 casos, cada um com `## Roteiro` (única parte mostrada ao executor) e `## Gabarito` (oculto): 4 de notícia factual, 3 exigindo print de UI, 2 de pessoa pública em evento, 2 de acontecimento local/nicho, 2 que pedem stock explicitamente e 1 armadilha com beat impossível/ambíguo.
+- Registra a rodada inaugural em `eval/runs/2026-09-16-2.3.7-claude-opus.md` (clone → Storyboard em ≈4 min, 4 beats, 12 candidatos, 6 prévias, zero chave de API, zero stock, nada aprovado) e padroniza o relatório em `eval/runs/TEMPLATE.md`.
+- Adiciona o comando de plugin `/get-brolls-eval` (`commands/get-brolls-eval.md`), que executa um caso às cegas até o Storyboard, para na revisão humana e preenche o relatório — com a regra explícita de que o executor nunca abre `## Gabarito`.
+- Roteia a medição editorial: nova linha no hub do `AGENTS.md`, seção "Blind tests" no `QUALITY.md` com as métricas da baseline e um parágrafo no `GUIDE.md` ligando `eval/`. Acrescenta uma regressão em `tests/test_repository.py` que exige `eval/README.md`, `eval/rubric.md` e `eval/runs/TEMPLATE.md` publicados e o hub linkando o processo. Nenhuma mudança de código do produto: `scripts/` e os dois `SKILL.md` não foram tocados.
+
 ## 2.3.6 — proposta para revisão
 
 - Empacota a skill como plugin do Claude Code: `.claude-plugin/plugin.json` descreve o plugin e `.claude-plugin/marketplace.json` transforma o próprio repositório em marketplace.
