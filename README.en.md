@@ -4,7 +4,7 @@
   <h1>GET B-ROLLS</h1>
   <p><strong>From an idea to the right shot for your edit.</strong></p>
   <p>Find supporting footage, preview the motion, and review every choice<br>before receiving the final clips with their sources.</p>
-  <p>v2.3.6 · Codex and Claude Code · macOS and Windows</p>
+  <p>v2.3.7 · Codex and Claude Code · macOS and Windows</p>
   <p><a href="#getting-started">Getting started</a> · <a href="#storyboard">Storyboard</a> · <a href="#sources">Sources</a> · <a href="GUIDE.md#instalação">Full guide</a></p>
 </div>
 

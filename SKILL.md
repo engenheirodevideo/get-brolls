@@ -3,7 +3,7 @@ name: get-brolls
 description: Use when the user asks to collect B-roll, download supporting footage from YouTube, Instagram or TikTok, search stock videos, or review inserts for an edit.
 license: MIT
 metadata:
-  version: "2.3.6"
+  version: "2.3.7"
   type: "skill"
   status: "current"
   created: "2026-09-15"

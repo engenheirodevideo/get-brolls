@@ -114,6 +114,23 @@ Referências de instalação: [yt-dlp/EJS](https://github.com/yt-dlp/yt-dlp/wiki
 
 Copiar `.env.example` para `.env` é opcional (`cp .env.example .env` no macOS; `Copy-Item .env.example .env` no PowerShell). O `.env` pertence à raiz da skill, independentemente da pasta atual. Ambiente do processo prevalece. `--env-file CAMINHO` vem antes do subcomando. Nunca distribua `.env`, cookies, configs CDN ou perfis do navegador.
 
+#### Caminhos explícitos de ferramentas
+
+Quatro variáveis opcionais fixam onde cada ferramenta está, úteis quando há mais de uma instalação na máquina, quando o `PATH` do agente difere do seu ou quando a venv fica fora da pasta da skill. Valem pelo ambiente do processo, pelo `.env` da skill ou por `--env-file CAMINHO`, como as demais `GB_*`.
+
+| Variável | Fixa | Descoberta padrão quando ausente |
+|---|---|---|
+| `GB_YTDLP_PATH` | Executável do yt-dlp | `.venv/Scripts/yt-dlp.exe`, `.venv/Scripts/yt-dlp`, `.venv/bin/yt-dlp` e depois o `PATH` |
+| `GB_VENV_PATH` | Pasta `.venv` usada para localizar o yt-dlp | `.venv/` na raiz da skill |
+| `GB_FFMPEG_PATH` | Executável do FFmpeg | `ffmpeg` no `PATH` |
+| `GB_FFPROBE_PATH` | Executável do ffprobe | `ffprobe` no `PATH` |
+
+Precedência: a variável explícita vence a descoberta. Ausente ou vazia, o comportamento é exatamente o anterior. Definida e apontando para um caminho inexistente, sem permissão de execução ou — no caso de `GB_VENV_PATH` — que não seja diretório, o comando falha nomeando a variável e o caminho, em vez de voltar em silêncio à descoberta. `doctor` lista os pins ativos em `tool_paths`, uma linha por variável, e mostra `{}` quando nenhum está definido. Não existe variável para o interpretador Python: a skill não reinvoca o Python em nenhum ponto.
+
+```sh
+GB_FFMPEG_PATH=/opt/homebrew/bin/ffmpeg python3 scripts/gb.py doctor
+```
+
 ### Codex e Claude Code
 
 Use o repositório oficial [engenheirodevideo/get-brolls](https://github.com/engenheirodevideo/get-brolls): `git clone https://github.com/engenheirodevideo/get-brolls.git`. Clone ou copie a pasta completa da skill para **um** dos destinos abaixo. Escolha instalação pessoal ou por projeto para evitar duplicatas com o mesmo nome. Exclua `.venv/`, `.tools/`, `__pycache__/`, projetos e arquivos privados ao copiar uma árvore de desenvolvimento. Execute o instalador no destino final; não mova uma venv entre pastas:

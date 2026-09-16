@@ -6,9 +6,13 @@ updated: 2026-09-16
 tags: [get-brolls, quality, qa, evidence]
 ---
 
-# Qualidade e evidências — GET B-ROLLS 2.3.6
+# Qualidade e evidências — GET B-ROLLS 2.3.7
 
 Este documento reúne o estado de qualidade, as regressões cobertas, os limites conhecidos e as evidências reais por provedor. Resultados ao vivo são registros datados, não promessa de disponibilidade futura nem aprovação editorial.
+
+## QA da versão 2.3.7 — 16/09/2026
+
+A 2.3.7 adiciona os pins opcionais `GB_YTDLP_PATH`, `GB_VENV_PATH`, `GB_FFMPEG_PATH` e `GB_FFPROBE_PATH`, resolvidos num helper único em `scripts/getbrolls/config.py` e aplicados na chamada de mídia (`media.run`) e na descoberta do yt-dlp (`social.local_ytdlp`). 102 testes passaram localmente (86 da 2.3.6 mais 16 novos em `tests/test_env_paths.py`). As regressões offline novas cobrem: comando de mídia idêntico ao anterior com as variáveis ausentes ou vazias; pin de ffmpeg e ffprobe aplicado ao primeiro argumento; `GB_YTDLP_PATH` vencendo a `.venv`; `GB_VENV_PATH` nos layouts `bin/` e `Scripts/`, sem cair na `.venv` padrão quando a pasta fixada não tem o executável; erro nomeando variável e caminho para destino inexistente, sem permissão de execução ou não-diretório; carga pelo `.env`/`--env-file` com o ambiente do processo prevalecendo; e `doctor` publicando `tool_paths` vazio sem pins e com uma linha por pin ativo. Conferência manual: `doctor` sem variáveis, `doctor` com `GB_FFMPEG_PATH`/`GB_FFPROBE_PATH` reais e corte/probe de um mp4 sintético pelos executáveis fixados. O coletor autônomo `scripts/getbrolls/instagram_pairs.py` não foi alterado: continua usando `ffmpeg`/`ffprobe` do `PATH`, preservando o comportamento de transporte. As evidências das versões anteriores permanecem válidas.
 
 ## QA da versão 2.3.6 — 16/09/2026
 

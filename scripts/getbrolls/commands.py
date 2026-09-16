@@ -26,11 +26,15 @@ def execute(args):
     if args.command in ("providers", "doctor"):
         result = providers.capabilities()
         if args.command == "doctor":
+            from getbrolls.config import TOOL_PATH_KEYS, active_overrides
+
+            overrides = active_overrides()
             result = {
                 "preview": config,
                 "runtime": sys.version.split()[0],
+                "tool_paths": overrides,
                 "executables": {
-                    x: bool(shutil.which(x))
+                    x: bool(overrides.get(TOOL_PATH_KEYS.get(x)) or shutil.which(x))
                     for x in ("ffmpeg", "ffprobe", "yt-dlp", "curl", "bash", "node", "deno", "npx")
                 },
                 "providers": result,

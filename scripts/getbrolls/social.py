@@ -6,16 +6,23 @@ import shutil
 import subprocess
 import tempfile
 from .http import ProviderError
+from .config import executable_override, venv_override
 
 
 def local_ytdlp(root=None):
-    root = Path(root) if root is not None else Path(__file__).resolve().parents[2]
+    pinned = executable_override('GB_YTDLP_PATH')
+    if pinned:
+        return Path(pinned)
+    base = venv_override()
+    if base is None:
+        root = Path(root) if root is not None else Path(__file__).resolve().parents[2]
+        base = root / '.venv'
     for relative in (
-        '.venv/Scripts/yt-dlp.exe',
-        '.venv/Scripts/yt-dlp',
-        '.venv/bin/yt-dlp',
+        'Scripts/yt-dlp.exe',
+        'Scripts/yt-dlp',
+        'bin/yt-dlp',
     ):
-        candidate = root / relative
+        candidate = base / relative
         if candidate.is_file():
             return candidate
     return None

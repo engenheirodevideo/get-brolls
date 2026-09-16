@@ -8,6 +8,15 @@ tags: [get-brolls]
 
 # Changelog
 
+## 2.3.7 — proposta para revisão
+
+- Adiciona variáveis opcionais que fixam caminhos de ferramentas: `GB_YTDLP_PATH`, `GB_VENV_PATH`, `GB_FFMPEG_PATH` e `GB_FFPROBE_PATH`. Valem tanto pelo ambiente do processo quanto pelo `.env` da skill ou `--env-file CAMINHO`.
+- Define a precedência: variável explícita vence a descoberta atual. Com a variável ausente ou vazia, o comportamento é idêntico ao anterior — `.venv/Scripts` e `.venv/bin` para yt-dlp, `PATH` para ffmpeg/ffprobe.
+- Recusa caminho inválido em vez de voltar em silêncio à descoberta: um destino inexistente, sem permissão de execução ou, no caso de `GB_VENV_PATH`, que não seja diretório, encerra o comando com erro nomeando a variável e o caminho.
+- `doctor` passa a listar os pins ativos em `tool_paths`, uma linha por variável, e reflete o pin em `executables`. Sem variáveis definidas, `tool_paths` sai vazio.
+- Não há `GB_PYTHON_PATH`: o código não reinvoca o interpretador Python em nenhum ponto.
+- Adiciona `tests/test_env_paths.py` com 16 regressões offline de precedência, padrão inalterado, erro de caminho inválido e layouts `.venv` POSIX e Windows.
+
 ## 2.3.6 — proposta para revisão
 
 - Empacota a skill como plugin do Claude Code: `.claude-plugin/plugin.json` descreve o plugin e `.claude-plugin/marketplace.json` transforma o próprio repositório em marketplace.

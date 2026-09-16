@@ -1,8 +1,10 @@
 import json, subprocess, os
 from pathlib import Path
+from .config import tool_path
 
 
 def run(args):
+    args = [tool_path(args[0]), *args[1:]]
     try:
         return subprocess.run(
             args, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180
