@@ -193,6 +193,18 @@ Na primeira sessão, execute `/get-brolls-setup`: o comando em `commands/get-bro
 
 A skill do plugin fica em `skills/get-brolls/SKILL.md` e referencia os arquivos por `${CLAUDE_PLUGIN_ROOT}`, a raiz do plugin instalado — um diretório de cache versionado (`~/.claude/plugins/cache/engenheirodevideo/get-brolls/<versão>/`). Execute o instalador e o `doctor` pelo caminho absoluto dessa pasta, de qualquer cwd. As dependências ficam em `.venv/` e `.tools/` dentro da pasta do plugin: repita o instalador após cada `/plugin update` ou reinstalação, e prefira variáveis de ambiente ou `--env-file CAMINHO` fora da pasta gerenciada para as chaves opcionais. O fluxo clone-como-skill continua suportado sem mudanças para Codex e instalações manuais, com o SKILL.md da raiz como fonte canônica.
 
+#### Permissões (opcional)
+
+Se você não quiser confirmar cada execução do CLI, registre uma permissão própria com `/permissions` na sessão do Claude Code:
+
+```text
+/permissions
+Allow → Bash
+python3 */gb.py *
+```
+
+É uma escolha do usuário, não um requisito da skill: sem ela, cada comando é apenas confirmado na hora. A regra vale para o CLI do plugin em qualquer pasta; não conceda permissão ampla de shell.
+
 ### Migração para 2.3.5
 
 Preserve `.env`, projetos, originais e `.getbrolls-sources/`. Atualize a pasta da skill e repita o instalador do seu sistema para aplicar o conjunto de dependências registrado. Gere novamente o Storyboard com `review`, confira as decisões e exporte um novo JSON. O importador agora confere `reviewEpoch`: um JSON sem esse campo ou baseado numa decisão substituída é recusado, mesmo que vídeo e intervalo sejam os mesmos. Isso também impede reimportar o mesmo JSON depois de sua primeira importação; exporte novamente do Storyboard atualizado. Nenhum item é salvo quando o lote contém uma decisão obsoleta. A atribuição `--by` continua sendo humana e não autentica o revisor.

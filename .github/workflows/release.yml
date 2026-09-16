@@ -1,0 +1,41 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Extract changelog section
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          awk -v version="$VERSION" '
+            $0 ~ "^## " version " —" { inside = 1; next }
+            inside && /^## / { exit }
+            inside { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            printf 'CHANGELOG.md não tem a seção "## %s —".\n' "$VERSION" >&2
+            exit 1
+          fi
+          printf 'TAG=%s\n' "$TAG" >> "$GITHUB_ENV"
+          printf 'VERSION=%s\n' "$VERSION" >> "$GITHUB_ENV"
+      - name: Create release
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            printf 'Release %s já existe; nada a fazer.\n' "$TAG"
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --title "GET B-ROLLS $VERSION" \
+            --notes-file release-notes.md \
+            --verify-tag

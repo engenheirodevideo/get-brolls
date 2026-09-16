@@ -40,7 +40,7 @@ cd get-brolls
 | Codex | `~/.agents/skills/get-brolls/` | `.agents/skills/get-brolls/` | `$get-brolls` |
 | Claude Code | `~/.claude/skills/get-brolls/` | `.claude/skills/get-brolls/` | `/get-brolls` |
 
-When copying a development folder, exclude `.venv/`, `.tools/`, caches, projects, and private files. Install dependencies in the final destination and open a new agent session. [See installation, updates, and compatibility.](GUIDE.md#instalação)
+When copying a development folder, exclude `.venv/`, `.tools/`, caches, projects, and private files. `skills/` and `.claude-plugin/` are Claude Code plugin artifacts and can be omitted when copying to Codex. Install dependencies in the final destination and open a new agent session. [See installation, updates, and compatibility.](GUIDE.md#instalação)
 
 #### Install as a Claude Code plugin
 

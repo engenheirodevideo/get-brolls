@@ -25,6 +25,11 @@ tags: [get-brolls]
 - Troca os cinco marcadores do teste do espelho por um contrato estrutural: corpo da raiz e do espelho comparados linha a linha, com os caminhos `${CLAUDE_PLUGIN_ROOT}` normalizados e apenas a seção "Instalação e contexto" autorizada a divergir.
 - Reescreve `GEMINI.md` como configuração real: o Gemini CLI carrega `GEMINI.md` a partir do diretório de trabalho, então o roteador precisa ser importado por `@/caminho/absoluto/.../SKILL.md` no `GEMINI.md` do usuário.
 - Os dois SKILL.md mandam ler o CHANGELOG quando o `doctor` reportar uma versão diferente da documentada.
+- SECURITY ganha a tabela de egress (instalação, execução e o que nunca sai da máquina) e a declaração de ausência de telemetria.
+- Os instaladores explicam a falha do `pip`: informam o Python em uso e a faixa validada do conjunto fixado (3.11–3.13), continuando fail-fast. A matriz de CI segue em 3.11/3.13 porque `pycryptodomex==3.23.0` ainda não publica wheel cp314.
+- Adiciona `.github/ISSUE_TEMPLATE/bug_report.md` (SO, versão do Python e saída completa do `doctor`), `config.yml` com issues em branco habilitadas e `PULL_REQUEST_TEMPLATE.md` com o bloco de verificação do AGENTS.
+- Adiciona `.github/workflows/release.yml`: em tags `v*`, extrai a seção da versão no CHANGELOG e publica a release pelo `gh`, sem sobrescrever uma release existente e sem novas actions de terceiros.
+- Documenta que `skills/` e `.claude-plugin/` são artefatos do plugin e podem ser omitidos ao copiar para o Codex, e registra no GUIDE a permissão opcional `python3 */gb.py *`.
 
 ## 2.3.6 — proposta para revisão
 

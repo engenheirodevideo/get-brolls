@@ -102,6 +102,64 @@ class RepositoryDocumentationTests(unittest.TestCase):
                 problems.append(str(path.relative_to(ROOT)))
         self.assertEqual([], problems)
 
+    def test_security_documents_egress_and_absence_of_telemetry(self):
+        security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+        for marker in (
+            "PyPI",
+            "npm ci --ignore-scripts",
+            "yt-dlp/curl",
+            "Sem telemetria",
+        ):
+            self.assertIn(marker, security, marker)
+
+    def test_installers_name_the_validated_python_range(self):
+        shell = (ROOT / "scripts/install.sh").read_text(encoding="utf-8")
+        powershell = (ROOT / "scripts/install.ps1").read_text(encoding="utf-8")
+        self.assertIn("validado em Python 3.11–3.13", shell)
+        self.assertIn("validado em Python 3.11-3.13", powershell)
+        self.assertIn("exit 1", shell)
+        self.assertIn("throw", powershell)
+
+    def test_contribution_templates_are_present(self):
+        bug = ROOT / ".github/ISSUE_TEMPLATE/bug_report.md"
+        config = ROOT / ".github/ISSUE_TEMPLATE/config.yml"
+        pull_request = ROOT / ".github/PULL_REQUEST_TEMPLATE.md"
+        for path in (bug, config, pull_request):
+            self.assertTrue(path.is_file(), str(path))
+        report = bug.read_text(encoding="utf-8")
+        for marker in ("Sistema operacional", "python3 --version", "gb.py doctor"):
+            self.assertIn(marker, report, marker)
+        self.assertIn("blank_issues_enabled: true", config.read_text(encoding="utf-8"))
+        template = pull_request.read_text(encoding="utf-8")
+        for command in (
+            "bash scripts/install.sh --check",
+            "python3 scripts/gb.py doctor",
+            "python3 -m unittest discover -s tests -v",
+        ):
+            self.assertIn(command, template, command)
+
+    def test_release_workflow_uses_gh_cli_and_the_pinned_checkout(self):
+        release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+        tests = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
+        checkout = re.search(r"actions/checkout@[0-9a-f]{40}", tests).group(0)
+        self.assertIn(checkout, release)
+        for marker in (
+            "tags:",
+            "contents: write",
+            "ubuntu-latest",
+            "GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}",
+            "gh release view",
+            "--verify-tag",
+            "--notes-file",
+            "CHANGELOG.md",
+        ):
+            self.assertIn(marker, release, marker)
+        self.assertEqual(
+            [f"uses: {checkout} # v4"],
+            [line.strip("- ").strip() for line in release.splitlines() if "uses:" in line],
+            "release.yml deve usar apenas o checkout já fixado por SHA",
+        )
+
     def test_python_text_io_declares_utf8_explicitly(self):
         problems = []
         for path in (ROOT / "scripts").rglob("*.py"):
