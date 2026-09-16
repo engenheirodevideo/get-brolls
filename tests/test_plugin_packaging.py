@@ -12,6 +12,7 @@ PLUGIN_JSON = ROOT / ".claude-plugin" / "plugin.json"
 MARKETPLACE_JSON = ROOT / ".claude-plugin" / "marketplace.json"
 ROOT_SKILL = ROOT / "SKILL.md"
 MIRROR_SKILL = ROOT / "skills" / "get-brolls" / "SKILL.md"
+SETUP_COMMAND = ROOT / "commands" / "get-brolls-setup.md"
 
 
 def frontmatter_field(path, field):
@@ -41,6 +42,25 @@ class PluginManifestTests(unittest.TestCase):
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]["source"], "./")
         self.assertEqual(entries[0].get("version"), __version__)
+
+
+class SetupCommandTests(unittest.TestCase):
+    def test_setup_command_is_discoverable_and_complete(self):
+        self.assertTrue(SETUP_COMMAND.is_file(), "commands/get-brolls-setup.md ausente")
+        self.assertEqual("get-brolls-setup", frontmatter_field(SETUP_COMMAND, "name"))
+        self.assertTrue(frontmatter_field(SETUP_COMMAND, "description"))
+        body = SETUP_COMMAND.read_text(encoding="utf-8")
+        for marker in (
+            '"${CLAUDE_PLUGIN_ROOT}/scripts/install.sh" --check',
+            '"${CLAUDE_PLUGIN_ROOT}/scripts/install.ps1"',
+            '"${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" doctor',
+            "summary",
+        ):
+            self.assertIn(marker, body, f"passo ausente no comando de setup: {marker}")
+
+    def test_plugin_manifest_needs_no_commands_key(self):
+        data = json.loads(PLUGIN_JSON.read_text(encoding="utf-8"))
+        self.assertNotIn("commands", data)
 
 
 class SkillMirrorTests(unittest.TestCase):

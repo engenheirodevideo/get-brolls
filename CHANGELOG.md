@@ -18,6 +18,9 @@ tags: [get-brolls]
 - Adiciona `tests/test_env_paths.py` com 16 regressões offline de precedência, padrão inalterado, erro de caminho inválido e layouts `.venv` POSIX e Windows.
 - Torna a CLI autoexplicativa: `help` em todos os subcomandos e argumentos, `--version` na raiz e `doctor` com veredito `summary` (ok, missing com o comando que resolve, optional) além de `get_brolls` e `python` — a chave `runtime` passou a se chamar `python`.
 - Nomeia o instalador no erro de yt-dlp ausente e separa "FFmpeg/ffprobe não encontrado" de "arquivo/intervalo inválido", apontando `doctor` nos dois casos.
+- Adiciona o comando de plugin `/get-brolls-setup` (`commands/get-brolls-setup.md`), que executa `--check`, o instalador do sistema e o `doctor` pela raiz do plugin e reporta o veredito em uma linha.
+- Documenta o acionamento do plugin (contexto, `/get-brolls:get-brolls`, `/get-brolls-setup`) e acrescenta o bloco "Primeiro B-roll em 5 minutos" nos dois READMEs, com fonte sem chave, servidor local do Storyboard e saída esperada.
+- Os dois SKILL.md passam a mandar servir `brolls/` em `127.0.0.1:8767` e avisar que `file://` pode desativar o salvamento local antes da exportação do JSON.
 
 ## 2.3.6 — proposta para revisão
 

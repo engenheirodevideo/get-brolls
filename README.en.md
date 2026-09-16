@@ -51,7 +51,9 @@ In Claude Code, you can also install the skill as a plugin, without cloning manu
 /plugin install get-brolls@engenheirodevideo
 ```
 
-Then follow step 2 in the installed plugin folder — `~/.claude/plugins/cache/engenheirodevideo/get-brolls/<version>/` (or ask Claude to run the installer). Re-run the installer after each `/plugin update`. For Codex, the full-folder clone described above remains the way to install.
+Then run `/get-brolls-setup` in the session: the command runs the installer inside the plugin folder — `~/.claude/plugins/cache/engenheirodevideo/get-brolls/<version>/` — and reports the `doctor` verdict. You can also follow step 2 manually in that folder. Repeat the setup after each `/plugin update`. For Codex, the full-folder clone described above remains the way to install.
+
+The skill triggers from the context of your request ("collect b-roll for this video"); the explicit form is `/get-brolls:get-brolls`, and setup is `/get-brolls-setup`.
 
 ### 2. Prepare the environment
 
@@ -91,6 +93,28 @@ Use /path/to/my-video to store the project.
 ```
 
 In Claude Code, replace the first invocation with `/get-brolls`. Replace the folder with the real path to your project, outside the skill installation. You may also provide a specific URL or a local file.
+
+### First B-roll in 5 minutes
+
+The shortest command-line sequence, using a keyless source (NASA). Replace `/path/to/my-video` with your project and `ID` with the identifier returned by the search.
+
+```sh
+python3 scripts/gb.py search --provider nasa --query "Artemis launch" --limit 3 --intent literal --project /path/to/my-video
+python3 scripts/gb.py preview --candidate ID --start 0 --end 4 --project /path/to/my-video
+python3 scripts/gb.py review --project /path/to/my-video
+python3 -m http.server 8767 --bind 127.0.0.1 --directory /path/to/my-video/brolls
+```
+
+Open [the local storyboard](http://127.0.0.1:8767/review.html), decide on the shots, and export the JSON. Then, from another terminal:
+
+```sh
+python3 scripts/gb.py import-review --file /path/to/review.json --by "Your name" --project /path/to/my-video
+python3 scripts/gb.py permit --candidate ID --evidence "Real conditions of use for this source" --project /path/to/my-video
+python3 scripts/gb.py fetch --candidate ID --project /path/to/my-video
+python3 scripts/gb.py verify --project /path/to/my-video
+```
+
+At the end, `verify` answers `"count": 1` and the approved clip is in `/path/to/my-video/brolls/clips/`, with origin, creator, and decision recorded in `brolls/credits.md`. Replacing `nasa` with `commons` follows the same flow.
 
 ## Storyboard
 

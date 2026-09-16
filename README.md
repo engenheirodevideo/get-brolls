@@ -51,7 +51,9 @@ No Claude Code, você também pode instalar a skill como plugin, sem clonar manu
 /plugin install get-brolls@engenheirodevideo
 ```
 
-Depois, siga o passo 2 na pasta do plugin instalado — `~/.claude/plugins/cache/engenheirodevideo/get-brolls/<versão>/` (ou peça ao Claude para executar o instalador). Repita o instalador após cada `/plugin update`. Para o Codex, o caminho continua sendo o clone da pasta completa descrito acima.
+Depois, execute `/get-brolls-setup` na sessão: o comando roda o instalador na pasta do plugin — `~/.claude/plugins/cache/engenheirodevideo/get-brolls/<versão>/` — e reporta o veredito do `doctor`. Você também pode seguir o passo 2 manualmente nessa pasta. Repita a configuração após cada `/plugin update`. Para o Codex, o caminho continua sendo o clone da pasta completa descrito acima.
+
+A skill é acionada pelo contexto do pedido ("colete b-roll para este vídeo"); a forma explícita é `/get-brolls:get-brolls` e a configuração é `/get-brolls-setup`.
 
 ### 2. Prepare o ambiente
 
@@ -91,6 +93,28 @@ Use a pasta /caminho/meu-video para guardar o projeto.
 ```
 
 No Claude Code, troque a primeira chamada por `/get-brolls`. Substitua a pasta pelo caminho real do seu projeto, fora da instalação da skill. Você também pode fornecer uma URL específica ou um arquivo local.
+
+### Primeiro B-roll em 5 minutos
+
+Sequência mínima pelo terminal, com uma fonte sem chave (NASA). Troque `/caminho/meu-video` pelo seu projeto e `ID` pelo identificador devolvido na busca.
+
+```sh
+python3 scripts/gb.py search --provider nasa --query "Artemis launch" --limit 3 --intent literal --project /caminho/meu-video
+python3 scripts/gb.py preview --candidate ID --start 0 --end 4 --project /caminho/meu-video
+python3 scripts/gb.py review --project /caminho/meu-video
+python3 -m http.server 8767 --bind 127.0.0.1 --directory /caminho/meu-video/brolls
+```
+
+Abra [o storyboard local](http://127.0.0.1:8767/review.html), decida os trechos e exporte o JSON. Em outro terminal:
+
+```sh
+python3 scripts/gb.py import-review --file /caminho/revisao.json --by "Seu nome" --project /caminho/meu-video
+python3 scripts/gb.py permit --candidate ID --evidence "Condições reais de uso desta fonte" --project /caminho/meu-video
+python3 scripts/gb.py fetch --candidate ID --project /caminho/meu-video
+python3 scripts/gb.py verify --project /caminho/meu-video
+```
+
+Ao final, `verify` responde `"count": 1` e o corte aprovado está em `/caminho/meu-video/brolls/clips/`, com origem, autor e decisão em `brolls/credits.md`. Com `commons` no lugar de `nasa`, o fluxo é idêntico.
 
 ## Storyboard
 

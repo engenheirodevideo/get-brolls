@@ -31,7 +31,7 @@ A raiz do plugin instalado é `${CLAUDE_PLUGIN_ROOT}` — a pasta dois níveis a
 ## Revisão e entrega
 
 5. `preview --candidate ID --start INICIO --end FIM --project ...` obtém mídia de trabalho remota quando necessário e gera GIF/contact sheet. Não use um poster isolado como prova do movimento. Sem fala, omita `--narration`. `--reference-only` gera somente referência estática quando esse for o pedido.
-6. `review --project ...`: entregue `brolls/` completo. Usuário aprova/ajusta e exporta JSON. Importe com `import-review --by`; `approve` apenas registra decisão humana já recebida. Não se autoaprove. Alterações de contexto/intervalo invalidam aprovação.
+6. `review --project ...`: entregue `brolls/` completo. Sirva a pasta localmente com `python3 -m http.server 8767 --bind 127.0.0.1 --directory <projeto>/brolls`, entregue ao usuário a URL `http://127.0.0.1:8767/review.html` e avise que abrir por `file://` pode desativar o salvamento local — exporte o JSON antes de fechar a página. Usuário aprova/ajusta e exporta JSON. Importe com `import-review --by`; `approve` apenas registra decisão humana já recebida. Não se autoaprove. Alterações de contexto/intervalo invalidam aprovação.
 7. Registre condições reais com `permit --evidence` ou declaração do usuário configurada; depois `fetch` e `verify`. Não invente licença. O corte usa os bytes revisados e mantém origem/autor.
 
 Utilitários YouTube estão em `${CLAUDE_PLUGIN_ROOT}/scripts/getbrolls/tools/youtube/`; o [README](${CLAUDE_PLUGIN_ROOT}/README.md) mostra os comandos e explica sua relação com o ledger. Contexto da pessoa permanece estático; GIF padrão anima só B-roll. Full exige composição pronta do insert. Preserve originais, cache, eventos e journal. Página falhou após salvar: regenere `review`.
