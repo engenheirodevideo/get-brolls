@@ -21,6 +21,10 @@ tags: [get-brolls]
 - Adiciona o comando de plugin `/get-brolls-setup` (`commands/get-brolls-setup.md`), que executa `--check`, o instalador do sistema e o `doctor` pela raiz do plugin e reporta o veredito em uma linha.
 - Documenta o acionamento do plugin (contexto, `/get-brolls:get-brolls`, `/get-brolls-setup`) e acrescenta o bloco "Primeiro B-roll em 5 minutos" nos dois READMEs, com fonte sem chave, servidor local do Storyboard e saída esperada.
 - Os dois SKILL.md passam a mandar servir `brolls/` em `127.0.0.1:8767` e avisar que `file://` pode desativar o salvamento local antes da exportação do JSON.
+- Substitui a `description` dos dois SKILL.md por uma descrição bilíngue com o que a skill faz, quando acioná-la e o que está fora de escopo; os READMEs distinguem a skill de coletores genéricos de download.
+- Troca os cinco marcadores do teste do espelho por um contrato estrutural: corpo da raiz e do espelho comparados linha a linha, com os caminhos `${CLAUDE_PLUGIN_ROOT}` normalizados e apenas a seção "Instalação e contexto" autorizada a divergir.
+- Reescreve `GEMINI.md` como configuração real: o Gemini CLI carrega `GEMINI.md` a partir do diretório de trabalho, então o roteador precisa ser importado por `@/caminho/absoluto/.../SKILL.md` no `GEMINI.md` do usuário.
+- Os dois SKILL.md mandam ler o CHANGELOG quando o `doctor` reportar uma versão diferente da documentada.
 
 ## 2.3.6 — proposta para revisão
 

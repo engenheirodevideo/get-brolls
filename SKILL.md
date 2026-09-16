@@ -1,6 +1,6 @@
 ---
 name: get-brolls
-description: Use when the user asks to collect B-roll, download supporting footage from YouTube, Instagram or TikTok, search stock videos, or review inserts for an edit.
+description: Collects, previews and delivers B-roll inserts with human review and source provenance. Use when the user asks to collect B-roll, cutaways, inserts or supporting footage for a video or Reel — searching YouTube, Instagram, TikTok or stock providers (Pexels, Pixabay, Wikimedia Commons, NASA), generating Storyboard previews for human review, and delivering licensed clips with provenance. Também: coletar b-roll, imagens de apoio, baixar cortes ou footage para ilustrar um vídeo. Not for editing or rendering the finished video.
 license: MIT
 metadata:
   version: "2.3.7"
@@ -36,4 +36,4 @@ Localize esta pasta completa. Leia a seção de [instalação do guia](GUIDE.md#
 
 Utilitários YouTube estão em `scripts/getbrolls/tools/youtube/`; o [README](README.md) mostra os comandos e explica sua relação com o ledger. Contexto da pessoa permanece estático; GIF padrão anima só B-roll. Full exige composição pronta do insert. Preserve originais, cache, eventos e journal. Página falhou após salvar: regenere `review`.
 
-Para manutenção do código/documentação, siga [AGENTS](AGENTS.md). Leia [Qualidade e evidências](QUALITY.md) antes de declarar rotas testadas. Falha de extração é reportada com a fonte real; não invente indisponibilidade permanente nem mude para outra arquitetura.
+Para manutenção do código/documentação, siga [AGENTS](AGENTS.md). Leia [Qualidade e evidências](QUALITY.md) antes de declarar rotas testadas. Se `doctor` informar uma versão diferente da documentada aqui, leia [CHANGELOG](CHANGELOG.md) antes de seguir. Falha de extração é reportada com a fonte real; não invente indisponibilidade permanente nem mude para outra arquitetura.

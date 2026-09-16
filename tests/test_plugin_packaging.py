@@ -44,6 +44,39 @@ class PluginManifestTests(unittest.TestCase):
         self.assertEqual(entries[0].get("version"), __version__)
 
 
+# Único trecho que pode divergir: a instalação descreve contextos diferentes.
+DIVERGENT_SECTION = "Instalação e contexto"
+
+
+def skill_body(path):
+    """Corpo do SKILL.md sem frontmatter e sem o comentário HTML de sincronia."""
+    text = path.read_text(encoding="utf-8")
+    text = re.sub(r"\A---\n.*?\n---\n", "", text, flags=re.DOTALL)
+    return [line for line in text.splitlines() if not line.startswith("<!--")]
+
+
+def normalize(line):
+    """Reduz o espelho ao mesmo texto da raiz: prefixo do plugin e invocação explícita."""
+    line = line.replace('"${CLAUDE_PLUGIN_ROOT}/', '"').replace("${CLAUDE_PLUGIN_ROOT}/", "")
+    line = re.sub(r'`python3 "([^"`]+)"`', r"`\1`", line)
+    return line.strip()
+
+
+def normalized_sections(path):
+    """Linhas normalizadas por seção `##`, preservando a ordem do documento."""
+    sections = {"": []}
+    current = ""
+    for line in skill_body(path):
+        if line.startswith("## "):
+            current = line[3:].strip()
+            sections[current] = []
+            continue
+        normalized = normalize(line)
+        if normalized:
+            sections[current].append(normalized)
+    return sections
+
+
 class SetupCommandTests(unittest.TestCase):
     def test_setup_command_is_discoverable_and_complete(self):
         self.assertTrue(SETUP_COMMAND.is_file(), "commands/get-brolls-setup.md ausente")
@@ -82,16 +115,24 @@ class SkillMirrorTests(unittest.TestCase):
             target = ROOT / ref.split("#", 1)[0]
             self.assertTrue(target.exists(), f"alvo inexistente: {ref}")
 
-    def test_mirror_keeps_operational_rules(self):
-        body = MIRROR_SKILL.read_text(encoding="utf-8")
-        for marker in (
-            "import-review --by",
-            "Não se autoaprove",
-            "--fail-on-duplicate-audio",
-            "permit --evidence",
-            "nunca publique URLs assinadas",
-        ):
-            self.assertIn(marker, body, f"regra operacional ausente no espelho: {marker}")
+    def test_mirror_body_matches_root_outside_the_installation_section(self):
+        root = normalized_sections(ROOT_SKILL)
+        mirror = normalized_sections(MIRROR_SKILL)
+        self.assertEqual(
+            list(root), list(mirror), "seções divergentes entre raiz e espelho"
+        )
+        self.assertTrue(
+            root[DIVERGENT_SECTION] and mirror[DIVERGENT_SECTION],
+            "seção de instalação ausente; a allowlist deixaria de proteger algo",
+        )
+        for section in root:
+            if section == DIVERGENT_SECTION:
+                continue
+            self.assertEqual(
+                root[section],
+                mirror[section],
+                f"espelho fora de sincronia na seção: {section or 'introdução'}",
+            )
 
 
 if __name__ == "__main__":
