@@ -131,7 +131,11 @@ class NetworkRegressionTests(unittest.TestCase):
             return sock
 
         with (
+            tempfile.TemporaryDirectory() as home,
             patch.dict(os.environ, environment or {}, clear=True),
+            # Windows cannot discover a home after its environment is cleared.
+            # Keep the network fixture isolated from the real user's cache.
+            patch.object(Path, "home", return_value=Path(home)),
             patch.object(socket, "getaddrinfo", side_effect=resolve),
             patch.object(socket, "socket", side_effect=lambda *a, **k: WireSocket(connections, requests, response)),
             patch.object(ssl.SSLContext, "wrap_socket", wrap),
