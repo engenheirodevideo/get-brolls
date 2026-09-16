@@ -10,15 +10,15 @@ tags: [get-brolls, quality, qa, evidence]
 
 Este documento reúne o estado de qualidade, as regressões cobertas, os limites conhecidos e as evidências reais por provedor. Resultados ao vivo são registros datados, não promessa de disponibilidade futura nem aprovação editorial.
 
-## QA da proposta 2.3.5 — 16/09/2026
+## QA da versão 2.3.5 — 16/09/2026
 
 80 testes passaram localmente em macOS/Python 3.14.6, incluindo 10 regressões adicionais. As seis regressões iniciais dos defeitos falharam na 2.3.4 e passaram após a correção. DNS, sockets e TLS dos casos adversariais são simulados na fronteira de rede; urllib, parsing HTTP, geração do Storyboard, importação e persistência são reais. Nenhuma conexão adversarial foi feita contra redes públicas ou internas.
 
 Cobertura nova: export anterior à rejeição; reimportação após decisão já aplicada; lote com `reviewEpoch` ausente sem gravação parcial; IPv4/IPv6 público fixado; proxies automáticos ignorados; revalidação DNS nas tentativas; destino misto público/privado recusado; HTTPS/porta 443 obrigatórios; redirects recusados; falha de certificado sem arquivo publicado. Novas exportações válidas continuam sendo aceitas.
 
-Uma cópia limpa concluiu o instalador macOS com as dependências fixadas; `doctor` reconheceu yt-dlp e Playwright, e `pip check` não encontrou incompatibilidades. A CI proposta executa instalação completa em todos os cinco ambientes da matriz, incluindo Python 3.11.
+Uma cópia limpa concluiu o instalador macOS com as dependências fixadas; `doctor` reconheceu yt-dlp e Playwright, e `pip check` não encontrou incompatibilidades. A [CI no main](https://github.com/engenheirodevideo/get-brolls/actions/runs/35053424856) executou instalação completa e testes em todos os cinco ambientes da matriz, incluindo Python 3.11, e passou em 16/09/2026.
 
-As dependências Python fixadas vieram dos logs da [CI da 2.3.4](https://github.com/engenheirodevideo/get-brolls/actions/runs/35045895066), idênticas nas instalações macOS/Windows. Os ensaios sociais abaixo são históricos da 2.3.4 e não foram repetidos com sessões/chaves nesta correção. A matriz de instalação/testes da nova árvore deve ser conferida no PR antes de aprovar o merge; os testes antigos não certificam a atualização.
+As dependências Python fixadas vieram dos logs da [CI da 2.3.4](https://github.com/engenheirodevideo/get-brolls/actions/runs/35045895066), idênticas nas instalações macOS/Windows. Os ensaios sociais abaixo são históricos da 2.3.4 e não foram repetidos com sessões/chaves nesta correção. A matriz de instalação/testes passou no PR e novamente no merge para o main antes da publicação; os testes antigos não certificam atualizações futuras.
 
 ## Histórico — QA da versão 2.3.4
 

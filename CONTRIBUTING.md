@@ -29,7 +29,7 @@ Revise `requirements.txt` e `package-lock.json` junto com mudanças nas dependê
 
 A branch principal deve exigir a matriz `Tests` antes do merge. Essa proteção é uma configuração do GitHub feita pelo mantenedor; o arquivo do workflow não a ativa. Verifique os nomes dos checks no PR ao configurar a regra.
 
-Uma correção de código incrementa a versão em `scripts/getbrolls/__init__.py`, SKILL, READMEs, manifestos npm, GUIDE, QUALITY e CHANGELOG. Após a aprovação e o merge, publique uma tag/release apontando para o commit aprovado; nunca mova uma tag já distribuída para outro código. Esta proposta 2.3.5 não publica releases automaticamente.
+Uma correção de código incrementa a versão em `scripts/getbrolls/__init__.py`, SKILL, READMEs, manifestos npm, GUIDE, QUALITY e CHANGELOG. Após a aprovação e o merge, publique uma tag/release apontando para o commit aprovado; nunca mova uma tag já distribuída para outro código. Releases não são publicadas automaticamente; a publicação é sempre um ato manual do mantenedor.
 
 ## Arquivos publicados
 

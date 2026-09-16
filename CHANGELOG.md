@@ -8,7 +8,7 @@ tags: [get-brolls]
 
 # Changelog
 
-## 2.3.5 — proposta para revisão
+## 2.3.5 — 2026-09-16
 
 - Recusa JSONs de revisão baseados em decisões antigas, inclusive depois de rejeição ou de outra importação. Valida `reviewEpoch` além da assinatura do conteúdo, sem gravar parcialmente os itens de um lote inválido.
 - Fixa conexões HTTP de APIs e downloads nos endereços públicos validados, preservando SNI, hostname e certificados HTTPS. Revalida DNS a cada nova tentativa; mantém redirects bloqueados e conecta diretamente, sem proxies automáticos do ambiente.
