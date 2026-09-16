@@ -161,7 +161,7 @@ Versão 2.3: asset_type/image, RULES e biblioteca de referências por projeto. A
 
 Entrada no padrão Agent Skills (`name`, `description`, `license`, `metadata`). Metadados operacionais do vault ficam em `metadata`, sem campos próprios no nível superior do SKILL.md. Os demais documentos mantêm seu frontmatter operacional.
 
-Codex e Claude Code usam a mesma pasta, com destinos e invocações descritos em GUIDE.md. `agents/openai.yaml` é opcional e específico do Codex. Não há dependência de hooks, MCP, permissões preaprovadas ou sintaxe de interpolação exclusiva do Claude. Validação estrutural não equivale a teste de descoberta em uma sessão nativa de cada produto.
+Codex e Claude Code usam a mesma pasta, com destinos e invocações descritos em GUIDE.md. `agents/openai.yaml` é opcional e específico do Codex. `CLAUDE.md` e `GEMINI.md` na raiz apenas roteiam para SKILL.md (operação) e AGENTS.md (manutenção), cobrindo a descoberta de contexto do Claude Code e do Gemini CLI sem duplicar instruções. Não há dependência de hooks, MCP, permissões preaprovadas ou sintaxe de interpolação exclusiva do Claude. Validação estrutural não equivale a teste de descoberta em uma sessão nativa de cada produto.
 
 ### Plugin do Claude Code — 2.3.6
 

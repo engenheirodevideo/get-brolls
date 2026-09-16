@@ -17,6 +17,7 @@ tags: [get-brolls]
 - Orienta o contexto de plugin instalado: resolução de `${CLAUDE_PLUGIN_ROOT}`, `--project` obrigatório, chaves via `--env-file` fora da pasta gerenciada e reinstalação das dependências após `/plugin update`.
 - Adiciona testes offline que validam os manifestos do plugin, a igualdade da `description` entre os dois SKILL.md, a existência dos alvos `${CLAUDE_PLUGIN_ROOT}` e as regras operacionais do espelho.
 - Atualiza SECURITY: o relatório privado de vulnerabilidades do GitHub está habilitado no repositório.
+- Adiciona roteadores `CLAUDE.md` e `GEMINI.md` apontando para SKILL.md (operação) e AGENTS.md (manutenção), para descoberta de contexto no Claude Code e no Gemini CLI sem duplicar instruções.
 - Nenhuma mudança de lógica do produto ou dos scripts.
 
 ## 2.3.5 — 2026-09-16
