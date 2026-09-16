@@ -4,7 +4,7 @@
   <h1>GET B-ROLLS</h1>
   <p><strong>From an idea to the right shot for your edit.</strong></p>
   <p>Find supporting footage, preview the motion, and review every choice<br>before receiving the final clips with their sources.</p>
-  <p>v2.3.4 · Codex and Claude Code · macOS and Windows</p>
+  <p>v2.3.5 · Codex and Claude Code · macOS and Windows</p>
   <p><a href="#getting-started">Getting started</a> · <a href="#storyboard">Storyboard</a> · <a href="#sources">Sources</a> · <a href="GUIDE.md#instalação">Full guide</a></p>
 </div>
 
@@ -154,6 +154,8 @@ Replace the name, exported file, and evidence with real data. Repeat `permit` an
 Use `python3 scripts/gb.py --help` and `python3 scripts/gb.py preview --help` to inspect arguments. Outside the skill folder, use the absolute path to `scripts/gb.py`.
 
 </details>
+
+When upgrading to 2.3.5, regenerate the Storyboard and export a current review. JSON files based on superseded decisions or missing `reviewEpoch` are rejected. [Migration guide (Portuguese).](GUIDE.md#migração-para-235)
 
 ## Limits and privacy
 

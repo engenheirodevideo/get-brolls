@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-15
+updated: 2026-09-16
 tags: [get-brolls, documentation]
 ---
 
@@ -22,6 +22,14 @@ python3 scripts/gb.py doctor
 ```
 
 Mudanças na revisão visual exigem conferir aprovação/ajuste/sugestão, exportação/importação, impressão e largura móvel conforme o impacto. Revisões apenas documentais precisam validar frontmatter, links e exemplos de CLI, sem refazer downloads desnecessariamente.
+
+## Dependências e releases
+
+Revise `requirements.txt` e `package-lock.json` junto com mudanças nas dependências. Os instaladores usam o conjunto registrado; não faça atualização global nem incorpore bibliotecas no repositório. O Dependabot propõe atualizações por PR; elas exigem testes e, quando afetarem aquisição, ensaio da rota correspondente. As GitHub Actions ficam fixadas por SHA.
+
+A branch principal deve exigir a matriz `Tests` antes do merge. Essa proteção é uma configuração do GitHub feita pelo mantenedor; o arquivo do workflow não a ativa. Verifique os nomes dos checks no PR ao configurar a regra.
+
+Uma correção de código incrementa a versão em `scripts/getbrolls/__init__.py`, SKILL, READMEs, manifestos npm, GUIDE, QUALITY e CHANGELOG. Após a aprovação e o merge, publique uma tag/release apontando para o commit aprovado; nunca mova uma tag já distribuída para outro código. Esta proposta 2.3.5 não publica releases automaticamente.
 
 ## Arquivos publicados
 

@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from getbrolls.config import load_env, settings
 from getbrolls.models import candidate, set_segment, signature, require_fetch
 from getbrolls.ledger import Ledger
-from getbrolls.review import import_review, project_id
+from getbrolls.review import import_review, project_id, review_epoch
 from getbrolls.media import review_preview, probe
 
 
@@ -53,7 +53,7 @@ class WorkflowTests(unittest.TestCase):
                 "templateVersion": 2,
                 "project": pid,
                 "items": [
-                    {"id": c["id"], "signature": signature(c), "state": "approved"}
+                    {"id": c["id"], "signature": signature(c), "reviewEpoch": review_epoch(c), "state": "approved"}
                     for c in ledger.data["items"]
                 ],
             }

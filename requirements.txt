@@ -1,1 +1,13 @@
-yt-dlp[default]>=2026.8.19
+# Versions installed successfully by the v2.3.4 macOS/Windows CI (2026-09-16).
+# Update as a reviewed set and rerun the installers and provider smoke tests.
+yt-dlp[default]==2026.8.19
+yt-dlp-ejs==0.8.0
+brotli==1.2.0
+certifi==2026.7.22
+charset-normalizer==3.5.1
+idna==3.19
+mutagen==1.48.1
+pycryptodomex==3.23.0
+requests==2.34.2
+urllib3==2.8.0
+websockets==17.1

@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-15
+updated: 2026-09-16
 tags: [get-brolls, guide, installation, providers, storyboard]
 ---
 
@@ -136,7 +136,9 @@ Defina `GB_SKILL_DIR` e `GB_PROJECT` com os caminhos reais. A trava de projeto u
 
 Após instalar, confirme `yt-dlp` e `playwright-cli` em `doctor`. Para a CLI Playwright local, execute `bash scripts/playwright.sh --version` no macOS ou `& .\scripts\playwright.ps1 --version` no Windows. Um status positivo indica disponibilidade, não que todas as URLs serão acessíveis.
 
-O conjunto ensaiado nesta versão foi yt-dlp 2026.08.19, EJS 0.8.0 e Playwright CLI 0.1.20. `requirements.txt` aceita yt-dlp a partir de 2026.8.19 e pode resolver uma versão mais nova; o npm instala a versão de Playwright indicada no instalador. Preserve configurações privadas antes de atualizar a skill e repita um ensaio da rota utilizada se as dependências mudarem.
+O conjunto de referência é yt-dlp 2026.08.19, EJS 0.8.0 e Playwright CLI 0.1.20. A partir da 2.3.5, `requirements.txt` fixa também as dependências Python transitivas nas versões instaladas pela CI macOS/Windows da 2.3.4. `package.json` e `package-lock.json` registram o conjunto npm; o instalador copia esses manifestos para `.tools/` e executa `npm ci --ignore-scripts`. Nenhuma biblioteca é incluída no repositório. Os executáveis Python, Node, FFmpeg e curl continuam sendo instalados pelo usuário.
+
+Atualizações de dependências devem entrar por PR, com instalação completa e testes; o Dependabot está configurado para propor essas mudanças semanalmente. Preserve configurações privadas antes de atualizar a skill e repita um ensaio da rota utilizada se as dependências mudarem. Se você personalizou `.tools/node_modules`, `npm ci` substituirá essa árvore pela versão registrada no lockfile; mantenha ferramentas próprias fora da pasta gerenciada da skill.
 
 Se `--check` falhar, instale o executável/versão apontado. Se a extração falhar, confirme primeiro que a URL abre no navegador autorizado; confira instalação, sessão e disponibilidade do post. Não peça chave YouTube. Para URL CDN Instagram expirada, recapture os dois canais e siga o guia de recuperação. Os testes reais documentados estão em [Qualidade e evidências](QUALITY.md).
 
@@ -161,13 +163,19 @@ Entrada no padrão Agent Skills (`name`, `description`, `license`, `metadata`). 
 
 Codex e Claude Code usam a mesma pasta, com destinos e invocações descritos em GUIDE.md. `agents/openai.yaml` é opcional e específico do Codex. Não há dependência de hooks, MCP, permissões preaprovadas ou sintaxe de interpolação exclusiva do Claude. Validação estrutural não equivale a teste de descoberta em uma sessão nativa de cada produto.
 
+### Migração para 2.3.5
+
+Preserve `.env`, projetos, originais e `.getbrolls-sources/`. Atualize a pasta da skill e repita o instalador do seu sistema para aplicar o conjunto de dependências registrado. Gere novamente o Storyboard com `review`, confira as decisões e exporte um novo JSON. O importador agora confere `reviewEpoch`: um JSON sem esse campo ou baseado numa decisão substituída é recusado, mesmo que vídeo e intervalo sejam os mesmos. Isso também impede reimportar o mesmo JSON depois de sua primeira importação; exporte novamente do Storyboard atualizado. Nenhum item é salvo quando o lote contém uma decisão obsoleta. A atribuição `--by` continua sendo humana e não autentica o revisor.
+
+O transporte HTTP de APIs e bancos conecta diretamente aos IPs públicos validados, mantendo a validação normal do certificado e hostname HTTPS. Redirecionamentos continuam bloqueados. Proxies configurados automaticamente no ambiente ou sistema não são usados por esse transporte; redes corporativas que exigem proxy precisam de uma conexão direta autorizada. Isso não configura nem altera os transportes externos de yt-dlp, curl ou navegador.
+
 ### Migração para 2.3.4
 
 A prévia remota agora pode adquirir um trecho e guardar `local_start_s` junto ao hash da fonte. A assinatura inclui esse offset. Preserve o projeto e as decisões antigas como histórico, gere nova prévia/review e solicite nova decisão quando a revisão anterior for recusada por assinatura desatualizada. Não edite hashes/assinaturas para forçar uma aprovação antiga.
 
 Projetos que já possuíam arquivo local continuam usando esse arquivo. Preserve os caminhos dos originais e `.getbrolls-sources/` para regenerar prévias; compartilhar só `brolls/` permite visualizar o storyboard, não continuar toda a edição em outro computador.
 
-A suíte local atual passou em macOS. A matriz CI cobre macOS e Windows em Python 3.11/3.13, com Linux/Python 3.13 como plataforma secundária. O Windows usa instalador PowerShell, layout `.venv\Scripts` e trava nativa; os helpers Bash opcionais não fazem parte do caminho principal nesse sistema. A primeira execução remota da nova matriz ainda precisa ser confirmada após a publicação. As versões de dependências ensaiadas estão na seção [Instalação](#instalação).
+A matriz da 2.3.4 passou em macOS e Windows em Python 3.11/3.13, com Linux/Python 3.13 como plataforma secundária. O Windows usa instalador PowerShell, layout `.venv\Scripts` e trava nativa; os helpers Bash opcionais não fazem parte do caminho principal nesse sistema. Cada atualização deve passar pela matriz do próprio PR antes do merge. As versões de dependências ensaiadas estão na seção [Instalação](#instalação).
 
 ## Fluxo editorial
 
@@ -648,7 +656,7 @@ Entregável de revisão independente da landing page. `gb.py review` gera `broll
 2. Execute `preview` com intervalo, `--narration` (fala exata, quando fornecida; omita se ausente) e `--reason` (motivo da fonte).
 3. O topo mostra o insert em sua proporção; à direita, fonte e ações de revisão. Galeria sempre estática. O GIF anima só no quadro selecionado; clique para alternar estático/animação. A preferência de movimento reduzido é respeitada.
 4. Revisor aprova, pede ajuste ou sugere fonte; ajustes exigem comentário. Exporte JSON para devolver decisões. O botão PDF gera versão estática dos quadros com fontes/comentários.
-5. Importe com `import-review --by`. Projeto, IDs e assinatura do intervalo/fonte são validados. Mudança de intervalo invalida decisão anterior.
+5. Importe com `import-review --by`. Projeto, IDs, assinatura do intervalo/fonte e versão da decisão (`reviewEpoch`) são validados. Mudança de intervalo ou substituição da decisão invalida a exportação anterior. Em caso de revisão desatualizada, regenere o Storyboard, confira e exporte novamente; não altere assinaturas manualmente.
 6. Só colete o corte final depois de aprovação humana e registro da permissão. Clips MP4 ficam separados do storyboard.
 
 Configurações, presets e limitações estão no [README](README.md). `preview` obtém mídia de trabalho remota nas rotas de aquisição implementadas; no Instagram por navegador, importe primeiro o MP4 unido. Um poster isolado, inclusive com `--reference-only`, não comprova movimento.

@@ -7,6 +7,13 @@ from .models import signature, approve, now
 ASSETS = Path(__file__).resolve().parents[2] / "assets"
 
 
+def review_epoch(candidate):
+    """Bind an exported decision to the approval/review it was based on."""
+    return hashlib.sha256(
+        json.dumps([candidate["approval"], candidate.get("review")], sort_keys=True).encode()
+    ).hexdigest()
+
+
 def project_id(ledger):
     # Stable when project folder is copied to another reviewer/computer.
     if "project_id" not in ledger.data:
@@ -77,6 +84,12 @@ def import_review(ledger, file, by, rules=None):
         c = copy.deepcopy(ledger.get(item["id"]))
         if item.get("signature") != signature(c):
             raise ValueError("Revisão desatualizada para " + c["id"])
+        if item.get("reviewEpoch") != review_epoch(c):
+            raise ValueError(
+                "Revisão desatualizada para " + c["id"]
+                + ": a decisão mudou ou o arquivo não contém sua versão. "
+                "Execute review, confira as decisões e exporte um novo JSON."
+            )
         state = item.get("state")
         comment = item.get("comment", "")
         suggestion = item.get("suggestion", "")

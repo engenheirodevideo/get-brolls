@@ -1,0 +1,9 @@
+{
+  "name": "get-brolls-tools",
+  "version": "2.3.5",
+  "private": true,
+  "description": "Dependency manifest for the local Get B-rolls browser tools",
+  "dependencies": {
+    "@playwright/cli": "0.1.20"
+  }
+}

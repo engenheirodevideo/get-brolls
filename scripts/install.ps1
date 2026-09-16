@@ -45,7 +45,10 @@ Invoke-Native -Label 'Criação da venv' -File 'python' -Arguments @('-m', 'venv
 $VenvPython = Join-Path $Root '.venv\Scripts\python.exe'
 Invoke-Native -Label 'Instalação Python' -File $VenvPython -Arguments @('-m', 'pip', 'install', '-r', (Join-Path $Root 'requirements.txt'))
 Invoke-Native -Label 'Importação yt-dlp/EJS' -File $VenvPython -Arguments @('-c', 'import yt_dlp, yt_dlp_ejs; print("yt-dlp e EJS importados")')
-Invoke-Native -Label 'Instalação Playwright CLI' -File 'npm' -Arguments @('--cache', (Join-Path $Root '.tools\npm-cache'), 'install', '--prefix', (Join-Path $Root '.tools'), '--no-audit', '--no-fund', '--save-exact', '@playwright/cli@0.1.20')
+$Tools = Join-Path $Root '.tools'
+New-Item -ItemType Directory -Path $Tools -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $Root 'package.json'), (Join-Path $Root 'package-lock.json') -Destination $Tools -Force
+Invoke-Native -Label 'Instalação Playwright CLI' -File 'npm' -Arguments @('--cache', (Join-Path $Root '.tools\npm-cache'), 'ci', '--prefix', $Tools, '--ignore-scripts', '--no-audit', '--no-fund')
 $Playwright = Join-Path $Root '.tools\node_modules\.bin\playwright-cli.cmd'
 Invoke-Native -Label 'Verificação Playwright CLI' -File $Playwright -Arguments @('--version')
 $env:PATH = "$(Join-Path $Root '.venv\Scripts');$env:PATH"
