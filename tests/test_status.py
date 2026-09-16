@@ -126,7 +126,7 @@ class StatusCommandTests(unittest.TestCase):
             self.assertEqual(["line", "stages", "next"], list(summary))
             self.assertIn("candidatos encontrados", summary["line"])
             self.assertEqual(
-                [label for _, label in STATUS_STAGES],
+                [plural for _, _, plural in STATUS_STAGES],
                 [stage["stage"] for stage in summary["stages"]],
             )
             self.assertIn("preview", summary["next"])
@@ -197,6 +197,86 @@ class StatusCommandTests(unittest.TestCase):
             self.call("status", "--project", tmp)
             self.assertEqual(before, snapshot(root))
             self.assertTrue(before, "fixture vazio não provaria nada")
+
+    def test_status_on_missing_project_fails_without_creating_anything(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            absent = Path(tmp) / "projeto-inexistente"
+            done = subprocess.run(
+                [sys.executable, str(CLI), "status", "--project", str(absent)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(2, done.returncode, done.stdout)
+            self.assertIn("Projeto não encontrado", done.stderr)
+            self.assertIn("nenhum arquivo foi criado", done.stderr)
+            self.assertEqual([], list(Path(tmp).iterdir()), "status criou arquivos")
+
+    def test_status_reports_pending_write_without_completing_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            root = Path(tmp) / "brolls"
+            pending = root / ".pending-transaction.json"
+            pending.write_text(
+                json.dumps({"data": {"schema_version": 1, "items": []}, "events": []}),
+                encoding="utf-8",
+            )
+            before = snapshot(root)
+            payload = self.call("status", "--project", tmp)
+            self.assertEqual("pending", payload["journal"]["recovered_write"])
+            self.assertIn("gravação interrompida", payload["summary"]["line"])
+            self.assertTrue(pending.is_file(), "status concluiu a transação pendente")
+            self.assertEqual(before, snapshot(root))
+            self.assertEqual(3, payload["counts"]["candidates"])
+
+    def test_status_answers_while_another_command_holds_the_lock(self):
+        from getbrolls.runtime import project_lock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            with project_lock(tmp):
+                payload = self.call("status", "--project", tmp)
+            self.assertEqual(3, payload["counts"]["candidates"])
+
+    def test_status_degrades_on_corrupt_journal_and_references(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            root = Path(tmp) / "brolls"
+            (root / "events.jsonl").write_text("{não é json}\n", encoding="utf-8")
+            (root / "references.json").write_text("[]", encoding="utf-8")
+            payload = self.call("status", "--project", tmp)
+            self.assertIsNone(payload["journal"]["last"])
+            self.assertIn("events.jsonl", payload["journal"]["error"])
+            self.assertEqual(0, payload["references"])
+            self.assertIn("references.json", payload["references_error"])
+
+    def test_status_warns_when_editorial_rules_changed_the_target_format(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            rules = Path(tmp) / "RULES.md"
+            source = json.loads(
+                (ROOT / "RULES.md").read_text(encoding="utf-8").split("```json")[1].split("```")[0]
+            )
+            source["video_format"] = "reels"
+            rules.write_text(
+                "# Regras\n\n```json\n" + json.dumps(source) + "\n```\n",
+                encoding="utf-8",
+            )
+            payload = self.call("status", "--project", tmp)
+            self.assertEqual(3, payload["format_pending"])
+            self.assertIsNone(payload["rules_error"])
+            self.assertTrue(all(item["format_pending"] for item in payload["items"]))
+            self.assertIn("regras editoriais mudaram", payload["summary"]["next"])
+
+    def test_status_reports_broken_rules_instead_of_failing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            (Path(tmp) / "RULES.md").write_text("sem bloco json", encoding="utf-8")
+            payload = self.call("status", "--project", tmp)
+            self.assertIn("RULES.md", payload["rules_error"])
+            self.assertEqual(0, payload["format_pending"])
+            self.assertIsNone(payload["items"][0]["format_pending"])
+            self.assertEqual(3, payload["counts"]["candidates"])
 
 
 class ProgressSummaryTests(unittest.TestCase):

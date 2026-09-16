@@ -103,14 +103,16 @@ def validate_manifest(data):
 
 
 class Ledger:
-    def __init__(self, project):
+    def __init__(self, project, recover=True):
+        """recover=False abre o manifesto sem criar pastas nem concluir pendências."""
         self.root = Path(project).resolve() / "brolls"
-        for directory in ("candidates", "previews", "clips"):
-            (self.root / directory).mkdir(parents=True, exist_ok=True)
+        if recover:
+            for directory in ("candidates", "previews", "clips"):
+                (self.root / directory).mkdir(parents=True, exist_ok=True)
         self.path = self.root / "manifest.json"
         self.pending = self.root / ".pending-transaction.json"
         self.recovered = self.pending.exists()
-        if self.recovered:
+        if self.recovered and recover:
             self._finish_transaction()
             from .runtime import record_warning, record_commit
 

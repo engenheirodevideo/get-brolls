@@ -55,16 +55,16 @@ def doctor_summary(executables):
     return {"ok": ok, "missing": missing, "optional": optional}
 
 
-# Etapas do fluxo, na ordem coleta → revisão → entrega, com o rótulo humano.
+# Etapas do fluxo, na ordem coleta → revisão → entrega, com singular e plural.
 STATUS_STAGES = (
-    ("candidates", "candidatos encontrados"),
-    ("previews", "prévias geradas"),
-    ("pending", "decisões pendentes"),
-    ("approved", "decisões aprovadas"),
-    ("rejected", "decisões rejeitadas"),
-    ("permitted", "itens com permit registrado"),
-    ("delivered", "itens entregues"),
-    ("verified", "itens verificados"),
+    ("candidates", "candidato encontrado", "candidatos encontrados"),
+    ("previews", "prévia gerada", "prévias geradas"),
+    ("pending", "decisão pendente", "decisões pendentes"),
+    ("approved", "decisão aprovada", "decisões aprovadas"),
+    ("rejected", "decisão rejeitada", "decisões rejeitadas"),
+    ("permitted", "item com permit registrado", "itens com permit registrado"),
+    ("delivered", "item entregue", "itens entregues"),
+    ("verified", "item verificado", "itens verificados"),
 )
 
 PREVIEW_ARTIFACTS = ("gif_path", "contact_sheet_path", "poster_path")
@@ -78,43 +78,50 @@ def _identifier(result):
     return result.get("id") or "candidato"
 
 
+def _note(result):
+    """Observação do provedor, quando houver, colada ao fim da linha humana."""
+    note = result.get("note")
+    return f" {note}" if note else ""
+
+
+def _status_line(result):
+    counts = result.get("counts") or {}
+    stages = ", ".join(
+        _count(counts.get(key, 0), singular, plural)
+        for key, singular, plural in STATUS_STAGES
+    )
+    return f"Resumi o projeto: {stages}."
+
+
 # Uma linha por comando do fluxo: verbo + objeto + resultado, sempre em PT-BR.
 FLOW_SUMMARIES = {
-    "search": lambda r: "Pesquisei candidatos: "
-    + _count(len(r.get("items") or []), "registrado", "registrados")
-    + ", "
-    + _count(r.get("excluded_by_rules") or 0, "excluído pelas regras", "excluídos pelas regras")
-    + ", "
-    + _count(len(r.get("errors") or []), "fonte com erro", "fontes com erro")
-    + ".",
-    "resolve": lambda r: f"Registrei o candidato {_identifier(r)}: estado "
-    + str(r.get("state"))
-    + ".",
-    "preview": lambda r: f"Gerei a prévia de {_identifier(r)}: estado "
-    + str(r.get("state"))
-    + ", aprovação "
-    + str((r.get("approval") or {}).get("status"))
-    + ".",
-    "review": lambda r: "Gerei o Storyboard em " + str(r.get("review")) + ".",
-    "import-review": lambda r: "Importei "
-    + _count(r.get("imported") or 0, "decisão", "decisões")
-    + " assinada(s) por "
-    + str(r.get("by"))
-    + ".",
-    "permit": lambda r: f"Registrei as condições de uso de {_identifier(r)}: direitos "
-    + str((r.get("rights") or {}).get("status"))
-    + ".",
+    "search": lambda r: f"Pesquisei candidatos: "
+    f"{_count(len(r.get('items') or []), 'registrado', 'registrados')}, "
+    f"{_count(r.get('excluded_by_rules') or 0, 'excluído pelas regras', 'excluídos pelas regras')}, "
+    f"{_count(len(r.get('errors') or []), 'fonte com erro', 'fontes com erro')}."
+    f"{_note(r)}",
+    "resolve": lambda r: f"Registrei o candidato {_identifier(r)}: estado {r.get('state')}.",
+    "preview": lambda r: (
+        f"Gerei somente a referência estática de {_identifier(r)}: "
+        f"estado {r.get('state')}, aprovação {(r.get('approval') or {}).get('status')}."
+        if r.get("state") == "reference_only"
+        else f"Gerei a prévia de {_identifier(r)}: "
+        f"estado {r.get('state')}, aprovação {(r.get('approval') or {}).get('status')}."
+    ),
+    "approve": lambda r: f"Registrei a aprovação humana de {_identifier(r)}: "
+    f"estado {r.get('state')}, por {(r.get('approval') or {}).get('by')}.",
+    "reject": lambda r: f"Rejeitei {_identifier(r)}: estado {r.get('state')}, revisão invalidada.",
+    "review": lambda r: f"Gerei o Storyboard em {r.get('review')}.",
+    "import-review": lambda r: f"Importei "
+    f"{_count(r.get('imported') or 0, 'decisão', 'decisões')} assinada(s) por {r.get('by')}.",
+    "permit": lambda r: f"Registrei as condições de uso de {_identifier(r)}: "
+    f"direitos {(r.get('rights') or {}).get('status')}.",
     "fetch": lambda r: f"Coletei o corte final de {_identifier(r)} em "
-    + str((r.get("output") or {}).get("path"))
-    + ".",
-    "verify": lambda r: "Verifiquei "
-    + _count(r.get("count") or 0, "arquivo coletado", "arquivos coletados")
-    + ": íntegros e decodificáveis.",
-    "status": lambda r: "Resumi o projeto: "
-    + ", ".join(
-        f"{(r.get('counts') or {}).get(key, 0)} {label}" for key, label in STATUS_STAGES
-    )
-    + ".",
+    f"{(r.get('output') or {}).get('path')}.",
+    "verify": lambda r: f"Verifiquei "
+    f"{_count(r.get('count') or 0, 'arquivo coletado', 'arquivos coletados')}: "
+    f"{'íntegro e decodificável' if (r.get('count') or 0) == 1 else 'íntegros e decodificáveis'}.",
+    "status": _status_line,
 }
 
 
@@ -126,42 +133,68 @@ def with_summary(command, result):
     return {**result, "summary": formatter(result)}
 
 
-def status_next(counts):
+# Escada do fluxo: a primeira condição verdadeira nomeia o próximo passo real.
+STATUS_LADDER = (
+    (
+        lambda c: not c["candidates"],
+        "Nenhum candidato ainda: registre fontes com search ou resolve.",
+    ),
+    (
+        lambda c: c["previews"] < c["candidates"],
+        "Gere prévias com preview para os candidatos ainda sem quadro.",
+    ),
+    (
+        lambda c: not c["approved"],
+        "Gere o Storyboard com review e importe a decisão humana com import-review.",
+    ),
+    (
+        lambda c: c["permitted"] < c["approved"],
+        "Registre as condições reais de uso com permit nos itens aprovados.",
+    ),
+    (
+        lambda c: c["delivered"] < c["permitted"],
+        "Colete os cortes aprovados e permitidos com fetch.",
+    ),
+    (
+        lambda c: c["verified"] < c["delivered"],
+        "Confira os arquivos coletados com verify.",
+    ),
+)
+
+
+def status_next(counts, format_pending=0):
     """Próximo passo real do fluxo, derivado das contagens por etapa."""
-    if not counts["candidates"]:
-        return "Nenhum candidato ainda: registre fontes com search ou resolve."
-    if counts["previews"] < counts["candidates"]:
-        return "Gere prévias com preview para os candidatos ainda sem quadro."
-    if not counts["approved"]:
-        return "Gere o Storyboard com review e importe a decisão humana com import-review."
-    if counts["permitted"] < counts["approved"]:
-        return "Registre as condições reais de uso com permit nos itens aprovados."
-    if counts["delivered"] < counts["permitted"]:
-        return "Colete os cortes aprovados e permitidos com fetch."
-    if counts["verified"] < counts["delivered"]:
-        return "Confira os arquivos coletados com verify."
+    if format_pending:
+        return (
+            "As regras editoriais mudaram: o próximo comando invalidará "
+            + _count(format_pending, "aprovação", "aprovações")
+            + "; gere prévia e revisão novamente antes de coletar."
+        )
+    for matches, step in STATUS_LADDER:
+        if matches(counts):
+            return step
     return "Fluxo completo: os itens aprovados estão coletados e verificados."
 
 
-def status_buckets(items):
-    """Itens de cada etapa, lidos do manifesto já carregado pelo ledger."""
-    status = lambda c, field: (c.get(field) or {}).get("status")
-    return {
-        "candidates": list(items),
-        "previews": [
-            c
-            for c in items
-            if any((c.get("preview") or {}).get(key) for key in PREVIEW_ARTIFACTS)
-        ],
-        "pending": [
-            c for c in items if status(c, "approval") not in ("approved", "rejected")
-        ],
-        "approved": [c for c in items if status(c, "approval") == "approved"],
-        "rejected": [c for c in items if status(c, "approval") == "rejected"],
-        "permitted": [c for c in items if status(c, "rights") == "permitted"],
-        "delivered": [c for c in items if (c.get("output") or {}).get("path")],
-        "verified": [c for c in items if (c.get("output") or {}).get("verified")],
-    }
+def _has_preview(c):
+    return any((c.get("preview") or {}).get(key) for key in PREVIEW_ARTIFACTS)
+
+
+def _stage_status(c, field):
+    return (c.get(field) or {}).get("status")
+
+
+# Um predicado por etapa: a mesma leitura serve para contagem, lista e item.
+STAGE_TESTS = {
+    "candidates": lambda c: True,
+    "previews": _has_preview,
+    "pending": lambda c: _stage_status(c, "approval") not in ("approved", "rejected"),
+    "approved": lambda c: _stage_status(c, "approval") == "approved",
+    "rejected": lambda c: _stage_status(c, "approval") == "rejected",
+    "permitted": lambda c: _stage_status(c, "rights") == "permitted",
+    "delivered": lambda c: bool((c.get("output") or {}).get("path")),
+    "verified": lambda c: bool((c.get("output") or {}).get("verified")),
+}
 
 
 def status_journal(root):
@@ -173,38 +206,66 @@ def status_journal(root):
     try:
         last = json.loads(lines[-1]) if lines else None
     except json.JSONDecodeError:
-        raise ValueError(
-            "events.jsonl contém JSON inválido. Preserve o histórico e restaure o log."
-        ) from None
+        # Relatar o estado não pode falhar por causa de um log corrompido.
+        return {
+            "events": len(lines),
+            "last": None,
+            "error": "events.jsonl contém JSON inválido no último registro. Preserve o histórico e restaure o log.",
+        }
     return {"events": len(lines), "last": last}
 
 
-def status_report(ledger):
+def status_references(root):
+    """Quantas referências memorizadas o projeto tem, sem derrubar o relatório."""
+    path = root / "references.json"
+    if not path.is_file():
+        return 0, None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        data = None
+    items = data.get("items") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        return 0, (
+            "references.json inválido ou incompatível. Preserve o arquivo e restaure uma cópia válida."
+        )
+    return len(items), None
+
+
+def _format_pending(c, rules):
+    """True quando as regras atuais mudariam o formato-alvo já gravado no item."""
+    if rules is None:
+        return None
+    from getbrolls.rules import format_report
+
+    return c.get("format", {}).get("target", "native") != format_report(c, rules)["target"]
+
+
+def status_report(ledger, rules=None, rules_error=None):
     """Onde o projeto está, por etapa. Somente leitura: não grava nada."""
     items = ledger.data["items"]
-    buckets = status_buckets(items)
-    counts = {key: len(buckets[key]) for key, _ in STATUS_STAGES}
-    listing = {key: [c["id"] for c in buckets[key]] for key, _ in STATUS_STAGES}
-    references = ledger.root / "references.json"
-    remembered = 0
-    if references.is_file():
-        try:
-            remembered = len(
-                json.loads(references.read_text(encoding="utf-8")).get("items") or []
-            )
-        except json.JSONDecodeError:
-            raise ValueError(
-                "references.json contém JSON inválido. Preserve o arquivo e restaure uma cópia válida."
-            ) from None
+    listing = {
+        key: [c["id"] for c in items if STAGE_TESTS[key](c)]
+        for key, _, _ in STATUS_STAGES
+    }
+    counts = {key: len(listing[key]) for key, _, _ in STATUS_STAGES}
+    pending_format = {c["id"]: _format_pending(c, rules) for c in items}
+    format_pending = sum(1 for value in pending_format.values() if value)
+    remembered, references_error = status_references(ledger.root)
     review_page = ledger.root / "review.html"
+    line = _status_line({"counts": counts})
+    if ledger.recovered:
+        line += (
+            " Há uma gravação interrompida pendente; o próximo comando de escrita a concluirá."
+        )
     # Veredito primeiro, como no doctor: o JSON completo continua logo abaixo.
     summary = {
-        "line": FLOW_SUMMARIES["status"]({"counts": counts}),
+        "line": line,
         "stages": [
-            {"stage": label, "count": counts[key], "items": listing[key]}
-            for key, label in STATUS_STAGES
+            {"stage": plural, "count": counts[key], "items": listing[key]}
+            for key, _, plural in STATUS_STAGES
         ],
-        "next": status_next(counts),
+        "next": status_next(counts, format_pending),
     }
     return {
         "summary": summary,
@@ -221,16 +282,21 @@ def status_report(ledger):
                 "segment": c.get("segment"),
                 "approval": (c.get("approval") or {}).get("status"),
                 "rights": (c.get("rights") or {}).get("status"),
-                "preview": any(
-                    (c.get("preview") or {}).get(key) for key in PREVIEW_ARTIFACTS
-                ),
+                "preview": _has_preview(c),
+                "format_pending": pending_format[c["id"]],
                 "output": (c.get("output") or {}).get("path"),
             }
             for c in items
         ],
+        "format_pending": format_pending,
+        "rules_error": rules_error,
         "references": remembered,
+        "references_error": references_error,
         "review_page": str(review_page) if review_page.is_file() else None,
-        "journal": {**status_journal(ledger.root), "recovered_write": ledger.recovered},
+        "journal": {
+            **status_journal(ledger.root),
+            "recovered_write": "pending" if ledger.recovered else False,
+        },
     }
 
 
@@ -287,6 +353,20 @@ def execute(args):
         ROOT as SKILL_ROOT,
     )
 
+    if cmd == "status":
+        # Somente leitura: nada é criado, nem a árvore do projeto, nem pendências.
+        project = Path(args.project).expanduser().resolve()
+        if not (project / "brolls").is_dir():
+            raise ValueError(
+                f"Projeto não encontrado em {project}; nenhum arquivo foi criado."
+            )
+        rules = None
+        rules_error = None
+        try:
+            rules = load_rules(args.project)
+        except (ValueError, OSError) as exc:
+            rules_error = str(exc)
+        return status_report(Ledger(project, recover=False), rules, rules_error)
     if cmd == "init-rules":
         dest = Path(args.project) / "RULES.md"
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -298,9 +378,6 @@ def execute(args):
     if cmd == "rules":
         return rules
     ledger = Ledger(args.project)
-    if cmd == "status":
-        # Antes de sync_formats: relatar o estado não pode reescrever o projeto.
-        return status_report(ledger)
     from getbrolls.rules import sync_formats
 
     sync_formats(ledger, rules)
@@ -368,6 +445,11 @@ def execute(args):
             "editorial_rules": rules["editorial_rules"],
         }
     if cmd == "resolve":
+        for flag, value in (("--file", args.file), ("--url", args.url)):
+            if value is not None and not value.strip():
+                raise ValueError(
+                    f"{flag} não pode ser vazio: informe o caminho ou a URL real."
+                )
         if args.file:
             path = Path(args.file).expanduser().resolve()
             if not path.is_file():
