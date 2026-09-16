@@ -269,11 +269,17 @@ class DoctorReportTests(unittest.TestCase):
             self.assertEqual({}, payload["tool_paths"])
 
     def test_doctor_fix_names_the_installer_by_absolute_path(self):
+        # Só a entrada do pin inválido: ferramentas de sistema ausentes na máquina
+        # (ex.: ffmpeg num runner limpo) apontam para o gerenciador, não o instalador.
         with tempfile.TemporaryDirectory() as d:
             payload = self.doctor(d, GB_VENV_PATH=str(Path(d) / "sem-venv"))
-            for entry in payload["summary"]["missing"]:
+            entries = [
+                e for e in payload["summary"]["missing"] if e["item"] == "GB_VENV_PATH"
+            ]
+            self.assertTrue(entries, payload["summary"]["missing"])
+            for entry in entries:
                 self.assertIn("install.sh", entry["fix"])
-                self.assertIn(str(ROOT / "scripts/install.sh"), entry["fix"])
+                self.assertIn(str(ROOT / "scripts" / "install.sh"), entry["fix"])
 
     def test_doctor_resolves_each_tool_to_an_absolute_executable(self):
         with tempfile.TemporaryDirectory() as d:

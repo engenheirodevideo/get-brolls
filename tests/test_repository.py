@@ -52,6 +52,22 @@ class AgentsHubTests(unittest.TestCase):
         for marker in HUB_INVOCATIONS:
             self.assertIn(marker, agents, f"hub sem o acionamento: {marker}")
 
+    def test_blind_test_eval_is_published_and_routed(self):
+        for relative in (
+            "eval/README.md",
+            "eval/rubric.md",
+            "eval/runs/TEMPLATE.md",
+        ):
+            self.assertTrue((ROOT / relative).is_file(), f"ausente: {relative}")
+        agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        links = {
+            raw.strip().strip("<>").partition("#")[0]
+            for raw in re.findall(r"\[[^\]]+\]\(([^)]+)\)", agents)
+        }
+        self.assertIn(
+            "eval/README.md", links, "hub sem link para a medição editorial"
+        )
+
     def test_agent_routers_point_to_the_hub(self):
         for name in ("CLAUDE.md", "GEMINI.md", "README.md", "README.en.md"):
             text = (ROOT / name).read_text(encoding="utf-8")
