@@ -287,7 +287,7 @@ def _cli_prefix():
 
 
 def beat_commands(project, beat):
-    """search/resolve/preview prontos para este beat, com --shot, --intent e --narração.
+    """search/resolve/inspect/preview prontos para este beat, com --shot, --intent e --narração.
 
     Beat sem fonte pesquisável por API (só instagram/tiktok/local) não ganha `search`:
     no lugar dele vai um `note` explicando que o caminho é `resolve --url/--file`.
@@ -314,6 +314,12 @@ def beat_commands(project, beat):
     commands["resolve"] = prefix + f"resolve --project {project} {origin} --shot {beat['id']}"
     # Sem --start/--end: o intervalo real sai do que a pessoa viu na fonte, não de um
     # palpite do brief; `duration_hint_s` fica em `resolved` como sugestão.
+    # Analisar vem antes de pré-visualizar: a fonte diz a duração e onde está o assunto.
+    commands["inspect"] = (
+        prefix
+        + f"inspect --project {project} --candidate ID --query "
+        + shlex.quote(beat.get("narration") or beat["target"])
+    )
     commands["preview"] = prefix + f"preview --project {project} --candidate ID" + narration
     if not provider:
         # Instagram, TikTok e material próprio não têm busca por API: entram por URL/arquivo.

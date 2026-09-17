@@ -24,6 +24,7 @@ STEPS = (
     "brief-invalid",
     "format",
     "search",
+    "inspect",
     "preview",
     "approve",
     "permit",
@@ -37,6 +38,9 @@ TEMPLATES = {
     "brief-invalid": "brief --validate --project {project}",
     "format": "review --project {project}",
     "search": "search --project {project} --query TERMOS_DA_BUSCA --intent literal",
+    "inspect": (
+        "inspect --project {project} --candidate {candidate} --query NARRACAO_OU_ALVO"
+    ),
     "preview": (
         "preview --project {project} --candidate {candidate} --start 0 --end 5"
     ),
@@ -87,7 +91,7 @@ def next_action(state):
     """Único passo que faz sentido agora, com a frase para repassar sem parafrasear.
 
     `state` = {project, counts, format_pending, brief, review_page, rights_mode,
-    candidate}. `brief` é None quando o arquivo nem existe, `{"error": "..."}` quando
+    candidate, duration_unknown, inspect_candidate}. `brief` é None quando o arquivo nem existe, `{"error": "..."}` quando
     existe mas não passa na validação, e {beats, covered, missing[{id, search}],
     conflicts[]} quando está válido.
     """
@@ -150,14 +154,31 @@ def next_action(state):
             state,
         )
     if counts["previews"] < counts["candidates"]:
+        if state.get("duration_unknown"):
+            # Sem saber a duração, qualquer intervalo é chute — e baixar trecho errado
+            # custa pedido à fonte. `inspect` responde isso de graça, antes da prévia.
+            return _action(
+                "inspect",
+                "Há candidato sem duração conhecida: analisar a fonte (capítulos, "
+                "legendas, tempos da descrição) diz onde olhar antes de pedir mídia.",
+                "Antes de gerar prévia, vou analisar a fonte para saber a duração e em "
+                "que minuto está o que você pediu — assim o trecho não sai de palpite.",
+                state,
+                command=command_for(
+                    "inspect",
+                    state["project"],
+                    state.get("inspect_candidate") or state.get("candidate"),
+                ),
+            )
         return _action(
             "preview",
             "Há candidatos sem prévia gerada; sem prévia ninguém decide. O intervalo "
-            "do comando é só um ponto de partida: o real sai do que se vê na fonte "
-            "(contact sheet) e não de um palpite.",
+            "do comando só vale depois de `inspect`: o real sai do que a fonte diz "
+            "(capítulos/legendas) e do que se vê no contact sheet, nunca de um palpite.",
             "Vou gerar a prévia dos candidatos que ainda não têm quadro, para você ver "
-            "antes de decidir. O `--start`/`--end` do comando é um chute inicial: "
-            "confirme o trecho certo pelo contact sheet da fonte antes de aprovar.",
+            "antes de decidir. Rode `inspect` antes se ainda não souber onde está o "
+            "trecho: o `--start`/`--end` daqui é só um ponto de partida, confirmado no "
+            "contact sheet da fonte antes de aprovar.",
             state,
         )
     if not counts["approved"]:

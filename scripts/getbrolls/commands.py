@@ -413,6 +413,10 @@ def brief_report(args):
                     "review_page": (root / "review.html").is_file(),
                     "rights_mode": _rights_mode(rules),
                     "candidate": _pending_candidate(items),
+                    "duration_unknown": len(_uninspected(items)),
+                    "inspect_candidate": next(
+                        (c["id"] for c in _uninspected(items)), None
+                    ),
                 }
             )["for_human"],
         },
@@ -590,6 +594,21 @@ def _pending_candidate(items):
     return None
 
 
+def _uninspected(items):
+    """Candidatos sem duração conhecida e ainda sem prévia, com URL pública para analisar.
+
+    É o que separa o degrau `inspect` do degrau `preview`: sem duração, qualquer
+    `--start/--end` é palpite, e o palpite custa um pedido à fonte.
+    """
+    return [
+        c
+        for c in items
+        if not (c.get("media") or {}).get("duration_s")
+        and c.get("source_url")
+        and not _has_preview(c)
+    ]
+
+
 def status_report(ledger, rules=None, rules_error=None, queue=None):
     """Onde o projeto está, por etapa. Somente leitura: não grava nada."""
     items = ledger.data["items"]
@@ -633,6 +652,10 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
                 "review_page": review_page.is_file(),
                 "rights_mode": _rights_mode(rules),
                 "candidate": _pending_candidate(items),
+                "duration_unknown": len(_uninspected(items)),
+                "inspect_candidate": next(
+                    (c["id"] for c in _uninspected(items)), None
+                ),
             }
         ),
         # `None` enquanto não houver um brief válido para contar (ausente ou inválido).

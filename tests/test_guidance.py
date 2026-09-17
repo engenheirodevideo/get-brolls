@@ -55,6 +55,9 @@ LADDER_STATES = {
         counts=full(candidates=1, previews=1),
     ),
     "search": base_state(),
+    "inspect": base_state(
+        counts=full(candidates=3), duration_unknown=2, inspect_candidate="youtube:abc"
+    ),
     "preview": base_state(counts=full(candidates=3)),
     "approve": base_state(counts=full(candidates=3, previews=3)),
     "permit": base_state(counts=full(candidates=3, previews=3, approved=3)),
@@ -135,11 +138,24 @@ class Guidance(unittest.TestCase):
         decided = dict(state, counts=full(candidates=2, previews=2, approved=2))
         self.assertEqual("format", next_action(decided)["step"])
 
-    def test_preview_rung_carries_an_interval_and_says_it_is_a_starting_point(self):
+    def test_preview_rung_carries_an_interval_and_points_at_inspect_first(self):
         action = next_action(LADDER_STATES["preview"])
         self.assertIn("--start", action["command"])
         self.assertIn("--end", action["command"])
         self.assertIn("contact sheet", action["for_human"])
+        self.assertIn("inspect", action["for_human"])
+        self.assertIn("inspect", action["why"])
+
+    def test_a_candidate_without_a_known_duration_gets_inspect_before_preview(self):
+        action = next_action(LADDER_STATES["inspect"])
+        self.assertEqual("inspect", action["step"])
+        self.assertIn("inspect --project", action["command"])
+        self.assertIn("youtube:abc", action["command"])
+        self.assertIn("--query NARRACAO_OU_ALVO", action["command"])
+        self.assertFalse(action["blocking_human"])
+        # Com a duração conhecida, a escada volta ao degrau da prévia.
+        known = dict(LADDER_STATES["inspect"], duration_unknown=0)
+        self.assertEqual("preview", next_action(known)["step"])
 
     def test_missing_brief_names_the_slash_command_and_init_brief(self):
         action = next_action(LADDER_STATES["init-brief"])

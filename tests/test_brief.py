@@ -288,7 +288,18 @@ class BeatCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             for beat in data["beats"]:
                 commands, parsed = self.parsed_commands(tmp, beat["resolved"])
-                self.assertEqual({"search", "resolve", "preview"}, set(commands))
+                self.assertEqual(
+                    {"search", "resolve", "inspect", "preview"}, set(commands)
+                )
+                # Analisar vem antes de pré-visualizar, nessa ordem, na resposta.
+                self.assertLess(
+                    list(commands).index("inspect"), list(commands).index("preview")
+                )
+                self.assertEqual("inspect", parsed["inspect"].command)
+                self.assertEqual(
+                    beat["resolved"].get("narration") or beat["resolved"]["target"],
+                    parsed["inspect"].query,
+                )
                 self.assertEqual("search", parsed["search"].command)
                 self.assertEqual(beat["resolved"]["intent"], parsed["search"].intent)
                 self.assertEqual(beat["id"], parsed["resolve"].shot)
