@@ -623,6 +623,67 @@ def serve_state(project):
         return {"running": False, "error": str(exc)}
 
 
+def deliver_report(ledger, rules, dry_run=False):
+    """Refaz `entrega/` e responde com o resumo humano primeiro, como os outros comandos."""
+    from getbrolls.delivery import build_delivery
+
+    for_human = _flow_next(ledger, rules)
+    report = build_delivery(
+        ledger.root.parent, dry_run=dry_run, ledger=ledger, for_human=for_human
+    )
+    verb = "Organizaria" if dry_run else "Organizei"
+    beats = len({item["beat"] for item in report["items"]})
+    line = (
+        f"{verb} {_count(len(report['items']), 'trecho', 'trechos')} em "
+        + _count(beats, "pasta", "pastas")
+        + f" dentro de {report['delivery']}."
+    )
+    if report["removed"]:
+        line += " " + _count(len(report["removed"]), "link órfão removido", "links órfãos removidos") + "."
+    if report["kept"]:
+        line += " Deixei intocado o que você criou lá: " + ", ".join(report["kept"]) + "."
+    # Mesma escada de `status` e `brief`: a pessoa ouve a mesma frase em qualquer comando.
+    return {"summary": {"line": line, "next": _flow_next(ledger, rules)}, **report}
+
+
+def _undelivered(items):
+    """Arquivos já conferidos que ainda não apareceram em `entrega/`."""
+    return [
+        c
+        for c in items
+        if STAGE_TESTS["verified"](c) and not (c.get("delivery") or {}).get("path")
+    ]
+
+
+_UNSET = object()
+
+
+def _flow_state(ledger, rules, counts=None, format_pending=0, brief=_UNSET):
+    """Estado que a escada de `guidance` lê: a mesma leitura em status, brief e deliver."""
+    items = ledger.data["items"]
+    return {
+        "project": str(ledger.root.parent),
+        "counts": counts
+        or {key: sum(1 for c in items if STAGE_TESTS[key](c)) for key in STAGE_TESTS},
+        "format_pending": format_pending,
+        "brief": brief_state(ledger.root.parent, rules, items) if brief is _UNSET else brief,
+        "review_page": (ledger.root / "review.html").is_file(),
+        "rights_mode": _rights_mode(rules),
+        "candidate": _pending_candidate(items),
+        "duration_unknown": len(_uninspected(items)),
+        "inspect_candidate": next((c["id"] for c in _uninspected(items)), None),
+        "undelivered": len(_undelivered(items)),
+    }
+
+
+def _flow_next(ledger, rules):
+    """A frase única para repassar à pessoa, sem parafrasear."""
+    try:
+        return next_action(_flow_state(ledger, rules))["for_human"]
+    except (ValueError, OSError, KeyError):
+        return None
+
+
 def status_report(ledger, rules=None, rules_error=None, queue=None):
     """Onde o projeto está, por etapa. Somente leitura: não grava nada."""
     items = ledger.data["items"]
@@ -658,19 +719,13 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
         # Aditivo: `line/stages/next` seguem iguais; `do` traz o mesmo passo já em
         # comando pronto e `brief` diz quantos beats ainda estão sem material.
         "do": next_action(
-            {
-                "project": str(ledger.root.parent),
-                "counts": counts,
-                "format_pending": format_pending,
-                "brief": brief,
-                "review_page": review_page.is_file(),
-                "rights_mode": _rights_mode(rules),
-                "candidate": _pending_candidate(items),
-                "duration_unknown": len(_uninspected(items)),
-                "inspect_candidate": next(
-                    (c["id"] for c in _uninspected(items)), None
-                ),
-            }
+            _flow_state(
+                ledger,
+                rules,
+                counts=counts,
+                format_pending=format_pending,
+                brief=brief,
+            )
         ),
         # `None` enquanto não houver um brief válido para contar (ausente ou inválido).
         "brief": (
@@ -871,6 +926,8 @@ def execute(args):
         sync_formats(
             ledger, rules, confirm=getattr(args, "confirm_format_change", False)
         )
+    if cmd == "deliver":
+        return deliver_report(ledger, rules, getattr(args, "dry_run", False))
     if cmd == "browser-plan":
         from getbrolls.browser import plan
 
@@ -1064,6 +1121,19 @@ def execute(args):
                         "hd": min(info["width"], info["height"]) >= 1080,
                     }
                 )
+        # `entrega/` é camada derivada: refazê-la nunca pode reprovar a conferência dos
+        # arquivos canônicos. Se o sistema não deixar ligar/copiar, isso vira aviso.
+        from getbrolls import delivery as delivery_module
+
+        try:
+            delivery_module.build_delivery(
+                args.project, ledger=ledger, for_human=_flow_next(ledger, rules)
+            )
+        except (ValueError, OSError) as exc:
+            record_warning(
+                "DELIVERY_LINK_FAILED",
+                f"Os arquivos estão íntegros, mas não consegui refazer entrega/: {exc}",
+            )
         return {"verified": checked, "count": len(checked)}
     if cmd == "preview" and args.scan:
         if args.start is not None or args.end is not None:

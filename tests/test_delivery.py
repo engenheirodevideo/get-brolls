@@ -1,0 +1,226 @@
+"""Camada `entrega/`: a mesma coleta, organizada por beat, sem tocar no que é canônico.
+
+`brolls/` continua sendo a verdade; `entrega/` é derivado e regenerável. Por isso os
+testes cobrem: nome estável, repetir sem estragar, link órfão removido, queda para
+cópia quando o sistema não deixa linkar, ensaio sem gravar, caminho perigoso recusado,
+arquivo editado pela pessoa preservado e `verify` que avisa em vez de reprovar.
+"""
+
+import os
+import sys
+import tempfile
+import types
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from getbrolls import delivery
+from getbrolls.ledger import Ledger
+from getbrolls.models import candidate, now, set_segment
+
+
+def fetched(source_id, title, shot=None, clip="clips/x.mp4", sheet="previews/x.jpg"):
+    c = candidate("local", source_id, title, source_url="https://example.org/" + source_id)
+    set_segment(c, 0, 2)
+    c["creator"]["name"] = "Autora Exemplo"
+    c["preview"]["contact_sheet_path"] = sheet
+    c["approval"] = {
+        "status": "approved",
+        "by": "Humano",
+        "at": now(),
+        "revision": 1,
+        "channel": "chat",
+        "statement": "aprovo",
+    }
+    c["rights"]["status"] = "permitted"
+    c["rights"]["evidence"] = ["Condições conferidas na página da fonte"]
+    c["output"] = {"path": clip, "sha256": "a" * 64, "verified": True}
+    c["state"] = "verified"
+    if shot:
+        c["shot"] = shot
+        c["id"] += ":shot:" + shot
+    return c
+
+
+def project(tmp, items):
+    """Projeto sintético com os arquivos de `brolls/` realmente no disco."""
+    ledger = Ledger(tmp)
+    stored = [ledger.add(c) for c in items]
+    ledger.save_many("fixture", stored)
+    for c in stored:
+        for rel in (c["output"]["path"], c["preview"].get("contact_sheet_path")):
+            if rel:
+                path = ledger.root / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                if not path.exists():
+                    path.write_bytes(b"conteudo de " + rel.encode())
+    return ledger
+
+
+class DirectoryNames(unittest.TestCase):
+    def test_slug_is_ascii_lowercase_and_bounded(self):
+        name = delivery.beat_dir_name(
+            1, "abertura", "Jensen Huang na GTC — palco, luzes & público"
+        )
+        self.assertTrue(name.startswith("01-abertura-"))
+        self.assertLessEqual(len(name), 60)
+        self.assertRegex(name, r"^[a-z0-9-]+$")
+        # Mesmo alvo, mesmo nome: a pasta não muda de lugar entre duas execuções.
+        self.assertEqual(
+            name,
+            delivery.beat_dir_name(
+                1, "abertura", "Jensen Huang na GTC — palco, luzes & público"
+            ),
+        )
+
+    def test_path_separators_and_parent_refs_are_refused(self):
+        for bad in ("../fuga", "..", "a/b", "a\\b"):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    delivery.beat_dir_name(1, bad, "alvo")
+        with self.assertRaises(ValueError):
+            delivery.beat_dir_name(1, "beat", "../fuga")
+
+
+class Build(unittest.TestCase):
+    def test_creates_one_folder_per_beat_with_media_sheet_and_origin(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = project(
+                tmp,
+                [
+                    fetched("a", "Palco", shot="abertura", clip="clips/a.mp4", sheet="previews/a.jpg"),
+                    fetched("b", "Sem beat", clip="clips/b.mp4", sheet="previews/b.jpg"),
+                ],
+            )
+            report = delivery.build_delivery(tmp)
+            root = Path(tmp) / "entrega"
+            self.assertTrue((root / "README.md").is_file())
+            folders = sorted(p.name for p in root.iterdir() if p.is_dir())
+            self.assertEqual(2, len(folders))
+            self.assertIn(delivery.NO_BEAT, folders)
+            beat_dir = next(p for p in root.iterdir() if p.is_dir() and p.name != delivery.NO_BEAT)
+            self.assertTrue((beat_dir / (beat_dir.name + ".mp4")).exists())
+            self.assertTrue((beat_dir / "contact-sheet.jpg").exists())
+            origin = (beat_dir / "ORIGEM.md").read_text(encoding="utf-8")
+            self.assertIn("type: delivery-origin", origin)
+            self.assertIn("https://example.org/a", origin)
+            self.assertIn("a" * 64, origin)
+            readme = (root / "README.md").read_text(encoding="utf-8")
+            self.assertIn("Palco", readme)
+            self.assertIn("| Beat |", readme)
+            # O manifesto guarda onde o arquivo foi parar e como ele foi ligado.
+            fresh = Ledger(tmp, recover=False).data["items"]
+            for c in fresh:
+                self.assertIn(c["delivery"]["method"], ("hardlink", "symlink", "copy"))
+                self.assertTrue(c["delivery"]["path"].startswith("entrega/"))
+            self.assertEqual(2, len(report["items"]))
+
+    def test_running_twice_changes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project(tmp, [fetched("a", "Palco", shot="abertura")])
+            first = delivery.build_delivery(tmp)
+            before = {
+                str(p.relative_to(tmp)): (p.read_bytes() if p.is_file() else None)
+                for p in sorted((Path(tmp) / "entrega").rglob("*"))
+            }
+            second = delivery.build_delivery(tmp)
+            after = {
+                str(p.relative_to(tmp)): (p.read_bytes() if p.is_file() else None)
+                for p in sorted((Path(tmp) / "entrega").rglob("*"))
+            }
+            self.assertEqual(before, after)
+            self.assertEqual(
+                [i["path"] for i in first["items"]], [i["path"] for i in second["items"]]
+            )
+            self.assertEqual([], second["removed"])
+
+    def test_orphan_links_are_removed_when_the_beat_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = project(tmp, [fetched("a", "Palco", shot="abertura")])
+            delivery.build_delivery(tmp)
+            old = sorted(p.name for p in (Path(tmp) / "entrega").iterdir() if p.is_dir())
+            ledger.data["items"][0]["shot"] = "fechamento"
+            ledger.save_many("fixture", ledger.data["items"])
+            report = delivery.build_delivery(tmp)
+            new = sorted(p.name for p in (Path(tmp) / "entrega").iterdir() if p.is_dir())
+            self.assertNotEqual(old, new)
+            self.assertTrue(report["removed"])
+            for name in old:
+                self.assertFalse((Path(tmp) / "entrega" / name).exists())
+
+    def test_copy_is_the_last_resort_when_the_system_refuses_to_link(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project(tmp, [fetched("a", "Palco", shot="abertura")])
+
+            def refuse(*args, **kwargs):
+                raise OSError("sem privilégio para linkar")
+
+            original = (os.link, os.symlink)
+            os.link, os.symlink = refuse, refuse
+            try:
+                report = delivery.build_delivery(tmp)
+            finally:
+                os.link, os.symlink = original
+            self.assertEqual(["copy"], [i["method"] for i in report["items"]])
+            media = Path(tmp) / report["items"][0]["path"]
+            self.assertTrue(media.is_file() and not media.is_symlink())
+
+    def test_dry_run_writes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project(tmp, [fetched("a", "Palco", shot="abertura")])
+            report = delivery.build_delivery(tmp, dry_run=True)
+            self.assertTrue(report["dry_run"])
+            self.assertEqual(1, len(report["items"]))
+            self.assertFalse((Path(tmp) / "entrega").exists())
+            self.assertNotIn("delivery", Ledger(tmp, recover=False).data["items"][0])
+
+    def test_a_file_the_person_edited_is_never_overwritten(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project(tmp, [fetched("a", "Palco", shot="abertura")])
+            report = delivery.build_delivery(tmp)
+            media = Path(tmp) / report["items"][0]["path"]
+            media.unlink()
+            media.write_bytes(b"corte que a pessoa mexeu na mao")
+            with self.assertRaises(ValueError) as caught:
+                delivery.build_delivery(tmp)
+            self.assertIn(media.name, str(caught.exception))
+            self.assertEqual(b"corte que a pessoa mexeu na mao", media.read_bytes())
+
+
+class VerifyHook(unittest.TestCase):
+    def test_delivery_failure_only_warns_and_verify_still_succeeds(self):
+        from getbrolls import delivery as module
+        from getbrolls.commands import execute
+        from getbrolls.runtime import audited
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project(tmp, [fetched("a", "Palco", shot="abertura", clip=None)])
+            Path(tmp, "RULES.md").write_text(
+                (ROOT / "docs" / "RULES.md").read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            original = module.build_delivery
+
+            def boom(*args, **kwargs):
+                raise OSError("disco cheio")
+
+            module.build_delivery = boom
+            try:
+                args = types.SimpleNamespace(
+                    command="verify",
+                    project=tmp,
+                    env_file=None,
+                    confirm_format_change=False,
+                )
+                result = audited(args, execute)
+            finally:
+                module.build_delivery = original
+            self.assertEqual(0, result["count"])
+            self.assertIn(
+                "DELIVERY_LINK_FAILED", [w["code"] for w in result.get("warnings", [])]
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

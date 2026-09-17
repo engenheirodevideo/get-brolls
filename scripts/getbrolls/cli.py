@@ -34,6 +34,7 @@ SUMMARIES = {
     "browser-plan": "Planejar a captura de uma página pelo navegador autorizado",
     "queue": "Enfileirar URLs sociais e ditar o ritmo do lote (add, next, mark, status)",
     "serve": "Servir brolls/review.html em 127.0.0.1 para abrir o Storyboard no navegador",
+    "deliver": "Organizar os trechos coletados em entrega/, uma pasta por beat",
 }
 
 
@@ -82,6 +83,7 @@ def build_parser():
         "browser-plan",
         "queue",
         "serve",
+        "deliver",
     ):
         p = sub.add_parser(name, help=SUMMARIES[name], description=SUMMARIES[name])
         p.add_argument(
@@ -114,6 +116,12 @@ def build_parser():
                 type=int,
                 default=None,
                 help="Porta local para o servidor (padrão 8767; se ocupada, usa uma porta livre)",
+            )
+        if name == "deliver":
+            p.add_argument(
+                "--dry-run",
+                action="store_true",
+                help="Mostrar o que iria para entrega/ sem criar, ligar ou apagar nada",
             )
         if name == "queue":
             p.add_argument(

@@ -65,6 +65,12 @@ LADDER_STATES = {
     "verify": base_state(
         counts=full(candidates=3, previews=3, approved=3, permitted=3, delivered=3)
     ),
+    "deliver": base_state(
+        counts=full(
+            candidates=3, previews=3, approved=3, permitted=3, delivered=3, verified=3
+        ),
+        undelivered=3,
+    ),
     "done": base_state(
         counts=full(
             candidates=3, previews=3, approved=3, permitted=3, delivered=3, verified=3
@@ -252,6 +258,17 @@ class BoardRoute(unittest.TestCase):
     def test_without_the_board_the_chat_route_stays(self):
         action = next_action(LADDER_STATES["approve"])
         self.assertIn("--channel chat", action["command"])
+
+
+class DeliveryRung(unittest.TestCase):
+    def test_verified_files_outside_entrega_ask_for_deliver(self):
+        action = next_action(LADDER_STATES["deliver"])
+        self.assertEqual("deliver", action["step"])
+        self.assertIn("deliver --project", action["command"])
+        self.assertFalse(action["blocking_human"])
+
+    def test_the_last_rung_is_done_once_everything_is_organised(self):
+        self.assertEqual("done", next_action(LADDER_STATES["done"])["step"])
 
 
 if __name__ == "__main__":

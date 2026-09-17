@@ -1,6 +1,6 @@
 """Próximo passo humano: um degrau da escada vira comando pronto, sem adivinhação.
 
-`status`, `brief` (e, adiante, `deliver`) leem a mesma escada, então a pessoa ouve a
+`status`, `brief` e `deliver` leem a mesma escada, então a pessoa ouve a
 mesma frase em qualquer comando. Nada aqui grava: a função recebe o estado já lido e
 devolve texto e comando. Quando só o humano tem o valor (nome de quem aprova, frase
 dita, evidência real), o comando traz o lugar em MAIÚSCULAS para ele preencher.
@@ -32,6 +32,7 @@ STEPS = (
     "permit",
     "fetch",
     "verify",
+    "deliver",
 )
 
 # Um comando por degrau; `{project}` e `{candidate}` entram já citados.
@@ -57,6 +58,7 @@ TEMPLATES = {
     "permit": "permit --project {project} --candidate {candidate} --evidence EVIDENCIA_REAL",
     "fetch": "fetch --project {project} --candidate {candidate}",
     "verify": "verify --project {project}",
+    "deliver": "deliver --project {project}",
 }
 
 
@@ -237,6 +239,17 @@ def next_action(state):
             "Arquivos coletados ainda sem conferência de integridade.",
             "Coletei os cortes; vou conferir se todos os arquivos abrem e estão "
             "íntegros.",
+            state,
+        )
+    if state.get("undelivered"):
+        # `brolls/` guarda por hash; quem abre a pasta precisa de nome de gente.
+        return _action(
+            "deliver",
+            "Há arquivo conferido que ainda não aparece em entrega/, a pasta que a "
+            "pessoa abre.",
+            "Vou organizar os trechos conferidos em `entrega/`, uma pasta por beat, com "
+            "o contact sheet e a origem de cada um do lado — é essa pasta que você "
+            "arrasta para o editor.",
             state,
         )
     return _action(
