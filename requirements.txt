@@ -1,4 +1,4 @@
-# Versions installed successfully by the v2.3.4 macOS/Windows CI (2026-09-16).
+# Versions installed successfully by the v2.3.7 macOS/Windows CI (2026-09-16).
 # Update as a reviewed set and rerun the installers and provider smoke tests.
 yt-dlp[default]==2026.8.19
 yt-dlp-ejs==0.8.0
