@@ -211,6 +211,72 @@ class CliTest(unittest.TestCase):
             )
             self.assertEqual(payload()["items"][0]["review"]["state"], "pending")
 
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
+    def test_reference_only_needs_no_interval_and_still_leaves_something_to_look_at(self):
+        """A fonte que não libera o trecho ainda merece um cartaz, e `status` precisa contá-lo."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src = root / "original.mp4"
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=160x90:duration=3:rate=10",
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(src),
+                ],
+                check=True,
+            )
+            c = self.call("resolve", "--file", src, "--project", root)
+            base = ["--candidate", c["id"], "--project", root]
+            out = self.call("preview", *base, "--reference-only")
+            self.assertEqual("reference_only", out["state"])
+            poster = out["preview"]["poster_path"]
+            self.assertTrue((root / "brolls" / poster).is_file())
+            state = self.call("status", "--project", root)
+            self.assertEqual(1, state["counts"]["previews"])
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
+    def test_a_local_image_preview_produces_an_artifact_and_counts_as_a_preview(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src = root / "foto.png"
+            subprocess.run(
+                ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=red:s=64x64", "-frames:v", "1", str(src)],
+                check=True,
+            )
+            c = self.call("resolve", "--file", src, "--project", root)
+            base = ["--candidate", c["id"], "--project", root]
+            out = self.call("preview", *base)
+            self.assertTrue((root / "brolls" / out["preview"]["poster_path"]).is_file())
+            state = self.call("status", "--project", root)
+            self.assertEqual(1, state["counts"]["previews"])
+            self.assertEqual([c["id"]], state["stages"]["previews"])
+
+    def test_a_video_without_an_interval_is_told_about_reference_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src = root / "original.mp4"
+            src.write_bytes(b"not a real video")
+            resolved = subprocess.run(
+                [sys.executable, str(CLI), "resolve", "--file", str(src), "--project", str(root)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            if resolved.returncode != 0:
+                self.skipTest("resolve recusou o arquivo sintético")
+            id = json.loads(resolved.stdout)["id"]
+            failed = self.call("preview", "--candidate", id, "--project", root, ok=False)
+            self.assertIn("--reference-only", json.dumps(failed, ensure_ascii=False))
+
     def test_social_resolve_keeps_acquisition_and_url_validation(self):
         with tempfile.TemporaryDirectory() as tmp:
             c = self.call(

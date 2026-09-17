@@ -186,6 +186,60 @@ def _language_from(name):
     return parts[-2] if len(parts) >= 3 else "und"
 
 
+# Teto da lista de idiomas na resposta: o YouTube anuncia centenas de traduções
+# automáticas, e despejar tudo isso afoga a informação que interessa.
+MAX_SUBTITLE_LANGS = 10
+
+
+def _write_private(path, text):
+    """Cria o VTT já com 0600 e sem sobrescrever nada: `O_CREAT|O_EXCL`, como na biblioteca.
+
+    Escrever e só depois chamar `chmod` deixaria uma janela de leitura pública, e
+    escreveria através de um arquivo (ou link) plantado com esse nome.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.unlink(missing_ok=True)
+    with open(
+        os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600),
+        "w",
+        encoding="utf-8",
+    ) as stream:
+        stream.write(text)
+
+
+def _original_language(data):
+    """Idioma falado de fato: o que o yt-dlp marca como "(Original)" ou `<code>-orig`."""
+    automatic = data.get("automatic_captions") or {}
+    for code in automatic:
+        if str(code).endswith("-orig"):
+            return code
+    for code, tracks in automatic.items():
+        for track in tracks or []:
+            if "original" in str((track or {}).get("name") or "").lower():
+                return code
+    return None
+
+
+def relevant_langs(data, langs):
+    """Idiomas que valem listar, e quantos a fonte anuncia ao todo.
+
+    Os pedidos em `langs` mais o original; nunca as centenas de traduções automáticas
+    que o YouTube gera sob demanda. Sem nenhum desses, os primeiros da lista servem
+    de amostra, para ninguém achar que a fonte não tem legenda.
+    """
+    manual = set(data.get("subtitles") or {})
+    automatic = set(data.get("automatic_captions") or {})
+    every = sorted(manual | automatic)
+    listed = [code for code in langs if code in manual or code in automatic]
+    original = _original_language(data)
+    if original and original not in listed:
+        listed.append(original)
+    if not listed:
+        listed = every[:MAX_SUBTITLE_LANGS]
+    return listed[:MAX_SUBTITLE_LANGS], len(every)
+
+
 def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):
     """O que a fonte conta sobre si: duração, capítulos, legendas e descrição.
 
@@ -241,8 +295,7 @@ def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):
             if cache is not None:
                 stem = hashlib.sha256(url.encode()).hexdigest()[:16]
                 destination = cache / f"{stem}-{language}.vtt"
-                destination.write_text(text, encoding="utf-8")
-                destination.chmod(0o600)
+                _write_private(destination, text)
             subtitles[language] = {
                 "path": str(destination) if destination else None,
                 "cues": parse_vtt(text),
@@ -259,13 +312,15 @@ def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):
                 "title": chapter.get("title") or "",
             }
         )
-    available = sorted(set(data.get("automatic_captions") or {}) | set(data.get("subtitles") or {}))
+    listed, total = relevant_langs(data, langs)
     return {
         "url": url,
         "title": data.get("title"),
         "duration_s": float(duration) if isinstance(duration, (int, float)) else None,
         "chapters": chapters,
-        "subtitle_langs": available,
+        "subtitle_langs": listed,
+        # Quantas faixas a fonte anuncia ao todo; `subtitle_langs` mostra só as úteis.
+        "subtitle_langs_total": total,
         "description": data.get("description") or "",
         "subtitles": subtitles,
     }

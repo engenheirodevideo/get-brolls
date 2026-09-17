@@ -1144,9 +1144,15 @@ def execute(args):
     if cmd == "preview" and args.scan:
         return scan_candidate(ledger, c, config)
     if cmd in ("preview", "approve"):
-        if c.get("media", {}).get("kind") != "image":
+        # `--reference-only` não pede mídia nenhuma: é o cartaz estático de um vídeo que
+        # a fonte não deixa baixar. Exigir intervalo aqui obrigaria a inventar um.
+        reference_without_range = cmd == "preview" and args.reference_only and args.start is None and args.end is None
+        if c.get("media", {}).get("kind") != "image" and not reference_without_range:
             if args.start is None or args.end is None:
-                raise ValueError("Vídeo exige --start e --end.")
+                raise ValueError(
+                    "Vídeo exige --start e --end. Se a fonte não libera o trecho, use "
+                    "`--reference-only` sozinho e eu gero só o cartaz estático."
+                )
             set_segment(c, args.start, args.end)
         elif args.start is not None or args.end is not None:
             raise ValueError("Imagem estática não precisa de intervalo de origem.")
@@ -1207,8 +1213,13 @@ def execute(args):
         context_before = signature(c)
         if not args.reference_only and c["provider"] != "local":
             # Vídeo sem --start/--end já parou antes, no guard de `preview`/`approve`.
-            if args.end - args.start > config["max_seconds"]:  # pyright: ignore[reportOptionalOperand]
-                raise ValueError("Trecho excede GB_PREVIEW_MAX_SECONDS; ajuste o intervalo antes de obter mídia.")
+            asked = args.end - args.start  # pyright: ignore[reportOptionalOperand]
+            if asked > config["max_seconds"]:
+                raise ValueError(
+                    f"Trecho de {asked:g} s excede o teto de prévia: GB_PREVIEW_MAX_SECONDS "
+                    f"está em {config['max_seconds']} s. Encurte o intervalo, ou aumente a "
+                    "variável se você realmente precisa de uma prévia mais longa."
+                )
             from .acquisition import prepare_source
 
             prepare_source(ledger, c, args.start, args.end)
@@ -1223,6 +1234,9 @@ def execute(args):
         else:
             c["preview"]["warning"] = "Somente referência estática; o trecho animado requer original local autorizado."
             c["state"] = "reference_only"
+            # Sem um arquivo de imagem ninguém decide nada, e `status` nem conta o item
+            # como tendo prévia. A miniatura pública da fonte já basta para isso.
+            reference_poster(ledger, c)
         if c["preview"].get("warning"):
             record_warning("PREVIEW_LIMITATION", c["preview"]["warning"])
         if args.narration is not None:
@@ -1314,6 +1328,51 @@ def execute(args):
     return c
 
 
+def reference_poster(ledger, c):
+    """Materializa o cartaz estático da referência: miniatura da fonte, ou 1º quadro local.
+
+    Não baixa o vídeo e não escolhe intervalo: só garante que exista um arquivo de
+    imagem para a pessoa olhar (e para `status` contar como prévia). Falhar aqui é
+    aceitável — vira aviso, não erro, porque a referência continua válida sem imagem.
+    """
+    from .media import image_preview
+
+    if c["preview"].get("poster_path"):
+        return c["preview"]["poster_path"]
+    stem = hashlib.sha256(c["id"].encode()).hexdigest()[:16] + "-ref"
+    previews = ledger.root / "previews"
+    previews.mkdir(parents=True, exist_ok=True)
+    source = c.get("local_path")
+    temp = None
+    try:
+        if not source:
+            url = (c.get("preview") or {}).get("poster_url")
+            if not url:
+                record_warning(
+                    "REFERENCE_POSTER_MISSING",
+                    "A fonte não ofereceu miniatura pública; a referência fica sem imagem.",
+                )
+                return None
+            from .http import download
+
+            temp = previews / (stem + ".part")
+            temp.unlink(missing_ok=True)
+            download(url, temp, max_bytes=32 * 1024 * 1024)
+            source = temp
+        result = image_preview(source, previews, stem)
+    except (OSError, ValueError, RuntimeError) as error:
+        record_warning(
+            "REFERENCE_POSTER_MISSING",
+            f"Não consegui montar o cartaz estático desta referência ({error}).",
+        )
+        return None
+    finally:
+        if temp is not None:
+            temp.unlink(missing_ok=True)
+    c["preview"]["poster_path"] = result["poster_path"]
+    return result["poster_path"]
+
+
 def _already_collected(rel):
     """Mesma recusa para imagem e vídeo: já existe corte desta revisão, e eu não sobrescrevo."""
     return (
@@ -1369,14 +1428,65 @@ def inspect_source(ledger, args):
         c["media"]["duration_s"] = probe["duration_s"]
         ledger.save("inspect", c)
     return {
+        # Veredito primeiro, como nos outros comandos: quantas janelas e qual a melhor.
+        "summary": inspect_summary(windows, probe),
         "candidate": c["id"] if c is not None else None,
         "url": url,
         "title": probe.get("title"),
         "duration_s": probe["duration_s"],
         "chapters": probe["chapters"],
         "subtitle_langs": probe["subtitle_langs"],
+        "subtitle_langs_total": probe.get("subtitle_langs_total", len(probe["subtitle_langs"])),
         "candidate_windows": windows,
     }
+
+
+def _clock(seconds):
+    total = int(round(float(seconds or 0)))
+    return f"{total // 60}:{total % 60:02d}"
+
+
+def inspect_summary(windows, probe):
+    """`{line, next}` em PT-BR: quantas janelas saíram, qual a melhor e o que fazer com ela."""
+    if not windows:
+        return {
+            "line": "A fonte não deu capítulo, legenda nem marcação de tempo: não tenho por onde começar.",
+            "next": "Rode `preview --scan` para ver a grade do vídeo inteiro e escolher o trecho olhando.",
+        }
+    best = windows[0]
+    found = best["score"] > 0
+    where = f"{_clock(best['start_s'])}–{_clock(best['end_s'])}"
+    line = (
+        f"Analisei a fonte e separei {_count(len(windows), 'janela', 'janelas')}. "
+        + (
+            f"A mais parecida com o que você pediu está em {where}"
+            if found
+            else f"Nenhuma casou com a frase, então a primeira é só um ponto de partida: {where}"
+        )
+        + (f" ({best['source']})." if best.get("source") else ".")
+    )
+    if probe.get("duration_s"):
+        line += f" O vídeo tem {_clock(probe['duration_s'])}."
+    return {
+        "line": line,
+        "next": (
+            f"Confirme olhando: `preview --start {best['start_s']} --end {best['end_s']}`"
+            if found
+            else "Confirme antes de baixar: `preview --scan` mostra a grade do vídeo "
+            f"inteiro, ou gere a prévia de {where} e olhe o contact sheet."
+        ),
+    }
+
+
+def _scan_note(span, duration, capped, ceiling):
+    """Frase em PT-BR dizendo quanto do vídeo entrou na varredura, e por quê."""
+    if capped:
+        return (
+            f"Varri os primeiros {span:.0f} s de um vídeo de {duration:.0f} s: o teto "
+            f"GB_SCAN_MAX_SECONDS está em {int(ceiling)} s. Para ver o resto, aumente o "
+            "teto ou varra o candidato de novo depois de escolher um trecho."
+        )
+    return f"Baixei e varri o vídeo inteiro ({span:.0f} s) para montar a grade."
 
 
 def scan_candidate(ledger, c, config):
@@ -1395,11 +1505,16 @@ def scan_candidate(ledger, c, config):
             c["media"]["duration_s"] = duration
     if not duration:
         raise ValueError("Duração desconhecida: rode `inspect --candidate " + c["id"] + "` antes de varrer.")
-    span = min(float(duration), float(config["scan_max_seconds"]))
+    duration = float(duration)
+    # O teto vale sobre a duração real: pedir 900 s de um vídeo de 126 s faz a fonte
+    # devolver menos do que o pedido, e a grade sairia rotulada com tempos que não existem.
+    span = min(duration, float(config["scan_max_seconds"]))
     if c["provider"] != "local":
         from .acquisition import prepare_source
 
-        prepare_source(ledger, c, 0, span)
+        # `tolerant`: varrer o vídeo inteiro não pode falhar porque a fonte entregou
+        # alguns segundos a menos do que anunciou.
+        prepare_source(ledger, c, 0, span, tolerant=True)
     source = c.get("local_path")
     if not source:
         raise ValueError("A varredura precisa da mídia de trabalho; esta fonte só permite referência estática.")
@@ -1407,6 +1522,17 @@ def scan_candidate(ledger, c, config):
     stem = hashlib.sha256(c["id"].encode()).hexdigest()[:16]
     # Tempo do arquivo de trabalho para o ffmpeg; tempo da fonte nos rótulos.
     local_start = max(0, -offset)
+    # A grade se mede pelo que existe no arquivo de trabalho, não pelo que foi pedido:
+    # senão os últimos quadros vêm vazios e os rótulos apontam para o nada.
+    available = c.get("local_duration_s")
+    if available is None:
+        from .media import probe as probe_media
+
+        available = probe_media(source).get("duration_s")
+    if available:
+        span = min(span, max(0.0, float(available) - local_start))
+    if span <= 0:
+        raise ValueError("A mídia de trabalho não tem quadros para varrer; gere uma prévia do trecho que te interessa.")
     result = scan_sheet(
         source,
         ledger.root / "previews",
@@ -1416,7 +1542,15 @@ def scan_candidate(ledger, c, config):
         source_offset=offset,
     )
     # `scan` fica fora de `preview`/`segment`: varrer não decide nem invalida nada.
-    c["scan"] = {**result, "capped": span < float(duration), "duration_s": float(duration)}
+    capped = span < duration - 0.1
+    c["scan"] = {
+        **result,
+        "capped": capped,
+        "duration_s": duration,
+        # O que realmente entrou na grade, em segundos de mídia baixada.
+        "downloaded_seconds": round(span, 3),
+        "note": _scan_note(span, duration, capped, config["scan_max_seconds"]),
+    }
     ledger.save("preview", c)
     render(ledger)
     return {

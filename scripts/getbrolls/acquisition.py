@@ -88,7 +88,14 @@ def _reuse_from_index(cache, candidate_id, start, end):
     return None
 
 
-def prepare_source(ledger, candidate, start, end):
+def prepare_source(ledger, candidate, start, end, tolerant=False):
+    """Deixa a mídia de trabalho pronta para [start, end] em tempo da fonte.
+
+    `tolerant=True` aceita que o arquivo baixado seja mais curto do que o pedido — é
+    o caso da varredura, que pede o vídeo inteiro e não pode falhar porque a fonte
+    entregou alguns segundos a menos do que a duração anunciada. Quem chama com
+    `tolerant` precisa reler `local_duration_s` antes de montar a grade.
+    """
     c = candidate
     remote = c["provider"] != "local"
     if not remote:
@@ -134,7 +141,7 @@ def prepare_source(ledger, candidate, start, end):
             method = c["acquisition"].get("method")
             raise ValueError(f"Esta fonte requer importação do original local (method={method!r}).")
         info = probe(target)
-        if end - offset > info["duration_s"] + 0.1:
+        if end - offset > info["duration_s"] + 0.1 and not tolerant:
             raise ValueError("Original não contém o intervalo solicitado.")
         sha = digest(target)
         final = cache / (hashlib.sha256(c["id"].encode()).hexdigest()[:16] + "-" + sha + ".mp4")

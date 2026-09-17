@@ -173,4 +173,81 @@ def candidate_windows(probe, query=None, max_windows=3):
         )
     windows.sort(key=lambda w: (-w["score"], w["start_s"]))
     limit = max(1, int(max_windows or 1))
+    if not windows:
+        # Nenhuma janela nomeada: devolver `[]` deixa o agente sem nada para olhar e
+        # empurra para o palpite. Um mapa grosseiro do vídeo é sempre melhor que nada.
+        windows = fallback_windows(probe, limit)
     return windows[:limit]
+
+
+def fallback_windows(probe, max_windows=3):
+    """Mapa grosseiro do vídeo quando nada casou: capítulos, senão falas, senão o relógio.
+
+    Sai sempre com `score: 0` e `source` preenchido, para ninguém confundir isto com
+    um trecho que a frase do usuário encontrou.
+    """
+    limit = max(1, int(max_windows or 1))
+    duration = probe.get("duration_s")
+    out = []
+    for chapter in probe.get("chapters") or []:
+        start = chapter.get("start_s")
+        if start is None:
+            continue
+        end = chapter.get("end_s")
+        out.append(
+            {
+                "start_s": round(max(0.0, float(start)), 3),
+                "end_s": round(float(end if end is not None else float(start) + DEFAULT_WINDOW_S), 3),
+                "text": (chapter.get("title") or "").strip() or "Capítulo sem título",
+                "source": "chapter",
+                "score": 0.0,
+            }
+        )
+    if not out:
+        cues = []
+        for entry in (probe.get("subtitles") or {}).values():
+            cues = (entry or {}).get("cues") or []
+            if cues:
+                break
+        for cue in _evenly(cues, limit):
+            out.append(
+                {
+                    "start_s": round(float(cue["start_s"]), 3),
+                    "end_s": round(float(cue["end_s"]), 3),
+                    "text": cue["text"],
+                    "source": "subtitle",
+                    "score": 0.0,
+                }
+            )
+    if not out and duration:
+        # Sem capítulo e sem legenda só resta o relógio: pontos igualmente espaçados,
+        # para a pessoa ter por onde começar a varredura.
+        total = float(duration)
+        step = total / (limit + 1)
+        for position in range(1, limit + 1):
+            start = min(max(0.0, step * position), max(0.0, total - 0.5))
+            out.append(
+                {
+                    "start_s": round(start, 3),
+                    "end_s": round(min(total, start + DEFAULT_WINDOW_S), 3),
+                    "text": "",
+                    "source": "even_spacing",
+                    "score": 0.0,
+                }
+            )
+    return [w for w in out if w["end_s"] > w["start_s"]][:limit]
+
+
+def _evenly(items, count):
+    """`count` itens distribuídos ao longo da lista, sem repetir nem reordenar."""
+    if not items:
+        return []
+    if len(items) <= count:
+        return list(items)
+    step = len(items) / count
+    picked = []
+    for position in range(count):
+        item = items[int(position * step)]
+        if item not in picked:
+            picked.append(item)
+    return picked

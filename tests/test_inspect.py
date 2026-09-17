@@ -1,5 +1,6 @@
 """Analisar antes de coletar: o que a fonte tem, antes de pedir mídia."""
 
+import hashlib
 import json
 import os
 import shlex
@@ -8,6 +9,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -176,8 +178,37 @@ class WindowTests(unittest.TestCase):
                 probe = social.probe_remote(URL, langs=("pt", "en"), cache=Path(tmp) / ".getbrolls-sources")
         self.assertEqual(["pt"], list(probe["subtitles"]))
 
-    def test_nothing_to_offer_is_an_empty_list_not_an_error(self):
+    def test_with_nothing_named_the_clock_still_gives_somewhere_to_look(self):
+        """Devolver `[]` empurrava o agente para o palpite; o mapa grosseiro é melhor."""
         probe = self.probe(chapters=[], subtitles={}, subtitle_langs=[], description="")
+        windows = inspecting.candidate_windows(probe, "poeira", 3)
+        self.assertEqual(3, len(windows))
+        for window in windows:
+            self.assertEqual("even_spacing", window["source"])
+            self.assertEqual(0.0, window["score"])
+            self.assertLess(window["start_s"], window["end_s"])
+            self.assertLessEqual(window["end_s"], 120.0)
+
+    def test_an_untitled_chapter_is_still_a_window_when_nothing_else_matched(self):
+        probe = self.probe(
+            chapters=[{"start_s": 10.0, "end_s": 40.0, "title": ""}],
+            subtitles={},
+            subtitle_langs=[],
+            description="",
+        )
+        windows = inspecting.candidate_windows(probe, "poeira", 3)
+        self.assertEqual(["chapter"], [w["source"] for w in windows])
+        self.assertEqual("Capítulo sem título", windows[0]["text"])
+
+    def test_cues_answer_before_the_clock_when_no_token_overlaps(self):
+        probe = self.probe(chapters=[], subtitle_langs=[], description="")
+        windows = inspecting.fallback_windows(probe, 3)
+        self.assertTrue(windows)
+        self.assertEqual({"subtitle"}, {w["source"] for w in windows})
+        self.assertTrue(all(w["text"] for w in windows))
+
+    def test_nothing_at_all_and_no_duration_is_still_an_empty_list(self):
+        probe = self.probe(chapters=[], subtitles={}, subtitle_langs=[], description="", duration_s=None)
         self.assertEqual([], inspecting.candidate_windows(probe, "poeira", 3))
 
 
@@ -190,7 +221,9 @@ class ProbeRemoteTests(unittest.TestCase):
                 probe = social.probe_remote(URL, cache=cache)
         self.assertEqual(120.0, probe["duration_s"])
         self.assertEqual(["Abertura", "Céu laranja sobre a cidade"], [ch["title"] for ch in probe["chapters"]])
-        self.assertEqual(["en", "pt"], probe["subtitle_langs"])
+        # Só os idiomas pedidos (na ordem pedida); não as centenas traduzidas.
+        self.assertEqual(["pt", "en"], probe["subtitle_langs"])
+        self.assertEqual(2, probe["subtitle_langs_total"])
         self.assertIn("poeira", probe["description"])
 
     def test_the_vtt_lands_in_the_private_sources_folder_with_0600(self):
@@ -204,6 +237,44 @@ class ProbeRemoteTests(unittest.TestCase):
             self.assertEqual(0o600, stat.S_IMODE(saved.stat().st_mode))
             self.assertIn("tempestade", saved.read_text(encoding="utf-8").lower())
             self.assertTrue(probe["subtitles"]["pt"]["cues"])
+
+    def test_the_vtt_refuses_to_write_through_a_planted_file(self):
+        """`O_CREAT|O_EXCL` com 0600: nunca escrever através de algo plantado com o nome."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / ".getbrolls-sources"
+            cache.mkdir()
+            victim = Path(tmp) / "alvo.txt"
+            victim.write_text("não me sobrescreva", encoding="utf-8")
+            stem = hashlib.sha256(URL.encode()).hexdigest()[:16]
+            planted = cache / f"{stem}-pt.vtt"
+            planted.symlink_to(victim)
+            env = stub_ytdlp(tmp, WITH_EVERYTHING, VTT)
+            with patch.dict(os.environ, env):
+                probe = social.probe_remote(URL, cache=cache)
+            saved = Path(probe["subtitles"]["pt"]["path"])
+            self.assertFalse(saved.is_symlink())
+            self.assertEqual(0o600, stat.S_IMODE(saved.lstat().st_mode))
+            self.assertEqual("não me sobrescreva", victim.read_text(encoding="utf-8"))
+
+    def test_hundreds_of_auto_translations_do_not_flood_the_answer(self):
+        many = {f"x{n}": [{"ext": "vtt"}] for n in range(300)}
+        many["pt-orig"] = [{"ext": "vtt", "name": "Portuguese (Original)"}]
+        many["pt"] = [{"ext": "vtt"}]
+        listed, total = social.relevant_langs(
+            {"automatic_captions": many, "subtitles": {}},
+            ("pt", "en"),
+        )
+        self.assertEqual(302, total)
+        self.assertLessEqual(len(listed), social.MAX_SUBTITLE_LANGS)
+        self.assertEqual(["pt", "pt-orig"], listed)
+
+    def test_the_original_track_is_listed_even_when_nobody_asked_for_it(self):
+        data = {
+            "automatic_captions": {"ja": [{"ext": "vtt", "name": "Japanese (Original)"}]},
+            "subtitles": {},
+        }
+        listed, total = social.relevant_langs(data, ("pt", "en"))
+        self.assertEqual((["ja"], 1), (listed, total))
 
     def test_a_source_without_chapters_or_subtitles_still_answers(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -277,7 +348,10 @@ class InspectCommandTests(unittest.TestCase):
             self.assertEqual(0, done.returncode, done.stdout + done.stderr)
             payload = json.loads(done.stdout)
             self.assertEqual(120.0, payload["duration_s"])
-            self.assertEqual(["en", "pt"], payload["subtitle_langs"])
+            self.assertEqual(["pt", "en"], payload["subtitle_langs"])
+            self.assertEqual(2, payload["subtitle_langs_total"])
+            self.assertIn("janela", payload["summary"]["line"])
+            self.assertTrue(payload["summary"]["next"])
             self.assertTrue(payload["candidate_windows"])
             for window in payload["candidate_windows"]:
                 self.assertEqual({"start_s", "end_s", "text", "source", "score"}, set(window))
@@ -419,6 +493,108 @@ class ScanTests(unittest.TestCase):
             scan = json.loads(done.stdout)["scan"]
             self.assertEqual(30.0, scan["span_s"])
             self.assertTrue(scan["capped"])
+            self.assertEqual(30.0, scan["downloaded_seconds"])
+            self.assertIn("GB_SCAN_MAX_SECONDS", scan["note"])
+            self.assertIn("30", scan["note"])
+
+    def test_the_preview_ceiling_error_names_the_limit_and_the_value_asked(self):
+        from getbrolls.commands import execute
+        from getbrolls.runtime import audited
+
+        with tempfile.TemporaryDirectory() as tmp:
+            run_cli(["init-rules", "--project", tmp])
+            candidate = project_with_candidate(tmp)
+            args = types.SimpleNamespace(
+                command="preview",
+                project=tmp,
+                env_file=None,
+                confirm_format_change=False,
+                candidate=candidate,
+                start=0.0,
+                end=40.0,
+                scan=False,
+                reference_only=False,
+                narration=None,
+                reason=None,
+            )
+            from getbrolls.runtime import OperationError
+
+            with patch.dict(os.environ, {"GB_PREVIEW_MAX_SECONDS": "10"}):
+                with self.assertRaises(OperationError) as caught:
+                    audited(args, execute)
+            message = str(caught.exception)
+            self.assertIn("GB_PREVIEW_MAX_SECONDS", message)
+            self.assertIn("10", message)
+            self.assertIn("40", message)
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
+    def test_the_grid_follows_the_media_that_exists_not_the_span_requested(self):
+        """A duração anunciada pode passar do arquivo real; a grade segue o arquivo."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "original.mp4"
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=160x90:duration=8:rate=10",
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(src),
+                ],
+                check=True,
+            )
+            run_cli(["init-rules", "--project", tmp])
+            resolved = run_cli(["resolve", "--file", str(src), "--project", tmp])
+            candidate = json.loads(resolved.stdout)["id"]
+            manifest = Path(tmp) / "brolls/manifest.json"
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+            # A fonte mente: diz 126 s onde o arquivo tem 8 s.
+            for item in data["items"]:
+                item["media"]["duration_s"] = 126.0
+            manifest.write_text(json.dumps(data), encoding="utf-8")
+            done = run_cli(["preview", "--project", tmp, "--candidate", candidate, "--scan"])
+            self.assertEqual(0, done.returncode, done.stdout + done.stderr)
+            scan = json.loads(done.stdout)["scan"]
+            self.assertLessEqual(scan["span_s"], 8.5)
+            self.assertLessEqual(scan["downloaded_seconds"], 8.5)
+            # Rótulos dentro do que existe: nenhum quadro anunciado depois do fim.
+            self.assertLess(scan["frame_times_s"][-1], 8.5)
+            self.assertTrue(Path(tmp, "brolls", scan["scan_path"]).is_file())
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
+    def test_a_whole_short_video_says_so_in_the_note(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "original.mp4"
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=160x90:duration=6:rate=10",
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(src),
+                ],
+                check=True,
+            )
+            run_cli(["init-rules", "--project", tmp])
+            resolved = run_cli(["resolve", "--file", str(src), "--project", tmp])
+            candidate = json.loads(resolved.stdout)["id"]
+            done = run_cli(["preview", "--project", tmp, "--candidate", candidate, "--scan"])
+            scan = json.loads(done.stdout)["scan"]
+            self.assertFalse(scan["capped"])
+            self.assertIn("inteiro", scan["note"])
 
 
 if __name__ == "__main__":
