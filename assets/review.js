@@ -5,11 +5,11 @@
   const key = "getbrolls-v2:" + data.project;
   const STATES = ["pending", "approved", "changes", "rejected", "alternative"];
   const LABELS = {
-    pending: "Pendente",
+    pending: "Você ainda não disse",
     approved: "Aprovado",
-    changes: "Pedir ajuste",
-    rejected: "Reprovado",
-    alternative: "Outra fonte",
+    changes: "Pedi ajuste",
+    rejected: "Não serve",
+    alternative: "Pedi outro vídeo",
   };
   let saved = {};
   let available = true;
@@ -44,7 +44,7 @@
   const summary = document.createElement("div");
   summary.className = "review-summary";
   summary.innerHTML =
-    '<p data-summary></p><div class="summary-actions"><button type="button" id="next-pending">Próximo pendente →</button><button type="button" id="export-review">Exportar revisão</button><button type="button" id="print-review">Imprimir / PDF</button></div><span data-storage-status role="status"></span>';
+    '<p data-summary></p><div class="summary-actions"><button type="button" id="next-pending">Próximo pendente →</button><button type="button" id="export-review" title="Baixa um arquivo com tudo o que você decidiu. É o que você manda de volta pro agente.">Salvar decisões</button><button type="button" id="print-review">Imprimir / PDF</button></div><span data-storage-status role="status"></span>';
   document.querySelector(".review-toolbar")?.remove();
 
   // Gallery: status tag per card, pending filter.
@@ -128,8 +128,8 @@
     document.querySelectorAll("[data-storage-status]").forEach(
       (el) =>
         (el.textContent = available
-          ? "Salvo neste navegador. Exporte para enviar."
-          : "Salvamento local indisponível. Exporte antes de fechar."),
+          ? "Suas escolhas ficam guardadas nesta aba. Clique em “Salvar decisões” quando terminar."
+          : "Esta aba não consegue guardar suas escolhas. Clique em “Salvar decisões” assim que terminar."),
     );
     paintGallery();
     paintPlayer();
@@ -188,33 +188,58 @@
       status = panel.querySelector("[data-review-status]"),
       fields = panel.querySelector(".review-fields"),
       toggle = panel.querySelector(".comment-toggle"),
+      wantOther = panel.querySelector(".want-other"),
+      alternative = panel.querySelector("[data-alternative]"),
       other = panel.querySelector(".other-url"),
       confirm = panel.querySelector(".confirm-review");
     let pending = null;
     comment.value = d.comment;
     suggestion.value = d.suggestion;
-    function reveal(open, alternative = false) {
+    alternative.checked = d.state === "alternative";
+    // "Outra fonte" virou esta caixinha: mesmo valor exportado, um botão a menos.
+    const wanted = () => (alternative.checked ? "alternative" : "changes");
+    function reveal(open, asking = false) {
       fields.hidden = !open;
-      other.hidden = !alternative;
+      wantOther.hidden = !asking;
+      other.hidden = !(asking && alternative.checked);
       toggle.setAttribute("aria-expanded", String(open));
       toggle.textContent = open ? "Fechar comentário" : comment.value ? "Ver comentário" : "Comentar";
     }
+    function checkComment() {
+      // Validação na hora: o bloqueio aparece onde a pessoa escreve, não no fim.
+      if (!pending) return;
+      const empty = !comment.value.trim();
+      confirm.disabled = empty;
+      confirm.textContent =
+        wanted() === "changes" ? "Confirmar pedido de ajuste" : "Confirmar: procure outro vídeo";
+      status.textContent = empty ? "Me conta em uma linha o que você queria." : "";
+    }
     function paint() {
-      panel
-        .querySelectorAll("[data-decision]")
-        .forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.decision === d.state)));
-      status.textContent = d.state === "pending" ? "" : LABELS[d.state] + (d.updatedAt ? " · salvo neste navegador" : "");
+      panel.querySelectorAll("[data-decision]").forEach((b) =>
+        b.setAttribute(
+          "aria-pressed",
+          String(
+            b.dataset.decision === d.state ||
+              (b.dataset.decision === "changes" && d.state === "alternative"),
+          ),
+        ),
+      );
+      status.textContent = d.state === "pending" ? "" : LABELS[d.state] + (d.updatedAt ? " · guardado nesta aba" : "");
     }
     toggle.onclick = () => {
       pending = null;
       confirm.hidden = true;
-      reveal(fields.hidden, d.state === "alternative");
+      reveal(fields.hidden, ["changes", "alternative"].includes(d.state));
       if (!fields.hidden) comment.focus();
+    };
+    alternative.onchange = () => {
+      other.hidden = !alternative.checked;
+      checkComment();
     };
     panel.querySelectorAll("[data-decision]").forEach((b) => {
       b.onclick = () => {
         const state = b.dataset.decision;
-        if (state === d.state) {
+        if (state === d.state || (state === "changes" && d.state === "alternative")) {
           // Clicking the active decision undoes it.
           d.state = "pending";
           d.updatedAt = new Date().toISOString();
@@ -225,12 +250,11 @@
           persist();
           return;
         }
-        if (["changes", "alternative"].includes(state)) {
+        if (state === "changes") {
           pending = state;
-          reveal(true, state === "alternative");
+          reveal(true, true);
           confirm.hidden = false;
-          confirm.textContent = state === "changes" ? "Confirmar pedido de ajuste" : "Confirmar outra fonte";
-          status.textContent = "";
+          checkComment();
           comment.focus();
           return;
         }
@@ -245,11 +269,11 @@
     });
     confirm.onclick = () => {
       if (!comment.value.trim()) {
-        status.textContent = "Descreva o que deve mudar.";
+        status.textContent = "Me conta em uma linha o que você queria.";
         comment.focus();
         return;
       }
-      d.state = pending;
+      d.state = wanted();
       d.updatedAt = new Date().toISOString();
       pending = null;
       confirm.hidden = true;
@@ -259,13 +283,14 @@
     };
     comment.oninput = () => {
       d.comment = comment.value;
+      checkComment();
       persist();
     };
     suggestion.oninput = () => {
       d.suggestion = suggestion.value;
       persist();
     };
-    reveal(false, d.state === "alternative");
+    reveal(false, ["changes", "alternative"].includes(d.state));
     paint();
     wireSummary();
   }
@@ -313,7 +338,7 @@
       document.querySelectorAll("[data-storage-status]").forEach((el) => (el.textContent = text));
     for (const d of Object.values(decisions)) {
       if (["changes", "alternative"].includes(d.state) && !d.comment.trim()) {
-        note("Preencha o comentário de cada ajuste ou sugestão antes de exportar.");
+        note("Falta dizer o que mudar em um dos trechos. Abra o trecho e escreva uma linha.");
         return;
       }
       if (d.suggestion) {
@@ -333,7 +358,7 @@
             !/^\d+\.\d+\.\d+\.\d+$/.test(u.hostname);
         } catch {}
         if (!valid) {
-          note("Corrija a sugestão: use URL HTTPS pública, sem credenciais ou parâmetros secretos.");
+          note("O link de outro vídeo precisa ser um endereço https público, sem senha nem código de acesso. Corrija ou apague o link.");
           return;
         }
       }
@@ -351,6 +376,19 @@
     a.download = "getbrolls-review.json";
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+    // O maior buraco da jornada era aqui: a página acabava e ninguém dizia pra voltar.
+    const bar = document.querySelector(".summary-actions");
+    if (bar) {
+      const done = document.createElement("p");
+      done.className = "export-done";
+      done.setAttribute("role", "status");
+      done.textContent =
+        "Decisões salvas em getbrolls-review.json (na sua pasta de Downloads). " +
+        "Agora volte à conversa e diga onde salvou.";
+      bar.parentElement.querySelector(".export-done")?.remove();
+      bar.after(done);
+    }
+    note("");
   }
   function buildPrintNotes() {
     document.querySelector(".print-notes")?.remove();

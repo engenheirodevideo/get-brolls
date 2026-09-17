@@ -74,6 +74,11 @@ a.source-link-card:hover{border-color:var(--accent)}
 .review-panel .feedback{display:block;margin:8px 0 0;font-size:11px;color:var(--muted)}
 .review-panel .feedback:empty{display:none}
 .review-panel .other-url[hidden],.review-panel .review-fields[hidden],.review-panel .confirm-review[hidden]{display:none}
+.review-panel .want-other[hidden]{display:none}
+.review-panel .want-other{display:flex;align-items:center;gap:7px;margin-top:0;font-size:13px;color:var(--ink)}
+.review-panel .want-other input{width:auto;min-height:0;margin:0}
+.review-panel .confirm-review[disabled]{opacity:.55;cursor:not-allowed}
+.export-done{flex-basis:100%;box-sizing:border-box;margin:8px 0 0;padding:9px 11px;background:#e4eddf;border:1px solid #33552a;border-radius:6px;color:#33552a;font:13px/1.45 system-ui,Arial,sans-serif}
 
 /* Galeria. */
 .gallery-head{display:flex;justify-content:space-between;gap:20px;align-items:center;flex-wrap:wrap}

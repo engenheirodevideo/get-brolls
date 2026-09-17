@@ -244,8 +244,8 @@ The `review` command generates `brolls/review.html`: a local page where you can 
 |---|---|
 | Selected shot | Switch between a still image and a GIF while preserving the original aspect ratio. |
 | Context and origin | Inspect the supplied narration, time range, selection rationale, creator, and source link. |
-| Decision per shot | Approve it, request an adjustment with a comment, or suggest a different source. |
-| Export review | Save a JSON file for the agent to import into the project. |
+| Decision per shot | Approve, Request a change (comment required; "find another video" lives inside it), or Reject. |
+| Save decisions | Download a JSON file for the agent to import into the project. |
 | Print / PDF | Generate a static version with frames, sources, and comments. |
 
 The gallery remains static; animation runs only in the selected shot and respects reduced-motion preferences. An optional screenshot of the speaker provides context and remains static. To evaluate a finished composition using the same insert, set `GB_GIF_SCOPE=full` and provide `--full-preview-file`.

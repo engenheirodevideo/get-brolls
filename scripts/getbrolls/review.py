@@ -81,10 +81,15 @@ def enhance(page, ledger, records):
 
 def import_review(ledger, file, by, rules=None):
     if not by.strip():
-        raise ValueError("Informe quem revisou com --by.")
+        raise ValueError(
+            "Diga quem revisou: acrescente --by \"seu nome\" ao comando."
+        )
     path = Path(file)
     if path.stat().st_size > 2000000:
-        raise ValueError("Revisão excede 2 MB.")
+        raise ValueError(
+            "Esse arquivo de escolhas passa de 2 MB — não parece ser o que a página "
+            "salvou. Confira se apontou para o getbrolls-review.json certo."
+        )
     data = json.loads(path.read_text(encoding="utf-8"))
     if (
         not isinstance(data, dict)
@@ -92,10 +97,16 @@ def import_review(ledger, file, by, rules=None):
         or data.get("templateVersion") != 2
         or data.get("project") != project_id(ledger)
     ):
-        raise ValueError("Revisão não pertence a este projeto/template.")
+        raise ValueError(
+            "Esse arquivo de escolhas é de outra coleta. Abra a página desta pasta "
+            "com `review`, decida ali e salve de novo."
+        )
     items = data.get("items")
     if not isinstance(items, list) or not items:
-        raise ValueError("Revisão sem itens.")
+        raise ValueError(
+            "O arquivo de escolhas está vazio. Volte à página, decida os trechos e "
+            "clique em “Salvar decisões”."
+        )
     changes = []
     seen = set()
     for item in items:
@@ -106,18 +117,25 @@ def import_review(ledger, file, by, rules=None):
         seen.add(item["id"])
         c = copy.deepcopy(ledger.get(item["id"]))
         if item.get("signature") != signature(c):
-            raise ValueError("Revisão desatualizada para " + c["id"])
+            raise ValueError(
+                "O trecho " + c["id"] + " mudou depois que você decidiu (intervalo ou "
+                "fonte). Rode `review` de novo e salve as decisões da página nova."
+            )
         if item.get("reviewEpoch") not in (review_epoch(c), legacy_review_epoch(c)):
             raise ValueError(
-                "Revisão desatualizada para " + c["id"]
-                + ": a decisão mudou ou o arquivo não contém sua versão. "
-                "Execute review, confira as decisões e exporte um novo JSON."
+                "Este arquivo de escolhas é de uma versão anterior da coleta "
+                "(trecho " + c["id"] + "): alguma coisa mudou depois que você decidiu. "
+                "Nada se perdeu — rode `review` de novo, confira as decisões que já "
+                "estão marcadas e salve de novo."
             )
         state = item.get("state")
         comment = item.get("comment", "")
         suggestion = item.get("suggestion", "")
         if state not in ("pending", "approved", "changes", "alternative", "rejected"):
-            raise ValueError("Decisão desconhecida.")
+            raise ValueError(
+                "Decisão desconhecida no arquivo. Use a página do Storyboard para "
+                "decidir; não edite o JSON à mão."
+            )
         if (
             not isinstance(comment, str)
             or not isinstance(suggestion, str)
@@ -126,7 +144,10 @@ def import_review(ledger, file, by, rules=None):
         ):
             raise ValueError("Comentário/sugestão inválido.")
         if state in ("changes", "alternative") and not comment.strip():
-            raise ValueError("Ajuste/outra fonte precisa de comentário.")
+            raise ValueError(
+                "Faltou dizer o que mudar no trecho " + c["id"] + ". Abra a página, "
+                "escreva uma linha no pedido de ajuste e salve de novo."
+            )
         if suggestion:
             from .http import public_url
 

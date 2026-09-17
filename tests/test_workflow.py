@@ -61,7 +61,7 @@ class WorkflowTests(unittest.TestCase):
             payload["items"][1]["signature"] = "stale"
             path.write_text(json.dumps(payload), encoding="utf-8")
             before = ledger.path.read_bytes()
-            with self.assertRaisesRegex(ValueError, "desatualizada"):
+            with self.assertRaisesRegex(ValueError, "mudou depois que você decidiu"):
                 import_review(ledger, path, "Human")
             self.assertEqual(before, ledger.path.read_bytes())
             self.assertEqual(ledger.get("local:0")["approval"]["status"], "pending")

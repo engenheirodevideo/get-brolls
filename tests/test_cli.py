@@ -262,7 +262,8 @@ class CliTest(unittest.TestCase):
             self.assertFalse(any("onerror" in a for t, a in dom.nodes))
             self.assertIn("&lt;img src=x onerror=alert(1)&gt;", page)
             self.assertIn("Abrir fonte original", page)
-            self.assertIn("Exportar revisão", page)
+            self.assertIn("Salvar decisões", page)
+            self.assertNotIn("Exportar revisão", page)
 
 
 if __name__ == "__main__":

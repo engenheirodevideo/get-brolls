@@ -145,8 +145,13 @@ class RepositoryDocumentationTests(unittest.TestCase):
         self.assertIn("./scripts/install.ps1\n", workflow)
 
     def test_delivery_has_no_parallel_artifact_or_reference_trees(self):
-        for name in ("artifacts", "dist", "references", "reference", "broll", "instagram"):
+        # `references/` é a pasta oficial de copy do plugin desde a 2.4; o que segue
+        # proibido é uma segunda árvore de entrega ou um `reference/` no singular.
+        for name in ("artifacts", "dist", "reference", "broll", "instagram"):
             self.assertFalse((ROOT / name).exists(), name)
+        names = {p.name for p in (ROOT / "references").iterdir() if p.is_file()}
+        self.assertLessEqual({"glossario.md", "templates-de-resposta.md"}, names)
+        self.assertTrue(all(name.endswith(".md") for name in names), names)
         scripts = ROOT / "scripts"
         self.assertEqual(
             ["getbrolls"],

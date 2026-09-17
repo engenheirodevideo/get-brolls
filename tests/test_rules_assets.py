@@ -45,7 +45,7 @@ class RulesTests(unittest.TestCase):
             p.write_text(
                 "```json\n" + json.dumps(r) + "\n```", encoding="utf-8"
             )
-            with self.assertRaisesRegex(ValueError, "preencher"):
+            with self.assertRaisesRegex(ValueError, "responsabilidade"):
                 load_rules(d)
 
     def test_browser_plan_and_memory(self):

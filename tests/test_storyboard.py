@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class StoryboardTest(unittest.TestCase):
     def test_empty_and_escaped_portable_review(self):
         page = render_page([], title="Teste <script>")
-        self.assertIn("Nenhum quadro", page)
+        self.assertIn("Nada aqui ainda", page)
         self.assertIn("Teste &lt;script&gt;", page)
         self.assertNotIn("data:font/ttf;base64,", page)
         self.assertIn("system-ui", page)
@@ -72,8 +72,9 @@ class ContactSheetRenderingTest(unittest.TestCase):
         self.assertIn('<figure class="contact-sheet">', page)
         self.assertIn('<img src="previews/a-sheet.jpg"', page)
         self.assertIn("1 = 7,0 s · 2 = 8,3 s · 3 = 9,5 s · 4 = 10,8 s", page)
-        self.assertIn("Contact sheet · 4 quadros · grade 4×1 · corte 0:07.0–0:12.0", page)
+        self.assertIn("Os quadros do trecho (4) · grade 4×1 · corte 0:07.0–0:12.0", page)
         self.assertIn("Trecho do vídeo", page)
+        self.assertNotIn("Contact sheet", page)
         self.assertNotIn("Sem prévia", page)
         self.assertNotIn("Ver contact sheet", page)
 
@@ -90,8 +91,8 @@ class ContactSheetRenderingTest(unittest.TestCase):
 
     def test_source_thumbnail_is_never_called_a_preview(self):
         page = self.render_item(poster_url="https://i.ytimg.com/vi/abc/hq.jpg")
-        self.assertIn("Miniatura da fonte · sem prévia", page)
-        self.assertIn('<span class="preview-badge">Sem prévia</span>', page)
+        self.assertIn("Imagem da fonte · sem prévia em movimento", page)
+        self.assertIn('<span class="preview-badge">só imagem</span>', page)
         self.assertNotIn("Trecho do vídeo", page)
         self.assertNotIn('alt="Prévia', page)
         self.assertIn('alt="Miniatura da fonte — Foguete decolando"', page)
@@ -136,17 +137,25 @@ class StoryboardV2Test(unittest.TestCase):
         self.assertIn('<div class="gallery-head"><h2>Storyboard</h2>', page)
         self.assertIn('data-storyboard-mode="hover"', page)
         self.assertIn('id="pending-only"', page)
-        # Source card, speech bubble and the four decisions.
+        # Source card, speech bubble and the three decisions.
         self.assertIn('<a class="source-link-card" href="https://www.youtube.com/watch?v=two"', page)
         self.assertIn('<span class="source-domain">youtube.com</span>', page)
         self.assertIn("<strong>Foguete &lt;decolando&gt;</strong>", page)
         self.assertIn("<p>corte 0:59.0–1:05.0 de 2:02.0</p>", page)
+        self.assertIn("Por que eu escolhi este:", page)
+        self.assertIn("Pode usar? ainda não conferido", page)
         self.assertIn('<span class="cut-position"', page)
         self.assertIn("Abrir fonte original ↗", page)
         self.assertIn('<span class="script-label">Fala do roteiro</span>', page)
         self.assertIn("“e o foguete saiu do chão”", page)
-        for decision in ("approved", "changes", "rejected", "alternative"):
+        # Três botões: "outra fonte" virou caixinha dentro de "Pedir ajuste"; o valor
+        # exportado `alternative` segue existindo no JS/no schema.
+        for decision in ("approved", "changes", "rejected"):
             self.assertIn(f'data-decision="{decision}"', page)
+        self.assertNotIn('data-decision="alternative"', page)
+        self.assertIn("<h2>Esse trecho serve?</h2>", page)
+        self.assertIn("data-alternative", page)
+        self.assertIn('title="Descarta o trecho. Eu não baixo ele."', page)
         self.assertIn('class="comment-toggle"', page)
         # Presenter interval in MM:SS.ff and the first frame with a preview flagged.
         self.assertIn("00:59.00–01:05.00", page)

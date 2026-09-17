@@ -13,6 +13,7 @@ MARKETPLACE_JSON = ROOT / ".claude-plugin" / "marketplace.json"
 ROOT_SKILL = ROOT / "SKILL.md"
 MIRROR_SKILL = ROOT / "skills" / "get-brolls" / "SKILL.md"
 SETUP_COMMAND = ROOT / "commands" / "get-brolls-setup.md"
+REFERENCES = ROOT / "references"
 
 
 def frontmatter_field(path, field):
@@ -115,6 +116,25 @@ class SetupCommandTests(unittest.TestCase):
     def test_plugin_manifest_needs_no_commands_key(self):
         data = json.loads(PLUGIN_JSON.read_text(encoding="utf-8"))
         self.assertNotIn("commands", data)
+
+
+class ReferencesTests(unittest.TestCase):
+    """`references/` viaja com o plugin: é de onde o agente tira a copy pronta."""
+
+    EXPECTED = ("templates-de-resposta.md", "glossario.md")
+
+    def test_reference_files_ship_with_the_plugin(self):
+        self.assertTrue(REFERENCES.is_dir(), "pasta references/ ausente")
+        for name in self.EXPECTED:
+            path = REFERENCES / name
+            self.assertTrue(path.is_file(), f"references/{name} ausente")
+            self.assertEqual("reference", frontmatter_field(path, "type"))
+
+    def test_response_templates_cover_both_approval_routes(self):
+        body = (REFERENCES / "templates-de-resposta.md").read_text(encoding="utf-8")
+        self.assertIn("Salvar decisões", body)
+        self.assertIn("aprovei todos", body)
+        self.assertIn("--channel chat", body)
 
 
 class SkillMirrorTests(unittest.TestCase):

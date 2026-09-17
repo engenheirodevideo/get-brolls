@@ -42,7 +42,7 @@ class ReviewRegressionTests(unittest.TestCase):
             before = ledger.path.read_bytes()
             path = Path(folder) / "old.json"
             path.write_text(json.dumps(payload), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "desatualizada"):
+            with self.assertRaisesRegex(ValueError, "mudou depois que você decidiu"):
                 import_review(ledger, path, "Human")
             self.assertEqual(ledger.path.read_bytes(), before)
             self.assertEqual(ledger.get(c["id"])["approval"]["status"], "rejected")
@@ -59,7 +59,7 @@ class ReviewRegressionTests(unittest.TestCase):
             path = Path(folder) / "old.json"
             path.write_text(json.dumps(payload), encoding="utf-8")
             before = ledger.path.read_bytes()
-            with self.assertRaisesRegex(ValueError, "desatualizada"):
+            with self.assertRaisesRegex(ValueError, "mudou depois que você decidiu"):
                 import_review(ledger, path, "Human")
             self.assertEqual(ledger.path.read_bytes(), before)
             self.assertTrue(all(c["approval"]["status"] == "pending" for c in ledger.data["items"]))
@@ -75,7 +75,7 @@ class ReviewRegressionTests(unittest.TestCase):
             import_review(ledger, path, "First reviewer")
             self.assertEqual(ledger.get(c["id"])["approval"]["by"], "First reviewer")
             before = ledger.path.read_bytes()
-            with self.assertRaisesRegex(ValueError, "desatualizada"):
+            with self.assertRaisesRegex(ValueError, "mudou depois que você decidiu"):
                 import_review(ledger, path, "Second reviewer")
             self.assertEqual(ledger.path.read_bytes(), before)
             path.write_text(json.dumps(exported_review(ledger)), encoding="utf-8")

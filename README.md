@@ -220,8 +220,8 @@ O comando `review` gera `brolls/review.html`: uma página local para avaliar a c
 |---|---|
 | Quadro selecionado | Alterna entre imagem estática e GIF, mantendo a proporção original. |
 | Contexto e origem | Consulta fala fornecida, intervalo, motivo da escolha, autor e link da fonte. |
-| Decisão por trecho | Aprova, pede ajuste com comentário ou sugere outra fonte. |
-| Exportar revisão | Salva um JSON para o agente importar no projeto. |
+| Decisão por trecho | Aprovar, Pedir ajuste (com comentário; dentro dele cabe "procure outro vídeo") ou Reprovar. |
+| Salvar decisões | Baixa um JSON para o agente importar no projeto e mostra a instrução de voltar à conversa. |
 | Imprimir / PDF | Gera uma versão estática com quadros, fontes e comentários. |
 
 A galeria permanece estática; a animação acontece no quadro selecionado e respeita a preferência por movimento reduzido. Um print opcional da pessoa serve de contexto e permanece estático. Para avaliar uma composição pronta do mesmo insert, use `GB_GIF_SCOPE=full` com `--full-preview-file`.

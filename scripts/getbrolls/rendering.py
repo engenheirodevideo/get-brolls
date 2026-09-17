@@ -17,18 +17,26 @@ def safe_preview_url(value):
     return None
 
 
+# Três botões: "outra fonte" virou opção dentro de "Pedir ajuste" — o valor exportado
+# (`alternative`) continua o mesmo, só o caminho até ele ficou mais curto.
 REVIEW_PANEL = (
-    '<section class="review-panel"><h2>Decisão</h2>'
+    '<section class="review-panel"><h2>Esse trecho serve?</h2>'
     '<div class="review-actions">'
-    '<button class="approve" data-decision="approved" aria-pressed="false">Aprovar</button>'
-    '<button data-decision="changes" aria-pressed="false">Pedir ajuste</button>'
-    '<button data-decision="rejected" aria-pressed="false">Reprovar</button>'
-    '<button data-decision="alternative" aria-pressed="false">Outra fonte</button>'
+    '<button class="approve" data-decision="approved" aria-pressed="false"'
+    ' title="Marca o trecho como aprovado. Depois eu baixo ele pra sua pasta.">Aprovar</button>'
+    '<button data-decision="changes" aria-pressed="false"'
+    ' title="Você escreve o que mudar (outro pedaço do vídeo, ou outro vídeo) e eu refaço.">Pedir ajuste</button>'
+    '<button data-decision="rejected" aria-pressed="false"'
+    ' title="Descarta o trecho. Eu não baixo ele.">Reprovar</button>'
     "</div>"
     '<button class="comment-toggle" type="button" aria-expanded="false">Comentar</button>'
     '<div class="review-fields" hidden>'
-    '<label>Comentário<textarea data-comment rows="3" placeholder="Descreva sua observação…"></textarea></label>'
-    '<label class="other-url" hidden>Link de outra fonte (opcional)<input data-suggestion type="url" placeholder="https://…"></label>'
+    '<label class="want-other" hidden><input type="checkbox" data-alternative>'
+    " Não é esse vídeo: procure outro</label>"
+    '<label>O que mudar<textarea data-comment rows="3"'
+    ' placeholder="Me conta em uma linha o que você queria…"></textarea></label>'
+    '<label class="other-url" hidden>Achou outro vídeo? cole o link (opcional)'
+    '<input data-suggestion type="url" placeholder="https://…"></label>'
     '<button class="confirm-review" type="button" hidden>Salvar decisão</button>'
     "</div>"
     '<p data-review-status class="feedback" role="status"></p></section>'
@@ -45,8 +53,8 @@ def segment_label(c):
     if c["segment"]["start_s"] is not None:
         return f"{timecode(c['segment']['start_s'])}–{timecode(c['segment']['end_s'])}"
     if c.get("media", {}).get("kind") == "image":
-        return "Imagem estática"
-    return "não definido"
+        return "Imagem parada"
+    return "vídeo inteiro"
 
 
 def source_domain(url):
@@ -63,14 +71,18 @@ def source_card(c, source, sheet, poster, esc):
     image = (
         f'<img class="source-thumbnail" src="{esc(thumb)}" alt="" loading="lazy">'
         if thumb
-        else '<span class="source-thumbnail placeholder">Sem prévia</span>'
+        else '<span class="source-thumbnail placeholder">sem imagem da fonte</span>'
     )
     usage = {
-        "unknown": "a confirmar",
-        "permitted": "registrado pelo usuário",
-        "restricted": "restrito",
+        "unknown": "ainda não conferido",
+        "permitted": "você anotou que pode",
+        "restricted": "uso restrito",
     }.get(c["rights"]["status"], c["rights"]["status"])
-    details = [f"<strong>{esc(c['title'])}</strong>", f"<code>{esc(c['id'])}</code>"]
+    # O id é um hash: fica no title, fora do lugar nobre do card.
+    details = [
+        f"<strong>{esc(c['title'])}</strong>",
+        f"<code title=\"Identificador interno deste trecho\">{esc(c['id'])}</code>",
+    ]
     if c["segment"]["start_s"] is not None:
         details.append(f"<p>{esc(cut_label(c))}</p>")
         duration = c.get("media", {}).get("duration_s")
@@ -86,11 +98,14 @@ def source_card(c, source, sheet, poster, esc):
     if c.get("captured_at"):
         details.append(f"<p>Capturado em: {esc(c['captured_at'])}</p>")
     details.append(
-        f"<p>Decisão de coleta: {esc(c.get('match', {}).get('reason') or 'Ainda não registrada')}</p>"
+        f"<p>Por que eu escolhi este: {esc(c.get('match', {}).get('reason') or 'ainda não registrei')}</p>"
     )
     if c["rights"].get("attribution"):
         details.append(f"<p>{esc(c['rights']['attribution'])}</p>")
-    details.append(f"<p>Uso: {esc(usage)}</p>")
+    details.append(
+        f"<p>Pode usar? {esc(usage)} — quem confere a licença da fonte é você,"
+        " antes de publicar.</p>"
+    )
     info = '<div class="source-link-info">'
     if source:
         info += f'<span class="source-domain">{esc(source_domain(source))}</span>'
@@ -142,7 +157,9 @@ def contact_sheet_figure(candidate, sheet, esc):
     preview = candidate["preview"]
     times = preview.get("frame_times_s") or []
     grid = preview.get("sheet_grid") or []
-    caption = f"Contact sheet · {len(times)} quadros" if times else "Contact sheet"
+    caption = (
+        f"Os quadros do trecho ({len(times)})" if times else "Os quadros do trecho"
+    )
     if len(grid) == 2:
         caption += f" · grade {grid[0]}×{grid[1]}"
     caption += " · " + cut_label(candidate)
@@ -154,7 +171,7 @@ def contact_sheet_figure(candidate, sheet, esc):
         legend = f'<p class="sheet-legend">{esc(cells)}</p>'
     return (
         f'<figure class="contact-sheet"><a href="{esc(sheet)}" target="_blank" rel="noopener">'
-        f'<img src="{esc(sheet)}" alt="Contact sheet do trecho" loading="lazy"></a>'
+        f'<img src="{esc(sheet)}" alt="Os quadros do trecho" loading="lazy"></a>'
         f"<figcaption>{esc(caption)} · abrir em tamanho real</figcaption>{legend}</figure>"
     )
 
@@ -187,13 +204,13 @@ def render(ledger):
         context = safe_preview_url(c["preview"].get("context_path"))
         content = source_card(c, source, sheet, p, esc)
         if context:
-            content += f'<figure class="context-still"><img src="{esc(context)}" alt="Print da pessoa para contexto" loading="lazy"><figcaption>Pessoa / contexto</figcaption></figure>'
+            content += f'<figure class="context-still"><img src="{esc(context)}" alt="Print da pessoa para contexto" loading="lazy"><figcaption>Você em cena (contexto)</figcaption></figure>'
         if sheet:
             content += contact_sheet_figure(c, sheet, esc)
         if c["preview"].get("warning"):
             content += f'<p role="status">{esc(c["preview"]["warning"])}</p>'
         if not c.get("local_path"):
-            content += '<p class="source-note">Referência estática da fonte. GIF do trecho requer original local autorizado.</p>'
+            content += '<p class="source-note">Aqui só tenho a imagem da fonte: pra gerar o movimento eu precisaria do arquivo original no seu computador.</p>'
         content = f'<section class="review-source"><h2>Fonte coletada</h2>{content}</section>'
         content += script_bubble(c.get("narration"), esc)
         from .models import signature
@@ -235,7 +252,7 @@ def render(ledger):
                 "presenter": p,
                 "presenterLabel": "Trecho do vídeo"
                 if has_preview
-                else "Miniatura da fonte · sem prévia",
+                else "Imagem da fonte · sem prévia em movimento",
                 "no_preview": not has_preview,
                 "gif": gif,
                 "poster": None,
