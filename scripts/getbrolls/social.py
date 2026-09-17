@@ -197,7 +197,12 @@ def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):
             raise ProviderError('yt-dlp retornou metadados inválidos.') from None
         if not isinstance(data, dict):
             raise ProviderError('yt-dlp retornou metadados inválidos.')
-        for vtt in sorted(Path(work).glob('*.vtt')):
+        found = {_language_from(v.name): v for v in sorted(Path(work).glob('*.vtt'))}
+        # Na ordem pedida em `langs`: o primeiro idioma é o preferido quando dois
+        # trazem os mesmos tempos, e é essa ordem que `candidate_windows` respeita.
+        ordered = [found.pop(code) for code in langs if code in found]
+        ordered += [found[code] for code in sorted(found)]
+        for vtt in ordered:
             from .inspecting import parse_vtt
 
             text = vtt.read_text(encoding='utf-8', errors='replace')

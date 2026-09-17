@@ -115,12 +115,16 @@ def candidate_windows(probe, query=None, max_windows=3):
     """Trechos que valem olhar, do mais parecido com a frase para o menos.
 
     `probe` é o retorno de `social.probe_remote`. Sem frase, ninguém pontua: a ordem
-    passa a ser cronológica. Nada aqui inventa intervalo além da duração conhecida.
+    passa a ser cronológica. Nada aqui inventa intervalo além da duração conhecida, e
+    janelas iguais em tempo e fonte (o mesmo trecho em dois idiomas) contam uma só vez.
     """
     duration = probe.get("duration_s")
     raw = []
-    for language in sorted((probe.get("subtitles") or {})):
-        cues = (probe["subtitles"][language] or {}).get("cues") or []
+    # Ordem do dicionário = ordem dos idiomas pedidos. Quando dois idiomas repetem
+    # os mesmos tempos (legenda automática traduzida), quem chega primeiro fica: a
+    # deduplicação por (início, fim, fonte) descarta o segundo.
+    for language, entry in (probe.get("subtitles") or {}).items():
+        cues = (entry or {}).get("cues") or []
         for window in _subtitle_windows(cues):
             raw.append({**window, "source": "subtitle"})
     for chapter in probe.get("chapters") or []:

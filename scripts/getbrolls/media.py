@@ -343,11 +343,15 @@ def review_preview(src, directory, stem, start, end, config, label=None):
     return result
 
 
-def scan_sheet(src, directory, stem, start, span, frames=12):
+def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):
     """Varredura do vídeo inteiro: um quadro a cada span/frames segundos, baixa resolução.
 
     Não é a prévia do trecho (essa é `review_preview`, presa a GB_PREVIEW_MAX_SECONDS):
     é o mapa do vídeo para escolher onde olhar. Não define intervalo nenhum.
+
+    `start` é tempo do arquivo de trabalho; `source_offset` é onde esse arquivo começa
+    dentro da fonte. `frame_times_s` sai em tempo da fonte, como em `review_preview`:
+    é com esse número que a pessoa monta o `--start/--end` do `preview`.
     """
     import math, tempfile
 
@@ -376,7 +380,9 @@ def scan_sheet(src, directory, stem, start, span, frames=12):
         "span_s": round(span, 3),
         "every_s": round(span / n, 3),
         "frames": n,
-        "frame_times_s": frame_times(start, start + span, n),
+        "frame_times_s": frame_times(
+            start + source_offset, start + source_offset + span, n
+        ),
     }
 
 

@@ -76,7 +76,15 @@ def stub_ytdlp(directory, payload, vtt=None):
     path = Path(directory) / "yt-dlp-stub.py"
     path.write_text(STUB.format(python=sys.executable), encoding="utf-8")
     path.chmod(0o755)
-    env = {"GB_YTDLP_PATH": str(path), "GB_TEST_YTDLP_JSON": json.dumps(payload)}
+    executable = path
+    if os.name == "nt":
+        # CreateProcess ignora shebang: no Windows o executável fixado é um .cmd
+        # que chama o Python, como o playwright-cli.cmd do instalador.
+        executable = Path(directory) / "yt-dlp-stub.cmd"
+        executable.write_text(
+            f'@echo off\r\n"{sys.executable}" "{path}" %*\r\n', encoding="utf-8"
+        )
+    env = {"GB_YTDLP_PATH": str(executable), "GB_TEST_YTDLP_JSON": json.dumps(payload)}
     if vtt is not None:
         env["GB_TEST_YTDLP_VTT"] = vtt
     return env
@@ -145,6 +153,34 @@ class WindowTests(unittest.TestCase):
         windows = inspecting.candidate_windows(probe, "poeira", 3)
         self.assertEqual("description_timestamp", windows[0]["source"])
         self.assertEqual(10.0, windows[0]["start_s"])
+
+    def test_two_languages_with_the_same_timings_do_not_take_two_slots(self):
+        cues = inspecting.parse_vtt(VTT)
+        english = [dict(cue, text="orange sky over the city") for cue in cues]
+        probe = self.probe(
+            subtitle_langs=["en", "pt"],
+            subtitles={
+                "pt": {"path": None, "cues": cues},
+                "en": {"path": None, "cues": english},
+            },
+        )
+        windows = inspecting.candidate_windows(probe, "céu laranja", 5)
+        subtitles = [w for w in windows if w["source"] == "subtitle"]
+        starts = [w["start_s"] for w in subtitles]
+        self.assertEqual(len(starts), len(set(starts)))
+        self.assertEqual(2, len(starts))
+        # O primeiro idioma do dicionário manda: o texto é o dele, não o do segundo.
+        self.assertTrue(all("orange sky" not in w["text"] for w in subtitles), subtitles)
+        self.assertIn("laranja", subtitles[0]["text"])
+
+    def test_probe_remote_orders_the_subtitles_by_the_requested_languages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = stub_ytdlp(tmp, WITH_EVERYTHING, VTT)
+            with patch.dict(os.environ, env):
+                probe = social.probe_remote(
+                    URL, langs=("pt", "en"), cache=Path(tmp) / ".getbrolls-sources"
+                )
+        self.assertEqual(["pt"], list(probe["subtitles"]))
 
     def test_nothing_to_offer_is_an_empty_list_not_an_error(self):
         probe = self.probe(chapters=[], subtitles={}, subtitle_langs=[], description="")
@@ -348,6 +384,12 @@ class ScanTests(unittest.TestCase):
             self.assertTrue(Path(payload["files"]["scan"]).is_file())
             self.assertEqual(12, payload["scan"]["frames"])
             self.assertAlmostEqual(20 / 12, payload["scan"]["every_s"], places=2)
+            # Rótulos em tempo da fonte, como `preview.frame_times_s`: é com eles que
+            # a pessoa escreve o --start/--end do preview.
+            times = payload["scan"]["frame_times_s"]
+            self.assertEqual(12, len(times))
+            self.assertAlmostEqual(0.0, times[0], places=2)
+            self.assertLess(times[-1], 20.0)
             # Varrer não decide: nem intervalo, nem aprovação, nem prévia do trecho.
             self.assertIsNone(payload["segment"]["start_s"])
             self.assertEqual(0, payload["segment"]["revision"])

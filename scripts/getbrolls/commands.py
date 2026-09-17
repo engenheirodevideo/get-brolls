@@ -1342,7 +1342,16 @@ def scan_candidate(ledger, c, config):
         )
     offset = c.get("local_start_s", 0)
     stem = hashlib.sha256(c["id"].encode()).hexdigest()[:16]
-    result = scan_sheet(source, ledger.root / "previews", stem, max(0, -offset), span)
+    # Tempo do arquivo de trabalho para o ffmpeg; tempo da fonte nos rótulos.
+    local_start = max(0, -offset)
+    result = scan_sheet(
+        source,
+        ledger.root / "previews",
+        stem,
+        local_start,
+        span,
+        source_offset=offset,
+    )
     # `scan` fica fora de `preview`/`segment`: varrer não decide nem invalida nada.
     c["scan"] = {**result, "capped": span < float(duration), "duration_s": float(duration)}
     ledger.save("preview", c)
