@@ -52,10 +52,16 @@ def render_page(
         thumbnail = (
             f'<img loading="lazy" src="{esc(presenter)}" data-still="{esc(presenter)}" alt="{name}">'
             if item.get("gif")
-            else image(presenter or item.get("poster"), "Prévia — " + item["title"])
+            else image(
+                presenter or item.get("poster"),
+                ("Miniatura da fonte — " if item.get("no_preview") else "Prévia — ") + item["title"],
+            )
+        )
+        badge = (
+            '<span class="preview-badge">Sem prévia</span>' if item.get("no_preview") else ""
         )
         gallery.append(
-            f'<button class="shot" data-index="{i}" aria-current="false"><div class="thumbs">{thumbnail}</div><h3>{name}</h3><div class="time">{time}</div></button>'
+            f'<button class="shot" data-index="{i}" aria-current="false"><div class="thumbs">{thumbnail}{badge}</div><h3>{name}</h3><div class="time">{time}</div></button>'
         )
         options.append(f'<option value="{i}">{name}</option>')
     logo = brand_logo()

@@ -104,6 +104,45 @@ def doctor_summary(executables, pins=()):
     return {"ok": ok, "missing": missing, "optional": optional}
 
 
+def doctor_contact_sheet(ffmpeg_present):
+    """Whether the contact sheet can be numbered by ffmpeg (drawtext + TrueType font)."""
+    from .media import drawtext_available, find_font
+
+    status = {"drawtext": False, "font": None, "labels": False}
+    optional = []
+    if not ffmpeg_present:
+        return {"status": status, "optional": optional}
+    status["drawtext"] = drawtext_available()
+    try:
+        status["font"] = find_font()
+    except ValueError as exc:
+        optional.append({"item": "GB_FONT_FILE", "note": str(exc)})
+    status["labels"] = bool(status["drawtext"] and status["font"])
+    if not status["drawtext"]:
+        optional.append(
+            {
+                "item": "drawtext",
+                "note": (
+                    "FFmpeg sem o filtro drawtext (libfreetype): o contact sheet sai sem número "
+                    "e timecode nas células; o Storyboard imprime a legenda de tempos. "
+                    "Reinstale o FFmpeg com freetype (Homebrew: brew reinstall ffmpeg; "
+                    "Windows: build gyan.dev/BtbN; Ubuntu: apt install ffmpeg)."
+                ),
+            }
+        )
+    elif not status["font"]:
+        optional.append(
+            {
+                "item": "font",
+                "note": (
+                    "Nenhuma fonte TrueType encontrada para rotular o contact sheet; instale "
+                    "DejaVu/Liberation/Arial ou defina GB_FONT_FILE."
+                ),
+            }
+        )
+    return {"status": status, "optional": optional}
+
+
 # Etapas do fluxo, na ordem coleta → revisão → entrega, com singular e plural.
 STATUS_STAGES = (
     ("candidates", "candidato encontrado", "candidatos encontrados"),
@@ -389,9 +428,13 @@ def execute(args):
             executables["playwright-cli"] = bool(
                 _local_playwright() or shutil.which("playwright-cli")
             )
+            summary = doctor_summary(executables, pin_problems)
+            sheet = doctor_contact_sheet(executables.get("ffmpeg"))
+            summary["optional"] += sheet["optional"]
             result = {
                 # Veredito primeiro: o JSON continua completo logo abaixo dele.
-                "summary": doctor_summary(executables, pin_problems),
+                "summary": summary,
+                "contact_sheet": sheet["status"],
                 "get_brolls": __version__,
                 "preview": config,
                 "python": sys.version.split()[0],
@@ -782,4 +825,22 @@ def execute(args):
         c["output_media"] = probe(ledger.root / rel)
     ledger.save(cmd, c)
     render(ledger)
+    if cmd == "preview":
+        # Absolute paths for the agent to open the exact files the Storyboard shows.
+        # They live only in this response, never in the manifest.
+        return {**c, "files": preview_files(ledger, c)}
     return c
+
+
+def preview_files(ledger, c):
+    """Absolute paths of the preview artifacts that the Storyboard embeds for this item."""
+    files = {}
+    for key, name in (
+        ("contact_sheet_path", "contact_sheet"),
+        ("poster_path", "poster"),
+        ("gif_path", "gif"),
+    ):
+        rel = c["preview"].get(key)
+        files[name] = str((ledger.root / rel).resolve()) if rel else None
+    files["review"] = str((ledger.root / "review.html").resolve())
+    return files

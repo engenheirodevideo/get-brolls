@@ -10,6 +10,7 @@ tags: [get-brolls]
 
 ## Não lançado
 
+- **Contact sheet oficial na CLI.** `preview` gera o sheet no padrão do workflow original (`gb_contact.sh`): grade com espaçamento, e, quando o FFmpeg tem `drawtext` e há fonte TrueType (`GB_FONT_FILE` ou DejaVu/Liberation/Arial), índice por célula e banner com título, ID e janela. Sem `drawtext`, o sheet sai sem rótulos e o Storyboard imprime a legenda de tempos por célula. O manifest ganha `preview.frame_times_s`, `sheet_grid` e `sheet_labels`. O Storyboard exibe o sheet inline em "Fonte coletada" (antes era só um link). Itens sem prévia local passam a ser rotulados "Miniatura da fonte · sem prévia", com badge na galeria. `doctor` reporta `drawtext` e fonte em `contact_sheet` e em `summary.optional`. ([#25](https://github.com/engenheirodevideo/get-brolls/issues/25))
 - **Correção:** `scripts/install.ps1` falhava no Windows PowerShell 5.1 (padrão do Windows 11) porque as aspas duplas internas dos snippets `python -c` eram removidas ao chamar o executável nativo, gerando `SyntaxError`. Os snippets agora usam aspas simples escapadas. A CI passa a executar o instalador Windows também em PowerShell 5.1 e um teste impede a regressão. ([#23](https://github.com/engenheirodevideo/get-brolls/issues/23))
 
 ## 2.3.7 — 2026-09-16

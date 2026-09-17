@@ -17,6 +17,47 @@ def safe_preview_url(value):
     return None
 
 
+def format_seconds(value):
+    """Seconds as a short pt-BR label: 7 → "7,0 s", 7.417 → "7,4 s"."""
+    return f"{value:.1f}".replace(".", ",") + " s"
+
+
+def cut_label(candidate):
+    """Where the cut sits in the source: 'corte 0:59.0–1:05.0 de 2:02.4'."""
+    from .media import clock
+
+    seg = candidate["segment"]
+    if seg["start_s"] is None:
+        return "corte a definir"
+    text = f"corte {clock(seg['start_s'])}–{clock(seg['end_s'])}"
+    duration = candidate.get("media", {}).get("duration_s")
+    if duration:
+        text += f" de {clock(duration)}"
+    return text
+
+
+def contact_sheet_figure(candidate, sheet, esc):
+    """Inline contact sheet with a per-cell time legend when ffmpeg drew no labels."""
+    preview = candidate["preview"]
+    times = preview.get("frame_times_s") or []
+    grid = preview.get("sheet_grid") or []
+    caption = f"Contact sheet · {len(times)} quadros" if times else "Contact sheet"
+    if len(grid) == 2:
+        caption += f" · grade {grid[0]}×{grid[1]}"
+    caption += " · " + cut_label(candidate)
+    legend = ""
+    if times and not preview.get("sheet_labels"):
+        cells = " · ".join(
+            f"{i + 1} = {format_seconds(t)}" for i, t in enumerate(times)
+        )
+        legend = f'<p class="sheet-legend">{esc(cells)}</p>'
+    return (
+        f'<figure class="contact-sheet"><a href="{esc(sheet)}" target="_blank" rel="noopener">'
+        f'<img src="{esc(sheet)}" alt="Contact sheet do trecho" loading="lazy"></a>'
+        f"<figcaption>{esc(caption)} · abrir em tamanho real</figcaption>{legend}</figure>"
+    )
+
+
 def render(ledger):
     records = []
     story_items = []
@@ -55,9 +96,10 @@ def render(ledger):
         if c.get("captured_at"):
             content += f"<p>Capturado em: {esc(c['captured_at'])}</p>"
         if sheet:
-            content += f'<p><a href="{esc(sheet)}" target="_blank" rel="noopener">Ver contact sheet</a></p>'
+            content += contact_sheet_figure(c, sheet, esc)
         if c["preview"].get("warning"):
             content += f'<p role="status">{esc(c["preview"]["warning"])}</p>'
+        has_preview = bool(c["preview"].get("poster_path"))
         if not c.get("local_path"):
             content += "<p>Referência estática da fonte. GIF do trecho requer original local autorizado.</p>"
         from .models import signature
@@ -97,7 +139,10 @@ def render(ledger):
                 "title": c["title"],
                 "content": content,
                 "presenter": p,
-                "presenterLabel": "Prévia do trecho",
+                "presenterLabel": "Prévia do trecho"
+                if has_preview
+                else "Miniatura da fonte · sem prévia",
+                "no_preview": not has_preview,
                 "gif": gif,
                 "poster": None,
                 "time": f"{c['segment']['start_s']}–{c['segment']['end_s']} s"
