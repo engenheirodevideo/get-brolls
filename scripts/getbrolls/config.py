@@ -6,6 +6,10 @@ from pathlib import Path
 KEYS = {
     "GB_GIF_SCOPE",
     "GB_RULES_FILE",
+    # Pasta pessoal da skill (RULES.md global e biblioteca); padrão ~/.getbrolls.
+    "GB_HOME",
+    # `off` desliga leitura e escrita da biblioteca global.
+    "GB_LIBRARY",
     "PEXELS_API_KEY",
     "PIXABAY_API_KEY",
     "YOUTUBE_API_KEY",

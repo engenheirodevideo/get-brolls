@@ -9,16 +9,9 @@ ROOT = Path(__file__).resolve().parents[2]
 TYPES = {"video", "image", "news_screenshot", "web_screenshot"}
 
 
-def load_rules(project):
-    path = Path(os.environ.get("GB_RULES_FILE") or Path(project) / "RULES.md")
-    if not path.exists():
-        if os.environ.get("GB_RULES_FILE"):
-            raise ValueError(
-                "GB_RULES_FILE aponta para um arquivo que não existe: corrija o caminho "
-                "ou apague essa variável para usar o RULES.md da pasta do trabalho."
-            )
-        path = ROOT / "docs" / "RULES.md"
-    raw = path.read_text(encoding="utf-8")
+def read_rules_block(path):
+    """Único bloco ```json de um RULES.md, já validado como objeto."""
+    raw = Path(path).read_text(encoding="utf-8")
     blocks = re.findall(r"```json\s*\n(.*?)\n```", raw, re.S)
     if len(blocks) != 1:
         raise ValueError(
@@ -32,7 +25,88 @@ def load_rules(project):
             "O bloco json do RULES.md está com erro de digitação (vírgula ou aspas "
             "sobrando). Rode `init-rules --force` para gerar um arquivo limpo."
         ) from None
-    if not isinstance(r, dict) or (
+    if not isinstance(r, dict):
+        raise ValueError(
+            "O bloco json do RULES.md tem que ser um objeto entre chaves. Rode "
+            "`init-rules --force` para gerar um arquivo limpo."
+        )
+    return r
+
+
+# A camada global é conveniência editorial: ela nunca fala por uma pessoa. Quem
+# assina a responsabilidade é sempre o projeto em que o vídeo está sendo feito.
+NEVER_INHERITED = ("copyright",)
+
+
+def home_dir():
+    """Pasta pessoal da skill; `GB_HOME` existe para os testes não tocarem a real."""
+    return Path(os.environ.get("GB_HOME") or Path.home() / ".getbrolls")
+
+
+def _merge(base, extra):
+    """Listas unem (sem repetir, na ordem do mais geral ao mais específico)."""
+    if isinstance(base, list) and isinstance(extra, list):
+        joined = list(base)
+        for value in extra:
+            if value not in joined:
+                joined.append(value)
+        return joined
+    if isinstance(base, dict) and isinstance(extra, dict):
+        merged = dict(base)
+        for key, value in extra.items():
+            merged[key] = _merge(base[key], value) if key in base else value
+        return merged
+    return extra
+
+
+def rules_layers(project):
+    """Camadas na ordem geral → específica, com os avisos do que foi ignorado."""
+    layers, warnings = [], []
+    project_path = Path(project) / "RULES.md"
+    if not project_path.exists():
+        # Sem arquivo no projeto, o modelo da skill é só o piso: quem está por cima
+        # (global, GB_RULES_FILE) continua valendo mais que ele.
+        template = ROOT / "docs" / "RULES.md"
+        layers.append((template, read_rules_block(template)))
+        project_path = None
+    global_path = home_dir() / "RULES.md"
+    if global_path.exists():
+        try:
+            data = read_rules_block(global_path)
+        except ValueError as e:
+            warnings.append(f"{global_path} foi ignorado: {e}")
+        else:
+            for key in NEVER_INHERITED:
+                if key in data:
+                    del data[key]
+                    warnings.append(
+                        f'"{key}" do RULES.md global ({global_path}) foi ignorado: '
+                        "responsabilidade e declaração valem só no projeto em que o "
+                        "vídeo é feito. Preencha no RULES.md deste projeto."
+                    )
+            layers.append((global_path, data))
+    middle = os.environ.get("GB_RULES_FILE")
+    if middle:
+        middle = Path(middle)
+        if not middle.exists():
+            raise ValueError(
+                "GB_RULES_FILE aponta para um arquivo que não existe: corrija o caminho "
+                "ou apague essa variável para usar o RULES.md da pasta do trabalho."
+            )
+        layers.append((middle, read_rules_block(middle)))
+    if project_path is not None:
+        layers.append((project_path, read_rules_block(project_path)))
+    return layers, warnings
+
+
+def load_rules(project):
+    layers, warnings = rules_layers(project)
+    r, sources = {}, {}
+    for path, data in layers:
+        for key, value in data.items():
+            r[key] = _merge(r[key], value) if key in r else value
+            sources[key] = str(path)
+    if (
         type(r.get("version")) is not int or r["version"] != 1
     ):
         raise ValueError(
@@ -127,6 +201,15 @@ def load_rules(project):
             )
     # Optional `pacing` block for the social queue; the environment still wins.
     validate_pacing_block(r.get("pacing"))
+    # Aditivo: `sources` diz de que arquivo veio cada campo e `rules_warnings` o que
+    # foi ignorado pelo caminho. Nenhum consumidor existente lê essas duas chaves.
+    r["sources"] = sources
+    r["rules_warnings"] = warnings
+    if warnings:
+        from .runtime import record_warning
+
+        for message in warnings:
+            record_warning("RULES_LAYER_IGNORED", message)
     return r
 
 
