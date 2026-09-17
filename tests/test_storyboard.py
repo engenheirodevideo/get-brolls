@@ -73,7 +73,7 @@ class ContactSheetRenderingTest(unittest.TestCase):
         self.assertIn('<img src="previews/a-sheet.jpg"', page)
         self.assertIn("1 = 7,0 s · 2 = 8,3 s · 3 = 9,5 s · 4 = 10,8 s", page)
         self.assertIn("Contact sheet · 4 quadros · grade 4×1 · corte 0:07.0–0:12.0", page)
-        self.assertIn("Prévia do trecho", page)
+        self.assertIn("Trecho do vídeo", page)
         self.assertNotIn("Sem prévia", page)
         self.assertNotIn("Ver contact sheet", page)
 
@@ -92,6 +92,73 @@ class ContactSheetRenderingTest(unittest.TestCase):
         page = self.render_item(poster_url="https://i.ytimg.com/vi/abc/hq.jpg")
         self.assertIn("Miniatura da fonte · sem prévia", page)
         self.assertIn('<span class="preview-badge">Sem prévia</span>', page)
-        self.assertNotIn("Prévia do trecho", page)
+        self.assertNotIn("Trecho do vídeo", page)
         self.assertNotIn('alt="Prévia', page)
         self.assertIn('alt="Miniatura da fonte — Foguete decolando"', page)
+
+
+class StoryboardV2Test(unittest.TestCase):
+    """The generator ships the approved V2 template (source card, speech bubble, decisions)."""
+
+    def render_two(self):
+        import tempfile
+        from getbrolls.ledger import Ledger
+        from getbrolls.models import candidate, set_segment
+        from getbrolls.rendering import render
+
+        with tempfile.TemporaryDirectory() as d:
+            ledger = Ledger(d)
+            bare = candidate("youtube", "one", "Sem prévia ainda")
+            bare["source_url"] = "https://www.youtube.com/watch?v=one"
+            bare["preview"]["poster_url"] = "https://i.ytimg.com/vi/one/hq.jpg"
+            shown = candidate("youtube", "two", "Foguete <decolando>")
+            shown["source_url"] = "https://www.youtube.com/watch?v=two"
+            shown["creator"]["name"] = "KHOU 11"
+            shown["media"]["duration_s"] = 122.0
+            set_segment(shown, 59, 65)
+            shown["narration"] = "e o foguete saiu do chão"
+            shown["preview"].update(
+                poster_path="previews/b-poster.jpg",
+                gif_path="previews/b.gif",
+                contact_sheet_path="previews/b-sheet.jpg",
+                frame_times_s=[59.0, 62.0],
+                sheet_grid=[2, 1],
+                sheet_labels=True,
+            )
+            ledger.data["items"] += [bare, shown]
+            return Path(render(ledger)).read_text(encoding="utf-8")
+
+    def test_header_gallery_and_panels_follow_v2(self):
+        page = self.render_two()
+        self.assertIn('<header class="artifact-header">', page)
+        self.assertIn('<span class="wordmark">engenheiro<span>de vídeo<b>.</b></span></span>', page)
+        self.assertIn("<span>2 quadros</span>", page)
+        self.assertIn('<div class="gallery-head"><h2>Storyboard</h2>', page)
+        self.assertIn('data-storyboard-mode="hover"', page)
+        self.assertIn('id="pending-only"', page)
+        # Source card, speech bubble and the four decisions.
+        self.assertIn('<a class="source-link-card" href="https://www.youtube.com/watch?v=two"', page)
+        self.assertIn('<span class="source-domain">youtube.com</span>', page)
+        self.assertIn("<strong>Foguete &lt;decolando&gt;</strong>", page)
+        self.assertIn("<p>corte 0:59.0–1:05.0 de 2:02.0</p>", page)
+        self.assertIn('<span class="cut-position"', page)
+        self.assertIn("Abrir fonte original ↗", page)
+        self.assertIn('<span class="script-label">Fala do roteiro</span>', page)
+        self.assertIn("“e o foguete saiu do chão”", page)
+        for decision in ("approved", "changes", "rejected", "alternative"):
+            self.assertIn(f'data-decision="{decision}"', page)
+        self.assertIn('class="comment-toggle"', page)
+        # Presenter interval in MM:SS.ff and the first frame with a preview flagged.
+        self.assertIn("00:59.00–01:05.00", page)
+        self.assertIn('id="shot-0" data-preview="0"', page)
+        self.assertIn('id="shot-1" data-preview="1"', page)
+        self.assertIn('data-animated-thumb="previews/b.gif"', page)
+        # The old toolbar and the "Revisar trecho" panel are gone.
+        self.assertNotIn('<section class="review-toolbar">', page)
+        self.assertNotIn("Revisar trecho", page)
+
+    def test_brand_logo_is_not_cropped(self):
+        page = self.render_two()
+        css = page.split("</style>")[0]
+        self.assertIn(".brand-logo{display:block;width:48px;height:48px;max-width:none;object-fit:contain", css)
+        self.assertNotIn("brand-logo-frame", page)

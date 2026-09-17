@@ -20,6 +20,9 @@ if [ "$missing" -ne 0 ]; then
   printf 'Instale os executáveis conforme docs/GUIDE.md e repita.\n'; exit 1
 fi
 python3 -c 'import sys; assert sys.version_info >= (3,11), "Python 3.11+ obrigatório"'
+if ! ffmpeg -hide_banner -filters 2>/dev/null | grep -q ' drawtext '; then
+  printf 'AVISO: FFmpeg sem o filtro drawtext (libfreetype): o contact sheet sai sem número e timecode nas células. Reinstale o FFmpeg com freetype (Homebrew: brew reinstall ffmpeg; Ubuntu: apt install ffmpeg).\n'
+fi
 if [ "${1:-}" = "--check" ]; then
   printf 'Pré-requisitos do instalador encontrados; check não instala nem testa rede/login.\n'
   exit 0

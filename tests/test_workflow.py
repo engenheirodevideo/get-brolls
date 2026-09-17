@@ -261,3 +261,37 @@ class ContactSheetTests(unittest.TestCase):
         with patch.dict(os.environ, {"GB_FONT_FILE": "/nao/existe.ttf"}):
             with self.assertRaises(ValueError):
                 find_font()
+
+
+class RejectedDecisionImportTest(unittest.TestCase):
+    def test_storyboard_rejection_is_imported_as_reject(self):
+        with tempfile.TemporaryDirectory() as d:
+            ledger = Ledger(d)
+            c = candidate("local", "x", "Item")
+            set_segment(c, 0, 2)
+            ledger.data["items"].append(c)
+            ledger.save("test", c)
+            payload = {
+                "type": "getbrolls-review",
+                "templateVersion": 2,
+                "project": project_id(ledger),
+                "items": [
+                    {
+                        "id": c["id"],
+                        "signature": signature(c),
+                        "reviewEpoch": review_epoch(c),
+                        "state": "rejected",
+                        "comment": "Não é o foguete certo",
+                        "suggestion": "",
+                    }
+                ],
+            }
+            path = Path(d) / "review.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            result = import_review(ledger, path, "Revisor")
+            self.assertEqual(result["imported"], 1)
+            stored = ledger.get(c["id"])
+            self.assertEqual(stored["approval"]["status"], "rejected")
+            self.assertEqual(stored["approval"]["by"], "Revisor")
+            self.assertEqual(stored["state"], "rejected")
+            self.assertEqual(stored["review"]["state"], "rejected")

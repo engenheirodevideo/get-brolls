@@ -199,6 +199,22 @@ class RepositoryDocumentationTests(unittest.TestCase):
         for snippet in snippets:
             self.assertNotIn('"', snippet, snippet)
 
+    def test_readmes_require_the_whole_stack_before_use(self):
+        for name, heading in (("README.md", "### 0. Instale a stack inteira"), ("README.en.md", "### 0. Install the whole stack")):
+            readme = (ROOT / name).read_text(encoding="utf-8")
+            self.assertIn(heading, readme)
+            self.assertLess(readme.index(heading), readme.index("### 1. "))
+            self.assertIn("libfreetype", readme)
+            self.assertIn("brew install python ffmpeg node git curl", readme)
+            self.assertIn("winget install", readme)
+            self.assertIn("contact_sheet.labels: true", readme)
+
+    def test_installers_warn_about_missing_drawtext(self):
+        for name in ("scripts/install.sh", "scripts/install.ps1"):
+            script = (ROOT / name).read_text(encoding="utf-8")
+            self.assertIn("drawtext", script)
+            self.assertIn("libfreetype", script)
+
     def test_contribution_templates_are_present(self):
         bug = ROOT / ".github/ISSUE_TEMPLATE/bug_report.md"
         config = ROOT / ".github/ISSUE_TEMPLATE/config.yml"

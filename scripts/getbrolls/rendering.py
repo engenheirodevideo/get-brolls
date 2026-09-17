@@ -17,6 +17,107 @@ def safe_preview_url(value):
     return None
 
 
+REVIEW_PANEL = (
+    '<section class="review-panel"><h2>Decisão</h2>'
+    '<div class="review-actions">'
+    '<button class="approve" data-decision="approved" aria-pressed="false">Aprovar</button>'
+    '<button data-decision="changes" aria-pressed="false">Pedir ajuste</button>'
+    '<button data-decision="rejected" aria-pressed="false">Reprovar</button>'
+    '<button data-decision="alternative" aria-pressed="false">Outra fonte</button>'
+    "</div>"
+    '<button class="comment-toggle" type="button" aria-expanded="false">Comentar</button>'
+    '<div class="review-fields" hidden>'
+    '<label>Comentário<textarea data-comment rows="3" placeholder="Descreva sua observação…"></textarea></label>'
+    '<label class="other-url" hidden>Link de outra fonte (opcional)<input data-suggestion type="url" placeholder="https://…"></label>'
+    '<button class="confirm-review" type="button" hidden>Salvar decisão</button>'
+    "</div>"
+    '<p data-review-status class="feedback" role="status"></p></section>'
+)
+
+
+def timecode(seconds):
+    """Seconds → MM:SS.ff, the Storyboard's interval notation."""
+    minutes, rest = divmod(float(seconds), 60)
+    return f"{int(minutes):02d}:{rest:05.2f}"
+
+
+def segment_label(c):
+    if c["segment"]["start_s"] is not None:
+        return f"{timecode(c['segment']['start_s'])}–{timecode(c['segment']['end_s'])}"
+    if c.get("media", {}).get("kind") == "image":
+        return "Imagem estática"
+    return "não definido"
+
+
+def source_domain(url):
+    from urllib.parse import urlsplit
+
+    host = urlsplit(url).hostname or ""
+    return host[4:] if host.startswith("www.") else host
+
+
+def source_card(c, source, sheet, poster, esc):
+    """Fonte coletada as a card: thumbnail (sheet when it exists), identity and link."""
+    # The card shows the poster; the full contact sheet follows inline below it.
+    thumb = poster or sheet
+    image = (
+        f'<img class="source-thumbnail" src="{esc(thumb)}" alt="" loading="lazy">'
+        if thumb
+        else '<span class="source-thumbnail placeholder">Sem prévia</span>'
+    )
+    usage = {
+        "unknown": "a confirmar",
+        "permitted": "registrado pelo usuário",
+        "restricted": "restrito",
+    }.get(c["rights"]["status"], c["rights"]["status"])
+    details = [f"<strong>{esc(c['title'])}</strong>", f"<code>{esc(c['id'])}</code>"]
+    if c["segment"]["start_s"] is not None:
+        details.append(f"<p>{esc(cut_label(c))}</p>")
+        duration = c.get("media", {}).get("duration_s")
+        if duration:
+            left = max(0.0, min(100.0, 100 * c["segment"]["start_s"] / duration))
+            width = max(0.5, min(100.0 - left, 100 * (c["segment"]["end_s"] - c["segment"]["start_s"]) / duration))
+            details.append(
+                f'<span class="cut-position" role="img" aria-label="Posição do corte no vídeo">'
+                f'<span style="left:{left:.2f}%;width:{width:.2f}%"></span></span>'
+            )
+    if c.get("creator", {}).get("name"):
+        details.append(f"<p>Autor: {esc(c['creator']['name'])}</p>")
+    if c.get("captured_at"):
+        details.append(f"<p>Capturado em: {esc(c['captured_at'])}</p>")
+    details.append(
+        f"<p>Decisão de coleta: {esc(c.get('match', {}).get('reason') or 'Ainda não registrada')}</p>"
+    )
+    if c["rights"].get("attribution"):
+        details.append(f"<p>{esc(c['rights']['attribution'])}</p>")
+    details.append(f"<p>Uso: {esc(usage)}</p>")
+    info = '<div class="source-link-info">'
+    if source:
+        info += f'<span class="source-domain">{esc(source_domain(source))}</span>'
+    info += '<div class="source-details">' + "".join(details) + "</div>"
+    info += (
+        '<span class="source-link-label">Abrir fonte original ↗</span>'
+        if source
+        else '<span class="source-link-label">Gravação própria · sem fonte externa</span>'
+    )
+    info += "</div>"
+    if source:
+        return (
+            f'<a class="source-link-card" href="{esc(source)}" target="_blank" rel="noopener noreferrer">'
+            f"{image}{info}</a>"
+        )
+    return f'<div class="source-link-card">{image}{info}</div>'
+
+
+def script_bubble(narration, esc):
+    if not narration:
+        return ""
+    return (
+        '<div class="caption-content review-script"><span class="script-label">Fala do roteiro</span>'
+        f'<blockquote tabindex="0" role="region" aria-label="Fala do roteiro">“{esc(narration)}”</blockquote></div>'
+    )
+
+
 def format_seconds(value):
     """Seconds as a short pt-BR label: 7 → "7,0 s", 7.417 → "7,4 s"."""
     return f"{value:.1f}".replace(".", ",") + " s"
@@ -82,26 +183,19 @@ def render(ledger):
         gif = safe_preview_url(c["preview"].get("gif_path"))
         sheet = safe_preview_url(c["preview"].get("contact_sheet_path"))
         source = safe_preview_url(c["source_url"])
-        link = (
-            f'<a target="_blank" rel="noopener noreferrer" href="{esc(source)}">Fonte original ↗</a>'
-            if source
-            else "Arquivo local"
-        )
-        content = f"<p>{link}</p><p>{esc(c['title'])}</p><p>Decisão de coleta: {esc(c.get('match', {}).get('reason') or 'Ainda não registrada')}</p><p>{esc(c['rights'].get('attribution'))}</p><p>Uso: {esc({'unknown': 'a confirmar', 'permitted': 'registrado pelo usuário', 'restricted': 'restrito'}.get(c['rights']['status'], c['rights']['status']))}</p>"
+        has_preview = bool(c["preview"].get("poster_path"))
         context = safe_preview_url(c["preview"].get("context_path"))
+        content = source_card(c, source, sheet, p, esc)
         if context:
             content += f'<figure class="context-still"><img src="{esc(context)}" alt="Print da pessoa para contexto" loading="lazy"><figcaption>Pessoa / contexto</figcaption></figure>'
-        if c.get("creator", {}).get("name"):
-            content += f"<p>Autor: {esc(c['creator']['name'])}</p>"
-        if c.get("captured_at"):
-            content += f"<p>Capturado em: {esc(c['captured_at'])}</p>"
         if sheet:
             content += contact_sheet_figure(c, sheet, esc)
         if c["preview"].get("warning"):
             content += f'<p role="status">{esc(c["preview"]["warning"])}</p>'
-        has_preview = bool(c["preview"].get("poster_path"))
         if not c.get("local_path"):
-            content += "<p>Referência estática da fonte. GIF do trecho requer original local autorizado.</p>"
+            content += '<p class="source-note">Referência estática da fonte. GIF do trecho requer original local autorizado.</p>'
+        content = f'<section class="review-source"><h2>Fonte coletada</h2>{content}</section>'
+        content += script_bubble(c.get("narration"), esc)
         from .models import signature
 
         records.append(
@@ -133,25 +227,22 @@ def render(ledger):
                 "reviewEpoch": review_epoch(c),
             }
         )
-        content += '<section class="review-panel"><h2>Revisar trecho</h2><label>Comentário ou sugestão<textarea data-comment rows="3" placeholder="O que precisa mudar?"></textarea></label><label>Outra fonte (opcional)<input data-suggestion type="url" placeholder="https://…"></label><div class="review-buttons"><button data-decision="approved">Aprovar</button><button data-decision="changes">Pedir ajuste</button><button data-decision="alternative">Outra fonte</button><button data-decision="pending">Desfazer</button></div><p data-review-status role="status"></p></section>'
+        content += REVIEW_PANEL
         story_items.append(
             {
                 "title": c["title"],
                 "content": content,
                 "presenter": p,
-                "presenterLabel": "Prévia do trecho"
+                "presenterLabel": "Trecho do vídeo"
                 if has_preview
                 else "Miniatura da fonte · sem prévia",
                 "no_preview": not has_preview,
                 "gif": gif,
                 "poster": None,
-                "time": f"{c['segment']['start_s']}–{c['segment']['end_s']} s"
-                if c["segment"]["start_s"] is not None
-                else "Imagem estática"
-                if c.get("media", {}).get("kind") == "image"
-                else "não definido",
+                "time": segment_label(c),
                 "status": c["state"],
-                "narration": c.get("narration"),
+                # A fala já está no painel de material como balão; nada a repetir.
+                "narration": None,
             }
         )
         if out:

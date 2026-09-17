@@ -46,17 +46,18 @@ def render_page(
         )
         if item.get("gif"):
             left = f'<button class="gif-preview" data-gif="{esc(item["gif"])}" data-poster="{esc(presenter)}" aria-label="Assistir trecho: {esc(item["title"])}" aria-pressed="false">{left}<span>▶ Assistir trecho</span></button>'
+        has_preview = bool(presenter) and not item.get("no_preview")
+        caption = f'<div class="caption-content"><blockquote>“{narration}”</blockquote></div>' if narration else ""
         templates.append(
-            f"""<template data-shot id="shot-{i}"><figure class="pane presenter"><figcaption><span>{esc(item.get("presenterLabel", "Gravação"))}</span><span>{time}</span></figcaption><div class="image-box">{left}</div></figure><section class="pane material"><figure class="pane"><figcaption><span>Fonte coletada</span></figcaption></figure>{item["content"]}</section><div class="caption-content">{f"<blockquote>“{narration}”</blockquote>" if narration else ""}</div></template>"""
+            f"""<template data-shot id="shot-{i}" data-preview="{"1" if has_preview else "0"}"><figure class="pane presenter"><figcaption><span>{esc(item.get("presenterLabel", "Gravação"))}</span><span>{time}</span></figcaption><div class="image-box">{left}</div></figure><section class="pane material">{item["content"]}</section>{caption}</template>"""
         )
-        thumbnail = (
-            f'<img loading="lazy" src="{esc(presenter)}" data-still="{esc(presenter)}" alt="{name}">'
-            if item.get("gif")
-            else image(
+        if item.get("gif"):
+            thumbnail = f'<img loading="lazy" src="{esc(presenter)}" data-still="{esc(presenter)}" data-animated-thumb="{esc(item["gif"])}" alt="{name}">'
+        else:
+            thumbnail = image(
                 presenter or item.get("poster"),
                 ("Miniatura da fonte — " if item.get("no_preview") else "Prévia — ") + item["title"],
             )
-        )
         badge = (
             '<span class="preview-badge">Sem prévia</span>' if item.get("no_preview") else ""
         )
@@ -65,9 +66,27 @@ def render_page(
         )
         options.append(f'<option value="{i}">{name}</option>')
     logo = brand_logo()
+    count = len(items)
+    quadros = f"{count} quadro" if count == 1 else f"{count} quadros"
+    gallery_tools = (
+        '<div class="gallery-tools"><div class="storyboard-modes" role="group" aria-label="Animação do storyboard">'
+        '<button type="button" data-storyboard-mode="static" aria-pressed="true">Estático</button>'
+        '<button type="button" data-storyboard-mode="hover" aria-pressed="false">GIF ao passar o mouse</button>'
+        '<button type="button" data-storyboard-mode="on" aria-pressed="false">GIF ligado</button></div>'
+        '<label><input type="checkbox" id="pending-only"> Só pendentes</label></div>'
+    )
     board = (
-        f"""<div class="tools" id="tools"><div class="selection"><button id="prev" aria-label="Quadro anterior">←</button><select id="select" aria-label="Escolher quadro">{"".join(options)}</select><button id="next" aria-label="Próximo quadro">→</button></div><div class="modes" role="group" aria-label="Visualização"><button data-mode="side" aria-pressed="true">Lado a lado</button><button data-mode="material" aria-pressed="false">Só material</button></div></div><div class="viewer" id="viewer"></div><div class="caption" id="caption" aria-live="polite"></div><div class="gallery-head"><h2>Trechos</h2></div><div class="gallery">{"".join(gallery)}</div>{"".join(templates)}"""
+        f"""<div class="tools" id="tools"><div class="selection"><button id="prev" aria-label="Quadro anterior">←</button><select id="select" aria-label="Escolher quadro">{"".join(options)}</select><button id="next" aria-label="Próximo quadro">→</button></div><div class="modes" role="group" aria-label="Visualização"><button data-mode="side" aria-pressed="true">Lado a lado</button><button data-mode="material" aria-pressed="false">Só material</button></div></div><div class="viewer" id="viewer"></div><div class="caption" id="caption" aria-live="polite"></div><div class="gallery-head"><h2>Storyboard</h2>{gallery_tools}</div><div class="gallery">{"".join(gallery)}</div>{"".join(templates)}"""
         if items
         else '<p class="empty-board">Nenhum quadro nesta coleta. Importe uma fonte e prepare a prévia para começar.</p>'
     )
-    return f'''<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><link rel="icon" href="data:,"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GET B-ROLLS — {esc(title)}</title><style>{(ASSETS / "storyboard.css").read_text(encoding="utf-8")}</style></head><body class="{"film-board" if any(x.get("gif") for x in items) else ""}"><header><div class="brand">{logo}<span><strong>GET B-ROLLS</strong><small>ENGENHEIRO DE VÍDEO</small></span></div><span class="edition">STORYBOARD</span></header><main><div class="intro"><div><h1>{esc(title)}</h1>{f'<p class="sub">{esc(subtitle)}</p>' if subtitle else ""}</div><span class="count" id="position" hidden></span></div>{board}{f"<footer>{esc(note)}</footer>" if note else ""}<noscript>Ative JavaScript para navegar entre os quadros.</noscript></main><script>{(ASSETS / "storyboard.js").read_text(encoding="utf-8")}</script></body></html>'''
+    sub = f'<p class="sub">{esc(subtitle)}</p>' if subtitle else ""
+    header = (
+        '<header class="artifact-header"><div class="header-shell"><div class="header-top">'
+        f'<div class="brand">{logo}<span class="wordmark">engenheiro<span>de vídeo<b>.</b></span></span></div>'
+        '<span class="edition">Get B-rolls / Storyboard</span></div>'
+        f'<div class="header-project"><div class="header-title"><h1>{esc(title)}</h1>{sub}</div>'
+        f'<div class="header-meta"><span>{quadros}</span><span>Storyboard de B-rolls</span></div></div></div></header>'
+    )
+    film = any(x.get("gif") or (x.get("presenter") and not x.get("no_preview")) for x in items)
+    return f'''<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><link rel="icon" href="data:,"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GET B-ROLLS — {esc(title)}</title><style>{(ASSETS / "storyboard.css").read_text(encoding="utf-8")}</style></head><body class="{"film-board" if film else ""}">{header}<main><div class="intro"><span class="count" id="position" hidden></span></div>{board}{f"<footer>{esc(note)}</footer>" if note else ""}<noscript>Ative JavaScript para navegar entre os quadros.</noscript></main><script>{(ASSETS / "storyboard.js").read_text(encoding="utf-8")}</script></body></html>'''

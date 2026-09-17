@@ -254,7 +254,7 @@ class CliTest(unittest.TestCase):
             self.assertNotIn("SECRET_TEST", page)
             self.assertFalse(any("onerror" in a for t, a in dom.nodes))
             self.assertIn("&lt;img src=x onerror=alert(1)&gt;", page)
-            self.assertIn("Fonte original", page)
+            self.assertIn("Abrir fonte original", page)
             self.assertIn("Exportar revisão", page)
 
 

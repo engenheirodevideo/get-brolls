@@ -45,6 +45,39 @@ Histórico completo no [CHANGELOG.md](CHANGELOG.md).
 
 ## Comece aqui
 
+### 0. Instale a stack inteira
+
+A skill só funciona completa com **todas** as ferramentas abaixo instaladas antes do passo 2. Sem uma delas, a coleta roda parcialmente e o Storyboard sai sem prévia ou sem contact sheet numerado.
+
+| Ferramenta | Para quê | Sem ela |
+|---|---|---|
+| Python 3.11+ | CLI, ledger, coleta do Instagram | nada roda |
+| FFmpeg + ffprobe **com libfreetype** (`drawtext`) | poster, contact sheet numerado, GIF, cortes | sem prévia; sem `drawtext`, o sheet sai sem número/timecode e o Storyboard mostra só a legenda |
+| Node 22+ com npm/npx | Playwright CLI e runtime EJS do yt-dlp | YouTube e Instagram falham |
+| curl | download dos pares de stream do Instagram | Instagram falha |
+| Git | clonar e atualizar | instalação manual |
+| yt-dlp e Playwright CLI | instalados pelo `install.sh`/`install.ps1` no passo 2 | YouTube/TikTok e Instagram falham |
+
+macOS (Homebrew):
+
+```sh
+brew install python ffmpeg node git curl
+```
+
+Windows (winget, PowerShell 5.1 já serve):
+
+```powershell
+winget install Python.Python.3.13 Gyan.FFmpeg OpenJS.NodeJS.LTS Git.Git
+```
+
+Ubuntu/Debian:
+
+```sh
+sudo apt install python3 python3-venv ffmpeg nodejs npm curl git
+```
+
+Depois do passo 2, `python3 scripts/gb.py doctor` é o gate: `summary.missing` vazio e `contact_sheet.labels: true`. Se aparecer `drawtext` em `summary.optional`, seu FFmpeg veio sem libfreetype: reinstale pelo comando acima (no macOS, `brew reinstall ffmpeg`).
+
 ### 1. Coloque a skill no seu agente
 
 #### Instalação como plugin do Claude Code
