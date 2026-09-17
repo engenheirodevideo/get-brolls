@@ -3,7 +3,9 @@
   const select = document.getElementById("select"),
     viewer = document.getElementById("viewer");
   if (!templates.length) return;
-  let index = 0,
+  // Open on the first frame that has a real preview (issue #16, finding 3).
+  const firstPreview = templates.findIndex((t) => t.dataset.preview === "1");
+  let index = firstPreview >= 0 ? firstPreview : 0,
     mode = "side";
   function stop() {}
   function wire() {
@@ -14,9 +16,8 @@
           ? button.dataset.poster
           : button.dataset.gif;
         button.setAttribute("aria-pressed", String(!playing));
-        button.querySelector("span").textContent = playing
-          ? "▶ Assistir trecho"
-          : "■ Parar GIF";
+        const label = button.querySelector("span");
+        if (label) label.textContent = playing ? "▶ Assistir trecho" : "■ Parar GIF";
       }),
     );
   }
@@ -26,22 +27,22 @@
     viewer.replaceChildren(t.content.cloneNode(true));
     viewer.querySelector(".presenter").hidden = mode === "material";
     viewer.classList.toggle("single", mode === "material");
-    const caption = viewer.querySelector(".caption-content");
-    if (
-      document.body.classList.contains("film-board") ||
-      viewer.querySelector(".review-panel")
-    )
-      viewer
-        .querySelector(".material")
-        .insertBefore(caption, viewer.querySelector(".review-panel"));
-    else document.getElementById("caption").replaceChildren(caption);
+    const caption = viewer.querySelector(":scope > .caption-content");
+    const captionBox = document.getElementById("caption");
+    if (caption) {
+      const material = viewer.querySelector(".material");
+      if (document.body.classList.contains("film-board") || viewer.querySelector(".review-panel"))
+        material.insertBefore(caption, viewer.querySelector(".review-panel"));
+      else captionBox.replaceChildren(caption);
+    } else captionBox.replaceChildren();
     if (!matchMedia("(prefers-reduced-motion: reduce)").matches)
       viewer.querySelectorAll("[data-gif]").forEach((button) => {
         const img = button.querySelector("img");
         img.loading = "eager";
         img.src = button.dataset.gif;
         button.setAttribute("aria-pressed", "true");
-        button.querySelector("span").textContent = "■ Parar GIF";
+        const label = button.querySelector("span");
+        if (label) label.textContent = "■ Parar GIF";
       });
     select.value = String(index);
     document.getElementById("prev").disabled = index === 0;
@@ -58,28 +59,19 @@
       );
     wire();
   }
-  select.addEventListener("change", () => {
-    index = Number(select.value);
+  function go(next) {
+    index = Math.max(0, Math.min(templates.length - 1, next));
     render();
-  });
-  document.getElementById("prev").onclick = () => {
-    if (index > 0) {
-      index--;
-      render();
-    }
-  };
-  document.getElementById("next").onclick = () => {
-    if (index < templates.length - 1) {
-      index++;
-      render();
-    }
-  };
+  }
+  window.getbrollsGo = go;
+  select.addEventListener("change", () => go(Number(select.value)));
+  document.getElementById("prev").onclick = () => go(index - 1);
+  document.getElementById("next").onclick = () => go(index + 1);
   document.querySelectorAll("[data-index]").forEach(
     (b) =>
       (b.onclick = () => {
-        index = Number(b.dataset.index);
-        render();
-        document.getElementById("tools").scrollIntoView({ block: "start" });
+        go(Number(b.dataset.index));
+        document.getElementById("viewer").scrollIntoView({ block: "start" });
         select.focus({ preventScroll: true });
       }),
   );
@@ -101,14 +93,12 @@
       e.metaKey
     )
       return;
-    if (e.key === "ArrowRight" && index < templates.length - 1) {
+    if (e.key === "ArrowRight") {
       e.preventDefault();
-      index++;
-      render();
-    } else if (e.key === "ArrowLeft" && index > 0) {
+      go(index + 1);
+    } else if (e.key === "ArrowLeft") {
       e.preventDefault();
-      index--;
-      render();
+      go(index - 1);
     }
   });
   window.addEventListener("pagehide", stop);
