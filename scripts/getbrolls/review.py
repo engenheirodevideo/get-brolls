@@ -41,10 +41,8 @@ def enhance(page, ledger, records):
     )
     css = (ASSETS / "review.css").read_text(encoding="utf-8")
     js = (ASSETS / "review.js").read_text(encoding="utf-8")
-    toolbar = '<section class="review-toolbar"><strong data-summary></strong><button id="export-review">Exportar revisão</button><button id="print-review">Imprimir / PDF</button><span data-storage-status role="status"></span></section>'
     return (
         page.replace("</style>", css + "</style>")
-        .replace('<div class="tools"', toolbar + '<div class="tools"', 1)
         .replace(
             "</body>",
             "<script>window.GETBROLLS_REVIEW="
@@ -93,7 +91,7 @@ def import_review(ledger, file, by, rules=None):
         state = item.get("state")
         comment = item.get("comment", "")
         suggestion = item.get("suggestion", "")
-        if state not in ("pending", "approved", "changes", "alternative"):
+        if state not in ("pending", "approved", "changes", "alternative", "rejected"):
             raise ValueError("Decisão desconhecida.")
         if (
             not isinstance(comment, str)
@@ -123,6 +121,10 @@ def import_review(ledger, file, by, rules=None):
             if rules is not None and not allowed(c, rules):
                 raise ValueError("Asset bloqueado pelas regras atuais do usuário.")
             approve(c, by)
+        elif state == "rejected":
+            # Same transition as the CLI `reject` command, recorded with the reviewer.
+            c["approval"] = {"status": "rejected", "by": by, "at": now(), "revision": None}
+            c["state"] = "rejected"
         else:
             c["approval"] = {
                 "status": "pending",
