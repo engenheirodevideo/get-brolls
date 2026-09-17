@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-16
+updated: 2026-09-17
 tags: [get-brolls, documentation]
 ---
 
@@ -22,6 +22,17 @@ python3 scripts/gb.py doctor
 ```
 
 Mudanças na revisão visual exigem conferir aprovação/ajuste/sugestão, exportação/importação, impressão e largura móvel conforme o impacto. Revisões apenas documentais precisam validar frontmatter, links e exemplos de CLI, sem refazer downloads desnecessariamente.
+
+## Lint e type check
+
+`ruff` e `pyright` são as únicas dependências de desenvolvimento e ficam pinadas em `requirements-dev.txt`; o runtime da CLI continua sem dependência nenhuma. A configuração das duas está em `pyproject.toml` (`ruff` com E/F/W/I/B/UP em 120 colunas, `pyright` em `basic` sobre `scripts/` e `tests/`).
+
+```sh
+python3 -m pip install -r requirements-dev.txt
+bash scripts/check.sh
+```
+
+No Windows, `./scripts/check.ps1` roda a mesma bateria. Os dois executam, em ordem, `ruff check`, `ruff format --check`, `pyright` e a suíte de testes — exatamente o que o job `quality` do CI cobre no Ubuntu, ao lado da matriz `Tests` nos três sistemas.
 
 ## Dependências e releases
 

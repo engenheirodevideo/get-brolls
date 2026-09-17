@@ -1,5 +1,7 @@
 import ast
 import re
+import shutil
+import subprocess
 import unicodedata
 import unittest
 from pathlib import Path
@@ -125,6 +127,40 @@ class RepositoryDocumentationTests(unittest.TestCase):
         self.assertIn("macos-latest", workflow)
         self.assertIn("windows-latest", workflow)
         self.assertIn("./scripts/install.ps1\n", workflow)
+
+    def test_quality_stack_is_configured_and_runs_in_ci(self):
+        # Lint e type check são parte do contrato de contribuição: config versionada,
+        # ferramentas pinadas e um job próprio no CI.
+        config = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        for marker in ("[tool.ruff]", "[tool.pyright]", "line-length = 120", 'pythonVersion = "3.11"'):
+            self.assertIn(marker, config, marker)
+        dev = (ROOT / "requirements-dev.txt").read_text(encoding="utf-8")
+        self.assertRegex(dev, r"(?m)^ruff==\d+\.\d+")
+        self.assertRegex(dev, r"(?m)^pyright==\d+\.\d+")
+        runtime = (ROOT / "requirements.txt").read_text(encoding="utf-8").lower()
+        for tool in ("ruff", "pyright"):
+            self.assertNotIn(tool, runtime, "ferramenta de dev não entra no runtime")
+        workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
+        self.assertIn("\n  quality:\n", workflow)
+        for step in ("ruff check .", "ruff format --check .", "pyright"):
+            self.assertIn(step, workflow, step)
+
+    def test_local_quality_commands_exist_for_both_platforms(self):
+        shell = ROOT / "scripts/check.sh"
+        powershell = ROOT / "scripts/check.ps1"
+        self.assertTrue(shell.is_file())
+        self.assertTrue(powershell.is_file())
+        if shutil.which("bash"):
+            parsed = subprocess.run(["bash", "-n", str(shell)], capture_output=True, text=True)
+            self.assertEqual(0, parsed.returncode, parsed.stderr)
+        text = shell.read_text(encoding="utf-8")
+        for step in ("ruff check", "ruff format --check", "pyright", "unittest discover -s tests"):
+            self.assertIn(step, text, step)
+        windows = powershell.read_text(encoding="utf-8")
+        for step in ("ruff check", "ruff format --check", "pyright", "unittest"):
+            self.assertIn(step, windows, step)
+        contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+        self.assertIn("scripts/check.sh", contributing)
 
     def test_delivery_has_no_parallel_artifact_or_reference_trees(self):
         # `references/` é a pasta oficial de copy do plugin desde a 2.4; o que segue
