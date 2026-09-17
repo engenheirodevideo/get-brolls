@@ -116,8 +116,9 @@ def build_parser():
         if name in ("preview", "approve", "permit", "reject", "fetch", "remember"):
             p.add_argument(
                 "--candidate",
-                required=True,
-                help="ID do candidato retornado por search/resolve",
+                required=name != "approve",
+                help="ID do candidato retornado por search/resolve"
+                + (" (ou use --all)" if name == "approve" else ""),
             )
         if name in ("preview", "approve"):
             p.add_argument(
@@ -143,13 +144,36 @@ def build_parser():
                 required=True,
                 help="Nome de quem já aprovou explicitamente o trecho",
             )
+            p.add_argument(
+                "--all",
+                action="store_true",
+                help="Aplicar a mesma aprovação a todo candidato com prévia gerada e sem aprovação válida",
+            )
+            p.add_argument(
+                "--channel",
+                choices=["chat", "storyboard"],
+                default="chat",
+                help="Por onde a decisão humana chegou; padrão chat",
+            )
+            p.add_argument(
+                "--statement",
+                help="Frase exata dita por quem aprovou, registrada literalmente",
+            )
         if name == "permit":
-            g = p.add_mutually_exclusive_group(required=True)
+            g = p.add_mutually_exclusive_group()
             g.add_argument("--evidence", help="Evidência real fornecida ou verificada")
             g.add_argument(
                 "--declaration",
                 action="store_true",
                 help="Registrar declaração que o usuário preencheu em RULES.md",
+            )
+            p.add_argument(
+                "--declared-by",
+                help="Nome de quem declarou a responsabilidade pelo uso, dito no chat",
+            )
+            p.add_argument(
+                "--declaration-text",
+                help="Frase literal da declaração de responsabilidade, com 20 caracteres ou mais",
             )
         if name == "remember":
             p.add_argument(
@@ -162,6 +186,25 @@ def build_parser():
                 "--reason", required=True, help="Motivo real da decisão registrada"
             )
             p.add_argument("--by", required=True, help="Nome de quem decidiu")
+        if name == "init-rules":
+            p.add_argument(
+                "--mode",
+                choices=["per_item_evidence", "user_declaration"],
+                help="Modo de direitos gravado no bloco JSON; padrão per_item_evidence",
+            )
+            p.add_argument(
+                "--responsible",
+                help="Nome de quem assume a responsabilidade no modo user_declaration",
+            )
+            p.add_argument(
+                "--declaration",
+                help="Texto literal da declaração de responsabilidade do usuário",
+            )
+            p.add_argument(
+                "--force",
+                action="store_true",
+                help="Regravar o RULES.md existente com as escolhas informadas",
+            )
         if name == "browser-plan":
             p.add_argument(
                 "--url", required=True, help="URL pública da página a capturar"

@@ -92,16 +92,23 @@ def set_segment(c, start, end):
     return c
 
 
-def approve(c, by):
+def approve(c, by, channel="storyboard", statement=None):
+    """Registra a decisão humana já recebida, dizendo por onde ela chegou."""
     if c["segment"]["start_s"] is None and c.get("media", {}).get("kind") != "image":
         raise ValueError("Mostre e selecione um intervalo antes de aprovar.")
     if not by.strip():
         raise ValueError("Informe quem aprovou.")
+    if channel not in ("chat", "storyboard"):
+        raise ValueError("Canal de aprovação inválido: use chat ou storyboard.")
+    if statement is not None and not isinstance(statement, str):
+        raise ValueError("Frase de aprovação inválida.")
     c["approval"] = {
         "status": "approved",
         "by": by,
         "at": now(),
         "revision": c["segment"]["revision"],
+        "channel": channel,
+        "statement": statement or None,
         "signature": signature(c),
     }
     c["state"] = "approved"

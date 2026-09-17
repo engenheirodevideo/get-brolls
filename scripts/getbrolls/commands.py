@@ -199,8 +199,14 @@ FLOW_SUMMARIES = {
         else f"Gerei a prévia de {_identifier(r)}: "
         f"estado {r.get('state')}, aprovação {(r.get('approval') or {}).get('status')}."
     ),
-    "approve": lambda r: f"Registrei a aprovação humana de {_identifier(r)}: "
-    f"estado {r.get('state')}, por {(r.get('approval') or {}).get('by')}.",
+    "approve": lambda r: (
+        f"Registrei a aprovação humana de {r.get('by')} pelo {r.get('channel')} em "
+        f"{_count(len(r['approved']), 'item', 'itens')}; "
+        f"{_count(len(r.get('skipped') or []), 'item pulado', 'itens pulados')}."
+        if isinstance(r.get("approved"), list)
+        else f"Registrei a aprovação humana de {_identifier(r)}: "
+        f"estado {r.get('state')}, por {(r.get('approval') or {}).get('by')}."
+    ),
     "reject": lambda r: f"Rejeitei {_identifier(r)}: estado {r.get('state')}, revisão invalidada.",
     "review": lambda r: f"Gerei o Storyboard em {r.get('review')}.",
     "import-review": lambda r: f"Importei "
@@ -237,7 +243,8 @@ STATUS_LADDER = (
     ),
     (
         lambda c: not c["approved"],
-        "Gere o Storyboard com review e importe a decisão humana com import-review.",
+        "Peça a decisão humana: pelo Storyboard (review + import-review) ou pela fala "
+        'no chat (approve --all --by NOME --channel chat --statement "frase").',
     ),
     (
         lambda c: c["permitted"] < c["approved"],
@@ -270,6 +277,74 @@ def status_next(counts, format_pending=0):
 
 def _has_preview(c):
     return any((c.get("preview") or {}).get(key) for key in PREVIEW_ARTIFACTS)
+
+
+def rules_from_flags(template, mode, responsible, declaration):
+    """Reescreve só o bloco ```json do modelo, preservando toda a prosa do arquivo."""
+    blocks = re.findall(r"```json\s*\n(.*?)\n```", template, re.S)
+    if len(blocks) != 1:
+        raise ValueError("Modelo de RULES.md precisa de exatamente um bloco JSON.")
+    data = json.loads(blocks[0])
+    rights = data["copyright"]
+    rights["mode"] = mode or (
+        "user_declaration" if (responsible or declaration) else rights["mode"]
+    )
+    if responsible is not None:
+        rights["responsible_person"] = responsible.strip() or None
+    if declaration is not None:
+        rights["declaration"] = declaration.strip() or None
+    if rights["mode"] == "user_declaration" and not (
+        (rights["responsible_person"] or "").strip()
+        and (rights["declaration"] or "").strip()
+    ):
+        raise ValueError(
+            "Modo user_declaration exige --responsible NOME e --declaration TEXTO."
+        )
+    return (
+        template.replace(blocks[0], json.dumps(data, ensure_ascii=False, indent=2), 1),
+        rights,
+    )
+
+
+def approve_all(ledger, args, rules):
+    """Aplica a mesma decisão humana a todo item com prévia e sem aprovação válida."""
+    from .rules import allowed
+
+    approved, skipped = [], []
+    for c in ledger.data["items"]:
+        if not _has_preview(c):
+            reason = "sem prévia gerada; rode preview antes"
+        elif not allowed(c, rules):
+            reason = "bloqueado pelas regras atuais do usuário"
+        elif _stage_status(c, "approval") == "rejected":
+            reason = "rejeitado por decisão humana"
+        elif (
+            _stage_status(c, "approval") == "approved"
+            and c["approval"].get("signature") == signature(c)
+        ):
+            reason = "já tem aprovação válida para este intervalo"
+        elif (
+            c["segment"]["start_s"] is None
+            and c.get("media", {}).get("kind") != "image"
+        ):
+            reason = "sem intervalo escolhido; rode preview --start/--end"
+        else:
+            approve(c, args.by, args.channel, args.statement)
+            approved.append(c)
+            continue
+        skipped.append({"id": c["id"], "reason": reason})
+    if approved:
+        ledger.save_many(
+            "approve-chat" if args.channel == "chat" else "approve", approved
+        )
+        render(ledger)
+    return {
+        "approved": [c["id"] for c in approved],
+        "skipped": skipped,
+        "by": args.by,
+        "channel": args.channel,
+        "statement": args.statement,
+    }
 
 
 def _stage_status(c, field):
@@ -494,9 +569,22 @@ def execute(args):
     if cmd == "init-rules":
         dest = Path(args.project) / "RULES.md"
         dest.parent.mkdir(parents=True, exist_ok=True)
-        if dest.exists():
-            raise ValueError("RULES.md já existe; edite sem sobrescrever suas regras.")
-        shutil.copyfile(SKILL_ROOT / "docs" / "RULES.md", dest)
+        if dest.exists() and not args.force:
+            raise ValueError(
+                "RULES.md já existe; edite sem sobrescrever suas regras. "
+                "Use --force para regravar o bloco JSON com as escolhas informadas."
+            )
+        template = SKILL_ROOT / "docs" / "RULES.md"
+        if args.mode or args.responsible or args.declaration:
+            text, rights = rules_from_flags(
+                template.read_text(encoding="utf-8"),
+                args.mode,
+                args.responsible,
+                args.declaration,
+            )
+            dest.write_text(text, encoding="utf-8")
+            return {"rules": str(dest), "copyright": rights}
+        shutil.copyfile(template, dest)
         return {"rules": str(dest)}
     rules = load_rules(args.project)
     if cmd == "rules":
@@ -696,6 +784,19 @@ def execute(args):
                     }
                 )
         return {"verified": checked, "count": len(checked)}
+    if cmd == "approve":
+        if args.all and args.candidate:
+            raise ValueError("Use --all sozinho ou --candidate ID, nunca os dois juntos.")
+        if args.all and (args.start is not None or args.end is not None):
+            raise ValueError(
+                "--all aprova os intervalos já escolhidos; não use --start/--end."
+            )
+        if not args.all and not args.candidate:
+            raise ValueError(
+                "Informe --candidate ID, ou use --all para todos os itens com prévia."
+            )
+        if args.all:
+            return approve_all(ledger, args, rules)
     c = ledger.get(args.candidate)
     if not allowed(c, rules) and cmd in ("preview", "approve", "permit", "fetch"):
         raise ValueError("Asset bloqueado pelas regras atuais do usuário.")
@@ -711,9 +812,24 @@ def execute(args):
         elif args.start is not None or args.end is not None:
             raise ValueError("Imagem estática não precisa de intervalo de origem.")
     if cmd == "approve":
-        approve(c, args.by)
+        approve(c, args.by, args.channel, args.statement)
     elif cmd == "permit":
-        if args.declaration:
+        if args.declared_by or args.declaration_text:
+            name = (args.declared_by or "").strip()
+            text = (args.declaration_text or "").strip()
+            if not name or name.lower() in ("usuário", "usuario"):
+                raise ValueError(
+                    "Informe em --declared-by o nome real de quem assume a responsabilidade."
+                )
+            if len(text) < 20:
+                raise ValueError(
+                    "--declaration-text precisa da frase literal da pessoa, com 20 caracteres ou mais."
+                )
+            evidence = "Declaração do usuário " + name + ": " + text
+            c["rights"]["basis"] = "user_declaration"
+            c["rights"]["responsible_person"] = name
+            c["rights"]["declaration_channel"] = "chat"
+        elif args.declaration:
             rights = rules["copyright"]
             if rights["mode"] != "user_declaration":
                 raise ValueError(
@@ -728,6 +844,11 @@ def execute(args):
             c["rights"]["basis"] = "user_declaration"
             c["rights"]["responsible_person"] = rights["responsible_person"]
         else:
+            if args.evidence is None:
+                raise ValueError(
+                    "Diga as condições de uso: --evidence TEXTO, ou "
+                    "--declared-by NOME --declaration-text \"frase da pessoa\"."
+                )
             if not args.evidence.strip():
                 raise ValueError("Evidência não pode ser vazia.")
             evidence = args.evidence
@@ -852,7 +973,8 @@ def execute(args):
         }
         c["state"] = "verified"
         c["output_media"] = probe(ledger.root / rel)
-    ledger.save(cmd, c)
+    # O journal distingue a decisão dita no chat da que veio assinada pelo Storyboard.
+    ledger.save("approve-chat" if cmd == "approve" and args.channel == "chat" else cmd, c)
     render(ledger)
     if cmd == "preview":
         # Absolute paths for the agent to open the exact files the Storyboard shows.

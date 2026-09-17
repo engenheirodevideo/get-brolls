@@ -7,10 +7,22 @@ from .models import signature, approve, now
 ASSETS = Path(__file__).resolve().parents[2] / "assets"
 
 
+# Campos da decisão que definem a época: chaves acrescentadas depois (canal, frase)
+# não podem invalidar um board já exportado.
+EPOCH_FIELDS = ("status", "by", "at", "revision")
+
+
 def review_epoch(candidate):
     """Bind an exported decision to the approval/review it was based on."""
+    approval = candidate["approval"]
     return hashlib.sha256(
-        json.dumps([candidate["approval"], candidate.get("review")], sort_keys=True).encode()
+        json.dumps(
+            [
+                {key: approval.get(key) for key in EPOCH_FIELDS},
+                candidate.get("review"),
+            ],
+            sort_keys=True,
+        ).encode()
     ).hexdigest()
 
 
@@ -120,7 +132,7 @@ def import_review(ledger, file, by, rules=None):
 
             if rules is not None and not allowed(c, rules):
                 raise ValueError("Asset bloqueado pelas regras atuais do usuário.")
-            approve(c, by)
+            approve(c, by, "storyboard")
         elif state == "rejected":
             # Same transition as the CLI `reject` command, recorded with the reviewer.
             c["approval"] = {"status": "rejected", "by": by, "at": now(), "revision": None}
