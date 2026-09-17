@@ -243,6 +243,16 @@ class Build(unittest.TestCase):
             media = Path(tmp) / report["items"][0]["path"]
             source = Path(tmp) / "brolls" / "clips" / "x.mp4"
             self.assertFalse(os.path.samestat(media.stat(), source.stat()))
+            # A promessa da variável é justamente poder editar dentro de `entrega/`.
+            self.assertTrue(media.stat().st_mode & stat.S_IWUSR)
+            media.write_bytes(b"editei aqui mesmo")
+            origin = next((Path(tmp) / "entrega").rglob("ORIGEM.md")).read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("cópia independente", origin)
+            self.assertNotIn("editar o original", origin)
+            index = (Path(tmp) / "entrega" / "README.md").read_text(encoding="utf-8")
+            self.assertIn("cópia independente", index)
 
     def test_the_index_points_at_what_comes_after_the_delivery(self):
         from getbrolls.commands import execute
@@ -289,19 +299,29 @@ class Build(unittest.TestCase):
                     fetched("b", "Plateia", shot="fechamento", clip="clips/b.mp4", sheet="previews/b.jpg"),
                 ],
             )
-            report = delivery.build_delivery(tmp)
-            first = Path(tmp) / report["items"][0]["path"]
-            second = Path(tmp) / report["items"][1]["path"]
-            first.chmod(0o644)
-            first.unlink()
+            # O ensaio diz onde cada arquivo cairia; plantamos um conflito antes da
+            # primeira entrega, para o item nunca ter tido um registro válido.
+            plan = delivery.build_delivery(tmp, dry_run=True)
+            first = Path(tmp) / plan["items"][0]["path"]
+            second = Path(tmp) / plan["items"][1]["path"]
+            first.parent.mkdir(parents=True, exist_ok=True)
             first.write_bytes(b"corte que a pessoa mexeu na mao")
-            second.unlink()
             with self.assertRaises(ValueError) as caught:
                 delivery.build_delivery(tmp)
             self.assertIn(first.name, str(caught.exception))
-            # O item saudável foi refeito mesmo com o conflito do outro.
+            # O item saudável foi materializado mesmo com o conflito do outro.
             self.assertTrue(second.exists())
             self.assertEqual(b"corte que a pessoa mexeu na mao", first.read_bytes())
+            # O item em conflito não conta como entregue e sai da tabela, para o
+            # `status` continuar pedindo `deliver` em vez de dizer que terminou.
+            stored = Ledger(tmp, recover=False).data["items"]
+            delivered = [c["id"] for c in stored if (c.get("delivery") or {}).get("path")]
+            conflicted = next(c for c in stored if c["output"]["path"] == "clips/a.mp4")
+            self.assertNotIn(conflicted["id"], delivered)
+            index = (Path(tmp) / "entrega" / "README.md").read_text(encoding="utf-8")
+            self.assertIn("## Conflitos", index)
+            self.assertIn(first.name, index.split("## Conflitos", 1)[1])
+            self.assertNotIn(first.name, index.split("## Conflitos", 1)[0])
 
     def test_a_file_the_person_edited_is_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:

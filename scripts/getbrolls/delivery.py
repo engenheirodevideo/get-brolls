@@ -38,6 +38,13 @@ MAX_NAME = 60
 # Só o que o gerador escreve pode ser apagado quando vira órfão.
 GENERATED = re.compile(r"^(ORIGEM(-\d+)?\.md|contact-sheet(-\d+)?\.[a-z0-9]+)$")
 BEAT_DIR_RE = re.compile(r"^\d{2}-[a-z0-9-]*$")
+# Aviso do ORIGEM.md quando o arquivo é uma cópia independente.
+COPY_NOTE = (
+    "**Esta é uma cópia independente** (`GB_DELIVERY_COPY`, ou porque o sistema não "
+    "deixou criar link): edite à vontade, o original em `brolls/` não é afetado. Rodar "
+    "`deliver` de novo não mexe numa cópia que você editou — ele para e diz o nome dela."
+)
+
 # Aviso que vai no README.md e em cada ORIGEM.md: hardlink é o mesmo arquivo.
 EDIT_WARNING = (
     "**Editar aqui é editar o original.** Estes arquivos são o mesmo arquivo de "
@@ -115,8 +122,15 @@ def copies_forced():
     )
 
 
-def _freeze(path):
-    """Tira a permissão de escrita da mídia entregue — o inode pode ser o do original."""
+def _freeze(path, method):
+    """Tira a escrita só de quem compartilha bytes com o original.
+
+    Hardlink e symlink são o mesmo arquivo com outro nome: editar ali editaria
+    `brolls/`. Uma cópia é independente — congelá-la quebraria a promessa de
+    `GB_DELIVERY_COPY=1`, que existe justamente para quem quer editar em `entrega/`.
+    """
+    if method not in ("hardlink", "symlink"):
+        return
     try:
         mode = os.stat(path).st_mode
         os.chmod(path, mode & ~0o222)
@@ -152,11 +166,9 @@ def link_or_copy(src, dest, read_only=False):
     elif dest.exists():
         if _same_file(dest, src):
             if read_only:
-                _freeze(dest)
+                _freeze(dest, "hardlink")
             return "hardlink"
         if _same_bytes(dest, src):
-            if read_only:
-                _freeze(dest)
             return "copy"
         raise ValueError(
             f"{dest} já existe com conteúdo diferente do arquivo coletado: parece edição "
@@ -168,7 +180,7 @@ def link_or_copy(src, dest, read_only=False):
         try:
             make(str(src), str(dest))
             if read_only:
-                _freeze(dest)
+                _freeze(dest, method)
             return method
         except (OSError, NotImplementedError, AttributeError):
             if dest.is_symlink() or dest.exists():
@@ -212,7 +224,7 @@ def _segment_label(c):
     return f"{start:g}s → {end:g}s"
 
 
-def render_origin(c, media_name, created=None):
+def render_origin(c, media_name, created=None, method="hardlink"):
     """`ORIGEM.md` do trecho: fonte, autor, intervalo, direitos e sha256 do arquivo."""
     rights = c.get("rights") or {}
     approval = c.get("approval") or {}
@@ -235,7 +247,7 @@ def render_origin(c, media_name, created=None):
         f"- sha256 do arquivo coletado: `{(c.get('output') or {}).get('sha256') or 'não calculado'}`",
         f"- Original canônico: `brolls/{(c.get('output') or {}).get('path')}`",
         "",
-        EDIT_WARNING,
+        EDIT_WARNING if method in ("hardlink", "symlink") else COPY_NOTE,
         "",
         "Este arquivo é gerado por `deliver`. A pasta `entrega/` inteira pode ser apagada "
         "e refeita: o que vale é `brolls/`.",
@@ -244,7 +256,7 @@ def render_origin(c, media_name, created=None):
     return "\n".join(lines)
 
 
-def render_index(rows, for_human=None, created=None):
+def render_index(rows, for_human=None, created=None, conflicts=(), copies=False):
     """`entrega/README.md`: a tabela que responde “onde estão meus arquivos”."""
     lines = _frontmatter("delivery-index", created, ["get-brolls", "entrega"])
     lines += [
@@ -254,7 +266,7 @@ def render_index(rows, for_human=None, created=None):
         "para o seu editor; o `ORIGEM.md` ao lado diz de onde ele veio e o que você me "
         "disse sobre poder usar.",
         "",
-        EDIT_WARNING,
+        COPY_NOTE if copies else EDIT_WARNING,
         "",
         "| Beat | Narração | Alvo | Arquivo | Estado | Direitos |",
         "|---|---|---|---|---|---|",
@@ -270,6 +282,17 @@ def render_index(rows, for_human=None, created=None):
         )
     if not rows:
         lines.append("| — | — | — | nenhum trecho coletado ainda | — | — |")
+    if conflicts:
+        lines += [
+            "",
+            "## Conflitos",
+            "",
+            "Estes trechos não foram refeitos porque o arquivo em `entrega/` tem conteúdo "
+            "diferente do que está em `brolls/` — parece edição sua e eu não sobrescrevo. "
+            "Renomeie ou apague o arquivo e rode `deliver` de novo:",
+            "",
+        ]
+        lines += [f"- `{item}`" for item in conflicts]
     lines += ["", "## Próximo passo", "", for_human or "Nada pendente por aqui.", ""]
     return "\n".join(lines)
 
@@ -401,7 +424,8 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
     items = ledger.data["items"]
     root = Path(project).expanduser().resolve() / DELIVERY_DIR
     groups = _plan(project, items)
-    expected, listed, rows, changed, conflicts = set(), [], [], [], []
+    expected, listed, rows, changed = set(), [], [], []
+    conflicts, conflicted = [], []
     for group in groups:
         expected.add(group["dir"])
         for index, c in enumerate(group["items"], start=1):
@@ -420,25 +444,35 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
             sheet_rel_out = f"{group['dir']}/{names['sheet']}" if sheet else None
             if sheet_rel_out:
                 expected.add(sheet_rel_out)
+            conflict = None
             if not dry_run:
                 try:
                     if source.is_file():
-                        # Somente-leitura: o inode pode ser o mesmo de `brolls/clips/`.
+                        # Só hardlink/symlink são congelados: cópia é independente.
                         method = link_or_copy(source, root / media_rel, read_only=True)
                     if sheet and sheet.is_file():
                         # O contact sheet não é congelado: `preview` regrava o arquivo
                         # de origem no mesmo caminho quando a pessoa muda o intervalo.
                         link_or_copy(sheet, root / sheet_rel_out)
                 except ValueError as exc:
-                    conflicts.append(str(exc))
+                    conflict = str(exc)
+                    conflicts.append(conflict)
+                    conflicted.append(media_rel)
             origin_rel = f"{group['dir']}/{names['origin']}"
             expected.add(origin_rel)
-            if not dry_run:
+            if not dry_run and not conflict:
                 target = root / origin_rel
                 atomic_write(
-                    target, render_origin(c, names["media"], _created_in(target))
+                    target,
+                    render_origin(
+                        c, names["media"], _created_in(target), method or "hardlink"
+                    ),
                 )
             record = {"path": f"{DELIVERY_DIR}/{media_rel}", "method": method}
+            if conflict:
+                # Não entregamos este: manter o registro antigo (ou nenhum) é o que
+                # mantém o item fora de "entregue" no `status` e fora da tabela.
+                continue
             if not dry_run and c.get("delivery") != record:
                 c["delivery"] = record
                 changed.append(c)
@@ -467,7 +501,17 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
         # O "próximo passo" é lido agora, com `c["delivery"]` já preenchido: senão o
         # índice mandaria a pessoa rodar exatamente o comando que acabou de rodar.
         text = for_human() if callable(for_human) else for_human
-        atomic_write(index, render_index(rows, text, _created_in(index)))
+        atomic_write(
+            index,
+            render_index(
+                rows,
+                text,
+                _created_in(index),
+                conflicted,
+                # Quando tudo virou cópia, o aviso de "é o mesmo arquivo" seria mentira.
+                copies=bool(listed) and all(i["method"] == "copy" for i in listed),
+            ),
+        )
     owned = {
         (c.get("delivery") or {}).get("path", "")[len(DELIVERY_DIR) + 1 :]
         for c in items
