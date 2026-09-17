@@ -292,7 +292,7 @@ Fluxo único: descobrir → obter mídia de trabalho/mostrar sequência → revi
 
 Motor: yt-dlp + FFmpeg, **sem API key**. `search --provider youtube` usa ytsearch. `resolve --url` aceita URL de vídeo/shorts; `preview` obtém o intervalo e gera GIF/contact sheet, mantendo aprovação pendente. `fetch` publica os bytes revisados após decisão humana e registro de condições do projeto.
 
-Utilitários em `scripts/getbrolls/tools/youtube/`: `search.sh`, `contact.sh`, `frame.sh`, `fetch.sh`, `verify.sh` e `vertical.sh`. Eles usam `VIDEO_ID`; a CLI principal aceita URL e integra ledger/revisão. Configure EJS/runtime conforme este guia. Se o site exigir sessão ou negar mídia, reporte o erro real; não troque silenciosamente para API com chave.
+Fluxo: `search --provider youtube --query "..."` → `preview --candidate ID --start ... --end ...` → `fetch --candidate ID` → `verify --project ...`. Configure EJS/runtime conforme este guia. Se o site exigir sessão ou negar mídia, reporte o erro real; não troque silenciosamente para API com chave. Os scripts `.sh` de `scripts/getbrolls/tools/youtube/` que usam `VIDEO_ID` direto continuam existindo como utilitários avulsos, fora do ledger/revisão — ver [Apêndice — utilitários legados](#apêndice--utilitários-legados).
 
 ## Provedor — Instagram
 

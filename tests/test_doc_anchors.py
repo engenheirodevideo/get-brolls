@@ -43,11 +43,32 @@ class TestDocAnchors(unittest.TestCase):
             {"real-heading", "another-real-heading"},
         )
 
-    def test_detects_broken_anchor(self):
-        guide_slugs = anchors.extract_headings(anchors.GUIDE_PATH.read_text(encoding="utf-8"))
-        self.assertNotIn("secao-que-nao-existe", guide_slugs)
-        refs = anchors.find_anchor_refs("veja [aqui](docs/GUIDE.md#secao-que-nao-existe)")
-        self.assertEqual(refs, ["secao-que-nao-existe"])
+    def test_check_reports_broken_anchor_against_a_fake_guide(self):
+        """check() must actually flag a bad anchor end-to-end, not just parse it."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            guide = tmp_path / "GUIDE.md"
+            guide.write_text("## Seção real\n", encoding="utf-8")
+            target = tmp_path / "SKILL.md"
+            target.write_text(
+                "veja [aqui](docs/GUIDE.md#secao-que-nao-existe) e "
+                "[ali](docs/GUIDE.md#seção-real)\n",
+                encoding="utf-8",
+            )
+
+            original = (anchors.ROOT, anchors.GUIDE_PATH, anchors.TARGET_FILES)
+            anchors.ROOT = tmp_path
+            anchors.GUIDE_PATH = guide
+            anchors.TARGET_FILES = [target]
+            try:
+                problems = anchors.check()
+            finally:
+                anchors.ROOT, anchors.GUIDE_PATH, anchors.TARGET_FILES = original
+
+            self.assertEqual(len(problems), 1, problems)
+            self.assertIn("secao-que-nao-existe", problems[0])
 
 
 if __name__ == "__main__":
