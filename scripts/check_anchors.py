@@ -25,7 +25,12 @@ TARGET_FILES = [
     ROOT / "README.md",
     ROOT / "README.en.md",
     *sorted((ROOT / "commands").glob("*.md")),
+    *sorted((ROOT / "references").glob("*.md")),
 ]
+
+# Links relativos entre arquivos de `references/`: precisam apontar para um
+# arquivo que existe, com âncora que resolve quando houver.
+RELATIVE_LINK_RE = re.compile(r"\]\((\.{1,2}/[^)\s]+|[\w./\-]+\.md(?:#[^)\s]+)?)\)")
 
 # Casa `GUIDE.md#anchor` dentro de qualquer link/texto (ex.: `docs/GUIDE.md#instalação)`,
 # `${CLAUDE_PLUGIN_ROOT}/docs/GUIDE.md#storyboard)`), parando no primeiro delimitador.
@@ -72,6 +77,29 @@ def find_anchor_refs(markdown: str) -> list[str]:
     return ANCHOR_REF_RE.findall(markdown)
 
 
+def find_relative_links(markdown: str) -> list[str]:
+    return RELATIVE_LINK_RE.findall(markdown)
+
+
+def check_relative_links(path: Path, markdown: str) -> list[str]:
+    """Todo link relativo `.md` de um arquivo de references/ resolve para um
+    arquivo real; a âncora, quando houver, resolve para um heading dele."""
+    problems: list[str] = []
+    for link in find_relative_links(markdown):
+        target, _, anchor = link.partition("#")
+        if not target.endswith(".md"):
+            continue
+        resolved = (path.parent / target).resolve()
+        if not resolved.exists():
+            problems.append(f"{path.relative_to(ROOT)}: link quebrado {link}")
+            continue
+        if anchor and anchor not in extract_headings(
+            resolved.read_text(encoding="utf-8")
+        ):
+            problems.append(f"{path.relative_to(ROOT)}: âncora quebrada {link}")
+    return problems
+
+
 def check() -> list[str]:
     problems: list[str] = []
     if not GUIDE_PATH.exists():
@@ -84,6 +112,8 @@ def check() -> list[str]:
         for anchor in find_anchor_refs(text):
             if anchor not in guide_slugs:
                 problems.append(f"{path.relative_to(ROOT)}: âncora quebrada GUIDE.md#{anchor}")
+        if path.parent.name == "references":
+            problems.extend(check_relative_links(path, text))
     return problems
 
 
@@ -94,7 +124,7 @@ def main() -> int:
         for problem in problems:
             print(f"- {problem}")
         return 1
-    print("Todas as âncoras GUIDE.md#... citadas resolvem para um heading.")
+    print("Todas as âncoras e links relativos citados resolvem.")
     return 0
 
 
