@@ -6,10 +6,13 @@ aprovação humana **não** atravessam: continuam por projeto, por revisão e po
 intervalo, e toda resposta daqui repete isso em `rights_not_transferable`.
 """
 
+import contextlib
 import hashlib
 import json
 import os
+import time
 import unicodedata
+import uuid
 from pathlib import Path
 
 from .models import now
@@ -72,9 +75,13 @@ def load_index():
 
 
 def _write_private(path, text):
-    """Escrita atômica com 0600: a biblioteca é pessoal e nunca fica meio gravada."""
+    """Escrita atômica com 0600: a biblioteca é pessoal e nunca fica meio gravada.
+
+    O temporário leva pid e um sufixo aleatório: duas escritas simultâneas nunca
+    disputam o mesmo arquivo nem apagam o `.tmp` uma da outra.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_name(path.name + ".tmp")
+    temp = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")
     try:
         with open(
             os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600),
@@ -92,6 +99,54 @@ def _write_private(path, text):
 
 def save_index(data):
     _write_private(index_path(), json.dumps(data, ensure_ascii=False, indent=2))
+
+
+# Trava de diretório: um arquivo criado com O_EXCL, que funciona igual no Windows.
+LOCK_TIMEOUT_S = 10.0
+STALE_LOCK_S = 60.0
+MAX_QUERIES = 500
+
+
+@contextlib.contextmanager
+def _locked():
+    """Serializa ler → mudar → gravar; sem isso duas escritas perdem uma entrada."""
+    path = library_dir() / "index.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + LOCK_TIMEOUT_S
+    while True:
+        try:
+            os.close(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
+            break
+        except FileExistsError:
+            try:
+                stale = time.time() - path.stat().st_mtime > STALE_LOCK_S
+            except OSError:
+                stale = False
+            if stale:
+                # Sobrou de um processo que morreu no meio: ninguém a renova.
+                with contextlib.suppress(OSError):
+                    path.unlink()
+                continue
+            if time.monotonic() > deadline:
+                raise ValueError(
+                    f"{path} está travado há tempo demais por outro get-brolls. "
+                    "Espere a outra execução terminar ou apague esse arquivo."
+                )
+            time.sleep(0.02)
+    try:
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            path.unlink()
+
+
+def _update(mutate):
+    """Aplica uma mudança no índice inteiro sob trava, e devolve o que ela retornar."""
+    with _locked():
+        data = load_index()
+        result = mutate(data)
+        save_index(data)
+    return result
 
 
 def _write_note(text):
@@ -124,25 +179,60 @@ def learn_query(query, provider, outcome, note=None, auto=False):
         raise ValueError("Informe a fonte em --provider.")
     if not enabled():
         return _off(entry=None)
-    data = load_index()
-    entry = {
-        "query": query,
-        "provider": provider,
-        "outcome": outcome,
-        "at": now(),
-        "note": _write_note(note) if (note or "").strip() else None,
-    }
-    if auto:
-        # Marcado porque ninguém digitou: veio de uma falha real de provedor.
-        entry["auto"] = True
-    data["queries"].append(entry)
-    counts = data["providers"].setdefault(
-        provider, {"outcomes": {"hit": 0, "miss": 0}, "last_at": None}
-    )
-    counts["outcomes"][outcome] = counts["outcomes"].get(outcome, 0) + 1
-    counts["last_at"] = entry["at"]
-    save_index(data)
-    return answer(entry=entry)
+    note_path = _write_note(note) if (note or "").strip() else None
+
+    def mutate(data):
+        at = now()
+        same = next(
+            (
+                q
+                for q in data["queries"]
+                if (q["query"], q["provider"], q["outcome"], bool(q.get("auto")))
+                == (query, provider, outcome, bool(auto))
+            ),
+            None,
+        )
+        if same is not None:
+            # A mesma busca repetida é um contador, não uma linha nova: senão a
+            # biblioteca cresce sem parar e cada `search` reescreve o índice inteiro.
+            same["count"] = same.get("count", 1) + 1
+            same["at"] = at
+            same["note"] = note_path or same.get("note")
+            entry = same
+        else:
+            entry = {
+                "query": query,
+                "provider": provider,
+                "outcome": outcome,
+                "count": 1,
+                "at": at,
+                "note": note_path,
+            }
+            if auto:
+                # Marcado porque ninguém digitou: veio de uma falha real de provedor.
+                entry["auto"] = True
+            data["queries"].append(entry)
+        if len(data["queries"]) > MAX_QUERIES:
+            # Teto: o que ninguém digitou sai primeiro, do mais antigo para o mais novo.
+            order = sorted(
+                range(len(data["queries"])),
+                key=lambda i: (
+                    not data["queries"][i].get("auto"),
+                    data["queries"][i].get("at") or "",
+                ),
+            )
+            drop = set(order[: len(data["queries"]) - MAX_QUERIES])
+            data["queries"] = [
+                q for i, q in enumerate(data["queries"]) if i not in drop
+            ]
+        counts = data["providers"].setdefault(
+            provider, {"outcomes": {"hit": 0, "miss": 0}, "last_at": None}
+        )
+        counts["outcomes"][outcome] = counts["outcomes"].get(outcome, 0) + 1
+        counts["last_at"] = at
+        return entry
+
+    return answer(entry=_update(mutate))
 
 
 def learn_preference(text, by=None):
@@ -152,11 +242,13 @@ def learn_preference(text, by=None):
         raise ValueError("Escreva a preferência como ela foi dita, com pelo menos 5 caracteres.")
     if not enabled():
         return _off(entry=None)
-    data = load_index()
     entry = {"text": text, "by": (by or "").strip() or None, "at": now()}
-    data["preferences"].append(entry)
-    save_index(data)
-    return answer(entry=entry)
+
+    def mutate(data):
+        data["preferences"].append(entry)
+        return entry
+
+    return answer(entry=_update(mutate))
 
 
 def asset_id(source_url, clip_signature):
@@ -219,20 +311,21 @@ def learn_from_candidate(project, ident, shot=None):
         "used_by": [],
     }
     use = {"project_id": project_id(ledger), "shot": shot or c.get("shot"), "at": now()}
-    data = load_index()
-    for existing in data["assets"]:
-        if existing["asset_id"] == entry["asset_id"]:
-            existing["used_by"].append(use)
-            existing["decision"] = entry["decision"]
-            existing["reason"] = entry["reason"]
-            existing["by"] = entry["by"]
-            existing["at"] = entry["at"]
-            save_index(data)
-            return answer(entry=existing)
-    entry["used_by"].append(use)
-    data["assets"].append(entry)
-    save_index(data)
-    return answer(entry=entry)
+
+    def mutate(data):
+        for existing in data["assets"]:
+            if existing["asset_id"] == entry["asset_id"]:
+                existing["used_by"].append(use)
+                existing["decision"] = entry["decision"]
+                existing["reason"] = entry["reason"]
+                existing["by"] = entry["by"]
+                existing["at"] = entry["at"]
+                return existing
+        entry["used_by"].append(use)
+        data["assets"].append(entry)
+        return entry
+
+    return answer(entry=_update(mutate))
 
 
 def _score(term_tokens, text):
@@ -283,12 +376,16 @@ def search(term, limit=5):
 
 
 def hints(query, limit=5):
-    """Pistas curtas para anexar a `search`; silenciosas quando não há biblioteca."""
+    """Pistas curtas para anexar a `search`; silenciosas quando não há biblioteca.
+
+    Sem `reason` e sem `by`: esses textos foram escritos noutro projeto, às vezes
+    sobre outro cliente. Quem quiser lê-los pede de propósito, em `library --search`.
+    """
     if not enabled():
         return []
     try:
         found = search(query, limit=limit)
-    except ValueError:
+    except (ValueError, OSError):
         return []
     out = []
     for a in found["assets"]:
@@ -299,7 +396,6 @@ def hints(query, limit=5):
                 "provider": a.get("provider"),
                 "title": a.get("title"),
                 "decision": a.get("decision"),
-                "reason": a.get("reason"),
                 "rights_not_transferable": True,
             }
         )

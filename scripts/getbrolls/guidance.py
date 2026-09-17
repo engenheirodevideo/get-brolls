@@ -101,7 +101,7 @@ def _library_hint():
 
     try:
         if library.enabled() and library.index_path().exists():
-            return " Antes disso, confiro na biblioteca (`library --search`) o que já funcionou em outros vídeos."
+            return " Vou conferir na biblioteca (`library --search`) o que já funcionou em outros vídeos."
     except OSError:
         pass
     return ""

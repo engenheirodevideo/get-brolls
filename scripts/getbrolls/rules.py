@@ -59,6 +59,19 @@ def _merge(base, extra):
     return extra
 
 
+def _strip_never_inherited(path, data, warnings, label):
+    """Tira de uma camada de fora do projeto o que só o projeto pode dizer."""
+    for key in NEVER_INHERITED:
+        if key in data:
+            del data[key]
+            warnings.append(
+                f'"{key}" do RULES.md {label} ({path}) foi ignorado: '
+                "responsabilidade e declaração valem só no projeto em que o "
+                "vídeo é feito. Preencha no RULES.md deste projeto."
+            )
+    return data
+
+
 def rules_layers(project):
     """Camadas na ordem geral → específica, com os avisos do que foi ignorado."""
     layers, warnings = [], []
@@ -76,15 +89,12 @@ def rules_layers(project):
         except ValueError as e:
             warnings.append(f"{global_path} foi ignorado: {e}")
         else:
-            for key in NEVER_INHERITED:
-                if key in data:
-                    del data[key]
-                    warnings.append(
-                        f'"{key}" do RULES.md global ({global_path}) foi ignorado: '
-                        "responsabilidade e declaração valem só no projeto em que o "
-                        "vídeo é feito. Preencha no RULES.md deste projeto."
-                    )
-            layers.append((global_path, data))
+            layers.append(
+                (
+                    global_path,
+                    _strip_never_inherited(global_path, data, warnings, "global"),
+                )
+            )
     middle = os.environ.get("GB_RULES_FILE")
     if middle:
         middle = Path(middle)
@@ -93,7 +103,15 @@ def rules_layers(project):
                 "GB_RULES_FILE aponta para um arquivo que não existe: corrija o caminho "
                 "ou apague essa variável para usar o RULES.md da pasta do trabalho."
             )
-        layers.append((middle, read_rules_block(middle)))
+        # GB_RULES_FILE também é de fora do projeto: não pode assinar por ninguém.
+        layers.append(
+            (
+                middle,
+                _strip_never_inherited(
+                    middle, read_rules_block(middle), warnings, "de GB_RULES_FILE"
+                ),
+            )
+        )
     if project_path is not None:
         layers.append((project_path, read_rules_block(project_path)))
     return layers, warnings

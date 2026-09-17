@@ -13,6 +13,9 @@ ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts/gb.py"
 sys.path.insert(0, str(ROOT / "scripts"))
 
+# A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+
 from getbrolls import library
 from getbrolls.cli import SUMMARIES, build_parser
 from getbrolls.ledger import Ledger
@@ -158,6 +161,73 @@ class LibraryTests(LibraryBase):
             require_fetch(fresh)
         self.assertEqual([], fresh["rights"]["evidence"])
         self.assertEqual("pending", fresh["approval"]["status"])
+
+    def test_two_writers_at_once_keep_both_entries(self):
+        import threading
+
+        errors = []
+
+        def write(n):
+            try:
+                library.learn_query(f"busca {n}", "youtube", "hit")
+            except Exception as e:  # noqa: BLE001 — o teste quer a falha real
+                errors.append(e)
+
+        threads = [threading.Thread(target=write, args=(n,)) for n in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual([], errors)
+        data = json.loads(library.index_path().read_text(encoding="utf-8"))
+        self.assertEqual(8, len(data["queries"]))
+        self.assertFalse(list(library.library_dir().glob("*.tmp")))
+        self.assertFalse((library.library_dir() / "index.lock").exists())
+
+    def test_the_same_query_counts_up_instead_of_piling_lines(self):
+        for _ in range(3):
+            library.learn_query("foguete decolando", "pexels", "miss", auto=True)
+        data = json.loads(library.index_path().read_text(encoding="utf-8"))
+        self.assertEqual(1, len(data["queries"]))
+        self.assertEqual(3, data["queries"][0]["count"])
+        self.assertEqual(3, data["providers"]["pexels"]["outcomes"]["miss"])
+
+    def test_the_query_list_has_a_ceiling_and_drops_automatic_ones_first(self):
+        library.learn_query("busca escrita por gente", "youtube", "hit")
+        for n in range(library.MAX_QUERIES + 10):
+            library.learn_query(f"automatica {n}", "pexels", "miss", auto=True)
+        data = json.loads(library.index_path().read_text(encoding="utf-8"))
+        self.assertEqual(library.MAX_QUERIES, len(data["queries"]))
+        self.assertIn(
+            "busca escrita por gente", [q["query"] for q in data["queries"]]
+        )
+
+    def test_hints_never_repeat_free_text_from_another_project(self):
+        ledger, c = approved_candidate(self.project)
+        remember(ledger, c, "approved", "Cliente X pediu esse plano.", "Bruno")
+        library.learn_from_candidate(self.project, c["id"])
+        for hint in library.hints("foguete"):
+            self.assertNotIn("reason", hint)
+            self.assertNotIn("by", hint)
+        explicit = library.search("foguete")["assets"][0]
+        self.assertEqual("Cliente X pediu esse plano.", explicit["reason"])
+
+    def test_an_unreadable_index_never_breaks_search(self):
+        library.learn_query("foguete decolando", "youtube", "hit")
+        library.index_path().write_text("{ isso não é json", encoding="utf-8")
+        self.assertEqual([], library.hints("foguete"))
+
+    def test_the_tests_never_point_at_the_real_home(self):
+        import tempfile as tf
+
+        os.environ.pop("GB_HOME", None)
+        import _isolation
+
+        os.environ["GB_HOME"] = str(_isolation.GB_HOME)
+        self.assertTrue(
+            str(library.home_dir()).startswith(tf.gettempdir()), library.home_dir()
+        )
+        self.assertNotEqual(Path.home() / ".getbrolls", library.home_dir())
 
     def test_search_finds_assets_queries_and_preferences(self):
         ledger, c = approved_candidate(self.project)

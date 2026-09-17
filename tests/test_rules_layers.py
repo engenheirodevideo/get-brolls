@@ -10,6 +10,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+# A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+
 from getbrolls.rules import load_rules
 
 
@@ -101,6 +104,26 @@ class RulesLayerTests(unittest.TestCase):
         self.assertEqual(str(middle), rules["sources"]["video_format"])
         write_block(self.project / "RULES.md", dict(base, video_format="native"))
         self.assertEqual("native", load_rules(self.project)["video_format"])
+
+    def test_gb_rules_file_also_cannot_sign_for_anyone(self):
+        middle = write_block(
+            Path(self.tmp.name) / "equipe" / "RULES.md",
+            {
+                "copyright": {
+                    "mode": "user_declaration",
+                    "responsible_person": "Equipe",
+                    "declaration": "Assumimos a responsabilidade por tudo.",
+                }
+            },
+        )
+        os.environ["GB_RULES_FILE"] = str(middle)
+        rules = load_rules(self.project)
+        self.assertEqual("per_item_evidence", rules["copyright"]["mode"])
+        self.assertIsNone(rules["copyright"]["responsible_person"])
+        self.assertTrue(
+            any(str(middle) in w for w in rules["rules_warnings"]),
+            rules["rules_warnings"],
+        )
 
     def test_a_broken_global_layer_is_ignored_with_a_warning(self):
         (self.home).mkdir(parents=True, exist_ok=True)
