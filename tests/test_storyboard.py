@@ -43,3 +43,55 @@ class StoryboardTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ContactSheetRenderingTest(unittest.TestCase):
+    def render_item(self, **overrides):
+        import tempfile
+        from getbrolls.ledger import Ledger
+        from getbrolls.models import candidate, set_segment
+        from getbrolls.rendering import render
+
+        with tempfile.TemporaryDirectory() as d:
+            ledger = Ledger(d)
+            c = candidate("youtube", "abc", "Foguete decolando")
+            c["source_url"] = "https://www.youtube.com/watch?v=abc"
+            set_segment(c, 7, 12)
+            c["preview"].update(overrides)
+            ledger.data["items"].append(c)
+            return Path(render(ledger)).read_text(encoding="utf-8")
+
+    def test_contact_sheet_is_inline_with_legend_when_unlabelled(self):
+        page = self.render_item(
+            poster_path="previews/a-poster.jpg",
+            contact_sheet_path="previews/a-sheet.jpg",
+            frame_times_s=[7.0, 8.3, 9.5, 10.8],
+            sheet_grid=[4, 1],
+            sheet_labels=False,
+        )
+        self.assertIn('<figure class="contact-sheet">', page)
+        self.assertIn('<img src="previews/a-sheet.jpg"', page)
+        self.assertIn("1 = 7,0 s · 2 = 8,3 s · 3 = 9,5 s · 4 = 10,8 s", page)
+        self.assertIn("Contact sheet · 4 quadros · grade 4×1 · corte 0:07.0–0:12.0", page)
+        self.assertIn("Prévia do trecho", page)
+        self.assertNotIn("Sem prévia", page)
+        self.assertNotIn("Ver contact sheet", page)
+
+    def test_labelled_sheet_has_no_legend(self):
+        page = self.render_item(
+            poster_path="previews/a-poster.jpg",
+            contact_sheet_path="previews/a-sheet.jpg",
+            frame_times_s=[7.0, 9.5],
+            sheet_grid=[2, 1],
+            sheet_labels=True,
+        )
+        self.assertIn('<figure class="contact-sheet">', page)
+        self.assertNotIn('<p class="sheet-legend">', page)
+
+    def test_source_thumbnail_is_never_called_a_preview(self):
+        page = self.render_item(poster_url="https://i.ytimg.com/vi/abc/hq.jpg")
+        self.assertIn("Miniatura da fonte · sem prévia", page)
+        self.assertIn('<span class="preview-badge">Sem prévia</span>', page)
+        self.assertNotIn("Prévia do trecho", page)
+        self.assertNotIn('alt="Prévia', page)
+        self.assertIn('alt="Miniatura da fonte — Foguete decolando"', page)
