@@ -3,6 +3,7 @@
 import sys
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -246,3 +247,201 @@ class BackgroundServeTests(unittest.TestCase):
             self.assertEqual(
                 {"review.html"}, {p.name for p in (root / "brolls").iterdir()}
             )
+
+
+class ServerIdentityTests(unittest.TestCase):
+    """#44 (revisão): PID sozinho não prova nada — o servidor precisa se identificar."""
+
+    def _project(self, root):
+        brolls = root / "brolls"
+        brolls.mkdir(parents=True)
+        (brolls / "review.html").write_text("<html>storyboard</html>", encoding="utf-8")
+        return root
+
+    def test_a_recycled_pid_is_never_killed_and_the_file_is_cleaned(self):
+        import json as _json
+        import os
+        import subprocess as _subprocess
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._project(Path(tmp))
+            # Um processo vivo qualquer, que não é o nosso servidor: o PID existe,
+            # mas ninguém responde ao ping com a nossa sessão.
+            innocent = _subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(30)"]
+            )
+            try:
+                (root / "brolls" / ".serve.pid").write_text(
+                    _json.dumps(
+                        {
+                            "pid": innocent.pid,
+                            "port": 1,
+                            "session": "sessao-que-nunca-existiu",
+                            "urls": [],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                self.assertFalse(serve.state(root)["running"])
+                result = serve.stop(root)
+                self.assertFalse(result["stopped"])
+                self.assertEqual("stale_pid", result["reason"])
+                self.assertFalse((root / "brolls" / ".serve.pid").exists())
+                self.assertIsNone(innocent.poll(), "o processo inocente foi morto")
+            finally:
+                innocent.kill()
+                innocent.wait(timeout=5)
+
+    def test_a_wrong_session_in_the_pid_file_is_not_running(self):
+        import json as _json
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._project(Path(tmp))
+            started = serve.start_background(root, port=0)
+            try:
+                self.assertTrue(serve.state(root)["running"])
+                pid_file = root / "brolls" / ".serve.pid"
+                record = _json.loads(pid_file.read_text(encoding="utf-8"))
+                self.assertTrue(record["session"])
+                pid_file.write_text(
+                    _json.dumps({**record, "session": "outra"}), encoding="utf-8"
+                )
+                self.assertFalse(serve.state(root)["running"])
+                pid_file.write_text(_json.dumps(record), encoding="utf-8")
+            finally:
+                serve.stop(root)
+
+    def test_ping_answers_the_session_of_this_server(self):
+        import json as _json
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._project(Path(tmp))
+            server, port = serve.start(root, port=0)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                with urllib.request.urlopen(
+                    f"http://127.0.0.1:{port}/__ping", timeout=5
+                ) as response:
+                    self.assertEqual(
+                        server.session_id,
+                        _json.loads(response.read().decode("utf-8"))["session"],
+                    )
+            finally:
+                server.shutdown()
+                thread.join(timeout=5)
+                server.server_close()
+
+
+class RebindingTests(unittest.TestCase):
+    """Um nome que resolve para 127.0.0.1 continua sendo outra origem."""
+
+    def _project(self, root):
+        brolls = root / "brolls"
+        brolls.mkdir(parents=True)
+        (brolls / "review.html").write_text("<html>storyboard</html>", encoding="utf-8")
+        return root
+
+    @contextmanager
+    def _serving(self, root):
+        server, port = serve.start(root, port=0)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            yield server, port
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
+            server.server_close()
+
+    def _request(self, port, headers, method="GET", body=None):
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}"
+            + (serve.SAVE_PATH if method == "POST" else "/review.html"),
+            data=body,
+            headers=headers,
+            method=method,
+        )
+        return urllib.request.urlopen(request, timeout=5)
+
+    def test_get_with_a_foreign_host_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._project(Path(tmp))
+            with self._serving(root) as (server, port):
+                with self.assertRaises(urllib.error.HTTPError) as ctx:
+                    self._request(port, {"Host": "storyboard.evil.test"})
+                self.assertEqual(403, ctx.exception.code)
+
+    def test_post_with_a_foreign_host_or_origin_is_refused(self):
+        import json as _json
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._project(Path(tmp))
+            with self._serving(root) as (server, port):
+                body = _json.dumps({"items": []}).encode()
+                for headers in (
+                    {"Host": f"evil.test:{port}"},
+                    {"Host": f"127.0.0.1:{port}", "Origin": "https://evil.test"},
+                ):
+                    with self.assertRaises(urllib.error.HTTPError) as ctx:
+                        self._request(
+                            port,
+                            {
+                                **headers,
+                                "Content-Type": "application/json",
+                                serve.TOKEN_HEADER: server.save_token,
+                            },
+                            method="POST",
+                            body=body,
+                        )
+                    self.assertEqual(403, ctx.exception.code)
+            self.assertFalse((root / "brolls" / "reviews").exists())
+
+    def test_a_non_ascii_token_is_a_refusal_not_a_crash(self):
+        import json as _json
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._project(Path(tmp))
+            with self._serving(root) as (server, port):
+                with self.assertRaises(urllib.error.HTTPError) as ctx:
+                    self._request(
+                        port,
+                        {
+                            "Host": f"127.0.0.1:{port}",
+                            "Content-Type": "application/json",
+                            serve.TOKEN_HEADER: "tökén-nao-ascii",
+                        },
+                        method="POST",
+                        body=_json.dumps({"items": []}).encode(),
+                    )
+                self.assertEqual(403, ctx.exception.code)
+
+
+class SaveWriteHardeningTests(unittest.TestCase):
+    def test_a_symlink_planted_at_the_target_name_is_refused(self):
+        import os
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            brolls = root / "brolls"
+            (brolls / serve.REVIEWS_DIR).mkdir(parents=True)
+            target = root / "fora-do-projeto.json"
+            name = time.strftime("%Y%m%d-%H%M%S") + ".json"
+            os.symlink(target, brolls / serve.REVIEWS_DIR / name)
+            with self.assertRaises(ValueError):
+                serve.save_review(brolls, {"items": []})
+            self.assertFalse(target.exists())
+
+    def test_a_symlinked_reviews_folder_is_refused(self):
+        import os
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            brolls = root / "brolls"
+            brolls.mkdir(parents=True)
+            elsewhere = root / "outro-lugar"
+            elsewhere.mkdir()
+            os.symlink(elsewhere, brolls / serve.REVIEWS_DIR)
+            with self.assertRaises(ValueError):
+                serve.save_review(brolls, {"items": []})
+            self.assertEqual([], list(elsewhere.iterdir()))

@@ -258,3 +258,30 @@ class FormatChangeGateTests(unittest.TestCase):
             self.assertEqual(1, report["format_pending"])
             self.assertIn("serve", report)
             self.assertFalse(report["serve"]["running"])
+
+    def test_read_only_consults_are_not_blocked_by_the_format_gate(self):
+        with tempfile.TemporaryDirectory() as folder:
+            ledger, rules = self._project_with_approved_item(folder)
+            path = Path(folder) / "RULES.md"
+            rules["video_format"] = "reels"
+            path.write_text("```json\n" + json.dumps(rules) + "\n```", encoding="utf-8")
+            for command in (["references"], ["inspect", "--url", "https://example.org/a"]):
+                with self.subTest(command=command[0]):
+                    proc = subprocess.run(
+                        [sys.executable, str(CLI), *command, "--project", folder],
+                        capture_output=True,
+                        text=True,
+                    )
+                    self.assertNotIn("--confirm-format-change", proc.stdout + proc.stderr)
+            # A aprovação segue de pé: a consulta não sincroniza formato nenhum.
+            self.assertEqual(
+                "approved", Ledger(folder).data["items"][0]["approval"]["status"]
+            )
+            # Um comando de escrita continua barrado até o sim explícito.
+            blocked = subprocess.run(
+                [sys.executable, str(CLI), "review", "--project", folder],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(0, blocked.returncode)
+            self.assertIn("--confirm-format-change", blocked.stdout + blocked.stderr)

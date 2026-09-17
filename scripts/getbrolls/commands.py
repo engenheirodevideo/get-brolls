@@ -162,6 +162,9 @@ STATUS_STAGES = (
 PREVIEW_ARTIFACTS = ("gif_path", "contact_sheet_path", "poster_path")
 
 # Nomes que não identificam ninguém: uma declaração precisa de uma pessoa real.
+# Comandos que só consultam o projeto: `inspect` grava no máximo `media.duration_s`
+# e `references` não grava nada — nenhum dos dois muda formato nem aprovação.
+READ_ONLY_CONSULTS = ("references", "inspect")
 GENERIC_NAMES = ("usuário", "usuario", "eu", "user", "cliente")
 
 
@@ -862,7 +865,12 @@ def execute(args):
     ledger = Ledger(args.project)
     from getbrolls.rules import sync_formats
 
-    sync_formats(ledger, rules, confirm=getattr(args, "confirm_format_change", False))
+    # Consultas (`references`, `inspect`) não decidem nada sobre formato: como o
+    # `status`, elas nunca podem ser barradas pelo portão de `--confirm-format-change`.
+    if cmd not in READ_ONLY_CONSULTS:
+        sync_formats(
+            ledger, rules, confirm=getattr(args, "confirm_format_change", False)
+        )
     if cmd == "browser-plan":
         from getbrolls.browser import plan
 

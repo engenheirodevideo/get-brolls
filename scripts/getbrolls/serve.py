@@ -24,6 +24,8 @@ DEFAULT_PORT = 8767
 # Cabeçalho do token de sessão: sem ele (ou com o token errado) o POST é recusado.
 TOKEN_HEADER = "X-GetBrolls-Token"
 SAVE_PATH = "/__save"
+# Identidade do servidor: quem pergunta descobre se o PID do arquivo ainda é nosso.
+PING_PATH = "/__ping"
 # Mesmo teto do `import-review`: um board legítimo não passa disso.
 MAX_SAVE_BYTES = 2000000
 PID_FILE = ".serve.pid"
@@ -54,12 +56,32 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _local_request(self):
+        """Só aceita pedidos endereçados a esta máquina, nesta porta.
+
+        Um nome de domínio que resolve para 127.0.0.1 (DNS rebinding) chega com
+        outro `Host`; e um `Origin` de outra página não bate com o `Host` local.
+        """
+        port = self.server.server_address[1]
+        host = (self.headers.get("Host") or "").strip()
+        if host not in (f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"):
+            return False
+        origin = self.headers.get("Origin")
+        if origin and origin not in (f"http://{host}",):
+            return False
+        return True
+
     def do_POST(self):  # noqa: N802 - assinatura exigida pela stdlib
+        if not self._local_request():
+            self._refuse(403, "Pedido de outra origem; este servidor só atende esta máquina.")
+            return
         if self.path.split("?")[0] != SAVE_PATH:
             self._refuse(404, "Endereço desconhecido.")
             return
         token = self.headers.get(TOKEN_HEADER) or ""
-        if not hmac.compare_digest(token, self.server.save_token):
+        # `compare_digest` de texto explode com caracteres fora de ASCII: um
+        # cabeçalho qualquer não pode virar 500, é só mais um token errado.
+        if not token.isascii() or not hmac.compare_digest(token, self.server.save_token):
             self._refuse(403, "Token da sessão ausente ou inválido.")
             return
         try:
@@ -98,6 +120,30 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def send_head(self):
+        import io
+
+        if not self._local_request():
+            body = json.dumps(
+                {"error": "Pedido de outra origem; este servidor só atende esta máquina."},
+                ensure_ascii=False,
+            ).encode("utf-8")
+            self.send_response(403)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            return io.BytesIO(body)
+        if self.path.split("?")[0] == PING_PATH:
+            # Identidade do servidor: é assim que `status`/`stop` sabem que o PID
+            # gravado ainda é deste servidor, e não de um processo que reusou o número.
+            body = json.dumps(
+                {"session": self.server.session_id, "port": self.server.server_address[1]},
+                ensure_ascii=False,
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            return io.BytesIO(body)
         # O token vive só na memória do servidor e na página servida por ele: quem
         # abrir o review.html direto do disco continua com o caminho do download.
         if self.path.split("?")[0] in ("/review.html", "/"):
@@ -110,8 +156,6 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
-                import io
-
                 return io.BytesIO(body)
         return super().send_head()
 
@@ -149,15 +193,42 @@ def save_review(directory, data):
     nada do corpo enviado entra no caminho, então não há como escapar da pasta.
     """
     reviews = Path(directory) / REVIEWS_DIR
+    if reviews.is_symlink():
+        raise ValueError(
+            f"{reviews} é um link simbólico; a pasta de decisões precisa ser uma pasta "
+            "de verdade dentro do projeto."
+        )
     reviews.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    path = reviews / f"{stamp}.json"
-    extra = 1
-    while path.exists():
-        path = reviews / f"{stamp}-{extra}.json"
-        extra += 1
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    return path
+    body = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+    # O_EXCL nunca segue um arquivo existente e O_NOFOLLOW recusa um link plantado
+    # no lugar do nome: a gravação cria o arquivo ou falha, jamais escreve através.
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    extra = 0
+    while True:
+        path = reviews / (f"{stamp}.json" if not extra else f"{stamp}-{extra}.json")
+        try:
+            handle = os.open(path, flags, 0o600)
+        except FileExistsError:
+            if path.is_symlink():
+                # Alguém plantou um link no nome que íamos usar: nada de escrever
+                # através dele, nem de escolher outro nome como se fosse normal.
+                raise ValueError(
+                    f"{path} é um link simbólico; apague esse link antes de salvar as "
+                    "decisões — o arquivo tem que ficar dentro do projeto."
+                ) from None
+            extra += 1
+            if extra > 50:
+                raise
+            continue
+        except OSError as exc:
+            raise ValueError(
+                f"Não consegui gravar as decisões em {path}: {exc.strerror}. "
+                "Confira se não há um link simbólico no lugar do arquivo."
+            ) from exc
+        with os.fdopen(handle, "wb") as stream:
+            stream.write(body)
+        return path
 
 
 def start(project, port: int = DEFAULT_PORT):
@@ -179,6 +250,8 @@ def start(project, port: int = DEFAULT_PORT):
         server = _ExclusiveServer(("127.0.0.1", 0), handler)
     # Um token por sessão: some quando o servidor cai, e só a página servida o conhece.
     server.save_token = secrets.token_urlsafe(32)
+    # Identidade sorteada: é o que separa "o nosso servidor" de um PID reaproveitado.
+    server.session_id = secrets.token_urlsafe(16)
     return server, server.server_address[1]
 
 
@@ -192,6 +265,7 @@ def run(project, port: int = DEFAULT_PORT) -> int:
             f"http://127.0.0.1:{bound_port}/review.html",
         ],
         "port": bound_port,
+        "session": server.session_id,
         "directory": str(directory),
     }
     print(json.dumps(payload, ensure_ascii=False))
@@ -240,7 +314,8 @@ def _alive(pid):
     except ProcessLookupError:
         return False
     except PermissionError:
-        return True
+        # Um PID de outro dono nunca é o nosso servidor; quem confirma é o ping.
+        return False
     except OSError:
         return False
     return True
@@ -266,11 +341,39 @@ def read_pid(project):
     return data if isinstance(data, dict) else None
 
 
+def _ping(port, session, timeout=1.0):
+    """O servidor desta porta é o da nossa sessão? Só uma leitura, nada é gravado.
+
+    Sem isso, um PID reaproveitado pelo sistema apareceria como "rodando" — e um
+    `--stop` mataria um processo inocente.
+    """
+    if not port or not session:
+        return False
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}{PING_PATH}", timeout=timeout
+        ) as response:
+            answer = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError, urllib.error.URLError):
+        return False
+    return isinstance(answer, dict) and answer.get("session") == session
+
+
+def _ours(data):
+    """O PID gravado ainda é o nosso servidor? Existir não basta: tem que responder."""
+    if not data:
+        return False
+    return _alive(data.get("pid")) and _ping(data.get("port"), data.get("session"))
+
+
 def state(project):
-    """`serve.running` para o `status`: só lê o PID file e pergunta ao sistema."""
+    """`serve.running` para o `status`: lê o PID file e confirma a identidade pelo ping."""
     data = read_pid(project) or {}
     pid = data.get("pid")
-    running = _alive(pid)
+    running = _ours(data)
     return {
         "running": running,
         "pid": pid if running else None,
@@ -349,6 +452,9 @@ def start_background(project, port: int = DEFAULT_PORT):
     record = {
         "pid": process.pid,
         "port": payload["port"],
+        # Identidade do processo: PID sozinho é reaproveitável pelo sistema operacional.
+        "session": payload.get("session"),
+        "executable": sys.executable,
         "urls": payload.get("urls") or _urls(payload["port"]),
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
@@ -366,7 +472,9 @@ def stop(project):
     if not data:
         return {"stopped": False, "reason": "not_running", "pid": None}
     pid = data.get("pid")
-    if not _alive(pid):
+    if not _ours(data):
+        # O processo pode ter morrido ou o número ter sido reaproveitado por outro
+        # programa: só limpamos o arquivo. Nunca matamos um PID que não se identificou.
         path.unlink(missing_ok=True)
         return {"stopped": False, "reason": "stale_pid", "pid": pid}
     if os.name == "nt":
