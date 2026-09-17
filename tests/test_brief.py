@@ -366,7 +366,8 @@ class BriefCommandTests(unittest.TestCase):
             self.assertEqual(
                 ["line", "problems", "next"], list(result["summary"])
             )
-            self.assertIn("approve --all", result["summary"]["next"])
+            # `next` vem da mesma escada de `status` (guidance.next_action).
+            self.assertIn("abertura", result["summary"]["next"])
             self.assertEqual(2, len(result["beats"]))
             first = result["beats"][0]
             self.assertEqual("abertura", first["id"])

@@ -9,6 +9,7 @@ from .media import probe, cut, run
 from .rendering import render
 from .queue import execute as queue_execute, hint as queue_hint, summary_line as queue_summary_line
 from .runtime import record_warning
+from .guidance import next_action
 
 # Raiz real da skill/plugin: o comando sugerido não pode depender da pasta atual.
 SKILL_ROOT = Path(__file__).resolve().parents[2]
@@ -309,12 +310,6 @@ def rules_from_flags(template, mode, responsible, declaration):
     )
 
 
-HUMAN_DECISION = (
-    "a decisão humana vem do Storyboard (review + import-review) ou da fala no chat "
-    '(approve --all --by NOME --channel chat --statement "frase").'
-)
-
-
 def brief_report(args):
     """Beats do vídeo com defaults aplicados, comando pronto e o que já foi registrado.
 
@@ -391,13 +386,35 @@ def brief_report(args):
             + _count(len(listed), "beat", "beats")
             + f", {covered} com candidato e {len(missing)} sem.",
             "problems": problems,
-            "next": (
-                f'Comece pelo beat "{missing[0]["id"]}" com o search de commands; depois '
-                + HUMAN_DECISION
-                if missing
-                else "Todo beat já tem candidato: gere as prévias com preview e peça "
-                + HUMAN_DECISION
-            ),
+            # Mesma escada de `status`: a pessoa ouve a mesma frase nos dois comandos.
+            "next": next_action(
+                {
+                    "project": args.project,
+                    "counts": {
+                        "candidates": len(items),
+                        "previews": sum(1 for c in items if _has_preview(c)),
+                        "approved": sum(1 for c in items if STAGE_TESTS["approved"](c)),
+                        "permitted": sum(1 for c in items if STAGE_TESTS["permitted"](c)),
+                        "delivered": sum(1 for c in items if STAGE_TESTS["delivered"](c)),
+                        "verified": sum(1 for c in items if STAGE_TESTS["verified"](c)),
+                    },
+                    "brief": {
+                        "beats": len(listed),
+                        "covered": covered,
+                        "missing": [
+                            {
+                                "id": entry["id"],
+                                "search": entry["commands"].get("search"),
+                            }
+                            for entry in missing
+                        ],
+                        "conflicts": conflicts,
+                    },
+                    "review_page": (root / "review.html").is_file(),
+                    "rights_mode": _rights_mode(rules),
+                    "candidate": _pending_candidate(items),
+                }
+            )["for_human"],
         },
         "brief": path,
         "video": data["video"],
@@ -511,6 +528,57 @@ def _format_pending(c, rules):
     return c.get("format", {}).get("target", "native") != format_report(c, rules)["target"]
 
 
+def brief_state(project, rules, items):
+    """Cobertura dos beats para a escada de orientação, sem gravar nada no projeto.
+
+    Devolve `None` quando não há BRIEF.md legível: esse é o degrau do topo da escada.
+    """
+    from getbrolls.brief import beat_commands, beat_progress, load_brief, validate_brief
+
+    try:
+        data, conflicts = validate_brief(load_brief(project), rules)
+    except (ValueError, OSError):
+        # Brief ausente ou inválido não quebra o `status`: vira o degrau "faça o brief".
+        return None
+    beats = data["beats"]
+    progress = beat_progress(beats, items)
+    missing = [
+        {
+            "id": b["id"],
+            "search": beat_commands(project, b["resolved"]).get("search"),
+        }
+        for b in beats
+        if not progress[b["id"]]
+    ]
+    return {
+        "beats": len(beats),
+        "covered": len(beats) - len(missing),
+        "missing": missing,
+        "conflicts": conflicts,
+    }
+
+
+def _rights_mode(rules):
+    return ((rules or {}).get("copyright") or {}).get("mode", "per_item_evidence")
+
+
+# Degrau → (item já está nesta etapa?, item precisa estar nesta anterior?).
+_PENDING_STAGES = (
+    (lambda c: not STAGE_TESTS["previews"](c), lambda c: True),
+    (lambda c: not STAGE_TESTS["permitted"](c), STAGE_TESTS["approved"]),
+    (lambda c: not STAGE_TESTS["delivered"](c), STAGE_TESTS["permitted"]),
+)
+
+
+def _pending_candidate(items):
+    """Primeiro item que o próximo comando tocaria: o comando sai com id real, não `ID`."""
+    for pending, ready in _PENDING_STAGES:
+        for c in items:
+            if ready(c) and pending(c):
+                return c["id"]
+    return None
+
+
 def status_report(ledger, rules=None, rules_error=None, queue=None):
     """Onde o projeto está, por etapa. Somente leitura: não grava nada."""
     items = ledger.data["items"]
@@ -523,6 +591,7 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
     format_pending = sum(1 for value in pending_format.values() if value)
     remembered, references_error = status_references(ledger.root)
     review_page = ledger.root / "review.html"
+    brief = brief_state(ledger.root.parent, rules, items)
     line = _status_line({"counts": counts})
     if ledger.recovered:
         line += (
@@ -542,6 +611,28 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
             for key, _, plural in STATUS_STAGES
         ],
         "next": status_next(counts, format_pending),
+        # Aditivo: `line/stages/next` seguem iguais; `do` traz o mesmo passo já em
+        # comando pronto e `brief` diz quantos beats ainda estão sem material.
+        "do": next_action(
+            {
+                "project": str(ledger.root.parent),
+                "counts": counts,
+                "format_pending": format_pending,
+                "brief": brief,
+                "review_page": review_page.is_file(),
+                "rights_mode": _rights_mode(rules),
+                "candidate": _pending_candidate(items),
+            }
+        ),
+        "brief": (
+            None
+            if brief is None
+            else {
+                "beats": brief["beats"],
+                "covered": brief["covered"],
+                "missing": len(brief["missing"]),
+            }
+        ),
     }
     return {
         "summary": summary,

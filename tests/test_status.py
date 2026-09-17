@@ -123,13 +123,39 @@ class StatusCommandTests(unittest.TestCase):
             payload = self.call("status", "--project", tmp)
             self.assertEqual("summary", next(iter(payload)))
             summary = payload["summary"]
-            self.assertEqual(["line", "stages", "next"], list(summary))
+            self.assertEqual(
+                ["line", "stages", "next", "do", "brief"], list(summary)
+            )
             self.assertIn("candidatos encontrados", summary["line"])
             self.assertEqual(
                 [plural for _, _, plural in STATUS_STAGES],
                 [stage["stage"] for stage in summary["stages"]],
             )
             self.assertIn("preview", summary["next"])
+            # `do` é aditivo e tem degraus a mais que `next`: sem BRIEF.md o passo
+            # real é fazer o brief, e `summary["brief"]` fica None.
+            self.assertEqual("init-brief", summary["do"]["step"])
+            self.assertIn("init-brief --project", summary["do"]["command"])
+            self.assertIn("/get-brolls-brief", summary["do"]["for_human"])
+            self.assertFalse(summary["do"]["blocking_human"])
+            self.assertIsNone(summary["do"]["url"])
+            self.assertIsNone(summary["brief"])
+
+    def test_status_counts_brief_coverage_without_writing(self):
+        from tests.test_brief import VALID, write_brief
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            write_brief(tmp, VALID)
+            before = sorted(p.name for p in Path(tmp).iterdir())
+            payload = self.call("status", "--project", tmp)
+            summary = payload["summary"]
+            self.assertEqual({"beats": 2, "covered": 0, "missing": 2}, summary["brief"])
+            # Nenhum beat tem candidato: o passo é buscar pelo primeiro deles.
+            self.assertEqual("brief-search", summary["do"]["step"])
+            self.assertIn("abertura", summary["do"]["for_human"])
+            self.assertIn("search --project", summary["do"]["command"])
+            self.assertEqual(before, sorted(p.name for p in Path(tmp).iterdir()))
 
     def test_status_next_step_follows_the_flow(self):
         base = dict.fromkeys(

@@ -38,7 +38,7 @@ Brief orienta, não bloqueia — nenhum comando passa a exigir `BRIEF.md`. Mas n
 6. `review --project ...`: entregue `brolls/` completo. Sirva a pasta localmente com `python3 "scripts/gb.py" serve --project <projeto>`, entregue ao usuário a URL `http://localhost:8767/review.html` e avise que abrir por `file://` pode desativar o salvamento local — exporte o JSON antes de fechar a página. Usuário aprova/ajusta e exporta JSON. Importe com `import-review --by`. Aprovação vem sempre de uma pessoa: pelo Storyboard (`import-review`) ou por fala explícita no chat (`approve --by NOME --channel chat --statement "frase"`, com `--statement` obrigatório no canal chat; `--all` cobre todos os itens com prévia). Nunca inferir de silêncio. Não se autoaprove. Alterações de contexto/intervalo invalidam aprovação.
 7. Registre condições reais com `permit --evidence`, ou a declaração dita no chat com `permit --declared-by NOME --declaration-text "frase"`; depois `fetch` e `verify`. Não invente licença. O corte usa os bytes revisados e mantém origem/autor.
 
-Use `status --project ...` para reportar ao usuário onde a coleta está — candidatos, prévias, decisões, permissões e entregas — sem alterar o projeto.
+Use `status --project ...` para reportar ao usuário onde a coleta está — candidatos, prévias, decisões, permissões e entregas — sem alterar o projeto. Ao responder, repasse `summary.do.for_human` sem parafrasear.
 
 Utilitários YouTube estão em `scripts/getbrolls/tools/youtube/`; o [README](README.md) mostra os comandos e explica sua relação com o ledger. Contexto da pessoa permanece estático; GIF padrão anima só B-roll. Full exige composição pronta do insert. Preserve originais, cache, eventos e journal. Página falhou após salvar: regenere `review`.
 
