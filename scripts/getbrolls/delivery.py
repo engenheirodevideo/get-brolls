@@ -22,6 +22,7 @@ contrário de `c["output"]["path"]`, que é relativo a `brolls/`.
 import os
 import re
 import shutil
+import stat
 import unicodedata
 from datetime import date
 from pathlib import Path
@@ -138,6 +139,23 @@ def _freeze(path, method):
         pass
 
 
+def _thaw_unlink(path):
+    """Apaga o que este gerador congelou, inclusive no Windows.
+
+    `_freeze` tira o bit de escrita; no Windows isso vira o atributo somente-leitura
+    e `unlink` levanta `PermissionError`. Devolver a escrita antes é o único jeito de
+    `deliver` regenerar `entrega/` depois de um beat renomeado.
+    """
+    path = Path(path)
+    try:
+        path.unlink()
+        return
+    except PermissionError:
+        pass
+    os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+    path.unlink()
+
+
 def link_or_copy(src, dest, read_only=False):
     """Liga `dest` a `src` pelo jeito mais barato que o sistema aceitar.
 
@@ -162,7 +180,7 @@ def link_or_copy(src, dest, read_only=False):
                 return "symlink"
         except OSError:
             pass
-        dest.unlink()
+        _thaw_unlink(dest)
     elif dest.exists():
         if _same_file(dest, src):
             if read_only:
@@ -184,7 +202,7 @@ def link_or_copy(src, dest, read_only=False):
             return method
         except (OSError, NotImplementedError, AttributeError):
             if dest.is_symlink() or dest.exists():
-                dest.unlink()
+                _thaw_unlink(dest)
     raise OSError(
         f"Não consegui ligar nem copiar {src} para {dest}. Confira espaço e permissão de escrita na pasta do projeto."
     )
@@ -223,6 +241,24 @@ def _segment_label(c):
     return f"{start:g}s → {end:g}s"
 
 
+def _author(c):
+    """Quem assina a fonte: `creator.name` quando existe, senão o canal/uploader bruto.
+
+    Provedores de vídeo costumam devolver só `channel`/`uploader`; dizer "não
+    informado" com o nome do canal na mão esconde crédito que existe.
+    """
+    for value in (
+        (c.get("creator") or {}).get("name"),
+        c.get("channel"),
+        c.get("uploader"),
+        (c.get("media") or {}).get("channel"),
+        (c.get("media") or {}).get("uploader"),
+    ):
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return "não informado"
+
+
 def render_origin(c, media_name, created=None, method="hardlink"):
     """`ORIGEM.md` do trecho: fonte, autor, intervalo, direitos e sha256 do arquivo."""
     rights = c.get("rights") or {}
@@ -235,7 +271,7 @@ def render_origin(c, media_name, created=None, method="hardlink"):
         f"- Candidato: `{c['id']}`",
         f"- Título na fonte: {c.get('title') or 'não informado'}",
         f"- Fonte: {c.get('source_url') or 'original local'}",
-        f"- Autor: {(c.get('creator') or {}).get('name') or 'não informado'}",
+        f"- Autor: {_author(c)}",
         f"- Trecho usado: {_segment_label(c)}",
         f"- Direitos: {rights.get('status') or 'unknown'}",
         f"- Licença: {rights.get('license_name') or 'ver evidência'}",
@@ -394,7 +430,7 @@ def _sweep(root, expected, dry_run, owned=()):
             continue
         if _ours(rel, path, owned):
             if not dry_run:
-                path.unlink()
+                _thaw_unlink(path)
             removed.append(rel)
         else:
             kept.append(rel)

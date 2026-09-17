@@ -103,7 +103,11 @@ class CliTest(unittest.TestCase):
             state = self.call("status", "--project", root)
             self.assertEqual(1, state["counts"]["verified"])
             self.assertIn("completo", state["summary"]["next"])
-            self.call("fetch", *base, ok=False)
+            # Recoletar a mesma revisão não pode explodir dentro do ffmpeg por causa
+            # do arquivo congelado por `deliver`: a recusa é explícita e diz o que fazer.
+            again = self.call("fetch", *base, ok=False)
+            self.assertIn("Arquivo final já existe", json.dumps(again, ensure_ascii=False))
+            self.assertIn("verify", json.dumps(again, ensure_ascii=False))
             self.assertTrue((root / "brolls/review.html").exists())
             self.assertIn(
                 "Vídeo sintético",

@@ -1270,7 +1270,7 @@ def execute(args):
             )
             dest = ledger.root / rel
             if dest.exists():
-                raise ValueError("Arquivo final já existe; não foi sobrescrito.")
+                raise ValueError(_already_collected(rel))
             from .media import copy_image
 
             copy_image(src, dest)
@@ -1280,6 +1280,13 @@ def execute(args):
             render(ledger)
             return c
         rel = "clips/" + hashlib.sha256(c["id"].encode()).hexdigest()[:16] + f"-r{c['segment']['revision']}.mp4"
+        # O arquivo entregue nasce somente-leitura (delivery._freeze congela o inode
+        # compartilhado): sem esta checagem o ffmpeg falharia por permissão, sem dizer
+        # o motivo. Recusar aqui, antes de gastar a fonte, explica o que fazer.
+        if (ledger.root / rel).exists():
+            if temp:
+                temp.unlink(missing_ok=True)
+            raise ValueError(_already_collected(rel))
         try:
             offset = c.get("local_start_s", 0)
             start = c["segment"]["start_s"] - offset
@@ -1305,6 +1312,15 @@ def execute(args):
         # They live only in this response, never in the manifest.
         return {**c, "files": preview_files(ledger, c)}
     return c
+
+
+def _already_collected(rel):
+    """Mesma recusa para imagem e vídeo: já existe corte desta revisão, e eu não sobrescrevo."""
+    return (
+        f"Arquivo final já existe e não foi sobrescrito: `{rel}`. Esta revisão do "
+        "trecho já está coletada — rode `verify` para conferir, ou gere uma prévia "
+        "nova (novo `--start`/`--end`) se quiser outro corte."
+    )
 
 
 def preview_files(ledger, c):

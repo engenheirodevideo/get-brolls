@@ -323,6 +323,74 @@ class Build(unittest.TestCase):
             self.assertEqual(b"corte que a pessoa mexeu na mao", media.read_bytes())
 
 
+class FrozenFiles(unittest.TestCase):
+    """O que `deliver` congela precisa continuar apagável — inclusive no Windows."""
+
+    def test_thaw_unlink_removes_a_read_only_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "congelado.mp4"
+            path.write_bytes(b"bytes")
+            delivery._freeze(path, "hardlink")
+            self.assertFalse(os.access(path, os.W_OK))
+            delivery._thaw_unlink(path)
+            self.assertFalse(path.exists())
+
+    def test_thaw_unlink_gives_the_write_bit_back_when_unlink_is_refused(self):
+        """Simula o Windows: o atributo somente-leitura barra o primeiro `unlink`."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "congelado.mp4"
+            path.write_bytes(b"bytes")
+            delivery._freeze(path, "hardlink")
+            real = Path.unlink
+            refused = []
+
+            def windowsish(self, *args, **kwargs):
+                if not refused and not os.access(self, os.W_OK):
+                    refused.append(str(self))
+                    raise PermissionError(13, "read-only file")
+                return real(self, *args, **kwargs)
+
+            Path.unlink = windowsish
+            try:
+                delivery._thaw_unlink(path)
+            finally:
+                Path.unlink = real
+            self.assertEqual([str(path)], refused)
+            self.assertFalse(path.exists())
+
+    def test_thaw_unlink_is_used_when_a_frozen_link_becomes_an_orphan(self):
+        """Renomear o beat apaga o link antigo mesmo que ele esteja somente-leitura."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = project(tmp, [fetched("a", "Palco", shot="abertura")])
+            delivery.build_delivery(tmp)
+            old = sorted(p.name for p in (Path(tmp) / "entrega").iterdir() if p.is_dir())
+            frozen = [p for p in (Path(tmp) / "entrega").rglob("*.mp4")]
+            self.assertTrue(frozen and not os.access(frozen[0], os.W_OK))
+            ledger.data["items"][0]["shot"] = "fechamento"
+            ledger.save_many("fixture", ledger.data["items"])
+            delivery.build_delivery(tmp)
+            for name in old:
+                self.assertFalse((Path(tmp) / "entrega" / name).exists())
+
+
+class OriginAuthor(unittest.TestCase):
+    def test_channel_is_the_credit_when_the_provider_gave_no_creator_name(self):
+        c = fetched("a", "Palco", shot="abertura")
+        c["creator"]["name"] = None
+        c["channel"] = "Canal do Exemplo"
+        self.assertIn("- Autor: Canal do Exemplo", delivery.render_origin(c, "a.mp4"))
+
+    def test_creator_name_still_wins_over_the_channel(self):
+        c = fetched("a", "Palco", shot="abertura")
+        c["channel"] = "Canal do Exemplo"
+        self.assertIn("- Autor: Autora Exemplo", delivery.render_origin(c, "a.mp4"))
+
+    def test_without_any_credit_the_line_stays_explicit(self):
+        c = fetched("a", "Palco", shot="abertura")
+        c["creator"]["name"] = None
+        self.assertIn("- Autor: não informado", delivery.render_origin(c, "a.mp4"))
+
+
 class VerifyHook(unittest.TestCase):
     def test_delivery_failure_only_warns_and_verify_still_succeeds(self):
         from getbrolls import delivery as module
