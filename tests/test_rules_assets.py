@@ -103,7 +103,8 @@ class RulesTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "bloqueado"):
                 import_review(l, path, "Human", r)
             r["video_format"] = "reels"
-            sync_formats(l, r)
+            # A mudança derruba uma aprovação humana: só passa com o sim explícito.
+            sync_formats(l, r, confirm=True)
             self.assertEqual(c["approval"]["status"], "pending")
             self.assertEqual(c["format"]["target"], "reels")
             r["asset_types"] = ["web_screenshot"]
@@ -183,3 +184,77 @@ class RulesTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FormatChangeGateTests(unittest.TestCase):
+    """#44: mudar o formato-alvo derruba aprovações — só depois de um sim explícito."""
+
+    def _project_with_approved_item(self, folder):
+        from getbrolls.rules import sync_formats
+
+        ledger = Ledger(folder)
+        rules = load_rules(folder)
+        c = candidate("local", "fixture", "Synthetic")
+        c["media"].update(width=1920, height=1080)
+        set_segment(c, 0, 1)
+        c["format"] = format_report(c, rules)
+        approve(c, "Human", "chat", "Aprovo este trecho para o vídeo.")
+        ledger.add(c)
+        ledger.save("approve", c)
+        return ledger, rules
+
+    def test_change_that_invalidates_approvals_aborts_and_lists_the_items(self):
+        from getbrolls.rules import sync_formats
+
+        with tempfile.TemporaryDirectory() as folder:
+            ledger, rules = self._project_with_approved_item(folder)
+            rules["video_format"] = "reels"
+            before = ledger.path.read_bytes()
+            with self.assertRaises(ValueError) as ctx:
+                sync_formats(ledger, rules)
+            self.assertIn("fixture", str(ctx.exception))
+            self.assertIn("--confirm-format-change", str(ctx.exception))
+            self.assertEqual(before, ledger.path.read_bytes())
+            self.assertEqual("approved", ledger.data["items"][0]["approval"]["status"])
+
+    def test_the_same_change_goes_through_once_confirmed(self):
+        from getbrolls.rules import sync_formats
+
+        with tempfile.TemporaryDirectory() as folder:
+            ledger, rules = self._project_with_approved_item(folder)
+            rules["video_format"] = "reels"
+            sync_formats(ledger, rules, confirm=True)
+            self.assertEqual("pending", ledger.data["items"][0]["approval"]["status"])
+            self.assertEqual("reels", ledger.data["items"][0]["format"]["target"])
+
+    def test_a_change_without_approvals_never_needs_the_flag(self):
+        from getbrolls.rules import sync_formats
+
+        with tempfile.TemporaryDirectory() as folder:
+            ledger = Ledger(folder)
+            rules = load_rules(folder)
+            c = candidate("local", "fixture", "Synthetic")
+            c["media"].update(width=1920, height=1080)
+            set_segment(c, 0, 1)
+            c["format"] = format_report(c, rules)
+            ledger.add(c)
+            rules["video_format"] = "reels"
+            sync_formats(ledger, rules)
+            self.assertEqual("reels", ledger.data["items"][0]["format"]["target"])
+
+    def test_status_reads_a_project_with_a_pending_format_change_without_the_flag(self):
+        with tempfile.TemporaryDirectory() as folder:
+            ledger, rules = self._project_with_approved_item(folder)
+            path = Path(folder) / "RULES.md"
+            rules["video_format"] = "reels"
+            path.write_text("```json\n" + json.dumps(rules) + "\n```", encoding="utf-8")
+            proc = subprocess.run(
+                [sys.executable, str(CLI), "status", "--project", folder],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
+            report = json.loads(proc.stdout)
+            self.assertEqual(1, report["format_pending"])
+            self.assertIn("serve", report)
+            self.assertFalse(report["serve"]["running"])

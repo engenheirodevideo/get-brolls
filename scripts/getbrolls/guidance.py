@@ -27,6 +27,8 @@ STEPS = (
     "inspect",
     "preview",
     "approve",
+    "serve-board",
+    "import-review",
     "permit",
     "fetch",
     "verify",
@@ -48,6 +50,10 @@ TEMPLATES = {
         "approve --project {project} --all --by NOME --channel chat "
         '--statement "FRASE EXATA DITA POR ELE"'
     ),
+    # Rota do board: sobe o servidor sozinho e devolve a URL; a importação depois
+    # não precisa de caminho de arquivo, porque a página grava dentro do projeto.
+    "serve-board": "serve --project {project} --background",
+    "import-review": "import-review --project {project} --by NOME",
     "permit": "permit --project {project} --candidate {candidate} --evidence EVIDENCIA_REAL",
     "fetch": "fetch --project {project} --candidate {candidate}",
     "verify": "verify --project {project}",
@@ -182,15 +188,25 @@ def next_action(state):
             state,
         )
     if not counts["approved"]:
+        board = bool(state.get("review_page"))
         return _action(
             "approve",
             "Nenhum item aprovado: falta a decisão explícita de uma pessoa.",
-            "Agora é com você: abra o Storyboard e salve as decisões, ou me diga aqui "
-            "no chat quem aprova e a frase exata da aprovação. Sem isso eu não coleto "
-            "nada.",
+            (
+                "Agora é com você: vou subir o Storyboard e te mandar o endereço "
+                f"({BOARD_URL}). Decida lá e clique em “Salvar decisões” — elas ficam "
+                "dentro do projeto, é só voltar aqui e dizer “salvei” que eu rodo "
+                "`import-review --by SEU NOME`. Se preferir resolver pelo chat, me diga "
+                "quem aprova e a frase exata. Sem isso eu não coleto nada."
+                if board
+                else "Agora é com você: abra o Storyboard e salve as decisões, ou me "
+                "diga aqui no chat quem aprova e a frase exata da aprovação. Sem isso "
+                "eu não coleto nada."
+            ),
             state,
-            url=BOARD_URL if state.get("review_page") else None,
+            url=BOARD_URL if board else None,
             blocking_human=True,
+            command=command_for("serve-board", state["project"]) if board else None,
         )
     if counts["permitted"] < counts["approved"]:
         per_item = state.get("rights_mode", "per_item_evidence") == "per_item_evidence"

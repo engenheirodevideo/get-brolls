@@ -163,7 +163,30 @@ def format_report(c, rules):
     }
 
 
-def sync_formats(ledger, rules):
+def sync_formats(ledger, rules, confirm=False):
+    """Alinha o formato-alvo dos itens às regras em vigor.
+
+    Quando a mudança apagaria decisões humanas já dadas, para antes de tocar em
+    qualquer item e nomeia quem seria atingido: a pessoa decide se aceita revisar
+    tudo de novo (`--confirm-format-change`) ou se prefere voltar o formato.
+    """
+    invalidated = [
+        c["id"]
+        for c in ledger.data["items"]
+        if c.get("format", {}).get("target", "native") != format_report(c, rules)["target"]
+        and (c.get("approval") or {}).get("status") == "approved"
+    ]
+    if invalidated and not confirm:
+        raise ValueError(
+            "Mudar o formato-alvo para "
+            + rules["video_format"]
+            + " invalidaria "
+            + str(len(invalidated))
+            + " aprovação(ões) já dada(s): "
+            + ", ".join(invalidated)
+            + ". Se for isso mesmo, repita o comando com --confirm-format-change; "
+            "senão, volte o video_format no RULES.md antes de continuar."
+        )
     changed = []
     for c in ledger.data["items"]:
         new = format_report(c, rules)

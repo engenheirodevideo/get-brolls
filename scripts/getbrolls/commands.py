@@ -8,6 +8,7 @@ from .ledger import Ledger, digest
 from .media import probe, cut, run
 from .rendering import render
 from .queue import execute as queue_execute, hint as queue_hint, summary_line as queue_summary_line
+from .presets import PERMIT_PRESETS
 from .runtime import record_warning
 from .guidance import next_action
 
@@ -609,6 +610,16 @@ def _uninspected(items):
     ]
 
 
+def serve_state(project):
+    """`serve.running` do relatório: nunca cria nem limpa nada no projeto."""
+    from getbrolls.serve import state
+
+    try:
+        return state(project)
+    except OSError as exc:
+        return {"running": False, "error": str(exc)}
+
+
 def status_report(ledger, rules=None, rules_error=None, queue=None):
     """Onde o projeto está, por etapa. Somente leitura: não grava nada."""
     items = ledger.data["items"]
@@ -691,6 +702,8 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
             for c in items
         ],
         "format_pending": format_pending,
+        # Somente leitura: lê o PID file e pergunta ao sistema se o processo vive.
+        "serve": serve_state(ledger.root.parent),
         "rules_error": rules_error,
         "references": remembered,
         "references_error": references_error,
@@ -769,6 +782,10 @@ def execute(args):
         from getbrolls import serve as serve_module
 
         port = getattr(args, "port", None) or serve_module.DEFAULT_PORT
+        if getattr(args, "stop", False):
+            return serve_module.stop(args.project)
+        if getattr(args, "background", False):
+            return serve_module.start_background(args.project, port)
         return serve_module.run(args.project, port)
     from getbrolls.rules import load_rules, allowed, domain_matches, format_report
 
@@ -845,7 +862,7 @@ def execute(args):
     ledger = Ledger(args.project)
     from getbrolls.rules import sync_formats
 
-    sync_formats(ledger, rules)
+    sync_formats(ledger, rules, confirm=getattr(args, "confirm_format_change", False))
     if cmd == "browser-plan":
         from getbrolls.browser import plan
 
@@ -1085,7 +1102,23 @@ def execute(args):
     if cmd == "approve":
         approve(c, args.by, args.channel, args.statement)
     elif cmd == "permit":
-        if args.declared_by or args.declaration_text:
+        preset = getattr(args, "preset", None)
+        if preset and (args.declaration or args.declared_by or args.declaration_text):
+            raise ValueError(
+                "--preset registra as condições genéricas da fonte; não combine com "
+                "declaração de responsabilidade. Escolha um dos dois."
+            )
+        if preset:
+            # O preset nunca vira licença: ele diz o que a fonte costuma exigir e manda
+            # conferir a página do item. Quem assina continua responsável, e `fetch`
+            # continua exigindo a aprovação humana.
+            evidence = PERMIT_PRESETS[preset]["text"]
+            if args.evidence is not None:
+                if not args.evidence.strip():
+                    raise ValueError("Evidência não pode ser vazia.")
+                evidence += " | Verificado por quem pediu: " + args.evidence.strip()
+            c["rights"]["basis"] = "per_item_evidence"
+        elif args.declared_by or args.declaration_text:
             name = (args.declared_by or "").strip()
             text = (args.declaration_text or "").strip()
             if not name or name.lower() in GENERIC_NAMES:

@@ -2,6 +2,7 @@
 
 import argparse, json, sys, traceback
 from . import __version__
+from .presets import PERMIT_PRESETS
 from .runtime import audited, OperationError
 
 # Named so a caller (script, test, or someone scripting the CLI) never has to hardcode 2/3.
@@ -88,7 +89,26 @@ def build_parser():
             required=True,
             help="Pasta do projeto que guarda brolls/, fora da instalação da skill",
         )
+        if name != "status":
+            # Mudar o formato-alvo derruba aprovações humanas; qualquer comando que
+            # sincronize formato precisa deste sim explícito antes de apagá-las.
+            p.add_argument(
+                "--confirm-format-change",
+                action="store_true",
+                help="Confirmar que aprovações já dadas podem ser invalidadas pela mudança de formato",
+            )
         if name == "serve":
+            g = p.add_mutually_exclusive_group()
+            g.add_argument(
+                "--background",
+                action="store_true",
+                help="Subir o servidor num processo solto e devolver a URL na hora (PID em brolls/.serve.pid)",
+            )
+            g.add_argument(
+                "--stop",
+                action="store_true",
+                help="Encerrar o servidor de fundo pelo PID gravado em brolls/.serve.pid",
+            )
             p.add_argument(
                 "--port",
                 type=int,
@@ -161,7 +181,8 @@ def build_parser():
             p.add_argument("--reason", help="Decisão de coleta desta fonte")
         if name == "import-review":
             p.add_argument(
-                "--file", required=True, help="JSON exportado pelo Storyboard"
+                "--file",
+                help="JSON de decisões; sem esta flag usa o mais recente de brolls/reviews/",
             )
             p.add_argument(
                 "--by", required=True, help="Nome de quem revisou e assinou as decisões"
@@ -188,6 +209,11 @@ def build_parser():
                 help="Frase exata dita por quem aprovou, registrada literalmente",
             )
         if name == "permit":
+            p.add_argument(
+                "--preset",
+                choices=sorted(PERMIT_PRESETS),
+                help="Condições genéricas da fonte, sempre com o pedido de conferir a página original",
+            )
             g = p.add_mutually_exclusive_group()
             g.add_argument("--evidence", help="Evidência real fornecida ou verificada")
             g.add_argument(
@@ -297,7 +323,7 @@ def main(argv=None):
     from .commands import execute, with_summary
 
     args = parse_args(argv)
-    if args.command == "serve":
+    if args.command == "serve" and not (args.background or args.stop):
         # `serve` blocks in serve_forever() and owns its own stdout contract (one JSON
         # line with the URLs, printed by serve.run() itself, then nothing else): it does
         # not go through the JSON-wrapping in entrypoint(), so it exits directly here.

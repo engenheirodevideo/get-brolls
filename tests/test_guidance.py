@@ -226,5 +226,33 @@ class SuggestedCommandRuns(unittest.TestCase):
             self.assertTrue(json.loads(done.stdout)["preview"].get("contact_sheet_path"))
 
 
+class BoardRoute(unittest.TestCase):
+    """#44: com o Storyboard gerado, o degrau da decisão humana abre o board sozinho."""
+
+    def test_board_rung_starts_the_server_in_the_background(self):
+        state = dict(LADDER_STATES["approve"], review_page=True)
+        action = next_action(state)
+        self.assertEqual("approve", action["step"])
+        self.assertIn("serve", action["command"])
+        self.assertIn("--background", action["command"])
+        self.assertEqual("http://127.0.0.1:8767/review.html", action["url"])
+        self.assertTrue(action["blocking_human"])
+        parsed = build_parser().parse_args(shlex.split(action["command"])[2:])
+        self.assertEqual(ABSOLUTE, parsed.project)
+
+    def test_the_board_route_imports_without_pointing_at_a_file(self):
+        state = dict(LADDER_STATES["approve"], review_page=True)
+        action = next_action(state)
+        self.assertIn("import-review", action["for_human"])
+        self.assertNotIn("--file", action["for_human"])
+        command = command_for("import-review", PROJECT)
+        self.assertNotIn("--file", command)
+        build_parser().parse_args(shlex.split(command)[2:])
+
+    def test_without_the_board_the_chat_route_stays(self):
+        action = next_action(LADDER_STATES["approve"])
+        self.assertIn("--channel chat", action["command"])
+
+
 if __name__ == "__main__":
     unittest.main()

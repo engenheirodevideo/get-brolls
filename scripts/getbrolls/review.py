@@ -79,11 +79,36 @@ def enhance(page, ledger, records):
     )
 
 
+def latest_review_file(root):
+    """Decisão mais recente salva pela própria página em `brolls/reviews/`.
+
+    O servidor local grava um arquivo por vez que a pessoa clica em “Salvar
+    decisões”; o mais novo é o que ela acabou de decidir.
+    """
+    folder = Path(root) / "reviews"
+    if not folder.is_dir():
+        return None
+    files = [p for p in folder.glob("*.json") if p.is_file()]
+    if not files:
+        return None
+    return max(files, key=lambda p: (p.stat().st_mtime, p.name))
+
+
 def import_review(ledger, file, by, rules=None):
     if not by.strip():
         raise ValueError(
             "Diga quem revisou: acrescente --by \"seu nome\" ao comando."
         )
+    if file is None:
+        found = latest_review_file(ledger.root)
+        if found is None:
+            raise ValueError(
+                "Não achei nenhuma decisão salva em "
+                + str(Path(ledger.root) / "reviews")
+                + ". Abra o Storyboard (`serve --background`), clique em “Salvar "
+                "decisões” e rode este comando de novo — ou aponte o arquivo com --file."
+            )
+        file = found
     path = Path(file)
     if path.stat().st_size > 2000000:
         raise ValueError(
@@ -108,7 +133,12 @@ def import_review(ledger, file, by, rules=None):
             "clique em “Salvar decisões”."
         )
     changes = []
+    skipped = []
     seen = set()
+
+    def skip(item_id, reason, detail):
+        skipped.append({"id": item_id, "reason": reason, "detail": detail})
+
     for item in items:
         if not isinstance(item, dict) or not isinstance(item.get("id"), str):
             raise ValueError(
@@ -121,51 +151,76 @@ def import_review(ledger, file, by, rules=None):
                 "Volte à página e salve de novo, sem juntar arquivos."
             )
         seen.add(item["id"])
+        if "signature" not in item or "reviewEpoch" not in item:
+            # Falta a assinatura em si: o arquivo não veio do board desta coleta.
+            raise ValueError(
+                "O trecho " + item["id"] + " veio sem assinatura no arquivo de "
+                "decisões: ou alguma coisa mudou depois que você decidiu, ou o arquivo "
+                "não saiu desta página. Rode `review` de novo e salve as decisões da "
+                "página nova."
+            )
         c = copy.deepcopy(ledger.get(item["id"]))
         if item.get("signature") != signature(c):
-            raise ValueError(
+            skip(
+                c["id"],
+                "signature_mismatch",
                 "O trecho " + c["id"] + " mudou depois que você decidiu (intervalo ou "
-                "fonte). Rode `review` de novo e salve as decisões da página nova."
+                "fonte). Rode `review` de novo e decida este de novo.",
             )
+            continue
         if item.get("reviewEpoch") not in (review_epoch(c), legacy_review_epoch(c)):
-            raise ValueError(
-                "Este arquivo de escolhas é de uma versão anterior da coleta "
-                "(trecho " + c["id"] + "): alguma coisa mudou depois que você decidiu. "
-                "Nada se perdeu — rode `review` de novo, confira as decisões que já "
-                "estão marcadas e salve de novo."
+            skip(
+                c["id"],
+                "stale_epoch",
+                "A decisão do trecho " + c["id"] + " é de uma versão anterior da "
+                "coleta: alguma coisa mudou depois que você decidiu. Nada se perdeu — "
+                "rode `review` de novo e confirme este trecho.",
             )
+            continue
         state = item.get("state")
         comment = item.get("comment", "")
         suggestion = item.get("suggestion", "")
         if state not in ("pending", "approved", "changes", "alternative", "rejected"):
-            raise ValueError(
-                "Decisão desconhecida no arquivo. Use a página do Storyboard para "
-                "decidir; não edite o arquivo de decisões à mão."
+            skip(
+                c["id"],
+                "invalid_item",
+                "Decisão desconhecida no trecho " + c["id"] + ". Use a página do "
+                "Storyboard para decidir; não edite o arquivo de decisões à mão.",
             )
+            continue
         if (
             not isinstance(comment, str)
             or not isinstance(suggestion, str)
             or len(comment) > 10000
             or len(suggestion) > 2000
         ):
-            raise ValueError(
+            skip(
+                c["id"],
+                "invalid_item",
                 "O comentário ou o link do trecho " + c["id"] + " está grande demais "
-                "(limite de 10 mil e 2 mil caracteres). Encurte e salve de novo."
+                "(limite de 10 mil e 2 mil caracteres). Encurte e salve de novo.",
             )
+            continue
         if state in ("changes", "alternative") and not comment.strip():
-            raise ValueError(
+            skip(
+                c["id"],
+                "invalid_item",
                 "Faltou dizer o que mudar no trecho " + c["id"] + ". Abra a página, "
-                "escreva uma linha no pedido de ajuste e salve de novo."
+                "escreva uma linha no pedido de ajuste e salve de novo.",
             )
+            continue
         if suggestion:
             from .http import public_url
 
             if not public_url(suggestion):
-                raise ValueError(
+                skip(
+                    c["id"],
+                    "invalid_item",
                     "O link que você colou no trecho " + c["id"] + " precisa ser um "
                     "endereço https público, sem senha nem código de acesso. "
-                    "Corrija ou apague o link e salve de novo."
+                    "Corrija ou apague o link e salve de novo.",
                 )
+                continue
         c["review"] = {
             "state": state,
             "comment": comment,
@@ -178,7 +233,12 @@ def import_review(ledger, file, by, rules=None):
             from .rules import allowed
 
             if rules is not None and not allowed(c, rules):
-                raise ValueError("Asset bloqueado pelas regras atuais do usuário.")
+                skip(
+                    c["id"],
+                    "invalid_item",
+                    "Asset bloqueado pelas regras atuais do usuário: " + c["id"] + ".",
+                )
+                continue
             approve(c, by, "storyboard")
         elif state == "rejected":
             # Same transition as the CLI `reject` command, recorded with the reviewer.
@@ -193,12 +253,20 @@ def import_review(ledger, file, by, rules=None):
             }
             c["state"] = "awaiting_approval"
         changes.append(c)
-    # Validate the entire payload before persisting any decision.
+    if not changes:
+        # Nada aplicado: o comando falha e diz, item a item, o que impediu cada um.
+        raise ValueError(
+            "Nenhuma decisão pôde ser importada. "
+            + " ".join(entry["detail"] for entry in skipped)
+        )
+    # Só o que passou em toda a validação chega ao disco, num único registro.
     updates = {c["id"]: c for c in changes}
     ledger.data["items"] = [updates.get(c["id"], c) for c in ledger.data["items"]]
     ledger.save_many("import-review", changes)
     return {
         "imported": len(changes),
+        "skipped": skipped,
         "by": by,
+        "file": str(path),
         "review": str(ledger.root / "review.html"),
     }

@@ -60,11 +60,18 @@ class WorkflowTests(unittest.TestCase):
             path = Path(d) / "review.json"
             payload["items"][1]["signature"] = "stale"
             path.write_text(json.dumps(payload), encoding="utf-8")
-            before = ledger.path.read_bytes()
-            with self.assertRaisesRegex(ValueError, "mudou depois que você decidiu"):
-                import_review(ledger, path, "Human")
-            self.assertEqual(before, ledger.path.read_bytes())
-            self.assertEqual(ledger.get("local:0")["approval"]["status"], "pending")
+            # Importação parcial (#44): o trecho que mudou é pulado com o motivo, e
+            # só ele — o outro segue valendo, porque a decisão humana dele continua de pé.
+            result = import_review(ledger, path, "Human")
+            self.assertEqual(1, result["imported"])
+            self.assertEqual(
+                [("local:1", "signature_mismatch")],
+                [(s["id"], s["reason"]) for s in result["skipped"]],
+            )
+            self.assertEqual(ledger.get("local:0")["approval"]["status"], "approved")
+            self.assertEqual(ledger.get("local:1")["approval"]["status"], "pending")
+            payload["items"][0]["reviewEpoch"] = review_epoch(ledger.get("local:0"))
+            payload["items"][0]["signature"] = signature(ledger.get("local:0"))
             payload["items"][1]["signature"] = signature(ledger.get("local:1"))
             path.write_text(json.dumps(payload), encoding="utf-8")
             import_review(ledger, path, "Human")
