@@ -8,6 +8,10 @@ tags: [get-brolls]
 
 # Changelog
 
+## Não lançado
+
+- **Correção:** `scripts/install.ps1` falhava no Windows PowerShell 5.1 (padrão do Windows 11) porque as aspas duplas internas dos snippets `python -c` eram removidas ao chamar o executável nativo, gerando `SyntaxError`. Os snippets agora usam aspas simples escapadas. A CI passa a executar o instalador Windows também em PowerShell 5.1 e um teste impede a regressão. ([#23](https://github.com/engenheirodevideo/get-brolls/issues/23))
+
 ## 2.3.7 — 2026-09-16
 
 - Adiciona variáveis opcionais que fixam caminhos de ferramentas: `GB_YTDLP_PATH`, `GB_VENV_PATH`, `GB_FFMPEG_PATH` e `GB_FFPROBE_PATH`. Valem tanto pelo ambiente do processo quanto pelo `.env` da skill ou por `python3 scripts/gb.py --env-file CAMINHO <subcomando> …`, com `--env-file` na raiz do parser, antes do subcomando.
