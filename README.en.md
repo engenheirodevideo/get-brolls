@@ -28,7 +28,7 @@ A preview may download working media so you can see the motion. Final delivery r
 
 ## Updates
 
-- **2.3.7 — under review.** `status --project` command ("where are we?"), self-explanatory CLI with `--version`, `/get-brolls-setup` plugin command, "First B-roll in 5 minutes" quickstart, pinnable tool paths via `GB_*_PATH`, and [AGENTS.md](AGENTS.md) as the repository hub.
+- **2.3.7.** `status --project` command ("where are we?"), self-explanatory CLI with `--version`, `/get-brolls-setup` plugin command, "First B-roll in 5 minutes" quickstart, pinnable tool paths via `GB_*_PATH`, and [AGENTS.md](AGENTS.md) as the repository hub.
 - **2.3.6.** Claude Code plugin install — the repository is its own skill marketplace.
 - **2.3.5.** First official GitHub release, network hardening (HTTPS/DNS) and pinned dependencies.
 
