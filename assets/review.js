@@ -3,6 +3,14 @@
   const data = window.GETBROLLS_REVIEW;
   if (!data.items.length) return;
   const key = "getbrolls-v2:" + data.project;
+  const STATES = ["pending", "approved", "changes", "rejected", "alternative"];
+  const LABELS = {
+    pending: "Pendente",
+    approved: "Aprovado",
+    changes: "Pedir ajuste",
+    rejected: "Reprovado",
+    alternative: "Outra fonte",
+  };
   let saved = {};
   let available = true;
   try {
@@ -15,69 +23,240 @@
   for (const item of data.items) {
     const old = saved[item.id];
     const prior =
-      old &&
-      old.signature === item.signature &&
-      old.reviewEpoch === item.reviewEpoch
+      old && old.signature === item.signature && old.reviewEpoch === item.reviewEpoch
         ? old
         : item.review;
     decisions[item.id] = {
       signature: item.signature,
       reviewEpoch: item.reviewEpoch,
-      state: ["pending", "approved", "changes", "alternative"].includes(
-        prior?.state,
-      )
-        ? prior.state
-        : "pending",
+      state: STATES.includes(prior?.state) ? prior.state : "pending",
       comment: typeof prior?.comment === "string" ? prior.comment : "",
       suggestion: typeof prior?.suggestion === "string" ? prior.suggestion : "",
     };
   }
-  const select = document.querySelector("#select");
+  const select = document.querySelector("#select"),
+    viewer = document.querySelector("#viewer"),
+    tools = document.querySelector("#tools"),
+    cards = [...document.querySelectorAll(".shot")];
   const current = () => data.items[Number(select.value)];
+
+  // Summary bar: counters, export, print, storage status.
+  const summary = document.createElement("div");
+  summary.className = "review-summary";
+  summary.innerHTML =
+    '<p data-summary></p><div class="summary-actions"><button type="button" id="next-pending">Próximo pendente →</button><button type="button" id="export-review">Exportar revisão</button><button type="button" id="print-review">Imprimir / PDF</button></div><span data-storage-status role="status"></span>';
+  document.querySelector(".review-toolbar")?.remove();
+
+  // Gallery: status tag per card, pending filter.
+  cards.forEach((card) => {
+    const tag = document.createElement("span");
+    tag.className = "status-tag";
+    card.append(tag);
+  });
+  const pendingOnly = document.querySelector("#pending-only");
+
+  // Storyboard animation modes: static / hover / on.
+  const thumbs = [...document.querySelectorAll("[data-animated-thumb]")];
+  const visible = new Set();
+  let storyboardMode = "static";
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function paintThumb(img) {
+    const shot = img.closest(".shot");
+    const playing =
+      !reduced &&
+      (storyboardMode === "on"
+        ? visible.has(img)
+        : storyboardMode === "hover" && (shot.matches(":hover") || shot === document.activeElement));
+    const src = playing ? img.dataset.animatedThumb : img.dataset.still;
+    if (img.getAttribute("src") !== src) img.setAttribute("src", src);
+  }
+  if ("IntersectionObserver" in window) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach(({ target, isIntersecting }) => {
+          if (isIntersecting) visible.add(target);
+          else visible.delete(target);
+          paintThumb(target);
+        });
+      },
+      { threshold: 0.01 },
+    );
+    thumbs.forEach((img) => observer.observe(img));
+  }
+  thumbs.forEach((img) => {
+    const shot = img.closest(".shot");
+    ["pointerenter", "pointerleave", "focus", "blur"].forEach((event) =>
+      shot.addEventListener(event, () => paintThumb(img)),
+    );
+    paintThumb(img);
+  });
+  document.querySelectorAll("[data-storyboard-mode]").forEach((button) => {
+    button.onclick = () => {
+      storyboardMode = button.dataset.storyboardMode;
+      document
+        .querySelectorAll("[data-storyboard-mode]")
+        .forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
+      thumbs.forEach(paintThumb);
+    };
+  });
+
+  function counts() {
+    const all = Object.values(decisions);
+    const n = (s) => all.filter((d) => d.state === s).length;
+    return { approved: n("approved"), pending: n("pending"), other: all.length - n("approved") - n("pending") };
+  }
+  function paintGallery() {
+    cards.forEach((card, i) => {
+      const d = decisions[data.items[i].id];
+      const tag = card.querySelector(".status-tag");
+      tag.textContent = LABELS[d.state];
+      tag.dataset.state = d.state;
+      card.hidden = !!pendingOnly?.checked && d.state !== "pending";
+    });
+    const c = counts();
+    const text = `${c.approved} aprovados · ${c.other} com pedidos · ${c.pending} pendentes`;
+    document.querySelectorAll("[data-summary]").forEach((el) => (el.textContent = text));
+    const next = document.querySelector("#next-pending");
+    if (next) next.disabled = c.pending === 0;
+  }
   function persist() {
     try {
       localStorage.setItem(key, JSON.stringify(decisions));
     } catch {
       available = false;
     }
-    document.querySelector("[data-storage-status]").textContent = available
-      ? "Salvo neste navegador. Exporte para enviar."
-      : "Salvamento local indisponível. Exporte antes de fechar.";
-    summary();
+    document.querySelectorAll("[data-storage-status]").forEach(
+      (el) =>
+        (el.textContent = available
+          ? "Salvo neste navegador. Exporte para enviar."
+          : "Salvamento local indisponível. Exporte antes de fechar."),
+    );
+    paintGallery();
+    paintPlayer();
   }
-  function summary() {
-    const n = Object.values(decisions).filter(
-      (x) => x.state === "approved",
-    ).length;
-    document.querySelector("[data-summary]").textContent =
-      `${n} de ${data.items.length} aprovados`;
+  function paintPlayer() {
+    const box = viewer.querySelector(".presenter .image-box");
+    if (!box) return;
+    let badge = box.querySelector(".player-status");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "player-status";
+      box.append(badge);
+    }
+    const d = decisions[current().id];
+    badge.textContent = LABELS[d.state];
+    badge.dataset.state = d.state;
   }
-  function mount() {
-    const panel = document.querySelector(".review-panel");
-    if (!panel) return;
+  function mountPlayer() {
+    const presenter = viewer.querySelector(".presenter");
+    if (!presenter) return;
+    if (tools && !presenter.contains(tools)) presenter.append(tools);
+    const gif = presenter.querySelector("[data-gif]");
+    if (gif && !presenter.querySelector(".gif-control")) {
+      const control = document.createElement("button");
+      control.type = "button";
+      control.className = "gif-control";
+      const sync = () => {
+        const playing = gif.getAttribute("aria-pressed") === "true";
+        control.innerHTML = playing
+          ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3v14H7zm7 0h3v14h-3z"/></svg>'
+          : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg>';
+        const label = playing ? "Pausar GIF" : "Reproduzir GIF";
+        control.title = label;
+        control.setAttribute("aria-label", label);
+      };
+      control.onclick = () => {
+        gif.click();
+        sync();
+      };
+      gif.addEventListener("click", sync);
+      presenter.querySelector(".image-box").append(control);
+      sync();
+    }
+    paintPlayer();
+  }
+  function mountPanel() {
+    const panel = viewer.querySelector(".review-panel");
+    if (!panel || panel.dataset.mounted) return;
+    panel.dataset.mounted = "1";
+    const material = viewer.querySelector(".material");
+    if (material && !material.contains(summary)) material.prepend(summary);
     const item = current(),
       d = decisions[item.id];
     const comment = panel.querySelector("[data-comment]"),
       suggestion = panel.querySelector("[data-suggestion]"),
-      status = panel.querySelector("[data-review-status]");
+      status = panel.querySelector("[data-review-status]"),
+      fields = panel.querySelector(".review-fields"),
+      toggle = panel.querySelector(".comment-toggle"),
+      other = panel.querySelector(".other-url"),
+      confirm = panel.querySelector(".confirm-review");
+    let pending = null;
     comment.value = d.comment;
     suggestion.value = d.suggestion;
+    function reveal(open, alternative = false) {
+      fields.hidden = !open;
+      other.hidden = !alternative;
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.textContent = open ? "Fechar comentário" : comment.value ? "Ver comentário" : "Comentar";
+    }
     function paint() {
       panel
         .querySelectorAll("[data-decision]")
-        .forEach((b) =>
-          b.setAttribute(
-            "aria-pressed",
-            String(b.dataset.decision === d.state),
-          ),
-        );
-      status.textContent = {
-        pending: "Pendente",
-        approved: "Aprovado",
-        changes: "Ajuste solicitado",
-        alternative: "Outra fonte solicitada",
-      }[d.state];
+        .forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.decision === d.state)));
+      status.textContent = d.state === "pending" ? "" : LABELS[d.state] + (d.updatedAt ? " · salvo neste navegador" : "");
     }
+    toggle.onclick = () => {
+      pending = null;
+      confirm.hidden = true;
+      reveal(fields.hidden, d.state === "alternative");
+      if (!fields.hidden) comment.focus();
+    };
+    panel.querySelectorAll("[data-decision]").forEach((b) => {
+      b.onclick = () => {
+        const state = b.dataset.decision;
+        if (state === d.state) {
+          // Clicking the active decision undoes it.
+          d.state = "pending";
+          d.updatedAt = new Date().toISOString();
+          pending = null;
+          confirm.hidden = true;
+          reveal(false);
+          paint();
+          persist();
+          return;
+        }
+        if (["changes", "alternative"].includes(state)) {
+          pending = state;
+          reveal(true, state === "alternative");
+          confirm.hidden = false;
+          confirm.textContent = state === "changes" ? "Confirmar pedido de ajuste" : "Confirmar outra fonte";
+          status.textContent = "";
+          comment.focus();
+          return;
+        }
+        pending = null;
+        confirm.hidden = true;
+        reveal(false);
+        d.state = state;
+        d.updatedAt = new Date().toISOString();
+        paint();
+        persist();
+      };
+    });
+    confirm.onclick = () => {
+      if (!comment.value.trim()) {
+        status.textContent = "Descreva o que deve mudar.";
+        comment.focus();
+        return;
+      }
+      d.state = pending;
+      d.updatedAt = new Date().toISOString();
+      pending = null;
+      confirm.hidden = true;
+      reveal(false);
+      paint();
+      persist();
+    };
     comment.oninput = () => {
       d.comment = comment.value;
       persist();
@@ -86,35 +265,55 @@
       d.suggestion = suggestion.value;
       persist();
     };
-    panel.querySelectorAll("[data-decision]").forEach(
-      (b) =>
-        (b.onclick = () => {
-          if (
-            ["changes", "alternative"].includes(b.dataset.decision) &&
-            !d.comment.trim()
-          ) {
-            status.textContent = "Descreva a alteração ou a fonte desejada.";
-            comment.focus();
+    reveal(false, d.state === "alternative");
+    paint();
+    wireSummary();
+  }
+  function wireSummary() {
+    const next = document.querySelector("#next-pending");
+    if (next && !next.dataset.wired) {
+      next.dataset.wired = "1";
+      next.onclick = () => {
+        const start = Number(select.value);
+        const n = data.items.length;
+        for (let step = 1; step <= n; step++) {
+          const i = (start + step) % n;
+          if (decisions[data.items[i].id].state === "pending") {
+            window.getbrollsGo?.(i);
             return;
           }
-          d.state = b.dataset.decision;
-          d.updatedAt = new Date().toISOString();
-          paint();
-          persist();
-        }),
-    );
-    paint();
+        }
+      };
+    }
+    const exportButton = document.querySelector("#export-review");
+    if (exportButton && !exportButton.dataset.wired) {
+      exportButton.dataset.wired = "1";
+      exportButton.onclick = exportReview;
+    }
+    const printButton = document.querySelector("#print-review");
+    if (printButton && !printButton.dataset.wired) {
+      printButton.dataset.wired = "1";
+      printButton.onclick = () => {
+        buildPrintNotes();
+        window.print();
+      };
+    }
   }
-  new MutationObserver(mount).observe(document.querySelector("#viewer"), {
-    childList: true,
-  });
+  function mount() {
+    mountPlayer();
+    mountPanel();
+  }
+  new MutationObserver(mount).observe(viewer, { childList: true });
+  if (pendingOnly) pendingOnly.onchange = paintGallery;
   mount();
   persist();
-  document.querySelector("#export-review").onclick = () => {
+
+  function exportReview() {
+    const note = (text) =>
+      document.querySelectorAll("[data-storage-status]").forEach((el) => (el.textContent = text));
     for (const d of Object.values(decisions)) {
       if (["changes", "alternative"].includes(d.state) && !d.comment.trim()) {
-        document.querySelector("[data-storage-status]").textContent =
-          "Preencha o comentário de cada ajuste ou sugestão antes de exportar.";
+        note("Preencha o comentário de cada ajuste ou sugestão antes de exportar.");
         return;
       }
       if (d.suggestion) {
@@ -126,9 +325,7 @@
             !u.username &&
             !u.password &&
             ![...u.searchParams.keys()].some((k) =>
-              /^(key|api_key|apikey|token|access_token|authorization|signature|sig)$|^x-amz-|^x-goog-/i.test(
-                k,
-              ),
+              /^(key|api_key|apikey|token|access_token|authorization|signature|sig)$|^x-amz-|^x-goog-/i.test(k),
             ) &&
             u.hostname.includes(".") &&
             u.hostname !== "localhost" &&
@@ -136,8 +333,7 @@
             !/^\d+\.\d+\.\d+\.\d+$/.test(u.hostname);
         } catch {}
         if (!valid) {
-          document.querySelector("[data-storage-status]").textContent =
-            "Corrija a sugestão: use URL HTTPS pública, sem credenciais ou parâmetros secretos.";
+          note("Corrija a sugestão: use URL HTTPS pública, sem credenciais ou parâmetros secretos.");
           return;
         }
       }
@@ -155,12 +351,12 @@
     a.download = "getbrolls-review.json";
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
+  }
   function buildPrintNotes() {
     document.querySelector(".print-notes")?.remove();
     const section = document.createElement("section");
     section.className = "print-notes";
-    data.items.forEach((item, i) => {
+    data.items.forEach((item) => {
       const article = document.createElement("article"),
         h = document.createElement("h2");
       h.textContent = item.title;
@@ -172,6 +368,7 @@
         poster.loading = "eager";
         article.append(poster);
       }
+      const d = decisions[item.id];
       for (const text of [
         item.asset_type && item.asset_type !== "video"
           ? `Imagem estática${item.captured_at ? " · Capturada em " + item.captured_at : ""}`
@@ -182,19 +379,9 @@
         item.creator ? "Autor: " + item.creator : "",
         item.narration ? "Fala: “" + item.narration + "”" : "",
         item.collection_reason ? "Coleta: " + item.collection_reason : "",
-        "Revisão: " +
-          {
-            pending: "Pendente",
-            approved: "Aprovado",
-            changes: "Ajuste solicitado",
-            alternative: "Outra fonte solicitada",
-          }[decisions[item.id].state],
-        decisions[item.id].comment
-          ? "Comentário: " + decisions[item.id].comment
-          : "",
-        decisions[item.id].suggestion
-          ? "Sugestão: " + decisions[item.id].suggestion
-          : "",
+        "Revisão: " + LABELS[d.state],
+        d.comment ? "Comentário: " + d.comment : "",
+        d.suggestion ? "Sugestão: " + d.suggestion : "",
       ].filter(Boolean)) {
         const p = document.createElement("p");
         p.textContent = text;
@@ -205,9 +392,4 @@
     document.querySelector("main").append(section);
   }
   window.addEventListener("beforeprint", buildPrintNotes);
-  document.querySelector("#print-review").onclick = () => {
-    buildPrintNotes();
-    window.print();
-  };
 })();
-
