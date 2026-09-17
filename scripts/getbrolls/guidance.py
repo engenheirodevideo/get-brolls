@@ -95,6 +95,18 @@ def _action(step, why, for_human, state, url=None, blocking_human=False, command
     }
 
 
+def _library_hint():
+    """Lembrete da biblioteca só quando ela existe de fato; nunca altera o comando."""
+    from . import library
+
+    try:
+        if library.enabled() and library.index_path().exists():
+            return " Antes disso, confiro na biblioteca (`library --search`) o que já funcionou em outros vídeos."
+    except OSError:
+        pass
+    return ""
+
+
 def next_action(state):
     """Único passo que faz sentido agora, com a frase para repassar sem parafrasear.
 
@@ -158,7 +170,9 @@ def next_action(state):
             "Nenhum candidato registrado no projeto ainda."
             + (f" Conflito pendente: {conflicts[0]}" if conflicts else ""),
             "Ainda não há nenhum candidato no projeto: vou buscar as fontes e te "
-            "mostrar o que apareceu." + warning,
+            "mostrar o que apareceu."
+            + _library_hint()
+            + warning,
             state,
         )
     if counts["previews"] < counts["candidates"]:

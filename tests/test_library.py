@@ -236,6 +236,26 @@ class LibraryCommandTests(LibraryBase):
         self.assertLessEqual(len(hints), 5)
         self.assertIn("foguete decolando", [h.get("query") for h in hints])
 
+    def test_the_search_rung_mentions_the_library_without_changing_the_command(self):
+        import shlex
+
+        from getbrolls.guidance import next_action
+
+        state = {
+            "project": str(self.project),
+            "counts": {"candidates": 0},
+            "brief": {"beats": 1, "covered": 1, "missing": [], "conflicts": []},
+        }
+        plain = next_action(state)
+        self.assertNotIn("biblioteca", plain["for_human"])
+        library.learn_query("foguete decolando", "youtube", "hit")
+        with_library = next_action(state)
+        self.assertIn("biblioteca", with_library["for_human"])
+        self.assertEqual(plain["command"], with_library["command"])
+        build_parser().parse_args(
+            shlex.split(with_library["command"])[2:]
+        )
+
     def test_the_cli_refuses_learn_without_anything_to_learn(self):
         error = run_cli(self, "learn", "--project", self.project, ok=False)
         self.assertIn("--query", error["error"])
