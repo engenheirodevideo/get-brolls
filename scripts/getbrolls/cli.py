@@ -25,6 +25,8 @@ SUMMARIES = {
     "import-review": "Importar o JSON de decisões exportado pelo Storyboard",
     "init-rules": "Criar um RULES.md editável no projeto",
     "rules": "Mostrar as regras editoriais em vigor no projeto",
+    "init-brief": "Criar um BRIEF.md editável com o plano deste vídeo",
+    "brief": "Mostrar os beats do vídeo e o comando pronto de cada um",
     "remember": "Registrar referência aprovada ou rejeitada na memória do projeto",
     "references": "Consultar as referências memorizadas do projeto",
     "browser-plan": "Planejar a captura de uma página pelo navegador autorizado",
@@ -70,6 +72,8 @@ def build_parser():
         "import-review",
         "init-rules",
         "rules",
+        "init-brief",
+        "brief",
         "remember",
         "references",
         "browser-plan",
@@ -204,6 +208,16 @@ def build_parser():
                 "--force",
                 action="store_true",
                 help="Regravar o RULES.md existente com as escolhas informadas",
+            )
+        if name == "brief":
+            p.add_argument(
+                "--validate",
+                action="store_true",
+                help="Só conferir o BRIEF.md e dizer o que está errado, sem listar comandos",
+            )
+            p.add_argument(
+                "--beat",
+                help="Mostrar apenas este beat, pelo id gravado no BRIEF.md",
             )
         if name == "browser-plan":
             p.add_argument(

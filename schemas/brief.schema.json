@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Get B-rolls Brief v1",
+  "description": "Documental: a validação real é manual, em scripts/getbrolls/brief.py.",
+  "type": "object",
+  "required": ["version", "video", "rights", "defaults", "beats"],
+  "properties": {
+    "version": { "const": 1 },
+    "video": {
+      "type": "object",
+      "required": ["title", "objective", "delivery"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "objective": { "type": "string", "minLength": 1 },
+        "audience": { "type": ["string", "null"] },
+        "delivery": {
+          "type": "object",
+          "required": ["format"],
+          "properties": {
+            "format": { "enum": ["native", "reels", "horizontal"] },
+            "duration_s": { "type": ["number", "null"], "minimum": 1 },
+            "platform": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "rights": {
+      "type": "object",
+      "required": ["posture", "stock_allowed"],
+      "properties": {
+        "posture": { "enum": ["per_item_evidence", "user_declaration"] },
+        "stock_allowed": { "type": "boolean" },
+        "notes": { "type": ["string", "null"] }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "required": ["allowed_sources", "intent", "duration_hint_s", "stock"],
+      "properties": {
+        "allowed_sources": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "youtube",
+              "instagram",
+              "tiktok",
+              "pexels",
+              "pixabay",
+              "commons",
+              "nasa",
+              "local"
+            ]
+          }
+        },
+        "intent": { "enum": ["literal", "illustrative"] },
+        "duration_hint_s": { "type": "number", "minimum": 0.5, "maximum": 120 },
+        "stock": { "type": "boolean" }
+      }
+    },
+    "beats": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "target"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]{1,40}$" },
+          "narration": { "type": ["string", "null"] },
+          "target": { "type": "string", "minLength": 1 },
+          "intent": { "enum": ["literal", "illustrative"] },
+          "allowed_sources": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "youtube",
+                "instagram",
+                "tiktok",
+                "pexels",
+                "pixabay",
+                "commons",
+                "nasa",
+                "local"
+              ]
+            }
+          },
+          "stock": { "type": "boolean" },
+          "duration_hint_s": { "type": ["number", "null"], "minimum": 0.5, "maximum": 120 },
+          "queries": { "type": "array", "items": { "type": "string" } },
+          "notes": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

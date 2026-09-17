@@ -107,7 +107,8 @@ def project_lock(project):
 
 
 # Comandos que só leem o projeto: sem trava exclusiva e sem criar a árvore.
-READ_ONLY_COMMANDS = ("status", "serve")
+# `brief` entra aqui porque só lê BRIEF.md, RULES.md e o manifesto já existente.
+READ_ONLY_COMMANDS = ("status", "serve", "brief")
 # (comando, ação) somente leitura, além dos comandos inteiros acima: `queue --action status`
 # só consulta queue.json (mesmo contrato de `status`), nunca deve tomar a trava exclusiva.
 READ_ONLY_ACTIONS = {("queue", "status")}

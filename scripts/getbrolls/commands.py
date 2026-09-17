@@ -309,6 +309,95 @@ def rules_from_flags(template, mode, responsible, declaration):
     )
 
 
+HUMAN_DECISION = (
+    "a decisão humana vem do Storyboard (review + import-review) ou da fala no chat "
+    '(approve --all --by NOME --channel chat --statement "frase").'
+)
+
+
+def brief_report(args):
+    """Beats do vídeo com defaults aplicados, comando pronto e o que já foi registrado.
+
+    Somente leitura, como `status`: não cria a árvore do projeto nem grava no ledger.
+    """
+    from getbrolls.brief import beat_commands, beat_progress, brief_path, load_brief, validate_brief
+    from getbrolls.rules import load_rules
+
+    rules, rules_error = None, None
+    try:
+        rules = load_rules(args.project)
+    except (ValueError, OSError) as exc:
+        rules_error = str(exc)
+    data, conflicts = validate_brief(load_brief(args.project), rules)
+    problems = list(conflicts)
+    if rules_error:
+        problems.append(f"RULES.md não pôde ser lido, então não conferi o formato: {rules_error}")
+    path = str(brief_path(args.project))
+    if getattr(args, "validate", False):
+        return {
+            "summary": {
+                "line": f'Brief de "{data["video"]["title"]}" válido: '
+                + _count(len(data["beats"]), "beat", "beats")
+                + ".",
+                "problems": problems,
+                "next": "Pode buscar: `brief --project ...` mostra o comando pronto de cada beat.",
+            },
+            "brief": path,
+            "valid": True,
+            "beats": len(data["beats"]),
+            "conflicts": conflicts,
+        }
+    beats = data["beats"]
+    if getattr(args, "beat", None):
+        chosen = [b for b in beats if b["id"] == args.beat]
+        if not chosen:
+            raise ValueError(
+                f'O BRIEF.md não tem o beat "{args.beat}". Os ids disponíveis são: '
+                + ", ".join(b["id"] for b in beats)
+                + "."
+            )
+        beats = chosen
+    root = Path(args.project).expanduser().resolve() / "brolls"
+    items = Ledger(args.project, recover=False).data["items"] if root.is_dir() else []
+    progress = beat_progress(beats, items)
+    listed = [
+        {
+            "id": b["id"],
+            "resolved": b["resolved"],
+            "commands": beat_commands(args.project, b["resolved"]),
+            "candidates": progress[b["id"]],
+        }
+        for b in beats
+    ]
+    missing = [entry for entry in listed if not entry["candidates"]]
+    covered = len(listed) - len(missing)
+    problems += [
+        f'O beat "{entry["id"]}" ainda não tem candidato registrado.' for entry in missing
+    ]
+    return {
+        "summary": {
+            "line": f'Brief de "{data["video"]["title"]}": '
+            + _count(len(listed), "beat", "beats")
+            + f", {covered} com candidato e {len(missing)} sem.",
+            "problems": problems,
+            "next": (
+                f'Comece pelo beat "{missing[0]["id"]}" com o search de commands; depois '
+                + HUMAN_DECISION
+                if missing
+                else "Todo beat já tem candidato: gere as prévias com preview e peça "
+                + HUMAN_DECISION
+            ),
+        },
+        "brief": path,
+        "video": data["video"],
+        "rights": data["rights"],
+        "defaults": data["defaults"],
+        "beats": listed,
+        "coverage": {"beats": len(listed), "covered": covered, "missing": len(missing)},
+        "conflicts": conflicts,
+    }
+
+
 def approve_all(ledger, args, rules):
     """Aplica a mesma decisão humana a todo item com prévia e sem aprovação válida."""
     from .rules import allowed
@@ -596,6 +685,19 @@ def execute(args):
             return {"rules": str(dest), "copyright": rights}
         shutil.copyfile(template, dest)
         return {"rules": str(dest)}
+    if cmd == "init-brief":
+        dest = Path(args.project) / "BRIEF.md"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if dest.exists():
+            raise ValueError(
+                "BRIEF.md já existe; edite o plano deste vídeo sem sobrescrever o que "
+                "você já respondeu. Rode `brief --validate --project ...` para conferi-lo."
+            )
+        shutil.copyfile(SKILL_ROOT / "docs" / "BRIEF.md", dest)
+        return {"brief": str(dest)}
+    if cmd == "brief":
+        # Somente leitura, como status: orienta a coleta sem criar nada no projeto.
+        return brief_report(args)
     rules = load_rules(args.project)
     if cmd == "rules":
         return rules

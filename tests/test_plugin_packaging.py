@@ -121,7 +121,7 @@ class SetupCommandTests(unittest.TestCase):
 class ReferencesTests(unittest.TestCase):
     """`references/` viaja com o plugin: é de onde o agente tira a copy pronta."""
 
-    EXPECTED = ("templates-de-resposta.md", "glossario.md")
+    EXPECTED = ("templates-de-resposta.md", "glossario.md", "interview.md")
 
     def test_reference_files_ship_with_the_plugin(self):
         self.assertTrue(REFERENCES.is_dir(), "pasta references/ ausente")
