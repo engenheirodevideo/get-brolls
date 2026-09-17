@@ -24,6 +24,8 @@ Este é o manual operacional único do **GET B-ROLLS — ENGENHEIRO DE VÍDEO**:
 
 ## Instalação
 
+Instale a stack inteira antes de rodar o instalador: Python 3.11+, FFmpeg/ffprobe com libfreetype (`drawtext`), Node 22+ com npm/npx, curl e Git. O README traz o comando por sistema; `doctor` confirma com `summary.missing` vazio e `contact_sheet.labels: true`.
+
 ### Dependências por capacidade
 
 | Componente | Necessário para |
