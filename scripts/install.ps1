@@ -31,6 +31,11 @@ if ($Missing) {
 
 Invoke-Native -Label 'Verificação do Python' -File 'python' -Arguments @('-c', 'import sys; assert sys.version_info >= (3,11), ''Python 3.11+ obrigatório''')
 
+$Filters = (& ffmpeg -hide_banner -filters 2>$null | Out-String)
+if ($Filters -notmatch ' drawtext ') {
+    Write-Host 'AVISO: FFmpeg sem o filtro drawtext (libfreetype): o contact sheet sai sem número e timecode nas células. Instale um build com freetype (gyan.dev ou BtbN) e coloque no PATH.'
+}
+
 $NodeVersion = (& node --version).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Não foi possível consultar a versão do Node.' }
 $NodeMajor = [int](($NodeVersion -replace '^v', '').Split('.')[0])
