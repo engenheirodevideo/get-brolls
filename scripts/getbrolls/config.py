@@ -20,7 +20,7 @@ KEYS = {
     "GB_VENV_PATH",
     "GB_FFMPEG_PATH",
     "GB_FFPROBE_PATH",
-    # Lida apenas pelos helpers Bash opcionais de YouTube (contact sheet).
+    # Fonte TrueType para rotular o contact sheet (CLI e helpers Bash de YouTube).
     "GB_FONT_FILE",
 }
 
