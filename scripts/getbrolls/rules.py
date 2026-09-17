@@ -79,7 +79,7 @@ def load_rules(project):
         ):
             raise ValueError(
                 "Em RULES.md, " + key + ' só aceita domínios em minúsculas como '
-                '"youtube.com" — sem "https://" e sem caminho depois da barra.' 
+                '"youtube.com" — sem "https://" e sem caminho depois da barra.'
             )
     if not isinstance(r.get("editorial_rules"), list) or any(
         not isinstance(v, str) for v in r["editorial_rules"]

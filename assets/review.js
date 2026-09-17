@@ -206,13 +206,16 @@
       toggle.textContent = open ? "Fechar comentário" : comment.value ? "Ver comentário" : "Comentar";
     }
     function checkComment() {
-      // Validação na hora: o bloqueio aparece onde a pessoa escreve, não no fim.
-      if (!pending) return;
+      // Validação na hora: o bloqueio aparece onde a pessoa escreve, não no fim —
+      // inclusive quando ela apaga o comentário de um pedido de ajuste já confirmado.
+      if (!pending && !["changes", "alternative"].includes(d.state)) return;
       const empty = !comment.value.trim();
       confirm.disabled = empty;
       confirm.textContent =
         wanted() === "changes" ? "Confirmar pedido de ajuste" : "Confirmar: procure outro vídeo";
-      status.textContent = empty ? "Me conta em uma linha o que você queria." : "";
+      if (empty) status.textContent = "Me conta em uma linha o que você queria.";
+      else if (pending) status.textContent = "";
+      else paint();
     }
     function paint() {
       panel.querySelectorAll("[data-decision]").forEach((b) =>
@@ -379,14 +382,21 @@
     // O maior buraco da jornada era aqui: a página acabava e ninguém dizia pra voltar.
     const bar = document.querySelector(".summary-actions");
     if (bar) {
-      const done = document.createElement("p");
-      done.className = "export-done";
-      done.setAttribute("role", "status");
-      done.textContent =
-        "Decisões salvas em getbrolls-review.json (na sua pasta de Downloads). " +
-        "Agora volte à conversa e diga onde salvou.";
-      bar.parentElement.querySelector(".export-done")?.remove();
-      bar.after(done);
+      // A região viva entra vazia e só depois recebe o texto: um role="status" já
+      // preenchido no momento da inserção costuma não ser anunciado pelo leitor de tela.
+      let done = bar.parentElement.querySelector(".export-done");
+      if (!done) {
+        done = document.createElement("p");
+        done.className = "export-done";
+        done.setAttribute("role", "status");
+        bar.after(done);
+      }
+      done.textContent = "";
+      setTimeout(() => {
+        done.textContent =
+          "Decisões salvas em getbrolls-review.json (na sua pasta de Downloads). " +
+          "Agora volte à conversa e diga onde salvou.";
+      }, 100);
     }
     note("");
   }

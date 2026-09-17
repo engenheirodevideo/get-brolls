@@ -37,7 +37,7 @@ REVIEW_PANEL = (
     ' placeholder="Me conta em uma linha o que você queria…"></textarea></label>'
     '<label class="other-url" hidden>Achou outro vídeo? cole o link (opcional)'
     '<input data-suggestion type="url" placeholder="https://…"></label>'
-    '<button class="confirm-review" type="button" hidden>Salvar decisão</button>'
+    '<button class="confirm-review" type="button" hidden>Confirmar pedido de ajuste</button>'
     "</div>"
     '<p data-review-status class="feedback" role="status"></p></section>'
 )

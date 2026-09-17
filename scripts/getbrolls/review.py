@@ -111,9 +111,15 @@ def import_review(ledger, file, by, rules=None):
     seen = set()
     for item in items:
         if not isinstance(item, dict) or not isinstance(item.get("id"), str):
-            raise ValueError("Item inválido.")
+            raise ValueError(
+                "Tem um trecho sem identificação no arquivo de decisões. Volte à "
+                "página, salve de novo e me passe o arquivo novo."
+            )
         if item["id"] in seen:
-            raise ValueError("Item duplicado na revisão.")
+            raise ValueError(
+                "O trecho " + item["id"] + " aparece duas vezes no arquivo de decisões. "
+                "Volte à página e salve de novo, sem juntar arquivos."
+            )
         seen.add(item["id"])
         c = copy.deepcopy(ledger.get(item["id"]))
         if item.get("signature") != signature(c):
@@ -134,7 +140,7 @@ def import_review(ledger, file, by, rules=None):
         if state not in ("pending", "approved", "changes", "alternative", "rejected"):
             raise ValueError(
                 "Decisão desconhecida no arquivo. Use a página do Storyboard para "
-                "decidir; não edite o JSON à mão."
+                "decidir; não edite o arquivo de decisões à mão."
             )
         if (
             not isinstance(comment, str)
@@ -142,7 +148,10 @@ def import_review(ledger, file, by, rules=None):
             or len(comment) > 10000
             or len(suggestion) > 2000
         ):
-            raise ValueError("Comentário/sugestão inválido.")
+            raise ValueError(
+                "O comentário ou o link do trecho " + c["id"] + " está grande demais "
+                "(limite de 10 mil e 2 mil caracteres). Encurte e salve de novo."
+            )
         if state in ("changes", "alternative") and not comment.strip():
             raise ValueError(
                 "Faltou dizer o que mudar no trecho " + c["id"] + ". Abra a página, "
@@ -152,7 +161,11 @@ def import_review(ledger, file, by, rules=None):
             from .http import public_url
 
             if not public_url(suggestion):
-                raise ValueError("Sugestão deve ser URL HTTPS pública sem credenciais.")
+                raise ValueError(
+                    "O link que você colou no trecho " + c["id"] + " precisa ser um "
+                    "endereço https público, sem senha nem código de acesso. "
+                    "Corrija ou apague o link e salve de novo."
+                )
         c["review"] = {
             "state": state,
             "comment": comment,
