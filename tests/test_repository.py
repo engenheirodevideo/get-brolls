@@ -185,6 +185,20 @@ class RepositoryDocumentationTests(unittest.TestCase):
         self.assertIn("exit 1", shell)
         self.assertIn("throw", powershell)
 
+    def test_powershell_installer_python_snippets_have_no_double_quotes(self):
+        # Windows PowerShell 5.1 strips inner double quotes when passing
+        # arguments to native executables, so `python -c '... "x" ...'`
+        # reaches Python as `... x ...` and raises SyntaxError (issue #23).
+        # Single quotes escaped as '' survive in both 5.1 and 7.
+        import re
+
+        powershell = (ROOT / "scripts/install.ps1").read_text(encoding="utf-8")
+        snippets = re.findall(r"'-c',\s*'((?:[^']|'')*)'", powershell)
+        snippets += re.findall(r"-c\s+'((?:[^']|'')*)'", powershell)
+        self.assertGreaterEqual(len(snippets), 3, powershell)
+        for snippet in snippets:
+            self.assertNotIn('"', snippet, snippet)
+
     def test_contribution_templates_are_present(self):
         bug = ROOT / ".github/ISSUE_TEMPLATE/bug_report.md"
         config = ROOT / ".github/ISSUE_TEMPLATE/config.yml"
