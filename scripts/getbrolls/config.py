@@ -31,6 +31,8 @@ KEYS = {
     "GB_MAX_PER_DAY",
     # Pausas do yt-dlp entre pedidos: "requests,min,max" em segundos.
     "GB_YTDLP_SLEEP",
+    # `1` faz `deliver` copiar em vez de hardlinkar: cópias independentes, editáveis.
+    "GB_DELIVERY_COPY",
 }
 
 # Optional pins: an explicit path always wins over the usual discovery.

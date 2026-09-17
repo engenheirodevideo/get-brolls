@@ -627,9 +627,13 @@ def deliver_report(ledger, rules, dry_run=False):
     """Refaz `entrega/` e responde com o resumo humano primeiro, como os outros comandos."""
     from getbrolls.delivery import build_delivery
 
-    for_human = _flow_next(ledger, rules)
+    # A frase só é calculada depois da materialização (o `build_delivery` chama este
+    # callable no fim), senão o índice mandaria rodar o comando que acabou de rodar.
     report = build_delivery(
-        ledger.root.parent, dry_run=dry_run, ledger=ledger, for_human=for_human
+        ledger.root.parent,
+        dry_run=dry_run,
+        ledger=ledger,
+        for_human=lambda: _flow_next(ledger, rules),
     )
     verb = "Organizaria" if dry_run else "Organizei"
     beats = len({item["beat"] for item in report["items"]})
@@ -922,7 +926,10 @@ def execute(args):
 
     # Consultas (`references`, `inspect`) não decidem nada sobre formato: como o
     # `status`, elas nunca podem ser barradas pelo portão de `--confirm-format-change`.
-    if cmd not in READ_ONLY_CONSULTS:
+    # `deliver --dry-run` é ensaio: não pode reescrever o manifesto nem por tabela.
+    if cmd not in READ_ONLY_CONSULTS and not (
+        cmd == "deliver" and getattr(args, "dry_run", False)
+    ):
         sync_formats(
             ledger, rules, confirm=getattr(args, "confirm_format_change", False)
         )
@@ -1127,7 +1134,7 @@ def execute(args):
 
         try:
             delivery_module.build_delivery(
-                args.project, ledger=ledger, for_human=_flow_next(ledger, rules)
+                args.project, ledger=ledger, for_human=lambda: _flow_next(ledger, rules)
             )
         except (ValueError, OSError) as exc:
             record_warning(

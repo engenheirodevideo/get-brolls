@@ -4,7 +4,19 @@
 camada é derivada e regenerável: cada arquivo de `clips/` aparece em `entrega/` por
 hardlink (ou symlink, ou cópia, nessa ordem), com o contact sheet ao lado e um
 `ORIGEM.md` dizendo de onde veio. Rodar de novo não estraga nada, e um arquivo que a
-pessoa editou à mão nunca é sobrescrito: o comando para e diz o nome dele.
+pessoa editou à mão nunca é sobrescrito: o comando termina o trabalho e então falha
+nomeando todos os arquivos em conflito.
+
+Hardlink é o padrão porque vídeo pesa e duas cópias de cada corte dobram o projeto —
+mas hardlink é o *mesmo* arquivo, com dois nomes: editar em `entrega/` editaria o
+original em `brolls/clips/`. Por isso a mídia entregue nasce somente-leitura (a
+proteção vale para o inode compartilhado, e nenhum comando reescreve esse arquivo no
+lugar: `fetch` grava um `-r<N>` novo e `verify` só lê) e tanto o `README.md` quanto o
+`ORIGEM.md` dizem isso em uma frase. Quem quiser editar dentro de `entrega/` define
+`GB_DELIVERY_COPY=1` e recebe cópias independentes.
+
+`c["delivery"]["path"]` é relativo à **raiz do projeto** (começa em `entrega/`), ao
+contrário de `c["output"]["path"]`, que é relativo a `brolls/`.
 """
 
 import os
@@ -26,6 +38,13 @@ MAX_NAME = 60
 # Só o que o gerador escreve pode ser apagado quando vira órfão.
 GENERATED = re.compile(r"^(ORIGEM(-\d+)?\.md|contact-sheet(-\d+)?\.[a-z0-9]+)$")
 BEAT_DIR_RE = re.compile(r"^\d{2}-[a-z0-9-]*$")
+# Aviso que vai no README.md e em cada ORIGEM.md: hardlink é o mesmo arquivo.
+EDIT_WARNING = (
+    "**Editar aqui é editar o original.** Estes arquivos são o mesmo arquivo de "
+    "`brolls/` com outro nome (hardlink), e por isso vêm marcados como somente-leitura: "
+    "copie antes de mexer. Se você quiser editar dentro de `entrega/`, rode o `deliver` "
+    "com `GB_DELIVERY_COPY=1` e receba cópias independentes."
+)
 
 
 def slug(text):
@@ -70,14 +89,42 @@ def _same_file(a, b):
         return False
 
 
-def _same_bytes(a, b):
+def _same_bytes(a, b, block=1024 * 1024):
+    """Compara em blocos, nunca carregando um vídeo inteiro na memória."""
     try:
-        return Path(a).read_bytes() == Path(b).read_bytes()
+        if os.path.getsize(a) != os.path.getsize(b):
+            return False
+        with open(a, "rb") as left, open(b, "rb") as right:
+            while True:
+                chunk = left.read(block)
+                if chunk != right.read(block):
+                    return False
+                if not chunk:
+                    return True
     except OSError:
         return False
 
 
-def link_or_copy(src, dest):
+def copies_forced():
+    """`GB_DELIVERY_COPY=1`: cópias independentes para quem quer editar em `entrega/`."""
+    return (os.environ.get("GB_DELIVERY_COPY") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _freeze(path):
+    """Tira a permissão de escrita da mídia entregue — o inode pode ser o do original."""
+    try:
+        mode = os.stat(path).st_mode
+        os.chmod(path, mode & ~0o222)
+    except OSError:
+        pass
+
+
+def link_or_copy(src, dest, read_only=False):
     """Liga `dest` a `src` pelo jeito mais barato que o sistema aceitar.
 
     Hardlink primeiro (não ocupa disco e não quebra ao mover a pasta de dentro),
@@ -86,6 +133,15 @@ def link_or_copy(src, dest):
     com conteúdo diferente, é obra da pessoa e o erro nomeia o arquivo.
     """
     src, dest = Path(src), Path(dest)
+    methods = (
+        (("copy", shutil.copy2),)
+        if copies_forced()
+        else (
+            ("hardlink", os.link),
+            ("symlink", lambda s, d: os.symlink(s, d)),
+            ("copy", shutil.copy2),
+        )
+    )
     if dest.is_symlink():
         try:
             if dest.resolve() == src.resolve():
@@ -95,8 +151,12 @@ def link_or_copy(src, dest):
         dest.unlink()
     elif dest.exists():
         if _same_file(dest, src):
+            if read_only:
+                _freeze(dest)
             return "hardlink"
         if _same_bytes(dest, src):
+            if read_only:
+                _freeze(dest)
             return "copy"
         raise ValueError(
             f"{dest} já existe com conteúdo diferente do arquivo coletado: parece edição "
@@ -104,13 +164,11 @@ def link_or_copy(src, dest):
             "de novo."
         )
     dest.parent.mkdir(parents=True, exist_ok=True)
-    for method, make in (
-        ("hardlink", os.link),
-        ("symlink", lambda s, d: os.symlink(s, d)),
-        ("copy", shutil.copy2),
-    ):
+    for method, make in methods:
         try:
             make(str(src), str(dest))
+            if read_only:
+                _freeze(dest)
             return method
         except (OSError, NotImplementedError, AttributeError):
             if dest.is_symlink() or dest.exists():
@@ -177,6 +235,8 @@ def render_origin(c, media_name, created=None):
         f"- sha256 do arquivo coletado: `{(c.get('output') or {}).get('sha256') or 'não calculado'}`",
         f"- Original canônico: `brolls/{(c.get('output') or {}).get('path')}`",
         "",
+        EDIT_WARNING,
+        "",
         "Este arquivo é gerado por `deliver`. A pasta `entrega/` inteira pode ser apagada "
         "e refeita: o que vale é `brolls/`.",
         "",
@@ -193,6 +253,8 @@ def render_index(rows, for_human=None, created=None):
         "Cada pasta é um trecho do vídeo, na ordem do BRIEF.md. É só arrastar o `.mp4` "
         "para o seu editor; o `ORIGEM.md` ao lado diz de onde ele veio e o que você me "
         "disse sobre poder usar.",
+        "",
+        EDIT_WARNING,
         "",
         "| Beat | Narração | Alvo | Arquivo | Estado | Direitos |",
         "|---|---|---|---|---|---|",
@@ -272,9 +334,30 @@ def _names(group_dir, index, source_suffix, sheet_suffix):
     }
 
 
-def _sweep(root, expected, dry_run):
+def _ours(rel, path, owned):
+    """Só é órfão o que este gerador escreveu; o resto é da pessoa e fica.
+
+    Reconhecemos três assinaturas: um caminho que o próprio manifesto registra em
+    `c["delivery"]`, o symlink que só nós criamos aqui, e os nomes que o gerador usa
+    (`README.md`, `ORIGEM*.md`, `contact-sheet*.*` e a mídia, que repete o nome da
+    pasta do beat). Um bilhete que a pessoa deixou dentro da pasta não casa com nada
+    disso e é preservado.
+    """
+    if rel in owned or rel == INDEX or path.is_symlink():
+        return True
+    name = path.name
+    if GENERATED.match(name):
+        return True
+    parent = path.parent.name
+    return bool(BEAT_DIR_RE.match(parent)) and re.fullmatch(
+        re.escape(parent) + r"(-\d+)?\.[A-Za-z0-9]+", name
+    ) is not None
+
+
+def _sweep(root, expected, dry_run, owned=()):
     """Apaga só o que este gerador escreveu e que deixou de existir no plano."""
     removed, kept = [], []
+    owned = set(owned)
     if not root.is_dir():
         return removed, kept
     for path in sorted(root.rglob("*"), reverse=True):
@@ -287,8 +370,7 @@ def _sweep(root, expected, dry_run):
             continue
         if rel in expected:
             continue
-        generated = path.is_symlink() or GENERATED.match(path.name) or rel == INDEX
-        if generated or path.parent != root:
+        if _ours(rel, path, owned):
             if not dry_run:
                 path.unlink()
             removed.append(rel)
@@ -302,7 +384,16 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
 
     Não toca em `brolls/`, não decide nada e não inventa direito de uso: só reorganiza
     o que `fetch` já produziu. Com `dry_run`, devolve o mesmo relatório sem escrever
-    um byte — nem na pasta, nem no manifesto.
+    um byte — nem na pasta, nem no manifesto, e o método de cada item sai como
+    `"planned"`, porque só a escrita diz qual o sistema aceita.
+
+    `for_human` pode ser um texto ou uma função sem argumentos: ela é chamada **depois**
+    da materialização, para que o "próximo passo" do índice fale do estado novo e não do
+    passo que acabou de ser executado.
+
+    Um arquivo que a pessoa editou não interrompe o trabalho pela metade: o conflito é
+    anotado, os demais itens são materializados, o índice e o manifesto são gravados, a
+    varredura roda, e só então o comando falha nomeando todos os arquivos em conflito.
     """
     from .ledger import Ledger, atomic_write
 
@@ -310,7 +401,7 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
     items = ledger.data["items"]
     root = Path(project).expanduser().resolve() / DELIVERY_DIR
     groups = _plan(project, items)
-    expected, listed, rows, changed = set(), [], [], []
+    expected, listed, rows, changed, conflicts = set(), [], [], [], []
     for group in groups:
         expected.add(group["dir"])
         for index, c in enumerate(group["items"], start=1):
@@ -325,16 +416,21 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
             )
             media_rel = f"{group['dir']}/{names['media']}"
             expected.add(media_rel)
-            method = None
-            if dry_run:
-                method = "hardlink"
-            elif source.is_file():
-                method = link_or_copy(source, root / media_rel)
-            if sheet and sheet.is_file():
-                sheet_rel_out = f"{group['dir']}/{names['sheet']}"
+            method = "planned" if dry_run else None
+            sheet_rel_out = f"{group['dir']}/{names['sheet']}" if sheet else None
+            if sheet_rel_out:
                 expected.add(sheet_rel_out)
-                if not dry_run:
-                    link_or_copy(sheet, root / sheet_rel_out)
+            if not dry_run:
+                try:
+                    if source.is_file():
+                        # Somente-leitura: o inode pode ser o mesmo de `brolls/clips/`.
+                        method = link_or_copy(source, root / media_rel, read_only=True)
+                    if sheet and sheet.is_file():
+                        # O contact sheet não é congelado: `preview` regrava o arquivo
+                        # de origem no mesmo caminho quando a pessoa muda o intervalo.
+                        link_or_copy(sheet, root / sheet_rel_out)
+                except ValueError as exc:
+                    conflicts.append(str(exc))
             origin_rel = f"{group['dir']}/{names['origin']}"
             expected.add(origin_rel)
             if not dry_run:
@@ -368,10 +464,20 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
     if not dry_run:
         root.mkdir(parents=True, exist_ok=True)
         index = root / INDEX
-        atomic_write(index, render_index(rows, for_human, _created_in(index)))
-    removed, kept = _sweep(root, expected, dry_run)
+        # O "próximo passo" é lido agora, com `c["delivery"]` já preenchido: senão o
+        # índice mandaria a pessoa rodar exatamente o comando que acabou de rodar.
+        text = for_human() if callable(for_human) else for_human
+        atomic_write(index, render_index(rows, text, _created_in(index)))
+    owned = {
+        (c.get("delivery") or {}).get("path", "")[len(DELIVERY_DIR) + 1 :]
+        for c in items
+        if (c.get("delivery") or {}).get("path", "").startswith(DELIVERY_DIR + "/")
+    }
+    removed, kept = _sweep(root, expected, dry_run, owned)
     if changed:
         ledger.save_many("deliver", changed)
+    if conflicts:
+        raise ValueError(" ".join(conflicts))
     return {
         "delivery": str(root),
         "readme": str(root / INDEX),

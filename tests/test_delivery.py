@@ -6,7 +6,9 @@ cópia quando o sistema não deixa linkar, ensaio sem gravar, caminho perigoso r
 arquivo editado pela pessoa preservado e `verify` que avisa em vez de reprovar.
 """
 
+import json
 import os
+import stat
 import sys
 import tempfile
 import types
@@ -42,6 +44,20 @@ def fetched(source_id, title, shot=None, clip="clips/x.mp4", sheet="previews/x.j
         c["shot"] = shot
         c["id"] += ":shot:" + shot
     return c
+
+
+def with_brief(tmp):
+    """BRIEF.md válido com um beat `abertura`, para a escada ter onde chegar."""
+    import re
+
+    raw = (ROOT / "docs" / "BRIEF.md").read_text(encoding="utf-8")
+    block = re.findall(r"```json\s*\n(.*?)\n```", raw, re.S)[0]
+    data = json.loads(block)
+    data["beats"] = [data["beats"][0]]
+    Path(tmp, "BRIEF.md").write_text(
+        raw.replace(block, json.dumps(data, ensure_ascii=False, indent=2), 1),
+        encoding="utf-8",
+    )
 
 
 def project(tmp, items):
@@ -176,11 +192,123 @@ class Build(unittest.TestCase):
             self.assertFalse((Path(tmp) / "entrega").exists())
             self.assertNotIn("delivery", Ledger(tmp, recover=False).data["items"][0])
 
+    def test_dry_run_leaves_the_manifest_byte_identical(self):
+        # O ensaio passa pelo mesmo caminho de `deliver`, inclusive `sync_formats`:
+        # nenhuma etapa dele pode reescrever o manifesto.
+        from getbrolls.commands import execute
+        from getbrolls.runtime import audited
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project(tmp, [fetched("a", "Palco", shot="abertura")])
+            Path(tmp, "RULES.md").write_text(
+                (ROOT / "docs" / "RULES.md").read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            manifest = Path(tmp) / "brolls" / "manifest.json"
+            before = manifest.read_bytes()
+            args = types.SimpleNamespace(
+                command="deliver",
+                project=tmp,
+                env_file=None,
+                dry_run=True,
+                confirm_format_change=False,
+            )
+            report = audited(args, execute)
+            self.assertEqual(before, manifest.read_bytes())
+            self.assertFalse((Path(tmp) / "entrega").exists())
+            self.assertEqual(["planned"], [i["method"] for i in report["items"]])
+
+    def test_delivered_media_is_read_only_because_the_inode_is_shared(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project(tmp, [fetched("a", "Palco", shot="abertura")])
+            report = delivery.build_delivery(tmp)
+            self.assertEqual("hardlink", report["items"][0]["method"])
+            media = Path(tmp) / report["items"][0]["path"]
+            self.assertFalse(media.stat().st_mode & stat.S_IWUSR)
+            index = (Path(tmp) / "entrega" / "README.md").read_text(encoding="utf-8")
+            self.assertIn("editar o original", index)
+            origin = next((Path(tmp) / "entrega").rglob("ORIGEM.md")).read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("editar o original", origin)
+
+    def test_copies_are_forced_by_env_for_people_who_edit_in_place(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project(tmp, [fetched("a", "Palco", shot="abertura")])
+            os.environ["GB_DELIVERY_COPY"] = "1"
+            try:
+                report = delivery.build_delivery(tmp)
+            finally:
+                del os.environ["GB_DELIVERY_COPY"]
+            self.assertEqual(["copy"], [i["method"] for i in report["items"]])
+            media = Path(tmp) / report["items"][0]["path"]
+            source = Path(tmp) / "brolls" / "clips" / "x.mp4"
+            self.assertFalse(os.path.samestat(media.stat(), source.stat()))
+
+    def test_the_index_points_at_what_comes_after_the_delivery(self):
+        from getbrolls.commands import execute
+        from getbrolls.runtime import audited
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project(tmp, [fetched("a", "Palco", shot="abertura")])
+            Path(tmp, "RULES.md").write_text(
+                (ROOT / "docs" / "RULES.md").read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            with_brief(tmp)
+            args = types.SimpleNamespace(
+                command="deliver",
+                project=tmp,
+                env_file=None,
+                dry_run=False,
+                confirm_format_change=False,
+            )
+            audited(args, execute)
+            index = (Path(tmp) / "entrega" / "README.md").read_text(encoding="utf-8")
+            # Com o brief válido e tudo conferido, o degrau antes da entrega seria
+            # justamente `deliver`: o índice precisa falar do estado DEPOIS dela.
+            self.assertNotIn("organizar os trechos conferidos", index)
+            self.assertIn("Terminamos", index)
+
+    def test_a_stray_note_inside_a_beat_folder_is_preserved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project(tmp, [fetched("a", "Palco", shot="abertura")])
+            report = delivery.build_delivery(tmp)
+            folder = Path(tmp) / report["items"][0]["path"]
+            note = folder.parent / "minhas-anotacoes.txt"
+            note.write_text("lembrar de cortar no 3s", encoding="utf-8")
+            again = delivery.build_delivery(tmp)
+            self.assertTrue(note.is_file())
+            self.assertIn(f"{folder.parent.name}/{note.name}", again["kept"])
+            self.assertEqual("lembrar de cortar no 3s", note.read_text(encoding="utf-8"))
+
+    def test_one_edited_file_does_not_abort_the_rest_of_the_batch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project(
+                tmp,
+                [
+                    fetched("a", "Palco", shot="abertura", clip="clips/a.mp4", sheet="previews/a.jpg"),
+                    fetched("b", "Plateia", shot="fechamento", clip="clips/b.mp4", sheet="previews/b.jpg"),
+                ],
+            )
+            report = delivery.build_delivery(tmp)
+            first = Path(tmp) / report["items"][0]["path"]
+            second = Path(tmp) / report["items"][1]["path"]
+            first.chmod(0o644)
+            first.unlink()
+            first.write_bytes(b"corte que a pessoa mexeu na mao")
+            second.unlink()
+            with self.assertRaises(ValueError) as caught:
+                delivery.build_delivery(tmp)
+            self.assertIn(first.name, str(caught.exception))
+            # O item saudável foi refeito mesmo com o conflito do outro.
+            self.assertTrue(second.exists())
+            self.assertEqual(b"corte que a pessoa mexeu na mao", first.read_bytes())
+
     def test_a_file_the_person_edited_is_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
             project(tmp, [fetched("a", "Palco", shot="abertura")])
             report = delivery.build_delivery(tmp)
             media = Path(tmp) / report["items"][0]["path"]
+            media.chmod(0o644)
             media.unlink()
             media.write_bytes(b"corte que a pessoa mexeu na mao")
             with self.assertRaises(ValueError) as caught:
