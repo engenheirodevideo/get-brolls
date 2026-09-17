@@ -1,15 +1,35 @@
 """Social acquisition using the existing yt-dlp/FFmpeg engine, without API keys."""
 import json
 import math
+import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
 from .http import ProviderError
 from .config import executable_override, venv_override
+from .runtime import record_warning, redact, stderr_tail
 
 
 LAYOUTS = ('Scripts/yt-dlp.exe', 'Scripts/yt-dlp', 'bin/yt-dlp')
+# Pauses between yt-dlp requests: (--sleep-requests, --sleep-interval, --max-sleep-interval).
+DEFAULT_SLEEP = (1, 3, 8)
+
+
+def sleep_settings():
+    """GB_YTDLP_SLEEP as "requests,min,max" seconds; defaults keep the source unhurried."""
+    raw = (os.environ.get('GB_YTDLP_SLEEP') or '').strip()
+    if not raw:
+        return DEFAULT_SLEEP
+    parts = raw.split(',')
+    try:
+        values = tuple(int(part.strip()) for part in parts)
+    except ValueError:
+        values = ()
+    if len(values) != 3 or any(v < 0 for v in values) or values[1] > values[2]:
+        raise ValueError('GB_YTDLP_SLEEP: use "requests,min,max" em segundos inteiros, com min <= max.')
+    return values
 
 
 def local_ytdlp(root=None):
@@ -43,8 +63,12 @@ def command():
             'yt-dlp ausente: execute bash scripts/install.sh (ou install.ps1) na raiz da skill/plugin; '
             'após /plugin update é preciso reinstalar. Confira com python3 scripts/gb.py doctor.'
         )
-    args = [exe, '--ignore-config', '--no-playlist', '--no-progress', '--no-warnings',
-            '--socket-timeout', '20', '--retries', '1', '--fragment-retries', '1']
+    requests, low, high = sleep_settings()
+    # --no-warnings would hide exactly the rate-limit/PO-token/fallback warnings we want to surface.
+    args = [exe, '--ignore-config', '--no-playlist', '--no-progress',
+            '--socket-timeout', '20', '--retries', '1', '--fragment-retries', '1',
+            '--sleep-requests', str(requests), '--sleep-interval', str(low),
+            '--max-sleep-interval', str(high)]
     if shutil.which('deno'):
         args += ['--js-runtimes', 'deno']
     elif shutil.which('node'):
@@ -52,23 +76,81 @@ def command():
     return args
 
 
+def _with_tail(message, stderr):
+    tail = stderr_tail(stderr)
+    return f'{message}; stderr: {tail}' if tail else message
+
+
+# "login"/"sign in" alone is too broad (matches unrelated text); only these phrases mean auth is required.
+_LOGIN_RE = re.compile(r'sign in to confirm|login required', re.IGNORECASE)
+# Anchored to real HTTP 429 context, not any standalone "429" (e.g. an ffmpeg "fps= 429" counter).
+_RATE_RE = re.compile(r'http error 429|429[:\s]+too many requests|rate.?limit', re.IGNORECASE)
+# "\bremoved\b" alone also matched yt-dlp's own "removed temporary file" cleanup message;
+# require it to describe the video itself, not an unrelated file operation.
+_UNAVAILABLE_RE = re.compile(
+    r'\bprivate\b|\bunavailable\b|\bvideo (?:has been |was )?removed\b', re.IGNORECASE
+)
+
+
+def _classify_ytdlp_error(exc):
+    stderr = exc.stderr or ''
+    detail = stderr.lower()
+    if _RATE_RE.search(detail):
+        message = 'limite de requisições da fonte (429); aguarde e tente de novo'
+    elif 'ip address is blocked' in detail:
+        message = 'A fonte bloqueou o IP desta rede para esse post; download não concluído.'
+    elif 'not available in your country' in detail:
+        message = 'Vídeo bloqueado geograficamente (geo-block) para esta região.'
+    elif 'requested format is not available' in detail:
+        message = 'Formato solicitado não está disponível para esta fonte.'
+    elif 'unsupported url' in detail:
+        message = 'URL não suportada por yt-dlp.'
+    elif _LOGIN_RE.search(detail):
+        message = 'A fonte exige uma sessão de acesso. Use o navegador autorizado conforme o guia da plataforma.'
+    elif _UNAVAILABLE_RE.search(detail):
+        message = 'Vídeo indisponível, privado ou removido.'
+    else:
+        message = 'yt-dlp não concluiu a extração; confira disponibilidade do post e siga o guia da plataforma.'
+    return ProviderError(_with_tail(message, stderr))
+
+
+def _extract_warnings(stderr):
+    """WARNING lines, with indented continuation lines folded into the warning they wrap."""
+    warnings = []
+    for raw_line in (stderr or '').splitlines():
+        if raw_line.strip().upper().startswith('WARNING'):
+            warnings.append(raw_line.strip())
+        elif raw_line[:1].isspace() and raw_line.strip() and warnings:
+            # An indented line with no "WARNING" prefix of its own is a continuation of
+            # the previous warning (yt-dlp wraps long warnings this way), not a new one.
+            warnings[-1] = f'{warnings[-1]} {raw_line.strip()}'
+    return [redact(w) for w in warnings]
+
+
 def run(arguments, timeout=180):
+    cmd = command() + arguments
     try:
-        return subprocess.run(command() + arguments, check=True, capture_output=True,
-                              text=True, encoding="utf-8", errors="replace", timeout=timeout).stdout
+        proc = subprocess.run(cmd, check=True, capture_output=True,
+                               text=True, encoding="utf-8", errors="replace", timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        raise ProviderError(f'yt-dlp excedeu {timeout}s; a fonte pode estar lenta ou bloqueando.') from exc
     except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or '').lower()
-        if 'ip address is blocked' in detail:
-            raise ProviderError('A fonte bloqueou o IP desta rede para esse post; download não concluído.') from None
-        if 'login' in detail or 'sign in' in detail:
-            raise ProviderError('A fonte exige uma sessão de acesso. Use o navegador autorizado conforme o guia da plataforma.') from None
-        raise ProviderError('yt-dlp não concluiu a extração; confira disponibilidade do post e siga o guia da plataforma.') from None
-    except (subprocess.SubprocessError, OSError):
-        raise ProviderError('yt-dlp não concluiu: confira dependências, disponibilidade do vídeo e sessão exigida pela fonte. Para Instagram, use o fluxo navegador → pares CDN descrito em docs/GUIDE.md.') from None
+        raise _classify_ytdlp_error(exc) from exc
+    except FileNotFoundError as exc:
+        name = exc.filename or (cmd[0] if cmd else 'yt-dlp')
+        raise ProviderError(f'{name} não encontrado: execute bash scripts/install.sh (ou install.ps1) na raiz da skill/plugin.') from exc
+    except PermissionError as exc:
+        name = exc.filename or (cmd[0] if cmd else 'yt-dlp')
+        raise ProviderError(f'Permissão negada ao executar {name}.') from exc
+    except (subprocess.SubprocessError, OSError) as exc:
+        raise ProviderError('yt-dlp não concluiu: confira dependências, disponibilidade do vídeo e sessão exigida pela fonte. Para Instagram, use o fluxo navegador → pares CDN descrito em docs/GUIDE.md.') from exc
+    return proc.stdout, _extract_warnings(proc.stderr)
 
 
 def search(query, limit):
-    raw = run(['--flat-playlist', '--dump-single-json', f'ytsearch{limit}:{query}'], timeout=60)
+    raw, warnings = run(['--flat-playlist', '--dump-single-json', f'ytsearch{limit}:{query}'], timeout=60)
+    for w in warnings:
+        record_warning('YTDLP_WARNING', w)
     try:
         data = json.loads(raw)
         return [r for r in data.get('entries', []) if isinstance(r, dict)]
@@ -89,10 +171,12 @@ def download_segment(url, target, start, end):
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=target.parent) as folder:
         output = Path(folder) / 'source.mp4'
-        run(['-f', 'bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/b',
+        _, warnings = run(['-f', 'bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/b',
              '--download-sections', f'*{start}-{end}', '--force-keyframes-at-cuts',
              '--merge-output-format', 'mp4', '--remux-video', 'mp4',
              '-o', str(output), '--', url])
+        for w in warnings:
+            record_warning('YTDLP_WARNING', w)
         info = probe(output)
         if abs(info['duration_s'] - (end-start)) > max(.25, 2/(info['fps'] or 10)):
             raise ProviderError('O trecho social não corresponde ao intervalo solicitado.')

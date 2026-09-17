@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-16
+updated: 2026-09-17
 tags: [get-brolls, guide, installation, providers, storyboard]
 ---
 
@@ -253,7 +253,7 @@ Dependências: `yt-dlp` + FFmpeg. Capturas de página usam a integração de nav
 
 ### Medição editorial deste fluxo
 
-Se a pergunta é "esse fluxo está achando fonte literal de verdade?", a resposta não vem da suíte de testes: vem dos **testes cegos** em [eval/README.md](eval/README.md). Um agente executor recebe só o roteiro, roda `search` → `preview` → `review` e para na revisão humana; outro agente (ou o humano) pontua cada beat pela rubrica — alcance literal, literalidade do asset, qualidade da prévia e disciplina (nada de stock sem pedido, nada aprovado sozinho). Os relatórios ficam em `eval/runs/`, e o comando `/get-brolls-eval` roda um caso do corpus de ponta a ponta.
+Se a pergunta é "esse fluxo está achando fonte literal de verdade?", a resposta não vem da suíte de testes: vem dos **testes cegos** em [eval/README.md](../eval/README.md). Um agente executor recebe só o roteiro, roda `search` → `preview` → `review` e para na revisão humana; outro agente (ou o humano) pontua cada beat pela rubrica — alcance literal, literalidade do asset, qualidade da prévia e disciplina (nada de stock sem pedido, nada aprovado sozinho). Os relatórios ficam em `eval/runs/`, e o comando `/get-brolls-eval` roda um caso do corpus de ponta a ponta.
 
 ## Estado do projeto e progresso
 
@@ -266,6 +266,8 @@ python3 scripts/gb.py status --project /caminho/meu-video
 O JSON segue a convenção dos demais comandos e traz, como no `doctor`, um objeto `summary` na frente: `line` (uma frase com as contagens), `stages` (rótulo, contagem e IDs de cada etapa) e `next` (o próximo passo real do fluxo). Abaixo dele vêm `counts`, `stages`, `items` (um resumo por candidato: estado, aprovação, direitos, prévia e arquivo final), `references`, `review_page` e `journal` (eventos registrados, último evento e se houve recuperação de gravação).
 
 `status` é somente leitura: não grava manifesto, candidatos, prévias, clipes nem eventos, e não cria a árvore `brolls/` — num projeto inexistente ele responde "Projeto não encontrado em …; nenhum arquivo foi criado." sem escrever nada. O único arquivo tocado num projeto existente é o `brolls/diagnostics.jsonl` da auditoria. Também **não pega a trava exclusiva do projeto**: pode ser executado enquanto um `fetch` longo está em andamento, sem esperar nem falhar. Uma regressão offline compara o conteúdo e o mtime de todos os arquivos do projeto antes e depois da execução.
+
+Mensagens de erro de `yt-dlp`, `curl`, `ffmpeg`/`ffprobe` e HTTP agora trazem o código de saída/HTTP e as últimas linhas do stderr/corpo da resposta (sempre redigidas: sem URL assinada, chave ou token) em vez de uma frase genérica — use esse trecho para diagnosticar antes de repetir o comando. Um bug interno (não um problema de dados/rede) sai com `error_code: "INTERNAL_ERROR"` e a mensagem pede para reportar `brolls/diagnostics.jsonl`, onde ficam `type`, `repr` e o traceback (também redigido) daquela execução; qualquer exceção não tratada na CLI também vira esse mesmo envelope JSON, nunca um traceback cru no terminal.
 
 Como só lê, `status` nunca completa uma gravação interrompida: quando existe `.pending-transaction.json`, ele reporta `journal.recovered_write: "pending"`, avisa na linha do resumo e deixa a pendência para o próximo comando de escrita. Pelo mesmo motivo ele não aplica `sync_formats`: se as regras editoriais passaram a mirar outro formato, o relatório traz `format_pending` (total e por item) e `next` avisa quantas aprovações o próximo comando invalidará. `RULES.md` ilegível vira `rules_error` no lugar de uma falha, e `events.jsonl` ou `references.json` corrompidos degradam para contagem com `error`, preservando os arquivos.
 
@@ -568,6 +570,41 @@ python "$env:GB_SKILL_DIR\scripts\getbrolls\instagram_pairs.py" `
 
 Em batch, mantenha o gate de hash de áudio. Dois Reels podem ter áudio igual legitimamente; uma colisão exige conferir o par correto, não ignorar a detecção automaticamente. `--force-download` obtém novamente; `--no-prefer-config-output` evita somente o arquivo apontado no config; ainda pode reutilizar `parts-dir`. Para descartar uma parte suspeita, use `--force-download` após recapturar os URLs ou um novo diretório de partes. Preserve arquivos anteriores antes de substituir.
 
+### Lotes e ritmo
+
+Cem Reels de uma vez, sem pausa, são o jeito mais rápido de perder a conta. A CLI não dorme: ela diz **quanto** esperar e o agente espera. O estado fica em `<projeto>/work/queue.json` (privado, gravação atômica, permissão 0600) e nunca contém URL assinada — só a URL pública normalizada de cada post.
+
+```sh
+python3 "$GB_SKILL_DIR/scripts/gb.py" queue --action add --provider instagram --project "$GB_PROJECT" "$REEL_URL_1" "$REEL_URL_2" --url "$REEL_URL_3"
+python3 "$GB_SKILL_DIR/scripts/gb.py" queue --action next --project "$GB_PROJECT"
+# {"item": {...}} → capture os pares desse Reel e rode instagram_pairs.py
+# {"item": null, "wait_seconds": 83, "resume_at": "..."} → aguarde 83 s e chame next de novo
+python3 "$GB_SKILL_DIR/scripts/gb.py" queue --action mark --id instagram:CODIGO --done --project "$GB_PROJECT"
+python3 "$GB_SKILL_DIR/scripts/gb.py" queue --action mark --id instagram:CODIGO --failed --reason "curl 22 HTTP 429" --project "$GB_PROJECT"
+python3 "$GB_SKILL_DIR/scripts/gb.py" queue --action status --project "$GB_PROJECT"
+```
+
+Windows PowerShell usa os mesmos argumentos com `python "$env:GB_SKILL_DIR\scripts\gb.py"` e `$env:GB_PROJECT`.
+
+- `add` aceita `--provider instagram|tiktok|youtube`, URLs posicionais e `--url` repetido; a URL é normalizada pelo mesmo resolvedor de `resolve` e repetidas são ignoradas. Cada item nasce `pending`.
+- `next` devolve um item quando o ritmo permite ou quando já existe um item `active` aguardando `mark` — nesse segundo caso ele repete o mesmo item, sem reiniciar o relógio (`reason: "active"`). Ao devolver um item novo, marca-o `active`. Quando não há nada para devolver, responde `wait_seconds`, `resume_at` e `reason` com saída 0 e `item: null`; `reason` pode ser `pace`, `cooldown`, `max_per_hour`, `max_per_day` (aguarde) ou `empty` (fila sem pendentes, nada a esperar). `--provider` limita a fila a uma fonte.
+- `mark --id ID --done|--failed|--skipped [--reason "..."]` fecha o item. Um motivo contendo `403`, `429`, `challenge`, `login` ou `rate` abre **cooldown**: 30 min, dobrando a cada disparo consecutivo (1 h, 2 h, 4 h — teto 4 h); um `--done` zera a contagem.
+- `status` lista contagens (`pending`, `active`, `done`, `failed`, `skipped`), o cooldown e o próximo horário permitido por provedor. O `status` do projeto também mostra uma linha da fila e a chave `queue`, sem gravar nada.
+
+Padrões por provedor — quando nenhuma variável nem regra é definida, o intervalo entre itens é sorteado no intervalo abaixo e contado a partir do item devolvido; os tetos contam itens `done`/`failed` na última hora e nas últimas 24 h:
+
+| Variável | Instagram (padrão) | TikTok / YouTube (padrão) |
+|---|---|---|
+| `GB_PACE_MIN_S` / `GB_PACE_MAX_S` | 45 / 120 s | 15 / 40 s |
+| `GB_MAX_PER_HOUR` | 20 | 20 |
+| `GB_MAX_PER_DAY` | 60 | 60 |
+
+`GB_PACE_MIN_S`, `GB_PACE_MAX_S`, `GB_MAX_PER_HOUR` e `GB_MAX_PER_DAY` são **globais**: uma vez definidas, o mesmo valor vale para todos os provedores, substituindo os padrões acima por igual. Para diferenciar o ritmo por provedor, use o bloco opcional `pacing` em RULES.md, `"pacing": {"instagram": {"min_s": 60, "max_s": 180, "max_per_hour": 15, "max_per_day": 40}, "tiktok": {...}}`; a variável de ambiente, quando definida, vence a regra do projeto.
+
+No coletor, rode o lote com `--pace 20-60 --max-per-run 25 --continue-on-error --project "$GB_PROJECT"`: pausa aleatória entre pares (nunca antes do primeiro; `--pace 0` desliga), no máximo 25 pares por execução (o restante sai como `skipped`, motivo `max-per-run`) e falha por stem registrada sem interromper os demais. O summary JSON é reescrito após cada stem com `status` `done|failed|skipped` e o processo sai com 1 quando houver falha. O curl faz até 2 retentativas com 5 s de espera; um HTTP 403/429 encerra o lote na hora, marca o restante como `skipped` com motivo `cooldown` e, com `--project` informado e `work/queue.json` existente nele, registra o cooldown na fila — **use sempre `--project "$GB_PROJECT"` no coletor**, não `--config-output-root`, para que o cooldown vá para o projeto certo. Ao ver isso, pare: espere o `resume_at`, recapture as URLs no navegador e só então volte.
+
+Para as rotas yt-dlp, o comando base já inclui `--sleep-requests 1 --sleep-interval 3 --max-sleep-interval 8`; `GB_YTDLP_SLEEP=req,min,max` ajusta. Nas APIs de bancos, um HTTP 429 com `Retry-After` de até 60 s é respeitado uma vez; acima disso o erro informa a espera pedida.
+
 ### 4. Entrar no fluxo comum de B-roll
 
 ```sh
@@ -728,6 +765,6 @@ Entregável de revisão independente da landing page. `gb.py review` gera `broll
 5. Importe com `import-review --by`. Projeto, IDs, assinatura do intervalo/fonte e versão da decisão (`reviewEpoch`) são validados. Mudança de intervalo ou substituição da decisão invalida a exportação anterior. Em caso de revisão desatualizada, regenere o Storyboard, confira e exporte novamente; não altere assinaturas manualmente.
 6. Só colete o corte final depois de aprovação humana e registro da permissão. Clips MP4 ficam separados do storyboard.
 
-Configurações, presets e limitações estão no [README](README.md). `preview` obtém mídia de trabalho remota nas rotas de aquisição implementadas; no Instagram por navegador, importe primeiro o MP4 unido. Um poster isolado, inclusive com `--reference-only`, não comprova movimento.
+Configurações, presets e limitações estão no [README](../README.md). `preview` obtém mídia de trabalho remota nas rotas de aquisição implementadas; no Instagram por navegador, importe primeiro o MP4 unido. Um poster isolado, inclusive com `--reference-only`, não comprova movimento.
 
 Configuração padrão: `GB_GIF_SCOPE=broll`. O print opcional da pessoa permanece estático. Para revisar composição pronta do mesmo insert, escolha `full` e forneça `--full-preview-file`. O objetivo continua ser decidir a direção da coleta; nenhuma montagem adicional é exigida.

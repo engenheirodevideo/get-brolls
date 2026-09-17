@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/badge/node-22%2B-green?style=flat-square" alt="Node 22+">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
     <img src="https://img.shields.io/github/actions/workflow/status/engenheirodevideo/get-brolls/test.yml?branch=main&style=flat-square&label=tests" alt="Tests status">
-    <img src="https://img.shields.io/badge/version-2.3.7-blue?style=flat-square" alt="Version 2.3.7">
+    <img src="https://img.shields.io/badge/version-2.3.8-blue?style=flat-square" alt="Version 2.3.8">
   </p>
 </div>
 
@@ -28,6 +28,7 @@ A preview may download working media so you can see the motion. Final delivery r
 
 ## Updates
 
+- **2.3.8.** Paced queue for social batches (`queue`), `instagram_pairs --pace/--max-per-run/--continue-on-error`, yt-dlp sleeps and `Retry-After` handling, readable errors with redacted stderr, interval/NASA/drawtext caching, and a `serve` command for the local Storyboard.
 - **2.3.7.** `status --project` command ("where are we?"), self-explanatory CLI with `--version`, `/get-brolls-setup` plugin command, "First B-roll in 5 minutes" quickstart, pinnable tool paths via `GB_*_PATH`, and [AGENTS.md](AGENTS.md) as the repository hub.
 - **2.3.6.** Claude Code plugin install — the repository is its own skill marketplace.
 - **2.3.5.** First official GitHub release, network hardening (HTTPS/DNS) and pinned dependencies.
@@ -129,7 +130,7 @@ powershell -ExecutionPolicy Bypass -File scripts/install.ps1
 python scripts/gb.py doctor
 ```
 
-The installer creates local environments and obtains yt-dlp/EJS and Playwright CLI. `doctor` checks tool availability; access to each source depends on the URL and, when required, your browser session.
+The installer creates local environments and obtains yt-dlp/EJS and Playwright CLI. `--check` only validates prerequisites (Python, FFmpeg/ffprobe, Node, curl, Git) and installs nothing; run it before the full installer to see what is missing. `doctor` checks tool availability once installed; access to each source depends on the URL and, when required, your browser session.
 
 **YouTube works without an API key.** Pexels and Pixabay use their own optional keys, configured in the environment or in the skill's private `.env` file. Available settings are documented in [.env.example](.env.example).
 
@@ -154,10 +155,10 @@ The shortest command-line sequence, using a keyless source (NASA). Replace `/pat
 python3 scripts/gb.py search --provider nasa --query "Artemis launch" --limit 3 --intent literal --project /path/to/my-video
 python3 scripts/gb.py preview --candidate "<ID>" --start 0 --end 4 --project /path/to/my-video
 python3 scripts/gb.py review --project /path/to/my-video
-python3 -m http.server 8767 --bind 127.0.0.1 --directory /path/to/my-video/brolls
+python3 scripts/gb.py serve --project /path/to/my-video
 ```
 
-Open [the local storyboard](http://127.0.0.1:8767/review.html), decide on the shots, and export the JSON. Then, from another terminal:
+Open [the local storyboard](http://localhost:8767/review.html), decide on the shots, and export the JSON — opening it via `file://` can disable local saving, so export before closing the page. Then, from another terminal:
 
 ```sh
 python3 scripts/gb.py import-review --file /path/to/review.json --by "Your name" --project /path/to/my-video
@@ -197,6 +198,13 @@ python3 scripts/gb.py doctor   # verifies tools and names what is missing
 python3 scripts/gb.py search ...    # search candidates in the chosen source
 python3 scripts/gb.py preview ...   # build GIF/contact sheet for the range
 python3 scripts/gb.py review ...    # assemble the brolls/review.html storyboard
+python3 scripts/gb.py serve ...     # serve the storyboard at http://localhost:8767/review.html
+```
+
+**4b. Paced social batches** (optional, for several Reels/videos at once):
+
+```text
+python3 scripts/gb.py queue --action add|next|mark|status ...   # enqueue, get the next item at the right pace, close it out
 ```
 
 **5. Decide and receive**:
@@ -222,6 +230,7 @@ Every subcommand accepts `help`; full syntax lives in the terminal section.
 - **Local storyboard.** `review` generates `brolls/review.html`: a page to switch between a still image and a GIF, see the narration, time range, selection rationale, creator, and source, and approve, request an adjustment, or suggest another source per shot. [Storyboard details.](#storyboard)
 - **Six sources covered.** YouTube and TikTok without an API key via yt-dlp/FFmpeg, Instagram through the authorized browser with an included video/audio pair collector, Pexels and Pixabay with their own keys, Wikimedia Commons and NASA without a key, and local file import. [See sources and transports.](#sources)
 - **Project state at any moment.** `status --project` summarizes candidates, previews, decisions, permissions, and deliveries, with the suggested next step, without changing the project. [See command-line usage.](#command-line-usage)
+- **Paced social batches.** `queue` enqueues Instagram/TikTok/YouTube URLs and only returns the next item once the interval and hourly/daily caps allow it — the CLI never sleeps, it tells you how long to wait. `serve` runs the local Storyboard at `http://localhost:8767/review.html` without a loose `http.server` command.
 - **Provenance record.** Every delivered shot carries source, creator, time range, and conditions of use — editorial approval is always yours.
 - **Protected network access.** The collector accepts only public HTTPS URLs without credentials, rejects hostnames that resolve to local networks, and does not follow redirects.
 - **Native on macOS and Windows.** Dedicated installers for both systems; the Bash YouTube helpers are optional.
@@ -273,10 +282,10 @@ python3 scripts/gb.py references --project /path/to/my-video
 python3 scripts/gb.py search --provider youtube --query "NASA Artemis launch" --limit 3 --intent literal --project /path/to/my-video
 python3 scripts/gb.py preview --candidate "<ID>" --start 0 --end 5 --reason "Show the liftoff mentioned in the video" --project /path/to/my-video
 python3 scripts/gb.py review --project /path/to/my-video
-python3 -m http.server 8767 --bind 127.0.0.1 --directory /path/to/my-video/brolls
+python3 scripts/gb.py serve --project /path/to/my-video
 ```
 
-Open [the local storyboard](http://127.0.0.1:8767/review.html), review the shots, and export your decisions. Then, from another terminal in the skill folder:
+Open [the local storyboard](http://localhost:8767/review.html), review the shots, and export your decisions — opening it via `file://` can disable local saving, so export before closing the page. Then, from another terminal in the skill folder:
 
 ```sh
 python3 scripts/gb.py import-review --file /path/to/review.json --by "Reviewer's name" --project /path/to/my-video

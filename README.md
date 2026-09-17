@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/badge/node-22%2B-green?style=flat-square" alt="Node 22+">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="Licença MIT">
     <img src="https://img.shields.io/github/actions/workflow/status/engenheirodevideo/get-brolls/test.yml?branch=main&style=flat-square&label=tests" alt="Status dos testes">
-    <img src="https://img.shields.io/badge/version-2.3.7-blue?style=flat-square" alt="Versão 2.3.7">
+    <img src="https://img.shields.io/badge/version-2.3.8-blue?style=flat-square" alt="Versão 2.3.8">
   </p>
 </div>
 
@@ -28,6 +28,7 @@ A prévia pode baixar mídia de trabalho para mostrar o movimento. A entrega fin
 
 ## Atualizações
 
+- **2.3.8** Fila com ritmo para lotes sociais (`queue`), `instagram_pairs --pace/--max-per-run/--continue-on-error`, pausas do yt-dlp e respeito a `Retry-After`, erros legíveis com stderr redigido, cache por intervalo/NASA/drawtext, e comando `serve` para o Storyboard local.
 - **2.3.7** Comando `status --project` ("onde estamos?"), CLI autoexplicativa com `--version`, comando de plugin `/get-brolls-setup`, quickstart "Primeiro B-roll em 5 minutos", caminhos de ferramentas fixáveis via `GB_*_PATH` e [AGENTS.md](AGENTS.md) como hub do repositório.
 - **2.3.6.** Instalação como plugin do Claude Code — o próprio repositório é o marketplace da skill.
 - **2.3.5.** Primeira release oficial no GitHub, endurecimento de rede (HTTPS/DNS) e dependências fixadas.
@@ -121,7 +122,29 @@ powershell -ExecutionPolicy Bypass -File scripts/install.ps1
 python scripts/gb.py doctor
 ```
 
-O instalador cria os ambientes locais e obtém as versões registradas de yt-dlp/EJS e Playwright CLI. `doctor` confere a disponibilidade das ferramentas; o acesso a cada fonte depende da URL e, quando necessário, da sua sessão de navegador.
+O instalador cria os ambientes locais e obtém as versões registradas de yt-dlp/EJS e Playwright CLI. `--check` só valida pré-requisitos (Python, FFmpeg/ffprobe, Node, curl, Git) e não instala nada; rode-o antes do instalador completo para saber o que falta. `doctor` confere a disponibilidade das ferramentas depois de instaladas; o acesso a cada fonte depende da URL e, quando necessário, da sua sessão de navegador.
+
+### Primeiro B-roll em 5 minutos
+
+A sequência mais curta pelo terminal, usando uma fonte sem chave (NASA). Troque `/caminho/meu-video` pelo seu projeto e `<ID>` pelo identificador devolvido pela busca — mantenha as aspas, porque identificadores podem conter espaços.
+
+```sh
+python3 scripts/gb.py search --provider nasa --query "Artemis launch" --limit 3 --intent literal --project /caminho/meu-video
+python3 scripts/gb.py preview --candidate "<ID>" --start 0 --end 4 --project /caminho/meu-video
+python3 scripts/gb.py review --project /caminho/meu-video
+python3 scripts/gb.py serve --project /caminho/meu-video
+```
+
+Abra [o storyboard local](http://localhost:8767/review.html), decida os trechos e exporte o JSON — abrir a página por `file://` pode desativar o salvamento local, então exporte antes de fechar. Depois, em outro terminal:
+
+```sh
+python3 scripts/gb.py import-review --file /caminho/revisao.json --by "Seu nome" --project /caminho/meu-video
+python3 scripts/gb.py permit --candidate "<ID>" --evidence "Condições de uso reais dessa fonte" --project /caminho/meu-video
+python3 scripts/gb.py fetch --candidate "<ID>" --project /caminho/meu-video
+python3 scripts/gb.py verify --project /caminho/meu-video
+```
+
+No fim, `verify` responde `"count": 1` e o clipe aprovado está em `/caminho/meu-video/brolls/clips/`, com origem, autor e decisão registrados em `brolls/credits.md`. Trocar `nasa` por `commons` segue o mesmo fluxo.
 
 ### Comandos
 
@@ -152,6 +175,13 @@ python3 scripts/gb.py doctor   # verifica ferramentas e diz o que falta
 python3 scripts/gb.py search ...    # pesquisa candidatos na fonte escolhida
 python3 scripts/gb.py preview ...   # gera GIF/contact sheet do intervalo
 python3 scripts/gb.py review ...    # monta o storyboard brolls/review.html
+python3 scripts/gb.py serve ...     # sobe o storyboard em http://localhost:8767/review.html
+```
+
+**4b. Lotes sociais com ritmo** (opcional, para vários Reels/vídeos de uma vez):
+
+```text
+python3 scripts/gb.py queue --action add|next|mark|status ...   # enfileira, dá o próximo no ritmo certo e fecha o item
 ```
 
 **5. Decida e receba**:
@@ -176,6 +206,7 @@ Cada subcomando aceita `help`; a sintaxe completa está em [Usar pelo terminal](
 - **Storyboard local.** `review` gera `brolls/review.html`: uma página para alternar entre imagem estática e GIF, ver fala, intervalo, motivo da escolha, autor e fonte, e aprovar, pedir ajuste ou sugerir outra fonte por trecho. [Detalhes do storyboard.](#storyboard)
 - **Seis fontes cobertas.** YouTube e TikTok sem API key via yt-dlp/FFmpeg, Instagram pelo navegador autorizado com coletor de pares vídeo/áudio incluído, Pexels e Pixabay com chave própria, Wikimedia Commons e NASA sem chave, e importação de arquivos locais. [Veja fontes e transportes.](#fontes)
 - **Estado do projeto a qualquer momento.** `status --project` resume candidatos, prévias, decisões, permissões e entregas, com o próximo passo sugerido, sem alterar o projeto. [Veja uso pelo terminal.](#usar-pelo-terminal)
+- **Lotes sociais com ritmo.** `queue` enfileira URLs de Instagram/TikTok/YouTube e só devolve o próximo item quando o intervalo e os tetos por hora/dia permitem — a CLI nunca dorme, ela diz quanto esperar. `serve` sobe o Storyboard local em `http://localhost:8767/review.html` sem comando solto de `http.server`.
 - **Registro de origem.** Cada trecho entregue carrega fonte, autor, intervalo e condições de uso — a aprovação editorial é sempre sua.
 - **Rede protegida.** O coletor aceita somente URLs públicas HTTPS sem credenciais, rejeita resolução para redes locais e não segue redirecionamentos.
 - **Nativo em macOS e Windows.** Instaladores próprios para os dois sistemas; os helpers Bash de YouTube são opcionais.
@@ -227,10 +258,10 @@ python3 scripts/gb.py references --project /caminho/meu-video
 python3 scripts/gb.py search --provider youtube --query "NASA Artemis launch" --limit 3 --intent literal --project /caminho/meu-video
 python3 scripts/gb.py preview --candidate "<ID>" --start 0 --end 5 --reason "Mostrar a decolagem citada no vídeo" --project /caminho/meu-video
 python3 scripts/gb.py review --project /caminho/meu-video
-python3 -m http.server 8767 --bind 127.0.0.1 --directory /caminho/meu-video/brolls
+python3 scripts/gb.py serve --project /caminho/meu-video
 ```
 
-Abra [o storyboard local](http://127.0.0.1:8767/review.html), revise os trechos e exporte as decisões. Depois, em outro terminal na pasta da skill:
+Abra [o storyboard local](http://localhost:8767/review.html), revise os trechos e exporte as decisões — abrir por `file://` pode desativar o salvamento local, então exporte antes de fechar. Depois, em outro terminal na pasta da skill:
 
 ```sh
 python3 scripts/gb.py import-review --file /caminho/revisao.json --by "Nome de quem revisou" --project /caminho/meu-video

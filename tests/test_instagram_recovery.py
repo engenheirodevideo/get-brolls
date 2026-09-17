@@ -25,27 +25,27 @@ class InstagramRecoveryTests(unittest.TestCase):
             )):
                 with self.subTest(url=url):
                     conf=root/f'unsafe-{index}.conf';conf.write_text(f'url = "{url}"\n', encoding='utf-8')
-                    with self.assertRaises(SystemExit):
+                    with self.assertRaises(ig.CollectError):
                         ig.parse_curl_config(conf)
             public_name=root/'public-name.conf';public_name.write_text('url = "https://media.example.test/video"\n', encoding='utf-8')
             private_dns=[(socket.AF_INET,socket.SOCK_STREAM,6,'',('127.0.0.1',443))]
-            with patch.object(ig.socket,'getaddrinfo',return_value=private_dns),self.assertRaises(SystemExit):
+            with patch.object(ig.socket,'getaddrinfo',return_value=private_dns),self.assertRaises(ig.CollectError):
                 ig.parse_curl_config(public_name)
             mixed_dns=[
                 (socket.AF_INET,socket.SOCK_STREAM,6,'',('93.184.216.34',443)),
                 (socket.AF_INET,socket.SOCK_STREAM,6,'',('10.0.0.2',443)),
             ]
-            with patch.object(ig.socket,'getaddrinfo',return_value=mixed_dns),self.assertRaises(SystemExit):
+            with patch.object(ig.socket,'getaddrinfo',return_value=mixed_dns),self.assertRaises(ig.CollectError):
                 ig.parse_curl_config(public_name)
             trailing_dot=root/'trailing-dot.conf';trailing_dot.write_text('url = "https://media.example.test./video"\n', encoding='utf-8')
             public_dns=[(socket.AF_INET,socket.SOCK_STREAM,6,'',('93.184.216.34',443))]
-            with patch.object(ig.socket,'getaddrinfo',return_value=public_dns),self.assertRaises(SystemExit):
+            with patch.object(ig.socket,'getaddrinfo',return_value=public_dns),self.assertRaises(ig.CollectError):
                 ig.parse_curl_config(trailing_dot)
             for output in ('../../outside.mp4', '/etc/passwd'):
-                with self.subTest(output=output), self.assertRaises(SystemExit):
+                with self.subTest(output=output), self.assertRaises(ig.CollectError):
                     ig.resolve_config_output(output, root)
             for stem in ('.._01_clip', '.hidden', 'bad\\name', 'bad:name'):
-                with self.subTest(stem=stem), self.assertRaises(SystemExit):
+                with self.subTest(stem=stem), self.assertRaises(ig.CollectError):
                     ig.infer_output_for_stem(stem, root/'out', 'auto')
 
     def test_accepts_public_https_and_output_inside_root(self):
@@ -68,7 +68,7 @@ class InstagramRecoveryTests(unittest.TestCase):
                 raise subprocess.CalledProcessError(18,cmd)
             kwargs=dict(cfg_path=conf,part_path=target,config_output_root=root,force_download=False,prefer_config_output=False)
             public_dns=[(socket.AF_INET,socket.SOCK_STREAM,6,'',('93.184.216.34',443))]
-            with patch.object(ig.socket,'getaddrinfo',return_value=public_dns),patch.object(ig.subprocess,'run',side_effect=fail) as called,self.assertRaises(SystemExit):
+            with patch.object(ig.socket,'getaddrinfo',return_value=public_dns),patch.object(ig.subprocess,'run',side_effect=fail) as called,self.assertRaises(ig.CollectError):
                 ig.download_or_reuse(**kwargs)
             self.assertFalse(target.exists())
             command=called.call_args.args[0]
@@ -83,7 +83,7 @@ class InstagramRecoveryTests(unittest.TestCase):
     def test_merge_never_overwrites_existing_output(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp); output=root/'existing.mp4';output.write_bytes(b'keep')
-            with self.assertRaises(SystemExit):
+            with self.assertRaises(ig.CollectError):
                 ig.process_one(
                     stem='01_SAFE',video_config=root/'video.conf',audio_config=root/'audio.conf',
                     output=output,parts_dir=root/'parts',config_output_root=root,
@@ -95,7 +95,7 @@ class InstagramRecoveryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp); pending=root/'pending.mp4';output=root/'output.mp4'
             pending.write_bytes(b'new');output.write_bytes(b'keep')
-            with self.assertRaises(SystemExit):
+            with self.assertRaises(ig.CollectError):
                 ig.publish_exclusive(pending,output)
             self.assertEqual(b'keep',output.read_bytes())
 
@@ -109,9 +109,10 @@ class InstagramRecoveryTests(unittest.TestCase):
             for stem in ('01_TEST','02_TEST'):
                 (configs/(stem+'_video.conf')).write_text(f'url = "https://example.org/video"\noutput = "{video}"\n', encoding='utf-8')
                 (configs/(stem+'_audio.conf')).write_text(f'url = "https://example.org/audio"\noutput = "{audio}"\n', encoding='utf-8')
-            args=['--config-dir',str(configs),'--output-dir',str(root/'out'),'--parts-dir',str(root/'parts'),'--config-output-root',str(root),'--layout','flat','--fail-on-duplicate-audio']
+            args=['--config-dir',str(configs),'--output-dir',str(root/'out'),'--parts-dir',str(root/'parts'),'--config-output-root',str(root),'--layout','flat','--fail-on-duplicate-audio','--pace','0']
             public_dns=[(socket.AF_INET,socket.SOCK_STREAM,6,'',('93.184.216.34',443))]
-            with patch.object(ig.socket,'getaddrinfo',return_value=public_dns),self.assertRaises(SystemExit): ig.main(args)
+            with patch.object(ig.socket,'getaddrinfo',return_value=public_dns):
+                self.assertEqual(1, ig.main(args))
             report=ig.verify_output(root/'out/01_TEST.mp4')
             self.assertTrue(report['audio_hash_sha256'])
             self.assertEqual(ig.audio_hash(root/'out/01_TEST.mp4'),ig.audio_hash(root/'out/02_TEST.mp4'))

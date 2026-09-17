@@ -1,8 +1,12 @@
 """Argument contract and structured command output."""
 
-import argparse, json, sys
+import argparse, json, sys, traceback
 from . import __version__
 from .runtime import audited, OperationError
+
+# Named so a caller (script, test, or someone scripting the CLI) never has to hardcode 2/3.
+EXIT_OPERATION_ERROR = 2
+EXIT_INTERNAL_ERROR = 3
 
 # Uma linha por subcomando: o que ele faz no fluxo coleta → revisão → entrega.
 SUMMARIES = {
@@ -24,6 +28,8 @@ SUMMARIES = {
     "remember": "Registrar referência aprovada ou rejeitada na memória do projeto",
     "references": "Consultar as referências memorizadas do projeto",
     "browser-plan": "Planejar a captura de uma página pelo navegador autorizado",
+    "queue": "Enfileirar URLs sociais e ditar o ritmo do lote (add, next, mark, status)",
+    "serve": "Servir brolls/review.html em 127.0.0.1 para abrir o Storyboard no navegador",
 }
 
 
@@ -67,6 +73,8 @@ def build_parser():
         "remember",
         "references",
         "browser-plan",
+        "queue",
+        "serve",
     ):
         p = sub.add_parser(name, help=SUMMARIES[name], description=SUMMARIES[name])
         p.add_argument(
@@ -74,6 +82,37 @@ def build_parser():
             required=True,
             help="Pasta do projeto que guarda brolls/, fora da instalação da skill",
         )
+        if name == "serve":
+            p.add_argument(
+                "--port",
+                type=int,
+                default=None,
+                help="Porta local para o servidor (padrão 8767; se ocupada, usa uma porta livre)",
+            )
+        if name == "queue":
+            p.add_argument(
+                "--action",
+                choices=["add", "next", "mark", "status"],
+                required=True,
+                help="add: enfileirar URLs; next: próximo item ou tempo de espera; mark: registrar resultado; status: contagens e cooldown",
+            )
+            p.add_argument(
+                "--provider",
+                choices=["instagram", "tiktok", "youtube"],
+                help="Fonte das URLs em add; em next, limita a fila a essa fonte",
+            )
+            p.add_argument(
+                "urls", nargs="*", help="URLs públicas a enfileirar (add); repetidas são ignoradas"
+            )
+            p.add_argument(
+                "--url", action="append", help="URL pública a enfileirar (add); pode repetir"
+            )
+            p.add_argument("--id", help="ID do item retornado por next (mark)")
+            g = p.add_mutually_exclusive_group()
+            g.add_argument("--done", action="store_true", help="mark: item coletado com sucesso; zera o cooldown")
+            g.add_argument("--failed", action="store_true", help="mark: item falhou; motivo com 403/429, challenge/login, 'rate limit'/'too many requests' ou as mensagens de bloqueio da própria skill (sessão de acesso, IP bloqueado, limite de requisições) abre cooldown")
+            g.add_argument("--skipped", action="store_true", help="mark: item pulado sem tentar")
+            p.add_argument("--reason", help="Motivo real registrado no item (mark)")
         if name in ("preview", "approve", "permit", "reject", "fetch", "remember"):
             p.add_argument(
                 "--candidate",
@@ -177,6 +216,15 @@ def main(argv=None):
     from .commands import execute, with_summary
 
     args = parse_args(argv)
+    if args.command == "serve":
+        # `serve` blocks in serve_forever() and owns its own stdout contract (one JSON
+        # line with the URLs, printed by serve.run() itself, then nothing else): it does
+        # not go through the JSON-wrapping in entrypoint(), so it exits directly here.
+        try:
+            raise SystemExit(execute(args))
+        except ValueError as exc:
+            print(json.dumps({"error": str(exc), "error_code": "INVALID_DATA"}, ensure_ascii=False))
+            raise SystemExit(EXIT_OPERATION_ERROR)
     return audited(args, lambda parsed: with_summary(parsed.command, execute(parsed)))
 
 
@@ -194,4 +242,59 @@ def entrypoint():
             json.dumps({"error": str(exc), **exc.payload}, ensure_ascii=False),
             file=sys.stderr,
         )
-        return 2
+        return EXIT_OPERATION_ERROR
+    except BrokenPipeError:
+        # The consumer end of a pipe (e.g. `| head`) closed early; this is an ordinary,
+        # expected shutdown, not a bug — do not report it as INTERNAL_ERROR.
+        try:
+            sys.stdout.close()
+        except Exception:
+            pass
+        return 0
+    except Exception as exc:
+        # Anything audited() didn't already turn into an OperationError (e.g. an argparse-time
+        # bug) must still exit as JSON, not a raw traceback breaking the CLI's output contract.
+        from .runtime import redact, write_diagnostics_log
+
+        project = _project_from_argv()
+        event = {
+            "operation": None,
+            "status": "error",
+            "error_code": "INTERNAL_ERROR",
+            "type": type(exc).__name__,
+            "repr": redact(repr(exc)),
+            "traceback": redact(traceback.format_exc()),
+        }
+        log = write_diagnostics_log(project, event) if project else None
+        message = "Erro interno inesperado."
+        if log:
+            message += f" Detalhes em {log} (diagnostics.jsonl)."
+        else:
+            message += " Consulte diagnostics.jsonl no projeto (--project), se disponível."
+        print(
+            json.dumps(
+                {
+                    "error": message,
+                    "error_code": "INTERNAL_ERROR",
+                    "type": type(exc).__name__,
+                    "message": redact(repr(exc)),
+                    "traceback": event["traceback"],
+                },
+                ensure_ascii=False,
+            ),
+            file=sys.stderr,
+        )
+        return EXIT_INTERNAL_ERROR
+
+
+def _project_from_argv():
+    """Best-effort --project value from sys.argv, for diagnostics logging before/around parse_args."""
+    argv = sys.argv[1:]
+    if "--project" in argv:
+        index = argv.index("--project")
+        if index + 1 < len(argv):
+            return argv[index + 1]
+    for item in argv:
+        if item.startswith("--project="):
+            return item.split("=", 1)[1]
+    return None
