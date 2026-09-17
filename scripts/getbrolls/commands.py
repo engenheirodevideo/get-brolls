@@ -533,13 +533,24 @@ def brief_state(project, rules, items):
 
     Devolve `None` quando não há BRIEF.md legível: esse é o degrau do topo da escada.
     """
-    from getbrolls.brief import beat_commands, beat_progress, load_brief, validate_brief
+    from getbrolls.brief import (
+        beat_commands,
+        beat_progress,
+        brief_path,
+        load_brief,
+        validate_brief,
+    )
 
     try:
         data, conflicts = validate_brief(load_brief(project), rules)
-    except (ValueError, OSError):
-        # Brief ausente ou inválido não quebra o `status`: vira o degrau "faça o brief".
-        return None
+    except (ValueError, OSError) as exc:
+        # Nada do brief quebra o `status`. Arquivo ausente é "faça o brief"; arquivo
+        # presente e errado é "corrija o brief" — degraus e comandos diferentes.
+        try:
+            exists = brief_path(project).exists()
+        except (ValueError, OSError):
+            exists = False
+        return {"error": str(exc)} if exists else None
     beats = data["beats"]
     progress = beat_progress(beats, items)
     missing = [
@@ -624,9 +635,10 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
                 "candidate": _pending_candidate(items),
             }
         ),
+        # `None` enquanto não houver um brief válido para contar (ausente ou inválido).
         "brief": (
             None
-            if brief is None
+            if brief is None or brief.get("error")
             else {
                 "beats": brief["beats"],
                 "covered": brief["covered"],

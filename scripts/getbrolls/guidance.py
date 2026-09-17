@@ -21,6 +21,7 @@ BOARD_URL = f"http://127.0.0.1:{DEFAULT_PORT}/review.html"
 # Degraus com comando próprio, do topo da escada para a base.
 STEPS = (
     "init-brief",
+    "brief-invalid",
     "format",
     "search",
     "preview",
@@ -33,9 +34,12 @@ STEPS = (
 # Um comando por degrau; `{project}` e `{candidate}` entram já citados.
 TEMPLATES = {
     "init-brief": "init-brief --project {project}",
+    "brief-invalid": "brief --validate --project {project}",
     "format": "review --project {project}",
     "search": "search --project {project} --query TERMOS_DA_BUSCA --intent literal",
-    "preview": "preview --project {project} --candidate {candidate}",
+    "preview": (
+        "preview --project {project} --candidate {candidate} --start 0 --end 5"
+    ),
     "approve": (
         "approve --project {project} --all --by NOME --channel chat "
         '--statement "FRASE EXATA DITA POR ELE"'
@@ -47,12 +51,16 @@ TEMPLATES = {
 
 
 def command_for(step, project, candidate=None):
-    """Comando absoluto deste degrau: CLI da skill e `--project` resolvido."""
+    """Comando absoluto deste degrau: CLI da skill e o mesmo `--project` que o chamador usa.
+
+    O caminho vai como veio (já absoluto em `status`), sem `resolve()`: assim
+    `do.command` e `payload["project"]` combinam mesmo com link simbólico no meio.
+    """
     template = TEMPLATES.get(step)
     if template is None:
         return None
     return f'python3 "{CLI}" ' + template.format(
-        project=shlex.quote(str(Path(project).expanduser().resolve())),
+        project=shlex.quote(str(project)),
         candidate=shlex.quote(candidate) if candidate else "ID",
     )
 
@@ -79,8 +87,9 @@ def next_action(state):
     """Único passo que faz sentido agora, com a frase para repassar sem parafrasear.
 
     `state` = {project, counts, format_pending, brief, review_page, rights_mode,
-    candidate}. `brief` é None quando o projeto ainda não tem BRIEF.md legível, ou
-    {beats, covered, missing[{id, search}], conflicts[]} quando tem.
+    candidate}. `brief` é None quando o arquivo nem existe, `{"error": "..."}` quando
+    existe mas não passa na validação, e {beats, covered, missing[{id, search}],
+    conflicts[]} quando está válido.
     """
     counts = _counts(state)
     brief = state.get("brief")
@@ -94,7 +103,19 @@ def next_action(state):
             "criar o modelo e preencher à mão.",
             state,
         )
-    if state.get("format_pending") or conflicts:
+    if brief.get("error"):
+        # Arquivo existe e está errado: corrigir é diferente de começar do zero.
+        return _action(
+            "brief-invalid",
+            f'O BRIEF.md existe mas não passou na validação: {brief["error"]}',
+            "O BRIEF.md do projeto tem um problema que preciso que você resolva antes "
+            "de eu buscar: vou rodar a validação e te dizer exatamente qual linha "
+            "corrigir.",
+            state,
+        )
+    # `review` só faz sentido quando existe algo decidido para revisar de novo; num
+    # projeto vazio o conflito de formato vira um aviso colado no degrau de busca.
+    if state.get("format_pending") or (conflicts and counts["approved"]):
         detail = (
             f" Além disso: {conflicts[0]}" if conflicts else ""
         )
@@ -119,19 +140,24 @@ def next_action(state):
             command=first.get("search") or command_for("search", state["project"]),
         )
     if not counts["candidates"]:
+        warning = f" Antes disso, resolva: {conflicts[0]}" if conflicts else ""
         return _action(
             "search",
-            "Nenhum candidato registrado no projeto ainda.",
+            "Nenhum candidato registrado no projeto ainda."
+            + (f" Conflito pendente: {conflicts[0]}" if conflicts else ""),
             "Ainda não há nenhum candidato no projeto: vou buscar as fontes e te "
-            "mostrar o que apareceu.",
+            "mostrar o que apareceu." + warning,
             state,
         )
     if counts["previews"] < counts["candidates"]:
         return _action(
             "preview",
-            "Há candidatos sem prévia gerada; sem prévia ninguém decide.",
+            "Há candidatos sem prévia gerada; sem prévia ninguém decide. O intervalo "
+            "do comando é só um ponto de partida: o real sai do que se vê na fonte "
+            "(contact sheet) e não de um palpite.",
             "Vou gerar a prévia dos candidatos que ainda não têm quadro, para você ver "
-            "antes de decidir.",
+            "antes de decidir. O `--start`/`--end` do comando é um chute inicial: "
+            "confirme o trecho certo pelo contact sheet da fonte antes de aprovar.",
             state,
         )
     if not counts["approved"]:

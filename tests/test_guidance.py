@@ -1,7 +1,11 @@
 """Próximo passo humano: toda sugestão da escada é um comando que a CLI aceita."""
 
+import json
 import shlex
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -11,9 +15,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from getbrolls.cli import build_parser
 from getbrolls.guidance import STEPS, command_for, next_action
 
+# O comando repassa o `--project` como recebeu, sem resolver links simbólicos: assim
+# `do.command` e o `project` do relatório falam do mesmo caminho.
 PROJECT = "/tmp/projeto-do-video"
-# O comando sempre traz o caminho resolvido (no macOS /tmp é link para /private/tmp).
-ABSOLUTE = str(Path(PROJECT).expanduser().resolve())
+ABSOLUTE = PROJECT
 
 
 def base_state(**extra):
@@ -38,6 +43,7 @@ def full(**counts):
 # Um estado por degrau da escada, do topo para a base.
 LADDER_STATES = {
     "init-brief": base_state(brief=None),
+    "brief-invalid": base_state(brief={"error": 'O beat "abertura" repetiu o id.'}),
     "format": base_state(format_pending=2, counts=full(candidates=2, previews=2, approved=2)),
     "brief-search": base_state(
         brief={
@@ -113,6 +119,28 @@ class Guidance(unittest.TestCase):
         state = dict(LADDER_STATES["permit"], rights_mode="user_declaration")
         self.assertFalse(next_action(state)["blocking_human"])
 
+    def test_invalid_brief_asks_for_a_fix_instead_of_a_new_brief(self):
+        action = next_action(LADDER_STATES["brief-invalid"])
+        self.assertEqual("brief-invalid", action["step"])
+        self.assertIn("repetiu o id", action["why"])
+        self.assertIn("brief --validate", action["command"])
+        self.assertFalse(action["blocking_human"])
+
+    def test_format_conflict_without_approvals_only_warns_on_the_search_rung(self):
+        state = base_state(brief={"beats": 1, "covered": 1, "missing": [], "conflicts": ["Formato do brief difere do RULES.md."]})
+        action = next_action(state)
+        self.assertEqual("search", action["step"])
+        self.assertIn("Formato do brief", action["for_human"])
+        # Com algo já aprovado, o mesmo conflito vira o degrau de formato.
+        decided = dict(state, counts=full(candidates=2, previews=2, approved=2))
+        self.assertEqual("format", next_action(decided)["step"])
+
+    def test_preview_rung_carries_an_interval_and_says_it_is_a_starting_point(self):
+        action = next_action(LADDER_STATES["preview"])
+        self.assertIn("--start", action["command"])
+        self.assertIn("--end", action["command"])
+        self.assertIn("contact sheet", action["for_human"])
+
     def test_missing_brief_names_the_slash_command_and_init_brief(self):
         action = next_action(LADDER_STATES["init-brief"])
         self.assertIn("/get-brolls-brief", action["for_human"])
@@ -139,11 +167,47 @@ class Guidance(unittest.TestCase):
             with self.subTest(step=step):
                 action = next_action(state)
                 self.assertEqual(
-                    ["step", "why", "command", "url", "for_human", "blocking_human"],
-                    list(action),
+                    {"step", "why", "command", "url", "for_human", "blocking_human"},
+                    set(action),
                 )
                 self.assertTrue(action["why"])
                 self.assertTrue(action["for_human"].endswith((".", "!")))
+
+
+class SuggestedCommandRuns(unittest.TestCase):
+    """O comando do degrau não pode só parsear: ele tem que rodar de verdade."""
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
+    def test_preview_rung_command_runs_on_a_local_candidate(self):
+        cli = str(Path(__file__).resolve().parents[1] / "scripts/gb.py")
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "original.mp4"
+            subprocess.run(
+                ["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                 "testsrc=size=160x90:duration=6:rate=10", "-c:v", "libx264",
+                 "-pix_fmt", "yuv420p", str(src)],
+                check=True,
+            )
+            resolved = subprocess.run(
+                [sys.executable, cli, "resolve", "--file", str(src), "--project", tmp],
+                capture_output=True, text=True, encoding="utf-8",
+            )
+            self.assertEqual(0, resolved.returncode, resolved.stderr)
+            candidate = json.loads(resolved.stdout)["id"]
+            state = base_state(
+                project=tmp, counts=full(candidates=1), candidate=candidate
+            )
+            action = next_action(state)
+            self.assertEqual("preview", action["step"])
+            argv = shlex.split(action["command"])
+            done = subprocess.run(
+                [sys.executable, *argv[1:]],
+                capture_output=True, text=True, encoding="utf-8",
+            )
+            # TypeError de --start/--end None sairia como INTERNAL_ERROR (saída 3).
+            self.assertEqual(0, done.returncode, done.stdout + done.stderr)
+            self.assertNotIn("TypeError", done.stdout + done.stderr)
+            self.assertTrue(json.loads(done.stdout)["preview"].get("contact_sheet_path"))
 
 
 if __name__ == "__main__":

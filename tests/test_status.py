@@ -1,7 +1,9 @@
 """Observabilidade: `status` responde onde o projeto está e os comandos resumem o resultado."""
 
+import copy
 import hashlib
 import json
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -123,9 +125,9 @@ class StatusCommandTests(unittest.TestCase):
             payload = self.call("status", "--project", tmp)
             self.assertEqual("summary", next(iter(payload)))
             summary = payload["summary"]
-            self.assertEqual(
-                ["line", "stages", "next", "do", "brief"], list(summary)
-            )
+            # `line/stages/next` continuam na frente; `do` e `brief` são aditivos.
+            self.assertEqual(["line", "stages", "next"], list(summary)[:3])
+            self.assertLessEqual({"line", "stages", "next", "do", "brief"}, set(summary))
             self.assertIn("candidatos encontrados", summary["line"])
             self.assertEqual(
                 [plural for _, _, plural in STATUS_STAGES],
@@ -156,6 +158,31 @@ class StatusCommandTests(unittest.TestCase):
             self.assertIn("abertura", summary["do"]["for_human"])
             self.assertIn("search --project", summary["do"]["command"])
             self.assertEqual(before, sorted(p.name for p in Path(tmp).iterdir()))
+
+    def test_status_tells_a_broken_brief_apart_from_a_missing_one(self):
+        from tests.test_brief import VALID, write_brief
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            broken = copy.deepcopy(VALID)
+            broken["beats"][1]["id"] = broken["beats"][0]["id"]
+            write_brief(tmp, broken)
+            summary = self.call("status", "--project", tmp)["summary"]
+            self.assertEqual("brief-invalid", summary["do"]["step"])
+            self.assertIn("brief --validate", summary["do"]["command"])
+            self.assertTrue(summary["do"]["why"])
+            self.assertIsNone(summary["brief"])
+
+    def test_status_command_points_at_the_same_project_it_reports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            payload = self.call("status", "--project", tmp)
+            # `project` do relatório é a pasta brolls/; o comando aponta para a raiz
+            # dela, sem resolver links simbólicos por conta própria.
+            self.assertIn(
+                shlex.quote(str(Path(payload["project"]).parent)),
+                payload["summary"]["do"]["command"],
+            )
 
     def test_status_next_step_follows_the_flow(self):
         base = dict.fromkeys(

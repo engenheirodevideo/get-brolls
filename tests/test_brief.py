@@ -366,8 +366,25 @@ class BriefCommandTests(unittest.TestCase):
             self.assertEqual(
                 ["line", "problems", "next"], list(result["summary"])
             )
-            # `next` vem da mesma escada de `status` (guidance.next_action).
-            self.assertIn("abertura", result["summary"]["next"])
+            # `next` vem da mesma escada de `status` (guidance.next_action): nenhum
+            # beat tem candidato ainda, então o passo é buscar pelo primeiro.
+            from getbrolls.guidance import next_action
+
+            self.assertTrue(result["summary"]["next"])
+            self.assertEqual(
+                "brief-search",
+                next_action(
+                    {
+                        "project": tmp,
+                        "brief": {
+                            "beats": 2,
+                            "covered": 0,
+                            "missing": [{"id": "abertura", "search": None}],
+                            "conflicts": [],
+                        },
+                    }
+                )["step"],
+            )
             self.assertEqual(2, len(result["beats"]))
             first = result["beats"][0]
             self.assertEqual("abertura", first["id"])
