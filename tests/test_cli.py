@@ -59,7 +59,8 @@ class CliTest(unittest.TestCase):
             preview = self.call("preview", *base, "--start", 0.5, "--end", 1.5)
             self.assertIn("Gerei a prévia", preview["summary"])
             approved = self.call(
-                "approve", *base, "--start", 0.5, "--end", 1.5, "--by", "Fixture humano"
+                "approve", *base, "--start", 0.5, "--end", 1.5, "--by", "Fixture humano",
+                "--statement", "Aprovo este trecho para o vídeo."
             )
             self.assertIn("Registrei a aprovação humana", approved["summary"])
             self.call("fetch", *base, ok=False)
@@ -140,7 +141,10 @@ class CliTest(unittest.TestCase):
             self.call(
                 "preview", *base, "--start", 0, "--end", 1, "--narration", "Line one"
             )
-            self.call("approve", *base, "--start", 0, "--end", 1, "--by", "Human")
+            self.call(
+                "approve", *base, "--start", 0, "--end", 1, "--by", "Human",
+                "--statement", "Aprovo este trecho para o vídeo.",
+            )
 
             def payload():
                 page = (root / "brolls/review.html").read_text(encoding="utf-8")
@@ -158,7 +162,10 @@ class CliTest(unittest.TestCase):
             )
             self.call("reject", *base)
             self.assertEqual(payload()["items"][0]["review"]["state"], "pending")
-            self.call("approve", *base, "--start", 0, "--end", 1, "--by", "Human")
+            self.call(
+                "approve", *base, "--start", 0, "--end", 1, "--by", "Human",
+                "--statement", "Aprovo este trecho para o vídeo.",
+            )
             self.call(
                 "preview", *base, "--start", 0, "--end", 1, "--narration", "Line two"
             )

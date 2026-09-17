@@ -102,6 +102,10 @@ def approve(c, by, channel="storyboard", statement=None):
         raise ValueError("Canal de aprovação inválido: use chat ou storyboard.")
     if statement is not None and not isinstance(statement, str):
         raise ValueError("Frase de aprovação inválida.")
+    if channel == "chat" and not (statement or "").strip():
+        raise ValueError(
+            "Aprovação pelo chat exige --statement com a frase exata dita pela pessoa."
+        )
     c["approval"] = {
         "status": "approved",
         "by": by,

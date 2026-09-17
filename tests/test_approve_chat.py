@@ -13,7 +13,12 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, now, set_segment, signature
-from getbrolls.review import import_review, project_id, review_epoch
+from getbrolls.review import (
+    import_review,
+    legacy_review_epoch,
+    project_id,
+    review_epoch,
+)
 
 
 def run_cli(test, *args, ok=True):
@@ -78,7 +83,15 @@ class ApproveChatTests(unittest.TestCase):
 
             # Rodar de novo não reaprova o que já tem aprovação válida.
             again = run_cli(
-                self, "approve", "--all", "--by", "Bruno", "--project", tmp
+                self,
+                "approve",
+                "--all",
+                "--by",
+                "Bruno",
+                "--statement",
+                "Aprovo os dois primeiros trechos.",
+                "--project",
+                tmp,
             )
             self.assertEqual([], again["approved"])
             self.assertEqual(
@@ -148,13 +161,61 @@ class ApproveChatTests(unittest.TestCase):
                 "local:a",
                 "--by",
                 "Bruno",
+                "--statement",
+                "Aprovo.",
                 "--project",
                 tmp,
                 ok=False,
             )
             self.assertIn("--all", error["error"])
-            missing = run_cli(self, "approve", "--by", "Bruno", "--project", tmp, ok=False)
+            missing = run_cli(
+                self, "approve", "--by", "Bruno", "--statement", "Aprovo.", "--project", tmp, ok=False
+            )
             self.assertIn("--candidate", missing["error"])
+
+
+class ChatStatementRequiredTests(unittest.TestCase):
+    def test_chat_approval_without_statement_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            single = run_cli(
+                self,
+                "approve",
+                "--candidate",
+                "local:a",
+                "--start",
+                0,
+                "--end",
+                1,
+                "--by",
+                "Bruno",
+                "--project",
+                tmp,
+                ok=False,
+            )
+            self.assertIn("--statement", single["error"])
+            batch = run_cli(
+                self, "approve", "--all", "--by", "Bruno", "--project", tmp, ok=False
+            )
+            self.assertIn("--statement", batch["error"])
+            # Nada foi gravado: a recusa acontece antes de tocar no ledger.
+            self.assertEqual("pending", Ledger(tmp).get("local:a")["approval"]["status"])
+
+    def test_storyboard_channel_still_works_without_statement(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            run_cli(
+                self,
+                "approve",
+                "--all",
+                "--channel",
+                "storyboard",
+                "--by",
+                "Bruno",
+                "--project",
+                tmp,
+            )
+            self.assertEqual("approved", Ledger(tmp).get("local:a")["approval"]["status"])
 
 
 class ReviewEpochCompatibilityTests(unittest.TestCase):
@@ -179,6 +240,10 @@ class ReviewEpochCompatibilityTests(unittest.TestCase):
         c["approval"]["statement"] = "Aprovo."
         self.assertEqual(before, review_epoch(c))
 
+    def test_legacy_epoch_differs_from_the_new_one_for_an_approved_item(self):
+        c = self.old_style()
+        self.assertNotEqual(review_epoch(c), legacy_review_epoch(c))
+
     def test_board_exported_with_old_approval_still_imports(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Ledger(tmp)
@@ -193,7 +258,9 @@ class ReviewEpochCompatibilityTests(unittest.TestCase):
                     {
                         "id": c["id"],
                         "signature": signature(c),
-                        "reviewEpoch": review_epoch(c),
+                        # Época no formato 2.3.x: o dicionário `approval` inteiro,
+                        # com a assinatura que a fórmula nova não considera mais.
+                        "reviewEpoch": legacy_review_epoch(c),
                         "state": "approved",
                         "comment": "",
                         "suggestion": "",
@@ -202,10 +269,6 @@ class ReviewEpochCompatibilityTests(unittest.TestCase):
             }
             path = Path(tmp) / "board.json"
             path.write_text(json.dumps(export), encoding="utf-8")
-            # O manifesto ganha as chaves novas antes do import, como num projeto migrado.
-            ledger.get(c["id"])["approval"]["channel"] = "storyboard"
-            ledger.get(c["id"])["approval"]["statement"] = None
-            ledger.save("migration")
             result = import_review(Ledger(tmp), str(path), "Bruno")
             self.assertEqual(1, result["imported"])
             self.assertEqual(

@@ -26,6 +26,19 @@ def review_epoch(candidate):
     ).hexdigest()
 
 
+def legacy_review_epoch(candidate):
+    """Época como a 2.3.x a calculava: o dicionário `approval` inteiro.
+
+    Um board exportado antes da 2.4 traz esse valor; aceitá-lo na importação evita
+    descartar decisões humanas já tomadas só porque a fórmula mudou.
+    """
+    return hashlib.sha256(
+        json.dumps(
+            [candidate["approval"], candidate.get("review")], sort_keys=True
+        ).encode()
+    ).hexdigest()
+
+
 def project_id(ledger):
     # Stable when project folder is copied to another reviewer/computer.
     if "project_id" not in ledger.data:
@@ -94,7 +107,7 @@ def import_review(ledger, file, by, rules=None):
         c = copy.deepcopy(ledger.get(item["id"]))
         if item.get("signature") != signature(c):
             raise ValueError("Revisão desatualizada para " + c["id"])
-        if item.get("reviewEpoch") != review_epoch(c):
+        if item.get("reviewEpoch") not in (review_epoch(c), legacy_review_epoch(c)):
             raise ValueError(
                 "Revisão desatualizada para " + c["id"]
                 + ": a decisão mudou ou o arquivo não contém sua versão. "

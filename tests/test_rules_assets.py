@@ -160,7 +160,10 @@ class RulesTests(unittest.TestCase):
             base = ["--candidate", c["id"]]
             self.assertEqual(c["media"]["kind"], "image")
             call("preview", *base)
-            call("approve", *base, "--by", "Human")
+            call(
+                "approve", *base, "--by", "Human",
+                "--statement", "Aprovo esta imagem para o vídeo.",
+            )
             call("permit", *base, "--declaration", ok=False)
             r = load_rules(d)
             r["copyright"] = {

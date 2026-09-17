@@ -159,6 +159,9 @@ STATUS_STAGES = (
 
 PREVIEW_ARTIFACTS = ("gif_path", "contact_sheet_path", "poster_path")
 
+# Nomes que não identificam ninguém: uma declaração precisa de uma pessoa real.
+GENERIC_NAMES = ("usuário", "usuario", "eu", "user", "cliente")
+
 
 def _count(value, singular, plural):
     return f"{value} {singular if value == 1 else plural}"
@@ -569,15 +572,22 @@ def execute(args):
     if cmd == "init-rules":
         dest = Path(args.project) / "RULES.md"
         dest.parent.mkdir(parents=True, exist_ok=True)
+        has_flags = bool(args.mode or args.responsible or args.declaration)
         if dest.exists() and not args.force:
             raise ValueError(
                 "RULES.md já existe; edite sem sobrescrever suas regras. "
-                "Use --force para regravar o bloco JSON com as escolhas informadas."
+                "Use --force com --mode/--responsible/--declaration para regravar só o bloco JSON."
+            )
+        if args.force and not has_flags:
+            raise ValueError(
+                "--force só regrava o bloco JSON: informe --mode, --responsible ou --declaration."
             )
         template = SKILL_ROOT / "docs" / "RULES.md"
-        if args.mode or args.responsible or args.declaration:
+        if has_flags:
+            # Regravar preserva o que o usuário já escolheu: a base é o arquivo dele.
+            source = dest if dest.exists() else template
             text, rights = rules_from_flags(
-                template.read_text(encoding="utf-8"),
+                source.read_text(encoding="utf-8"),
                 args.mode,
                 args.responsible,
                 args.declaration,
@@ -785,6 +795,10 @@ def execute(args):
                 )
         return {"verified": checked, "count": len(checked)}
     if cmd == "approve":
+        if args.channel == "chat" and not (args.statement or "").strip():
+            raise ValueError(
+                "Aprovação pelo chat exige --statement com a frase exata dita pela pessoa."
+            )
         if args.all and args.candidate:
             raise ValueError("Use --all sozinho ou --candidate ID, nunca os dois juntos.")
         if args.all and (args.start is not None or args.end is not None):
@@ -817,7 +831,7 @@ def execute(args):
         if args.declared_by or args.declaration_text:
             name = (args.declared_by or "").strip()
             text = (args.declaration_text or "").strip()
-            if not name or name.lower() in ("usuário", "usuario"):
+            if not name or name.lower() in GENERIC_NAMES:
                 raise ValueError(
                     "Informe em --declared-by o nome real de quem assume a responsabilidade."
                 )

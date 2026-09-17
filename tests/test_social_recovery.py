@@ -100,7 +100,8 @@ class RemotePreviewTests(unittest.TestCase):
                 main(['preview',*base,'--start','30','--end','32'])
                 self.assertEqual(get.call_count,1)
             # Synthetic fixture only, not an approval attributed to a real person.
-            main(['approve',*base,'--start','30','--end','32','--by','Synthetic test fixture'])
+            main(['approve',*base,'--start','30','--end','32','--by','Synthetic test fixture',
+                  '--statement','Aprovo este trecho sintético.'])
             main(['permit',*base,'--evidence','Locally generated synthetic test media'])
             c=main(['fetch',*base])
             self.assertAlmostEqual(probe(root/'brolls'/c['output']['path'])['duration_s'],2,delta=.1)

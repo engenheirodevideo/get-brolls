@@ -74,6 +74,48 @@ class InitRulesFlagTests(unittest.TestCase):
             self.assertIn("--responsible", error["error"])
             self.assertFalse((Path(tmp) / "RULES.md").exists())
 
+    def test_force_without_content_flags_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_cli(self, "init-rules", "--project", tmp)
+            path = Path(tmp) / "RULES.md"
+            path.write_text(
+                path.read_text(encoding="utf-8").replace(
+                    '"blocked_domains": []', '"blocked_domains": ["exemplo.com"]'
+                ),
+                encoding="utf-8",
+            )
+            error = run_cli(self, "init-rules", "--force", "--project", tmp, ok=False)
+            self.assertIn("--mode", error["error"])
+            self.assertEqual(["exemplo.com"], load_rules(tmp)["blocked_domains"])
+
+    def test_force_keeps_the_choices_the_user_already_made(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_cli(self, "init-rules", "--project", tmp)
+            path = Path(tmp) / "RULES.md"
+            path.write_text(
+                path.read_text(encoding="utf-8")
+                .replace('"blocked_domains": []', '"blocked_domains": ["exemplo.com"]')
+                .replace('"editorial_rules": []', '"editorial_rules": ["preservar manchete"]'),
+                encoding="utf-8",
+            )
+            run_cli(
+                self,
+                "init-rules",
+                "--force",
+                "--mode",
+                "user_declaration",
+                "--responsible",
+                "Bruno Moreira",
+                "--declaration",
+                TEXT,
+                "--project",
+                tmp,
+            )
+            rules = load_rules(tmp)
+            self.assertEqual(["exemplo.com"], rules["blocked_domains"])
+            self.assertEqual(["preservar manchete"], rules["editorial_rules"])
+            self.assertEqual("Bruno Moreira", rules["copyright"]["responsible_person"])
+
     def test_force_rewrites_an_existing_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_cli(self, "init-rules", "--project", tmp)
