@@ -31,6 +31,8 @@ SUMMARIES = {
     "brief": "Mostrar os beats do vídeo e o comando pronto de cada um",
     "remember": "Registrar referência aprovada ou rejeitada na memória do projeto",
     "references": "Consultar as referências memorizadas do projeto",
+    "learn": "Guardar busca, preferência ou trecho útil na biblioteca entre projetos",
+    "library": "Consultar a biblioteca entre projetos antes de sair buscando",
     "browser-plan": "Planejar a captura de uma página pelo navegador autorizado",
     "queue": "Enfileirar URLs sociais e ditar o ritmo do lote (add, next, mark, status)",
     "serve": "Servir brolls/review.html em 127.0.0.1 para abrir o Storyboard no navegador",
@@ -80,6 +82,8 @@ def build_parser():
         "brief",
         "remember",
         "references",
+        "learn",
+        "library",
         "browser-plan",
         "queue",
         "serve",
@@ -248,6 +252,40 @@ def build_parser():
                 "--reason", required=True, help="Motivo real da decisão registrada"
             )
             p.add_argument("--by", required=True, help="Nome de quem decidiu")
+        if name == "learn":
+            p.add_argument(
+                "--query", help="Busca real que você fez, como digitada na fonte"
+            )
+            p.add_argument(
+                "--provider", help="Fonte onde essa busca rodou (exige --query)"
+            )
+            p.add_argument(
+                "--outcome",
+                choices=["hit", "miss"],
+                help="hit: a busca rendeu material usável; miss: não rendeu (exige --query)",
+            )
+            p.add_argument(
+                "--preference", help="Preferência editorial dita pela pessoa, literal"
+            )
+            p.add_argument(
+                "--from-candidate",
+                help="ID do candidato já memorizado com `remember`, guardado como ponteiro",
+            )
+            p.add_argument("--shot", help="Beat em que esse trecho foi usado")
+            p.add_argument("--note", help="Observação livre, gravada em notes/<sha>.md")
+            p.add_argument("--by", help="Nome de quem disse a preferência")
+        if name == "library":
+            p.add_argument(
+                "--search",
+                required=True,
+                help="Termo procurado entre assets, buscas e preferências guardadas",
+            )
+            p.add_argument(
+                "--limit",
+                type=int,
+                default=5,
+                help="Máximo de resultados por tipo, 1–20 (padrão 5)",
+            )
         if name == "init-rules":
             p.add_argument(
                 "--mode",

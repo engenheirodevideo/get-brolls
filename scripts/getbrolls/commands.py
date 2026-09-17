@@ -434,6 +434,37 @@ def brief_report(args):
     }
 
 
+def library_command(args):
+    """`learn` e `library`: memória editorial entre projetos, sem direito junto."""
+    from getbrolls import library
+
+    if args.command == "library":
+        if not 1 <= args.limit <= 20:
+            raise ValueError("Use --limit entre 1 e 20.")
+        return library.search(args.search, limit=args.limit)
+    given = [
+        flag
+        for flag, value in (
+            ("--query", args.query),
+            ("--preference", args.preference),
+            ("--from-candidate", args.from_candidate),
+        )
+        if value
+    ]
+    if len(given) != 1:
+        raise ValueError(
+            "Diga o que aprender, uma coisa por vez: --query (com --provider e "
+            '--outcome), --preference "frase" ou --from-candidate ID.'
+        )
+    if args.query:
+        return library.learn_query(
+            args.query, args.provider, args.outcome, note=args.note
+        )
+    if args.preference:
+        return library.learn_preference(args.preference, by=args.by)
+    return library.learn_from_candidate(args.project, args.from_candidate, shot=args.shot)
+
+
 def approve_all(ledger, args, rules):
     """Aplica a mesma decisão humana a todo item com prévia e sem aprovação válida."""
     from .rules import allowed
@@ -918,6 +949,10 @@ def execute(args):
     if cmd == "brief":
         # Somente leitura, como status: orienta a coleta sem criar nada no projeto.
         return brief_report(args)
+    if cmd in ("learn", "library"):
+        # A biblioteca é pessoal e vive fora do projeto: não depende das regras
+        # dele nem passa pelo portão de formato.
+        return library_command(args)
     rules = load_rules(args.project)
     if cmd == "rules":
         return rules
@@ -947,6 +982,8 @@ def execute(args):
         return inspect_source(ledger, args)
 
     if cmd == "search":
+        from getbrolls import library
+
         if "video" not in rules["asset_types"]:
             return {
                 "items": [],
@@ -978,6 +1015,14 @@ def execute(args):
             except ValueError as e:
                 errors.append({"provider": name, "error": str(e)})
                 record_warning("PROVIDER_FAILED", f"{name}: {e}")
+                # Fonte que falhou é aprendizado barato e honesto; fica marcado
+                # como `auto` porque ninguém digitou esse registro.
+                try:
+                    library.learn_query(
+                        args.query, name, "miss", note=str(e), auto=True
+                    )
+                except (ValueError, OSError) as failure:
+                    record_warning("LIBRARY_WRITE_FAILED", str(failure))
                 continue
             # ledger.add/save stay outside the provider try: a disk/write error here is not the
             # provider's fault and must not be attributed to it as a search failure.
@@ -1000,12 +1045,18 @@ def execute(args):
                 not domain_matches(c.get("source_url"), rules["preferred_domains"])
             )
         )
-        return {
+        result = {
             "items": items,
             "errors": errors,
             "excluded_by_rules": excluded,
             "editorial_rules": rules["editorial_rules"],
         }
+        # Pistas da biblioteca são memória editorial, não permissão: cada uma
+        # repete `rights_not_transferable` e nenhuma toca no candidato.
+        found = library.hints(args.query)
+        if found:
+            result["library_hints"] = found
+        return result
     if cmd == "resolve":
         for flag, value in (("--file", args.file), ("--url", args.url)):
             if value is not None and not value.strip():

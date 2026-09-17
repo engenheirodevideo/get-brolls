@@ -1,7 +1,10 @@
 """Audited diagnostics, the CLI JSON error envelope and command-level error surfacing."""
 import argparse
+import atexit
 import io
 import json
+import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -10,6 +13,13 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
+
+# Uma busca com provedor quebrado registra o `miss` na biblioteca pessoal; o teste
+# manda essa pasta para um temporário e nunca escreve no ~/.getbrolls de verdade.
+if not os.environ.get("GB_HOME"):
+    _home = tempfile.mkdtemp(prefix="gb-home-")
+    os.environ["GB_HOME"] = _home
+    atexit.register(shutil.rmtree, _home, ignore_errors=True)
 
 from getbrolls import cli, commands, providers, runtime
 from getbrolls.acquisition import prepare_source
