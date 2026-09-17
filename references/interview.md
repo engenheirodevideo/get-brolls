@@ -46,3 +46,33 @@ Default não é invenção: ele fica visível no arquivo e na mensagem de devolu
 3. Devolva o brief em poucas linhas usando o formato de `templates-de-resposta.md` (a mesma voz dos outros retornos): o que você entendeu, quantos beats, o que assumiu por default e o que falta.
 4. Colete beat a beat com `brief --beat ID --project ...`: ele entrega `search`, `resolve --shot <id>` e `preview --narration` prontos. Todo material de um beat entra com `--shot <beat.id>` — é esse campo que liga o beat ao candidato.
 5. Feche pela decisão humana de sempre: Storyboard (`review` + `import-review --by NOME`) ou fala explícita no chat (`approve --all --by NOME --channel chat --statement "frase exata"`). Nunca deduza aprovação de silêncio.
+
+## Checkpoints — as três paradas com a pessoa
+
+Cada checkpoint cabe em poucas linhas e termina numa pergunta fechada. Não repita o checkpoint se já teve resposta.
+
+### C1 — depois do brief, antes de buscar
+
+- O que o vídeo precisa provar, em uma linha.
+- Quantos beats ficaram e quais fontes você vai tentar, na ordem.
+- O que entrou por default e quem assina a responsabilidade.
+- "Fecho assim?" — e espere. Correção aqui é barata; depois de baixar, não.
+
+### C2 — depois da shortlist, antes de baixar
+
+- De 5 a 8 candidatos, um por linha: título, canal/autor, duração.
+- A janela que o `inspect` apontou e a legenda ou capítulo que a justifica.
+- Diga o que ainda não conferiu; não descreva quadro que você não viu.
+- "Sigo com estes?" — quem responde escolhe, tira ou pede outra fonte.
+
+### C3 — depois das prévias, no lugar do board
+
+- Um resumo por contact sheet, citando as células e os tempos que você olhou.
+- "Aprova todos, ou quais?"
+- Sim para todos: `approve --all --by NOME --channel chat --statement "frase exata"`.
+- Sim parcial: um `approve --candidate ID --by NOME --channel chat --statement "..."` por item citado.
+- Silêncio nunca é aprovação. Com revisor terceiro, prefira o Storyboard (`review` + `import-review --by NOME`).
+
+## Biblioteca entre projetos
+
+Antes de sair buscando, rode `library --search TERMO --project ...`: ela lembra buscas que renderam, fontes que falharam e trechos já usados em outros vídeos. É memória editorial, não licença — toda resposta traz `rights_not_transferable: true`, e aprovação e `permit` continuam por projeto. Depois de uma decisão útil, guarde com `learn --from-candidate ID` (exige `remember` antes), `learn --query "..." --provider FONTE --outcome hit|miss` ou `learn --preference "frase da pessoa"`. `GB_LIBRARY=off` desliga leitura e escrita.
