@@ -1,6 +1,6 @@
 ---
 name: get-brolls
-description: Coleta, pré-visualiza e entrega B-rolls com revisão humana e origem registrada. Use quando alguém pedir b-roll, vídeos de apoio, imagens de apoio, cutaways, inserts, footage, "um corte do X falando Y", um print da tela de um site ou de uma notícia, ou material para ilustrar um vídeo, Reel ou aula — buscando em YouTube, Instagram, TikTok, Wikimedia Commons, NASA ou bancos (Pexels, Pixabay), gerando prévias para revisão humana e entregando os trechos com origem e condições de uso. Also in English: collect B-roll, cutaways, inserts, supporting footage, stock video, screen grabs. Not for editing or rendering the finished video.
+description: Coleta, pré-visualiza e entrega B-rolls com revisão humana e origem registrada. Use quando alguém pedir b-roll, vídeos de apoio, imagens de apoio, cutaways, inserts, footage, "um corte do X falando Y", um print da tela de um site ou de uma notícia, ou material para ilustrar um vídeo, Reel ou aula — buscando em YouTube, Instagram, TikTok, Wikimedia Commons, NASA ou bancos (Pexels, Pixabay), gerando prévias para revisão humana e entregando os trechos com origem e condições de uso. Also in English: collect B-roll, cutaways, inserts, supporting footage, stock video, screen grabs. Não serve para editar, montar ou renderizar o vídeo final. Not for editing or rendering the finished video.
 license: MIT
 metadata:
   version: "2.4.0"
@@ -27,9 +27,11 @@ Você planeja fontes literais, mostra o trecho à pessoa, recebe a decisão dela
 
 ## Passo 1 — Entreviste antes de buscar
 
-Sem `BRIEF.md` na pasta do projeto, conduza a entrevista de `/get-brolls-brief`. O roteiro está em [`references/interview.md`](references/interview.md): sete perguntas, uma por mensagem, teto de sete. Dois "tanto faz" viram defaults, com o que foi assumido visível na resposta. Nunca invente narração, alvo, link ou responsável.
+Sem `BRIEF.md` na pasta do projeto, conduza a entrevista de `/get-brolls-brief`. O roteiro está em [`references/interview.md`](references/interview.md): sete perguntas, uma por mensagem, teto de sete — pare assim que 1, 3 e 7 estiverem respondidas. Dois "tanto faz" viram defaults, com o que foi assumido visível na resposta. Nunca invente narração, alvo, link ou responsável.
 
 ## Passo 2 — Confirme o brief
+
+Rode o CLI pelo **caminho absoluto da instalação da skill**: os exemplos escrevem `scripts/gb.py` por brevidade, mas resolva o caminho real antes de executar. `--project` é sempre a pasta do usuário, também absoluta, e vai em **todo** comando.
 
 Escreva o `BRIEF.md` com `python3 "scripts/gb.py" init-brief --project <projeto>`, preencha o bloco JSON e valide com `python3 "scripts/gb.py" brief --validate --project <projeto>`.
 
@@ -37,7 +39,7 @@ Escreva o `BRIEF.md` com `python3 "scripts/gb.py" init-brief --project <projeto>
 
 ## Passo 3 — Busque fonte literal
 
-`python3 "scripts/gb.py" brief --beat <ID> --project <projeto>` devolve o comando pronto do beat. Todo material entra com `--shot <beat.id>`. Consulte `library --search` antes de buscar: a biblioteca lembra o que rendeu, mas não aprova nem permite nada. Fontes, presets, lotes e a biblioteca estão em [`references/providers.md`](references/providers.md); o Instagram, em [`references/instagram.md`](references/instagram.md).
+`python3 "scripts/gb.py" brief --beat <ID> --project <projeto>` devolve o comando pronto do beat. Todo material entra com `--shot <beat.id>`. Consulte `library --search "termo" --project <projeto>` antes de buscar: a biblioteca lembra o que rendeu, mas não aprova nem permite nada. Fontes, presets, lotes e a biblioteca estão em [`references/providers.md`](references/providers.md). **Reel do Instagram: leia [`references/instagram.md`](references/instagram.md) antes de tocar no navegador** — é a rota que quebra primeiro.
 
 **Checkpoint C2.** Liste 5 a 8 candidatos, uma linha cada: título, canal, duração e a janela que o `inspect` apontou. Feche com "sigo com estes?".
 
@@ -45,15 +47,15 @@ Escreva o `BRIEF.md` com `python3 "scripts/gb.py" init-brief --project <projeto>
 
 `python3 "scripts/gb.py" inspect --candidate <ID> --query "fala ou alvo" --project <projeto>` lê da fonte duração, capítulos e legendas e devolve janelas pontuadas. Escolha `--start/--end` a partir delas, nunca de palpite.
 
-Depois, `python3 "scripts/gb.py" preview --candidate <ID> --start <INICIO> --end <FIM> --project <projeto>` gera poster, contact sheet e GIF. **Abra e olhe o contact sheet antes de seguir.** Cite em `--reason` as células e os tempos que você viu; se não servirem, ajuste o intervalo. Nunca descreva quadro que não conferiu. Sem pista alguma, `preview --scan` varre o vídeo inteiro.
+Depois, `python3 "scripts/gb.py" preview --candidate <ID> --start <INICIO> --end <FIM> --project <projeto>` gera poster, contact sheet e GIF. A resposta traz `files.contact_sheet` (caminho absoluto) e `preview.frame_times_s` (o tempo de cada célula). **Abra esse arquivo e olhe antes de seguir.** Cite em `--reason` as células e os tempos que você viu; se não servirem, ajuste o intervalo. Nunca descreva quadro que não conferiu. Sem pista alguma, `preview --scan` varre o vídeo inteiro.
 
 ## Passo 5 — Revisão humana
 
 Duas rotas, e você para nas duas.
 
-**Board**, quando quem revisa é outra pessoa: `python3 "scripts/gb.py" review --project <projeto>`, depois `serve --background`. Entregue a URL, peça a decisão e importe com `python3 "scripts/gb.py" import-review --by NOME --project <projeto>` — sem `--file`, ele pega o arquivo mais recente salvo pela página.
+**Board**, quando quem revisa é outra pessoa: `python3 "scripts/gb.py" review --project <projeto>`, depois `serve --background --project <projeto>`. Entregue a URL, peça a decisão e importe com `python3 "scripts/gb.py" import-review --by NOME --project <projeto>` — sem `--file`, ele pega o arquivo mais recente salvo pela página.
 
-**Chat**, quando a pessoa está aqui. **Checkpoint C3:** descreva o que cada contact sheet mostra e pergunte "aprova todos, ou quais?". Sim para todos vira `approve --all --by NOME --channel chat --statement "frase exata"`. Sim parcial vira um `approve --candidate <ID>` por item citado.
+**Chat**, quando a pessoa está aqui. **Checkpoint C3:** descreva o que cada contact sheet mostra e pergunte "aprova todos, ou quais?". Sim para todos vira `approve --all --by NOME --channel chat --statement "frase exata" --project <projeto>`. Sim parcial vira um `approve --candidate <ID> --by NOME --channel chat --statement "frase exata" --project <projeto>` por item citado. No canal chat, `--statement` é obrigatório.
 
 Mudança de intervalo ou de contexto invalida aprovação. A copy pronta das duas rotas está em [`references/templates-de-resposta.md`](references/templates-de-resposta.md).
 
@@ -71,7 +73,7 @@ Diga o que você tentou e o motivo real devolvido pela fonte. Pergunte se a pess
 
 ## Ambiente
 
-`python3 "scripts/gb.py" doctor` diz o que está pronto e o que falta. Se faltar qualquer coisa, peça ao usuário que rode `/get-brolls-setup` — é esse comando que instala e diagnostica. Se o `doctor` informar versão diferente da deste arquivo, leia o [CHANGELOG](CHANGELOG.md).
+`python3 "scripts/gb.py" doctor` diz o que está pronto e o que falta. No Windows, use `python` no lugar de `python3`. Se faltar qualquer coisa, peça ao usuário que rode `/get-brolls-setup` — é esse comando que instala e diagnostica. Se o `doctor` informar versão diferente da deste arquivo, leia o [CHANGELOG](CHANGELOG.md).
 
 ## Índice de references
 

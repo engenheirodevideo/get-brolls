@@ -10,6 +10,8 @@ tags: [get-brolls, direitos, permit, licenca]
 
 Nenhum corte final sai sem que as condições de uso do trecho estejam registradas. **Não invente licença.** A responsabilidade pelas condições de uso do material é de quem produz o vídeo; a skill responde pela fidelidade do trecho e pelo registro de origem de cada asset.
 
+> **Caminhos.** Os exemplos escrevem `scripts/gb.py` por brevidade. Rode sempre pelo **caminho absoluto da instalação da skill** (no plugin, `${CLAUDE_PLUGIN_ROOT}/scripts/gb.py`) e passe `--project` com a pasta absoluta do usuário em todo comando. No Windows, use `python` no lugar de `python3`.
+
 ## As três rotas do `permit`
 
 Condições reais que você leu na página da fonte:

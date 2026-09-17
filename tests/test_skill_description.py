@@ -29,6 +29,7 @@ PHRASES = [
 
 # O limite também é gatilho: sem ele a skill é chamada para editar o vídeo.
 BOUNDARY = "Not for editing or rendering"
+BOUNDARY_PT = "Não serve para editar, montar ou renderizar o vídeo final."
 
 
 def description(path):
@@ -53,6 +54,7 @@ class DescriptionTriggerTests(unittest.TestCase):
     def test_description_states_what_the_skill_is_not_for(self):
         for path in SKILLS:
             self.assertIn(BOUNDARY, description(path))
+            self.assertIn(BOUNDARY_PT, description(path))
 
     def test_descriptions_match_between_root_and_mirror(self):
         self.assertEqual(description(SKILLS[0]), description(SKILLS[1]))

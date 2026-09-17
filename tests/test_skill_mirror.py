@@ -118,6 +118,30 @@ class SkillBudgetTests(unittest.TestCase):
         )
         self.assertIn("Silêncio não é aprovação", text)
 
+    def test_path_and_platform_conventions_survive(self):
+        """O que some numa reescrita: caminho absoluto, --project e Windows."""
+        text = body(ROOT_SKILL)
+        self.assertIn("caminho absoluto da instalação da skill", text)
+        self.assertIn("`--project` é sempre a pasta do usuário", text)
+        self.assertIn("No Windows, use `python` no lugar de `python3`", text)
+
+    def test_the_chat_route_shows_every_required_flag(self):
+        """Aprovação pelo chat sem --statement não é aprovação."""
+        text = body(ROOT_SKILL)
+        for form in (
+            'approve --all --by NOME --channel chat --statement "frase exata" --project <projeto>',
+            'approve --candidate <ID> --by NOME --channel chat --statement "frase exata" --project <projeto>',
+        ):
+            self.assertIn(form, text, f"forma incompleta de approve: {form}")
+
+    def test_contact_sheet_is_locatable(self):
+        text = body(ROOT_SKILL)
+        self.assertIn("files.contact_sheet", text)
+        self.assertIn("preview.frame_times_s", text)
+
+    def test_instagram_is_routed_before_the_browser(self):
+        self.assertIn("antes de tocar no navegador", body(ROOT_SKILL))
+
     def test_status_is_repassed_verbatim(self):
         self.assertIn("summary.do.for_human", body(ROOT_SKILL))
         self.assertIn("sem parafrasear", body(ROOT_SKILL))

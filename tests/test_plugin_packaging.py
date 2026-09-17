@@ -134,6 +134,20 @@ class ReferencesTests(unittest.TestCase):
         ):
             self.assertIn(marker, body, f"procedimento do Instagram perdeu: {marker}")
 
+    def test_every_reference_states_the_path_convention(self):
+        """Cada reference é lida sozinha: a regra de caminho vai em cada uma."""
+        for name in ("providers.md", "instagram.md", "rights.md"):
+            body = (REFERENCES / name).read_text(encoding="utf-8")
+            self.assertIn("caminho absoluto da instalação da skill", body, name)
+            self.assertIn("${CLAUDE_PLUGIN_ROOT}/scripts/gb.py", body, name)
+            self.assertIn("--project", body, name)
+            self.assertIn("No Windows, use `python`", body, name)
+
+    def test_providers_reference_keeps_the_scan_fallback(self):
+        body = (REFERENCES / "providers.md").read_text(encoding="utf-8")
+        for marker in ("preview --scan", "GB_SCAN_MAX_SECONDS", "900", "--reference-only"):
+            self.assertIn(marker, body, f"providers.md perdeu: {marker}")
+
     def test_rights_reference_covers_the_three_permit_routes(self):
         body = (REFERENCES / "rights.md").read_text(encoding="utf-8")
         for marker in ("--evidence", "--preset", "--declared-by", "--declaration-text"):

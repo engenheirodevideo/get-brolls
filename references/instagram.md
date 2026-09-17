@@ -10,6 +10,8 @@ tags: [get-brolls, instagram, reels, playwright]
 
 Esta é a rota mais frágil da skill. Siga o procedimento como está escrito; yt-dlp é outra rota possível, **não substitui** o processo do navegador.
 
+> **Caminhos.** Os exemplos escrevem `scripts/gb.py` por brevidade. Rode sempre pelo **caminho absoluto da instalação da skill** (no plugin, `${CLAUDE_PLUGIN_ROOT}/scripts/gb.py`) e passe `--project` com a pasta absoluta do usuário em todo comando. No Windows, use `python` no lugar de `python3`.
+
 Leia antes a seção [Instagram](../docs/GUIDE.md#instagram--navegadorplaywright-dois-streams-e-mp4) do guia.
 
 ## Um Reel

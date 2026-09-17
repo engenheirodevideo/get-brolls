@@ -10,6 +10,8 @@ tags: [get-brolls, fontes, provedores]
 
 **Literal primeiro.** Procure footage, print ou imagem real do fato, da pessoa, do produto, da notícia ou da tela que a narração cita. Banco genérico não substitui fonte literal: Pexels e Pixabay entram **somente quando o usuário pedir stock explicitamente**, nunca para fechar a conta de um beat que ficou sem fonte.
 
+> **Caminhos.** Os exemplos escrevem `scripts/gb.py` por brevidade. Rode sempre pelo **caminho absoluto da instalação da skill** (no plugin, `${CLAUDE_PLUGIN_ROOT}/scripts/gb.py`) e passe `--project` com a pasta absoluta do usuário em todo comando. No Windows, use `python` no lugar de `python3`.
+
 Antes de sair buscando, consulte o que já se sabe:
 
 ```sh
@@ -67,6 +69,18 @@ Panorama completo em [Fontes e transportes](../docs/GUIDE.md#fontes-e-transporte
 ## Quantidade
 
 Insert isolado não exige roteiro completo. Para roteiro completo, o padrão editorial é buscar 8+ clipes literais quando o conteúdo comportar; prefira pessoas, produtos e fatos nomeados, e 1080p quando disponível. Não preencha com stock genérico para atingir uma contagem.
+
+## Sem pista para escolher o intervalo
+
+Quando `inspect` não devolve janela nenhuma — vídeo sem legenda, sem capítulo e sem tempo escrito na descrição —, varra o vídeo inteiro num contact sheet de baixa resolução:
+
+```sh
+python3 scripts/gb.py preview --scan --candidate <ID> --project <projeto>
+```
+
+O `--scan` não define intervalo: ele só mostra o vídeo todo, um quadro a cada N segundos (N = duração/12), com teto de `GB_SCAN_MAX_SECONDS` (padrão 900 s). Escolha o `--start/--end` olhando o resultado.
+
+Quando o pedido é uma referência estática — um print, uma capa, um quadro só —, `preview --reference-only` gera apenas essa referência, sem GIF.
 
 ## Quando não há fonte
 
