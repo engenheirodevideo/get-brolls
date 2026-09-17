@@ -39,6 +39,10 @@ jobs:
       - name: Check installer (macOS/Linux)
         if: runner.os != 'Windows'
         run: bash scripts/install.sh --check
+      - name: Check installer (Windows PowerShell 5.1)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./scripts/install.ps1 -Check
       - name: Check installer (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -46,8 +50,12 @@ jobs:
       - name: Install dependencies (macOS/Linux)
         if: runner.os != 'Windows'
         run: bash scripts/install.sh
+      - name: Install dependencies (Windows PowerShell 5.1)
+        if: runner.os == 'Windows' && matrix.python-version == '3.11'
+        shell: powershell
+        run: ./scripts/install.ps1
       - name: Install dependencies (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && matrix.python-version != '3.11'
         shell: pwsh
         run: ./scripts/install.ps1
       - name: Exercise PowerShell launcher

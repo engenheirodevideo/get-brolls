@@ -29,7 +29,7 @@ if ($Missing) {
     throw 'Instale os executáveis conforme docs/GUIDE.md e repita.'
 }
 
-Invoke-Native -Label 'Verificação do Python' -File 'python' -Arguments @('-c', 'import sys; assert sys.version_info >= (3,11), "Python 3.11+ obrigatório"')
+Invoke-Native -Label 'Verificação do Python' -File 'python' -Arguments @('-c', 'import sys; assert sys.version_info >= (3,11), ''Python 3.11+ obrigatório''')
 
 $NodeVersion = (& node --version).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Não foi possível consultar a versão do Node.' }
@@ -43,7 +43,7 @@ if ($Check) {
 
 Invoke-Native -Label 'Criação da venv' -File 'python' -Arguments @('-m', 'venv', (Join-Path $Root '.venv'))
 $VenvPython = Join-Path $Root '.venv\Scripts\python.exe'
-$PythonVersion = (& $VenvPython -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])').Trim()
+$PythonVersion = (& $VenvPython -c 'import sys; print(''%d.%d.%d'' % sys.version_info[:3])').Trim()
 try {
     Invoke-Native -Label 'Instalação Python' -File $VenvPython -Arguments @('-m', 'pip', 'install', '-r', (Join-Path $Root 'requirements.txt'))
 } catch {
@@ -51,7 +51,7 @@ try {
     Write-Host 'Crie a venv com um interpretador dessa faixa ou atualize requirements.txt como um conjunto revisado.'
     throw
 }
-Invoke-Native -Label 'Importação yt-dlp/EJS' -File $VenvPython -Arguments @('-c', 'import yt_dlp, yt_dlp_ejs; print("yt-dlp e EJS importados")')
+Invoke-Native -Label 'Importação yt-dlp/EJS' -File $VenvPython -Arguments @('-c', 'import yt_dlp, yt_dlp_ejs; print(''yt-dlp e EJS importados'')')
 $Tools = Join-Path $Root '.tools'
 New-Item -ItemType Directory -Path $Tools -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $Root 'package.json'), (Join-Path $Root 'package-lock.json') -Destination $Tools -Force
