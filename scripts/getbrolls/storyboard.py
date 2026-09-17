@@ -18,7 +18,9 @@ def render_page(
     subtitle="Veja cada trecho e diga se serve. Leva uns 2 minutos.",
     note="Aprovar aqui quer dizer “quero esse trecho”, não “posso publicar esse trecho”: antes de subir seu vídeo, confira a licença de cada fonte pelo link do original em cada card.",
 ):
-    esc = lambda value: escape(str(value or ""), quote=True)
+    def esc(value):
+        return escape(str(value or ""), quote=True)
+
     templates = []
     gallery = []
     options = []

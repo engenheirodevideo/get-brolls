@@ -19,6 +19,7 @@ import time
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import cast
 
 DEFAULT_PORT = 8767
 
@@ -39,6 +40,10 @@ class _ExclusiveServer(ThreadingHTTPServer):
     queda para porta livre nunca aconteceria."""
 
     allow_reuse_address = False
+
+    # Sorteados em `start()`; declarados aqui porque o handler também os lê.
+    save_token: str = ""
+    session_id: str = ""
 
 
 class _NoCacheHandler(SimpleHTTPRequestHandler):
@@ -63,7 +68,7 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         Um nome de domínio que resolve para 127.0.0.1 (DNS rebinding) chega com
         outro `Host`; e um `Origin` de outra página não bate com o `Host` local.
         """
-        port = self.server.server_address[1]
+        port = cast(_ExclusiveServer, self.server).server_address[1]
         host = (self.headers.get("Host") or "").strip()
         if host not in (f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"):
             return False
@@ -82,7 +87,7 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         token = self.headers.get(TOKEN_HEADER) or ""
         # `compare_digest` de texto explode com caracteres fora de ASCII: um
         # cabeçalho qualquer não pode virar 500, é só mais um token errado.
-        if not token.isascii() or not hmac.compare_digest(token, self.server.save_token):
+        if not token.isascii() or not hmac.compare_digest(token, cast(_ExclusiveServer, self.server).save_token):
             self._refuse(403, "Token da sessão ausente ou inválido.")
             return
         try:
@@ -135,7 +140,10 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
             # Identidade do servidor: é assim que `status`/`stop` sabem que o PID
             # gravado ainda é deste servidor, e não de um processo que reusou o número.
             body = json.dumps(
-                {"session": self.server.session_id, "port": self.server.server_address[1]},
+                {
+                    "session": cast(_ExclusiveServer, self.server).session_id,
+                    "port": cast(_ExclusiveServer, self.server).server_address[1],
+                },
                 ensure_ascii=False,
             ).encode("utf-8")
             self.send_response(200)
@@ -148,7 +156,9 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         if self.path.split("?")[0] in ("/review.html", "/"):
             page = Path(self.directory) / "review.html"
             if page.is_file():
-                body = _inject_token(page.read_text(encoding="utf-8"), self.server.save_token).encode("utf-8")
+                body = _inject_token(
+                    page.read_text(encoding="utf-8"), cast(_ExclusiveServer, self.server).save_token
+                ).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
@@ -465,6 +475,8 @@ def stop(project):
         # programa: só limpamos o arquivo. Nunca matamos um PID que não se identificou.
         path.unlink(missing_ok=True)
         return {"stopped": False, "reason": "stale_pid", "pid": pid}
+    # `_ours` só responde sim para um PID vivo que se identificou: aqui é inteiro.
+    assert isinstance(pid, int)
     if os.name == "nt":
         subprocess.run(
             ["taskkill", "/PID", str(pid), "/T", "/F"],

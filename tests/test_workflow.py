@@ -1,13 +1,20 @@
-import unittest, tempfile, os, sys, json, shutil, subprocess
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from getbrolls.config import load_env, settings
-from getbrolls.models import candidate, set_segment, signature, require_fetch
 from getbrolls.ledger import Ledger
+from getbrolls.media import probe, review_preview
+from getbrolls.models import candidate, require_fetch, set_segment, signature
 from getbrolls.review import import_review, project_id, review_epoch
-from getbrolls.media import review_preview, probe
 
 
 class WorkflowTests(unittest.TestCase):
@@ -121,7 +128,7 @@ class WorkflowTests(unittest.TestCase):
                 ],
                 check=True,
             )
-            cfg = settings()
+            cfg: dict[str, Any] = settings()
             cfg["frames"] = 5
             result = review_preview(src, root / "previews", "gif", 0, 2, cfg)
             info = probe(root / result["gif_path"])
@@ -148,6 +155,9 @@ if __name__ == "__main__":
 
 class ContactSheetTests(unittest.TestCase):
     """The CLI contact sheet mirrors gb_contact.sh: padded grid, cell times, labels when possible."""
+
+    # Preenchido pelo fake de ffmpeg antes do diretório temporário sumir.
+    banner_text = ""
 
     def make_source(self, root, seconds=4):
         src = root / "source.mp4"

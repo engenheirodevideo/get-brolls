@@ -1,7 +1,20 @@
-import unittest, subprocess, sys, tempfile, shutil, json, os
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
 from pathlib import Path
 
 CLI = Path(__file__).resolve().parents[1] / "scripts/gb.py"
+
+
+def _review_payload(page):
+    match = re.search(r"window.GETBROLLS_REVIEW=(.*?);</script>", page)
+    assert match, "review.html sem o payload embutido"
+    return match.group(1)
 
 
 class CliTest(unittest.TestCase):
@@ -106,7 +119,6 @@ class CliTest(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
     def test_shots_context_and_import_cli_sync(self):
-        import re
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -160,7 +172,7 @@ class CliTest(unittest.TestCase):
 
             def payload():
                 page = (root / "brolls/review.html").read_text(encoding="utf-8")
-                return json.loads(re.search(r"window.GETBROLLS_REVIEW=(.*?);</script>", page).group(1))
+                return json.loads(_review_payload(page))
 
             data = payload()
             self.assertEqual(data["items"][0]["review"]["state"], "approved")

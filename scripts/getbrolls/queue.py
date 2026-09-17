@@ -10,7 +10,7 @@ import os
 import random
 import re
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 PROVIDERS = ("instagram", "tiktok", "youtube")
@@ -41,7 +41,7 @@ LIMITS = (
 
 
 def _now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _at(value):

@@ -23,7 +23,7 @@ from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, now, set_segment
 
 
-def fetched(source_id, title, shot=None, clip="clips/x.mp4", sheet="previews/x.jpg"):
+def fetched(source_id, title, shot=None, clip: str | None = "clips/x.mp4", sheet="previews/x.jpg"):
     c = candidate("local", source_id, title, source_url="https://example.org/" + source_id)
     set_segment(c, 0, 2)
     c["creator"]["name"] = "Autora Exemplo"
@@ -99,7 +99,7 @@ class DirectoryNames(unittest.TestCase):
 class Build(unittest.TestCase):
     def test_creates_one_folder_per_beat_with_media_sheet_and_origin(self):
         with tempfile.TemporaryDirectory() as tmp:
-            ledger = project(
+            project(
                 tmp,
                 [
                     fetched("a", "Palco", shot="abertura", clip="clips/a.mp4", sheet="previews/a.jpg"),

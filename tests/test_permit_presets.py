@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -15,7 +16,7 @@ from getbrolls.commands import PERMIT_PRESETS
 CLI = ROOT / "scripts" / "gb.py"
 
 
-def call(*args, ok=True):
+def call(*args, ok=True) -> Any:
     proc = subprocess.run(
         [sys.executable, str(CLI), *[str(a) for a in args]],
         capture_output=True,

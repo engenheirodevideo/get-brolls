@@ -5,14 +5,14 @@ import json
 import math
 import os
 import re
-from pathlib import Path
 import shutil
 import subprocess
 import tempfile
-from .http import ProviderError
-from .config import executable_override, venv_override
-from .runtime import record_warning, redact, stderr_tail
+from pathlib import Path
 
+from .config import executable_override, venv_override
+from .http import ProviderError
+from .runtime import record_warning, redact, stderr_tail
 
 LAYOUTS = ("Scripts/yt-dlp.exe", "Scripts/yt-dlp", "bin/yt-dlp")
 # Pauses between yt-dlp requests: (--sleep-requests, --sleep-interval, --max-sleep-interval).
@@ -272,8 +272,9 @@ def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):
 
 
 def download_segment(url, target, start, end):
+    from .media import probe
+    from .media import run as media_run
     from .providers import resolve
-    from .media import probe, run as media_run
 
     # Only recognized social pages, never a user-provided command or arbitrary URL.
     resolve(url)

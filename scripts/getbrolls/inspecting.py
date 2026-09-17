@@ -119,7 +119,7 @@ def candidate_windows(probe, query=None, max_windows=3):
     # Ordem do dicionário = ordem dos idiomas pedidos. Quando dois idiomas repetem
     # os mesmos tempos (legenda automática traduzida), quem chega primeiro fica: a
     # deduplicação por (início, fim, fonte) descarta o segundo.
-    for language, entry in (probe.get("subtitles") or {}).items():
+    for _language, entry in (probe.get("subtitles") or {}).items():
         cues = (entry or {}).get("cues") or []
         for window in _subtitle_windows(cues):
             raw.append({**window, "source": "subtitle"})

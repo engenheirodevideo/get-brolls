@@ -2,6 +2,7 @@
 
 import html
 from pathlib import Path
+
 from .review import review_epoch
 
 
@@ -182,7 +183,10 @@ def render(ledger):
         "# Créditos da coleta",
         "",
     ]
-    esc = lambda s: html.escape(str(s or ""))
+
+    def esc(s):
+        return html.escape(str(s or ""))
+
     for c in ledger.data["items"]:
         p = safe_preview_url(c["preview"].get("poster_path") or c["preview"].get("poster_url"))
         out = safe_preview_url(c["output"]["path"])
@@ -259,9 +263,9 @@ def render(ledger):
                 f"- Evidência: {'; '.join(c['rights']['evidence'])}",
                 "",
             ]
-    from .storyboard import render_page
-    from .review import enhance
     from .ledger import atomic_write
+    from .review import enhance
+    from .storyboard import render_page
 
     atomic_write(ledger.root / "review.html", enhance(render_page(story_items), ledger, records))
     atomic_write(ledger.root / "credits.md", "\n".join(credits))

@@ -2,8 +2,8 @@
 
 import json
 import os
-import shutil
 import shlex
+import shutil
 import stat
 import subprocess
 import sys
@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from getbrolls import inspecting, social
-from getbrolls.cli import build_parser, main
+from getbrolls.cli import build_parser
 
 URL = "https://www.youtube.com/watch?v=abcdefghijk"
 

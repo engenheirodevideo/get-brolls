@@ -5,6 +5,7 @@ import json
 import os
 import uuid
 from pathlib import Path
+
 from .models import now
 
 
@@ -106,7 +107,7 @@ class Ledger:
         self.recovered = self.pending.exists()
         if self.recovered and recover:
             self._finish_transaction()
-            from .runtime import record_warning, record_commit
+            from .runtime import record_commit, record_warning
 
             record_commit()
 

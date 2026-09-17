@@ -16,9 +16,15 @@ from getbrolls.rendering import render
 from getbrolls.review import import_review, latest_review_file
 
 
+def _review_payload(page):
+    match = re.search(r"window.GETBROLLS_REVIEW=(.*?);</script>", page)
+    assert match, "review.html sem o payload embutido"
+    return match.group(1)
+
+
 def exported(ledger, state="approved"):
     page = Path(render(ledger)).read_text(encoding="utf-8")
-    payload = json.loads(re.search(r"window.GETBROLLS_REVIEW=(.*?);</script>", page).group(1))
+    payload = json.loads(_review_payload(page))
     for item in payload["items"]:
         item["state"] = state
     return payload

@@ -3,8 +3,9 @@
 import hashlib
 import json
 import os
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
 from .ledger import digest
 from .media import probe
 from .runtime import record_warning
@@ -121,8 +122,8 @@ def prepare_source(ledger, candidate, start, end):
             download_segment(c["source_url"], target, start, end)
             offset = start
         elif c["acquisition"].get("method") == "https":
-            from .providers import refresh
             from .http import download
+            from .providers import refresh
 
             fresh = refresh(c)
             if not fresh.get("media_url"):

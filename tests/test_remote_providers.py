@@ -2,16 +2,16 @@
 
 import json
 import os
-from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch, MagicMock
 import urllib.error
+from pathlib import Path
+from typing import Any, cast
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from getbrolls import providers
-from getbrolls import http
+from getbrolls import http, providers
 
 
 class ProvidersTests(unittest.TestCase):
@@ -211,7 +211,7 @@ class HTTPTests(unittest.TestCase):
     @patch.object(http, "_safe_network")
     @patch.object(http.urllib.request, "build_opener")
     def test_auth_failure_not_retried_and_no_secret_in_error(self, builder, safe):
-        error_response = urllib.error.HTTPError("https://example.org/?key=secret", 403, "secret", {}, None)
+        error_response = urllib.error.HTTPError("https://example.org/?key=secret", 403, "secret", cast(Any, {}), None)
         self.addCleanup(error_response.close)
         builder.return_value.open.side_effect = error_response
         with self.assertRaises(http.ProviderError) as error:
@@ -249,7 +249,7 @@ class HTTPTests(unittest.TestCase):
     @patch.object(http, "_safe_network")
     @patch.object(http.urllib.request, "build_opener")
     def test_server_failure_bounded_to_three_attempts(self, builder, safe, sleep):
-        error_response = urllib.error.HTTPError("https://example.org/", 503, "unavailable", {}, None)
+        error_response = urllib.error.HTTPError("https://example.org/", 503, "unavailable", cast(Any, {}), None)
         self.addCleanup(error_response.close)
         builder.return_value.open.side_effect = error_response
         with self.assertRaises(http.ProviderError):

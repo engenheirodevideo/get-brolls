@@ -1,9 +1,13 @@
 """Argument contract and structured command output."""
 
-import argparse, json, sys, traceback
+import argparse
+import json
+import sys
+import traceback
+
 from . import __version__
 from .presets import PERMIT_PRESETS
-from .runtime import audited, OperationError
+from .runtime import OperationError, audited
 
 # Named so a caller (script, test, or someone scripting the CLI) never has to hardcode 2/3.
 EXIT_OPERATION_ERROR = 2
@@ -356,14 +360,15 @@ def main(argv=None):
             raise SystemExit(execute(args))
         except ValueError as exc:
             print(json.dumps({"error": str(exc), "error_code": "INVALID_DATA"}, ensure_ascii=False))
-            raise SystemExit(EXIT_OPERATION_ERROR)
+            raise SystemExit(EXIT_OPERATION_ERROR) from None
     return audited(args, lambda parsed: with_summary(parsed.command, execute(parsed)))
 
 
 def entrypoint():
     for stream in (sys.stdout, sys.stderr):
         try:
-            stream.reconfigure(encoding="utf-8")
+            # TextIO não declara `reconfigure`; quem não tiver cai no except.
+            stream.reconfigure(encoding="utf-8")  # pyright: ignore[reportAttributeAccessIssue]
         except (AttributeError, OSError):
             pass
     try:

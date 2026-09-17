@@ -84,7 +84,10 @@ if __name__ == "__main__":
 
 class ServeMissingStoryboardEnvelopeTests(unittest.TestCase):
     def test_missing_review_html_is_a_normal_error_without_creating_brolls(self):
-        import subprocess, sys, json, tempfile
+        import json
+        import subprocess
+        import sys
+        import tempfile
         from pathlib import Path
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -139,7 +142,6 @@ class SaveEndpointTests(unittest.TestCase):
         return urllib.request.urlopen(request, timeout=5)
 
     def test_review_html_carries_the_session_token(self):
-        import json as _json
 
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
@@ -260,7 +262,6 @@ class ServerIdentityTests(unittest.TestCase):
 
     def test_a_recycled_pid_is_never_killed_and_the_file_is_cleaned(self):
         import json as _json
-        import os
         import subprocess as _subprocess
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -295,7 +296,7 @@ class ServerIdentityTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
-            started = serve.start_background(root, port=0)
+            serve.start_background(root, port=0)
             try:
                 self.assertTrue(serve.state(root)["running"])
                 pid_file = root / "brolls" / ".serve.pid"

@@ -9,9 +9,10 @@ import sys
 import time
 import traceback
 from pathlib import Path
+
 from .models import now
 
-ACTIVE = contextvars.ContextVar("getbrolls_operation", default=None)
+ACTIVE: contextvars.ContextVar[dict | None] = contextvars.ContextVar("getbrolls_operation", default=None)
 
 
 def _acquire_lock(stream, platform=None, windows=None):
@@ -27,7 +28,7 @@ def _acquire_lock(stream, platform=None, windows=None):
             stream.flush()
         stream.seek(0)
         try:
-            windows.locking(stream.fileno(), windows.LK_NBLCK, 1)
+            windows.locking(stream.fileno(), windows.LK_NBLCK, 1)  # pyright: ignore[reportAttributeAccessIssue]
         except OSError as exc:
             raise BlockingIOError from exc
         return
@@ -43,7 +44,7 @@ def _release_lock(stream, platform=None, windows=None):
             import msvcrt as windows
 
         stream.seek(0)
-        windows.locking(stream.fileno(), windows.LK_UNLCK, 1)
+        windows.locking(stream.fileno(), windows.LK_UNLCK, 1)  # pyright: ignore[reportAttributeAccessIssue]
         return
     import fcntl
 

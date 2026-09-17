@@ -6,13 +6,14 @@ import http.client
 import ipaddress
 import json
 import os
-from datetime import datetime, timezone
-from pathlib import Path
 import socket
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import UTC, datetime
+from pathlib import Path
+
 from . import __version__
 from .runtime import record_warning, redact, stderr_tail
 
@@ -99,10 +100,10 @@ class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
             conn = http.client.HTTPSConnection(host, **kwargs)
             # HTTPSConnection still performs certificate/hostname validation and
             # uses the original hostname for SNI; only TCP resolution is replaced.
-            conn._create_connection = connect_pinned
+            conn._create_connection = connect_pinned  # pyright: ignore[reportAttributeAccessIssue]
             return conn
 
-        return self.do_open(connection, request, context=self._context)
+        return self.do_open(connection, request, context=self._context)  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def _opener():
@@ -149,8 +150,8 @@ def _retry_after_seconds(value, cap: int | None = RETRY_AFTER_CAP_S):
     if moment is None:
         return None
     if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=timezone.utc)
-    delta = (moment - datetime.now(timezone.utc)).total_seconds()
+        moment = moment.replace(tzinfo=UTC)
+    delta = (moment - datetime.now(UTC)).total_seconds()
     return limit(max(0, int(delta + 0.999)))
 
 
@@ -197,7 +198,7 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
             suffix = f": {detail}" if detail else ""
             if code in (401, 403):
                 raise ProviderError(
-                    "Autenticação/permissão ou quota recusada pelo provedor (HTTP %s)%s" % (code, suffix)
+                    f"Autenticação/permissão ou quota recusada pelo provedor (HTTP {code}){suffix}"
                 ) from None
             if code == 429:
                 # Honour a short Retry-After once; never sleep past the CLI budget.
@@ -208,16 +209,16 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
                     continue
                 if wait is not None:
                     raise ProviderError(
-                        "Quota atingida (HTTP 429); o provedor pede %s s de espera antes de repetir" % wait
+                        f"Quota atingida (HTTP 429); o provedor pede {wait} s de espera antes de repetir"
                     ) from None
                 raise ProviderError("Quota atingida (HTTP 429); aguarde o limite do provedor") from None
             if code < 500 or attempt == 2:
-                raise ProviderError("Provedor retornou HTTP %s%s" % (code, suffix)) from None
+                raise ProviderError(f"Provedor retornou HTTP {code}{suffix}") from None
         except (urllib.error.URLError, TimeoutError, OSError) as error:
             if attempt == 2:
                 raise ProviderError(
-                    "Provedor indisponível após três tentativas (%s: %s)"
-                    % (type(error).__name__, getattr(error, "reason", None) or error)
+                    f"Provedor indisponível após três tentativas "
+                    f"({type(error).__name__}: {getattr(error, 'reason', None) or error})"
                 ) from None
         except ProviderError:
             raise
@@ -261,7 +262,7 @@ def download(url, target, max_bytes=512 * 1024 * 1024):
                 output = target.open("xb")
             except OSError as error:
                 raise ProviderError(
-                    "Falha ao gravar arquivo (errno %s): %s" % (error.errno, error.filename or target)
+                    f"Falha ao gravar arquivo (errno {error.errno}): {error.filename or target}"
                 ) from error
             with output:
                 created = True
@@ -277,7 +278,7 @@ def download(url, target, max_bytes=512 * 1024 * 1024):
                         output.write(chunk)
                     except OSError as error:
                         raise ProviderError(
-                            "Falha ao gravar arquivo (errno %s): %s" % (error.errno, error.filename or target)
+                            f"Falha ao gravar arquivo (errno {error.errno}): {error.filename or target}"
                         ) from error
                 if not received:
                     raise ProviderError("Mídia vazia")

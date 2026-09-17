@@ -4,7 +4,6 @@ import unicodedata
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -229,6 +228,7 @@ class RepositoryDocumentationTests(unittest.TestCase):
         tests = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
         pinned = re.search(r"actions/checkout@[0-9a-f]{40}", tests)
         self.assertIsNotNone(pinned, "test.yml sem actions/checkout fixado por SHA de 40 dígitos")
+        assert pinned is not None
         checkout = pinned.group(0)
         self.assertIn(checkout, release)
         for marker in (

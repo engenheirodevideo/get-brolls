@@ -449,7 +449,7 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
                     if source.is_file():
                         # Só hardlink/symlink são congelados: cópia é independente.
                         method = link_or_copy(source, root / media_rel, read_only=True)
-                    if sheet and sheet.is_file():
+                    if sheet and sheet_rel_out and sheet.is_file():
                         # O contact sheet não é congelado: `preview` regrava o arquivo
                         # de origem no mesmo caminho quando a pessoa muda o intervalo.
                         link_or_copy(sheet, root / sheet_rel_out)

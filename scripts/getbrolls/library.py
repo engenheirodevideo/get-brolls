@@ -13,7 +13,6 @@ import os
 import time
 import unicodedata
 import uuid
-from pathlib import Path
 
 from .models import now
 from .rules import home_dir
@@ -131,7 +130,7 @@ def _locked():
                 raise ValueError(
                     f"{path} está travado há tempo demais por outro get-brolls. "
                     "Espere a outra execução terminar ou apague esse arquivo."
-                )
+                ) from None
             time.sleep(0.02)
     try:
         yield

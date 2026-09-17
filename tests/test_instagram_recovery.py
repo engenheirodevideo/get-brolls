@@ -1,10 +1,11 @@
-from pathlib import Path
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
 import unittest
-import socket
+from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,7 +80,7 @@ class InstagramRecoveryTests(unittest.TestCase):
                 Path(cmd[cmd.index("--output") + 1]).write_bytes(b"partial")
                 raise subprocess.CalledProcessError(18, cmd)
 
-            kwargs = dict(
+            kwargs: dict[str, Any] = dict(
                 cfg_path=conf,
                 part_path=target,
                 config_output_root=root,

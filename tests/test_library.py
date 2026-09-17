@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts/gb.py"
@@ -209,7 +210,6 @@ class LibraryTests(LibraryBase):
         import tempfile as tf
 
         os.environ.pop("GB_HOME", None)
-        import _isolation
 
         os.environ["GB_HOME"] = str(_isolation.GB_HOME)
         self.assertTrue(str(library.home_dir()).startswith(tf.gettempdir()), library.home_dir())
@@ -281,7 +281,7 @@ class LibraryCommandTests(LibraryBase):
         self.assertEqual(["pexels"], [q["provider"] for q in automatic])
         self.assertEqual("miss", automatic[0]["outcome"])
         with patch("getbrolls.providers.search", return_value=[]):
-            result = execute(args)
+            result: Any = execute(args)
         hints = result["library_hints"]
         self.assertTrue(all(h["rights_not_transferable"] for h in hints))
         self.assertLessEqual(len(hints), 5)

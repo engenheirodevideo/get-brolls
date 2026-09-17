@@ -1,8 +1,11 @@
 """Storyboard review exchange. Human decisions never grant media usage rights."""
 
-import hashlib, json, copy
+import copy
+import hashlib
+import json
 from pathlib import Path
-from .models import signature, approve, now
+
+from .models import approve, now, signature
 
 ASSETS = Path(__file__).resolve().parents[2] / "assets"
 

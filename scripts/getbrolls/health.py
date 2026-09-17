@@ -1,6 +1,8 @@
 """Opt-in real provider smoke checks; never prints credentials or downloads video."""
 
-import time, os
+import os
+import time
+
 from . import providers
 
 

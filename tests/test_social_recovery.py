@@ -1,10 +1,8 @@
-import importlib.util
-import json
 import os
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -103,9 +101,11 @@ class RemotePreviewTests(unittest.TestCase):
             self.assertEqual(c["acquisition"]["method"], "yt-dlp")
 
     def test_preview_caches_remote_interval_and_fetch_uses_same_bytes(self):
-        import shutil, subprocess
-        from getbrolls.cli import main
+        import shutil
+        import subprocess
+
         from getbrolls import social
+        from getbrolls.cli import main
         from getbrolls.media import probe
 
         if not shutil.which("ffmpeg"):
@@ -170,7 +170,8 @@ class RemotePreviewTests(unittest.TestCase):
 class HelperRuntimeTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "Helpers Bash são opcionais no Windows nativo.")
     def test_original_helper_enables_node_without_deno(self):
-        import shutil, subprocess
+        import shutil
+        import subprocess
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -195,7 +196,8 @@ class HelperRuntimeTests(unittest.TestCase):
 
     @unittest.skipIf(os.name == "nt", "Helpers Bash são opcionais no Windows nativo.")
     def test_contact_helper_uses_portable_mktemp_and_linux_font(self):
-        import shutil, subprocess
+        import shutil
+        import subprocess
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -204,7 +206,9 @@ class HelperRuntimeTests(unittest.TestCase):
             bindir = root / "bin"
             bindir.mkdir()
             for name in ("awk", "dirname", "head", "rm"):
-                (bindir / name).symlink_to(shutil.which(name))
+                real = shutil.which(name)
+                assert real, name
+                (bindir / name).symlink_to(real)
             ffmpeg_args = root / "ffmpeg-args.txt"
             font = root / "DejaVuSans.ttf"
             font.write_bytes(b"fixture")
@@ -240,7 +244,8 @@ class HelperRuntimeTests(unittest.TestCase):
 class InstallerTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "O Windows usa scripts/install.ps1.")
     def test_rejects_old_node_before_installing_dependencies(self):
-        import shutil, subprocess
+        import shutil
+        import subprocess
 
         with tempfile.TemporaryDirectory() as tmp:
             bindir = Path(tmp)
@@ -265,6 +270,7 @@ class InstallerTests(unittest.TestCase):
 class SocialErrorTests(unittest.TestCase):
     def test_ip_block_is_reported_without_signed_urls(self):
         import subprocess
+
         from getbrolls import social
 
         with (

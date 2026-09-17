@@ -18,12 +18,14 @@ import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from getbrolls import cli, http, instagram_pairs as ig, media, providers, runtime, social
+from getbrolls import cli, http, media, providers, runtime, social
+from getbrolls import instagram_pairs as ig
 from getbrolls.http import ProviderError
 
 PUBLIC_DNS = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))]
@@ -544,6 +546,7 @@ class Finding23And50RetryAfterCapTests(unittest.TestCase):
             __import__("datetime").datetime(2036, 1, 1, tzinfo=__import__("datetime").timezone.utc)
         )
         capped = http._retry_after_seconds(future)
+        assert capped is not None
         self.assertLessEqual(capped, http.RETRY_AFTER_CAP_S)
 
     def test_get_json_429_with_far_future_retry_after_does_not_sleep_for_years(self):
@@ -554,7 +557,11 @@ class Finding23And50RetryAfterCapTests(unittest.TestCase):
             __import__("datetime").datetime(2036, 1, 1, tzinfo=__import__("datetime").timezone.utc)
         )
         error = urllib.error.HTTPError(
-            "https://example.org/api", 429, "Too Many Requests", FakeHeaders({"Retry-After": future}), io.BytesIO(b"")
+            "https://example.org/api",
+            429,
+            "Too Many Requests",
+            cast(Any, FakeHeaders({"Retry-After": future})),
+            io.BytesIO(b""),
         )
 
         class FakeOpener:
@@ -577,7 +584,11 @@ class Finding55Get429LastAttemptRaisesTests(unittest.TestCase):
             pass
 
         error = urllib.error.HTTPError(
-            "https://example.org/api", 429, "Too Many Requests", FakeHeaders({"Retry-After": "1"}), io.BytesIO(b"")
+            "https://example.org/api",
+            429,
+            "Too Many Requests",
+            cast(Any, FakeHeaders({"Retry-After": "1"})),
+            io.BytesIO(b""),
         )
 
         class FakeOpener:

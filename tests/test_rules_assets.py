@@ -1,14 +1,18 @@
-import unittest, tempfile, json, sys, os, subprocess, shutil
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from getbrolls.rules import load_rules, allowed, format_report, ROOT
-from getbrolls.models import candidate, set_segment, approve
-from getbrolls.ledger import Ledger
-from getbrolls.memory import remember
 from getbrolls.browser import plan
 from getbrolls.http import _scrub
+from getbrolls.ledger import Ledger
+from getbrolls.memory import remember
+from getbrolls.models import approve, candidate, set_segment
+from getbrolls.rules import ROOT, allowed, format_report, load_rules
 
 CLI = ROOT / "scripts/gb.py"
 
@@ -48,45 +52,45 @@ class RulesTests(unittest.TestCase):
 
     def test_browser_plan_and_memory(self):
         with tempfile.TemporaryDirectory() as d:
-            l = Ledger(d)
+            led = Ledger(d)
             r = load_rules(d)
-            result = plan(l, "https://www.nasa.gov/news/", r)
+            result = plan(led, "https://www.nasa.gov/news/", r)
             self.assertEqual(result["viewport"]["width"], 390)
             self.assertFalse(result["viewport"]["emulates_device"])
             self.assertEqual(result["commands"][1][-3:], ["resize", "390", "844"])
             r["blocked_domains"] = ["nasa.gov"]
             with self.assertRaises(ValueError):
-                plan(l, "https://www.nasa.gov/news/", r)
+                plan(led, "https://www.nasa.gov/news/", r)
             c = candidate("local", "x", "x")
             set_segment(c, 0, 1)
-            l.add(c)
+            led.add(c)
             with self.assertRaises(ValueError):
-                remember(l, c, "approved", "Good", "Human")
+                remember(led, c, "approved", "Good", "Human")
             approve(c, "Human")
-            remember(l, c, "approved", "Good", "Human")
-            remember(l, c, "rejected", "Bad fit elsewhere", "Human")
+            remember(led, c, "approved", "Good", "Human")
+            remember(led, c, "rejected", "Bad fit elsewhere", "Human")
             self.assertEqual(
-                len(json.loads((l.root / "references.json").read_text(encoding="utf-8"))["items"]),
+                len(json.loads((led.root / "references.json").read_text(encoding="utf-8"))["items"]),
                 2,
             )
 
     def test_rule_changes_invalidate_and_block_import(self):
-        from getbrolls.rules import sync_formats
-        from getbrolls.review import import_review, project_id, review_epoch
         from getbrolls.models import signature
+        from getbrolls.review import import_review, project_id, review_epoch
+        from getbrolls.rules import sync_formats
 
         with tempfile.TemporaryDirectory() as d:
-            l = Ledger(d)
+            led = Ledger(d)
             r = load_rules(d)
             c = candidate("local", "x", "x", "https://example.org/a")
             set_segment(c, 0, 1)
-            l.add(c)
+            led.add(c)
             approve(c, "Human")
-            l.save("fixture")
+            led.save("fixture")
             data = {
                 "type": "getbrolls-review",
                 "templateVersion": 2,
-                "project": project_id(l),
+                "project": project_id(led),
                 "items": [
                     {"id": c["id"], "signature": signature(c), "reviewEpoch": review_epoch(c), "state": "approved"}
                 ],
@@ -95,15 +99,15 @@ class RulesTests(unittest.TestCase):
             path.write_text(json.dumps(data), encoding="utf-8")
             r["blocked_domains"] = ["example.org"]
             with self.assertRaisesRegex(ValueError, "bloqueado"):
-                import_review(l, path, "Human", r)
+                import_review(led, path, "Human", r)
             r["video_format"] = "reels"
             # A mudança derruba uma aprovação humana: só passa com o sim explícito.
-            sync_formats(l, r, confirm=True)
+            sync_formats(led, r, confirm=True)
             self.assertEqual(c["approval"]["status"], "pending")
             self.assertEqual(c["format"]["target"], "reels")
             r["asset_types"] = ["web_screenshot"]
             r["blocked_domains"] = []
-            self.assertEqual(plan(l, "https://www.nasa.gov/", r)["asset_type"], "web_screenshot")
+            self.assertEqual(plan(led, "https://www.nasa.gov/", r)["asset_type"], "web_screenshot")
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
     def test_image_lifecycle_user_declaration(self):
@@ -184,7 +188,6 @@ class FormatChangeGateTests(unittest.TestCase):
     """#44: mudar o formato-alvo derruba aprovações — só depois de um sim explícito."""
 
     def _project_with_approved_item(self, folder):
-        from getbrolls.rules import sync_formats
 
         ledger = Ledger(folder)
         rules = load_rules(folder)

@@ -1,16 +1,24 @@
 """Existing workflow command handlers; CLI parsing and reporting live separately."""
 
-import json, sys, hashlib, shutil, os, re
+import hashlib
+import json
+import os
+import re
+import shutil
+import sys
 from pathlib import Path
+
 from . import __version__
-from .models import candidate, set_segment, approve, require_fetch, signature
-from .ledger import Ledger, digest
-from .media import probe, cut, run
-from .rendering import render
-from .queue import execute as queue_execute, hint as queue_hint, summary_line as queue_summary_line
-from .presets import PERMIT_PRESETS
-from .runtime import record_warning
 from .guidance import next_action
+from .ledger import Ledger, digest
+from .media import cut, probe, run
+from .models import approve, candidate, require_fetch, set_segment, signature
+from .presets import PERMIT_PRESETS
+from .queue import execute as queue_execute
+from .queue import hint as queue_hint
+from .queue import summary_line as queue_summary_line
+from .rendering import render
+from .runtime import record_warning
 
 # Raiz real da skill/plugin: o comando sugerido não pode depender da pasta atual.
 SKILL_ROOT = Path(__file__).resolve().parents[2]
@@ -785,6 +793,7 @@ def execute(args):
         result = providers.capabilities()
         if args.command == "doctor":
             from getbrolls.config import TOOL_PATH_KEYS
+
             from .social import doctor as social_doctor
 
             # Pin inválido vira item de `missing`, não morte do diagnóstico.
@@ -831,7 +840,7 @@ def execute(args):
         if getattr(args, "background", False):
             return serve_module.start_background(args.project, port)
         return serve_module.run(args.project, port)
-    from getbrolls.rules import load_rules, allowed, domain_matches, format_report
+    from getbrolls.rules import allowed, domain_matches, format_report, load_rules
 
     if cmd == "status":
         # Somente leitura: nada é criado, nem a árvore do projeto, nem pendências.
@@ -1197,7 +1206,8 @@ def execute(args):
     elif cmd == "preview":
         context_before = signature(c)
         if not args.reference_only and c["provider"] != "local":
-            if args.end - args.start > config["max_seconds"]:
+            # Vídeo sem --start/--end já parou antes, no guard de `preview`/`approve`.
+            if args.end - args.start > config["max_seconds"]:  # pyright: ignore[reportOptionalOperand]
                 raise ValueError("Trecho excede GB_PREVIEW_MAX_SECONDS; ajuste o intervalo antes de obter mídia.")
             from .acquisition import prepare_source
 

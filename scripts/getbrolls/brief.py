@@ -5,7 +5,10 @@ português dizendo o que fazer. O brief descreve o vídeo e os beats; cada beat 
 comando pronto (`search`/`resolve`/`preview`) e se liga ao candidato pelo `--shot`.
 """
 
-import json, os, re, shlex
+import json
+import os
+import re
+import shlex
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]

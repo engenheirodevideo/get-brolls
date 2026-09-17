@@ -1,8 +1,11 @@
 """User-editable, local declarative rules. No YAML dependency or code evaluation."""
 
-import json, os, re
+import json
+import os
+import re
 from pathlib import Path
 from urllib.parse import urlsplit
+
 from .queue import validate_pacing_block
 
 ROOT = Path(__file__).resolve().parents[2]

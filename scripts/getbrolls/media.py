@@ -1,5 +1,10 @@
-import hashlib, json, subprocess, os, time
+import hashlib
+import json
+import os
+import subprocess
+import time
 from pathlib import Path
+
 from .config import tool_path
 from .runtime import record_warning, stderr_tail
 
@@ -238,7 +243,8 @@ def review_preview(src, directory, stem, start, end, config, label=None):
     a banner with title, id and window. Without drawtext the sheet is plain and the
     Storyboard prints the per-cell legend from ``frame_times_s`` instead.
     """
-    import math, tempfile
+    import math
+    import tempfile
 
     directory = Path(directory)
     if end - start > config["max_seconds"]:
@@ -346,7 +352,8 @@ def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):
     dentro da fonte. `frame_times_s` sai em tempo da fonte, como em `review_preview`:
     é com esse número que a pessoa monta o `--start/--end` do `preview`.
     """
-    import math, tempfile
+    import math
+    import tempfile
 
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
@@ -422,7 +429,8 @@ def image_preview(src, directory, stem):
 
 
 def copy_image(src, dst):
-    import tempfile, shutil
+    import shutil
+    import tempfile
 
     dst = Path(dst)
     if dst.exists():

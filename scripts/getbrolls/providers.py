@@ -4,7 +4,8 @@ import html
 import os
 import re
 from urllib.parse import parse_qs, quote, urlsplit
-from .http import get_json, public_url, ProviderError
+
+from .http import ProviderError, get_json, public_url
 from .models import candidate
 
 KEYS = {
@@ -48,7 +49,7 @@ def capabilities():
 def _key(provider):
     key = os.environ.get(KEYS[provider])
     if not key:
-        raise ProviderError("Configure %s para pesquisar em %s" % (KEYS[provider], provider))
+        raise ProviderError(f"Configure {KEYS[provider]} para pesquisar em {provider}")
     return key
 
 
@@ -123,7 +124,7 @@ def _pexels(query, limit):
 def _pexels_rows(data):
     out = []
     for row in data.get("videos", []):
-        item = _base("pexels", row["id"], "Pexels · %s" % row["id"], row.get("url"))
+        item = _base("pexels", row["id"], f"Pexels · {row['id']}", row.get("url"))
         user = row.get("user") or {}
         item["creator"] = {"name": user.get("name"), "url": public_url(user.get("url"))}
         _license(item, "Pexels License", "https://www.pexels.com/license/", user.get("name"))
@@ -164,7 +165,7 @@ def _pixabay_rows(data):
         item = _base(
             "pixabay",
             row["id"],
-            row.get("tags") or "Pixabay · %s" % row["id"],
+            row.get("tags") or f"Pixabay · {row['id']}",
             row.get("pageURL"),
         )
         item["creator"]["name"] = row.get("user")
@@ -225,7 +226,10 @@ def _commons(query, limit):
             continue
         item = _base("commons", row["pageid"], row["title"], info.get("descriptionurl"))
         metadata = info.get("extmetadata", {})
-        field = lambda key: _text(metadata.get(key, {}).get("value")) or None
+
+        def field(key, metadata=metadata):
+            return _text(metadata.get(key, {}).get("value")) or None
+
         item["creator"]["name"] = field("Artist")
         _license(
             item,

@@ -1,9 +1,11 @@
-import hashlib, json, math
-from datetime import datetime, timezone
+import hashlib
+import json
+import math
+from datetime import UTC, datetime
 
 
 def now():
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def candidate(provider, source_id, title, source_url=None):

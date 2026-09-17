@@ -255,6 +255,7 @@ class BoardRoute(unittest.TestCase):
         self.assertIn("import-review", action["for_human"])
         self.assertNotIn("--file", action["for_human"])
         command = command_for("import-review", PROJECT)
+        assert command is not None
         self.assertNotIn("--file", command)
         build_parser().parse_args(shlex.split(command)[2:])
 

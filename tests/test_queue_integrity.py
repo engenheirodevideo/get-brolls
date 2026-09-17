@@ -11,20 +11,20 @@ import sys
 import tempfile
 import textwrap
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts/gb.py"
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from getbrolls import queue
-from getbrolls import commands
-from getbrolls.runtime import audited, project_lock, READ_ONLY_ACTIONS
+from getbrolls import commands, queue
+from getbrolls.runtime import READ_ONLY_ACTIONS, audited, project_lock
 
-T0 = datetime(2026, 9, 17, 12, 0, tzinfo=timezone.utc)
+T0 = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
 REEL = "https://www.instagram.com/reel/ABC123xyz/"
 REEL_2 = "https://www.instagram.com/reel/DEF456uvw/"
 TIKTOK = "https://www.tiktok.com/@user/video/1234567890"
@@ -361,6 +361,7 @@ class CorruptedTimestampPropagatesTests(unittest.TestCase):
             }
             queue.save(path, data)
             result = queue.hint(tmp)
+            assert result is not None
             self.assertIn("error", result)
             self.assertNotIn("permitido agora", (result.get("line") or ""))
 
@@ -414,6 +415,7 @@ class HintMinOverFreeProvidersTests(unittest.TestCase):
             }
             queue.save(path, data)
             result = queue.hint(tmp)
+            assert result is not None
             self.assertIn("agora", result["line"])
 
     def test_uses_min_not_max_when_both_pending_providers_are_blocked(self):
@@ -441,6 +443,7 @@ class HintMinOverFreeProvidersTests(unittest.TestCase):
             }
             queue.save(path, data)
             result = queue.hint(tmp)
+            assert result is not None
             self.assertIn(soon.isoformat(), result["line"])
             self.assertNotIn(later.isoformat(), result["line"])
 
@@ -471,7 +474,7 @@ class HintConsultsRulesTests(unittest.TestCase):
                 queue.mark(data, got["item"]["id"], "done", at=at)
                 at += timedelta(seconds=1)
             queue.save(path, data)
-            result = queue.hint(tmp)
+            result: Any = queue.hint(tmp)
             self.assertEqual("max_per_day", result["providers"]["instagram"]["hold"])
 
 
@@ -495,9 +498,7 @@ class QueueActionReadOnlyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with project_lock(tmp):
                 args = queue_args(tmp, "add", provider="instagram", urls=[REEL])
-                with self.assertRaisesRegex(
-                    commands.OperationError if hasattr(commands, "OperationError") else Exception, "."
-                ):
+                with self.assertRaisesRegex(getattr(commands, "OperationError", Exception), "."):
                     audited(args, commands.execute)
 
 

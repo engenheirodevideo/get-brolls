@@ -2,7 +2,7 @@
 
 import hashlib
 import json
-from pathlib import Path
+
 from .ledger import digest
 from .media import image_preview, review_preview
 

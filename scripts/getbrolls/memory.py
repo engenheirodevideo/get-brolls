@@ -1,7 +1,9 @@
 """Explicit editorial reference history, separate from media permission."""
 
-import json, os
-from .models import signature, now
+import json
+import os
+
+from .models import now, signature
 
 
 def remember(ledger, c, decision, reason, by):

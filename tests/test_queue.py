@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -20,7 +20,7 @@ from getbrolls import queue
 from getbrolls.cli import SUMMARIES, build_parser
 from getbrolls.ledger import Ledger
 
-T0 = datetime(2026, 9, 17, 12, 0, tzinfo=timezone.utc)
+T0 = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
 REEL = "https://www.instagram.com/reel/ABC123xyz/"
 REEL_VARIANT = "https://www.instagram.com/reel/ABC123xyz"
 REEL_2 = "https://www.instagram.com/reel/DEF456uvw/"
@@ -196,6 +196,7 @@ class QueueStateTests(unittest.TestCase):
             queue.add(data, "instagram", [REEL], at=T0)
             queue.save(path, data)
             cooldown = queue.record_cooldown(tmp, "instagram", "curl 22 HTTP 429", at=T0)
+            assert cooldown is not None
             until = cooldown["until"]
             self.assertEqual((T0 + timedelta(seconds=1800)).isoformat(), until)
             self.assertEqual([], cooldown["items_failed"])
@@ -216,6 +217,7 @@ class QueueStateTests(unittest.TestCase):
             queue.next_item(data, at=T0, rng=rng(0.0))
             queue.save(path, data)
             cooldown = queue.record_cooldown(tmp, "instagram", "HTTP 403", at=T0)
+            assert cooldown is not None
             self.assertEqual(["instagram:ABC123xyz"], cooldown["items_failed"])
             saved = queue.load(path)
             item = saved["items"][0]

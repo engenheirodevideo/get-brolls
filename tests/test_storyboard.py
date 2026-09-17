@@ -1,4 +1,6 @@
-import base64, sys, unittest
+import base64
+import sys
+import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -48,6 +50,7 @@ if __name__ == "__main__":
 class ContactSheetRenderingTest(unittest.TestCase):
     def render_item(self, **overrides):
         import tempfile
+
         from getbrolls.ledger import Ledger
         from getbrolls.models import candidate, set_segment
         from getbrolls.rendering import render
@@ -103,6 +106,7 @@ class StoryboardV2Test(unittest.TestCase):
 
     def render_two(self):
         import tempfile
+
         from getbrolls.ledger import Ledger
         from getbrolls.models import candidate, set_segment
         from getbrolls.rendering import render

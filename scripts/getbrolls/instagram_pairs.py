@@ -26,7 +26,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Iterable
+from typing import NoReturn
 from urllib.parse import urlsplit
 
 URL_RE = re.compile(r'^\s*url\s*=\s*"(.*)"\s*$')
@@ -59,7 +59,7 @@ class CollectError(Exception):
         self.cooldown = cooldown
 
 
-def die(message: str, code: int = 1, *, cooldown: bool = False) -> None:
+def die(message: str, code: int = 1, *, cooldown: bool = False) -> NoReturn:
     """Imprime o erro e levanta CollectError com a mensagem redigida para os resumos do lote."""
     print(f"ERROR: {message}", file=sys.stderr)
     raise CollectError(message, code, cooldown=cooldown)
@@ -87,8 +87,7 @@ def run(cmd: list[str], *, quiet: bool = False) -> subprocess.CompletedProcess[s
             encoding="utf-8",
             errors="replace",
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
         )
     except subprocess.CalledProcessError as exc:
         tail = stderr_tail(exc.stderr or "")
@@ -144,7 +143,7 @@ def validate_media_url(value: str, source: Path) -> tuple[str, str | None]:
     if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
         die(f"a URL do config curl não pode apontar para host local: {source}")
     try:
-        address = ipaddress.ip_address(host)
+        ipaddress.ip_address(host)
     except ValueError:
         if not HOST_RE.fullmatch(host):
             die(f"hostname inválido no config curl: {source}")
