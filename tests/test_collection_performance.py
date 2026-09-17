@@ -245,7 +245,8 @@ class Finding21And26IndexRobustnessTests(unittest.TestCase):
             cache = Path(tmp)
             acquisition._save_index(cache, {'a': []})
             mode = stat.S_IMODE((cache / acquisition.INDEX_NAME).stat().st_mode)
-            self.assertEqual(mode, 0o600)
+            if os.name != 'nt':  # Windows não tem bits POSIX de permissão
+                self.assertEqual(mode, 0o600)
 
 
 if __name__ == '__main__':

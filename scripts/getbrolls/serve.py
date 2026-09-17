@@ -17,6 +17,13 @@ from pathlib import Path
 DEFAULT_PORT = 8767
 
 
+class _ExclusiveServer(ThreadingHTTPServer):
+    """Sem SO_REUSEADDR: no Windows ele deixaria dois servidores na mesma porta, e a
+    queda para porta livre nunca aconteceria."""
+
+    allow_reuse_address = False
+
+
 class _NoCacheHandler(SimpleHTTPRequestHandler):
     """SimpleHTTPRequestHandler servindo um diretório fixo, sem cache e sem log no console."""
 
@@ -42,10 +49,10 @@ def start(project, port: int = DEFAULT_PORT):
         )
     handler = partial(_NoCacheHandler, directory=str(directory))
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", port), handler)
+        server = _ExclusiveServer(("127.0.0.1", port), handler)
     except OSError:
         # Porta pedida ocupada: cai para uma porta efêmera livre.
-        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        server = _ExclusiveServer(("127.0.0.1", 0), handler)
     return server, server.server_address[1]
 
 
