@@ -1,9 +1,9 @@
 ---
 name: get-brolls
-description: Collects, previews and delivers B-roll inserts with human review and source provenance. Use when the user asks to collect B-roll, cutaways, inserts or supporting footage for a video or Reel — searching YouTube, Instagram, TikTok or stock providers (Pexels, Pixabay, Wikimedia Commons, NASA), generating Storyboard previews for human review, and delivering licensed clips with provenance. Também: coletar b-roll, imagens de apoio, baixar cortes ou footage para ilustrar um vídeo. Not for editing or rendering the finished video.
+description: Coleta, pré-visualiza e entrega B-rolls com revisão humana e origem registrada. Use quando alguém pedir b-roll, vídeos de apoio, imagens de apoio, cutaways, inserts, footage, "um corte do X falando Y", um print da tela de um site ou de uma notícia, ou material para ilustrar um vídeo, Reel ou aula — buscando em YouTube, Instagram, TikTok, Wikimedia Commons, NASA ou bancos (Pexels, Pixabay), gerando prévias para revisão humana e entregando os trechos com origem e condições de uso. Also in English: collect B-roll, cutaways, inserts, supporting footage, stock video, screen grabs. Not for editing or rendering the finished video.
 license: MIT
 metadata:
-  version: "2.3.8"
+  version: "2.4.0"
   type: "skill"
   status: "current"
   created: "2026-09-15"
@@ -15,42 +15,70 @@ metadata:
 
 # GET B-ROLLS — ENGENHEIRO DE VÍDEO
 
-Fluxo editorial completo para planejar fontes literais, mostrar a sequência do trecho, receber decisão humana, obter o corte final e verificar. YouTube usa yt-dlp **sem API key**. Instagram usa navegador/Playwright com streams separados de vídeo e áudio.
+Você planeja fontes literais, mostra o trecho à pessoa, recebe a decisão dela e só então obtém e entrega o corte. Fale português direto, sem jargão de CLI, e nunca transforme a conversa num formulário.
 
-## Instalação e contexto
+## Três guardas
 
-A raiz do plugin instalado é `${CLAUDE_PLUGIN_ROOT}` — a pasta dois níveis acima deste `skills/get-brolls/SKILL.md`; resolva o caminho absoluto real antes de ler arquivos ou executar comandos, porque a variável não é expandida pelas ferramentas. Leia a seção de [instalação do guia](${CLAUDE_PLUGIN_ROOT}/docs/GUIDE.md#instalação), instale os pré-requisitos faltantes pelos gerenciadores oficiais indicados e execute `bash "${CLAUDE_PLUGIN_ROOT}/scripts/install.sh"` no macOS ou `& "${CLAUDE_PLUGIN_ROOT}/scripts/install.ps1"` no Windows para obter yt-dlp/EJS e Playwright na máquina do destinatário; nunca copie `.venv`, `.tools` ou bibliotecas de outra instalação. Execute `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" doctor` no macOS ou `python "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" doctor` no Windows. No plugin o cwd é sempre o projeto do usuário: rode todos os subcomandos abaixo como `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" <subcomando> --project <projeto>`. O `.env` padrão fica na raiz do plugin, que é gerenciada por `/plugin update`: prefira variáveis de ambiente ou um `.env` fora dela, apontado na raiz do parser: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" --env-file CAMINHO <subcomando> …`, e repita o instalador após cada atualização do plugin. Pexels/Pixabay têm chaves opcionais próprias.
+**Literal primeiro.** Procure o fato, a pessoa, o produto, a notícia ou a tela que a narração cita. Banco genérico não cobre beat sem fonte literal.
 
-## Fontes e preparação
+**Stock só sob pedido.** Pexels e Pixabay entram quando o usuário pedir stock com todas as letras. Nunca como preenchimento.
 
-**Antes de buscar, tenha um brief.** Sem `BRIEF.md` na pasta do projeto, rode a entrevista de `/get-brolls-brief` (roteiro em `${CLAUDE_PLUGIN_ROOT}/references/interview.md`): até 7 perguntas, uma por vez, e dois "tanto faz" viram defaults com o que foi assumido visível na resposta. Depois use `init-brief --project ...`, preencha o bloco JSON e valide com `brief --validate --project ...` antes da primeira busca.
-`brief --project ...` devolve cada beat com `search`, `resolve` e `preview` prontos (`brief --beat ID` mostra um só). Todo material de um beat entra com `--shot <beat.id>`: é esse campo que liga o beat ao candidato.
-Brief orienta, não bloqueia — nenhum comando passa a exigir `BRIEF.md`. Mas nunca invente narração, alvo ou responsável para preencher um.
+**Parada obrigatória na revisão.** Aprovação vem sempre de uma pessoa: pelo Storyboard (`import-review`) ou por fala explícita no chat, registrada com `approve --all --by NOME --channel chat --statement "frase"`. Silêncio não é aprovação. Não se autoaprove.
 
-1. Consulte `rules --project` e `references --project`, e **consulte `library --search` antes de buscar**: a biblioteca pessoal (`~/.getbrolls/library`, desligável com `GB_LIBRARY=off`) lembra que busca rendeu, que fonte falhou e que trecho já serviu. Ela é ponteiro editorial: `rights_not_transferable` vem em toda resposta, e nenhuma pista dela aprova nem permite nada. A biblioteca é pessoal e mistura projetos: não cole as dicas dela na conversa com um cliente — as pistas anexadas ao `search` já vêm sem o motivo escrito noutro projeto, e o texto completo só aparece quando você pede `library --search` de propósito. Depois de uma decisão útil, guarde-a com `learn --from-candidate ID`, `learn --query "..." --provider FONTE --outcome hit|miss` ou `learn --preference "frase da pessoa"`. As regras também valem em camadas: `~/.getbrolls/RULES.md` → `GB_RULES_FILE` → RULES.md do projeto, e `rules` mostra em `sources` de onde veio cada campo — responsabilidade e declaração nunca vêm do global. Use fala/objetivo fornecidos, sem inventar citação. **Literal primeiro:** procure footage, prints ou imagens reais do fato, da pessoa, do produto, da notícia ou da tela que a narração cita; bancos de stock (Pexels/Pixabay) entram **somente quando o usuário pedir stock explicitamente**, nunca como preenchimento de um beat sem fonte literal. Insert isolado não exige roteiro completo. Para roteiro completo, o padrão editorial é buscar 8+ clipes literais quando o conteúdo comportar; prefira pessoas/produtos/fatos nomeados e 1080p quando disponível. Não preencha com stock genérico para atingir uma contagem. A responsabilidade pelas condições de uso do material é de quem produz o vídeo; a skill responde pela fidelidade/literalidade e pelo registro de origem de cada asset — `permit` e a proveniência gravada continuam sendo o mecanismo desse registro.
-2. **YouTube:** `search --provider youtube --query "entidade ação"`; para URL use `resolve --url`. Leia a seção [YouTube](${CLAUDE_PLUGIN_ROOT}/docs/GUIDE.md#provedor--youtube).
-3. **Instagram:** leia a seção [Instagram](${CLAUDE_PLUGIN_ROOT}/docs/GUIDE.md#instagram--navegadorplaywright-dois-streams-e-mp4). Reutilize o Chrome logado indicado pelo usuário; abra o Reel nesse navegador/Playwright, identifique os streams do mesmo post, salve pares privados `_video.conf`/`_audio.conf` e execute `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/getbrolls/instagram_pairs.py"`. Ele baixa/junta/verifica os dois canais. Importe o MP4 com `resolve --file --source-url --creator --shot`. Em batch, use `--fail-on-duplicate-audio`. Preserve a sessão e nunca publique URLs assinadas/configs. yt-dlp é outra rota possível, não substitui o processo do navegador. Para **lotes** (vários Reels), enfileire com `queue --action add --provider instagram --project ... URLs`, repita `queue --action next --project ...` — quando a resposta trouxer `wait_seconds` sem `item`, aguarde esse tempo antes de chamar de novo — capture os pares do item retornado e feche com `queue --action mark --id ID --done|--failed --reason "..." --project ...`. Rode o coletor com `--pace 20-60 --max-per-run 25 --continue-on-error --project ...` (use sempre `--project`, não `--config-output-root`, para o cooldown ir pra fila certa); um HTTP 403/429 abre cooldown na fila: pare, não insista.
-4. **TikTok:** descubra URL completa pelo navegador e use `resolve --url`; leia a seção [TikTok](${CLAUDE_PLUGIN_ROOT}/docs/GUIDE.md#provedor--tiktok). **Bancos:** `search --provider pexels|pixabay`; leia [Bancos](${CLAUDE_PLUGIN_ROOT}/docs/GUIDE.md#bancos--busca-prévia-e-coleta). Veja também [Fontes e transportes](${CLAUDE_PLUGIN_ROOT}/docs/GUIDE.md#fontes-e-transportes).
+## Passo 1 — Entreviste antes de buscar
 
-## Checkpoints com a pessoa
+Sem `BRIEF.md` na pasta do projeto, conduza a entrevista de `/get-brolls-brief`. O roteiro está em [`${CLAUDE_PLUGIN_ROOT}/references/interview.md`](${CLAUDE_PLUGIN_ROOT}/references/interview.md): sete perguntas, uma por mensagem, teto de sete. Dois "tanto faz" viram defaults, com o que foi assumido visível na resposta. Nunca invente narração, alvo, link ou responsável.
 
-Três paradas curtas, em português direto, sem transformar a conversa em formulário.
+## Passo 2 — Confirme o brief
 
-**C1 — depois do brief, antes de buscar.** Devolva em até cinco linhas: o que o vídeo precisa provar, quantos beats, as fontes na ordem em que vai tentar, o que ficou por default e quem assina a responsabilidade. Feche com "fecho assim?" e espere a resposta.
+Escreva o `BRIEF.md` com `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" init-brief --project <projeto>`, preencha o bloco JSON e valide com `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" brief --validate --project <projeto>`.
 
-**C2 — depois da shortlist, antes de baixar.** Liste de 5 a 8 candidatos: título, canal/autor, duração e a janela que o `inspect` apontou, com a legenda ou o capítulo que justifica essa janela. Uma linha por candidato. Feche com "sigo com estes?".
+**Checkpoint C1.** Devolva em até cinco linhas: o que o vídeo precisa provar, quantos beats, as fontes na ordem em que vai tentar, o que ficou por default e quem assina a responsabilidade. Feche com "fecho assim?" e espere.
 
-**C3 — depois das prévias, no lugar do board.** Descreva o que cada contact sheet mostra, citando células e tempos que você realmente olhou, e pergunte "aprova todos, ou quais?". Sim para todos vira `approve --all --by NOME --channel chat --statement "frase exata"`; sim parcial vira um `approve --candidate ID` por item citado. Silêncio não é aprovação, e o Storyboard continua recomendado quando quem revisa é outra pessoa.
+## Passo 3 — Busque fonte literal
 
-## Revisão e entrega
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" brief --beat <ID> --project <projeto>` devolve o comando pronto do beat. Todo material entra com `--shot <beat.id>`. Consulte `library --search` antes de buscar: a biblioteca lembra o que rendeu, mas não aprova nem permite nada. Fontes, presets, lotes e a biblioteca estão em [`${CLAUDE_PLUGIN_ROOT}/references/providers.md`](${CLAUDE_PLUGIN_ROOT}/references/providers.md); o Instagram, em [`${CLAUDE_PLUGIN_ROOT}/references/instagram.md`](${CLAUDE_PLUGIN_ROOT}/references/instagram.md).
 
-5. **Analise antes de pré-visualizar:** `inspect --candidate ID --query "fala ou alvo" --project ...` lê da fonte a duração, os capítulos, as legendas e os tempos escritos na descrição e devolve `candidate_windows` pontuadas — escolha o `--start/--end` a partir delas, nunca de palpite. No candidato ele só grava `media.duration_s`. Sem pista nenhuma, `preview --scan --project ... --candidate ID` varre o vídeo inteiro num contact sheet de baixa resolução (teto `GB_SCAN_MAX_SECONDS`, padrão 900 s) sem definir intervalo.
-6. `preview --candidate ID --start INICIO --end FIM --project ...` obtém mídia de trabalho remota quando necessário e gera poster, **contact sheet** e GIF do intervalo. A resposta traz `files.contact_sheet` (caminho absoluto) e `preview.frame_times_s` (tempo de cada célula). **Abra e olhe o contact sheet antes de seguir**: confirme que as células mostram o que a fala pede, cite as células/tempos vistos em `--reason` e, se não servirem, ajuste `--start/--end` e gere outra prévia. O Storyboard embute exatamente esse arquivo, então quem revisa vê os mesmos quadros que você viu; nunca descreva quadros que não conferiu. Não use um poster isolado como prova do movimento. Sem fala, omita `--narration`. `--reference-only` gera somente referência estática quando esse for o pedido.
-7. `review --project ...`: entregue `brolls/` completo. Sirva a pasta localmente com `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" serve --project <projeto>`, entregue ao usuário a URL `http://localhost:8767/review.html` e avise que abrir por `file://` pode desativar o salvamento local — exporte o JSON antes de fechar a página. Usuário aprova/ajusta e exporta JSON. Importe com `import-review --by`. Aprovação vem sempre de uma pessoa: pelo Storyboard (`import-review`) ou por fala explícita no chat (`approve --by NOME --channel chat --statement "frase"`, com `--statement` obrigatório no canal chat; `--all` cobre todos os itens com prévia). Nunca inferir de silêncio. Não se autoaprove. Alterações de contexto/intervalo invalidam aprovação.
-8. Registre condições reais com `permit --evidence`, ou a declaração dita no chat com `permit --declared-by NOME --declaration-text "frase"`; depois `fetch` e `verify`. Não invente licença. O corte usa os bytes revisados e mantém origem/autor.
+**Checkpoint C2.** Liste 5 a 8 candidatos, uma linha cada: título, canal, duração e a janela que o `inspect` apontou. Feche com "sigo com estes?".
 
-Use `status --project ...` para reportar ao usuário onde a coleta está — candidatos, prévias, decisões, permissões e entregas — sem alterar o projeto. Ao responder, repasse `summary.do.for_human` sem parafrasear.
+## Passo 4 — Analise e pré-visualize
 
-Utilitários YouTube estão em `${CLAUDE_PLUGIN_ROOT}/scripts/getbrolls/tools/youtube/`; o [README](${CLAUDE_PLUGIN_ROOT}/README.md) mostra os comandos e explica sua relação com o ledger. Contexto da pessoa permanece estático; GIF padrão anima só B-roll. Full exige composição pronta do insert. Preserve originais, cache, eventos e journal. Página falhou após salvar: regenere `review`.
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" inspect --candidate <ID> --query "fala ou alvo" --project <projeto>` lê da fonte duração, capítulos e legendas e devolve janelas pontuadas. Escolha `--start/--end` a partir delas, nunca de palpite.
 
-Para manutenção do código/documentação, siga [AGENTS](${CLAUDE_PLUGIN_ROOT}/AGENTS.md). Leia [Qualidade e evidências](${CLAUDE_PLUGIN_ROOT}/docs/QUALITY.md) antes de declarar rotas testadas. Se `doctor` informar uma versão diferente da documentada aqui, leia [CHANGELOG](${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md) antes de seguir. Falha de extração é reportada com a fonte real; não invente indisponibilidade permanente nem mude para outra arquitetura.
+Depois, `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" preview --candidate <ID> --start <INICIO> --end <FIM> --project <projeto>` gera poster, contact sheet e GIF. **Abra e olhe o contact sheet antes de seguir.** Cite em `--reason` as células e os tempos que você viu; se não servirem, ajuste o intervalo. Nunca descreva quadro que não conferiu. Sem pista alguma, `preview --scan` varre o vídeo inteiro.
+
+## Passo 5 — Revisão humana
+
+Duas rotas, e você para nas duas.
+
+**Board**, quando quem revisa é outra pessoa: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" review --project <projeto>`, depois `serve --background`. Entregue a URL, peça a decisão e importe com `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" import-review --by NOME --project <projeto>` — sem `--file`, ele pega o arquivo mais recente salvo pela página.
+
+**Chat**, quando a pessoa está aqui. **Checkpoint C3:** descreva o que cada contact sheet mostra e pergunte "aprova todos, ou quais?". Sim para todos vira `approve --all --by NOME --channel chat --statement "frase exata"`. Sim parcial vira um `approve --candidate <ID>` por item citado.
+
+Mudança de intervalo ou de contexto invalida aprovação. A copy pronta das duas rotas está em [`${CLAUDE_PLUGIN_ROOT}/references/templates-de-resposta.md`](${CLAUDE_PLUGIN_ROOT}/references/templates-de-resposta.md).
+
+## Passo 6 — Direitos, corte e entrega
+
+Registre as condições com `permit` (`--evidence`, `--preset` ou `--declared-by/--declaration-text`), depois `fetch`, `verify` e `deliver`. As três rotas e o que cada uma exige estão em [`${CLAUDE_PLUGIN_ROOT}/references/rights.md`](${CLAUDE_PLUGIN_ROOT}/references/rights.md). Não invente licença. `deliver` monta `entrega/`, uma pasta por beat, com `ORIGEM.md`.
+
+## Relate o status
+
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" status --project <projeto>` diz onde a coleta está sem alterar nada. Ao responder, repasse `summary.do.for_human` **sem parafrasear**: é a frase que já traz o próximo passo na língua da pessoa.
+
+## Quando não há fonte
+
+Diga o que você tentou e o motivo real devolvido pela fonte. Pergunte se a pessoa tem material próprio ou um link. Não invente indisponibilidade permanente nem troque de arquitetura sozinho.
+
+## Ambiente
+
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" doctor` diz o que está pronto e o que falta. Se faltar qualquer coisa, peça ao usuário que rode `/get-brolls-setup` — é esse comando que instala e diagnostica. Se o `doctor` informar versão diferente da deste arquivo, leia o [CHANGELOG](${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md).
+
+## Índice de references
+
+- [`${CLAUDE_PLUGIN_ROOT}/references/interview.md`](${CLAUDE_PLUGIN_ROOT}/references/interview.md) — as sete perguntas do brief.
+- [`${CLAUDE_PLUGIN_ROOT}/references/providers.md`](${CLAUDE_PLUGIN_ROOT}/references/providers.md) — fontes, ordem, biblioteca e lotes.
+- [`${CLAUDE_PLUGIN_ROOT}/references/instagram.md`](${CLAUDE_PLUGIN_ROOT}/references/instagram.md) — o procedimento dos dois streams.
+- [`${CLAUDE_PLUGIN_ROOT}/references/rights.md`](${CLAUDE_PLUGIN_ROOT}/references/rights.md) — condições de uso e `permit`.
+- [`${CLAUDE_PLUGIN_ROOT}/references/templates-de-resposta.md`](${CLAUDE_PLUGIN_ROOT}/references/templates-de-resposta.md) — copy pronta.
+- [`${CLAUDE_PLUGIN_ROOT}/references/glossario.md`](${CLAUDE_PLUGIN_ROOT}/references/glossario.md) — o que cada termo quer dizer.
+- [`${CLAUDE_PLUGIN_ROOT}/docs/GUIDE.md`](${CLAUDE_PLUGIN_ROOT}/docs/GUIDE.md) — detalhe técnico por provedor.

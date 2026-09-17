@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/badge/node-22%2B-green?style=flat-square" alt="Node 22+">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
     <img src="https://img.shields.io/github/actions/workflow/status/engenheirodevideo/get-brolls/test.yml?branch=main&style=flat-square&label=tests" alt="Tests status">
-    <img src="https://img.shields.io/badge/version-2.3.8-blue?style=flat-square" alt="Version 2.3.8">
+    <img src="https://img.shields.io/badge/version-2.4.0-blue?style=flat-square" alt="Version 2.4.0">
   </p>
 </div>
 
@@ -169,6 +169,20 @@ python3 scripts/gb.py verify --project /path/to/my-video
 
 At the end, `verify` answers `"count": 1` and the approved clip is in `/path/to/my-video/brolls/clips/`, with origin, creator, and decision recorded in `brolls/credits.md`. Replacing `nasa` with `commons` follows the same flow.
 
+### Onboarding checklist — chat only
+
+If you have never opened a terminal, this is the whole list. Every step is a conversation with the agent; none of them asks for a command.
+
+1. **Install once.** Ask for `/get-brolls-setup`. It installs everything and answers in one line whether you are ready. Repeat after every `/plugin update`.
+2. **Say what you need.** `/get-brolls I need supporting footage for my Reel about X` — and say which folder the project lives in.
+3. **Answer the interview.** At most seven questions, one at a time. "Whatever you think" is a valid answer: the agent applies a default and shows you what it assumed. To start there directly, use `/get-brolls-brief`.
+4. **Check the brief.** It hands back five lines of what it understood and asks whether that is right. Correct it there.
+5. **Look at the shortlist.** Before downloading anything, it lists 5 to 8 candidates with title, creator, and the exact window. Say which ones work.
+6. **Approve the previews.** Either in chat ("I approve all", or naming the ones you want), or on the Storyboard: ask for `/get-brolls-review`, it sends you a link, you click Approve / Request change / Reject and then **Save decisions**, and come back to say you saved. Nothing is downloaded without this step.
+7. **Say who owns the material.** The agent records the usage conditions from what you tell it. You are the one answering for those conditions; it only records what was said and where each file came from.
+8. **Receive.** The cuts land in `entrega/`, one folder per shot, each with an `ORIGEM.md` naming its source.
+9. **Lost the thread?** Ask for `/get-brolls-status`: it tells you where things stand and what comes next.
+
 ## Commands
 
 In order of use — from first contact to delivery:
@@ -184,6 +198,9 @@ In order of use — from first contact to delivery:
 ```text
 /get-brolls <your request>   # Claude Code — describe the inserts and the project folder
 $get-brolls <your request>   # Codex — same thing
+/get-brolls-brief            # interviews you and writes the video's BRIEF.md
+/get-brolls-review           # builds the Storyboard, sends the link, imports the decisions
+/get-brolls-status           # says where the collection stands and what comes next
 ```
 
 **3. Check the environment** when something misbehaves:
