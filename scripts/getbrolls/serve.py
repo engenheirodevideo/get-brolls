@@ -8,13 +8,27 @@ cedo com uma mensagem clara em vez de servir um diretório vazio.
 """
 from __future__ import annotations
 
+import hmac
 import json
+import os
+import secrets
+import subprocess
 import sys
+import time
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 DEFAULT_PORT = 8767
+
+# Cabeçalho do token de sessão: sem ele (ou com o token errado) o POST é recusado.
+TOKEN_HEADER = "X-GetBrolls-Token"
+SAVE_PATH = "/__save"
+# Mesmo teto do `import-review`: um board legítimo não passa disso.
+MAX_SAVE_BYTES = 2000000
+PID_FILE = ".serve.pid"
+LOG_FILE = ".serve.log"
+REVIEWS_DIR = "reviews"
 
 
 class _ExclusiveServer(ThreadingHTTPServer):
@@ -25,7 +39,81 @@ class _ExclusiveServer(ThreadingHTTPServer):
 
 
 class _NoCacheHandler(SimpleHTTPRequestHandler):
-    """SimpleHTTPRequestHandler servindo um diretório fixo, sem cache e sem log no console."""
+    """SimpleHTTPRequestHandler servindo um diretório fixo, sem cache e sem log no console.
+
+    Acrescenta um único endpoint de escrita, `POST /__save`, restrito ao token da
+    sessão injetado no HTML servido: é como a página grava as decisões dentro do
+    projeto em vez de mandar a pessoa caçar o arquivo na pasta de Downloads.
+    """
+
+    def _refuse(self, code, message):
+        body = json.dumps({"error": message}, ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):  # noqa: N802 - assinatura exigida pela stdlib
+        if self.path.split("?")[0] != SAVE_PATH:
+            self._refuse(404, "Endereço desconhecido.")
+            return
+        token = self.headers.get(TOKEN_HEADER) or ""
+        if not hmac.compare_digest(token, self.server.save_token):
+            self._refuse(403, "Token da sessão ausente ou inválido.")
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            self._refuse(400, "Tamanho do corpo inválido.")
+            return
+        if length <= 0 or length > MAX_SAVE_BYTES:
+            # Drena o excesso (com teto) antes de responder: sem isso o cliente
+            # levaria um cano quebrado no lugar do 413 que explica o problema.
+            left = min(length, MAX_SAVE_BYTES * 4)
+            while left > 0:
+                chunk = self.rfile.read(min(65536, left))
+                if not chunk:
+                    break
+                left -= len(chunk)
+            self._refuse(413, "Corpo grande demais para um arquivo de decisões.")
+            return
+        raw = self.rfile.read(length)
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            self._refuse(400, "O corpo precisa ser JSON.")
+            return
+        if not isinstance(data, dict):
+            self._refuse(400, "O corpo precisa ser um objeto JSON.")
+            return
+        path = save_review(Path(self.directory), data)
+        body = json.dumps(
+            {"path": str(path), "name": path.name}, ensure_ascii=False
+        ).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_head(self):
+        # O token vive só na memória do servidor e na página servida por ele: quem
+        # abrir o review.html direto do disco continua com o caminho do download.
+        if self.path.split("?")[0] in ("/review.html", "/"):
+            page = Path(self.directory) / "review.html"
+            if page.is_file():
+                body = _inject_token(
+                    page.read_text(encoding="utf-8"), self.server.save_token
+                ).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                import io
+
+                return io.BytesIO(body)
+        return super().send_head()
 
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
@@ -34,6 +122,42 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
     def log_message(self, format, *args):  # noqa: A002 - assinatura exigida pela stdlib
         # Silencioso: o processo comunica estado só via a linha JSON impressa em run().
         pass
+
+
+def _inject_token(page, token):
+    """Entrega o endereço e o token para o review.js, antes de ele rodar."""
+    script = (
+        "<script>window.GETBROLLS_SAVE={\"url\":"
+        + json.dumps(SAVE_PATH)
+        + ",\"header\":"
+        + json.dumps(TOKEN_HEADER)
+        + ",\"token\":"
+        + json.dumps(token)
+        + "};</script>"
+    )
+    if "</head>" in page:
+        return page.replace("</head>", script + "</head>", 1)
+    if "<body" in page:
+        return page.replace("<body", script + "<body", 1)
+    return script + page
+
+
+def save_review(directory, data):
+    """Grava as decisões em `brolls/reviews/<timestamp>.json` e devolve o caminho.
+
+    O nome sai do relógio (`%Y%m%d-%H%M%S`, com sufixo numérico em caso de empate):
+    nada do corpo enviado entra no caminho, então não há como escapar da pasta.
+    """
+    reviews = Path(directory) / REVIEWS_DIR
+    reviews.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    path = reviews / f"{stamp}.json"
+    extra = 1
+    while path.exists():
+        path = reviews / f"{stamp}-{extra}.json"
+        extra += 1
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
 
 
 def start(project, port: int = DEFAULT_PORT):
@@ -53,6 +177,8 @@ def start(project, port: int = DEFAULT_PORT):
     except OSError:
         # Porta pedida ocupada: cai para uma porta efêmera livre.
         server = _ExclusiveServer(("127.0.0.1", 0), handler)
+    # Um token por sessão: some quando o servidor cai, e só a página servida o conhece.
+    server.save_token = secrets.token_urlsafe(32)
     return server, server.server_address[1]
 
 
@@ -77,3 +203,201 @@ def run(project, port: int = DEFAULT_PORT) -> int:
     finally:
         server.server_close()
     return 0
+
+
+def _brolls(project):
+    return Path(project).expanduser().resolve() / "brolls"
+
+
+def _urls(port):
+    return [
+        f"http://localhost:{port}/review.html",
+        f"http://127.0.0.1:{port}/review.html",
+    ]
+
+
+def _alive(pid):
+    """O processo do PID file ainda existe? Somente leitura, e igual no Windows.
+
+    `os.kill(pid, 0)` no Windows mataria o processo (a stdlib mapeia qualquer sinal
+    para TerminateProcess), então lá a pergunta vai pela API do sistema.
+    """
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        code = ctypes.c_ulong()
+        ok = kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+        kernel32.CloseHandle(handle)
+        return bool(ok) and code.value == 259  # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _reap(pid):
+    """Colhe o filho já encerrado: um zumbi ainda responde a `kill(pid, 0)`."""
+    if os.name == "nt":
+        return
+    try:
+        os.waitpid(pid, os.WNOHANG)
+    except (ChildProcessError, OSError):
+        pass
+
+
+def read_pid(project):
+    """Conteúdo do PID file, ou None quando não há (ou está ilegível)."""
+    path = _brolls(project) / PID_FILE
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def state(project):
+    """`serve.running` para o `status`: só lê o PID file e pergunta ao sistema."""
+    data = read_pid(project) or {}
+    pid = data.get("pid")
+    running = _alive(pid)
+    return {
+        "running": running,
+        "pid": pid if running else None,
+        "port": data.get("port") if running else None,
+        "urls": data.get("urls") or [] if running else [],
+        "pid_file": str(_brolls(project) / PID_FILE) if data else None,
+    }
+
+
+def start_background(project, port: int = DEFAULT_PORT):
+    """Sobe o servidor num processo solto e devolve as URLs quando ele já responde.
+
+    Um subprocesso (nunca `fork`) mantém o mesmo comportamento no Windows: o filho
+    escreve a linha JSON de `run()` no log e o pai lê dali a porta realmente usada.
+    """
+    directory = _brolls(project)
+    review = directory / "review.html"
+    if not review.is_file():
+        raise ValueError(
+            f"Storyboard não encontrado em {review}. Gere-o antes com o comando `review`."
+        )
+    current = state(project)
+    if current["running"]:
+        return {"background": True, "already_running": True, **current}
+    log = directory / LOG_FILE
+    log.write_text("", encoding="utf-8")
+    command = [
+        sys.executable,
+        str(Path(__file__).resolve().parents[2] / "scripts" / "gb.py"),
+        "serve",
+        "--project",
+        str(Path(project).expanduser().resolve()),
+        "--port",
+        str(port),
+    ]
+    extra = {}
+    if os.name == "nt":
+        # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP: o servidor sobrevive ao console.
+        extra["creationflags"] = 0x00000008 | 0x00000200
+    else:
+        extra["start_new_session"] = True
+    with open(log, "ab") as stream:
+        process = subprocess.Popen(
+            command,
+            stdout=stream,
+            stderr=stream,
+            stdin=subprocess.DEVNULL,
+            cwd=str(directory),
+            **extra,
+        )
+    payload = None
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        if process.poll() is not None and not log.read_text(encoding="utf-8").strip():
+            raise ValueError(
+                "O servidor do Storyboard não subiu. Rode `serve` sem `--background` "
+                f"para ver o erro; a saída ficou em {log}."
+            )
+        for line in log.read_text(encoding="utf-8").splitlines():
+            try:
+                candidate = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(candidate, dict) and candidate.get("port"):
+                payload = candidate
+                break
+        if payload:
+            break
+        time.sleep(0.05)
+    if not payload:
+        process.terminate()
+        raise ValueError(
+            "O servidor do Storyboard não respondeu a tempo. Rode `serve` sem "
+            f"`--background` para ver o que aconteceu (saída em {log})."
+        )
+    record = {
+        "pid": process.pid,
+        "port": payload["port"],
+        "urls": payload.get("urls") or _urls(payload["port"]),
+        "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }
+    (directory / PID_FILE).write_text(
+        json.dumps(record, ensure_ascii=False), encoding="utf-8"
+    )
+    return {"background": True, "already_running": False, "log": str(log), **record}
+
+
+def stop(project):
+    """Encerra o servidor de fundo pelo PID file; PID morto só limpa o arquivo."""
+    directory = _brolls(project)
+    path = directory / PID_FILE
+    data = read_pid(project)
+    if not data:
+        return {"stopped": False, "reason": "not_running", "pid": None}
+    pid = data.get("pid")
+    if not _alive(pid):
+        path.unlink(missing_ok=True)
+        return {"stopped": False, "reason": "stale_pid", "pid": pid}
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            capture_output=True,
+            check=False,
+        )
+    else:
+        import signal
+
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+        _reap(pid)
+    deadline = time.monotonic() + 5
+    while _alive(pid) and time.monotonic() < deadline:
+        _reap(pid)
+        time.sleep(0.05)
+    if _alive(pid) and os.name != "nt":
+        import signal
+
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+        _reap(pid)
+        deadline = time.monotonic() + 2
+        while _alive(pid) and time.monotonic() < deadline:
+            _reap(pid)
+            time.sleep(0.05)
+    path.unlink(missing_ok=True)
+    return {"stopped": not _alive(pid), "reason": None, "pid": pid}

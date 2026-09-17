@@ -371,6 +371,41 @@
       exportedAt: new Date().toISOString(),
       items: data.items.map((i) => ({ ...i, ...decisions[i.id] })),
     };
+    const save = window.GETBROLLS_SAVE;
+    if (save && save.url && save.token) {
+      // Servido por `gb.py serve`: as decisões vão direto para dentro do projeto,
+      // sem passar pela pasta de Downloads nem depender de a pessoa achar o arquivo.
+      note("Salvando no projeto…");
+      fetch(save.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", [save.header]: save.token },
+        body: JSON.stringify(result),
+      })
+        .then((response) => {
+          if (!response.ok) throw new Error(String(response.status));
+          return response.json();
+        })
+        .then((answer) => {
+          note("");
+          announce(
+            "Decisões salvas no projeto (" +
+              answer.name +
+              "). É só voltar à conversa e dizer “salvei”.",
+            answer.path,
+          );
+        })
+        .catch(() => {
+          // Servidor fora do ar ou recusa: cai no download, que nunca depende dele.
+          note("Não consegui salvar no projeto; baixei o arquivo em vez disso.");
+          download(result);
+        });
+      return;
+    }
+    download(result);
+  }
+  function download(result) {
+    const note = (text) =>
+      document.querySelectorAll("[data-storage-status]").forEach((el) => (el.textContent = text));
     const url = URL.createObjectURL(
       new Blob([JSON.stringify(result, null, 2)], { type: "application/json" }),
     );
@@ -380,25 +415,41 @@
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     // O maior buraco da jornada era aqui: a página acabava e ninguém dizia pra voltar.
-    const bar = document.querySelector(".summary-actions");
-    if (bar) {
-      // A região viva entra vazia e só depois recebe o texto: um role="status" já
-      // preenchido no momento da inserção costuma não ser anunciado pelo leitor de tela.
-      let done = bar.parentElement.querySelector(".export-done");
-      if (!done) {
-        done = document.createElement("p");
-        done.className = "export-done";
-        done.setAttribute("role", "status");
-        bar.after(done);
-      }
-      done.textContent = "";
-      setTimeout(() => {
-        done.textContent =
-          "Decisões salvas em getbrolls-review.json (na sua pasta de Downloads). " +
-          "Agora volte à conversa e diga onde salvou.";
-      }, 100);
-    }
+    announce(
+      "Decisões salvas em getbrolls-review.json (na sua pasta de Downloads). " +
+        "Agora volte à conversa e diga onde salvou.",
+      "getbrolls-review.json",
+    );
     note("");
+  }
+  function announce(text, path) {
+    const bar = document.querySelector(".summary-actions");
+    if (!bar) return;
+    // A região viva entra vazia e só depois recebe o texto: um role="status" já
+    // preenchido no momento da inserção costuma não ser anunciado pelo leitor de tela.
+    let done = bar.parentElement.querySelector(".export-done");
+    if (!done) {
+      done = document.createElement("p");
+      done.className = "export-done";
+      done.setAttribute("role", "status");
+      bar.after(done);
+    }
+    done.textContent = "";
+    setTimeout(() => {
+      done.textContent = text;
+      if (!path || !navigator.clipboard) return;
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "copy-path";
+      copy.textContent = "Copiar caminho";
+      copy.title = "Copia o caminho do arquivo de decisões para você colar na conversa.";
+      copy.onclick = () =>
+        navigator.clipboard.writeText(path).then(
+          () => (copy.textContent = "Caminho copiado"),
+          () => (copy.textContent = path),
+        );
+      done.append(" ", copy);
+    }, 100);
   }
   function buildPrintNotes() {
     document.querySelector(".print-notes")?.remove();
