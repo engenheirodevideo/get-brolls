@@ -343,6 +343,43 @@ def review_preview(src, directory, stem, start, end, config, label=None):
     return result
 
 
+def scan_sheet(src, directory, stem, start, span, frames=12):
+    """Varredura do vídeo inteiro: um quadro a cada span/frames segundos, baixa resolução.
+
+    Não é a prévia do trecho (essa é `review_preview`, presa a GB_PREVIEW_MAX_SECONDS):
+    é o mapa do vídeo para escolher onde olhar. Não define intervalo nenhum.
+    """
+    import math, tempfile
+
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    if span <= 0:
+        raise ValueError("Varredura exige duração conhecida maior que zero.")
+    n = max(1, int(frames))
+    cols = min(4, n)
+    rows = math.ceil(n / cols)
+    relative = "previews/" + stem + "-scan.jpg"
+    with tempfile.TemporaryDirectory(dir=directory) as stage:
+        sheet = Path(stage) / "scan.jpg"
+        run([
+            "ffmpeg", "-v", "error", "-y", "-ss", str(start), "-t", str(span),
+            "-i", str(src), "-vf",
+            f"fps={n / span}:start_time=0,scale=240:-2:flags=lanczos,"
+            f"tile={cols}x{rows}:nb_frames={n}:padding=6:margin=6:color=0x111111",
+            "-frames:v", "1", str(sheet),
+        ])
+        if not sheet.exists():
+            raise ValueError("Não foi possível varrer o vídeo.")
+        os.replace(sheet, directory / (stem + "-scan.jpg"))
+    return {
+        "scan_path": relative,
+        "span_s": round(span, 3),
+        "every_s": round(span / n, 3),
+        "frames": n,
+        "frame_times_s": frame_times(start, start + span, n),
+    }
+
+
 def image_preview(src, directory, stem):
     import tempfile
 

@@ -1,4 +1,5 @@
 """Social acquisition using the existing yt-dlp/FFmpeg engine, without API keys."""
+import hashlib
 import json
 import math
 import os
@@ -156,6 +157,83 @@ def search(query, limit):
         return [r for r in data.get('entries', []) if isinstance(r, dict)]
     except (ValueError, AttributeError):
         raise ProviderError('yt-dlp retornou metadados inválidos.') from None
+
+
+SUBTITLE_LANGS = ('pt', 'en')
+
+
+def _language_from(name):
+    """`probe.pt.vtt` → `pt`; `probe.pt-BR.vtt` → `pt-BR`."""
+    parts = Path(name).name.split('.')
+    return parts[-2] if len(parts) >= 3 else 'und'
+
+
+def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):
+    """O que a fonte conta sobre si: duração, capítulos, legendas e descrição.
+
+    Um único pedido ao yt-dlp, sem baixar vídeo, com as mesmas pausas de
+    `GB_YTDLP_SLEEP` do resto da skill. O VTT das legendas fica na pasta privada
+    `.getbrolls-sources/` com 0600, nunca dentro de `brolls/`.
+    """
+    from .providers import resolve
+    # Só páginas reconhecidas, nunca uma URL qualquer vinda do chat.
+    resolve(url)
+    cache = Path(cache) if cache is not None else None
+    if cache is not None:
+        cache.mkdir(parents=True, exist_ok=True)
+        cache.chmod(0o700)
+    subtitles = {}
+    with tempfile.TemporaryDirectory(dir=str(cache) if cache else None) as work:
+        raw, warnings = run([
+            '--dump-single-json', '--skip-download', '--write-auto-subs',
+            '--sub-langs', ','.join(langs), '--sub-format', 'vtt',
+            '-o', str(Path(work) / 'probe.%(ext)s'), '--', url,
+        ], timeout=60)
+        for w in warnings:
+            record_warning('YTDLP_WARNING', w)
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            raise ProviderError('yt-dlp retornou metadados inválidos.') from None
+        if not isinstance(data, dict):
+            raise ProviderError('yt-dlp retornou metadados inválidos.')
+        for vtt in sorted(Path(work).glob('*.vtt')):
+            from .inspecting import parse_vtt
+
+            text = vtt.read_text(encoding='utf-8', errors='replace')
+            language = _language_from(vtt.name)
+            destination = None
+            if cache is not None:
+                stem = hashlib.sha256(url.encode()).hexdigest()[:16]
+                destination = cache / f'{stem}-{language}.vtt'
+                destination.write_text(text, encoding='utf-8')
+                destination.chmod(0o600)
+            subtitles[language] = {
+                'path': str(destination) if destination else None,
+                'cues': parse_vtt(text),
+            }
+    duration = data.get('duration')
+    chapters = []
+    for chapter in data.get('chapters') or []:
+        if not isinstance(chapter, dict) or chapter.get('start_time') is None:
+            continue
+        chapters.append({
+            'start_s': float(chapter['start_time']),
+            'end_s': float(chapter['end_time']) if chapter.get('end_time') is not None else None,
+            'title': chapter.get('title') or '',
+        })
+    available = sorted(
+        set(data.get('automatic_captions') or {}) | set(data.get('subtitles') or {})
+    )
+    return {
+        'url': url,
+        'title': data.get('title'),
+        'duration_s': float(duration) if isinstance(duration, (int, float)) else None,
+        'chapters': chapters,
+        'subtitle_langs': available,
+        'description': data.get('description') or '',
+        'subtitles': subtitles,
+    }
 
 
 def download_segment(url, target, start, end):

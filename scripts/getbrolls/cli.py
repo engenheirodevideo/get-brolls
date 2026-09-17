@@ -15,6 +15,7 @@ SUMMARIES = {
     "status": "Resumir onde o projeto está por etapa, sem alterar arquivos",
     "search": "Pesquisar candidatos numa fonte e registrá-los no projeto",
     "resolve": "Registrar um candidato a partir de URL pública ou arquivo local",
+    "inspect": "Analisar a fonte (duração, capítulos, legendas) antes de coletar",
     "preview": "Gerar prévia (GIF/contact sheet) do intervalo escolhido",
     "approve": "Registrar aprovação humana já recebida para o intervalo atual",
     "permit": "Registrar as condições reais de uso do trecho antes da coleta",
@@ -62,6 +63,7 @@ def build_parser():
         "status",
         "search",
         "resolve",
+        "inspect",
         "preview",
         "approve",
         "permit",
@@ -131,7 +133,29 @@ def build_parser():
             p.add_argument(
                 "--end", type=float, help="Fim do trecho na origem, em segundos"
             )
+        if name == "inspect":
+            g = p.add_mutually_exclusive_group(required=True)
+            g.add_argument(
+                "--candidate",
+                help="ID do candidato já registrado; grava só media.duration_s",
+            )
+            g.add_argument("--url", help="URL pública da fonte, sem registrar candidato")
+            p.add_argument(
+                "--query",
+                help="Fala ou alvo do trecho; pontua as janelas candidatas",
+            )
+            p.add_argument(
+                "--max-windows",
+                type=int,
+                default=3,
+                help="Quantas janelas candidatas devolver, 1–20 (padrão 3)",
+            )
         if name == "preview":
+            p.add_argument(
+                "--scan",
+                action="store_true",
+                help="Varrer o vídeo inteiro num contact sheet de baixa resolução, sem definir intervalo",
+            )
             p.add_argument("--reference-only", action="store_true", help="Gerar apenas referência estática, sem obter trecho remoto")
             p.add_argument("--narration", help="Fala exata do roteiro")
             p.add_argument("--reason", help="Decisão de coleta desta fonte")

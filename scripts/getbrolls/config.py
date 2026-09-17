@@ -15,6 +15,8 @@ KEYS = {
     "GB_GIF_COLORS",
     "GB_GIF_MAX_MB",
     "GB_PREVIEW_MAX_SECONDS",
+    # Teto da varredura do vídeo inteiro em `preview --scan`, em segundos.
+    "GB_SCAN_MAX_SECONDS",
     "GB_STATIC_FRAMES",
     "GB_YTDLP_PATH",
     "GB_VENV_PATH",
@@ -147,4 +149,5 @@ def settings():
         max_mb=integer("GB_GIF_MAX_MB", 5, 1, 30),
         max_seconds=integer("GB_PREVIEW_MAX_SECONDS", 10, 1, 30),
         frames=integer("GB_STATIC_FRAMES", 12, 1, 30),
+        scan_max_seconds=integer("GB_SCAN_MAX_SECONDS", 900, 30, 7200),
     )

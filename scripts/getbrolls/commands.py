@@ -831,6 +831,9 @@ def execute(args):
         path = ledger.root / "references.json"
         return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"items": []}
 
+    if cmd == "inspect":
+        return inspect_source(ledger, args)
+
     if cmd == "search":
         if "video" not in rules["asset_types"]:
             return {
@@ -1014,6 +1017,15 @@ def execute(args):
                     }
                 )
         return {"verified": checked, "count": len(checked)}
+    if cmd == "preview" and args.scan:
+        if args.start is not None or args.end is not None:
+            raise ValueError(
+                "--scan varre o vídeo inteiro: não combine com --start/--end. "
+                "Escolha o intervalo depois, olhando a varredura."
+            )
+        if args.reference_only:
+            raise ValueError("--scan precisa da mídia de trabalho; não use com --reference-only.")
+
     if cmd == "approve":
         if args.channel == "chat" and not (args.statement or "").strip():
             raise ValueError(
@@ -1038,6 +1050,8 @@ def execute(args):
         from getbrolls.memory import remember
 
         return remember(ledger, c, args.decision, args.reason, args.by)
+    if cmd == "preview" and args.scan:
+        return scan_candidate(ledger, c, config)
     if cmd in ("preview", "approve"):
         if c.get("media", {}).get("kind") != "image":
             if args.start is None or args.end is None:
@@ -1229,3 +1243,88 @@ def preview_files(ledger, c):
         files[name] = str((ledger.root / rel).resolve()) if rel else None
     files["review"] = str((ledger.root / "review.html").resolve())
     return files
+
+
+def inspect_source(ledger, args):
+    """O que a fonte já conta sobre si, antes de qualquer pedido de mídia.
+
+    Somente leitura sobre decisão e intervalo: com `--candidate`, o único campo que
+    passa a existir no projeto é `media.duration_s` — nada de aprovação, segmento,
+    prévia ou arquivo em `clips/`.
+    """
+    from .inspecting import candidate_windows
+    from .social import probe_remote
+
+    if args.max_windows is not None and not 1 <= args.max_windows <= 20:
+        raise ValueError("Use --max-windows entre 1 e 20.")
+    c = None
+    if args.candidate:
+        c = ledger.get(args.candidate)
+        url = c.get("source_url")
+        if not url:
+            raise ValueError(
+                "Este candidato não tem URL pública para analisar; use `inspect --url` "
+                "ou importe o original local com `resolve --file`."
+            )
+    else:
+        url = args.url
+        if not (url or "").strip():
+            raise ValueError("--url não pode ser vazio: informe a URL pública da fonte.")
+    probe = probe_remote(url, cache=ledger.root.parent / ".getbrolls-sources")
+    windows = candidate_windows(probe, args.query, args.max_windows or 3)
+    if c is not None and probe["duration_s"]:
+        # Único efeito no projeto: agora `set_segment` sabe recusar o que não cabe.
+        c["media"]["duration_s"] = probe["duration_s"]
+        ledger.save("inspect", c)
+    return {
+        "candidate": c["id"] if c is not None else None,
+        "url": url,
+        "title": probe.get("title"),
+        "duration_s": probe["duration_s"],
+        "chapters": probe["chapters"],
+        "subtitle_langs": probe["subtitle_langs"],
+        "candidate_windows": windows,
+    }
+
+
+def scan_candidate(ledger, c, config):
+    """Contact sheet de baixa resolução do vídeo inteiro; não escolhe intervalo nenhum."""
+    from .media import scan_sheet
+
+    if c.get("media", {}).get("kind") == "image":
+        raise ValueError("Imagem estática não tem o que varrer; gere a prévia normal.")
+    duration = c["media"].get("duration_s")
+    if not duration and c["provider"] != "local":
+        from .social import probe_remote
+
+        probe_data = probe_remote(
+            c["source_url"], cache=ledger.root.parent / ".getbrolls-sources"
+        )
+        duration = probe_data["duration_s"]
+        if duration:
+            c["media"]["duration_s"] = duration
+    if not duration:
+        raise ValueError(
+            "Duração desconhecida: rode `inspect --candidate " + c["id"] + "` antes de varrer."
+        )
+    span = min(float(duration), float(config["scan_max_seconds"]))
+    if c["provider"] != "local":
+        from .acquisition import prepare_source
+
+        prepare_source(ledger, c, 0, span)
+    source = c.get("local_path")
+    if not source:
+        raise ValueError(
+            "A varredura precisa da mídia de trabalho; esta fonte só permite referência estática."
+        )
+    offset = c.get("local_start_s", 0)
+    stem = hashlib.sha256(c["id"].encode()).hexdigest()[:16]
+    result = scan_sheet(source, ledger.root / "previews", stem, max(0, -offset), span)
+    # `scan` fica fora de `preview`/`segment`: varrer não decide nem invalida nada.
+    c["scan"] = {**result, "capped": span < float(duration), "duration_s": float(duration)}
+    ledger.save("preview", c)
+    render(ledger)
+    return {
+        **c,
+        "files": {"scan": str((ledger.root / result["scan_path"]).resolve())},
+    }
