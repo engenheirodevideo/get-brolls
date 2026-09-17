@@ -45,6 +45,39 @@ Full history in [CHANGELOG.md](CHANGELOG.md).
 
 ## Getting started
 
+### 0. Install the whole stack
+
+The skill only works end to end with **all** of the tools below installed before step 2. Missing one, the collection runs partially and the Storyboard comes out without a preview or without a numbered contact sheet.
+
+| Tool | Used for | Without it |
+|---|---|---|
+| Python 3.11+ | CLI, ledger, Instagram collector | nothing runs |
+| FFmpeg + ffprobe **with libfreetype** (`drawtext`) | poster, numbered contact sheet, GIF, cuts | no preview; without `drawtext` the sheet has no cell number/timecode and the Storyboard shows only the legend |
+| Node 22+ with npm/npx | Playwright CLI and yt-dlp EJS runtime | YouTube and Instagram fail |
+| curl | Instagram stream pair download | Instagram fails |
+| Git | clone and update | manual installation |
+| yt-dlp and Playwright CLI | installed by `install.sh`/`install.ps1` in step 2 | YouTube/TikTok and Instagram fail |
+
+macOS (Homebrew):
+
+```sh
+brew install python ffmpeg node git curl
+```
+
+Windows (winget; Windows PowerShell 5.1 is enough):
+
+```powershell
+winget install Python.Python.3.13 Gyan.FFmpeg OpenJS.NodeJS.LTS Git.Git
+```
+
+Ubuntu/Debian:
+
+```sh
+sudo apt install python3 python3-venv ffmpeg nodejs npm curl git
+```
+
+After step 2, `python3 scripts/gb.py doctor` is the gate: empty `summary.missing` and `contact_sheet.labels: true`. If `drawtext` shows up under `summary.optional`, your FFmpeg was built without libfreetype: reinstall it with the command above (on macOS, `brew reinstall ffmpeg`).
+
 ### 1. Add the skill to your agent
 
 The official repository is [engenheirodevideo/get-brolls](https://github.com/engenheirodevideo/get-brolls). Clone the source and copy the complete `get-brolls/` folder to **one** of the destinations below:
@@ -76,7 +109,7 @@ The skill triggers from the context of your request ("collect b-roll for this vi
 
 ### 2. Prepare the environment
 
-Requirements: Python 3.11+, FFmpeg/ffprobe, Node 22+, npm/npx, and curl. On macOS with Homebrew, start with `brew install python ffmpeg node`. On Windows, install the official versions and confirm that the executables are available on `PATH`. The [installation guide](docs/GUIDE.md#instalação) covers both platforms in full.
+Requirements are the stack from step 0. The [installation guide](docs/GUIDE.md#instalação) covers both platforms in full.
 
 Run the installer for your operating system from the installed skill folder.
 
