@@ -46,7 +46,21 @@ def prepare_preview(ledger, c, start, end, config):
     if c["media"].get("kind") == "image":
         result = image_preview(src, ledger.root / "previews", stem)
     else:
-        result = review_preview(src, ledger.root / "previews", stem, start, end, config)
+        result = review_preview(
+            src,
+            ledger.root / "previews",
+            stem,
+            start,
+            end,
+            config,
+            # Rótulos e tempos de célula em tempo da fonte, não do arquivo de trabalho.
+            label={
+                "title": c.get("title"),
+                "id": c["id"],
+                "offset": c["segment"]["start_s"] - start,
+                "duration": c["media"].get("duration_s"),
+            },
+        )
     if c.get("context_image_path"):
         context = image_preview(
             c["context_image_path"], ledger.root / "previews", stem + "-context"
