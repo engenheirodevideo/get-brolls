@@ -3,6 +3,7 @@
 import json, os, re
 from pathlib import Path
 from urllib.parse import urlsplit
+from .queue import validate_pacing_block
 
 ROOT = Path(__file__).resolve().parents[2]
 TYPES = {"video", "image", "news_screenshot", "web_screenshot"}
@@ -83,6 +84,8 @@ def load_rules(project):
     for key in ("mobile_width", "mobile_height", "desktop_width", "desktop_height"):
         if type(browser.get(key)) is not int or not 240 <= browser[key] <= 3840:
             raise ValueError("Viewport fora de 240–3840 px.")
+    # Optional `pacing` block for the social queue; the environment still wins.
+    validate_pacing_block(r.get("pacing"))
     return r
 
 

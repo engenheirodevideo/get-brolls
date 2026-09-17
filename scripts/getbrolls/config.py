@@ -22,6 +22,13 @@ KEYS = {
     "GB_FFPROBE_PATH",
     # Fonte TrueType para rotular o contact sheet (CLI e helpers Bash de YouTube).
     "GB_FONT_FILE",
+    # Ritmo da fila social (`queue`): intervalo e tetos por provedor.
+    "GB_PACE_MIN_S",
+    "GB_PACE_MAX_S",
+    "GB_MAX_PER_HOUR",
+    "GB_MAX_PER_DAY",
+    # Pausas do yt-dlp entre pedidos: "requests,min,max" em segundos.
+    "GB_YTDLP_SLEEP",
 }
 
 # Optional pins: an explicit path always wins over the usual discovery.

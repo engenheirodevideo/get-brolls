@@ -1,11 +1,13 @@
-"""Operational diagnostics. Never log command arguments, tokens or raw tracebacks."""
+"""Operational diagnostics. Never log command arguments or tokens; tracebacks are stored redacted."""
 
 import contextlib
 import contextvars
 import json
 import os
 import re
+import sys
 import time
+import traceback
 from pathlib import Path
 from .models import now
 
@@ -70,6 +72,20 @@ def redact(text):
     return value[:1200]
 
 
+STDERR_TAIL_MAX_CHARS = 600
+
+
+def stderr_tail(stderr, limit=6):
+    """Last `limit` non-empty stderr/detail lines, redacted, joined and capped.
+
+    Shared truncation helper for CLI stderr/detail text (subprocess stderr, HTTP error
+    bodies), so callers cannot drift apart on secrets, URLs or how much is surfaced.
+    """
+    lines = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
+    joined = " | ".join(redact(line) for line in lines[-limit:])
+    return joined[:STDERR_TAIL_MAX_CHARS]
+
+
 @contextlib.contextmanager
 def project_lock(project):
     if not project:
@@ -91,7 +107,10 @@ def project_lock(project):
 
 
 # Comandos que só leem o projeto: sem trava exclusiva e sem criar a árvore.
-READ_ONLY_COMMANDS = ("status",)
+READ_ONLY_COMMANDS = ("status", "serve")
+# (comando, ação) somente leitura, além dos comandos inteiros acima: `queue --action status`
+# só consulta queue.json (mesmo contrato de `status`), nunca deve tomar a trava exclusiva.
+READ_ONLY_ACTIONS = {("queue", "status")}
 
 
 def audited(args, execute):
@@ -105,7 +124,7 @@ def audited(args, execute):
     }
     token = ACTIVE.set(event)
     project = getattr(args, "project", None)
-    read_only = args.command in READ_ONLY_COMMANDS
+    read_only = args.command in READ_ONLY_COMMANDS or (args.command, getattr(args, "action", None)) in READ_ONLY_ACTIONS
     log = Path(project).resolve() / "brolls/diagnostics.jsonl" if project else None
     result = None
     failure = None
@@ -128,12 +147,33 @@ def audited(args, execute):
         event["recovery_pending"] = bool(
             log and (log.parent / ".pending-transaction.json").exists()
         )
-        event["error_code"] = "IO_ERROR" if isinstance(exc, OSError) else "INVALID_DATA"
-        event["message"] = (
-            redact(exc)
-            if not isinstance(exc, (KeyError, TypeError))
-            else "Dados incompatíveis. Confira RULES.md, manifest.json e o arquivo de revisão."
-        )
+        # Diagnostics survive regardless of classification, redacted like everything else here.
+        event["type"] = type(exc).__name__
+        event["repr"] = redact(repr(exc))
+        event["traceback"] = redact(traceback.format_exc())
+        if isinstance(exc, (KeyError, TypeError, AttributeError)):
+            # These are bug signatures, not user-fixable input problems; the traceback is what
+            # a maintainer needs, not a RULES.md pointer.
+            event["error_code"] = "INTERNAL_ERROR"
+            event["message"] = (
+                f"Erro interno inesperado (bug) [type: {exc.__class__!r}]. Reporte incluindo diagnostics.jsonl"
+                + (f" ({log})." if log else ".")
+            )
+        else:
+            from .http import ProviderError  # local: avoids a runtime<->http import cycle
+
+            if isinstance(exc, ProviderError):
+                event["error_code"] = "INVALID_DATA"
+                event["message"] = redact(exc) + " Confira docs/RULES.md."
+                current = ACTIVE.get()
+                if current is not None:
+                    current["warnings"].append(
+                        {"code": "PROVIDER_ERROR", "message": redact(exc)}
+                    )
+                    event["warnings"] = current["warnings"]
+            else:
+                event["error_code"] = "IO_ERROR" if isinstance(exc, OSError) else "INVALID_DATA"
+                event["message"] = redact(exc)
         failure = OperationError(
             {
                 **event,
@@ -170,7 +210,31 @@ def audited(args, execute):
                     failure.payload.setdefault("warnings", []).append(warning)
                 elif isinstance(result, dict):
                     result.setdefault("warnings", []).append(warning)
+                else:
+                    # `result` isn't a dict (e.g. None, or a non-mapping success value), so
+                    # the warning has nowhere to live in the response; it must not vanish.
+                    print(json.dumps(warning, ensure_ascii=False), file=sys.stderr)
         ACTIVE.reset(token)
+
+
+def write_diagnostics_log(project, event):
+    """Append one diagnostics event to <project>/brolls/diagnostics.jsonl; best-effort.
+
+    Used by audited()'s own finally block and by cli.py's fallback handler for errors that
+    happen outside audited() (e.g. before argument parsing finishes), so both paths share
+    one envelope shape and one place that can fail to write without crashing the caller.
+    """
+    if not project:
+        return None
+    log = Path(project).resolve() / "brolls/diagnostics.jsonl"
+    event = {"at": now(), **event}
+    try:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(event, ensure_ascii=False) + "\n")
+        return log
+    except OSError:
+        return None
 
 
 class OperationError(Exception):

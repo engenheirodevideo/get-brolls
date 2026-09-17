@@ -10,7 +10,6 @@ from .models import candidate
 KEYS = {
     "pexels": "PEXELS_API_KEY",
     "pixabay": "PIXABAY_API_KEY",
-    
 }
 
 
@@ -263,6 +262,10 @@ def _nasa(query, limit):
     )
     out = []
     for row in data.get("collection", {}).get("items", []):
+        if len(out) >= limit:
+            # Avoid an unbounded N+1 of /asset lookups: once we have `limit` valid items,
+            # further rows (even if present in the page) don't need a network round-trip.
+            break
         meta = (row.get("data") or [{}])[0]
         ident = meta.get("nasa_id")
         if not ident or meta.get("media_type") != "video":
@@ -291,7 +294,10 @@ def _nasa(query, limit):
                 None,
             ),
         )
-        assets = get_json("https://images-api.nasa.gov/asset/" + quote(ident, safe=""))
+        assets = get_json(
+            "https://images-api.nasa.gov/asset/" + quote(ident, safe=""),
+            cache_ttl=86400,
+        )
         urls = [
             v.get("href")
             for v in assets.get("collection", {}).get("items", [])
@@ -394,7 +400,9 @@ def refresh(item):
             and urlsplit(v["href"]).path.lower().endswith(".mp4")
         ]
         urls.sort(key=lambda u: ("~orig" in u, "~medium" not in u, len(u)))
-        current["media_url"] = urls[0] if urls else None
+        if not urls:
+            raise ProviderError("Arquivo do provedor não está mais disponível")
+        current["media_url"] = urls[0]
         return current
     elif name == "commons":
         data = get_json(
@@ -409,11 +417,14 @@ def refresh(item):
         )
         pages = data.get("query", {}).get("pages", {})
         info = (pages.get(ident, {}).get("imageinfo") or [{}])[0]
-        current["media_url"] = (
+        media_url = (
             public_url(info.get("url"))
             if info.get("mime", "").startswith("video/")
             else None
         )
+        if not media_url:
+            raise ProviderError("Arquivo do provedor não está mais disponível")
+        current["media_url"] = media_url
         return current
     else:
         return current

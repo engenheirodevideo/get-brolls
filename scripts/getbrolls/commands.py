@@ -7,6 +7,8 @@ from .models import candidate, set_segment, approve, require_fetch, signature
 from .ledger import Ledger, digest
 from .media import probe, cut, run
 from .rendering import render
+from .queue import execute as queue_execute, hint as queue_hint, summary_line as queue_summary_line
+from .runtime import record_warning
 
 # Raiz real da skill/plugin: o comando sugerido não pode depender da pasta atual.
 SKILL_ROOT = Path(__file__).resolve().parents[2]
@@ -187,7 +189,8 @@ FLOW_SUMMARIES = {
     f"{_count(len(r.get('items') or []), 'registrado', 'registrados')}, "
     f"{_count(r.get('excluded_by_rules') or 0, 'excluído pelas regras', 'excluídos pelas regras')}, "
     f"{_count(len(r.get('errors') or []), 'fonte com erro', 'fontes com erro')}."
-    f"{_note(r)}",
+    f"{_note(r)}"
+    f"{'; ' + str(len(r.get('errors') or [])) + ' fonte(s) falharam' if r.get('errors') else ''}",
     "resolve": lambda r: f"Registrei o candidato {_identifier(r)}: estado {r.get('state')}.",
     "preview": lambda r: (
         f"Gerei somente a referência estática de {_identifier(r)}: "
@@ -210,6 +213,7 @@ FLOW_SUMMARIES = {
     f"{_count(r.get('count') or 0, 'arquivo coletado', 'arquivos coletados')}: "
     f"{'íntegro e decodificável' if (r.get('count') or 0) == 1 else 'íntegros e decodificáveis'}.",
     "status": _status_line,
+    "queue": queue_summary_line,
 }
 
 
@@ -329,7 +333,7 @@ def _format_pending(c, rules):
     return c.get("format", {}).get("target", "native") != format_report(c, rules)["target"]
 
 
-def status_report(ledger, rules=None, rules_error=None):
+def status_report(ledger, rules=None, rules_error=None, queue=None):
     """Onde o projeto está, por etapa. Somente leitura: não grava nada."""
     items = ledger.data["items"]
     listing = {
@@ -346,6 +350,12 @@ def status_report(ledger, rules=None, rules_error=None):
         line += (
             " Há uma gravação interrompida pendente; o próximo comando de escrita a concluirá."
         )
+    if queue and queue.get("error"):
+        # queue.hint devolveu {"error": ...} (queue.json inválido/OSError): não some do resumo.
+        line += f" Fila indisponível: {queue['error']}"
+    elif queue and queue.get("line"):
+        # Uma linha da fila social, lida sem gravar: contagens e próximo horário permitido.
+        line += " " + queue["line"]
     # Veredito primeiro, como no doctor: o JSON completo continua logo abaixo.
     summary = {
         "line": line,
@@ -380,6 +390,7 @@ def status_report(ledger, rules=None, rules_error=None):
         "rules_error": rules_error,
         "references": remembered,
         "references_error": references_error,
+        "queue": queue,
         "review_page": str(review_page) if review_page.is_file() else None,
         "journal": {
             **status_journal(ledger.root),
@@ -450,6 +461,11 @@ def execute(args):
                 result["live"] = live_checks()
         return result
     cmd = args.command
+    if cmd == "serve":
+        from getbrolls import serve as serve_module
+
+        port = getattr(args, "port", None) or serve_module.DEFAULT_PORT
+        return serve_module.run(args.project, port)
     from getbrolls.rules import load_rules, allowed, domain_matches, format_report
 
     if cmd == "status":
@@ -465,7 +481,16 @@ def execute(args):
             rules = load_rules(args.project)
         except (ValueError, OSError) as exc:
             rules_error = str(exc)
-        return status_report(Ledger(project, recover=False), rules, rules_error)
+        return status_report(
+            Ledger(project, recover=False), rules, rules_error, queue_hint(project)
+        )
+    if cmd == "queue":
+        rules = None
+        try:
+            rules = load_rules(args.project)
+        except (ValueError, OSError) as exc:
+            record_warning("RULES_UNAVAILABLE", f"RULES.md ignorado para o ritmo: {exc}")
+        return queue_execute(args, rules)
     if cmd == "init-rules":
         dest = Path(args.project) / "RULES.md"
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -516,22 +541,27 @@ def execute(args):
             if len(items) >= args.limit:
                 break
             try:
-                for c in providers.search(name, args.query, args.limit - len(items)):
-                    if not allowed(c, rules):
-                        excluded += 1
-                        continue
-                    c["format"] = format_report(c, rules)
-                    c["match"] = {
-                        "kind": args.intent,
-                        "reason": "Candidato de busca: correspondência visual deve ser revisada.",
-                    }
-                    c = ledger.add(c)
-                    ledger.save("search", c)
-                    items.append(c)
+                candidates = providers.search(name, args.query, args.limit - len(items))
             except ValueError as e:
                 errors.append({"provider": name, "error": str(e)})
+                record_warning("PROVIDER_FAILED", f"{name}: {e}")
+                continue
+            # ledger.add/save stay outside the provider try: a disk/write error here is not the
+            # provider's fault and must not be attributed to it as a search failure.
+            for c in candidates:
+                if not allowed(c, rules):
+                    excluded += 1
+                    continue
+                c["format"] = format_report(c, rules)
+                c["match"] = {
+                    "kind": args.intent,
+                    "reason": "Candidato de busca: correspondência visual deve ser revisada.",
+                }
+                c = ledger.add(c)
+                ledger.save("search", c)
+                items.append(c)
         if not items and errors:
-            raise ValueError(json.dumps(errors, ensure_ascii=False))
+            raise ValueError("; ".join(f"{e['provider']}: {e['error']}" for e in errors))
         items.sort(
             key=lambda c: (
                 not domain_matches(c.get("source_url"), rules["preferred_domains"])
@@ -735,8 +765,6 @@ def execute(args):
             )
             c["state"] = "reference_only"
         if c["preview"].get("warning"):
-            from .runtime import record_warning
-
             record_warning("PREVIEW_LIMITATION", c["preview"]["warning"])
         if args.narration is not None:
             c["narration"] = args.narration
@@ -768,7 +796,8 @@ def execute(args):
             url = fresh.get("media_url")
             if not url:
                 raise ValueError(
-                    "Esta fonte não disponibilizou arquivo por transporte permitido."
+                    "Esta fonte não disponibilizou arquivo por transporte permitido; "
+                    f"execute antes: preview --candidate {c['id']} --start ... --end ..."
                 )
             from getbrolls.http import download
 

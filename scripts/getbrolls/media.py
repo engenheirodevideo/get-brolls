@@ -1,6 +1,7 @@
-import json, subprocess, os
+import hashlib, json, subprocess, os, time
 from pathlib import Path
 from .config import tool_path
+from .runtime import record_warning, stderr_tail
 
 
 def run(args):
@@ -16,6 +17,16 @@ def run(args):
             f"{name} não encontrado: instale FFmpeg/ffprobe ou aponte GB_FFMPEG_PATH/GB_FFPROBE_PATH; "
             "verifique python3 scripts/gb.py doctor."
         ) from e
+    except subprocess.TimeoutExpired as e:
+        raise ValueError(
+            f"{name} excedeu 180s; confirme arquivo e intervalo ou tente novamente."
+        ) from e
+    except subprocess.CalledProcessError as e:
+        tail = stderr_tail(e.stderr)
+        raise ValueError(
+            f"{name} falhou (exit {e.returncode}); verifique python3 scripts/gb.py doctor."
+            + (f" stderr: {tail}" if tail else "")
+        ) from e
     except (subprocess.SubprocessError, OSError) as e:
         raise ValueError(
             "Falha de mídia: confirme arquivo e intervalo; verifique python3 scripts/gb.py doctor."
@@ -23,6 +34,20 @@ def run(args):
 
 
 _DRAWTEXT = {}
+
+
+def _cache_dir():
+    return Path(os.environ.get("GETBROLLS_CACHE_DIR", str(Path.home() / ".cache" / "getbrolls")))
+
+
+def _drawtext_cache_path(ffmpeg_path):
+    """Keyed by ffmpeg path + mtime so a replaced binary invalidates the cache."""
+    try:
+        mtime = Path(ffmpeg_path).stat().st_mtime
+    except OSError:
+        mtime = 0
+    key = hashlib.sha256(f"{ffmpeg_path}:{mtime}".encode()).hexdigest()
+    return _cache_dir() / f"drawtext-{key}.json"
 
 # Fontes TrueType habituais por sistema; GB_FONT_FILE sempre vence.
 DEFAULT_FONTS = (
@@ -37,19 +62,48 @@ DEFAULT_FONTS = (
 
 
 def drawtext_available():
-    """True when the resolved ffmpeg was built with the drawtext filter (libfreetype)."""
+    """True when the resolved ffmpeg was built with the drawtext filter (libfreetype).
+
+    Persisted per-process (`_DRAWTEXT`) and on disk under `GETBROLLS_CACHE_DIR`, keyed by the
+    resolved ffmpeg path + mtime, so every CLI process doesn't rerun `ffmpeg -filters`.
+    """
     try:
         name = tool_path("ffmpeg")
     except ValueError:
         # Pin inválido é reportado pelo doctor como item faltante, não aqui.
         return False
-    if name not in _DRAWTEXT:
-        try:
-            listing = run(["ffmpeg", "-hide_banner", "-filters"])
-        except ValueError:
-            listing = ""
-        _DRAWTEXT[name] = " drawtext " in listing
-    return _DRAWTEXT[name]
+    if name in _DRAWTEXT:
+        return _DRAWTEXT[name]
+    cache_path = _drawtext_cache_path(name)
+    try:
+        if cache_path.is_file():
+            cached = json.loads(cache_path.read_text(encoding="utf-8"))
+            _DRAWTEXT[name] = bool(cached.get("available"))
+            return _DRAWTEXT[name]
+    except (OSError, ValueError):
+        pass
+    try:
+        listing = run(["ffmpeg", "-hide_banner", "-filters"])
+    except ValueError:
+        # The probe itself failed (missing/broken ffmpeg) — different from a working ffmpeg
+        # that simply lacks the filter; the caller should know sondagem failed. This
+        # process-level False is NOT persisted to disk: a real determination (probe ran and
+        # found no filter) must not be confused with "we couldn't even ask".
+        record_warning(
+            "FFMPEG_PROBE_FAILED",
+            "Não foi possível sondar os filtros do ffmpeg; drawtext tratado como indisponível.",
+        )
+        return False
+    available = " drawtext " in listing
+    _DRAWTEXT[name] = available
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        temp = cache_path.with_suffix(".tmp")
+        temp.write_text(json.dumps({"available": available, "checked_at": time.time()}), encoding="utf-8")
+        temp.replace(cache_path)
+    except OSError:
+        pass
+    return available
 
 
 def find_font():

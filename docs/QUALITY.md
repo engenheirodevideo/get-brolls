@@ -2,19 +2,23 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-16
+updated: 2026-09-17
 tags: [get-brolls, quality, qa, evidence]
 ---
 
-# Qualidade e evidências — GET B-ROLLS 2.3.7
+# Qualidade e evidências — GET B-ROLLS 2.3.8
 
 Este documento reúne o estado de qualidade, as regressões cobertas, os limites conhecidos e as evidências reais por provedor. Resultados ao vivo são registros datados, não promessa de disponibilidade futura nem aprovação editorial.
 
 ## Blind tests
 
-A suíte automatizada responde se o programa funciona; o **teste cego** responde se a skill entrega o que promete a um criador de conteúdo. O processo, os papéis (executor cego, juiz com gabarito, amostragem humana), a cadência e o corpus de 14 casos estão em [eval/README.md](eval/README.md); a pontuação por beat e as metas, em [eval/rubric.md](eval/rubric.md). É medição editorial, fora do CI de propósito: precisa de rede, sessão e tempo de agente, e todo relatório separa **ambiente** (URL fora do ar, sessão, quota) de **comportamento** (stock sem pedido, licença inventada, aprovação pelo próprio agente).
+A suíte automatizada responde se o programa funciona; o **teste cego** responde se a skill entrega o que promete a um criador de conteúdo. O processo, os papéis (executor cego, juiz com gabarito, amostragem humana), a cadência e o corpus de 14 casos estão em [eval/README.md](../eval/README.md); a pontuação por beat e as metas, em [eval/rubric.md](../eval/rubric.md). É medição editorial, fora do CI de propósito: precisa de rede, sessão e tempo de agente, e todo relatório separa **ambiente** (URL fora do ar, sessão, quota) de **comportamento** (stock sem pedido, licença inventada, aprovação pelo próprio agente).
 
-Rodada mais recente: [2026-09-16 — 2.3.7 — Claude Opus](eval/runs/2026-09-16-2.3.7-claude-opus.md), a linha de base. Instalação limpa a partir do clone até um Storyboard revisável em **≈ 4 minutos** (instalador em 32s, primeira prévia em T+2min16s), com 4 beats, 12 candidatos e 6 prévias, sem nenhuma chave de API. Métricas: **reach literal 100%**, **stock sem pedido 0**, **origem registrada 100%**, **previews corretos 3/4 na primeira tentativa** (meta de 90% não atingida). Causa nomeada da única meta perdida: escolher `--start/--end` às cegas, porque `search` devolve `duration_s: null` — mesma raiz do recorte parcial do beat de keynote. Nada foi aprovado ou coletado pelo agente: a rodada para na revisão humana, por definição.
+Rodada mais recente: [2026-09-16 — 2.3.7 — Claude Opus](../eval/runs/2026-09-16-2.3.7-claude-opus.md), a linha de base. Instalação limpa a partir do clone até um Storyboard revisável em **≈ 4 minutos** (instalador em 32s, primeira prévia em T+2min16s), com 4 beats, 12 candidatos e 6 prévias, sem nenhuma chave de API. Métricas: **reach literal 100%**, **stock sem pedido 0**, **origem registrada 100%**, **previews corretos 3/4 na primeira tentativa** (meta de 90% não atingida). Causa nomeada da única meta perdida: escolher `--start/--end` às cegas, porque `search` devolve `duration_s: null` — mesma raiz do recorte parcial do beat de keynote. Nada foi aprovado ou coletado pelo agente: a rodada para na revisão humana, por definição.
+
+## QA da versão 2.3.8 — 17/09/2026
+
+A 2.3.8 adiciona a fila com ritmo (`queue`), o comando `serve`, pausas no `instagram_pairs.py`/yt-dlp, respeito a `Retry-After`, erros legíveis com stderr redigido e caches de intervalo/NASA/drawtext. A suíte unitária local passou (packaging, mirror e `--help` inclusos); consulte a linha de verificação no final desta seção para a contagem exata desta rodada. O ensaio cego de instalação (macOS, Python 3.14) repetiu busca e prévia reais no YouTube com sucesso, confirmando que o quickstart README continua funcional sem chave. O ritmo de lote do Instagram (`--pace`/`--max-per-run`/`--continue-on-error`, cooldown por `429`/`403`) foi validado somente com mocks — não houve nova sessão de captura real do Instagram nesta rodada, então o comportamento de cooldown/ritmo contra a CDN real permanece um limite conhecido, coberto por regressão offline. A instalação/testes em Windows correm apenas via CI (matriz do repositório); nenhuma máquina Windows local foi usada para esta QA.
 
 ## QA da versão 2.3.7 — 16/09/2026
 
