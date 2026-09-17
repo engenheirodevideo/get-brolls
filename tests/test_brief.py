@@ -225,6 +225,15 @@ class ValidateBriefTests(unittest.TestCase):
         _, conflicts = loaded(data, filled)
         self.assertEqual([], conflicts)
 
+    def test_user_declaration_is_refused_when_the_rules_cannot_be_read(self):
+        # RULES.md ausente/ilegível vira rules=None em brief_report: uma postura que
+        # transfere responsabilidade não pode passar por falta de arquivo para conferir.
+        data = copy.deepcopy(VALID)
+        data["rights"]["posture"] = "user_declaration"
+        with self.assertRaises(ValueError) as raised:
+            loaded(data, None)
+        self.assertIn("RULES.md", str(raised.exception))
+
     def test_format_divergence_is_a_conflict_not_a_failure(self):
         data = copy.deepcopy(VALID)
         data["video"]["delivery"]["format"] = "reels"
@@ -267,6 +276,8 @@ class BeatCommandTests(unittest.TestCase):
         parser = build_parser()
         out = {}
         for name, line in commands.items():
+            if name == "note":  # prosa para o agente, não comando
+                continue
             tokens = shlex.split(line)
             self.assertTrue(tokens[1].endswith("gb.py"), line)
             out[name] = parser.parse_args(tokens[2:])
@@ -296,6 +307,16 @@ class BeatCommandTests(unittest.TestCase):
             self.assertEqual(
                 "Em abril o céu escureceu no meio da tarde.", parsed["preview"].narration
             )
+
+    def test_a_beat_without_a_searchable_source_gets_a_note_instead_of_search(self):
+        data = copy.deepcopy(VALID)
+        data["beats"][0]["allowed_sources"] = ["instagram", "local"]
+        parsed, _ = loaded(data)
+        with tempfile.TemporaryDirectory() as tmp:
+            commands, _ = self.parsed_commands(tmp, parsed["beats"][0]["resolved"])
+            self.assertNotIn("search", commands)
+            self.assertIn("instagram", commands["note"])
+            self.assertIn("resolve", commands["note"])
 
     def test_a_beat_without_narration_omits_the_flag(self):
         data = copy.deepcopy(VALID)
@@ -365,6 +386,36 @@ class BriefCommandTests(unittest.TestCase):
             write_brief(tmp, broken)
             failure = run_cli(self, "brief", "--project", tmp, "--validate", ok=False)
             self.assertIn("target", failure["error"])
+
+    def test_validate_does_not_call_a_brief_with_problems_valid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data = copy.deepcopy(VALID)
+            data["rights"]["stock_allowed"] = False
+            data["defaults"]["stock"] = True
+            data["defaults"]["allowed_sources"] = ["pexels"]
+            write_brief(tmp, data)
+            result = run_cli(self, "brief", "--project", tmp, "--validate")
+            self.assertTrue(result["summary"]["problems"])
+            self.assertNotIn("válido", result["summary"]["line"])
+            self.assertIn("brief --validate", result["summary"]["next"])
+
+    def test_init_brief_writes_the_file_that_brief_will_read(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "briefs" / "video-01.md"
+            environment = dict(os.environ, GB_BRIEF_FILE=str(target))
+            done = subprocess.run(
+                [sys.executable, str(CLI), "init-brief", "--project", tmp],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                env=environment,
+            )
+            self.assertEqual(0, done.returncode, done.stderr)
+            self.assertTrue(target.is_file())
+            self.assertFalse((Path(tmp) / "BRIEF.md").exists())
+            self.assertEqual(
+                target.resolve(), Path(json.loads(done.stdout)["brief"]).resolve()
+            )
 
     def test_beat_filter_selects_one_beat_and_names_the_valid_ids(self):
         with tempfile.TemporaryDirectory() as tmp:

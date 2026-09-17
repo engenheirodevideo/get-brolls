@@ -66,6 +66,6 @@ Copie para o projeto com `gb.py init-brief --project ./video-01`, ou deixe o age
 
 ## Como o brief vira comando
 
-`gb.py brief --project ...` devolve `summary` primeiro (uma linha, os problemas e o próximo passo), depois cada beat com `resolved` (defaults já aplicados), `commands` (`search`, `resolve` e `preview` prontos, com `--shot`, `--intent` e `--narration`) e `candidates` (o que já foi registrado com aquele `--shot`). `--beat ID` mostra um beat só; `--validate` só confere o arquivo. Nenhum outro comando passa a exigir BRIEF.md: ele orienta a coleta, não a bloqueia.
+`gb.py brief --project ...` devolve `summary` primeiro (uma linha, os problemas e o próximo passo), depois cada beat com `resolved` (defaults já aplicados), `commands` (`search`, `resolve` e `preview` prontos, com `--shot`, `--intent` e `--narration`) e `candidates` (o que já foi registrado com aquele `--shot`). Beat que só aceita Instagram, TikTok ou material próprio não tem busca por API: no lugar do `search` vem um `note` dizendo para achar a URL no navegador e usar o `resolve`. `--beat ID` mostra um beat só; `--validate` só confere o arquivo e, quando sobra algo para resolver, não chama o brief de válido. Nenhum outro comando passa a exigir BRIEF.md: ele orienta a coleta, não a bloqueia.
 
 `GB_BRIEF_FILE` aponta para outro arquivo quando o brief não mora na pasta do projeto.

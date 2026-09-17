@@ -334,13 +334,24 @@ def brief_report(args):
         problems.append(f"RULES.md não pôde ser lido, então não conferi o formato: {rules_error}")
     path = str(brief_path(args.project))
     if getattr(args, "validate", False):
+        beat_count = _count(len(data["beats"]), "beat", "beats")
         return {
             "summary": {
-                "line": f'Brief de "{data["video"]["title"]}" válido: '
-                + _count(len(data["beats"]), "beat", "beats")
-                + ".",
+                # "válido" só quando não sobrou nada para a pessoa resolver: um conflito
+                # de formato ou um RULES.md ilegível não é um brief pronto para buscar.
+                "line": (
+                    f'Brief de "{data["video"]["title"]}" lido, com {beat_count}, mas '
+                    + _count(len(problems), "ponto", "pontos")
+                    + " para resolver antes de buscar."
+                    if problems
+                    else f'Brief de "{data["video"]["title"]}" válido: {beat_count}.'
+                ),
                 "problems": problems,
-                "next": "Pode buscar: `brief --project ...` mostra o comando pronto de cada beat.",
+                "next": (
+                    "Resolva os pontos acima e repita `brief --validate --project ...`."
+                    if problems
+                    else "Pode buscar: `brief --project ...` mostra o comando pronto de cada beat."
+                ),
             },
             "brief": path,
             "valid": True,
@@ -686,11 +697,15 @@ def execute(args):
         shutil.copyfile(template, dest)
         return {"rules": str(dest)}
     if cmd == "init-brief":
-        dest = Path(args.project) / "BRIEF.md"
+        from getbrolls.brief import brief_path
+
+        # O arquivo que conta é o mesmo que `brief` vai ler, GB_BRIEF_FILE incluído:
+        # criar um BRIEF.md que ninguém lê seria pior que recusar.
+        dest = brief_path(args.project)
         dest.parent.mkdir(parents=True, exist_ok=True)
         if dest.exists():
             raise ValueError(
-                "BRIEF.md já existe; edite o plano deste vídeo sem sobrescrever o que "
+                f"{dest} já existe; edite o plano deste vídeo sem sobrescrever o que "
                 "você já respondeu. Rode `brief --validate --project ...` para conferi-lo."
             )
         shutil.copyfile(SKILL_ROOT / "docs" / "BRIEF.md", dest)

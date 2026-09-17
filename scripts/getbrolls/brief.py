@@ -145,7 +145,7 @@ def _dictionary(data, field):
 def resolve_beat(defaults, beat, position):
     """Beat com os buracos preenchidos pelos defaults do brief; nada de campo extra."""
     where = f"beats[{position}]"
-    identifier = _text(beat.get("id"), f"{where}.id")
+    identifier = _text(beat.get("id"), f"{where}.id") or ""
     if not BEAT_ID_RE.fullmatch(identifier):
         raise ValueError(
             f'Em BRIEF.md, o id do beat "{identifier}" não serve: use de 1 a 40 '
@@ -264,16 +264,18 @@ def validate_brief(data, rules=None):
                 f'"{target}". Escolha um dos dois antes de coletar: `init-rules --force` '
                 "muda a regra, ou corrija video.delivery.format no BRIEF.md."
             )
-        copyright_block = rules.get("copyright") or {}
-        if rights["posture"] == "user_declaration" and any(
-            not (copyright_block.get(key) or "").strip()
-            for key in ("responsible_person", "declaration")
-        ):
-            raise ValueError(
-                'O brief assume "user_declaration", mas o RULES.md está sem nome e '
-                'declaração. Rode `init-rules --mode user_declaration --responsible "NOME" '
-                '--declaration "frase" --force` antes de seguir.'
-            )
+    # RULES.md ilegível ou ausente não é declaração preenchida: a postura que transfere
+    # responsabilidade para uma pessoa nunca passa por falta de arquivo para conferir.
+    copyright_block = (rules or {}).get("copyright") or {}
+    if rights["posture"] == "user_declaration" and any(
+        not (copyright_block.get(key) or "").strip()
+        for key in ("responsible_person", "declaration")
+    ):
+        raise ValueError(
+            'O brief assume "user_declaration", mas o RULES.md não tem nome e declaração '
+            "legíveis. Rode `init-rules --mode user_declaration --responsible \"NOME\" "
+            '--declaration "frase" --force` antes de seguir.'
+        )
     return (
         {"version": 1, "video": video, "rights": rights, "defaults": defaults, "beats": beats},
         conflicts,
@@ -285,10 +287,14 @@ def _cli_prefix():
 
 
 def beat_commands(project, beat):
-    """search/resolve/preview prontos para este beat, com --shot, --intent e --narração."""
+    """search/resolve/preview prontos para este beat, com --shot, --intent e --narração.
+
+    Beat sem fonte pesquisável por API (só instagram/tiktok/local) não ganha `search`:
+    no lugar dele vai um `note` explicando que o caminho é `resolve --url/--file`.
+    """
     project = shlex.quote(str(Path(project).expanduser().resolve()))
     prefix = f"{_cli_prefix()} "
-    provider = next((s for s in beat["allowed_sources"] if s in SEARCHABLE), "auto")
+    provider = next((s for s in beat["allowed_sources"] if s in SEARCHABLE), None)
     query = beat["queries"][0] if beat["queries"] else beat["target"]
     origin = (
         "--file ARQUIVO"
@@ -298,18 +304,25 @@ def beat_commands(project, beat):
     narration = (
         f" --narration {shlex.quote(beat['narration'])}" if beat.get("narration") else ""
     )
-    return {
-        "search": prefix
-        + f"search --project {project} --provider {provider} "
-        + f"--query {shlex.quote(query)} --intent {beat['intent']}",
-        "resolve": prefix
-        + f"resolve --project {project} {origin} --shot {beat['id']}",
-        # Sem --start/--end: o intervalo real sai do que a pessoa viu na fonte, não
-        # de um palpite do brief; `duration_hint_s` fica em `resolved` como sugestão.
-        "preview": prefix
-        + f"preview --project {project} --candidate ID"
-        + narration,
-    }
+    commands = {}
+    if provider:
+        commands["search"] = (
+            prefix
+            + f"search --project {project} --provider {provider} "
+            + f"--query {shlex.quote(query)} --intent {beat['intent']}"
+        )
+    commands["resolve"] = prefix + f"resolve --project {project} {origin} --shot {beat['id']}"
+    # Sem --start/--end: o intervalo real sai do que a pessoa viu na fonte, não de um
+    # palpite do brief; `duration_hint_s` fica em `resolved` como sugestão.
+    commands["preview"] = prefix + f"preview --project {project} --candidate ID" + narration
+    if not provider:
+        # Instagram, TikTok e material próprio não têm busca por API: entram por URL/arquivo.
+        commands["note"] = (
+            "Nenhuma fonte deste beat é pesquisável por API ("
+            + ", ".join(beat["allowed_sources"])
+            + "): descubra a URL no navegador e registre com o resolve acima."
+        )
+    return commands
 
 
 def beat_progress(beats, items):
