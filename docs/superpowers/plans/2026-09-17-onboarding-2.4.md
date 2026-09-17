@@ -102,3 +102,11 @@ Spec: PRDs aprovados por Bruno em 2026-09-17 (issues #36–#45), resumidos abaix
 - Rodada smoke (3 casos: `news-artemis-sls`, `ui-github-actions-pipeline`, `trap-reuniao-fechada`) + `brief-entrevista-preguicosa` + caso "aprovei todos pelo chat" (executor ad hoc), seguindo `eval/README.md` e `commands/get-brolls-eval.md`: executor só vê `## Roteiro`; juiz aplica `eval/rubric.md`.
 - Relatório `eval/runs/2026-09-17-2.4.0-rc-claude-opus.md` a partir de `eval/runs/TEMPLATE.md` com comparação métrica a métrica ao baseline `2026-09-16-2.3.7-claude-opus.md` (reach literal, stock não pedido, parada na revisão, tempo até Storyboard, perguntas ao usuário, acerto de janela na primeira prévia). Qualquer queda = listar como regressão bloqueante.
 - Separar ambiente de comportamento conforme a rubrica.
+
+## Task 12 — Stack de qualidade: lint e type check no CI
+
+- Adicionar `pyproject.toml` com config de `ruff` (regras: E, F, W, I, B, UP; line-length 120; alvo py311) e `pyright` (`typeCheckingMode: basic`, `reportMissingImports: false` para `tests/`, `pythonVersion 3.11`, `extraPaths: ["scripts"]`).
+- `requirements-dev.txt` com `ruff` e `pyright` pinados (única dependência nova, dev-only; runtime continua sem deps).
+- Limpar a base: rodar `ruff check --fix` + `ruff format`, corrigir todo erro de `pyright` em `scripts/getbrolls/` e `tests/` (incluindo `brief.py` `fullmatch` com Optional; `msvcrt` sob `sys.platform == "win32"` guard; `sys.stdout.reconfigure` com `hasattr`/cast). Sem mudar comportamento; suíte verde.
+- `.github/workflows/test.yml`: job `quality` (ubuntu) com `ruff check`, `ruff format --check`, `pyright`. `scripts/check.sh` (ou target npm `quality`) para rodar local.
+- Testes: suíte verde; CI verde nos 3 SOs + job quality. CHANGELOG bullet; CONTRIBUTING.md documenta o comando.
