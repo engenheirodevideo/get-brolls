@@ -8,7 +8,7 @@ tags: [get-brolls]
 
 # Changelog
 
-## 2.3.7 — proposta para revisão
+## 2.3.7 — 2026-09-16
 
 - Adiciona variáveis opcionais que fixam caminhos de ferramentas: `GB_YTDLP_PATH`, `GB_VENV_PATH`, `GB_FFMPEG_PATH` e `GB_FFPROBE_PATH`. Valem tanto pelo ambiente do processo quanto pelo `.env` da skill ou por `python3 scripts/gb.py --env-file CAMINHO <subcomando> …`, com `--env-file` na raiz do parser, antes do subcomando.
 - Define a precedência: variável explícita vence a descoberta atual. Com a variável ausente ou vazia, o comportamento é idêntico ao anterior — `.venv/Scripts` e `.venv/bin` para yt-dlp, `PATH` para ffmpeg/ffprobe.
@@ -60,7 +60,7 @@ tags: [get-brolls]
 - Adiciona o comando de plugin `/get-brolls-eval` (`commands/get-brolls-eval.md`), que executa um caso às cegas até o Storyboard, para na revisão humana e preenche o relatório — com a regra explícita de que o executor nunca abre `## Gabarito`.
 - Roteia a medição editorial: nova linha no hub do `AGENTS.md`, seção "Blind tests" no `QUALITY.md` com as métricas da baseline e um parágrafo no `GUIDE.md` ligando `eval/`. Acrescenta uma regressão em `tests/test_repository.py` que exige `eval/README.md`, `eval/rubric.md` e `eval/runs/TEMPLATE.md` publicados e o hub linkando o processo. Nenhuma mudança de código do produto: `scripts/` e os dois `SKILL.md` não foram tocados.
 
-## 2.3.6 — proposta para revisão
+## 2.3.6 — 2026-09-16
 
 - Empacota a skill como plugin do Claude Code: `.claude-plugin/plugin.json` descreve o plugin e `.claude-plugin/marketplace.json` transforma o próprio repositório em marketplace.
 - Espelha a skill no layout `skills/get-brolls/SKILL.md`, com os caminhos internos resolvidos via `${CLAUDE_PLUGIN_ROOT}` a partir da raiz do plugin instalado.
