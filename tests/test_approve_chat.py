@@ -76,9 +76,7 @@ class ApproveChatTests(unittest.TestCase):
             approval = ledger.get("local:a")["approval"]
             self.assertEqual("approved", approval["status"])
             self.assertEqual("chat", approval["channel"])
-            self.assertEqual(
-                "Aprovo os dois primeiros trechos.", approval["statement"]
-            )
+            self.assertEqual("Aprovo os dois primeiros trechos.", approval["statement"])
             self.assertEqual("pending", ledger.get("local:c")["approval"]["status"])
 
             # Rodar de novo não reaprova o que já tem aprovação válida.
@@ -138,9 +136,7 @@ class ApproveChatTests(unittest.TestCase):
             )
             events = [
                 json.loads(line)
-                for line in (Path(tmp) / "brolls" / "events.jsonl")
-                .read_text(encoding="utf-8")
-                .splitlines()
+                for line in (Path(tmp) / "brolls" / "events.jsonl").read_text(encoding="utf-8").splitlines()
                 if line.strip()
             ]
             operations = [event["operation"] for event in events]
@@ -168,9 +164,7 @@ class ApproveChatTests(unittest.TestCase):
                 ok=False,
             )
             self.assertIn("--all", error["error"])
-            missing = run_cli(
-                self, "approve", "--by", "Bruno", "--statement", "Aprovo.", "--project", tmp, ok=False
-            )
+            missing = run_cli(self, "approve", "--by", "Bruno", "--statement", "Aprovo.", "--project", tmp, ok=False)
             self.assertIn("--candidate", missing["error"])
 
 
@@ -194,9 +188,7 @@ class ChatStatementRequiredTests(unittest.TestCase):
                 ok=False,
             )
             self.assertIn("--statement", single["error"])
-            batch = run_cli(
-                self, "approve", "--all", "--by", "Bruno", "--project", tmp, ok=False
-            )
+            batch = run_cli(self, "approve", "--all", "--by", "Bruno", "--project", tmp, ok=False)
             self.assertIn("--statement", batch["error"])
             # Nada foi gravado: a recusa acontece antes de tocar no ledger.
             self.assertEqual("pending", Ledger(tmp).get("local:a")["approval"]["status"])
@@ -271,9 +263,7 @@ class ReviewEpochCompatibilityTests(unittest.TestCase):
             path.write_text(json.dumps(export), encoding="utf-8")
             result = import_review(Ledger(tmp), str(path), "Bruno")
             self.assertEqual(1, result["imported"])
-            self.assertEqual(
-                "storyboard", Ledger(tmp).get(c["id"])["approval"]["channel"]
-            )
+            self.assertEqual("storyboard", Ledger(tmp).get(c["id"])["approval"]["channel"])
 
 
 if __name__ == "__main__":

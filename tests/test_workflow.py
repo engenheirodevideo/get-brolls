@@ -95,9 +95,7 @@ class WorkflowTests(unittest.TestCase):
         c["id"] += ":shot:two"
         self.assertNotEqual(signature(c), original)
 
-    @unittest.skipUnless(
-        shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg required"
-    )
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg required")
     def test_gif_static_duration_aspect_fallback(self):
         with (
             tempfile.TemporaryDirectory() as d,
@@ -155,9 +153,18 @@ class ContactSheetTests(unittest.TestCase):
         src = root / "source.mp4"
         subprocess.run(
             [
-                "ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                "ffmpeg",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
                 f"testsrc2=size=240x426:duration={seconds}:rate=24",
-                "-c:v", "libx264", "-pix_fmt", "yuv420p", str(src),
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                str(src),
             ],
             check=True,
         )
@@ -170,18 +177,14 @@ class ContactSheetTests(unittest.TestCase):
         self.assertEqual(frame_times(0, 2, 4), [0.0, 0.5, 1.0, 1.5])
 
     def test_sheet_without_drawtext_is_padded_and_reports_times(self):
-        with tempfile.TemporaryDirectory() as d, patch(
-            "getbrolls.media.drawtext_available", return_value=False
-        ):
+        with tempfile.TemporaryDirectory() as d, patch("getbrolls.media.drawtext_available", return_value=False):
             root = Path(d)
             (root / "previews").mkdir()
             src = self.make_source(root)
             cfg = settings()
             cfg["mode"] = "static"
             cfg["frames"] = 6
-            result = review_preview(
-                src, root / "previews", "plain", 1, 3, cfg, label={"title": "T", "id": "x"}
-            )
+            result = review_preview(src, root / "previews", "plain", 1, 3, cfg, label={"title": "T", "id": "x"})
             self.assertFalse(result["sheet_labels"])
             self.assertEqual(result["sheet_grid"], [4, 2])
             self.assertEqual(len(result["frame_times_s"]), 6)
@@ -202,10 +205,11 @@ class ContactSheetTests(unittest.TestCase):
             out.write_bytes(b"")
             return ""
 
-        with tempfile.TemporaryDirectory() as d, patch.object(
-            media, "drawtext_available", return_value=True
-        ), patch.object(media, "find_font", return_value="/fonts/Arial.ttf"), patch.object(
-            media, "run", side_effect=fake_run
+        with (
+            tempfile.TemporaryDirectory() as d,
+            patch.object(media, "drawtext_available", return_value=True),
+            patch.object(media, "find_font", return_value="/fonts/Arial.ttf"),
+            patch.object(media, "run", side_effect=fake_run),
         ):
             root = Path(d)
             (root / "previews").mkdir()
@@ -213,7 +217,12 @@ class ContactSheetTests(unittest.TestCase):
             cfg["mode"] = "static"
             cfg["frames"] = 3
             result = media.review_preview(
-                root / "in.mp4", root / "previews", "lab", 2, 5, cfg,
+                root / "in.mp4",
+                root / "previews",
+                "lab",
+                2,
+                5,
+                cfg,
                 label={"title": "Foguete", "id": "youtube:abc"},
             )
             self.assertTrue(result["sheet_labels"])
@@ -240,10 +249,11 @@ class ContactSheetTests(unittest.TestCase):
             Path(args[-1]).write_bytes(b"")
             return ""
 
-        with tempfile.TemporaryDirectory() as d, patch.object(
-            media, "drawtext_available", return_value=True
-        ), patch.object(media, "find_font", return_value="/fonts/Arial.ttf"), patch.object(
-            media, "run", side_effect=fake_run
+        with (
+            tempfile.TemporaryDirectory() as d,
+            patch.object(media, "drawtext_available", return_value=True),
+            patch.object(media, "find_font", return_value="/fonts/Arial.ttf"),
+            patch.object(media, "run", side_effect=fake_run),
         ):
             root = Path(d)
             (root / "previews").mkdir()
@@ -252,7 +262,12 @@ class ContactSheetTests(unittest.TestCase):
             cfg["frames"] = 4
             # yt-dlp downloaded 59–65 s into a file that starts at 0.
             result = media.review_preview(
-                root / "in.mp4", root / "previews", "off", 0, 6, cfg,
+                root / "in.mp4",
+                root / "previews",
+                "off",
+                0,
+                6,
+                cfg,
                 label={"title": "Liftoff", "id": "youtube:x", "offset": 59, "duration": 122.4},
             )
             self.assertEqual(result["frame_times_s"], [59.0, 60.5, 62.0, 63.5])

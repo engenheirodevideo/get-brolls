@@ -15,18 +15,14 @@ MAX_CUE_GAP_S = 1.5
 # Sem fim conhecido (capítulo aberto, tempo escrito na descrição), use isto.
 DEFAULT_WINDOW_S = 12.0
 
-_TIME_RE = re.compile(
-    r"(?:(?P<h>\d{1,3}):)?(?P<m>\d{1,2}):(?P<s>\d{2})(?:[.,](?P<ms>\d{1,3}))?"
-)
+_TIME_RE = re.compile(r"(?:(?P<h>\d{1,3}):)?(?P<m>\d{1,2}):(?P<s>\d{2})(?:[.,](?P<ms>\d{1,3}))?")
 _CUE_RE = re.compile(
     r"^(?P<start>(?:\d{1,3}:)?\d{1,2}:\d{2}[.,]\d{1,3})\s*-->\s*"
     r"(?P<end>(?:\d{1,3}:)?\d{1,2}:\d{2}[.,]\d{1,3})"
 )
 _TAG_RE = re.compile(r"<[^>]*>")
 # "00:10 chegada da poeira" / "1:05 — céu laranja": tempo no começo da linha.
-_DESCRIPTION_RE = re.compile(
-    r"^\s*\[?((?:\d{1,3}:)?\d{1,2}:\d{2})\]?\s*[-–—:.)]?\s*(?P<text>.+?)\s*$"
-)
+_DESCRIPTION_RE = re.compile(r"^\s*\[?((?:\d{1,3}:)?\d{1,2}:\d{2})\]?\s*[-–—:.)]?\s*(?P<text>.+?)\s*$")
 
 
 def _seconds(stamp):
@@ -132,22 +128,26 @@ def candidate_windows(probe, query=None, max_windows=3):
         end = chapter.get("end_s")
         if start is None:
             continue
-        raw.append({
-            "start_s": float(start),
-            "end_s": float(end if end is not None else start + DEFAULT_WINDOW_S),
-            "text": chapter.get("title") or "",
-            "source": "chapter",
-        })
+        raw.append(
+            {
+                "start_s": float(start),
+                "end_s": float(end if end is not None else start + DEFAULT_WINDOW_S),
+                "text": chapter.get("title") or "",
+                "source": "chapter",
+            }
+        )
     marks = description_timestamps(probe.get("description"))
     for position, mark in enumerate(marks):
         following = marks[position + 1]["start_s"] if position + 1 < len(marks) else None
         end = min(x for x in (following, mark["start_s"] + DEFAULT_WINDOW_S) if x is not None)
-        raw.append({
-            "start_s": mark["start_s"],
-            "end_s": end,
-            "text": mark["text"],
-            "source": "description_timestamp",
-        })
+        raw.append(
+            {
+                "start_s": mark["start_s"],
+                "end_s": end,
+                "text": mark["text"],
+                "source": "description_timestamp",
+            }
+        )
     windows = []
     seen = set()
     for window in raw:
@@ -162,13 +162,15 @@ def candidate_windows(probe, query=None, max_windows=3):
         if key in seen:
             continue
         seen.add(key)
-        windows.append({
-            "start_s": round(start, 3),
-            "end_s": round(end, 3),
-            "text": window["text"].strip(),
-            "source": window["source"],
-            "score": score(query, window["text"]),
-        })
+        windows.append(
+            {
+                "start_s": round(start, 3),
+                "end_s": round(end, 3),
+                "text": window["text"].strip(),
+                "source": window["source"],
+                "score": score(query, window["text"]),
+            }
+        )
     windows.sort(key=lambda w: (-w["score"], w["start_s"]))
     limit = max(1, int(max_windows or 1))
     return windows[:limit]

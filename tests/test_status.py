@@ -203,18 +203,14 @@ class StatusCommandTests(unittest.TestCase):
         )
         self.assertIn("search", status_next(base))
         self.assertIn("preview", status_next({**base, "candidates": 2}))
-        self.assertIn(
-            "review", status_next({**base, "candidates": 2, "previews": 2})
-        )
+        self.assertIn("review", status_next({**base, "candidates": 2, "previews": 2}))
         self.assertIn(
             "permit",
             status_next({**base, "candidates": 2, "previews": 2, "approved": 2}),
         )
         self.assertIn(
             "fetch",
-            status_next(
-                {**base, "candidates": 2, "previews": 2, "approved": 2, "permitted": 2}
-            ),
+            status_next({**base, "candidates": 2, "previews": 2, "approved": 2, "permitted": 2}),
         )
         self.assertIn(
             "verify",
@@ -366,16 +362,10 @@ class ProgressSummaryTests(unittest.TestCase):
                 "preview",
                 {"id": "local:a", "state": "awaiting_approval", "approval": {"status": "pending"}},
             )["summary"],
-            "fetch": with_summary(
-                "fetch", {"id": "local:a", "output": {"path": "clips/a.mp4"}}
-            )["summary"],
+            "fetch": with_summary("fetch", {"id": "local:a", "output": {"path": "clips/a.mp4"}})["summary"],
             "verify": with_summary("verify", {"verified": [], "count": 2})["summary"],
-            "permit": with_summary(
-                "permit", {"id": "local:a", "rights": {"status": "permitted"}}
-            )["summary"],
-            "import-review": with_summary(
-                "import-review", {"imported": 3, "by": "Revisor"}
-            )["summary"],
+            "permit": with_summary("permit", {"id": "local:a", "rights": {"status": "permitted"}})["summary"],
+            "import-review": with_summary("import-review", {"imported": 3, "by": "Revisor"})["summary"],
         }
         self.assertIn("Gerei a prévia de local:a", lines["preview"])
         self.assertIn("clips/a.mp4", lines["fetch"])

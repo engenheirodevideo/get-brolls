@@ -43,10 +43,7 @@ HUB_INVOCATIONS = (
 class AgentsHubTests(unittest.TestCase):
     def test_hub_links_every_entry_point_and_names_each_invocation(self):
         agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        links = {
-            raw.strip().strip("<>").partition("#")[0]
-            for raw in re.findall(r"\[[^\]]+\]\(([^)]+)\)", agents)
-        }
+        links = {raw.strip().strip("<>").partition("#")[0] for raw in re.findall(r"\[[^\]]+\]\(([^)]+)\)", agents)}
         missing = [target for target in HUB_TARGETS if target not in links]
         self.assertEqual([], missing, "hub sem link para: " + ", ".join(missing))
         for marker in HUB_INVOCATIONS:
@@ -60,13 +57,8 @@ class AgentsHubTests(unittest.TestCase):
         ):
             self.assertTrue((ROOT / relative).is_file(), f"ausente: {relative}")
         agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        links = {
-            raw.strip().strip("<>").partition("#")[0]
-            for raw in re.findall(r"\[[^\]]+\]\(([^)]+)\)", agents)
-        }
-        self.assertIn(
-            "eval/README.md", links, "hub sem link para a medição editorial"
-        )
+        links = {raw.strip().strip("<>").partition("#")[0] for raw in re.findall(r"\[[^\]]+\]\(([^)]+)\)", agents)}
+        self.assertIn("eval/README.md", links, "hub sem link para a medição editorial")
 
     def test_agent_routers_point_to_the_hub(self):
         for name in ("CLAUDE.md", "GEMINI.md", "README.md", "README.en.md"):
@@ -81,10 +73,7 @@ class AgentsHubTests(unittest.TestCase):
 
 class RepositoryDocumentationTests(unittest.TestCase):
     def test_relative_markdown_links_and_anchors_resolve(self):
-        documents = {
-            path.resolve(): path.read_text(encoding="utf-8")
-            for path in ROOT.glob("*.md")
-        }
+        documents = {path.resolve(): path.read_text(encoding="utf-8") for path in ROOT.glob("*.md")}
         anchors = {
             path: {github_slug(match) for match in re.findall(r"^#{1,6}\s+(.+?)\s*$", text, re.MULTILINE)}
             for path, text in documents.items()
@@ -118,21 +107,15 @@ class RepositoryDocumentationTests(unittest.TestCase):
         self.assertIn("<h1>GET B-ROLLS</h1>", english)
         for readme in (portuguese, english):
             self.assertIn("Bruno Moreira — Engenheiro de Vídeo", readme)
-            self.assertIn(
-                "https://www.instagram.com/zbrunomoreira/", readme
-            )
+            self.assertIn("https://www.instagram.com/zbrunomoreira/", readme)
 
     def test_native_windows_entrypoints_are_present_and_documented(self):
         installer = ROOT / "scripts/install.ps1"
         playwright = ROOT / "scripts/playwright.ps1"
         self.assertTrue(installer.is_file())
         self.assertTrue(playwright.is_file())
-        self.assertIn(
-            ".venv\\Scripts\\python.exe", installer.read_text(encoding="utf-8")
-        )
-        self.assertIn(
-            "playwright-cli.cmd", playwright.read_text(encoding="utf-8")
-        )
+        self.assertIn(".venv\\Scripts\\python.exe", installer.read_text(encoding="utf-8"))
+        self.assertIn("playwright-cli.cmd", playwright.read_text(encoding="utf-8"))
         self.assertIn("Invoke-Native", installer.read_text(encoding="utf-8"))
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("macOS e Windows", readme)
@@ -155,7 +138,11 @@ class RepositoryDocumentationTests(unittest.TestCase):
         scripts = ROOT / "scripts"
         self.assertEqual(
             ["getbrolls"],
-            sorted(path.name for path in scripts.iterdir() if path.is_dir() and path.name != "__pycache__" and not path.name.startswith(".")),
+            sorted(
+                path.name
+                for path in scripts.iterdir()
+                if path.is_dir() and path.name != "__pycache__" and not path.name.startswith(".")
+            ),
         )
 
     def test_public_source_has_no_legacy_product_identity(self):
@@ -164,11 +151,7 @@ class RepositoryDocumentationTests(unittest.TestCase):
         for path in ROOT.rglob("*"):
             if not path.is_file() or "__pycache__" in path.parts or path.suffix in {".pyc", ".png"}:
                 continue
-            if (
-                legacy in path.name.lower()
-                or legacy
-                in path.read_text(encoding="utf-8", errors="ignore").lower()
-            ):
+            if legacy in path.name.lower() or legacy in path.read_text(encoding="utf-8", errors="ignore").lower():
                 problems.append(str(path.relative_to(ROOT)))
         self.assertEqual([], problems)
 
@@ -205,7 +188,10 @@ class RepositoryDocumentationTests(unittest.TestCase):
             self.assertNotIn('"', snippet, snippet)
 
     def test_readmes_require_the_whole_stack_before_use(self):
-        for name, heading in (("README.md", "### 0. Instale a stack inteira"), ("README.en.md", "### 0. Install the whole stack")):
+        for name, heading in (
+            ("README.md", "### 0. Instale a stack inteira"),
+            ("README.en.md", "### 0. Install the whole stack"),
+        ):
             readme = (ROOT / name).read_text(encoding="utf-8")
             self.assertIn(heading, readme)
             self.assertLess(readme.index(heading), readme.index("### 1. "))
@@ -242,9 +228,7 @@ class RepositoryDocumentationTests(unittest.TestCase):
         release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
         tests = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
         pinned = re.search(r"actions/checkout@[0-9a-f]{40}", tests)
-        self.assertIsNotNone(
-            pinned, "test.yml sem actions/checkout fixado por SHA de 40 dígitos"
-        )
+        self.assertIsNotNone(pinned, "test.yml sem actions/checkout fixado por SHA de 40 dígitos")
         checkout = pinned.group(0)
         self.assertIn(checkout, release)
         for marker in (

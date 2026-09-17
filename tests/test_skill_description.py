@@ -47,8 +47,9 @@ class DescriptionTriggerTests(unittest.TestCase):
             text = description(path).lower()
             for phrase, trigger in PHRASES:
                 self.assertIn(
-                    trigger.lower(), text,
-                    f"{path.name}: gatilho ausente para \"{phrase}\" → {trigger}",
+                    trigger.lower(),
+                    text,
+                    f'{path.name}: gatilho ausente para "{phrase}" → {trigger}',
                 )
 
     def test_description_states_what_the_skill_is_not_for(self):

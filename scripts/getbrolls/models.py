@@ -75,11 +75,7 @@ def set_segment(c, start, end):
     if duration and end > duration + 0.1:
         raise ValueError("Intervalo excede a duração do vídeo.")
     if (start, end) != (c["segment"]["start_s"], c["segment"]["end_s"]):
-        c["preview"] = {
-            k: v
-            for k, v in c["preview"].items()
-            if k in ("poster_url", "embed_url", "seek_mode")
-        }
+        c["preview"] = {k: v for k, v in c["preview"].items() if k in ("poster_url", "embed_url", "seek_mode")}
         c.pop("review", None)
         c["segment"] = {
             "start_s": start,
@@ -103,9 +99,7 @@ def approve(c, by, channel="storyboard", statement=None):
     if statement is not None and not isinstance(statement, str):
         raise ValueError("Frase de aprovação inválida.")
     if channel == "chat" and not (statement or "").strip():
-        raise ValueError(
-            "Aprovação pelo chat exige --statement com a frase exata dita pela pessoa."
-        )
+        raise ValueError("Aprovação pelo chat exige --statement com a frase exata dita pela pessoa.")
     c["approval"] = {
         "status": "approved",
         "by": by,
@@ -120,17 +114,9 @@ def approve(c, by, channel="storyboard", statement=None):
 
 
 def require_fetch(c):
-    if c["approval"]["status"] != "approved" or c["approval"].get(
-        "signature"
-    ) != signature(c):
-        raise ValueError(
-            "Aprovação humana ausente ou inválida para esta fonte e intervalo."
-        )
+    if c["approval"]["status"] != "approved" or c["approval"].get("signature") != signature(c):
+        raise ValueError("Aprovação humana ausente ou inválida para esta fonte e intervalo.")
     if c["rights"]["status"] != "permitted" or not c["rights"]["evidence"]:
-        raise ValueError(
-            "Registre a autorização/condições de uso com permit --evidence antes de obter mídia."
-        )
+        raise ValueError("Registre a autorização/condições de uso com permit --evidence antes de obter mídia.")
     if c["acquisition"]["status"] != "available":
-        raise ValueError(
-            "Esta fonte é somente referência; forneça um original local autorizado."
-        )
+        raise ValueError("Esta fonte é somente referência; forneça um original local autorizado.")

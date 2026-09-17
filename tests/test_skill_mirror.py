@@ -23,8 +23,16 @@ MAX_WORDS_PER_PARAGRAPH = 80
 
 # Comandos de instalação não têm lugar no SKILL.md: quem instala é
 # `/get-brolls-setup`, e o arquivo mais lido não gasta linha com isso.
-INSTALL_MARKERS = ("install.sh", "install.ps1", "pip install", "brew install",
-                   "npm install", "winget install", "apt install", "git clone")
+INSTALL_MARKERS = (
+    "install.sh",
+    "install.ps1",
+    "pip install",
+    "brew install",
+    "npm install",
+    "winget install",
+    "apt install",
+    "git clone",
+)
 
 
 def body(path):
@@ -94,7 +102,8 @@ class SkillBudgetTests(unittest.TestCase):
                 continue
             words = len(paragraph.split())
             self.assertLessEqual(
-                words, MAX_WORDS_PER_PARAGRAPH,
+                words,
+                MAX_WORDS_PER_PARAGRAPH,
                 f"parágrafo com {words} palavras: {paragraph[:60]}…",
             )
 
@@ -103,7 +112,8 @@ class SkillBudgetTests(unittest.TestCase):
             text = path.read_text(encoding="utf-8")
             for marker in INSTALL_MARKERS:
                 self.assertNotIn(
-                    marker, text,
+                    marker,
+                    text,
                     f"{path.name} traz comando de instalação ({marker}); isso é do /get-brolls-setup",
                 )
 
@@ -113,9 +123,7 @@ class SkillBudgetTests(unittest.TestCase):
         self.assertIn("Stock só sob pedido", text)
         self.assertIn("Parada obrigatória na revisão", text)
         self.assertIn("import-review", text)
-        self.assertIn(
-            'approve --all --by NOME --channel chat --statement "frase"', text
-        )
+        self.assertIn('approve --all --by NOME --channel chat --statement "frase"', text)
         self.assertIn("Silêncio não é aprovação", text)
 
     def test_path_and_platform_conventions_survive(self):

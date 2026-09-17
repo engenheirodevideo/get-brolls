@@ -222,12 +222,8 @@ def learn_query(query, provider, outcome, note=None, auto=False):
                 ),
             )
             drop = set(order[: len(data["queries"]) - MAX_QUERIES])
-            data["queries"] = [
-                q for i, q in enumerate(data["queries"]) if i not in drop
-            ]
-        counts = data["providers"].setdefault(
-            provider, {"outcomes": {"hit": 0, "miss": 0}, "last_at": None}
-        )
+            data["queries"] = [q for i, q in enumerate(data["queries"]) if i not in drop]
+        counts = data["providers"].setdefault(provider, {"outcomes": {"hit": 0, "miss": 0}, "last_at": None})
         counts["outcomes"][outcome] = counts["outcomes"].get(outcome, 0) + 1
         counts["last_at"] = at
         return entry
@@ -252,9 +248,7 @@ def learn_preference(text, by=None):
 
 
 def asset_id(source_url, clip_signature):
-    return hashlib.sha256(
-        json.dumps([source_url, clip_signature], sort_keys=True).encode()
-    ).hexdigest()[:16]
+    return hashlib.sha256(json.dumps([source_url, clip_signature], sort_keys=True).encode()).hexdigest()[:16]
 
 
 def learn_from_candidate(project, ident, shot=None):
@@ -270,16 +264,12 @@ def learn_from_candidate(project, ident, shot=None):
     ledger = Ledger(project)
     c = ledger.get(ident)
     path = ledger.root / "references.json"
-    items = (
-        json.loads(path.read_text(encoding="utf-8")).get("items", [])
-        if path.exists()
-        else []
-    )
+    items = json.loads(path.read_text(encoding="utf-8")).get("items", []) if path.exists() else []
     references = [r for r in items if r.get("id") == ident]
     if not references:
         raise ValueError(
             "Este candidato ainda não tem decisão registrada na memória do projeto. "
-            'Rode `remember --candidate ' + ident + ' --decision approved|rejected '
+            "Rode `remember --candidate " + ident + " --decision approved|rejected "
             '--reason "..." --by NOME --project ...` antes de guardá-lo na biblioteca.'
         )
     reference = references[-1]
@@ -344,7 +334,15 @@ def search(term, limit=5):
     data = load_index()
     assets = sorted(
         (
-            (a, _score(wanted, " ".join(filter(None, [a.get("title"), a.get("reason"), a.get("source_url"), *(a.get("tags") or [])]))))
+            (
+                a,
+                _score(
+                    wanted,
+                    " ".join(
+                        filter(None, [a.get("title"), a.get("reason"), a.get("source_url"), *(a.get("tags") or [])])
+                    ),
+                ),
+            )
             for a in data["assets"]
         ),
         key=lambda pair: -pair[1],
@@ -357,6 +355,7 @@ def search(term, limit=5):
         ((p, _score(wanted, p.get("text"))) for p in data["preferences"]),
         key=lambda pair: -pair[1],
     )
+
     def keep(pairs):
         return [dict(item, score=round(score, 3)) for item, score in pairs if score][:limit]
 
@@ -367,11 +366,7 @@ def search(term, limit=5):
         assets=found_assets,
         queries=found_queries,
         preferences=keep(preferences),
-        providers={
-            name: counts
-            for name, counts in data["providers"].items()
-            if name in named
-        },
+        providers={name: counts for name, counts in data["providers"].items() if name in named},
     )
 
 

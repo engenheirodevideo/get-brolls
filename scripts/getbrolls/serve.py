@@ -6,6 +6,7 @@ qualquer revisão local. Não cria a árvore do projeto nem toma a trava exclusi
 (comando somente leitura, como `status`); se `brolls/review.html` não existir, falha
 cedo com uma mensagem clara em vez de servir um diretório vazio.
 """
+
 from __future__ import annotations
 
 import hmac
@@ -110,9 +111,7 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
             self._refuse(400, "O corpo precisa ser um objeto JSON.")
             return
         path = save_review(Path(self.directory), data)
-        body = json.dumps(
-            {"path": str(path), "name": path.name}, ensure_ascii=False
-        ).encode("utf-8")
+        body = json.dumps({"path": str(path), "name": path.name}, ensure_ascii=False).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -149,9 +148,7 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         if self.path.split("?")[0] in ("/review.html", "/"):
             page = Path(self.directory) / "review.html"
             if page.is_file():
-                body = _inject_token(
-                    page.read_text(encoding="utf-8"), self.server.save_token
-                ).encode("utf-8")
+                body = _inject_token(page.read_text(encoding="utf-8"), self.server.save_token).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
@@ -171,11 +168,11 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
 def _inject_token(page, token):
     """Entrega o endereço e o token para o review.js, antes de ele rodar."""
     script = (
-        "<script>window.GETBROLLS_SAVE={\"url\":"
+        '<script>window.GETBROLLS_SAVE={"url":'
         + json.dumps(SAVE_PATH)
-        + ",\"header\":"
+        + ',"header":'
         + json.dumps(TOKEN_HEADER)
-        + ",\"token\":"
+        + ',"token":'
         + json.dumps(token)
         + "};</script>"
     )
@@ -195,8 +192,7 @@ def save_review(directory, data):
     reviews = Path(directory) / REVIEWS_DIR
     if reviews.is_symlink():
         raise ValueError(
-            f"{reviews} é um link simbólico; a pasta de decisões precisa ser uma pasta "
-            "de verdade dentro do projeto."
+            f"{reviews} é um link simbólico; a pasta de decisões precisa ser uma pasta de verdade dentro do projeto."
         )
     reviews.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -239,9 +235,7 @@ def start(project, port: int = DEFAULT_PORT):
     directory = Path(project).expanduser().resolve() / "brolls"
     review = directory / "review.html"
     if not review.is_file():
-        raise ValueError(
-            f"Storyboard não encontrado em {review}. Gere-o antes com o comando `review`."
-        )
+        raise ValueError(f"Storyboard não encontrado em {review}. Gere-o antes com o comando `review`.")
     handler = partial(_NoCacheHandler, directory=str(directory))
     try:
         server = _ExclusiveServer(("127.0.0.1", port), handler)
@@ -353,9 +347,7 @@ def _ping(port, session, timeout=1.0):
     import urllib.request
 
     try:
-        with urllib.request.urlopen(
-            f"http://127.0.0.1:{port}{PING_PATH}", timeout=timeout
-        ) as response:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}{PING_PATH}", timeout=timeout) as response:
             answer = json.loads(response.read().decode("utf-8"))
     except (OSError, ValueError, urllib.error.URLError):
         return False
@@ -392,9 +384,7 @@ def start_background(project, port: int = DEFAULT_PORT):
     directory = _brolls(project)
     review = directory / "review.html"
     if not review.is_file():
-        raise ValueError(
-            f"Storyboard não encontrado em {review}. Gere-o antes com o comando `review`."
-        )
+        raise ValueError(f"Storyboard não encontrado em {review}. Gere-o antes com o comando `review`.")
     current = state(project)
     if current["running"]:
         return {"background": True, "already_running": True, **current}
@@ -458,9 +448,7 @@ def start_background(project, port: int = DEFAULT_PORT):
         "urls": payload.get("urls") or _urls(payload["port"]),
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
-    (directory / PID_FILE).write_text(
-        json.dumps(record, ensure_ascii=False), encoding="utf-8"
-    )
+    (directory / PID_FILE).write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
     return {"background": True, "already_running": False, "log": str(log), **record}
 
 

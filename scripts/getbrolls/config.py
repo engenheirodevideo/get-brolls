@@ -63,8 +63,7 @@ def load_env(path):
         value = value.strip()
         if key not in KEYS:
             raise ValueError(
-                f".env: variável desconhecida na linha {number}: {key}. "
-                "Aceitas: " + ", ".join(sorted(KEYS)) + "."
+                f".env: variável desconhecida na linha {number}: {key}. Aceitas: " + ", ".join(sorted(KEYS)) + "."
             )
         if value[:1] in ('"', "'"):
             if len(value) < 2 or value[-1] != value[0]:
@@ -87,14 +86,10 @@ def executable_override(key):
     path = Path(value).expanduser().resolve()
     if not path.is_file():
         detail = "não é um arquivo executável" if path.exists() else "não existe"
-        raise ValueError(
-            f"{key}: {value} {detail}. Aponte para o executável correto ou remova a variável."
-        )
+        raise ValueError(f"{key}: {value} {detail}. Aponte para o executável correto ou remova a variável.")
     # No Windows a executabilidade vem da extensão; os.access(X_OK) aceita qualquer legível.
     if os.name != "nt" and not os.access(path, os.X_OK):
-        raise ValueError(
-            f"{key}: {value} não é executável. Ajuste as permissões ou remova a variável."
-        )
+        raise ValueError(f"{key}: {value} não é executável. Ajuste as permissões ou remova a variável.")
     return str(path)
 
 

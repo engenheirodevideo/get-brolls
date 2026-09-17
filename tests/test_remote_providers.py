@@ -71,9 +71,7 @@ class ProvidersTests(unittest.TestCase):
         self.assertEqual(item["media"]["height"], 1080)
         self.assertEqual(item["rights"]["status"], "unknown")
         self.assertEqual(item["match"]["kind"], "illustrative")
-        self.assertEqual(
-            get.call_args.args[0], "https://api.pexels.com/v1/videos/search"
-        )
+        self.assertEqual(get.call_args.args[0], "https://api.pexels.com/v1/videos/search")
         self.assertNotIn("fixture-key", json.dumps(item))
 
     @patch.dict(os.environ, {"PIXABAY_API_KEY": "fixture-key"})
@@ -134,13 +132,7 @@ class ProvidersTests(unittest.TestCase):
                     ]
                 }
             },
-            {
-                "collection": {
-                    "items": [
-                        {"href": "https://images-assets.nasa.gov/fixture~medium.mp4"}
-                    ]
-                }
-            },
+            {"collection": {"items": [{"href": "https://images-assets.nasa.gov/fixture~medium.mp4"}]}},
         ]
         item = providers.search("nasa", "space", 1)[0]
         self.assertEqual(item["creator"]["name"], "Third Party")
@@ -150,9 +142,7 @@ class ProvidersTests(unittest.TestCase):
     @patch.dict(os.environ, {"PEXELS_API_KEY": "fixture-key"})
     @patch.object(providers, "get_json")
     def test_refresh_keeps_approval_and_segment(self, get):
-        original = providers.candidate(
-            "pexels", "1", "Fixture", "https://www.pexels.com/video/a-1/"
-        )
+        original = providers.candidate("pexels", "1", "Fixture", "https://www.pexels.com/video/a-1/")
         original["approval"]["status"] = "approved"
         original["segment"]["start_s"] = 5
         get.return_value = {
@@ -197,18 +187,12 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(target.read_bytes(), b"complete")
 
     def test_signed_url_is_not_publishable(self):
-        self.assertIsNone(
-            http.public_url("https://cdn.example.org/video.mp4?X-Amz-Signature=secret")
-        )
-        self.assertIsNone(
-            http.public_url("https://cdn.example.org/video.mp4?key=secret")
-        )
+        self.assertIsNone(http.public_url("https://cdn.example.org/video.mp4?X-Amz-Signature=secret"))
+        self.assertIsNone(http.public_url("https://cdn.example.org/video.mp4?key=secret"))
 
     @patch.object(http, "_safe_network")
     @patch.object(http.urllib.request, "build_opener")
-    def test_cache_uses_redacted_payload_and_makes_no_second_request(
-        self, builder, safe
-    ):
+    def test_cache_uses_redacted_payload_and_makes_no_second_request(self, builder, safe):
         response = MagicMock()
         response.__enter__.return_value.read.return_value = (
             b'{"items": [], "url": "https://example.org/?key=secret", "key": "secret"}'
@@ -218,24 +202,16 @@ class HTTPTests(unittest.TestCase):
             tempfile.TemporaryDirectory() as cache,
             patch.dict(os.environ, {"GETBROLLS_CACHE_DIR": cache}),
         ):
-            first = http.get_json(
-                "https://example.org/api", {"key": "secret"}, cache_ttl=86400
-            )
-            second = http.get_json(
-                "https://example.org/api", {"key": "secret"}, cache_ttl=86400
-            )
+            first = http.get_json("https://example.org/api", {"key": "secret"}, cache_ttl=86400)
+            second = http.get_json("https://example.org/api", {"key": "secret"}, cache_ttl=86400)
             self.assertEqual(first, second)
             self.assertEqual(builder.return_value.open.call_count, 1)
-            self.assertNotIn(
-                "secret", next(Path(cache).iterdir()).read_text(encoding="utf-8")
-            )
+            self.assertNotIn("secret", next(Path(cache).iterdir()).read_text(encoding="utf-8"))
 
     @patch.object(http, "_safe_network")
     @patch.object(http.urllib.request, "build_opener")
     def test_auth_failure_not_retried_and_no_secret_in_error(self, builder, safe):
-        error_response = urllib.error.HTTPError(
-            "https://example.org/?key=secret", 403, "secret", {}, None
-        )
+        error_response = urllib.error.HTTPError("https://example.org/?key=secret", 403, "secret", {}, None)
         self.addCleanup(error_response.close)
         builder.return_value.open.side_effect = error_response
         with self.assertRaises(http.ProviderError) as error:
@@ -273,9 +249,7 @@ class HTTPTests(unittest.TestCase):
     @patch.object(http, "_safe_network")
     @patch.object(http.urllib.request, "build_opener")
     def test_server_failure_bounded_to_three_attempts(self, builder, safe, sleep):
-        error_response = urllib.error.HTTPError(
-            "https://example.org/", 503, "unavailable", {}, None
-        )
+        error_response = urllib.error.HTTPError("https://example.org/", 503, "unavailable", {}, None)
         self.addCleanup(error_response.close)
         builder.return_value.open.side_effect = error_response
         with self.assertRaises(http.ProviderError):

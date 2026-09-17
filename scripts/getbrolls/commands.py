@@ -14,10 +14,7 @@ from .guidance import next_action
 
 # Raiz real da skill/plugin: o comando sugerido não pode depender da pasta atual.
 SKILL_ROOT = Path(__file__).resolve().parents[2]
-INSTALLER = (
-    f'bash "{SKILL_ROOT / "scripts" / "install.sh"}" '
-    f'(ou "{SKILL_ROOT / "scripts" / "install.ps1"}" no Windows)'
-)
+INSTALLER = f'bash "{SKILL_ROOT / "scripts" / "install.sh"}" (ou "{SKILL_ROOT / "scripts" / "install.ps1"}" no Windows)'
 SYSTEM_TOOLS = "instale pelo gerenciador do sistema; veja docs/GUIDE.md#instalação"
 
 # Executável obrigatório → (comando que resolve, impacto real da ausência).
@@ -44,9 +41,7 @@ OPTIONAL_KEYS = {
 
 
 # Todo executável que o doctor sonda: obrigatórios mais opcionais, sem duplicar.
-PROBED_EXECUTABLES = tuple(
-    sorted(set(REQUIRED_EXECUTABLES) | set(OPTIONAL_EXECUTABLES))
-)
+PROBED_EXECUTABLES = tuple(sorted(set(REQUIRED_EXECUTABLES) | set(OPTIONAL_EXECUTABLES)))
 
 
 def doctor_overrides():
@@ -96,15 +91,9 @@ def doctor_summary(executables, pins=()):
     ]
     missing += list(pins)
     optional = [
-        {"item": name, "note": note}
-        for name, note in sorted(OPTIONAL_EXECUTABLES.items())
-        if not executables.get(name)
+        {"item": name, "note": note} for name, note in sorted(OPTIONAL_EXECUTABLES.items()) if not executables.get(name)
     ]
-    optional += [
-        {"item": key, "note": note}
-        for key, note in sorted(OPTIONAL_KEYS.items())
-        if not os.environ.get(key)
-    ]
+    optional += [{"item": key, "note": note} for key, note in sorted(OPTIONAL_KEYS.items()) if not os.environ.get(key)]
     return {"ok": ok, "missing": missing, "optional": optional}
 
 
@@ -184,21 +173,20 @@ def _note(result):
 
 def _status_line(result):
     counts = result.get("counts") or {}
-    stages = ", ".join(
-        _count(counts.get(key, 0), singular, plural)
-        for key, singular, plural in STATUS_STAGES
-    )
+    stages = ", ".join(_count(counts.get(key, 0), singular, plural) for key, singular, plural in STATUS_STAGES)
     return f"Resumi o projeto: {stages}."
 
 
 # Uma linha por comando do fluxo: verbo + objeto + resultado, sempre em PT-BR.
 FLOW_SUMMARIES = {
-    "search": lambda r: f"Pesquisei candidatos: "
-    f"{_count(len(r.get('items') or []), 'registrado', 'registrados')}, "
-    f"{_count(r.get('excluded_by_rules') or 0, 'excluído pelas regras', 'excluídos pelas regras')}, "
-    f"{_count(len(r.get('errors') or []), 'fonte com erro', 'fontes com erro')}."
-    f"{_note(r)}"
-    f"{'; ' + str(len(r.get('errors') or [])) + ' fonte(s) falharam' if r.get('errors') else ''}",
+    "search": lambda r: (
+        f"Pesquisei candidatos: "
+        f"{_count(len(r.get('items') or []), 'registrado', 'registrados')}, "
+        f"{_count(r.get('excluded_by_rules') or 0, 'excluído pelas regras', 'excluídos pelas regras')}, "
+        f"{_count(len(r.get('errors') or []), 'fonte com erro', 'fontes com erro')}."
+        f"{_note(r)}"
+        f"{'; ' + str(len(r.get('errors') or [])) + ' fonte(s) falharam' if r.get('errors') else ''}"
+    ),
     "resolve": lambda r: f"Registrei o candidato {_identifier(r)}: estado {r.get('state')}.",
     "preview": lambda r: (
         f"Gerei somente a referência estática de {_identifier(r)}: "
@@ -217,15 +205,18 @@ FLOW_SUMMARIES = {
     ),
     "reject": lambda r: f"Rejeitei {_identifier(r)}: estado {r.get('state')}, revisão invalidada.",
     "review": lambda r: f"Gerei o Storyboard em {r.get('review')}.",
-    "import-review": lambda r: f"Importei "
-    f"{_count(r.get('imported') or 0, 'decisão', 'decisões')} assinada(s) por {r.get('by')}.",
-    "permit": lambda r: f"Registrei as condições de uso de {_identifier(r)}: "
-    f"direitos {(r.get('rights') or {}).get('status')}.",
-    "fetch": lambda r: f"Coletei o corte final de {_identifier(r)} em "
-    f"{(r.get('output') or {}).get('path')}.",
-    "verify": lambda r: f"Verifiquei "
-    f"{_count(r.get('count') or 0, 'arquivo coletado', 'arquivos coletados')}: "
-    f"{'íntegro e decodificável' if (r.get('count') or 0) == 1 else 'íntegros e decodificáveis'}.",
+    "import-review": lambda r: (
+        f"Importei {_count(r.get('imported') or 0, 'decisão', 'decisões')} assinada(s) por {r.get('by')}."
+    ),
+    "permit": lambda r: (
+        f"Registrei as condições de uso de {_identifier(r)}: direitos {(r.get('rights') or {}).get('status')}."
+    ),
+    "fetch": lambda r: f"Coletei o corte final de {_identifier(r)} em {(r.get('output') or {}).get('path')}.",
+    "verify": lambda r: (
+        f"Verifiquei "
+        f"{_count(r.get('count') or 0, 'arquivo coletado', 'arquivos coletados')}: "
+        f"{'íntegro e decodificável' if (r.get('count') or 0) == 1 else 'íntegros e decodificáveis'}."
+    ),
     "status": _status_line,
     "queue": queue_summary_line,
 }
@@ -294,20 +285,15 @@ def rules_from_flags(template, mode, responsible, declaration):
         raise ValueError("Modelo de RULES.md precisa de exatamente um bloco JSON.")
     data = json.loads(blocks[0])
     rights = data["copyright"]
-    rights["mode"] = mode or (
-        "user_declaration" if (responsible or declaration) else rights["mode"]
-    )
+    rights["mode"] = mode or ("user_declaration" if (responsible or declaration) else rights["mode"])
     if responsible is not None:
         rights["responsible_person"] = responsible.strip() or None
     if declaration is not None:
         rights["declaration"] = declaration.strip() or None
     if rights["mode"] == "user_declaration" and not (
-        (rights["responsible_person"] or "").strip()
-        and (rights["declaration"] or "").strip()
+        (rights["responsible_person"] or "").strip() and (rights["declaration"] or "").strip()
     ):
-        raise ValueError(
-            "Modo user_declaration exige --responsible NOME e --declaration TEXTO."
-        )
+        raise ValueError("Modo user_declaration exige --responsible NOME e --declaration TEXTO.")
     return (
         template.replace(blocks[0], json.dumps(data, ensure_ascii=False, indent=2), 1),
         rights,
@@ -381,9 +367,7 @@ def brief_report(args):
     ]
     missing = [entry for entry in listed if not entry["candidates"]]
     covered = len(listed) - len(missing)
-    problems += [
-        f'O beat "{entry["id"]}" ainda não tem candidato registrado.' for entry in missing
-    ]
+    problems += [f'O beat "{entry["id"]}" ainda não tem candidato registrado.' for entry in missing]
     return {
         "summary": {
             "line": f'Brief de "{data["video"]["title"]}": '
@@ -418,9 +402,7 @@ def brief_report(args):
                     "rights_mode": _rights_mode(rules),
                     "candidate": _pending_candidate(items),
                     "duration_unknown": len(_uninspected(items)),
-                    "inspect_candidate": next(
-                        (c["id"] for c in _uninspected(items)), None
-                    ),
+                    "inspect_candidate": next((c["id"] for c in _uninspected(items)), None),
                 }
             )["for_human"],
         },
@@ -457,9 +439,7 @@ def library_command(args):
             '--outcome), --preference "frase" ou --from-candidate ID.'
         )
     if args.query:
-        return library.learn_query(
-            args.query, args.provider, args.outcome, note=args.note
-        )
+        return library.learn_query(args.query, args.provider, args.outcome, note=args.note)
     if args.preference:
         return library.learn_preference(args.preference, by=args.by)
     return library.learn_from_candidate(args.project, args.from_candidate, shot=args.shot)
@@ -477,15 +457,9 @@ def approve_all(ledger, args, rules):
             reason = "bloqueado pelas regras atuais do usuário"
         elif _stage_status(c, "approval") == "rejected":
             reason = "rejeitado por decisão humana"
-        elif (
-            _stage_status(c, "approval") == "approved"
-            and c["approval"].get("signature") == signature(c)
-        ):
+        elif _stage_status(c, "approval") == "approved" and c["approval"].get("signature") == signature(c):
             reason = "já tem aprovação válida para este intervalo"
-        elif (
-            c["segment"]["start_s"] is None
-            and c.get("media", {}).get("kind") != "image"
-        ):
+        elif c["segment"]["start_s"] is None and c.get("media", {}).get("kind") != "image":
             reason = "sem intervalo escolhido; rode preview --start/--end"
         else:
             approve(c, args.by, args.channel, args.statement)
@@ -493,9 +467,7 @@ def approve_all(ledger, args, rules):
             continue
         skipped.append({"id": c["id"], "reason": reason})
     if approved:
-        ledger.save_many(
-            "approve-chat" if args.channel == "chat" else "approve", approved
-        )
+        ledger.save_many("approve-chat" if args.channel == "chat" else "approve", approved)
         render(ledger)
     return {
         "approved": [c["id"] for c in approved],
@@ -552,9 +524,7 @@ def status_references(root):
         data = None
     items = data.get("items") if isinstance(data, dict) else None
     if not isinstance(items, list):
-        return 0, (
-            "references.json inválido ou incompatível. Preserve o arquivo e restaure uma cópia válida."
-        )
+        return 0, ("references.json inválido ou incompatível. Preserve o arquivo e restaure uma cópia válida.")
     return len(items), None
 
 
@@ -636,11 +606,7 @@ def _uninspected(items):
     `--start/--end` é palpite, e o palpite custa um pedido à fonte.
     """
     return [
-        c
-        for c in items
-        if not (c.get("media") or {}).get("duration_s")
-        and c.get("source_url")
-        and not _has_preview(c)
+        c for c in items if not (c.get("media") or {}).get("duration_s") and c.get("source_url") and not _has_preview(c)
     ]
 
 
@@ -683,11 +649,7 @@ def deliver_report(ledger, rules, dry_run=False):
 
 def _undelivered(items):
     """Arquivos já conferidos que ainda não apareceram em `entrega/`."""
-    return [
-        c
-        for c in items
-        if STAGE_TESTS["verified"](c) and not (c.get("delivery") or {}).get("path")
-    ]
+    return [c for c in items if STAGE_TESTS["verified"](c) and not (c.get("delivery") or {}).get("path")]
 
 
 _UNSET = object()
@@ -698,8 +660,7 @@ def _flow_state(ledger, rules, counts=None, format_pending=0, brief=_UNSET):
     items = ledger.data["items"]
     return {
         "project": str(ledger.root.parent),
-        "counts": counts
-        or {key: sum(1 for c in items if STAGE_TESTS[key](c)) for key in STAGE_TESTS},
+        "counts": counts or {key: sum(1 for c in items if STAGE_TESTS[key](c)) for key in STAGE_TESTS},
         "format_pending": format_pending,
         "brief": brief_state(ledger.root.parent, rules, items) if brief is _UNSET else brief,
         "review_page": (ledger.root / "review.html").is_file(),
@@ -722,10 +683,7 @@ def _flow_next(ledger, rules):
 def status_report(ledger, rules=None, rules_error=None, queue=None):
     """Onde o projeto está, por etapa. Somente leitura: não grava nada."""
     items = ledger.data["items"]
-    listing = {
-        key: [c["id"] for c in items if STAGE_TESTS[key](c)]
-        for key, _, _ in STATUS_STAGES
-    }
+    listing = {key: [c["id"] for c in items if STAGE_TESTS[key](c)] for key, _, _ in STATUS_STAGES}
     counts = {key: len(listing[key]) for key, _, _ in STATUS_STAGES}
     pending_format = {c["id"]: _format_pending(c, rules) for c in items}
     format_pending = sum(1 for value in pending_format.values() if value)
@@ -734,9 +692,7 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
     brief = brief_state(ledger.root.parent, rules, items)
     line = _status_line({"counts": counts})
     if ledger.recovered:
-        line += (
-            " Há uma gravação interrompida pendente; o próximo comando de escrita a concluirá."
-        )
+        line += " Há uma gravação interrompida pendente; o próximo comando de escrita a concluirá."
     if queue and queue.get("error"):
         # queue.hint devolveu {"error": ...} (queue.json inválido/OSError): não some do resumo.
         line += f" Fila indisponível: {queue['error']}"
@@ -746,10 +702,7 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
     # Veredito primeiro, como no doctor: o JSON completo continua logo abaixo.
     summary = {
         "line": line,
-        "stages": [
-            {"stage": plural, "count": counts[key], "items": listing[key]}
-            for key, _, plural in STATUS_STAGES
-        ],
+        "stages": [{"stage": plural, "count": counts[key], "items": listing[key]} for key, _, plural in STATUS_STAGES],
         "next": status_next(counts, format_pending),
         # Aditivo: `line/stages/next` seguem iguais; `do` traz o mesmo passo já em
         # comando pronto e `brief` diz quantos beats ainda estão sem material.
@@ -846,9 +799,7 @@ def execute(args):
                 for name in PROBED_EXECUTABLES
             }
             executables["yt-dlp"] = social["installed"]
-            executables["playwright-cli"] = bool(
-                _local_playwright() or shutil.which("playwright-cli")
-            )
+            executables["playwright-cli"] = bool(_local_playwright() or shutil.which("playwright-cli"))
             summary = doctor_summary(executables, pin_problems)
             sheet = doctor_contact_sheet(executables.get("ffmpeg"))
             summary["optional"] += sheet["optional"]
@@ -886,18 +837,14 @@ def execute(args):
         # Somente leitura: nada é criado, nem a árvore do projeto, nem pendências.
         project = Path(args.project).expanduser().resolve()
         if not (project / "brolls").is_dir():
-            raise ValueError(
-                f"Projeto não encontrado em {project}; nenhum arquivo foi criado."
-            )
+            raise ValueError(f"Projeto não encontrado em {project}; nenhum arquivo foi criado.")
         rules = None
         rules_error = None
         try:
             rules = load_rules(args.project)
         except (ValueError, OSError) as exc:
             rules_error = str(exc)
-        return status_report(
-            Ledger(project, recover=False), rules, rules_error, queue_hint(project)
-        )
+        return status_report(Ledger(project, recover=False), rules, rules_error, queue_hint(project))
     if cmd == "queue":
         rules = None
         try:
@@ -915,9 +862,7 @@ def execute(args):
                 "Use --force com --mode/--responsible/--declaration para regravar só o bloco JSON."
             )
         if args.force and not has_flags:
-            raise ValueError(
-                "--force só regrava o bloco JSON: informe --mode, --responsible ou --declaration."
-            )
+            raise ValueError("--force só regrava o bloco JSON: informe --mode, --responsible ou --declaration.")
         template = SKILL_ROOT / "docs" / "RULES.md"
         if has_flags:
             # Regravar preserva o que o usuário já escolheu: a base é o arquivo dele.
@@ -962,12 +907,8 @@ def execute(args):
     # Consultas (`references`, `inspect`) não decidem nada sobre formato: como o
     # `status`, elas nunca podem ser barradas pelo portão de `--confirm-format-change`.
     # `deliver --dry-run` é ensaio: não pode reescrever o manifesto nem por tabela.
-    if cmd not in READ_ONLY_CONSULTS and not (
-        cmd == "deliver" and getattr(args, "dry_run", False)
-    ):
-        sync_formats(
-            ledger, rules, confirm=getattr(args, "confirm_format_change", False)
-        )
+    if cmd not in READ_ONLY_CONSULTS and not (cmd == "deliver" and getattr(args, "dry_run", False)):
+        sync_formats(ledger, rules, confirm=getattr(args, "confirm_format_change", False))
     if cmd == "deliver":
         return deliver_report(ledger, rules, getattr(args, "dry_run", False))
     if cmd == "browser-plan":
@@ -990,16 +931,10 @@ def execute(args):
                 "errors": [],
                 "note": "APIs atuais pesquisam vídeos. Para imagem/notícia use importação local ou browser-plan.",
             }
-        args.provider = {"pixel": "pexels", "getbrolls": "auto"}.get(
-            args.provider, args.provider
-        )
+        args.provider = {"pixel": "pexels", "getbrolls": "auto"}.get(args.provider, args.provider)
         if not 1 <= args.limit <= 50:
             raise ValueError("Use --limit entre 1 e 50.")
-        names = (
-            rules["preferred_providers"][args.intent]
-            if args.provider == "auto"
-            else [args.provider]
-        )
+        names = rules["preferred_providers"][args.intent] if args.provider == "auto" else [args.provider]
         if not names:
             raise ValueError(
                 "Nenhuma fonte configurada: use resolve --file, Commons/NASA ou configure a chave de um banco."
@@ -1018,9 +953,7 @@ def execute(args):
                 # Fonte que falhou é aprendizado barato e honesto; fica marcado
                 # como `auto` porque ninguém digitou esse registro.
                 try:
-                    library.learn_query(
-                        args.query, name, "miss", note=str(e), auto=True
-                    )
+                    library.learn_query(args.query, name, "miss", note=str(e), auto=True)
                 except (ValueError, OSError) as failure:
                     record_warning("LIBRARY_WRITE_FAILED", str(failure))
                 continue
@@ -1040,11 +973,7 @@ def execute(args):
                 items.append(c)
         if not items and errors:
             raise ValueError("; ".join(f"{e['provider']}: {e['error']}" for e in errors))
-        items.sort(
-            key=lambda c: (
-                not domain_matches(c.get("source_url"), rules["preferred_domains"])
-            )
-        )
+        items.sort(key=lambda c: not domain_matches(c.get("source_url"), rules["preferred_domains"]))
         result = {
             "items": items,
             "errors": errors,
@@ -1060,9 +989,7 @@ def execute(args):
     if cmd == "resolve":
         for flag, value in (("--file", args.file), ("--url", args.url)):
             if value is not None and not value.strip():
-                raise ValueError(
-                    f"{flag} não pode ser vazio: informe o caminho ou a URL real."
-                )
+                raise ValueError(f"{flag} não pode ser vazio: informe o caminho ou a URL real.")
         if args.file:
             path = Path(args.file).expanduser().resolve()
             if not path.is_file():
@@ -1086,9 +1013,7 @@ def execute(args):
         ):
             if argument:
                 if not args.file:
-                    raise ValueError(
-                        "Contexto/composição exigem um B-roll local em --file."
-                    )
+                    raise ValueError("Contexto/composição exigem um B-roll local em --file.")
                 auxiliary = Path(argument).expanduser().resolve()
                 if not auxiliary.is_file():
                     raise ValueError("Arquivo de contexto/composição não encontrado.")
@@ -1104,10 +1029,7 @@ def execute(args):
                 c[field + "_media"] = probe(auxiliary)
         if args.file:
             inferred = (
-                "image"
-                if path.suffix.lower()
-                in (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff")
-                else "video"
+                "image" if path.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff") else "video"
             )
             c["asset_type"] = args.asset_type or inferred
             if (c["asset_type"] == "video") != (inferred == "video"):
@@ -1130,27 +1052,19 @@ def execute(args):
 
                 url = public_url(args.source_url)
                 if not url:
-                    raise ValueError(
-                        "Fonte deve ser URL HTTPS pública sem credenciais."
-                    )
+                    raise ValueError("Fonte deve ser URL HTTPS pública sem credenciais.")
                 c["source_url"] = url
             if args.creator:
                 c["creator"]["name"] = args.creator
         if args.shot:
             if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", args.shot):
-                raise ValueError(
-                    "--shot: use 1–80 letras, números, hífen ou underscore."
-                )
+                raise ValueError("--shot: use 1–80 letras, números, hífen ou underscore.")
             c["id"] += ":shot:" + args.shot
             c["shot"] = args.shot
-        if c.get("asset_type") in ("news_screenshot", "web_screenshot") and not c.get(
-            "source_url"
-        ):
+        if c.get("asset_type") in ("news_screenshot", "web_screenshot") and not c.get("source_url"):
             raise ValueError("Screenshot exige --source-url para manter a origem.")
         if not allowed(c, rules):
-            raise ValueError(
-                "Fonte ou tipo de asset bloqueado pelas regras do usuário."
-            )
+            raise ValueError("Fonte ou tipo de asset bloqueado pelas regras do usuário.")
         c["format"] = format_report(c, rules)
         c = ledger.add(c)
         ledger.save(cmd, c)
@@ -1184,9 +1098,7 @@ def execute(args):
         from getbrolls import delivery as delivery_module
 
         try:
-            delivery_module.build_delivery(
-                args.project, ledger=ledger, for_human=lambda: _flow_next(ledger, rules)
-            )
+            delivery_module.build_delivery(args.project, ledger=ledger, for_human=lambda: _flow_next(ledger, rules))
         except (ValueError, OSError) as exc:
             record_warning(
                 "DELIVERY_LINK_FAILED",
@@ -1204,19 +1116,13 @@ def execute(args):
 
     if cmd == "approve":
         if args.channel == "chat" and not (args.statement or "").strip():
-            raise ValueError(
-                "Aprovação pelo chat exige --statement com a frase exata dita pela pessoa."
-            )
+            raise ValueError("Aprovação pelo chat exige --statement com a frase exata dita pela pessoa.")
         if args.all and args.candidate:
             raise ValueError("Use --all sozinho ou --candidate ID, nunca os dois juntos.")
         if args.all and (args.start is not None or args.end is not None):
-            raise ValueError(
-                "--all aprova os intervalos já escolhidos; não use --start/--end."
-            )
+            raise ValueError("--all aprova os intervalos já escolhidos; não use --start/--end.")
         if not args.all and not args.candidate:
-            raise ValueError(
-                "Informe --candidate ID, ou use --all para todos os itens com prévia."
-            )
+            raise ValueError("Informe --candidate ID, ou use --all para todos os itens com prévia.")
         if args.all:
             return approve_all(ledger, args, rules)
     c = ledger.get(args.candidate)
@@ -1258,13 +1164,9 @@ def execute(args):
             name = (args.declared_by or "").strip()
             text = (args.declaration_text or "").strip()
             if not name or name.lower() in GENERIC_NAMES:
-                raise ValueError(
-                    "Informe em --declared-by o nome real de quem assume a responsabilidade."
-                )
+                raise ValueError("Informe em --declared-by o nome real de quem assume a responsabilidade.")
             if len(text) < 20:
-                raise ValueError(
-                    "--declaration-text precisa da frase literal da pessoa, com 20 caracteres ou mais."
-                )
+                raise ValueError("--declaration-text precisa da frase literal da pessoa, com 20 caracteres ou mais.")
             evidence = "Declaração do usuário " + name + ": " + text
             c["rights"]["basis"] = "user_declaration"
             c["rights"]["responsible_person"] = name
@@ -1272,22 +1174,15 @@ def execute(args):
         elif args.declaration:
             rights = rules["copyright"]
             if rights["mode"] != "user_declaration":
-                raise ValueError(
-                    "Usuário deve configurar sua declaração em RULES.md primeiro."
-                )
-            evidence = (
-                "Declaração do usuário "
-                + rights["responsible_person"]
-                + ": "
-                + rights["declaration"]
-            )
+                raise ValueError("Usuário deve configurar sua declaração em RULES.md primeiro.")
+            evidence = "Declaração do usuário " + rights["responsible_person"] + ": " + rights["declaration"]
             c["rights"]["basis"] = "user_declaration"
             c["rights"]["responsible_person"] = rights["responsible_person"]
         else:
             if args.evidence is None:
                 raise ValueError(
                     "Diga as condições de uso: --evidence TEXTO, ou "
-                    "--declared-by NOME --declaration-text \"frase da pessoa\"."
+                    '--declared-by NOME --declaration-text "frase da pessoa".'
                 )
             if not args.evidence.strip():
                 raise ValueError("Evidência não pode ser vazia.")
@@ -1305,25 +1200,18 @@ def execute(args):
             if args.end - args.start > config["max_seconds"]:
                 raise ValueError("Trecho excede GB_PREVIEW_MAX_SECONDS; ajuste o intervalo antes de obter mídia.")
             from .acquisition import prepare_source
+
             prepare_source(ledger, c, args.start, args.end)
         if c.get("local_path") and not args.reference_only:
             from .previewing import prepare_preview
 
             prepare_preview(ledger, c, args.start, args.end, config)
-            if (
-                c["approval"]["status"] == "approved"
-                and c["approval"].get("signature") == signature(c)
-            ):
+            if c["approval"]["status"] == "approved" and c["approval"].get("signature") == signature(c):
                 c["state"] = "verified" if c["output"].get("verified") else "approved"
             else:
-                c["state"] = (
-                    "rejected" if c["approval"]["status"] == "rejected"
-                    else "awaiting_approval"
-                )
+                c["state"] = "rejected" if c["approval"]["status"] == "rejected" else "awaiting_approval"
         else:
-            c["preview"]["warning"] = (
-                "Somente referência estática; o trecho animado requer original local autorizado."
-            )
+            c["preview"]["warning"] = "Somente referência estática; o trecho animado requer original local autorizado."
             c["state"] = "reference_only"
         if c["preview"].get("warning"):
             record_warning("PREVIEW_LIMITATION", c["preview"]["warning"])
@@ -1339,18 +1227,14 @@ def execute(args):
                 "revision": None,
             }
             c.pop("review", None)
-            c["state"] = (
-                "awaiting_approval" if c.get("local_path") else "reference_only"
-            )
+            c["state"] = "awaiting_approval" if c.get("local_path") else "reference_only"
     elif cmd == "fetch":
         require_fetch(c)
         src = c.get("local_path")
         temp = None
         if src:
             if digest(src) != c["local_sha256"]:
-                raise ValueError(
-                    "Original local mudou: importe novamente e aprove a nova versão."
-                )
+                raise ValueError("Original local mudou: importe novamente e aprove a nova versão.")
         else:
             # Re-resolve from the provider to refresh temporary variant URLs.
             fresh = providers.refresh(c)
@@ -1363,13 +1247,7 @@ def execute(args):
             from getbrolls.http import download
 
             temp = (
-                ledger.root
-                / "previews"
-                / (
-                    "download-"
-                    + hashlib.sha256(c["id"].encode()).hexdigest()[:16]
-                    + ".part"
-                )
+                ledger.root / "previews" / ("download-" + hashlib.sha256(c["id"].encode()).hexdigest()[:16] + ".part")
             )
             download(url, temp)
             src = temp
@@ -1391,16 +1269,12 @@ def execute(args):
             ledger.save(cmd, c)
             render(ledger)
             return c
-        rel = (
-            "clips/"
-            + hashlib.sha256(c["id"].encode()).hexdigest()[:16]
-            + f"-r{c['segment']['revision']}.mp4"
-        )
+        rel = "clips/" + hashlib.sha256(c["id"].encode()).hexdigest()[:16] + f"-r{c['segment']['revision']}.mp4"
         try:
             offset = c.get("local_start_s", 0)
             start = c["segment"]["start_s"] - offset
             end = c["segment"]["end_s"] - offset
-            if start < 0 or (c.get("local_duration_s") is not None and end > c["local_duration_s"] + .1):
+            if start < 0 or (c.get("local_duration_s") is not None and end > c["local_duration_s"] + 0.1):
                 raise ValueError("Gere uma nova prévia para este intervalo antes da coleta.")
             cut(src, ledger.root / rel, start, end)
         finally:
@@ -1489,16 +1363,12 @@ def scan_candidate(ledger, c, config):
     if not duration and c["provider"] != "local":
         from .social import probe_remote
 
-        probe_data = probe_remote(
-            c["source_url"], cache=ledger.root.parent / ".getbrolls-sources"
-        )
+        probe_data = probe_remote(c["source_url"], cache=ledger.root.parent / ".getbrolls-sources")
         duration = probe_data["duration_s"]
         if duration:
             c["media"]["duration_s"] = duration
     if not duration:
-        raise ValueError(
-            "Duração desconhecida: rode `inspect --candidate " + c["id"] + "` antes de varrer."
-        )
+        raise ValueError("Duração desconhecida: rode `inspect --candidate " + c["id"] + "` antes de varrer.")
     span = min(float(duration), float(config["scan_max_seconds"]))
     if c["provider"] != "local":
         from .acquisition import prepare_source
@@ -1506,9 +1376,7 @@ def scan_candidate(ledger, c, config):
         prepare_source(ledger, c, 0, span)
     source = c.get("local_path")
     if not source:
-        raise ValueError(
-            "A varredura precisa da mídia de trabalho; esta fonte só permite referência estática."
-        )
+        raise ValueError("A varredura precisa da mídia de trabalho; esta fonte só permite referência estática.")
     offset = c.get("local_start_s", 0)
     stem = hashlib.sha256(c["id"].encode()).hexdigest()[:16]
     # Tempo do arquivo de trabalho para o ffmpeg; tempo da fonte nos rótulos.

@@ -41,16 +41,9 @@ TEMPLATES = {
     "brief-invalid": "brief --validate --project {project}",
     "format": "review --project {project}",
     "search": "search --project {project} --query TERMOS_DA_BUSCA --intent literal",
-    "inspect": (
-        "inspect --project {project} --candidate {candidate} --query NARRACAO_OU_ALVO"
-    ),
-    "preview": (
-        "preview --project {project} --candidate {candidate} --start 0 --end 5"
-    ),
-    "approve": (
-        "approve --project {project} --all --by NOME --channel chat "
-        '--statement "FRASE EXATA DITA POR ELE"'
-    ),
+    "inspect": ("inspect --project {project} --candidate {candidate} --query NARRACAO_OU_ALVO"),
+    "preview": ("preview --project {project} --candidate {candidate} --start 0 --end 5"),
+    "approve": ('approve --project {project} --all --by NOME --channel chat --statement "FRASE EXATA DITA POR ELE"'),
     # Rota do board: sobe o servidor sozinho e devolve a URL; a importação depois
     # não precisa de caminho de arquivo, porque a página grava dentro do projeto.
     "serve-board": "serve --project {project} --background",
@@ -86,9 +79,7 @@ def _action(step, why, for_human, state, url=None, blocking_human=False, command
     return {
         "step": step,
         "why": why,
-        "command": command if command is not None else command_for(
-            step, state["project"], state.get("candidate")
-        ),
+        "command": command if command is not None else command_for(step, state["project"], state.get("candidate")),
         "url": url,
         "for_human": for_human,
         "blocking_human": blocking_human,
@@ -131,7 +122,7 @@ def next_action(state):
         # Arquivo existe e está errado: corrigir é diferente de começar do zero.
         return _action(
             "brief-invalid",
-            f'O BRIEF.md existe mas não passou na validação: {brief["error"]}',
+            f"O BRIEF.md existe mas não passou na validação: {brief['error']}",
             "O BRIEF.md do projeto tem um problema que preciso que você resolva antes "
             "de eu buscar: vou rodar a validação e te dizer exatamente qual linha "
             "corrigir.",
@@ -140,9 +131,7 @@ def next_action(state):
     # `review` só faz sentido quando existe algo decidido para revisar de novo; num
     # projeto vazio o conflito de formato vira um aviso colado no degrau de busca.
     if state.get("format_pending") or (conflicts and counts["approved"]):
-        detail = (
-            f" Além disso: {conflicts[0]}" if conflicts else ""
-        )
+        detail = f" Além disso: {conflicts[0]}" if conflicts else ""
         return _action(
             "format",
             "As regras editoriais (ou o brief) mudaram o formato-alvo dos itens já decididos.",
@@ -158,8 +147,7 @@ def next_action(state):
         return _action(
             "brief-search",
             f'O beat "{first["id"]}" do brief ainda não tem candidato registrado.',
-            f'O beat "{first["id"]}" ainda está sem material: vou buscar por ele agora '
-            "e te mostrar as opções.",
+            f'O beat "{first["id"]}" ainda está sem material: vou buscar por ele agora e te mostrar as opções.',
             state,
             command=first.get("search") or command_for("search", state["project"]),
         )
@@ -170,9 +158,7 @@ def next_action(state):
             "Nenhum candidato registrado no projeto ainda."
             + (f" Conflito pendente: {conflicts[0]}" if conflicts else ""),
             "Ainda não há nenhum candidato no projeto: vou buscar as fontes e te "
-            "mostrar o que apareceu."
-            + _library_hint()
-            + warning,
+            "mostrar o que apareceu." + _library_hint() + warning,
             state,
         )
     if counts["previews"] < counts["candidates"]:
@@ -234,8 +220,7 @@ def next_action(state):
                 "diga a condição real da fonte (licença, autorização, contato) que eu "
                 "gravo."
                 if per_item
-                else "Vou registrar as condições de uso dos aprovados com a declaração "
-                "que já está no RULES.md."
+                else "Vou registrar as condições de uso dos aprovados com a declaração que já está no RULES.md."
             ),
             state,
             blocking_human=per_item,
@@ -251,16 +236,14 @@ def next_action(state):
         return _action(
             "verify",
             "Arquivos coletados ainda sem conferência de integridade.",
-            "Coletei os cortes; vou conferir se todos os arquivos abrem e estão "
-            "íntegros.",
+            "Coletei os cortes; vou conferir se todos os arquivos abrem e estão íntegros.",
             state,
         )
     if state.get("undelivered"):
         # `brolls/` guarda por hash; quem abre a pasta precisa de nome de gente.
         return _action(
             "deliver",
-            "Há arquivo conferido que ainda não aparece em entrega/, a pasta que a "
-            "pessoa abre.",
+            "Há arquivo conferido que ainda não aparece em entrega/, a pasta que a pessoa abre.",
             "Vou organizar os trechos conferidos em `entrega/`, uma pasta por beat, com "
             "o contact sheet e a origem de cada um do lado — é essa pasta que você "
             "arrasta para o editor.",
@@ -269,8 +252,7 @@ def next_action(state):
     return _action(
         "done",
         "Todo item aprovado está coletado e verificado.",
-        "Terminamos: todos os trechos aprovados estão coletados, permitidos e "
-        "conferidos.",
+        "Terminamos: todos os trechos aprovados estão coletados, permitidos e conferidos.",
         state,
         command=None,
     )

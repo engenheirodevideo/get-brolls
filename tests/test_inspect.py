@@ -81,9 +81,7 @@ def stub_ytdlp(directory, payload, vtt=None):
         # CreateProcess ignora shebang: no Windows o executável fixado é um .cmd
         # que chama o Python, como o playwright-cli.cmd do instalador.
         executable = Path(directory) / "yt-dlp-stub.cmd"
-        executable.write_text(
-            f'@echo off\r\n"{sys.executable}" "{path}" %*\r\n', encoding="utf-8"
-        )
+        executable.write_text(f'@echo off\r\n"{sys.executable}" "{path}" %*\r\n', encoding="utf-8")
     env = {"GB_YTDLP_PATH": str(executable), "GB_TEST_YTDLP_JSON": json.dumps(payload)}
     if vtt is not None:
         env["GB_TEST_YTDLP_VTT"] = vtt
@@ -144,9 +142,7 @@ class WindowTests(unittest.TestCase):
         for window in windows:
             self.assertLessEqual(window["end_s"], 120.0)
             self.assertLess(window["start_s"], window["end_s"])
-            self.assertIn(
-                window["source"], ("subtitle", "chapter", "description_timestamp")
-            )
+            self.assertIn(window["source"], ("subtitle", "chapter", "description_timestamp"))
 
     def test_without_subtitles_or_chapters_the_description_timestamps_answer(self):
         probe = self.probe(chapters=[], subtitles={}, subtitle_langs=[])
@@ -177,9 +173,7 @@ class WindowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = stub_ytdlp(tmp, WITH_EVERYTHING, VTT)
             with patch.dict(os.environ, env):
-                probe = social.probe_remote(
-                    URL, langs=("pt", "en"), cache=Path(tmp) / ".getbrolls-sources"
-                )
+                probe = social.probe_remote(URL, langs=("pt", "en"), cache=Path(tmp) / ".getbrolls-sources")
         self.assertEqual(["pt"], list(probe["subtitles"]))
 
     def test_nothing_to_offer_is_an_empty_list_not_an_error(self):
@@ -195,8 +189,7 @@ class ProbeRemoteTests(unittest.TestCase):
             with patch.dict(os.environ, env):
                 probe = social.probe_remote(URL, cache=cache)
         self.assertEqual(120.0, probe["duration_s"])
-        self.assertEqual(["Abertura", "Céu laranja sobre a cidade"],
-                         [ch["title"] for ch in probe["chapters"]])
+        self.assertEqual(["Abertura", "Céu laranja sobre a cidade"], [ch["title"] for ch in probe["chapters"]])
         self.assertEqual(["en", "pt"], probe["subtitle_langs"])
         self.assertIn("poeira", probe["description"])
 
@@ -248,7 +241,10 @@ def run_cli(args, env=None):
     environment = {**os.environ, **(env or {})}
     return subprocess.run(
         [sys.executable, str(ROOT / "scripts/gb.py"), *args],
-        capture_output=True, text=True, encoding="utf-8", env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=environment,
     )
 
 
@@ -265,7 +261,7 @@ class InspectCommandTests(unittest.TestCase):
 
         self.assertIn("inspect", SUMMARIES)
         parsed = build_parser().parse_args(
-            shlex.split('inspect --project /tmp/p --url ' + URL + ' --query "céu laranja"')
+            shlex.split("inspect --project /tmp/p --url " + URL + ' --query "céu laranja"')
         )
         self.assertEqual("inspect", parsed.command)
         self.assertEqual(3, parsed.max_windows)
@@ -284,9 +280,7 @@ class InspectCommandTests(unittest.TestCase):
             self.assertEqual(["en", "pt"], payload["subtitle_langs"])
             self.assertTrue(payload["candidate_windows"])
             for window in payload["candidate_windows"]:
-                self.assertEqual(
-                    {"start_s", "end_s", "text", "source", "score"}, set(window)
-                )
+                self.assertEqual({"start_s", "end_s", "text", "source", "score"}, set(window))
             self.assertFalse((Path(tmp) / "brolls/manifest.json").exists())
 
     def test_inspect_on_a_candidate_only_writes_the_duration(self):
@@ -297,8 +291,7 @@ class InspectCommandTests(unittest.TestCase):
             before = json.loads(manifest.read_text(encoding="utf-8"))
             item_before = next(c for c in before["items"] if c["id"] == candidate)
             done = run_cli(
-                ["inspect", "--project", tmp, "--candidate", candidate,
-                 "--query", "céu laranja"],
+                ["inspect", "--project", tmp, "--candidate", candidate, "--query", "céu laranja"],
                 env=env,
             )
             self.assertEqual(0, done.returncode, done.stdout + done.stderr)
@@ -320,12 +313,9 @@ class InspectCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = stub_ytdlp(tmp, WITH_EVERYTHING, VTT)
             candidate = project_with_candidate(tmp)
-            run_cli(
-                ["inspect", "--project", tmp, "--candidate", candidate], env=env
-            )
+            run_cli(["inspect", "--project", tmp, "--candidate", candidate], env=env)
             done = run_cli(
-                ["preview", "--project", tmp, "--candidate", candidate,
-                 "--start", "100", "--end", "300"],
+                ["preview", "--project", tmp, "--candidate", candidate, "--start", "100", "--end", "300"],
                 env=env,
             )
             self.assertNotEqual(0, done.returncode)
@@ -333,9 +323,7 @@ class InspectCommandTests(unittest.TestCase):
 
     def test_url_and_candidate_are_mutually_exclusive(self):
         with self.assertRaises(SystemExit):
-            build_parser().parse_args(
-                ["inspect", "--project", "/tmp/p", "--url", URL, "--candidate", "x"]
-            )
+            build_parser().parse_args(["inspect", "--project", "/tmp/p", "--url", URL, "--candidate", "x"])
         with self.assertRaises(SystemExit):
             build_parser().parse_args(["inspect", "--project", "/tmp/p"])
 
@@ -344,9 +332,7 @@ class ScanTests(unittest.TestCase):
     def test_preview_scan_is_a_flag_and_the_cap_is_a_known_env_var(self):
         from getbrolls.config import KEYS, settings
 
-        parsed = build_parser().parse_args(
-            ["preview", "--project", "/tmp/p", "--candidate", "x", "--scan"]
-        )
+        parsed = build_parser().parse_args(["preview", "--project", "/tmp/p", "--candidate", "x", "--scan"])
         self.assertTrue(parsed.scan)
         self.assertIn("GB_SCAN_MAX_SECONDS", KEYS)
         with patch.dict(os.environ, {}, clear=False):
@@ -355,30 +341,35 @@ class ScanTests(unittest.TestCase):
 
     def test_scan_and_an_interval_together_are_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
-            done = run_cli(
-                ["preview", "--project", tmp, "--candidate", "x", "--scan",
-                 "--start", "0", "--end", "5"]
-            )
+            done = run_cli(["preview", "--project", tmp, "--candidate", "x", "--scan", "--start", "0", "--end", "5"])
             self.assertNotEqual(0, done.returncode)
             self.assertIn("--scan", done.stdout + done.stderr)
-
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
     def test_scan_maps_the_whole_local_video_without_choosing_an_interval(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "original.mp4"
             subprocess.run(
-                ["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
-                 "testsrc=size=160x90:duration=20:rate=10", "-c:v", "libx264",
-                 "-pix_fmt", "yuv420p", str(src)],
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=160x90:duration=20:rate=10",
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(src),
+                ],
                 check=True,
             )
             run_cli(["init-rules", "--project", tmp])
             resolved = run_cli(["resolve", "--file", str(src), "--project", tmp])
             candidate = json.loads(resolved.stdout)["id"]
-            done = run_cli(
-                ["preview", "--project", tmp, "--candidate", candidate, "--scan"]
-            )
+            done = run_cli(["preview", "--project", tmp, "--candidate", candidate, "--scan"])
             self.assertEqual(0, done.returncode, done.stdout + done.stderr)
             payload = json.loads(done.stdout)
             self.assertTrue(Path(payload["files"]["scan"]).is_file())
@@ -401,9 +392,20 @@ class ScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "original.mp4"
             subprocess.run(
-                ["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
-                 "testsrc=size=160x90:duration=60:rate=10", "-c:v", "libx264",
-                 "-pix_fmt", "yuv420p", str(src)],
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=160x90:duration=60:rate=10",
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(src),
+                ],
                 check=True,
             )
             run_cli(["init-rules", "--project", tmp])

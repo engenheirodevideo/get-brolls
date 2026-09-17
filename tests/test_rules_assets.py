@@ -42,9 +42,7 @@ class RulesTests(unittest.TestCase):
             self.assertEqual(format_report(c, r)["fit"], "needs_layout_review")
             r["copyright"]["mode"] = "user_declaration"
             p = Path(d) / "RULES.md"
-            p.write_text(
-                "```json\n" + json.dumps(r) + "\n```", encoding="utf-8"
-            )
+            p.write_text("```json\n" + json.dumps(r) + "\n```", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "responsabilidade"):
                 load_rules(d)
 
@@ -68,11 +66,7 @@ class RulesTests(unittest.TestCase):
             remember(l, c, "approved", "Good", "Human")
             remember(l, c, "rejected", "Bad fit elsewhere", "Human")
             self.assertEqual(
-                len(
-                    json.loads(
-                        (l.root / "references.json").read_text(encoding="utf-8")
-                    )["items"]
-                ),
+                len(json.loads((l.root / "references.json").read_text(encoding="utf-8"))["items"]),
                 2,
             )
 
@@ -109,9 +103,7 @@ class RulesTests(unittest.TestCase):
             self.assertEqual(c["format"]["target"], "reels")
             r["asset_types"] = ["web_screenshot"]
             r["blocked_domains"] = []
-            self.assertEqual(
-                plan(l, "https://www.nasa.gov/", r)["asset_type"], "web_screenshot"
-            )
+            self.assertEqual(plan(l, "https://www.nasa.gov/", r)["asset_type"], "web_screenshot")
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
     def test_image_lifecycle_user_declaration(self):
@@ -162,8 +154,12 @@ class RulesTests(unittest.TestCase):
             self.assertEqual(c["media"]["kind"], "image")
             call("preview", *base)
             call(
-                "approve", *base, "--by", "Human",
-                "--statement", "Aprovo esta imagem para o vídeo.",
+                "approve",
+                *base,
+                "--by",
+                "Human",
+                "--statement",
+                "Aprovo esta imagem para o vídeo.",
             )
             call("permit", *base, "--declaration", ok=False)
             r = load_rules(d)
@@ -172,9 +168,7 @@ class RulesTests(unittest.TestCase):
                 "responsible_person": "Fixture User",
                 "declaration": "Synthetic test image authored locally.",
             }
-            (root / "RULES.md").write_text(
-                "```json\n" + json.dumps(r) + "\n```", encoding="utf-8"
-            )
+            (root / "RULES.md").write_text("```json\n" + json.dumps(r) + "\n```", encoding="utf-8")
             out = call("permit", *base, "--declaration")
             self.assertEqual(out["rights"]["basis"], "user_declaration")
             out = call("fetch", *base)
@@ -274,9 +268,7 @@ class FormatChangeGateTests(unittest.TestCase):
                     )
                     self.assertNotIn("--confirm-format-change", proc.stdout + proc.stderr)
             # A aprovação segue de pé: a consulta não sincroniza formato nenhum.
-            self.assertEqual(
-                "approved", Ledger(folder).data["items"][0]["approval"]["status"]
-            )
+            self.assertEqual("approved", Ledger(folder).data["items"][0]["approval"]["status"])
             # Um comando de escrita continua barrado até o sim explícito.
             blocked = subprocess.run(
                 [sys.executable, str(CLI), "review", "--project", folder],

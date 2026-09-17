@@ -86,10 +86,18 @@ class ServeMissingStoryboardEnvelopeTests(unittest.TestCase):
     def test_missing_review_html_is_a_normal_error_without_creating_brolls(self):
         import subprocess, sys, json, tempfile
         from pathlib import Path
+
         with tempfile.TemporaryDirectory() as tmp:
             proc = subprocess.run(
-                [sys.executable, str(Path(__file__).resolve().parents[1] / "scripts" / "gb.py"), "serve", "--project", tmp],
-                capture_output=True, text=True,
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve().parents[1] / "scripts" / "gb.py"),
+                    "serve",
+                    "--project",
+                    tmp,
+                ],
+                capture_output=True,
+                text=True,
             )
             self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
             payload = json.loads(proc.stdout.strip().splitlines()[-1])
@@ -104,9 +112,7 @@ class SaveEndpointTests(unittest.TestCase):
     def _project(self, root):
         brolls = root / "brolls"
         brolls.mkdir(parents=True)
-        (brolls / "review.html").write_text(
-            "<html><body>storyboard</body></html>", encoding="utf-8"
-        )
+        (brolls / "review.html").write_text("<html><body>storyboard</body></html>", encoding="utf-8")
         return root
 
     @contextmanager
@@ -138,9 +144,7 @@ class SaveEndpointTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
             with self._serving(root) as (server, port):
-                with urllib.request.urlopen(
-                    f"http://127.0.0.1:{port}/review.html", timeout=5
-                ) as response:
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/review.html", timeout=5) as response:
                     page = response.read().decode("utf-8")
                 self.assertIn("GETBROLLS_SAVE", page)
                 self.assertIn(server.save_token, page)
@@ -232,9 +236,7 @@ class BackgroundServeTests(unittest.TestCase):
             import json as _json
 
             pid_file = root / "brolls" / ".serve.pid"
-            pid_file.write_text(
-                _json.dumps({"pid": 999999999, "port": 8767, "urls": []}), encoding="utf-8"
-            )
+            pid_file.write_text(_json.dumps({"pid": 999999999, "port": 8767, "urls": []}), encoding="utf-8")
             self.assertFalse(serve.state(root)["running"])
             result = serve.stop(root)
             self.assertFalse(result["stopped"])
@@ -244,9 +246,7 @@ class BackgroundServeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
             self.assertEqual(False, serve.state(root)["running"])
-            self.assertEqual(
-                {"review.html"}, {p.name for p in (root / "brolls").iterdir()}
-            )
+            self.assertEqual({"review.html"}, {p.name for p in (root / "brolls").iterdir()})
 
 
 class ServerIdentityTests(unittest.TestCase):
@@ -267,9 +267,7 @@ class ServerIdentityTests(unittest.TestCase):
             root = self._project(Path(tmp))
             # Um processo vivo qualquer, que não é o nosso servidor: o PID existe,
             # mas ninguém responde ao ping com a nossa sessão.
-            innocent = _subprocess.Popen(
-                [sys.executable, "-c", "import time; time.sleep(30)"]
-            )
+            innocent = _subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
             try:
                 (root / "brolls" / ".serve.pid").write_text(
                     _json.dumps(
@@ -303,9 +301,7 @@ class ServerIdentityTests(unittest.TestCase):
                 pid_file = root / "brolls" / ".serve.pid"
                 record = _json.loads(pid_file.read_text(encoding="utf-8"))
                 self.assertTrue(record["session"])
-                pid_file.write_text(
-                    _json.dumps({**record, "session": "outra"}), encoding="utf-8"
-                )
+                pid_file.write_text(_json.dumps({**record, "session": "outra"}), encoding="utf-8")
                 self.assertFalse(serve.state(root)["running"])
                 pid_file.write_text(_json.dumps(record), encoding="utf-8")
             finally:
@@ -320,9 +316,7 @@ class ServerIdentityTests(unittest.TestCase):
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             try:
-                with urllib.request.urlopen(
-                    f"http://127.0.0.1:{port}/__ping", timeout=5
-                ) as response:
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/__ping", timeout=5) as response:
                     self.assertEqual(
                         server.session_id,
                         _json.loads(response.read().decode("utf-8"))["session"],
@@ -356,8 +350,7 @@ class RebindingTests(unittest.TestCase):
 
     def _request(self, port, headers, method="GET", body=None):
         request = urllib.request.Request(
-            f"http://127.0.0.1:{port}"
-            + (serve.SAVE_PATH if method == "POST" else "/review.html"),
+            f"http://127.0.0.1:{port}" + (serve.SAVE_PATH if method == "POST" else "/review.html"),
             data=body,
             headers=headers,
             method=method,

@@ -85,8 +85,7 @@ def _number(value, field, low, high, required=True):
         return None
     if type(value) not in (int, float) or isinstance(value, bool) or not low <= value <= high:
         raise ValueError(
-            f'Em BRIEF.md, "{field}" tem que ser um número entre {low} e {high}'
-            + ("." if required else " (ou null).")
+            f'Em BRIEF.md, "{field}" tem que ser um número entre {low} e {high}' + ("." if required else " (ou null).")
         )
     return value
 
@@ -99,9 +98,7 @@ def _flag(value, field):
 
 def _choice(value, field, options):
     if value not in options:
-        raise ValueError(
-            f'Em BRIEF.md, "{field}" tem que ser ' + " ou ".join(f'"{o}"' for o in options) + "."
-        )
+        raise ValueError(f'Em BRIEF.md, "{field}" tem que ser ' + " ou ".join(f'"{o}"' for o in options) + ".")
     return value
 
 
@@ -113,9 +110,7 @@ def _sources(value, field):
         or len(set(value)) != len(value)
     ):
         raise ValueError(
-            f'Em BRIEF.md, "{field}" só aceita, sem repetir, uma lista destas fontes: '
-            + ", ".join(SOURCES)
-            + "."
+            f'Em BRIEF.md, "{field}" só aceita, sem repetir, uma lista destas fontes: ' + ", ".join(SOURCES) + "."
         )
     return list(value)
 
@@ -123,12 +118,8 @@ def _sources(value, field):
 def _queries(value, field):
     if value is None:
         return []
-    if not isinstance(value, list) or any(
-        not isinstance(v, str) or not v.strip() for v in value
-    ):
-        raise ValueError(
-            f'Em BRIEF.md, "{field}" tem que ser uma lista de frases de busca entre aspas.'
-        )
+    if not isinstance(value, list) or any(not isinstance(v, str) or not v.strip() for v in value):
+        raise ValueError(f'Em BRIEF.md, "{field}" tem que ser uma lista de frases de busca entre aspas.')
     return list(value)
 
 
@@ -136,8 +127,7 @@ def _dictionary(data, field):
     value = data.get(field)
     if not isinstance(value, dict):
         raise ValueError(
-            f'Em BRIEF.md, "{field}" tem que ser um bloco entre chaves com as chaves '
-            "descritas em docs/BRIEF.md."
+            f'Em BRIEF.md, "{field}" tem que ser um bloco entre chaves com as chaves descritas em docs/BRIEF.md.'
         )
     return value
 
@@ -157,11 +147,7 @@ def resolve_beat(defaults, beat, position):
         if beat.get("allowed_sources") is not None
         else list(defaults["allowed_sources"])
     )
-    stock = (
-        _flag(beat["stock"], f"{where}.stock")
-        if beat.get("stock") is not None
-        else defaults["stock"]
-    )
+    stock = _flag(beat["stock"], f"{where}.stock") if beat.get("stock") is not None else defaults["stock"]
     banks = [s for s in sources if s in STOCK_SOURCES]
     if stock and not banks:
         raise ValueError(
@@ -178,9 +164,7 @@ def resolve_beat(defaults, beat, position):
         "id": identifier,
         "narration": _text(beat.get("narration"), f"{where}.narration", required=False),
         "target": _text(beat.get("target"), f"{where}.target"),
-        "intent": _choice(
-            beat.get("intent", defaults["intent"]), f"{where}.intent", INTENTS
-        ),
+        "intent": _choice(beat.get("intent", defaults["intent"]), f"{where}.intent", INTENTS),
         "allowed_sources": sources,
         "stock": stock,
         "duration_hint_s": _number(
@@ -209,12 +193,8 @@ def validate_brief(data, rules=None):
         "audience": _text(video.get("audience"), "video.audience", required=False),
         "delivery": {
             "format": _choice(delivery.get("format"), "video.delivery.format", FORMATS),
-            "duration_s": _number(
-                delivery.get("duration_s"), "video.delivery.duration_s", 1, 36000, required=False
-            ),
-            "platform": _text(
-                delivery.get("platform"), "video.delivery.platform", required=False
-            ),
+            "duration_s": _number(delivery.get("duration_s"), "video.delivery.duration_s", 1, 36000, required=False),
+            "platform": _text(delivery.get("platform"), "video.delivery.platform", required=False),
         },
     }
     rights = {
@@ -223,22 +203,15 @@ def validate_brief(data, rules=None):
         "notes": _text(rights.get("notes"), "rights.notes", required=False),
     }
     defaults = {
-        "allowed_sources": _sources(
-            defaults.get("allowed_sources"), "defaults.allowed_sources"
-        ),
+        "allowed_sources": _sources(defaults.get("allowed_sources"), "defaults.allowed_sources"),
         "intent": _choice(defaults.get("intent"), "defaults.intent", INTENTS),
-        "duration_hint_s": _number(
-            defaults.get("duration_hint_s"), "defaults.duration_hint_s", MIN_HINT_S, MAX_HINT_S
-        ),
+        "duration_hint_s": _number(defaults.get("duration_hint_s"), "defaults.duration_hint_s", MIN_HINT_S, MAX_HINT_S),
         "stock": _flag(defaults.get("stock"), "defaults.stock"),
     }
     raw_beats = data.get("beats")
-    if not isinstance(raw_beats, list) or not raw_beats or any(
-        not isinstance(b, dict) for b in raw_beats
-    ):
+    if not isinstance(raw_beats, list) or not raw_beats or any(not isinstance(b, dict) for b in raw_beats):
         raise ValueError(
-            'Em BRIEF.md, "beats" tem que ser uma lista com pelo menos um beat; cada beat '
-            'precisa de "id" e "target".'
+            'Em BRIEF.md, "beats" tem que ser uma lista com pelo menos um beat; cada beat precisa de "id" e "target".'
         )
     beats, seen = [], set()
     for position, raw in enumerate(raw_beats):
@@ -268,12 +241,11 @@ def validate_brief(data, rules=None):
     # responsabilidade para uma pessoa nunca passa por falta de arquivo para conferir.
     copyright_block = (rules or {}).get("copyright") or {}
     if rights["posture"] == "user_declaration" and any(
-        not (copyright_block.get(key) or "").strip()
-        for key in ("responsible_person", "declaration")
+        not (copyright_block.get(key) or "").strip() for key in ("responsible_person", "declaration")
     ):
         raise ValueError(
             'O brief assume "user_declaration", mas o RULES.md não tem nome e declaração '
-            "legíveis. Rode `init-rules --mode user_declaration --responsible \"NOME\" "
+            'legíveis. Rode `init-rules --mode user_declaration --responsible "NOME" '
             '--declaration "frase" --force` antes de seguir.'
         )
     return (
@@ -296,14 +268,8 @@ def beat_commands(project, beat):
     prefix = f"{_cli_prefix()} "
     provider = next((s for s in beat["allowed_sources"] if s in SEARCHABLE), None)
     query = beat["queries"][0] if beat["queries"] else beat["target"]
-    origin = (
-        "--file ARQUIVO"
-        if beat["allowed_sources"] == ["local"]
-        else "--url URL_PUBLICA"
-    )
-    narration = (
-        f" --narration {shlex.quote(beat['narration'])}" if beat.get("narration") else ""
-    )
+    origin = "--file ARQUIVO" if beat["allowed_sources"] == ["local"] else "--url URL_PUBLICA"
+    narration = f" --narration {shlex.quote(beat['narration'])}" if beat.get("narration") else ""
     commands = {}
     if provider:
         commands["search"] = (
@@ -333,7 +299,4 @@ def beat_commands(project, beat):
 
 def beat_progress(beats, items):
     """Candidatos já registrados por beat: o vínculo é `c["shot"] == beat.id`."""
-    return {
-        beat["id"]: [c["id"] for c in items if c.get("shot") == beat["id"]]
-        for beat in beats
-    }
+    return {beat["id"]: [c["id"] for c in items if c.get("shot") == beat["id"]] for beat in beats}

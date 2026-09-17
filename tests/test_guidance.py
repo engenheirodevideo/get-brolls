@@ -27,9 +27,7 @@ ABSOLUTE = PROJECT
 def base_state(**extra):
     state = {
         "project": PROJECT,
-        "counts": dict.fromkeys(
-            ("candidates", "previews", "approved", "permitted", "delivered", "verified"), 0
-        ),
+        "counts": dict.fromkeys(("candidates", "previews", "approved", "permitted", "delivered", "verified"), 0),
         "format_pending": 0,
         "brief": {"beats": 1, "covered": 1, "missing": [], "conflicts": []},
         "review_page": False,
@@ -58,27 +56,17 @@ LADDER_STATES = {
         counts=full(candidates=1, previews=1),
     ),
     "search": base_state(),
-    "inspect": base_state(
-        counts=full(candidates=3), duration_unknown=2, inspect_candidate="youtube:abc"
-    ),
+    "inspect": base_state(counts=full(candidates=3), duration_unknown=2, inspect_candidate="youtube:abc"),
     "preview": base_state(counts=full(candidates=3)),
     "approve": base_state(counts=full(candidates=3, previews=3)),
     "permit": base_state(counts=full(candidates=3, previews=3, approved=3)),
     "fetch": base_state(counts=full(candidates=3, previews=3, approved=3, permitted=3)),
-    "verify": base_state(
-        counts=full(candidates=3, previews=3, approved=3, permitted=3, delivered=3)
-    ),
+    "verify": base_state(counts=full(candidates=3, previews=3, approved=3, permitted=3, delivered=3)),
     "deliver": base_state(
-        counts=full(
-            candidates=3, previews=3, approved=3, permitted=3, delivered=3, verified=3
-        ),
+        counts=full(candidates=3, previews=3, approved=3, permitted=3, delivered=3, verified=3),
         undelivered=3,
     ),
-    "done": base_state(
-        counts=full(
-            candidates=3, previews=3, approved=3, permitted=3, delivered=3, verified=3
-        )
-    ),
+    "done": base_state(counts=full(candidates=3, previews=3, approved=3, permitted=3, delivered=3, verified=3)),
 }
 
 
@@ -118,10 +106,7 @@ class Guidance(unittest.TestCase):
         self.assertEqual("http://127.0.0.1:8767/review.html", next_action(state)["url"])
 
     def test_blocking_human_only_on_review_permit_and_format(self):
-        blocking = {
-            step: next_action(state)["blocking_human"]
-            for step, state in LADDER_STATES.items()
-        }
+        blocking = {step: next_action(state)["blocking_human"] for step, state in LADDER_STATES.items()}
         self.assertEqual(
             {"format", "approve", "permit"},
             {step for step, value in blocking.items() if value},
@@ -139,7 +124,9 @@ class Guidance(unittest.TestCase):
         self.assertFalse(action["blocking_human"])
 
     def test_format_conflict_without_approvals_only_warns_on_the_search_rung(self):
-        state = base_state(brief={"beats": 1, "covered": 1, "missing": [], "conflicts": ["Formato do brief difere do RULES.md."]})
+        state = base_state(
+            brief={"beats": 1, "covered": 1, "missing": [], "conflicts": ["Formato do brief difere do RULES.md."]}
+        )
         action = next_action(state)
         self.assertEqual("search", action["step"])
         self.assertIn("Formato do brief", action["for_human"])
@@ -208,26 +195,39 @@ class SuggestedCommandRuns(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "original.mp4"
             subprocess.run(
-                ["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
-                 "testsrc=size=160x90:duration=6:rate=10", "-c:v", "libx264",
-                 "-pix_fmt", "yuv420p", str(src)],
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=160x90:duration=6:rate=10",
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(src),
+                ],
                 check=True,
             )
             resolved = subprocess.run(
                 [sys.executable, cli, "resolve", "--file", str(src), "--project", tmp],
-                capture_output=True, text=True, encoding="utf-8",
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
             )
             self.assertEqual(0, resolved.returncode, resolved.stderr)
             candidate = json.loads(resolved.stdout)["id"]
-            state = base_state(
-                project=tmp, counts=full(candidates=1), candidate=candidate
-            )
+            state = base_state(project=tmp, counts=full(candidates=1), candidate=candidate)
             action = next_action(state)
             self.assertEqual("preview", action["step"])
             argv = shlex.split(action["command"])
             done = subprocess.run(
                 [sys.executable, *argv[1:]],
-                capture_output=True, text=True, encoding="utf-8",
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
             )
             # TypeError de --start/--end None sairia como INTERNAL_ERROR (saída 3).
             self.assertEqual(0, done.returncode, done.stdout + done.stderr)

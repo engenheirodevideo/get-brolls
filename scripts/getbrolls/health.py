@@ -9,9 +9,7 @@ def live_checks():
     for name in ("commons", "nasa", "pexels", "pixabay", "youtube"):
         key = providers.KEYS.get(name)
         if key and not os.getenv(key):
-            results.append(
-                {"provider": name, "status": "not_tested_missing_key", "env_key": key}
-            )
+            results.append({"provider": name, "status": "not_tested_missing_key", "env_key": key})
             continue
         start = time.monotonic()
         try:
@@ -23,9 +21,7 @@ def live_checks():
             }
             if rows and name != "youtube":
                 fresh = providers.refresh(rows[0])
-                result["refresh"] = (
-                    "media_url_available" if fresh.get("media_url") else "no_media_url"
-                )
+                result["refresh"] = "media_url_available" if fresh.get("media_url") else "no_media_url"
             result["seconds"] = round(time.monotonic() - start, 3)
             results.append(result)
         except (ValueError, OSError, KeyError, TypeError):

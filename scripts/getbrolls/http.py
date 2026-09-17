@@ -54,13 +54,7 @@ def public_url(url):
 
 def _network_url(url):
     p = urllib.parse.urlsplit(url)
-    if (
-        p.scheme != "https"
-        or not p.hostname
-        or p.username
-        or p.password
-        or p.port not in (None, 443)
-    ):
+    if p.scheme != "https" or not p.hostname or p.username or p.password or p.port not in (None, 443):
         raise ProviderError("HTTPS público obrigatório")
     return p
 
@@ -71,9 +65,7 @@ def _safe_network(url):
         addresses = socket.getaddrinfo(p.hostname, 443, type=socket.SOCK_STREAM)
     except OSError:
         raise ProviderError("Falha ao resolver provedor") from None
-    if not addresses or any(
-        not ipaddress.ip_address(row[4][0]).is_global for row in addresses
-    ):
+    if not addresses or any(not ipaddress.ip_address(row[4][0]).is_global for row in addresses):
         raise ProviderError("Destino de rede não permitido")
     return addresses
 
@@ -116,9 +108,7 @@ class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
 def _opener():
     # Environment proxies would bypass the checked destination. This transport
     # connects directly; redirects remain forbidden.
-    return urllib.request.build_opener(
-        urllib.request.ProxyHandler({}), _PinnedHTTPSHandler(), _NoRedirect()
-    )
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}), _PinnedHTTPSHandler(), _NoRedirect())
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -168,15 +158,9 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
     _network_url(url)
     if params:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
-    cache_root = Path(
-        os.environ.get("GETBROLLS_CACHE_DIR", str(Path.home() / ".cache" / "getbrolls"))
-    )
+    cache_root = Path(os.environ.get("GETBROLLS_CACHE_DIR", str(Path.home() / ".cache" / "getbrolls")))
     cache_path = cache_root / (hashlib.sha256(url.encode()).hexdigest() + ".json")
-    if (
-        cache_ttl
-        and cache_path.is_file()
-        and time.time() - cache_path.stat().st_mtime < cache_ttl
-    ):
+    if cache_ttl and cache_path.is_file() and time.time() - cache_path.stat().st_mtime < cache_ttl:
         try:
             return json.loads(cache_path.read_text(encoding="utf-8"))
         except (ValueError, OSError) as error:
@@ -194,9 +178,7 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
     data = None
     for attempt in range(3):
         try:
-            with opener.open(
-                urllib.request.Request(url, headers=request_headers), timeout=30
-            ) as response:
+            with opener.open(urllib.request.Request(url, headers=request_headers), timeout=30) as response:
                 raw = response.read(8 * 1024 * 1024 + 1)
                 if len(raw) > 8 * 1024 * 1024:
                     raise ProviderError("Resposta excede limite de 8 MB")
@@ -215,8 +197,7 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
             suffix = f": {detail}" if detail else ""
             if code in (401, 403):
                 raise ProviderError(
-                    "Autenticação/permissão ou quota recusada pelo provedor (HTTP %s)%s"
-                    % (code, suffix)
+                    "Autenticação/permissão ou quota recusada pelo provedor (HTTP %s)%s" % (code, suffix)
                 ) from None
             if code == 429:
                 # Honour a short Retry-After once; never sleep past the CLI budget.
@@ -227,12 +208,9 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
                     continue
                 if wait is not None:
                     raise ProviderError(
-                        "Quota atingida (HTTP 429); o provedor pede %s s de espera antes de repetir"
-                        % wait
+                        "Quota atingida (HTTP 429); o provedor pede %s s de espera antes de repetir" % wait
                     ) from None
-                raise ProviderError(
-                    "Quota atingida (HTTP 429); aguarde o limite do provedor"
-                ) from None
+                raise ProviderError("Quota atingida (HTTP 429); aguarde o limite do provedor") from None
             if code < 500 or attempt == 2:
                 raise ProviderError("Provedor retornou HTTP %s%s" % (code, suffix)) from None
         except (urllib.error.URLError, TimeoutError, OSError) as error:
@@ -275,9 +253,7 @@ def download(url, target, max_bytes=512 * 1024 * 1024):
     success = False
     try:
         request = urllib.request.Request(url, headers={"User-Agent": f"Get-Brolls/{__version__}"})
-        with _opener().open(
-            request, timeout=30
-        ) as response:
+        with _opener().open(request, timeout=30) as response:
             length = response.headers.get("Content-Length")
             if length and int(length) > max_bytes:
                 raise ProviderError("Mídia excede limite de download")

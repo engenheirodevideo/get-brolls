@@ -186,8 +186,7 @@ def link_or_copy(src, dest, read_only=False):
             if dest.is_symlink() or dest.exists():
                 dest.unlink()
     raise OSError(
-        f"Não consegui ligar nem copiar {src} para {dest}. Confira espaço e permissão "
-        "de escrita na pasta do projeto."
+        f"Não consegui ligar nem copiar {src} para {dest}. Confira espaço e permissão de escrita na pasta do projeto."
     )
 
 
@@ -372,9 +371,9 @@ def _ours(rel, path, owned):
     if GENERATED.match(name):
         return True
     parent = path.parent.name
-    return bool(BEAT_DIR_RE.match(parent)) and re.fullmatch(
-        re.escape(parent) + r"(-\d+)?\.[A-Za-z0-9]+", name
-    ) is not None
+    return (
+        bool(BEAT_DIR_RE.match(parent)) and re.fullmatch(re.escape(parent) + r"(-\d+)?\.[A-Za-z0-9]+", name) is not None
+    )
 
 
 def _sweep(root, expected, dry_run, owned=()):
@@ -464,9 +463,7 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
                 target = root / origin_rel
                 atomic_write(
                     target,
-                    render_origin(
-                        c, names["media"], _created_in(target), method or "hardlink"
-                    ),
+                    render_origin(c, names["media"], _created_in(target), method or "hardlink"),
                 )
             record = {"path": f"{DELIVERY_DIR}/{media_rel}", "method": method}
             if conflict:

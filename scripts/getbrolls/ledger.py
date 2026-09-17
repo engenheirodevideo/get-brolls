@@ -40,12 +40,7 @@ def validate_manifest(data):
             raise ValueError()
         seen = set()
         for c in data["items"]:
-            if (
-                not isinstance(c, dict)
-                or not isinstance(c.get("id"), str)
-                or not c["id"]
-                or c["id"] in seen
-            ):
+            if not isinstance(c, dict) or not isinstance(c.get("id"), str) or not c["id"] or c["id"] in seen:
                 raise ValueError()
             seen.add(c["id"])
             for field in ("provider", "source_id", "title", "state"):
@@ -67,10 +62,7 @@ def validate_manifest(data):
             for field in ("start_s", "end_s", "revision"):
                 if field not in c["segment"]:
                     raise ValueError()
-            if (
-                type(c["segment"]["revision"]) is not int
-                or c["segment"]["revision"] < 0
-            ):
+            if type(c["segment"]["revision"]) is not int or c["segment"]["revision"] < 0:
                 raise ValueError()
             if not isinstance(c["rights"].get("evidence"), list) or any(
                 not isinstance(v, str) for v in c["rights"]["evidence"]
@@ -179,9 +171,7 @@ class Ledger:
         ]
         atomic_write(
             self.pending,
-            json.dumps(
-                {"data": self.data, "events": events}, ensure_ascii=False, indent=2
-            ),
+            json.dumps({"data": self.data, "events": events}, ensure_ascii=False, indent=2),
         )
         from .runtime import record_commit
 
@@ -194,8 +184,7 @@ class Ledger:
             data = validate_manifest(transaction["data"])
             events = transaction["events"]
             if not isinstance(events, list) or any(
-                not isinstance(e, dict) or not isinstance(e.get("transaction"), str)
-                for e in events
+                not isinstance(e, dict) or not isinstance(e.get("transaction"), str) for e in events
             ):
                 raise ValueError()
         except (KeyError, ValueError, TypeError):
@@ -204,29 +193,17 @@ class Ledger:
             ) from None
         atomic_write(self.path, json.dumps(data, ensure_ascii=False, indent=2))
         for c in data["items"]:
-            path = (
-                self.root
-                / "candidates"
-                / (hashlib.sha256(c["id"].encode()).hexdigest()[:16] + ".json")
-            )
+            path = self.root / "candidates" / (hashlib.sha256(c["id"].encode()).hexdigest()[:16] + ".json")
             atomic_write(path, json.dumps(c, ensure_ascii=False, indent=2))
         event_path = self.root / "events.jsonl"
         prior = event_path.read_text(encoding="utf-8") if event_path.exists() else ""
         try:
-            known = {
-                json.loads(line).get("transaction")
-                for line in prior.splitlines()
-                if line.strip()
-            }
+            known = {json.loads(line).get("transaction") for line in prior.splitlines() if line.strip()}
         except (ValueError, AttributeError):
             raise ValueError(
                 "events.jsonl inválido. Histórico preservado; restaure o log para concluir a recuperação."
             ) from None
-        extra = "".join(
-            json.dumps(e, ensure_ascii=False) + "\n"
-            for e in events
-            if e["transaction"] not in known
-        )
+        extra = "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in events if e["transaction"] not in known)
         if extra:
             atomic_write(
                 event_path,

@@ -34,7 +34,11 @@ def capabilities():
             "embed": False,
             "seek": "local" if name == "local" else "unsupported",
             "download": True,
-            "transport": "browser-cdn-pairs / yt-dlp" if name == "instagram" else "yt-dlp" if name in ("youtube", "tiktok") else name,
+            "transport": "browser-cdn-pairs / yt-dlp"
+            if name == "instagram"
+            else "yt-dlp"
+            if name in ("youtube", "tiktok")
+            else name,
             "configured": not key or bool(os.environ.get(key)),
             "env_key": key,
         }
@@ -44,9 +48,7 @@ def capabilities():
 def _key(provider):
     key = os.environ.get(KEYS[provider])
     if not key:
-        raise ProviderError(
-            "Configure %s para pesquisar em %s" % (KEYS[provider], provider)
-        )
+        raise ProviderError("Configure %s para pesquisar em %s" % (KEYS[provider], provider))
     return key
 
 
@@ -101,15 +103,11 @@ def search(provider, query, limit=8):
         "nasa": _nasa,
     }.get(provider)
     if not fn:
-        raise ProviderError(
-            "Busca indisponível nesta fonte; forneça URL ou arquivo local"
-        )
+        raise ProviderError("Busca indisponível nesta fonte; forneça URL ou arquivo local")
     items = fn(query.strip(), limit)
     for item in items:
         item["query"] = query.strip()
-        item["match"]["kind"] = (
-            "illustrative" if provider in ("pexels", "pixabay") else "literal"
-        )
+        item["match"]["kind"] = "illustrative" if provider in ("pexels", "pixabay") else "literal"
     return items[:limit]
 
 
@@ -128,18 +126,12 @@ def _pexels_rows(data):
         item = _base("pexels", row["id"], "Pexels · %s" % row["id"], row.get("url"))
         user = row.get("user") or {}
         item["creator"] = {"name": user.get("name"), "url": public_url(user.get("url"))}
-        _license(
-            item, "Pexels License", "https://www.pexels.com/license/", user.get("name")
-        )
+        _license(item, "Pexels License", "https://www.pexels.com/license/", user.get("name"))
         _poster(item, row.get("image"))
         files = [
-            v
-            for v in row.get("video_files", [])
-            if v.get("file_type") == "video/mp4" and public_url(v.get("link"))
+            v for v in row.get("video_files", []) if v.get("file_type") == "video/mp4" and public_url(v.get("link"))
         ]
-        fitting = [
-            v for v in files if max(v.get("width") or 0, v.get("height") or 0) <= 1920
-        ]
+        fitting = [v for v in files if max(v.get("width") or 0, v.get("height") or 0) <= 1920]
         file = max(
             fitting or files,
             key=lambda v: (v.get("width") or 0) * (v.get("height") or 0),
@@ -182,30 +174,21 @@ def _pixabay_rows(data):
             "https://pixabay.com/service/license-summary/",
             row.get("user"),
         )
-        variants = [
-            v for v in row.get("videos", {}).values() if public_url(v.get("url"))
-        ]
-        fitting = [
-            v
-            for v in variants
-            if max(v.get("width") or 0, v.get("height") or 0) <= 1920
-        ]
+        variants = [v for v in row.get("videos", {}).values() if public_url(v.get("url"))]
+        fitting = [v for v in variants if max(v.get("width") or 0, v.get("height") or 0) <= 1920]
         v = max(
             fitting or variants,
             key=lambda v: (v.get("width") or 0) * (v.get("height") or 0),
             default={},
         )
         _poster(item, v.get("thumbnail"))
-        out.append(
-            _media(
-                item, v.get("url"), v.get("width"), v.get("height"), row.get("duration")
-            )
-        )
+        out.append(_media(item, v.get("url"), v.get("width"), v.get("height"), row.get("duration")))
     return out
 
 
 def _youtube(query, limit):
     from . import social
+
     out = []
     for row in social.search(query, limit):
         ident = row.get("id")
@@ -286,11 +269,7 @@ def _nasa(query, limit):
         _poster(
             item,
             next(
-                (
-                    v.get("href")
-                    for v in row.get("links", [])
-                    if v.get("rel") == "preview"
-                ),
+                (v.get("href") for v in row.get("links", []) if v.get("rel") == "preview"),
                 None,
             ),
         )
@@ -301,8 +280,7 @@ def _nasa(query, limit):
         urls = [
             v.get("href")
             for v in assets.get("collection", {}).get("items", [])
-            if public_url(v.get("href"))
-            and urlsplit(v["href"]).path.lower().endswith(".mp4")
+            if public_url(v.get("href")) and urlsplit(v["href"]).path.lower().endswith(".mp4")
         ]
         urls.sort(key=lambda u: ("~orig" in u, "~medium" not in u, len(u)))
         out.append(_media(item, urls[0] if urls else None))
@@ -352,16 +330,10 @@ def resolve(url):
     elif host in ("tiktok.com", "www.tiktok.com", "m.tiktok.com"):
         match = re.fullmatch(r"@([A-Za-z0-9_.-]+)/video/(\d+)", path)
         if not match:
-            raise ProviderError(
-                "Forneça URL completa TikTok @usuario/video/ID; links curtos não são expandidos"
-            )
-        item = _base(
-            "tiktok", match[2], "TikTok · " + match[2], "https://www.tiktok.com/" + path
-        )
+            raise ProviderError("Forneça URL completa TikTok @usuario/video/ID; links curtos não são expandidos")
+        item = _base("tiktok", match[2], "TikTok · " + match[2], "https://www.tiktok.com/" + path)
     else:
-        raise ProviderError(
-            "Fonte de URL não suportada; use busca do banco ou original local"
-        )
+        raise ProviderError("Fonte de URL não suportada; use busca do banco ou original local")
     item["state"] = "candidate"
     item["acquisition"].update({"status": "available", "method": "yt-dlp"})
     return item
@@ -396,8 +368,7 @@ def refresh(item):
         urls = [
             v.get("href")
             for v in data.get("collection", {}).get("items", [])
-            if public_url(v.get("href"))
-            and urlsplit(v["href"]).path.lower().endswith(".mp4")
+            if public_url(v.get("href")) and urlsplit(v["href"]).path.lower().endswith(".mp4")
         ]
         urls.sort(key=lambda u: ("~orig" in u, "~medium" not in u, len(u)))
         if not urls:
@@ -417,11 +388,7 @@ def refresh(item):
         )
         pages = data.get("query", {}).get("pages", {})
         info = (pages.get(ident, {}).get("imageinfo") or [{}])[0]
-        media_url = (
-            public_url(info.get("url"))
-            if info.get("mime", "").startswith("video/")
-            else None
-        )
+        media_url = public_url(info.get("url")) if info.get("mime", "").startswith("video/") else None
         if not media_url:
             raise ProviderError("Arquivo do provedor não está mais disponível")
         current["media_url"] = media_url

@@ -35,11 +35,7 @@ def rng(value=0.0):
 
 
 def clean_env():
-    return {
-        key: value
-        for key, value in os.environ.items()
-        if not key.startswith(("GB_PACE_", "GB_MAX_PER_"))
-    }
+    return {key: value for key, value in os.environ.items() if not key.startswith(("GB_PACE_", "GB_MAX_PER_"))}
 
 
 class PacingConfigTests(unittest.TestCase):
@@ -60,7 +56,11 @@ class PacingConfigTests(unittest.TestCase):
                 queue.pacing("instagram", rules),
             )
             self.assertEqual(15, queue.pacing("tiktok", rules)["min_s"])
-        with patch.dict(os.environ, {**clean_env(), "GB_PACE_MIN_S": "1", "GB_PACE_MAX_S": "2", "GB_MAX_PER_HOUR": "9", "GB_MAX_PER_DAY": "10"}, clear=True):
+        with patch.dict(
+            os.environ,
+            {**clean_env(), "GB_PACE_MIN_S": "1", "GB_PACE_MAX_S": "2", "GB_MAX_PER_HOUR": "9", "GB_MAX_PER_DAY": "10"},
+            clear=True,
+        ):
             self.assertEqual(
                 {"min_s": 1, "max_s": 2, "max_per_hour": 9, "max_per_day": 10},
                 queue.pacing("instagram", rules),
@@ -160,7 +160,9 @@ class QueueStateTests(unittest.TestCase):
     def test_cooldown_doubles_caps_and_resets_after_done(self):
         data = queue.empty_state()
         queue.add(data, "instagram", [f"https://www.instagram.com/reel/CD{index:03d}/" for index in range(8)], at=T0)
-        with patch.dict(os.environ, {"GB_PACE_MIN_S": "0", "GB_PACE_MAX_S": "0", "GB_MAX_PER_HOUR": "100", "GB_MAX_PER_DAY": "100"}):
+        with patch.dict(
+            os.environ, {"GB_PACE_MIN_S": "0", "GB_PACE_MAX_S": "0", "GB_MAX_PER_HOUR": "100", "GB_MAX_PER_DAY": "100"}
+        ):
             expected = [1800, 3600, 7200, 14400, 14400]
             at = T0
             for seconds in expected:
@@ -239,13 +241,28 @@ class QueueCliTests(unittest.TestCase):
         parser = build_parser()
         args = parser.parse_args(["queue", "--project", "p", "--action", "add", "--provider", "instagram", REEL])
         self.assertEqual([REEL], args.urls)
-        help_run = subprocess.run([sys.executable, str(CLI), "queue", "--help"], capture_output=True, text=True, encoding="utf-8")
+        help_run = subprocess.run(
+            [sys.executable, str(CLI), "queue", "--help"], capture_output=True, text=True, encoding="utf-8"
+        )
         self.assertEqual(0, help_run.returncode)
         self.assertIn("--action", help_run.stdout)
 
     def test_add_next_mark_status_round_trip(self):
         with tempfile.TemporaryDirectory() as tmp:
-            added = self.run_cli("queue", "--project", tmp, "--action", "add", "--provider", "instagram", REEL, "--url", REEL_2, "--url", REEL)
+            added = self.run_cli(
+                "queue",
+                "--project",
+                tmp,
+                "--action",
+                "add",
+                "--provider",
+                "instagram",
+                REEL,
+                "--url",
+                REEL_2,
+                "--url",
+                REEL,
+            )
             self.assertEqual(2, len(added["added"]))
             self.assertIn("Enfileirei", added["summary"])
             self.assertTrue((Path(tmp) / "work/queue.json").is_file())
@@ -259,7 +276,18 @@ class QueueCliTests(unittest.TestCase):
             self.assertLessEqual(waiting["wait_seconds"], 30)
             self.assertTrue(waiting["resume_at"])
             self.assertIn("Aguarde", waiting["summary"])
-            failed = self.run_cli("queue", "--project", tmp, "--action", "mark", "--id", "instagram:DEF456uvw", "--failed", "--reason", "HTTP 429")
+            failed = self.run_cli(
+                "queue",
+                "--project",
+                tmp,
+                "--action",
+                "mark",
+                "--id",
+                "instagram:DEF456uvw",
+                "--failed",
+                "--reason",
+                "HTTP 429",
+            )
             self.assertEqual(1800, failed["cooldown"]["seconds"])
             status = self.run_cli("queue", "--project", tmp, "--action", "status")
             self.assertEqual({"pending": 0, "active": 0, "done": 1, "failed": 1, "skipped": 0}, status["counts"])

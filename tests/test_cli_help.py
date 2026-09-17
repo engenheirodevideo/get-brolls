@@ -87,9 +87,7 @@ class DoctorVerdictTests(unittest.TestCase):
         for entry in summary["missing"]:
             self.assertTrue(entry["fix"])
             self.assertTrue(entry["note"])
-        self.assertEqual(
-            set(), set(summary["ok"]) & {entry["item"] for entry in summary["missing"]}
-        )
+        self.assertEqual(set(), set(summary["ok"]) & {entry["item"] for entry in summary["missing"]})
 
     def test_missing_playwright_names_installer_and_impact(self):
         summary = doctor_summary({"playwright-cli": False, "ffmpeg": True})
@@ -103,18 +101,14 @@ class DoctorVerdictTests(unittest.TestCase):
         from unittest import mock
 
         environment = {
-            key: value
-            for key, value in os.environ.items()
-            if key not in ("PEXELS_API_KEY", "PIXABAY_API_KEY")
+            key: value for key, value in os.environ.items() if key not in ("PEXELS_API_KEY", "PIXABAY_API_KEY")
         }
         with mock.patch.dict(os.environ, environment, clear=True):
             summary = doctor_summary({"ffmpeg": True})
         optional = {entry["item"] for entry in summary["optional"]}
         self.assertIn("PEXELS_API_KEY", optional)
         self.assertIn("PIXABAY_API_KEY", optional)
-        self.assertNotIn(
-            "PEXELS_API_KEY", {entry["item"] for entry in summary["missing"]}
-        )
+        self.assertNotIn("PEXELS_API_KEY", {entry["item"] for entry in summary["missing"]})
 
 
 class ActionableErrorTests(unittest.TestCase):

@@ -45,9 +45,7 @@ def build_parser():
         description="Get B-rolls — pesquisar, revisar e coletar trechos por fonte.",
         epilog="Use `<subcomando> --help` para os argumentos de cada etapa.",
     )
-    parser.add_argument(
-        "--env-file", help="Arquivo .env explícito; padrão: .env na raiz da skill"
-    )
+    parser.add_argument("--env-file", help="Arquivo .env explícito; padrão: .env na raiz da skill")
     parser.add_argument(
         "--version",
         action="version",
@@ -139,32 +137,27 @@ def build_parser():
                 choices=["instagram", "tiktok", "youtube"],
                 help="Fonte das URLs em add; em next, limita a fila a essa fonte",
             )
-            p.add_argument(
-                "urls", nargs="*", help="URLs públicas a enfileirar (add); repetidas são ignoradas"
-            )
-            p.add_argument(
-                "--url", action="append", help="URL pública a enfileirar (add); pode repetir"
-            )
+            p.add_argument("urls", nargs="*", help="URLs públicas a enfileirar (add); repetidas são ignoradas")
+            p.add_argument("--url", action="append", help="URL pública a enfileirar (add); pode repetir")
             p.add_argument("--id", help="ID do item retornado por next (mark)")
             g = p.add_mutually_exclusive_group()
             g.add_argument("--done", action="store_true", help="mark: item coletado com sucesso; zera o cooldown")
-            g.add_argument("--failed", action="store_true", help="mark: item falhou; motivo com 403/429, challenge/login, 'rate limit'/'too many requests' ou as mensagens de bloqueio da própria skill (sessão de acesso, IP bloqueado, limite de requisições) abre cooldown")
+            g.add_argument(
+                "--failed",
+                action="store_true",
+                help="mark: item falhou; motivo com 403/429, challenge/login, 'rate limit'/'too many requests' ou as mensagens de bloqueio da própria skill (sessão de acesso, IP bloqueado, limite de requisições) abre cooldown",
+            )
             g.add_argument("--skipped", action="store_true", help="mark: item pulado sem tentar")
             p.add_argument("--reason", help="Motivo real registrado no item (mark)")
         if name in ("preview", "approve", "permit", "reject", "fetch", "remember"):
             p.add_argument(
                 "--candidate",
                 required=name != "approve",
-                help="ID do candidato retornado por search/resolve"
-                + (" (ou use --all)" if name == "approve" else ""),
+                help="ID do candidato retornado por search/resolve" + (" (ou use --all)" if name == "approve" else ""),
             )
         if name in ("preview", "approve"):
-            p.add_argument(
-                "--start", type=float, help="Início do trecho na origem, em segundos"
-            )
-            p.add_argument(
-                "--end", type=float, help="Fim do trecho na origem, em segundos"
-            )
+            p.add_argument("--start", type=float, help="Início do trecho na origem, em segundos")
+            p.add_argument("--end", type=float, help="Fim do trecho na origem, em segundos")
         if name == "inspect":
             g = p.add_mutually_exclusive_group(required=True)
             g.add_argument(
@@ -188,7 +181,11 @@ def build_parser():
                 action="store_true",
                 help="Varrer o vídeo inteiro num contact sheet de baixa resolução, sem definir intervalo",
             )
-            p.add_argument("--reference-only", action="store_true", help="Gerar apenas referência estática, sem obter trecho remoto")
+            p.add_argument(
+                "--reference-only",
+                action="store_true",
+                help="Gerar apenas referência estática, sem obter trecho remoto",
+            )
             p.add_argument("--narration", help="Fala exata do roteiro")
             p.add_argument("--reason", help="Decisão de coleta desta fonte")
         if name == "import-review":
@@ -196,9 +193,7 @@ def build_parser():
                 "--file",
                 help="JSON de decisões; sem esta flag usa o mais recente de brolls/reviews/",
             )
-            p.add_argument(
-                "--by", required=True, help="Nome de quem revisou e assinou as decisões"
-            )
+            p.add_argument("--by", required=True, help="Nome de quem revisou e assinou as decisões")
         if name == "approve":
             p.add_argument(
                 "--by",
@@ -248,25 +243,17 @@ def build_parser():
                 required=True,
                 help="Decisão humana registrada para esta referência",
             )
-            p.add_argument(
-                "--reason", required=True, help="Motivo real da decisão registrada"
-            )
+            p.add_argument("--reason", required=True, help="Motivo real da decisão registrada")
             p.add_argument("--by", required=True, help="Nome de quem decidiu")
         if name == "learn":
-            p.add_argument(
-                "--query", help="Busca real que você fez, como digitada na fonte"
-            )
-            p.add_argument(
-                "--provider", help="Fonte onde essa busca rodou (exige --query)"
-            )
+            p.add_argument("--query", help="Busca real que você fez, como digitada na fonte")
+            p.add_argument("--provider", help="Fonte onde essa busca rodou (exige --query)")
             p.add_argument(
                 "--outcome",
                 choices=["hit", "miss"],
                 help="hit: a busca rendeu material usável; miss: não rendeu (exige --query)",
             )
-            p.add_argument(
-                "--preference", help="Preferência editorial dita pela pessoa, literal"
-            )
+            p.add_argument("--preference", help="Preferência editorial dita pela pessoa, literal")
             p.add_argument(
                 "--from-candidate",
                 help="ID do candidato já memorizado com `remember`, guardado como ponteiro",
@@ -316,9 +303,7 @@ def build_parser():
                 help="Mostrar apenas este beat, pelo id gravado no BRIEF.md",
             )
         if name == "browser-plan":
-            p.add_argument(
-                "--url", required=True, help="URL pública da página a capturar"
-            )
+            p.add_argument("--url", required=True, help="URL pública da página a capturar")
         if name == "search":
             p.add_argument(
                 "--provider",
@@ -326,9 +311,7 @@ def build_parser():
                 help="Fonte: youtube, pexels, pixabay, commons, nasa ou auto (padrão)",
             )
             p.add_argument("--query", required=True, help="Termos da busca na fonte")
-            p.add_argument(
-                "--limit", type=int, default=8, help="Máximo de candidatos, 1–50 (padrão 8)"
-            )
+            p.add_argument("--limit", type=int, default=8, help="Máximo de candidatos, 1–50 (padrão 8)")
             p.add_argument(
                 "--intent",
                 choices=["literal", "illustrative"],
@@ -336,9 +319,7 @@ def build_parser():
                 help="literal: entidade nomeada; illustrative: ideia genérica",
             )
         if name == "resolve":
-            p.add_argument(
-                "--context-image", help="Print opcional da pessoa; permanece estático"
-            )
+            p.add_argument("--context-image", help="Print opcional da pessoa; permanece estático")
             p.add_argument(
                 "--full-preview-file",
                 help="Composição pronta contendo apenas este insert, usada em GB_GIF_SCOPE=full",
@@ -352,9 +333,7 @@ def build_parser():
             p.add_argument("--captured-at", help="Data da captura, ISO 8601")
             p.add_argument("--source-url", help="URL pública original do arquivo local")
             p.add_argument("--creator", help="Autor informado da fonte")
-            p.add_argument(
-                "--shot", help="Identificador único do insert, ex.: insert-02"
-            )
+            p.add_argument("--shot", help="Identificador único do insert, ex.: insert-02")
             g = p.add_mutually_exclusive_group(required=True)
             g.add_argument("--url", help="URL pública da fonte (YouTube, Instagram, TikTok)")
             g.add_argument("--file", help="Arquivo local já autorizado para importação")

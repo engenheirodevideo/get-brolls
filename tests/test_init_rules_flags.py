@@ -79,9 +79,7 @@ class InitRulesFlagTests(unittest.TestCase):
             run_cli(self, "init-rules", "--project", tmp)
             path = Path(tmp) / "RULES.md"
             path.write_text(
-                path.read_text(encoding="utf-8").replace(
-                    '"blocked_domains": []', '"blocked_domains": ["exemplo.com"]'
-                ),
+                path.read_text(encoding="utf-8").replace('"blocked_domains": []', '"blocked_domains": ["exemplo.com"]'),
                 encoding="utf-8",
             )
             error = run_cli(self, "init-rules", "--force", "--project", tmp, ok=False)
@@ -132,9 +130,7 @@ class InitRulesFlagTests(unittest.TestCase):
                 "--project",
                 tmp,
             )
-            self.assertEqual(
-                "Bruno Moreira", load_rules(tmp)["copyright"]["responsible_person"]
-            )
+            self.assertEqual("Bruno Moreira", load_rules(tmp)["copyright"]["responsible_person"])
 
 
 if __name__ == "__main__":

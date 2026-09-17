@@ -81,7 +81,7 @@ def source_card(c, source, sheet, poster, esc):
     # O id é um hash: fica no title, fora do lugar nobre do card.
     details = [
         f"<strong>{esc(c['title'])}</strong>",
-        f"<code title=\"Identificador interno deste trecho\">{esc(c['id'])}</code>",
+        f'<code title="Identificador interno deste trecho">{esc(c["id"])}</code>',
     ]
     if c["segment"]["start_s"] is not None:
         details.append(f"<p>{esc(cut_label(c))}</p>")
@@ -97,15 +97,10 @@ def source_card(c, source, sheet, poster, esc):
         details.append(f"<p>Autor: {esc(c['creator']['name'])}</p>")
     if c.get("captured_at"):
         details.append(f"<p>Capturado em: {esc(c['captured_at'])}</p>")
-    details.append(
-        f"<p>Por que eu escolhi este: {esc(c.get('match', {}).get('reason') or 'ainda não registrei')}</p>"
-    )
+    details.append(f"<p>Por que eu escolhi este: {esc(c.get('match', {}).get('reason') or 'ainda não registrei')}</p>")
     if c["rights"].get("attribution"):
         details.append(f"<p>{esc(c['rights']['attribution'])}</p>")
-    details.append(
-        f"<p>Pode usar? {esc(usage)} — quem confere a licença da fonte é você,"
-        " antes de publicar.</p>"
-    )
+    details.append(f"<p>Pode usar? {esc(usage)} — quem confere a licença da fonte é você, antes de publicar.</p>")
     info = '<div class="source-link-info">'
     if source:
         info += f'<span class="source-domain">{esc(source_domain(source))}</span>'
@@ -157,17 +152,13 @@ def contact_sheet_figure(candidate, sheet, esc):
     preview = candidate["preview"]
     times = preview.get("frame_times_s") or []
     grid = preview.get("sheet_grid") or []
-    caption = (
-        f"Os quadros do trecho ({len(times)})" if times else "Os quadros do trecho"
-    )
+    caption = f"Os quadros do trecho ({len(times)})" if times else "Os quadros do trecho"
     if len(grid) == 2:
         caption += f" · grade {grid[0]}×{grid[1]}"
     caption += " · " + cut_label(candidate)
     legend = ""
     if times and not preview.get("sheet_labels"):
-        cells = " · ".join(
-            f"{i + 1} = {format_seconds(t)}" for i, t in enumerate(times)
-        )
+        cells = " · ".join(f"{i + 1} = {format_seconds(t)}" for i, t in enumerate(times))
         legend = f'<p class="sheet-legend">{esc(cells)}</p>'
     return (
         f'<figure class="contact-sheet"><a href="{esc(sheet)}" target="_blank" rel="noopener">'
@@ -193,9 +184,7 @@ def render(ledger):
     ]
     esc = lambda s: html.escape(str(s or ""))
     for c in ledger.data["items"]:
-        p = safe_preview_url(
-            c["preview"].get("poster_path") or c["preview"].get("poster_url")
-        )
+        p = safe_preview_url(c["preview"].get("poster_path") or c["preview"].get("poster_url"))
         out = safe_preview_url(c["output"]["path"])
         gif = safe_preview_url(c["preview"].get("gif_path"))
         sheet = safe_preview_url(c["preview"].get("contact_sheet_path"))
@@ -226,14 +215,13 @@ def render(ledger):
                 "captured_at": c.get("captured_at"),
                 "source": source,
                 "narration": c.get("narration"),
-                "collection_reason": c.get("match",{}).get("reason"),
-                "creator": c.get("creator",{}).get("name"),
+                "collection_reason": c.get("match", {}).get("reason"),
+                "creator": c.get("creator", {}).get("name"),
                 "poster": p,
                 "context_poster": context,
                 "review": (
                     {**c.get("review", {}), "state": "approved"}
-                    if c["approval"]["status"] == "approved"
-                    and c["approval"].get("signature") == signature(c)
+                    if c["approval"]["status"] == "approved" and c["approval"].get("signature") == signature(c)
                     else {
                         **c.get("review", {}),
                         "state": c.get("review", {}).get("state", "pending")
@@ -250,9 +238,7 @@ def render(ledger):
                 "title": c["title"],
                 "content": content,
                 "presenter": p,
-                "presenterLabel": "Trecho do vídeo"
-                if has_preview
-                else "Imagem da fonte · sem prévia em movimento",
+                "presenterLabel": "Trecho do vídeo" if has_preview else "Imagem da fonte · sem prévia em movimento",
                 "no_preview": not has_preview,
                 "gif": gif,
                 "poster": None,
@@ -277,8 +263,6 @@ def render(ledger):
     from .review import enhance
     from .ledger import atomic_write
 
-    atomic_write(
-        ledger.root / "review.html", enhance(render_page(story_items), ledger, records)
-    )
+    atomic_write(ledger.root / "review.html", enhance(render_page(story_items), ledger, records))
     atomic_write(ledger.root / "credits.md", "\n".join(credits))
     return str(ledger.root / "review.html")

@@ -18,9 +18,7 @@ def run(args):
             "verifique python3 scripts/gb.py doctor."
         ) from e
     except subprocess.TimeoutExpired as e:
-        raise ValueError(
-            f"{name} excedeu 180s; confirme arquivo e intervalo ou tente novamente."
-        ) from e
+        raise ValueError(f"{name} excedeu 180s; confirme arquivo e intervalo ou tente novamente.") from e
     except subprocess.CalledProcessError as e:
         tail = stderr_tail(e.stderr)
         raise ValueError(
@@ -28,9 +26,7 @@ def run(args):
             + (f" stderr: {tail}" if tail else "")
         ) from e
     except (subprocess.SubprocessError, OSError) as e:
-        raise ValueError(
-            "Falha de mídia: confirme arquivo e intervalo; verifique python3 scripts/gb.py doctor."
-        ) from e
+        raise ValueError("Falha de mídia: confirme arquivo e intervalo; verifique python3 scripts/gb.py doctor.") from e
 
 
 _DRAWTEXT = {}
@@ -48,6 +44,7 @@ def _drawtext_cache_path(ffmpeg_path):
         mtime = 0
     key = hashlib.sha256(f"{ffmpeg_path}:{mtime}".encode()).hexdigest()
     return _cache_dir() / f"drawtext-{key}.json"
+
 
 # Fontes TrueType habituais por sistema; GB_FONT_FILE sempre vence.
 DEFAULT_FONTS = (
@@ -112,9 +109,7 @@ def find_font():
     if pinned:
         path = Path(pinned).expanduser()
         if not path.is_file():
-            raise ValueError(
-                f"GB_FONT_FILE não aponta para uma fonte existente: {pinned}"
-            )
+            raise ValueError(f"GB_FONT_FILE não aponta para uma fonte existente: {pinned}")
         return str(path.resolve())
     for candidate in DEFAULT_FONTS:
         if Path(candidate).is_file():
@@ -247,9 +242,7 @@ def review_preview(src, directory, stem, start, end, config, label=None):
 
     directory = Path(directory)
     if end - start > config["max_seconds"]:
-        raise ValueError(
-            "Trecho excede GB_PREVIEW_MAX_SECONDS; selecione um insert menor ou ajuste a configuração."
-        )
+        raise ValueError("Trecho excede GB_PREVIEW_MAX_SECONDS; selecione um insert menor ou ajuste a configuração.")
     # Stage every output before replacing any prior preview.
     with tempfile.TemporaryDirectory(dir=directory) as stage:
         stage = Path(stage)
@@ -365,13 +358,26 @@ def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):
     relative = "previews/" + stem + "-scan.jpg"
     with tempfile.TemporaryDirectory(dir=directory) as stage:
         sheet = Path(stage) / "scan.jpg"
-        run([
-            "ffmpeg", "-v", "error", "-y", "-ss", str(start), "-t", str(span),
-            "-i", str(src), "-vf",
-            f"fps={n / span}:start_time=0,scale=240:-2:flags=lanczos,"
-            f"tile={cols}x{rows}:nb_frames={n}:padding=6:margin=6:color=0x111111",
-            "-frames:v", "1", str(sheet),
-        ])
+        run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-y",
+                "-ss",
+                str(start),
+                "-t",
+                str(span),
+                "-i",
+                str(src),
+                "-vf",
+                f"fps={n / span}:start_time=0,scale=240:-2:flags=lanczos,"
+                f"tile={cols}x{rows}:nb_frames={n}:padding=6:margin=6:color=0x111111",
+                "-frames:v",
+                "1",
+                str(sheet),
+            ]
+        )
         if not sheet.exists():
             raise ValueError("Não foi possível varrer o vídeo.")
         os.replace(sheet, directory / (stem + "-scan.jpg"))
@@ -380,9 +386,7 @@ def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):
         "span_s": round(span, 3),
         "every_s": round(span / n, 3),
         "frames": n,
-        "frame_times_s": frame_times(
-            start + source_offset, start + source_offset + span, n
-        ),
+        "frame_times_s": frame_times(start + source_offset, start + source_offset + span, n),
     }
 
 

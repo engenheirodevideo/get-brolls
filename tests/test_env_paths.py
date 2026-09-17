@@ -70,9 +70,10 @@ class ExecutableOverrideTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             ffmpeg = make_executable(d, "ffmpeg-pinned")
             ffprobe = make_executable(d, "ffprobe-pinned")
-            with clean_env(
-                GB_FFMPEG_PATH=str(ffmpeg), GB_FFPROBE_PATH=str(ffprobe)
-            ), patch("getbrolls.media.subprocess.run") as runner:
+            with (
+                clean_env(GB_FFMPEG_PATH=str(ffmpeg), GB_FFPROBE_PATH=str(ffprobe)),
+                patch("getbrolls.media.subprocess.run") as runner,
+            ):
                 runner.return_value = subprocess.CompletedProcess([], 0, stdout="{}")
                 media.run(["ffmpeg", "-v", "error"])
                 self.assertEqual(runner.call_args[0][0][0], str(ffmpeg))
@@ -181,9 +182,7 @@ class EnvFileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             ffmpeg = make_executable(d, "ffmpeg-pinned")
             env_file = Path(d) / ".env"
-            env_file.write_text(
-                "GB_FFMPEG_PATH=" + str(ffmpeg) + "\nGB_VENV_PATH=\n", encoding="utf-8"
-            )
+            env_file.write_text("GB_FFMPEG_PATH=" + str(ffmpeg) + "\nGB_VENV_PATH=\n", encoding="utf-8")
             with clean_env():
                 config.load_env(env_file)
                 self.assertEqual(os.environ["GB_FFMPEG_PATH"], str(ffmpeg))
@@ -194,9 +193,7 @@ class EnvFileTests(unittest.TestCase):
             from_file = make_executable(d, "ffmpeg-file")
             from_process = make_executable(d, "ffmpeg-process")
             env_file = Path(d) / ".env"
-            env_file.write_text(
-                "GB_FFMPEG_PATH=" + str(from_file) + "\n", encoding="utf-8"
-            )
+            env_file.write_text("GB_FFMPEG_PATH=" + str(from_file) + "\n", encoding="utf-8")
             with clean_env(GB_FFMPEG_PATH=str(from_process)):
                 config.load_env(env_file)
                 self.assertEqual(config.tool_path("ffmpeg"), str(from_process))
@@ -220,9 +217,7 @@ class EnvFileVocabularyTests(unittest.TestCase):
             font.write_text("fixture", encoding="utf-8")
             env_file = Path(d) / ".env"
             env_file.write_text(f"GB_FONT_FILE={font}\n", encoding="utf-8")
-            environment = {
-                k: v for k, v in os.environ.items() if k != "GB_FONT_FILE"
-            }
+            environment = {k: v for k, v in os.environ.items() if k != "GB_FONT_FILE"}
             with patch.dict(os.environ, environment, clear=True):
                 config.load_env(env_file)
                 self.assertEqual(str(font), os.environ["GB_FONT_FILE"])
@@ -249,9 +244,7 @@ class DoctorReportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             ffmpeg = make_executable(d, "ffmpeg-pinned")
             payload = self.doctor(d, GB_FFMPEG_PATH=str(ffmpeg))
-            self.assertEqual(
-                payload["tool_paths"], {"GB_FFMPEG_PATH": str(ffmpeg.resolve())}
-            )
+            self.assertEqual(payload["tool_paths"], {"GB_FFMPEG_PATH": str(ffmpeg.resolve())})
             self.assertTrue(payload["executables"]["ffmpeg"])
 
     def test_doctor_without_override_reports_nothing(self):
@@ -262,9 +255,7 @@ class DoctorReportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             missing = str(Path(d) / "gb-inexistente-ffmpeg")
             payload = self.doctor(d, GB_FFMPEG_PATH=missing)
-            entry = next(
-                e for e in payload["summary"]["missing"] if e["item"] == "GB_FFMPEG_PATH"
-            )
+            entry = next(e for e in payload["summary"]["missing"] if e["item"] == "GB_FFMPEG_PATH")
             self.assertIn(missing, entry["note"])
             self.assertEqual({}, payload["tool_paths"])
 
@@ -273,9 +264,7 @@ class DoctorReportTests(unittest.TestCase):
         # (ex.: ffmpeg num runner limpo) apontam para o gerenciador, não o instalador.
         with tempfile.TemporaryDirectory() as d:
             payload = self.doctor(d, GB_VENV_PATH=str(Path(d) / "sem-venv"))
-            entries = [
-                e for e in payload["summary"]["missing"] if e["item"] == "GB_VENV_PATH"
-            ]
+            entries = [e for e in payload["summary"]["missing"] if e["item"] == "GB_VENV_PATH"]
             self.assertTrue(entries, payload["summary"]["missing"])
             for entry in entries:
                 self.assertIn("install.sh", entry["fix"])

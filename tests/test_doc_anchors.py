@@ -53,8 +53,7 @@ class TestDocAnchors(unittest.TestCase):
             guide.write_text("## Seção real\n", encoding="utf-8")
             target = tmp_path / "SKILL.md"
             target.write_text(
-                "veja [aqui](docs/GUIDE.md#secao-que-nao-existe) e "
-                "[ali](docs/GUIDE.md#seção-real)\n",
+                "veja [aqui](docs/GUIDE.md#secao-que-nao-existe) e [ali](docs/GUIDE.md#seção-real)\n",
                 encoding="utf-8",
             )
 

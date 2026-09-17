@@ -33,9 +33,7 @@ def legacy_review_epoch(candidate):
     descartar decisões humanas já tomadas só porque a fórmula mudou.
     """
     return hashlib.sha256(
-        json.dumps(
-            [candidate["approval"], candidate.get("review")], sort_keys=True
-        ).encode()
+        json.dumps([candidate["approval"], candidate.get("review")], sort_keys=True).encode()
     ).hexdigest()
 
 
@@ -66,16 +64,9 @@ def enhance(page, ledger, records):
     )
     css = (ASSETS / "review.css").read_text(encoding="utf-8")
     js = (ASSETS / "review.js").read_text(encoding="utf-8")
-    return (
-        page.replace("</style>", css + "</style>")
-        .replace(
-            "</body>",
-            "<script>window.GETBROLLS_REVIEW="
-            + payload
-            + ";</script><script>"
-            + js
-            + "</script></body>",
-        )
+    return page.replace("</style>", css + "</style>").replace(
+        "</body>",
+        "<script>window.GETBROLLS_REVIEW=" + payload + ";</script><script>" + js + "</script></body>",
     )
 
 
@@ -96,9 +87,7 @@ def latest_review_file(root):
 
 def import_review(ledger, file, by, rules=None):
     if not by.strip():
-        raise ValueError(
-            "Diga quem revisou: acrescente --by \"seu nome\" ao comando."
-        )
+        raise ValueError('Diga quem revisou: acrescente --by "seu nome" ao comando.')
     if file is None:
         found = latest_review_file(ledger.root)
         if found is None:
@@ -129,8 +118,7 @@ def import_review(ledger, file, by, rules=None):
     items = data.get("items")
     if not isinstance(items, list) or not items:
         raise ValueError(
-            "O arquivo de escolhas está vazio. Volte à página, decida os trechos e "
-            "clique em “Salvar decisões”."
+            "O arquivo de escolhas está vazio. Volte à página, decida os trechos e clique em “Salvar decisões”."
         )
     changes = []
     skipped = []
@@ -255,10 +243,7 @@ def import_review(ledger, file, by, rules=None):
         changes.append(c)
     if not changes:
         # Nada aplicado: o comando falha e diz, item a item, o que impediu cada um.
-        raise ValueError(
-            "Nenhuma decisão pôde ser importada. "
-            + " ".join(entry["detail"] for entry in skipped)
-        )
+        raise ValueError("Nenhuma decisão pôde ser importada. " + " ".join(entry["detail"] for entry in skipped))
     # Só o que passou em toda a validação chega ao disco, num único registro.
     updates = {c["id"]: c for c in changes}
     ledger.data["items"] = [updates.get(c["id"], c) for c in ledger.data["items"]]

@@ -20,9 +20,7 @@ def write_block(path, data):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        "# Regras\n\nProsa preservada.\n\n```json\n"
-        + json.dumps(data, ensure_ascii=False, indent=2)
-        + "\n```\n",
+        "# Regras\n\nProsa preservada.\n\n```json\n" + json.dumps(data, ensure_ascii=False, indent=2) + "\n```\n",
         encoding="utf-8",
     )
     return path
@@ -38,9 +36,7 @@ class RulesLayerTests(unittest.TestCase):
         for key in ("GB_HOME", "GB_RULES_FILE", "GB_LIBRARY"):
             old = os.environ.get(key)
             self.addCleanup(
-                lambda k=key, v=old: os.environ.__setitem__(k, v)
-                if v is not None
-                else os.environ.pop(k, None)
+                lambda k=key, v=old: os.environ.__setitem__(k, v) if v is not None else os.environ.pop(k, None)
             )
             os.environ.pop(key, None)
         os.environ["GB_HOME"] = str(self.home)
@@ -52,9 +48,7 @@ class RulesLayerTests(unittest.TestCase):
         write_block(self.project / "RULES.md", dict(base, video_format="horizontal"))
         rules = load_rules(self.project)
         self.assertEqual("horizontal", rules["video_format"])
-        self.assertEqual(
-            str(self.project / "RULES.md"), rules["sources"]["video_format"]
-        )
+        self.assertEqual(str(self.project / "RULES.md"), rules["sources"]["video_format"])
 
     def test_lists_join_and_blocked_domains_only_accumulate(self):
         base = load_rules(self.project)
@@ -88,16 +82,12 @@ class RulesLayerTests(unittest.TestCase):
         rules = load_rules(self.project)
         self.assertEqual("per_item_evidence", rules["copyright"]["mode"])
         self.assertIsNone(rules["copyright"]["responsible_person"])
-        self.assertTrue(
-            any("copyright" in w for w in rules["rules_warnings"]), rules["rules_warnings"]
-        )
+        self.assertTrue(any("copyright" in w for w in rules["rules_warnings"]), rules["rules_warnings"])
 
     def test_gb_rules_file_sits_between_global_and_project(self):
         base = load_rules(self.project)
         write_block(self.home / "RULES.md", {"video_format": "reels"})
-        middle = write_block(
-            Path(self.tmp.name) / "equipe" / "RULES.md", {"video_format": "horizontal"}
-        )
+        middle = write_block(Path(self.tmp.name) / "equipe" / "RULES.md", {"video_format": "horizontal"})
         os.environ["GB_RULES_FILE"] = str(middle)
         rules = load_rules(self.project)
         self.assertEqual("horizontal", rules["video_format"])

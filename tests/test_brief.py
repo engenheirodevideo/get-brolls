@@ -57,9 +57,7 @@ VALID = {
 def write_brief(project, data):
     path = Path(project) / "BRIEF.md"
     path.write_text(
-        "---\ntype: brief\n---\n\n# Brief\n\n```json\n"
-        + json.dumps(data, ensure_ascii=False, indent=2)
-        + "\n```\n",
+        "---\ntype: brief\n---\n\n# Brief\n\n```json\n" + json.dumps(data, ensure_ascii=False, indent=2) + "\n```\n",
         encoding="utf-8",
     )
     return path
@@ -92,9 +90,7 @@ class BriefTemplateTests(unittest.TestCase):
         self.assertTrue(data["beats"])
 
     def test_schema_file_documents_version_one(self):
-        schema = json.loads(
-            (ROOT / "schemas" / "brief.schema.json").read_text(encoding="utf-8")
-        )
+        schema = json.loads((ROOT / "schemas" / "brief.schema.json").read_text(encoding="utf-8"))
         self.assertEqual(1, schema["properties"]["version"]["const"])
         for key in ("video", "rights", "defaults", "beats"):
             self.assertIn(key, schema["properties"])
@@ -125,9 +121,7 @@ class LoadBriefTests(unittest.TestCase):
 
     def test_two_json_blocks_are_refused_in_portuguese(self):
         with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / "BRIEF.md").write_text(
-                "```json\n{}\n```\n\n```json\n{}\n```\n", encoding="utf-8"
-            )
+            (Path(tmp) / "BRIEF.md").write_text("```json\n{}\n```\n\n```json\n{}\n```\n", encoding="utf-8")
             with self.assertRaises(ValueError) as raised:
                 brief_module.load_brief(tmp)
         self.assertIn("exatamente um bloco", str(raised.exception))
@@ -155,9 +149,7 @@ class ValidateBriefTests(unittest.TestCase):
         data, _ = loaded(VALID)
         parser = build_parser()
         for beat in data["beats"]:
-            args = parser.parse_args(
-                ["resolve", "--project", ".", "--url", "https://x/y", "--shot", beat["id"]]
-            )
+            args = parser.parse_args(["resolve", "--project", ".", "--url", "https://x/y", "--shot", beat["id"]])
             self.assertEqual(beat["id"], args.shot)
 
     def test_target_is_required_on_every_beat(self):
@@ -259,9 +251,7 @@ class ResolveBeatTests(unittest.TestCase):
         data["defaults"]["stock"] = True
         data["defaults"]["allowed_sources"] = ["pexels", "pixabay"]
         data["rights"]["stock_allowed"] = True
-        data["beats"][0].update(
-            {"intent": "illustrative", "duration_hint_s": 8, "allowed_sources": ["pexels"]}
-        )
+        data["beats"][0].update({"intent": "illustrative", "duration_hint_s": 8, "allowed_sources": ["pexels"]})
         parsed, _ = loaded(data)
         resolved = parsed["beats"][0]["resolved"]
         self.assertEqual("illustrative", resolved["intent"])
@@ -288,13 +278,9 @@ class BeatCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             for beat in data["beats"]:
                 commands, parsed = self.parsed_commands(tmp, beat["resolved"])
-                self.assertEqual(
-                    {"search", "resolve", "inspect", "preview"}, set(commands)
-                )
+                self.assertEqual({"search", "resolve", "inspect", "preview"}, set(commands))
                 # Analisar vem antes de pré-visualizar, nessa ordem, na resposta.
-                self.assertLess(
-                    list(commands).index("inspect"), list(commands).index("preview")
-                )
+                self.assertLess(list(commands).index("inspect"), list(commands).index("preview"))
                 self.assertEqual("inspect", parsed["inspect"].command)
                 self.assertEqual(
                     beat["resolved"].get("narration") or beat["resolved"]["target"],
@@ -307,17 +293,13 @@ class BeatCommandTests(unittest.TestCase):
                 # Intervalo não se inventa no brief: quem vê a fonte é que o define.
                 self.assertIsNone(parsed["preview"].start)
                 self.assertIsNone(parsed["preview"].end)
-                self.assertEqual(
-                    Path(tmp).resolve(), Path(parsed["search"].project).resolve()
-                )
+                self.assertEqual(Path(tmp).resolve(), Path(parsed["search"].project).resolve())
 
     def test_narration_travels_verbatim_into_preview(self):
         data, _ = loaded(VALID)
         with tempfile.TemporaryDirectory() as tmp:
             _, parsed = self.parsed_commands(tmp, data["beats"][0]["resolved"])
-            self.assertEqual(
-                "Em abril o céu escureceu no meio da tarde.", parsed["preview"].narration
-            )
+            self.assertEqual("Em abril o céu escureceu no meio da tarde.", parsed["preview"].narration)
 
     def test_a_beat_without_a_searchable_source_gets_a_note_instead_of_search(self):
         data = copy.deepcopy(VALID)
@@ -374,9 +356,7 @@ class BriefCommandTests(unittest.TestCase):
             write_brief(tmp, VALID)
             result = run_cli(self, "brief", "--project", tmp)
             self.assertEqual("summary", next(iter(result)))
-            self.assertEqual(
-                ["line", "problems", "next"], list(result["summary"])
-            )
+            self.assertEqual(["line", "problems", "next"], list(result["summary"]))
             # `next` vem da mesma escada de `status` (guidance.next_action): nenhum
             # beat tem candidato ainda, então o passo é buscar pelo primeiro.
             from getbrolls.guidance import next_action
@@ -442,9 +422,7 @@ class BriefCommandTests(unittest.TestCase):
             self.assertEqual(0, done.returncode, done.stderr)
             self.assertTrue(target.is_file())
             self.assertFalse((Path(tmp) / "BRIEF.md").exists())
-            self.assertEqual(
-                target.resolve(), Path(json.loads(done.stdout)["brief"]).resolve()
-            )
+            self.assertEqual(target.resolve(), Path(json.loads(done.stdout)["brief"]).resolve())
 
     def test_beat_filter_selects_one_beat_and_names_the_valid_ids(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -452,9 +430,7 @@ class BriefCommandTests(unittest.TestCase):
             result = run_cli(self, "brief", "--project", tmp, "--beat", "abertura")
             self.assertEqual(1, len(result["beats"]))
             self.assertEqual("abertura", result["beats"][0]["id"])
-            missing = run_cli(
-                self, "brief", "--project", tmp, "--beat", "inexistente", ok=False
-            )
+            missing = run_cli(self, "brief", "--project", tmp, "--beat", "inexistente", ok=False)
             self.assertIn("reacao-publico", missing["error"])
 
     def test_brief_never_creates_the_project_tree(self):

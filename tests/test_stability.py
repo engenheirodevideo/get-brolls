@@ -40,9 +40,7 @@ class StabilityTests(unittest.TestCase):
                 {"blocked_domains": ["..example.com"]},
             ):
                 rule = {**base, **change}
-                Path(tmp, "RULES.md").write_text(
-                    "```json\n" + json.dumps(rule) + "\n```", encoding="utf-8"
-                )
+                Path(tmp, "RULES.md").write_text("```json\n" + json.dumps(rule) + "\n```", encoding="utf-8")
                 with self.subTest(change=change), self.assertRaises(ValueError):
                     load_rules(tmp)
 
@@ -50,9 +48,7 @@ class StabilityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp, "brolls")
             root.mkdir()
-            (root / "manifest.json").write_text(
-                '{"items": [1]}', encoding="utf-8"
-            )
+            (root / "manifest.json").write_text('{"items": [1]}', encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "manifest"):
                 Ledger(tmp)
 
@@ -84,19 +80,12 @@ class StabilityTests(unittest.TestCase):
             recovered = Ledger(tmp)
             self.assertEqual(recovered.get(c["id"])["title"], "One")
             events = [
-                json.loads(line)
-                for line in (recovered.root / "events.jsonl")
-                .read_text(encoding="utf-8")
-                .splitlines()
+                json.loads(line) for line in (recovered.root / "events.jsonl").read_text(encoding="utf-8").splitlines()
             ]
             self.assertEqual(len(events), 1)
             Ledger(tmp)
             self.assertEqual(
-                len(
-                    (recovered.root / "events.jsonl")
-                    .read_text(encoding="utf-8")
-                    .splitlines()
-                ),
+                len((recovered.root / "events.jsonl").read_text(encoding="utf-8").splitlines()),
                 1,
             )
 

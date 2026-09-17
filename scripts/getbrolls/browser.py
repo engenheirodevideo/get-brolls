@@ -11,15 +11,9 @@ def plan(ledger, url, rules):
         raise ValueError("Use uma URL pública HTTPS sem credenciais.")
     if domain_matches(url, rules["blocked_domains"]):
         raise ValueError("Domínio bloqueado pelo usuário.")
-    if not any(
-        t in rules["asset_types"] for t in ("web_screenshot", "news_screenshot")
-    ):
+    if not any(t in rules["asset_types"] for t in ("web_screenshot", "news_screenshot")):
         raise ValueError("Screenshots desabilitados em RULES.md.")
-    asset_type = (
-        "news_screenshot"
-        if "news_screenshot" in rules["asset_types"]
-        else "web_screenshot"
-    )
+    asset_type = "news_screenshot" if "news_screenshot" in rules["asset_types"] else "web_screenshot"
     b = rules["browser"]
     mode = b["viewport"]
     w = b[mode + "_width"]
@@ -43,9 +37,7 @@ def plan(ledger, url, rules):
         prefix + ["open", url, "--headed"],
         prefix + ["resize", str(w), str(h)],
         prefix + ["snapshot"],
-        prefix
-        + ["screenshot", "--filename=" + str(png)]
-        + (["--full-page"] if b["full_page"] else []),
+        prefix + ["screenshot", "--filename=" + str(png)] + (["--full-page"] if b["full_page"] else []),
     ]
     return {
         "asset_type": asset_type,

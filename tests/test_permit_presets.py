@@ -49,9 +49,7 @@ class PermitPresetTests(unittest.TestCase):
     def test_preset_records_the_generic_terms_as_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
             c = self._candidate(tmp)
-            result = call(
-                "permit", "--candidate", c["id"], "--preset", "youtube", "--project", tmp
-            )
+            result = call("permit", "--candidate", c["id"], "--preset", "youtube", "--project", tmp)
             self.assertEqual("permitted", result["rights"]["status"])
             self.assertEqual("per_item_evidence", result["rights"]["basis"])
             self.assertEqual(1, len(result["rights"]["evidence"]))
@@ -85,7 +83,13 @@ class PermitPresetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             c = self._candidate(tmp)
             call(
-                "permit", "--candidate", c["id"], "--preset", "vimeo", "--project", tmp,
+                "permit",
+                "--candidate",
+                c["id"],
+                "--preset",
+                "vimeo",
+                "--project",
+                tmp,
                 ok=False,
             )
 

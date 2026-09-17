@@ -1,4 +1,5 @@
 """Audited diagnostics, the CLI JSON error envelope and command-level error surfacing."""
+
 import argparse
 import io
 import json
@@ -9,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'scripts'))
+sys.path.insert(0, str(ROOT / "scripts"))
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
@@ -132,8 +133,13 @@ class CliEntrypointErrorEnvelopeTests(unittest.TestCase):
 
 def _search_args(project, query="cats", provider="pexels", limit=5, intent="illustrative"):
     return argparse.Namespace(
-        command="search", project=str(project), provider=provider, query=query,
-        limit=limit, intent=intent, env_file=None,
+        command="search",
+        project=str(project),
+        provider=provider,
+        query=query,
+        limit=limit,
+        intent=intent,
+        env_file=None,
     )
 
 
@@ -181,5 +187,5 @@ class UnknownAcquisitionMethodTests(unittest.TestCase):
         self.assertIn("some-exotic-method", str(ctx.exception))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

@@ -77,18 +77,14 @@ def project(tmp, items):
 
 class DirectoryNames(unittest.TestCase):
     def test_slug_is_ascii_lowercase_and_bounded(self):
-        name = delivery.beat_dir_name(
-            1, "abertura", "Jensen Huang na GTC — palco, luzes & público"
-        )
+        name = delivery.beat_dir_name(1, "abertura", "Jensen Huang na GTC — palco, luzes & público")
         self.assertTrue(name.startswith("01-abertura-"))
         self.assertLessEqual(len(name), 60)
         self.assertRegex(name, r"^[a-z0-9-]+$")
         # Mesmo alvo, mesmo nome: a pasta não muda de lugar entre duas execuções.
         self.assertEqual(
             name,
-            delivery.beat_dir_name(
-                1, "abertura", "Jensen Huang na GTC — palco, luzes & público"
-            ),
+            delivery.beat_dir_name(1, "abertura", "Jensen Huang na GTC — palco, luzes & público"),
         )
 
     def test_path_separators_and_parent_refs_are_refused(self):
@@ -147,9 +143,7 @@ class Build(unittest.TestCase):
                 for p in sorted((Path(tmp) / "entrega").rglob("*"))
             }
             self.assertEqual(before, after)
-            self.assertEqual(
-                [i["path"] for i in first["items"]], [i["path"] for i in second["items"]]
-            )
+            self.assertEqual([i["path"] for i in first["items"]], [i["path"] for i in second["items"]])
             self.assertEqual([], second["removed"])
 
     def test_orphan_links_are_removed_when_the_beat_changes(self):
@@ -200,9 +194,7 @@ class Build(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             project(tmp, [fetched("a", "Palco", shot="abertura")])
-            Path(tmp, "RULES.md").write_text(
-                (ROOT / "docs" / "RULES.md").read_text(encoding="utf-8"), encoding="utf-8"
-            )
+            Path(tmp, "RULES.md").write_text((ROOT / "docs" / "RULES.md").read_text(encoding="utf-8"), encoding="utf-8")
             manifest = Path(tmp) / "brolls" / "manifest.json"
             before = manifest.read_bytes()
             args = types.SimpleNamespace(
@@ -226,9 +218,7 @@ class Build(unittest.TestCase):
             self.assertFalse(media.stat().st_mode & stat.S_IWUSR)
             index = (Path(tmp) / "entrega" / "README.md").read_text(encoding="utf-8")
             self.assertIn("editar o original", index)
-            origin = next((Path(tmp) / "entrega").rglob("ORIGEM.md")).read_text(
-                encoding="utf-8"
-            )
+            origin = next((Path(tmp) / "entrega").rglob("ORIGEM.md")).read_text(encoding="utf-8")
             self.assertIn("editar o original", origin)
 
     def test_copies_are_forced_by_env_for_people_who_edit_in_place(self):
@@ -246,9 +236,7 @@ class Build(unittest.TestCase):
             # A promessa da variável é justamente poder editar dentro de `entrega/`.
             self.assertTrue(media.stat().st_mode & stat.S_IWUSR)
             media.write_bytes(b"editei aqui mesmo")
-            origin = next((Path(tmp) / "entrega").rglob("ORIGEM.md")).read_text(
-                encoding="utf-8"
-            )
+            origin = next((Path(tmp) / "entrega").rglob("ORIGEM.md")).read_text(encoding="utf-8")
             self.assertIn("cópia independente", origin)
             self.assertNotIn("editar o original", origin)
             index = (Path(tmp) / "entrega" / "README.md").read_text(encoding="utf-8")
@@ -260,9 +248,7 @@ class Build(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             project(tmp, [fetched("a", "Palco", shot="abertura")])
-            Path(tmp, "RULES.md").write_text(
-                (ROOT / "docs" / "RULES.md").read_text(encoding="utf-8"), encoding="utf-8"
-            )
+            Path(tmp, "RULES.md").write_text((ROOT / "docs" / "RULES.md").read_text(encoding="utf-8"), encoding="utf-8")
             with_brief(tmp)
             args = types.SimpleNamespace(
                 command="deliver",
@@ -345,9 +331,7 @@ class VerifyHook(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             project(tmp, [fetched("a", "Palco", shot="abertura", clip=None)])
-            Path(tmp, "RULES.md").write_text(
-                (ROOT / "docs" / "RULES.md").read_text(encoding="utf-8"), encoding="utf-8"
-            )
+            Path(tmp, "RULES.md").write_text((ROOT / "docs" / "RULES.md").read_text(encoding="utf-8"), encoding="utf-8")
             original = module.build_delivery
 
             def boom(*args, **kwargs):
@@ -365,9 +349,7 @@ class VerifyHook(unittest.TestCase):
             finally:
                 module.build_delivery = original
             self.assertEqual(0, result["count"])
-            self.assertIn(
-                "DELIVERY_LINK_FAILED", [w["code"] for w in result.get("warnings", [])]
-            )
+            self.assertIn("DELIVERY_LINK_FAILED", [w["code"] for w in result.get("warnings", [])])
 
 
 if __name__ == "__main__":

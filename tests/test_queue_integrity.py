@@ -39,11 +39,7 @@ def rng(value=0.0):
 
 
 def clean_env():
-    return {
-        key: value
-        for key, value in os.environ.items()
-        if not key.startswith(("GB_PACE_", "GB_MAX_PER_"))
-    }
+    return {key: value for key, value in os.environ.items() if not key.startswith(("GB_PACE_", "GB_MAX_PER_"))}
 
 
 VALID_RULES = textwrap.dedent(
@@ -97,9 +93,14 @@ class LoadIntegrityTests(unittest.TestCase):
     def test_duplicate_ids_are_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             item = {
-                "id": "instagram:ABC123xyz", "provider": "instagram", "url": REEL,
-                "status": "pending", "added_at": T0.isoformat(), "started_at": None,
-                "finished_at": None, "reason": None,
+                "id": "instagram:ABC123xyz",
+                "provider": "instagram",
+                "url": REEL,
+                "status": "pending",
+                "added_at": T0.isoformat(),
+                "started_at": None,
+                "finished_at": None,
+                "reason": None,
             }
             data = {"schema_version": 1, "items": [item, dict(item)], "providers": {}}
             path = self._write(tmp, data)
@@ -109,9 +110,14 @@ class LoadIntegrityTests(unittest.TestCase):
     def test_active_item_without_started_at_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             item = {
-                "id": "instagram:ABC123xyz", "provider": "instagram", "url": REEL,
-                "status": "active", "added_at": T0.isoformat(), "started_at": None,
-                "finished_at": None, "reason": None,
+                "id": "instagram:ABC123xyz",
+                "provider": "instagram",
+                "url": REEL,
+                "status": "active",
+                "added_at": T0.isoformat(),
+                "started_at": None,
+                "finished_at": None,
+                "reason": None,
             }
             path = self._write(tmp, {"schema_version": 1, "items": [item], "providers": {}})
             with self.assertRaisesRegex(ValueError, "sem started_at"):
@@ -119,11 +125,17 @@ class LoadIntegrityTests(unittest.TestCase):
 
     def test_more_than_one_active_item_per_provider_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
+
             def active(id_):
                 return {
-                    "id": id_, "provider": "instagram", "url": REEL, "status": "active",
-                    "added_at": T0.isoformat(), "started_at": T0.isoformat(),
-                    "finished_at": None, "reason": None,
+                    "id": id_,
+                    "provider": "instagram",
+                    "url": REEL,
+                    "status": "active",
+                    "added_at": T0.isoformat(),
+                    "started_at": T0.isoformat(),
+                    "finished_at": None,
+                    "reason": None,
                 }
 
             data = {"schema_version": 1, "items": [active("a"), active("b")], "providers": {}}
@@ -134,9 +146,14 @@ class LoadIntegrityTests(unittest.TestCase):
     def test_done_item_without_finished_at_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             item = {
-                "id": "instagram:ABC123xyz", "provider": "instagram", "url": REEL,
-                "status": "done", "added_at": T0.isoformat(), "started_at": T0.isoformat(),
-                "finished_at": None, "reason": None,
+                "id": "instagram:ABC123xyz",
+                "provider": "instagram",
+                "url": REEL,
+                "status": "done",
+                "added_at": T0.isoformat(),
+                "started_at": T0.isoformat(),
+                "finished_at": None,
+                "reason": None,
             }
             path = self._write(tmp, {"schema_version": 1, "items": [item], "providers": {}})
             with self.assertRaisesRegex(ValueError, "sem finished_at"):
@@ -159,9 +176,14 @@ class FinishedSinceCountsMissingAsNowTests(unittest.TestCase):
         data = queue.empty_state()
         data["items"].append(
             {
-                "id": "instagram:x", "provider": "instagram", "url": REEL, "status": "done",
-                "added_at": T0.isoformat(), "started_at": T0.isoformat(),
-                "finished_at": None, "reason": None,
+                "id": "instagram:x",
+                "provider": "instagram",
+                "url": REEL,
+                "status": "done",
+                "added_at": T0.isoformat(),
+                "started_at": T0.isoformat(),
+                "finished_at": None,
+                "reason": None,
             }
         )
         finished = queue._finished_since(data, "instagram", T0 - timedelta(hours=1), now=T0)
@@ -252,18 +274,40 @@ class ActiveItemNextTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = {**clean_env(), "GB_PACE_MIN_S": "30", "GB_PACE_MAX_S": "30"}
             subprocess.run(
-                [sys.executable, str(CLI), "queue", "--project", tmp, "--action", "add", "--provider", "instagram", REEL, "--url", REEL_2],
-                capture_output=True, text=True, env=env, check=True,
+                [
+                    sys.executable,
+                    str(CLI),
+                    "queue",
+                    "--project",
+                    tmp,
+                    "--action",
+                    "add",
+                    "--provider",
+                    "instagram",
+                    REEL,
+                    "--url",
+                    REEL_2,
+                ],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=True,
             )
             subprocess.run(
                 [sys.executable, str(CLI), "queue", "--project", tmp, "--action", "next"],
-                capture_output=True, text=True, env=env, check=True,
+                capture_output=True,
+                text=True,
+                env=env,
+                check=True,
             )
             path = Path(tmp) / "work/queue.json"
             before = (path.stat().st_mtime_ns, path.read_bytes())
             blocked = subprocess.run(
                 [sys.executable, str(CLI), "queue", "--project", tmp, "--action", "next"],
-                capture_output=True, text=True, env=env, check=True,
+                capture_output=True,
+                text=True,
+                env=env,
+                check=True,
             )
             payload = json.loads(blocked.stdout)
             self.assertEqual("active", payload["reason"])
@@ -296,8 +340,10 @@ class CorruptedTimestampPropagatesTests(unittest.TestCase):
         data = queue.empty_state()
         queue.add(data, "instagram", [REEL], at=T0)
         data["providers"]["instagram"] = {
-            "last_action_at": None, "next_allowed_at": None,
-            "cooldown_until": "not-a-timestamp", "cooldown_strikes": 1,
+            "last_action_at": None,
+            "next_allowed_at": None,
+            "cooldown_until": "not-a-timestamp",
+            "cooldown_strikes": 1,
         }
         with self.assertRaisesRegex(ValueError, "timestamp corrompido"):
             queue.report(data, at=T0)
@@ -308,8 +354,10 @@ class CorruptedTimestampPropagatesTests(unittest.TestCase):
             data = queue.empty_state()
             queue.add(data, "instagram", [REEL], at=T0)
             data["providers"]["instagram"] = {
-                "last_action_at": None, "next_allowed_at": None,
-                "cooldown_until": "not-a-timestamp", "cooldown_strikes": 1,
+                "last_action_at": None,
+                "next_allowed_at": None,
+                "cooldown_until": "not-a-timestamp",
+                "cooldown_strikes": 1,
             }
             queue.save(path, data)
             result = queue.hint(tmp)
@@ -331,7 +379,9 @@ class Schema99StatusStaysExit0Tests(unittest.TestCase):
             before = (path.stat().st_mtime_ns, path.read_bytes())
             done = subprocess.run(
                 [sys.executable, str(CLI), "status", "--project", tmp],
-                capture_output=True, text=True, encoding="utf-8",
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
             )
             self.assertEqual(0, done.returncode, done.stderr)
             payload = json.loads(done.stdout)
@@ -359,7 +409,8 @@ class HintMinOverFreeProvidersTests(unittest.TestCase):
             data["providers"]["instagram"] = {
                 "last_action_at": None,
                 "next_allowed_at": (now + timedelta(hours=4)).isoformat(),
-                "cooldown_until": None, "cooldown_strikes": 0,
+                "cooldown_until": None,
+                "cooldown_strikes": 0,
             }
             queue.save(path, data)
             result = queue.hint(tmp)
@@ -377,12 +428,16 @@ class HintMinOverFreeProvidersTests(unittest.TestCase):
             soon = now + timedelta(minutes=5)
             later = now + timedelta(hours=4)
             data["providers"]["instagram"] = {
-                "last_action_at": None, "next_allowed_at": later.isoformat(),
-                "cooldown_until": None, "cooldown_strikes": 0,
+                "last_action_at": None,
+                "next_allowed_at": later.isoformat(),
+                "cooldown_until": None,
+                "cooldown_strikes": 0,
             }
             data["providers"]["tiktok"] = {
-                "last_action_at": None, "next_allowed_at": soon.isoformat(),
-                "cooldown_until": None, "cooldown_strikes": 0,
+                "last_action_at": None,
+                "next_allowed_at": soon.isoformat(),
+                "cooldown_until": None,
+                "cooldown_strikes": 0,
             }
             queue.save(path, data)
             result = queue.hint(tmp)
@@ -399,8 +454,9 @@ class HintConsultsRulesTests(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def test_hint_passes_rules_pacing_into_report(self):
-        with tempfile.TemporaryDirectory() as tmp, patch.dict(
-            os.environ, {**clean_env(), "GB_PACE_MIN_S": "0", "GB_PACE_MAX_S": "0"}, clear=True
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.dict(os.environ, {**clean_env(), "GB_PACE_MIN_S": "0", "GB_PACE_MAX_S": "0"}, clear=True),
         ):
             (Path(tmp) / "RULES.md").write_text(VALID_RULES, encoding="utf-8")
             path = queue.queue_path(tmp)
@@ -439,7 +495,9 @@ class QueueActionReadOnlyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with project_lock(tmp):
                 args = queue_args(tmp, "add", provider="instagram", urls=[REEL])
-                with self.assertRaisesRegex(commands.OperationError if hasattr(commands, "OperationError") else Exception, "."):
+                with self.assertRaisesRegex(
+                    commands.OperationError if hasattr(commands, "OperationError") else Exception, "."
+                ):
                     audited(args, commands.execute)
 
 
@@ -492,6 +550,7 @@ class CooldownReasonSkillMessagesTests(unittest.TestCase):
 
     def test_skill_messages_trigger_and_local_errors_do_not(self):
         from getbrolls import queue
+
         positives = [
             "A fonte exige uma sessão de acesso. Use o navegador autorizado.",
             "A fonte bloqueou o IP desta rede para esse post; download não concluído.",

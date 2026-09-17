@@ -18,9 +18,7 @@ from getbrolls.review import import_review, latest_review_file
 
 def exported(ledger, state="approved"):
     page = Path(render(ledger)).read_text(encoding="utf-8")
-    payload = json.loads(
-        re.search(r"window.GETBROLLS_REVIEW=(.*?);</script>", page).group(1)
-    )
+    payload = json.loads(re.search(r"window.GETBROLLS_REVIEW=(.*?);</script>", page).group(1))
     for item in payload["items"]:
         item["state"] = state
     return payload

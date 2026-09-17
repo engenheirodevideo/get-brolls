@@ -59,8 +59,16 @@ class CliTest(unittest.TestCase):
             preview = self.call("preview", *base, "--start", 0.5, "--end", 1.5)
             self.assertIn("Gerei a prévia", preview["summary"])
             approved = self.call(
-                "approve", *base, "--start", 0.5, "--end", 1.5, "--by", "Fixture humano",
-                "--statement", "Aprovo este trecho para o vídeo."
+                "approve",
+                *base,
+                "--start",
+                0.5,
+                "--end",
+                1.5,
+                "--by",
+                "Fixture humano",
+                "--statement",
+                "Aprovo este trecho para o vídeo.",
             )
             self.assertIn("Registrei a aprovação humana", approved["summary"])
             self.call("fetch", *base, ok=False)
@@ -133,42 +141,48 @@ class CliTest(unittest.TestCase):
                 "--project",
                 root,
             )
-            other = self.call(
-                "resolve", "--file", src, "--shot", "two", "--project", root
-            )
+            other = self.call("resolve", "--file", src, "--shot", "two", "--project", root)
             self.assertNotEqual(c["id"], other["id"])
             base = ["--candidate", c["id"], "--project", root]
+            self.call("preview", *base, "--start", 0, "--end", 1, "--narration", "Line one")
             self.call(
-                "preview", *base, "--start", 0, "--end", 1, "--narration", "Line one"
-            )
-            self.call(
-                "approve", *base, "--start", 0, "--end", 1, "--by", "Human",
-                "--statement", "Aprovo este trecho para o vídeo.",
+                "approve",
+                *base,
+                "--start",
+                0,
+                "--end",
+                1,
+                "--by",
+                "Human",
+                "--statement",
+                "Aprovo este trecho para o vídeo.",
             )
 
             def payload():
                 page = (root / "brolls/review.html").read_text(encoding="utf-8")
-                return json.loads(
-                    re.search(r"window.GETBROLLS_REVIEW=(.*?);</script>", page).group(1)
-                )
+                return json.loads(re.search(r"window.GETBROLLS_REVIEW=(.*?);</script>", page).group(1))
 
             data = payload()
             self.assertEqual(data["items"][0]["review"]["state"], "approved")
             data["items"] = [{**data["items"][0], "state": "approved"}]
             review = root / "decision.json"
             review.write_text(json.dumps(data), encoding="utf-8")
-            self.call(
-                "import-review", "--file", review, "--by", "Human", "--project", root
-            )
+            self.call("import-review", "--file", review, "--by", "Human", "--project", root)
             self.call("reject", *base)
             self.assertEqual(payload()["items"][0]["review"]["state"], "pending")
             self.call(
-                "approve", *base, "--start", 0, "--end", 1, "--by", "Human",
-                "--statement", "Aprovo este trecho para o vídeo.",
+                "approve",
+                *base,
+                "--start",
+                0,
+                "--end",
+                1,
+                "--by",
+                "Human",
+                "--statement",
+                "Aprovo este trecho para o vídeo.",
             )
-            self.call(
-                "preview", *base, "--start", 0, "--end", 1, "--narration", "Line two"
-            )
+            self.call("preview", *base, "--start", 0, "--end", 1, "--narration", "Line two")
             self.call(
                 "import-review",
                 "--file",
@@ -241,23 +255,14 @@ class CliTest(unittest.TestCase):
             manifest = Path(tmp) / "brolls/manifest.json"
             data = json.loads(manifest.read_text(encoding="utf-8"))
             data["items"][0]["title"] = "<img src=x onerror=alert(1)>"
-            data["items"][0]["preview"]["poster_url"] = (
-                "https://example.org/poster.jpg?access_token=SECRET_TEST"
-            )
+            data["items"][0]["preview"]["poster_url"] = "https://example.org/poster.jpg?access_token=SECRET_TEST"
             manifest.write_text(json.dumps(data), encoding="utf-8")
             self.call("review", "--project", tmp)
             page = (Path(tmp) / "brolls/review.html").read_text(encoding="utf-8")
             dom = DOM()
             dom.feed(page)
-            self.assertFalse(
-                any(t == "iframe" for t, a in dom.nodes), "Player must be lazy"
-            )
-            self.assertFalse(
-                any(
-                    t in ("iframe", "video") or "data-youtube" in a
-                    for t, a in dom.nodes
-                )
-            )
+            self.assertFalse(any(t == "iframe" for t, a in dom.nodes), "Player must be lazy")
+            self.assertFalse(any(t in ("iframe", "video") or "data-youtube" in a for t, a in dom.nodes))
             self.assertNotIn("SECRET_TEST", page)
             self.assertFalse(any("onerror" in a for t, a in dom.nodes))
             self.assertIn("&lt;img src=x onerror=alert(1)&gt;", page)

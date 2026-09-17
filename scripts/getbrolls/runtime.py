@@ -97,9 +97,7 @@ def project_lock(project):
         try:
             _acquire_lock(lock)
         except BlockingIOError:
-            raise ValueError(
-                "Outro comando está usando este projeto. Aguarde terminar antes de repetir."
-            ) from None
+            raise ValueError("Outro comando está usando este projeto. Aguarde terminar antes de repetir.") from None
         try:
             yield
         finally:
@@ -145,9 +143,7 @@ def audited(args, execute):
         OverflowError,
     ) as exc:
         event["status"] = "error"
-        event["recovery_pending"] = bool(
-            log and (log.parent / ".pending-transaction.json").exists()
-        )
+        event["recovery_pending"] = bool(log and (log.parent / ".pending-transaction.json").exists())
         # Diagnostics survive regardless of classification, redacted like everything else here.
         event["type"] = type(exc).__name__
         event["repr"] = redact(repr(exc))
@@ -168,9 +164,7 @@ def audited(args, execute):
                 event["message"] = redact(exc) + " Confira docs/RULES.md."
                 current = ACTIVE.get()
                 if current is not None:
-                    current["warnings"].append(
-                        {"code": "PROVIDER_ERROR", "message": redact(exc)}
-                    )
+                    current["warnings"].append({"code": "PROVIDER_ERROR", "message": redact(exc)})
                     event["warnings"] = current["warnings"]
             else:
                 event["error_code"] = "IO_ERROR" if isinstance(exc, OSError) else "INVALID_DATA"

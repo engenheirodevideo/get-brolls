@@ -58,9 +58,7 @@ class LibraryBase(unittest.TestCase):
         for key in ("GB_HOME", "GB_LIBRARY", "GB_RULES_FILE"):
             old = os.environ.get(key)
             self.addCleanup(
-                lambda k=key, v=old: os.environ.__setitem__(k, v)
-                if v is not None
-                else os.environ.pop(k, None)
+                lambda k=key, v=old: os.environ.__setitem__(k, v) if v is not None else os.environ.pop(k, None)
             )
             os.environ.pop(key, None)
         os.environ["GB_HOME"] = str(self.home)
@@ -86,9 +84,7 @@ class LibraryTests(LibraryBase):
         self.assertEqual({"hit": 1, "miss": 0}, data["providers"]["youtube"]["outcomes"])
 
     def test_a_note_becomes_a_file_under_notes(self):
-        answer = library.learn_query(
-            "foguete decolando", "youtube", "miss", note="Só resultados de simulação."
-        )
+        answer = library.learn_query("foguete decolando", "youtube", "miss", note="Só resultados de simulação.")
         note = library.library_dir() / answer["entry"]["note"]
         self.assertIn("simulação", note.read_text(encoding="utf-8"))
         self.assertEqual(0o600, stat.S_IMODE(note.stat().st_mode))
@@ -108,9 +104,7 @@ class LibraryTests(LibraryBase):
         entry = answer["entry"]
         self.assertTrue(answer["rights_not_transferable"])
         self.assertEqual(c["source_url"], entry["source_url"])
-        self.assertEqual({"start_s": 10.0, "end_s": 14.0}, {
-            k: entry["clip"][k] for k in ("start_s", "end_s")
-        })
+        self.assertEqual({"start_s": 10.0, "end_s": 14.0}, {k: entry["clip"][k] for k in ("start_s", "end_s")})
         self.assertIn("signature", entry["clip"])
         for forbidden in ("evidence", "approval", "rights"):
             self.assertNotIn(forbidden, entry)
@@ -125,9 +119,7 @@ class LibraryTests(LibraryBase):
         self.assertNotIn(str(self.project), raw)
         self.assertNotIn("project_path", raw)
         used = json.loads(raw)["assets"][0]["used_by"][0]
-        self.assertEqual(
-            {"project_id", "shot", "at"}, set(used), used
-        )
+        self.assertEqual({"project_id", "shot", "at"}, set(used), used)
         self.assertEqual(identity, used["project_id"])
         self.assertEqual("beat-01", used["shot"])
 
@@ -152,9 +144,7 @@ class LibraryTests(LibraryBase):
         library.learn_from_candidate(self.project, c["id"])
         other = Path(self.tmp.name) / "outro"
         other.mkdir()
-        fresh = Ledger(other).add(
-            candidate("youtube", "abc", "Foguete da NASA subindo", c["source_url"])
-        )
+        fresh = Ledger(other).add(candidate("youtube", "abc", "Foguete da NASA subindo", c["source_url"]))
         hits = library.search("foguete")["assets"]
         self.assertTrue(hits)
         with self.assertRaises(ValueError):
@@ -198,9 +188,7 @@ class LibraryTests(LibraryBase):
             library.learn_query(f"automatica {n}", "pexels", "miss", auto=True)
         data = json.loads(library.index_path().read_text(encoding="utf-8"))
         self.assertEqual(library.MAX_QUERIES, len(data["queries"]))
-        self.assertIn(
-            "busca escrita por gente", [q["query"] for q in data["queries"]]
-        )
+        self.assertIn("busca escrita por gente", [q["query"] for q in data["queries"]])
 
     def test_hints_never_repeat_free_text_from_another_project(self):
         ledger, c = approved_candidate(self.project)
@@ -224,9 +212,7 @@ class LibraryTests(LibraryBase):
         import _isolation
 
         os.environ["GB_HOME"] = str(_isolation.GB_HOME)
-        self.assertTrue(
-            str(library.home_dir()).startswith(tf.gettempdir()), library.home_dir()
-        )
+        self.assertTrue(str(library.home_dir()).startswith(tf.gettempdir()), library.home_dir())
         self.assertNotEqual(Path.home() / ".getbrolls", library.home_dir())
 
     def test_search_finds_assets_queries_and_preferences(self):
@@ -245,8 +231,7 @@ class LibraryCommandTests(LibraryBase):
         for name in ("learn", "library"):
             self.assertIn(name, SUMMARIES)
             args = build_parser().parse_args(
-                [name, "--project", "/tmp/x"]
-                + (["--preference", "x"] if name == "learn" else ["--search", "x"])
+                [name, "--project", "/tmp/x"] + (["--preference", "x"] if name == "learn" else ["--search", "x"])
             )
             self.assertEqual("/tmp/x", args.project)
 
@@ -267,9 +252,7 @@ class LibraryCommandTests(LibraryBase):
             env=env,
         )
         self.assertTrue(answer["rights_not_transferable"])
-        found = run_cli(
-            self, "library", "--project", self.project, "--search", "foguete", env=env
-        )
+        found = run_cli(self, "library", "--project", self.project, "--search", "foguete", env=env)
         self.assertTrue(found["rights_not_transferable"])
         self.assertEqual(1, len(found["queries"]))
 
@@ -290,9 +273,7 @@ class LibraryCommandTests(LibraryBase):
             ]
         )
         library.learn_query("foguete decolando", "youtube", "hit")
-        with patch(
-            "getbrolls.providers.search", side_effect=ValueError("chave ausente")
-        ):
+        with patch("getbrolls.providers.search", side_effect=ValueError("chave ausente")):
             with self.assertRaises(ValueError):
                 execute(args)
         data = json.loads(library.index_path().read_text(encoding="utf-8"))
@@ -322,9 +303,7 @@ class LibraryCommandTests(LibraryBase):
         with_library = next_action(state)
         self.assertIn("biblioteca", with_library["for_human"])
         self.assertEqual(plain["command"], with_library["command"])
-        build_parser().parse_args(
-            shlex.split(with_library["command"])[2:]
-        )
+        build_parser().parse_args(shlex.split(with_library["command"])[2:])
 
     def test_the_cli_refuses_learn_without_anything_to_learn(self):
         error = run_cli(self, "learn", "--project", self.project, ok=False)

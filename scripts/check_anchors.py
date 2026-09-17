@@ -9,6 +9,7 @@ Sem dependências externas (stdlib). Uso:
 Sai com código 0 e uma linha de confirmação se tudo resolver; código 1 e a
 lista de âncoras quebradas caso contrário.
 """
+
 from __future__ import annotations
 
 import re
@@ -93,9 +94,7 @@ def check_relative_links(path: Path, markdown: str) -> list[str]:
         if not resolved.exists():
             problems.append(f"{path.relative_to(ROOT)}: link quebrado {link}")
             continue
-        if anchor and anchor not in extract_headings(
-            resolved.read_text(encoding="utf-8")
-        ):
+        if anchor and anchor not in extract_headings(resolved.read_text(encoding="utf-8")):
             problems.append(f"{path.relative_to(ROOT)}: âncora quebrada {link}")
     return problems
 

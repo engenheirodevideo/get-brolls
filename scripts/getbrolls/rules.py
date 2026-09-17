@@ -107,9 +107,7 @@ def rules_layers(project):
         layers.append(
             (
                 middle,
-                _strip_never_inherited(
-                    middle, read_rules_block(middle), warnings, "de GB_RULES_FILE"
-                ),
+                _strip_never_inherited(middle, read_rules_block(middle), warnings, "de GB_RULES_FILE"),
             )
         )
     if project_path is not None:
@@ -124,12 +122,8 @@ def load_rules(project):
         for key, value in data.items():
             r[key] = _merge(r[key], value) if key in r else value
             sources[key] = str(path)
-    if (
-        type(r.get("version")) is not int or r["version"] != 1
-    ):
-        raise ValueError(
-            'Em RULES.md, "version" tem que ser o número 1. Ajuste essa linha.'
-        )
+    if type(r.get("version")) is not int or r["version"] != 1:
+        raise ValueError('Em RULES.md, "version" tem que ser o número 1. Ajuste essa linha.')
     if (
         not isinstance(r.get("asset_types"), list)
         or not r["asset_types"]
@@ -141,9 +135,7 @@ def load_rules(project):
             + "."
         )
     if r.get("video_format") not in ("native", "reels", "horizontal"):
-        raise ValueError(
-            'Em RULES.md, "video_format" tem que ser "native", "reels" ou "horizontal".'
-        )
+        raise ValueError('Em RULES.md, "video_format" tem que ser "native", "reels" ou "horizontal".')
     providers = {"youtube", "pexels", "pixabay", "commons", "nasa"}
     if not isinstance(r.get("preferred_providers"), dict):
         raise ValueError(
@@ -163,22 +155,15 @@ def load_rules(project):
             )
     for key in ("preferred_domains", "blocked_domains"):
         if not isinstance(r.get(key), list) or any(
-            not isinstance(v, str)
-            or not re.fullmatch(
-                r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", v
-            )
+            not isinstance(v, str) or not re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", v)
             for v in r[key]
         ):
             raise ValueError(
-                "Em RULES.md, " + key + ' só aceita domínios em minúsculas como '
+                "Em RULES.md, " + key + " só aceita domínios em minúsculas como "
                 '"youtube.com" — sem "https://" e sem caminho depois da barra.'
             )
-    if not isinstance(r.get("editorial_rules"), list) or any(
-        not isinstance(v, str) for v in r["editorial_rules"]
-    ):
-        raise ValueError(
-            'Em RULES.md, "editorial_rules" tem que ser uma lista de frases entre aspas.'
-        )
+    if not isinstance(r.get("editorial_rules"), list) or any(not isinstance(v, str) for v in r["editorial_rules"]):
+        raise ValueError('Em RULES.md, "editorial_rules" tem que ser uma lista de frases entre aspas.')
     rights = r.get("copyright", {})
     if not isinstance(rights, dict) or rights.get("mode") not in (
         "per_item_evidence",
@@ -200,7 +185,7 @@ def load_rules(project):
         raise ValueError(
             "No modo user_declaration, alguém assume a responsabilidade: rode "
             '`init-rules --responsible "SEU NOME" --declaration "..." '
-            '--mode user_declaration --force` ou preencha esses dois campos no RULES.md.'
+            "--mode user_declaration --force` ou preencha esses dois campos no RULES.md."
         )
     browser = r.get("browser", {})
     if (
@@ -209,14 +194,11 @@ def load_rules(project):
         or not isinstance(browser.get("full_page"), bool)
     ):
         raise ValueError(
-            'Em RULES.md, "browser" precisa de "viewport" ("mobile" ou "desktop") e de '
-            '"full_page" (true ou false).'
+            'Em RULES.md, "browser" precisa de "viewport" ("mobile" ou "desktop") e de "full_page" (true ou false).'
         )
     for key in ("mobile_width", "mobile_height", "desktop_width", "desktop_height"):
         if type(browser.get(key)) is not int or not 240 <= browser[key] <= 3840:
-            raise ValueError(
-                "Em RULES.md, " + key + " tem que ser um número inteiro entre 240 e 3840."
-            )
+            raise ValueError("Em RULES.md, " + key + " tem que ser um número inteiro entre 240 e 3840.")
     # Optional `pacing` block for the social queue; the environment still wins.
     validate_pacing_block(r.get("pacing"))
     # Aditivo: `sources` diz de que arquivo veio cada campo e `rules_warnings` o que

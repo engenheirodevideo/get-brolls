@@ -9,6 +9,7 @@ Nunca imprime URLs assinadas da CDN. Lotes têm ritmo (pausa aleatória entre st
 por execução) e param no primeiro HTTP 403/429 para nunca martelar uma conta enquanto a
 CDN já está recusando.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -80,7 +81,15 @@ def run(cmd: list[str], *, quiet: bool = False) -> subprocess.CompletedProcess[s
     if not quiet:
         print("+ " + " ".join(sh_quote(x) for x in cmd), file=sys.stderr)
     try:
-        return subprocess.run(cmd, text=True, encoding="utf-8", errors="replace", check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return subprocess.run(
+            cmd,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
     except subprocess.CalledProcessError as exc:
         tail = stderr_tail(exc.stderr or "")
         die(f"{cmd[0]} falhou (exit {exc.returncode}): {tail}")
@@ -218,7 +227,12 @@ def _reused_part_is_valid(path: Path) -> bool:
     try:
         subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", str(path)],
-            check=True, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
         )
         return True
     except (subprocess.CalledProcessError, subprocess.SubprocessError, OSError):
@@ -236,7 +250,13 @@ def download_or_reuse(
     parsed = parse_curl_config(cfg_path)
     config_output = resolve_config_output(parsed["output"], config_output_root)
 
-    if prefer_config_output and not force_download and config_output and config_output.exists() and config_output.stat().st_size > 0:
+    if (
+        prefer_config_output
+        and not force_download
+        and config_output
+        and config_output.exists()
+        and config_output.stat().st_size > 0
+    ):
         if not _reused_part_is_valid(config_output):
             die(f"parte reutilizada está corrompida; use --force-download: {config_output}")
         part_path.parent.mkdir(parents=True, exist_ok=True)
@@ -253,9 +273,22 @@ def download_or_reuse(
     # Preserva partes existentes válidas até a transferência substituta ter sucesso.
     with tempfile.TemporaryDirectory(dir=part_path.parent) as stage:
         pending = Path(stage) / "download.part"
-        cmd = ["curl", "--fail", "--proto", "=https", "--retry", "2", "--retry-delay", "5",
-               "--connect-timeout", "20", "--max-time", "180",
-               "--output", str(pending)]
+        cmd = [
+            "curl",
+            "--fail",
+            "--proto",
+            "=https",
+            "--retry",
+            "2",
+            "--retry-delay",
+            "5",
+            "--connect-timeout",
+            "20",
+            "--max-time",
+            "180",
+            "--output",
+            str(pending),
+        ]
         if parsed["curl_resolve"]:
             cmd += ["--resolve", str(parsed["curl_resolve"])]
         cmd.append(str(parsed["url"]))
@@ -276,7 +309,9 @@ def download_or_reuse(
             tail = stderr_tail(stderr)
             die(f"curl falhou para o config {cfg_path} (exit {exc.returncode}): {tail}")
         except subprocess.TimeoutExpired as exc:
-            die(f"curl timed out after {exc.timeout}s para o config {cfg_path}; recapture URLs expiradas/proibidas e tente de novo")
+            die(
+                f"curl timed out after {exc.timeout}s para o config {cfg_path}; recapture URLs expiradas/proibidas e tente de novo"
+            )
         except (subprocess.SubprocessError, OSError):
             die(f"curl falhou para o config {cfg_path}; recapture URLs expiradas/proibidas e tente de novo")
         if not pending.is_file() or pending.stat().st_size == 0:
@@ -288,7 +323,23 @@ def download_or_reuse(
 def merge_parts(video_part: Path, audio_part: Path, output: Path, *, copy_streams: bool) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     if copy_streams:
-        cmd = ["ffmpeg", "-n", "-v", "error", "-i", str(video_part), "-i", str(audio_part), "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", str(output)]
+        cmd = [
+            "ffmpeg",
+            "-n",
+            "-v",
+            "error",
+            "-i",
+            str(video_part),
+            "-i",
+            str(audio_part),
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0",
+            "-c",
+            "copy",
+            str(output),
+        ]
     else:
         cmd = [
             "ffmpeg",
@@ -323,24 +374,30 @@ def merge_parts(video_part: Path, audio_part: Path, output: Path, *, copy_stream
 
 
 def ffprobe_json(path: Path) -> dict:
-    result = run([
-        "ffprobe",
-        "-v",
-        "error",
-        "-show_entries",
-        "format=duration,size",
-        "-show_streams",
-        "-of",
-        "json",
-        str(path),
-    ], quiet=True)
+    result = run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration,size",
+            "-show_streams",
+            "-of",
+            "json",
+            str(path),
+        ],
+        quiet=True,
+    )
     return json.loads(result.stdout)
 
 
 def audio_hash(path: Path) -> str:
     with tempfile.TemporaryDirectory(prefix="getbrolls-ig-audiohash-") as tmp:
         audio = Path(tmp) / "audio.aac"
-        run(["ffmpeg", "-nostdin", "-v", "error", "-i", str(path), "-map", "0:a:0", "-c", "copy", str(audio)], quiet=True)
+        run(
+            ["ffmpeg", "-nostdin", "-v", "error", "-i", str(path), "-map", "0:a:0", "-c", "copy", str(audio)],
+            quiet=True,
+        )
         h = hashlib.sha256()
         with audio.open("rb") as handle:
             for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -431,13 +488,15 @@ def process_one(
         verification = verify_output(pending, compute_audio_hash=compute_audio_hash)
         publish_exclusive(pending, output)
     verification["output"] = str(output)
-    verification.update({
-        "stem": stem,
-        "video_config": str(video_config),
-        "audio_config": str(audio_config),
-        "video_part_action": video_action,
-        "audio_part_action": audio_action,
-    })
+    verification.update(
+        {
+            "stem": stem,
+            "video_config": str(video_config),
+            "audio_config": str(audio_config),
+            "video_part_action": video_action,
+            "audio_part_action": audio_action,
+        }
+    )
     return verification
 
 
@@ -460,18 +519,67 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--audio-config", type=Path, help="Config curl de áudio único; obrigatório com --video-config.")
     parser.add_argument("--output", type=Path, help="Único mp4 de saída; obrigatório com --video-config.")
     parser.add_argument("--output-dir", type=Path, help="Diretório de saída do lote; obrigatório com --config-dir.")
-    parser.add_argument("--parts-dir", type=Path, default=Path("work/instagram_parts"), help="Diretório temporário/reaproveitado das partes de vídeo/áudio.")
-    parser.add_argument("--config-output-root", type=Path, default=Path.cwd(), help="Raiz usada para resolver as linhas output= (relativas) dos configs curl.")
-    parser.add_argument("--project", type=Path, default=None, help="Raiz do projeto que guarda work/queue.json; usada para registrar o cooldown ao levar 403/429.")
-    parser.add_argument("--layout", choices=["auto", "flat", "student"], default="auto", help="Layout da saída do lote. auto preserva pastas por usuário para stems '<username>_<rank>_<code>'.")
-    parser.add_argument("--force-download", action="store_true", help="Ignora arquivos de config output e partes existentes; baixa das URLs assinadas.")
-    parser.add_argument("--no-prefer-config-output", action="store_true", help="Não reaproveita arquivos já apontados por output= nos configs curl.")
-    parser.add_argument("--copy", action="store_true", help="Copia os streams de vídeo/áudio em vez de normalizar para h264 yuv420p + aac.")
-    parser.add_argument("--fail-on-duplicate-audio", action="store_true", help="Falha o lote se duas saídas tiverem o mesmo hash SHA-256 do AAC extraído.")
+    parser.add_argument(
+        "--parts-dir",
+        type=Path,
+        default=Path("work/instagram_parts"),
+        help="Diretório temporário/reaproveitado das partes de vídeo/áudio.",
+    )
+    parser.add_argument(
+        "--config-output-root",
+        type=Path,
+        default=Path.cwd(),
+        help="Raiz usada para resolver as linhas output= (relativas) dos configs curl.",
+    )
+    parser.add_argument(
+        "--project",
+        type=Path,
+        default=None,
+        help="Raiz do projeto que guarda work/queue.json; usada para registrar o cooldown ao levar 403/429.",
+    )
+    parser.add_argument(
+        "--layout",
+        choices=["auto", "flat", "student"],
+        default="auto",
+        help="Layout da saída do lote. auto preserva pastas por usuário para stems '<username>_<rank>_<code>'.",
+    )
+    parser.add_argument(
+        "--force-download",
+        action="store_true",
+        help="Ignora arquivos de config output e partes existentes; baixa das URLs assinadas.",
+    )
+    parser.add_argument(
+        "--no-prefer-config-output",
+        action="store_true",
+        help="Não reaproveita arquivos já apontados por output= nos configs curl.",
+    )
+    parser.add_argument(
+        "--copy",
+        action="store_true",
+        help="Copia os streams de vídeo/áudio em vez de normalizar para h264 yuv420p + aac.",
+    )
+    parser.add_argument(
+        "--fail-on-duplicate-audio",
+        action="store_true",
+        help="Falha o lote se duas saídas tiverem o mesmo hash SHA-256 do AAC extraído.",
+    )
     parser.add_argument("--summary-json", type=Path, help="Grava o resumo em JSON; reescrito a cada stem.")
-    parser.add_argument("--pace", default=DEFAULT_PACE, help="Pausa aleatória em segundos entre stems, como MIN-MAX (padrão 20-60); 0 desabilita. Nunca antes do primeiro stem.")
-    parser.add_argument("--max-per-run", type=int, default=DEFAULT_MAX_PER_RUN, help="Processa no máximo N stems por execução (padrão 25); o resto é registrado como pulado.")
-    parser.add_argument("--continue-on-error", action="store_true", help="Registra um stem com falha e continua em vez de interromper o lote. HTTP 403/429 sempre interrompe o lote.")
+    parser.add_argument(
+        "--pace",
+        default=DEFAULT_PACE,
+        help="Pausa aleatória em segundos entre stems, como MIN-MAX (padrão 20-60); 0 desabilita. Nunca antes do primeiro stem.",
+    )
+    parser.add_argument(
+        "--max-per-run",
+        type=int,
+        default=DEFAULT_MAX_PER_RUN,
+        help="Processa no máximo N stems por execução (padrão 25); o resto é registrado como pulado.",
+    )
+    parser.add_argument(
+        "--continue-on-error",
+        action="store_true",
+        help="Registra um stem com falha e continua em vez de interromper o lote. HTTP 403/429 sempre interrompe o lote.",
+    )
     return parser
 
 
@@ -555,7 +663,9 @@ def _collect_one(stem: str, video_config: Path, audio_config: Path, output: Path
     )
 
 
-def _record_failure(results: list[dict], stem: str, exc: BaseException, args) -> tuple[str | None, BaseException | None]:
+def _record_failure(
+    results: list[dict], stem: str, exc: BaseException, args
+) -> tuple[str | None, BaseException | None]:
     """Registra o stem com falha e diz se (e por que) o resto do lote para."""
     if isinstance(exc, CollectError):
         reason = exc.message

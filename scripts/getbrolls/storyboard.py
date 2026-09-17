@@ -9,11 +9,7 @@ ASSETS = Path(__file__).resolve().parents[2] / "assets"
 
 def brand_logo():
     encoded = base64.b64encode((ASSETS / "brand-logo.png").read_bytes()).decode("ascii")
-    return (
-        '<img class="brand-logo" '
-        f'src="data:image/png;base64,{encoded}" '
-        'alt="Engenheiro de vídeo">'
-    )
+    return f'<img class="brand-logo" src="data:image/png;base64,{encoded}" alt="Engenheiro de vídeo">'
 
 
 def render_page(
@@ -58,9 +54,7 @@ def render_page(
                 presenter or item.get("poster"),
                 ("Miniatura da fonte — " if item.get("no_preview") else "Prévia — ") + item["title"],
             )
-        badge = (
-            '<span class="preview-badge">só imagem</span>' if item.get("no_preview") else ""
-        )
+        badge = '<span class="preview-badge">só imagem</span>' if item.get("no_preview") else ""
         gallery.append(
             f'<button class="shot" data-index="{i}" aria-current="false"><div class="thumbs">{thumbnail}{badge}</div><h3>{name}</h3><div class="time">{time}</div></button>'
         )
