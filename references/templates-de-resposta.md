@@ -61,7 +61,7 @@ literal dela.
 
 > 🎬 **Prontos: <N> arquivos.**
 >
-> `<caminho da pasta>/brolls/clips/`
+> `<caminho da pasta>/entrega/`
 >
 > | Arquivo | O que é | Duração |
 > |---|---|---|
@@ -69,9 +69,13 @@ literal dela.
 >
 > É só arrastar pro seu editor. Os arquivos já vêm cortados no trecho que você aprovou.
 >
-> Na mesma pasta tem um **`credits.md`**: de onde saiu cada um, quem é o autor e o que
-> você me disse sobre poder usar. Guarde junto do projeto — é sua prova se alguém
-> perguntar.
+> Abra o **`entrega/README.md`**: é a tabela de tudo — qual trecho é de qual parte do
+> vídeo, o arquivo, o estado e os direitos. Cada pasta tem um **`ORIGEM.md`** com de onde
+> saiu aquele trecho, quem é o autor e o que você me disse sobre poder usar. Guarde junto
+> do projeto — é sua prova se alguém perguntar.
+>
+> Essa pasta é uma cópia organizada; o material original continua em `brolls/`, e eu posso
+> refazer a `entrega/` a qualquer momento.
 >
 > Quer mais trechos? Me chama de novo e diz "abre a pasta <nome>" que eu continuo de onde
 > paramos.
