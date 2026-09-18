@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -281,6 +282,41 @@ class DoctorReportTests(unittest.TestCase):
             for name, path in resolved.items():
                 if path is not None:
                     self.assertTrue(Path(path).is_absolute(), name)
+
+
+class DeclaredKeys(unittest.TestCase):
+    """Toda `GB_*` lida pelo código precisa estar em `config.KEYS` e no `.env.example`.
+
+    Uma variável fora de `KEYS` faz `load_env` recusar o `.env` inteiro: a pessoa põe
+    no arquivo a variável que a documentação promete e todo comando para de rodar.
+    """
+
+    READER = re.compile(r'(?:os\.environ\.get|os\.getenv|os\.environ\[)\(?"(GB_[A-Z0-9_]+)"')
+
+    def _read_keys(self):
+        found = {}
+        for path in sorted((ROOT / "scripts" / "getbrolls").glob("*.py")):
+            for key in self.READER.findall(path.read_text(encoding="utf-8")):
+                found.setdefault(key, path.name)
+        return found
+
+    def test_every_gb_variable_the_code_reads_is_declared_in_keys(self):
+        found = self._read_keys()
+        self.assertTrue(found)
+        undeclared = {key: where for key, where in found.items() if key not in config.KEYS}
+        self.assertEqual({}, undeclared)
+
+    def test_every_declared_key_appears_in_the_env_example(self):
+        example = (ROOT / ".env.example").read_text(encoding="utf-8")
+        missing = [key for key in sorted(config.KEYS) if key not in example]
+        self.assertEqual([], missing)
+
+    def test_gb_brief_file_in_a_dot_env_does_not_break_every_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env_file = Path(tmp) / ".env"
+            env_file.write_text("GB_BRIEF_FILE=\nGB_SCAN_MAX_SECONDS=120\n", encoding="utf-8")
+            with patch.dict(os.environ, {}, clear=False):
+                config.load_env(env_file)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,8 @@ from pathlib import Path
 KEYS = {
     "GB_GIF_SCOPE",
     "GB_RULES_FILE",
+    # Caminho alternativo do BRIEF.md do projeto; padrão `<projeto>/BRIEF.md`.
+    "GB_BRIEF_FILE",
     # Pasta pessoal da skill (RULES.md global e biblioteca); padrão ~/.getbrolls.
     "GB_HOME",
     # `off` desliga leitura e escrita da biblioteca global.

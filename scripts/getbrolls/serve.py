@@ -42,7 +42,9 @@ class _ExclusiveServer(ThreadingHTTPServer):
     allow_reuse_address = False
 
     # Sorteados em `start()`; declarados aqui porque o handler também os lê.
-    save_token: str = ""
+    # `None` de propósito: um `""` faria `compare_digest("", "")` valer como token
+    # correto, e um servidor ainda não inicializado aceitaria gravação sem segredo.
+    save_token: str | None = None
     session_id: str = ""
 
 
@@ -85,9 +87,10 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
             self._refuse(404, "Endereço desconhecido.")
             return
         token = self.headers.get(TOKEN_HEADER) or ""
+        expected = cast(_ExclusiveServer, self.server).save_token
         # `compare_digest` de texto explode com caracteres fora de ASCII: um
         # cabeçalho qualquer não pode virar 500, é só mais um token errado.
-        if not token.isascii() or not hmac.compare_digest(token, cast(_ExclusiveServer, self.server).save_token):
+        if not expected or not token.isascii() or not hmac.compare_digest(token, expected):
             self._refuse(403, "Token da sessão ausente ou inválido.")
             return
         try:
@@ -157,7 +160,7 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
             page = Path(self.directory) / "review.html"
             if page.is_file():
                 body = _inject_token(
-                    page.read_text(encoding="utf-8"), cast(_ExclusiveServer, self.server).save_token
+                    page.read_text(encoding="utf-8"), cast(_ExclusiveServer, self.server).save_token or ""
                 ).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")

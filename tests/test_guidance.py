@@ -275,5 +275,99 @@ class DeliveryRung(unittest.TestCase):
         self.assertEqual("done", next_action(LADDER_STATES["done"])["step"])
 
 
+# `summary.next` (escada de `status`) e `summary.do.step` (escada de `guidance`) são
+# duas leituras do mesmo estado: se divergirem, a pessoa ouve dois próximos passos.
+LADDER_PHRASES = {
+    "search": "registre fontes",
+    "inspect": "sem quadro",
+    "preview": "sem quadro",
+    "approve": "decisão humana",
+    "permit": "permit",
+    "fetch": "fetch",
+    "verify": "verify",
+    "deliver": "deliver",
+    "done": "completo",
+}
+
+
+class SameLadder(unittest.TestCase):
+    def test_next_and_do_name_the_same_stage_for_every_fixture(self):
+        from getbrolls.commands import status_next
+
+        for step, state in LADDER_STATES.items():
+            if step not in LADDER_PHRASES:
+                # Degraus do brief/formato não têm par na escada de contagens.
+                continue
+            with self.subTest(step=step):
+                counts = dict(state["counts"])
+                counts.setdefault("pending", 0)
+                counts.setdefault("rejected", 0)
+                phrase = status_next(
+                    counts,
+                    state.get("format_pending", 0),
+                    pending_preview=state.get("pending_preview", counts["candidates"] - counts["previews"]),
+                    undelivered=state.get("undelivered", 0),
+                )
+                self.assertIn(LADDER_PHRASES[step], phrase.lower(), (step, phrase))
+                self.assertEqual(step, next_action(state)["step"])
+
+    def test_a_fully_delivered_project_reports_the_flow_as_complete(self):
+        from getbrolls.commands import status_next
+
+        counts = {**full(candidates=3, previews=3, approved=3, permitted=3, delivered=3, verified=3)}
+        counts.update(pending=0, rejected=0)
+        self.assertIn("completo", status_next(counts, 0, pending_preview=0, undelivered=0))
+
+    def test_verified_files_still_outside_entrega_are_named_by_next_too(self):
+        from getbrolls.commands import status_next
+
+        counts = {**full(candidates=3, previews=3, approved=3, permitted=3, delivered=3, verified=3)}
+        counts.update(pending=0, rejected=0)
+        self.assertIn("deliver", status_next(counts, 0, pending_preview=0, undelivered=3))
+
+    def test_a_rejected_item_without_a_preview_does_not_pin_the_ladder_to_preview(self):
+        from getbrolls.commands import status_next
+
+        counts = {**full(candidates=4, previews=3, approved=3, permitted=3, delivered=3, verified=3)}
+        counts.update(pending=0, rejected=1)
+        self.assertIn("completo", status_next(counts, 0, pending_preview=0, undelivered=0))
+
+
+class MissingBeatPhrasing(unittest.TestCase):
+    def test_a_literal_beat_without_material_is_simply_searched(self):
+        state = base_state(
+            brief={
+                "beats": 1,
+                "covered": 0,
+                "missing": [{"id": "abertura", "search": None, "intent": "literal", "target": "foguete SLS"}],
+                "conflicts": [],
+            }
+        )
+        self.assertIn("vou buscar por ele", next_action(state)["for_human"])
+
+    def test_a_beat_with_no_literal_target_asks_the_person_instead_of_promising_footage(self):
+        """A guarda literal proíbe preencher com material aproximado; a frase precisa combinar."""
+        state = base_state(
+            brief={
+                "beats": 1,
+                "covered": 0,
+                "missing": [
+                    {
+                        "id": "sem-palco",
+                        "search": None,
+                        "intent": "illustrative",
+                        "target": "anúncio que não aconteceu",
+                    }
+                ],
+                "conflicts": [],
+            }
+        )
+        phrase = next_action(state)["for_human"]
+        self.assertIn("sem-palco", phrase)
+        self.assertNotIn("vou buscar por ele", phrase)
+        self.assertIn("seu próprio material", phrase)
+        self.assertIn("sem fonte", phrase)
+
+
 if __name__ == "__main__":
     unittest.main()

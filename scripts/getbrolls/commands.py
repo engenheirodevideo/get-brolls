@@ -158,6 +158,12 @@ STATUS_STAGES = (
 
 PREVIEW_ARTIFACTS = ("gif_path", "contact_sheet_path", "poster_path")
 
+# Storyboard publicado sem nenhuma prévia: a página sobe, mas não há o que decidir.
+EMPTY_STORYBOARD = (
+    "Storyboard vazio: nenhuma prévia. A página sobe, mas não há nada para decidir — "
+    "gere as prévias com `preview` antes de mandar o endereço para alguém."
+)
+
 # Nomes que não identificam ninguém: uma declaração precisa de uma pessoa real.
 # Comandos que só consultam o projeto: `inspect` grava no máximo `media.duration_s`
 # e `references` não grava nada — nenhum dos dois muda formato nem aprovação.
@@ -245,7 +251,7 @@ STATUS_LADDER = (
         "Nenhum candidato ainda: registre fontes com search ou resolve.",
     ),
     (
-        lambda c: c["previews"] < c["candidates"],
+        lambda c: c["pending_preview"] > 0,
         "Gere prévias com preview para os candidatos ainda sem quadro.",
     ),
     (
@@ -265,11 +271,24 @@ STATUS_LADDER = (
         lambda c: c["verified"] < c["delivered"],
         "Confira os arquivos coletados com verify.",
     ),
+    (
+        lambda c: c["undelivered"] > 0,
+        "Organize os trechos conferidos em entrega/ com deliver.",
+    ),
 )
 
 
-def status_next(counts, format_pending=0):
-    """Próximo passo real do fluxo, derivado das contagens por etapa."""
+def status_next(counts, format_pending=0, pending_preview=None, undelivered=0):
+    """Próximo passo real do fluxo, derivado das contagens por etapa.
+
+    `pending_preview` e `undelivered` completam a mesma escada que `guidance.STEPS`
+    percorre: sem eles, `summary.next` e `summary.do` nomeariam etapas diferentes.
+    """
+    counts = {
+        **counts,
+        "pending_preview": (counts["candidates"] - counts["previews"]) if pending_preview is None else pending_preview,
+        "undelivered": undelivered,
+    }
     if format_pending:
         return (
             "As regras editoriais mudaram: o próximo comando invalidará "
@@ -494,7 +513,10 @@ def _stage_status(c, field):
 STAGE_TESTS = {
     "candidates": lambda c: True,
     "previews": _has_preview,
-    "pending": lambda c: _stage_status(c, "approval") not in ("approved", "rejected"),
+    # Decisão pendente é decisão que *pode* ser tomada: sem prévia ninguém decide, e
+    # contar o candidato recém-buscado como pendente inflava o número e mandava a
+    # pessoa decidir algo que ela ainda não tem como ver.
+    "pending": lambda c: _has_preview(c) and _stage_status(c, "approval") not in ("approved", "rejected"),
     "approved": lambda c: _stage_status(c, "approval") == "approved",
     "rejected": lambda c: _stage_status(c, "approval") == "rejected",
     "permitted": lambda c: _stage_status(c, "rights") == "permitted",
@@ -574,6 +596,10 @@ def brief_state(project, rules, items):
         {
             "id": b["id"],
             "search": beat_commands(project, b["resolved"]).get("search"),
+            # A frase para a pessoa muda quando o beat não tem alvo literal: prometer
+            # busca ali contradiz a guarda "literal primeiro, nada de preenchimento".
+            "intent": b["resolved"].get("intent"),
+            "target": b["resolved"].get("target"),
         }
         for b in beats
         if not progress[b["id"]]
@@ -655,6 +681,11 @@ def deliver_report(ledger, rules, dry_run=False):
     return {"summary": {"line": line, "next": _flow_next(ledger, rules)}, **report}
 
 
+def _needs_preview(items):
+    """Itens ainda em jogo e sem nenhum quadro: um item rejeitado não trava o fluxo."""
+    return [c for c in items if not _has_preview(c) and _stage_status(c, "approval") != "rejected"]
+
+
 def _undelivered(items):
     """Arquivos já conferidos que ainda não apareceram em `entrega/`."""
     return [c for c in items if STAGE_TESTS["verified"](c) and not (c.get("delivery") or {}).get("path")]
@@ -677,6 +708,7 @@ def _flow_state(ledger, rules, counts=None, format_pending=0, brief=_UNSET):
         "duration_unknown": len(_uninspected(items)),
         "inspect_candidate": next((c["id"] for c in _uninspected(items)), None),
         "undelivered": len(_undelivered(items)),
+        "pending_preview": len(_needs_preview(items)),
     }
 
 
@@ -711,7 +743,12 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
     summary = {
         "line": line,
         "stages": [{"stage": plural, "count": counts[key], "items": listing[key]} for key, _, plural in STATUS_STAGES],
-        "next": status_next(counts, format_pending),
+        "next": status_next(
+            counts,
+            format_pending,
+            pending_preview=len(_needs_preview(items)),
+            undelivered=len(_undelivered(items)),
+        ),
         # Aditivo: `line/stages/next` seguem iguais; `do` traz o mesmo passo já em
         # comando pronto e `brief` diz quantos beats ainda estão sem material.
         "do": next_action(
@@ -723,6 +760,8 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
                 brief=brief,
             )
         ),
+        # Mesmo aviso de `review`: a página existe mas não tem o que revisar.
+        "warnings": ([EMPTY_STORYBOARD] if review_page.is_file() and not counts["previews"] else []),
         # `None` enquanto não houver um brief válido para contar (ausente ou inválido).
         "brief": (
             None
@@ -1085,7 +1124,12 @@ def execute(args):
         render(ledger)
         return result
     if cmd == "review":
-        return {"review": render(ledger)}
+        page = render(ledger)
+        if not any(_has_preview(c) for c in ledger.data["items"]):
+            # Publicar uma página sem nada para decidir manda a pessoa abrir uma URL
+            # à toa. O aviso aparece aqui e em `status`, no mesmo código.
+            record_warning("EMPTY_STORYBOARD", EMPTY_STORYBOARD)
+        return {"review": page}
     if cmd == "verify":
         checked = []
         for c in ledger.data["items"]:

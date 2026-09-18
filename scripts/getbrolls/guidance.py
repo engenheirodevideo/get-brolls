@@ -75,6 +75,14 @@ def _counts(state):
     return {key: (state.get("counts") or {}).get(key, 0) for key in keys}
 
 
+def _pending_preview(state, counts):
+    """Quantos itens ainda em jogo estão sem quadro; o rejeitado não conta."""
+    value = state.get("pending_preview")
+    if value is None:
+        return counts["candidates"] - counts["previews"]
+    return int(value)
+
+
 def _action(step, why, for_human, state, url=None, blocking_human=False, command=None):
     return {
         "step": step,
@@ -96,6 +104,25 @@ def _library_hint():
     except OSError:
         pass
     return ""
+
+
+def _missing_beat_phrase(beat):
+    """O que dizer sobre um beat sem candidato — sem prometer o que a guarda proíbe.
+
+    Beat literal tem alvo nomeado: buscar é o passo certo. Beat ilustrativo não tem
+    fonte literal nenhuma, e oferecer "vou buscar material" ali empurra para o
+    preenchimento — a skill inteira existe para não fazer isso. Nesse caso o passo
+    real é humano: falta o fato (entidade, data, link) ou o material da própria pessoa.
+    """
+    name = beat["id"]
+    if (beat.get("intent") or "literal") == "literal":
+        return f'O beat "{name}" ainda está sem material: vou buscar por ele agora e te mostrar as opções.'
+    return (
+        f'O beat "{name}" não nomeia nada que eu possa procurar numa fonte real, e eu '
+        "não vou pegar imagem aproximada para tapar buraco. Me diga o que falta — a "
+        "empresa, a data, o link, a pessoa — ou me mande seu próprio material para "
+        "esse trecho. Se não existir nada disso, este beat fica registrado como sem fonte."
+    )
 
 
 def next_action(state):
@@ -147,7 +174,7 @@ def next_action(state):
         return _action(
             "brief-search",
             f'O beat "{first["id"]}" do brief ainda não tem candidato registrado.',
-            f'O beat "{first["id"]}" ainda está sem material: vou buscar por ele agora e te mostrar as opções.',
+            _missing_beat_phrase(first),
             state,
             command=first.get("search") or command_for("search", state["project"]),
         )
@@ -161,7 +188,7 @@ def next_action(state):
             "mostrar o que apareceu." + _library_hint() + warning,
             state,
         )
-    if counts["previews"] < counts["candidates"]:
+    if _pending_preview(state, counts) > 0:
         if state.get("duration_unknown"):
             # Sem saber a duração, qualquer intervalo é chute — e baixar trecho errado
             # custa pedido à fonte. `inspect` responde isso de graça, antes da prévia.

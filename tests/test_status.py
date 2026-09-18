@@ -68,7 +68,13 @@ def fixture(root):
     rejected["approval"]["status"] = "rejected"
     rejected["state"] = "rejected"
 
-    items = [ledger.add(item) for item in (pending, delivered, rejected)]
+    # Tem quadro e ninguém decidiu: este é o único item de decisão pendente de verdade.
+    undecided = candidate("local", "d", "Aguardando decisão")
+    set_segment(undecided, 0, 1)
+    undecided["preview"]["contact_sheet_path"] = "previews/d.jpg"
+    undecided["state"] = "awaiting_approval"
+
+    items = [ledger.add(item) for item in (pending, delivered, rejected, undecided)]
     ledger.save_many("fixture", items)
     return ledger
 
@@ -100,8 +106,8 @@ class StatusCommandTests(unittest.TestCase):
             payload = self.call("status", "--project", tmp)
             self.assertEqual(
                 {
-                    "candidates": 3,
-                    "previews": 2,
+                    "candidates": 4,
+                    "previews": 3,
                     "pending": 1,
                     "approved": 1,
                     "rejected": 1,
@@ -111,14 +117,16 @@ class StatusCommandTests(unittest.TestCase):
                 },
                 payload["counts"],
             )
-            self.assertEqual(["local:a"], payload["stages"]["pending"])
+            # `local:a` não tem quadro: ninguém pode decidir sobre ele, então ele não
+            # é uma decisão pendente — é um item que ainda precisa de prévia.
+            self.assertEqual(["local:d"], payload["stages"]["pending"])
             self.assertEqual(["local:b"], payload["stages"]["delivered"])
             self.assertEqual(["local:c"], payload["stages"]["rejected"])
             self.assertEqual(
-                ["local:a", "local:b", "local:c"],
+                ["local:a", "local:b", "local:c", "local:d"],
                 [item["id"] for item in payload["items"]],
             )
-            self.assertEqual(3, payload["journal"]["events"])
+            self.assertEqual(4, payload["journal"]["events"])
             self.assertEqual("fixture", payload["journal"]["last"]["operation"])
             self.assertIsNone(payload["review_page"])
 
@@ -240,6 +248,49 @@ class StatusCommandTests(unittest.TestCase):
             ),
         )
 
+    def test_a_candidate_without_a_preview_is_not_a_pending_decision(self):
+        """Contar como "decisão pendente" quem ninguém pode decidir inflava o número."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            payload = self.call("status", "--project", tmp)
+            self.assertNotIn("local:a", payload["stages"]["pending"])
+            self.assertIn("prévias", payload["summary"]["next"])
+
+    def test_a_storyboard_without_previews_is_reported_as_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(tmp)
+            bare = candidate("local", "a", "Sem prévia")
+            set_segment(bare, 0, 1)
+            ledger.save_many("fixture", [ledger.add(bare)])
+            reviewed = self.call("review", "--project", tmp)
+            self.assertIn(
+                "EMPTY_STORYBOARD",
+                [w["code"] for w in reviewed.get("warnings", [])],
+            )
+            payload = self.call("status", "--project", tmp)
+            self.assertTrue(any("Storyboard vazio" in w for w in payload["summary"]["warnings"]))
+
+    def test_a_fully_delivered_project_reports_the_flow_as_complete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(tmp)
+            done = candidate("local", "b", "Entregue")
+            set_segment(done, 0, 2)
+            done["preview"]["gif_path"] = "previews/b.gif"
+            done["approval"] = {"status": "approved", "by": "Humano", "at": now(), "revision": 1}
+            done["rights"]["status"] = "permitted"
+            done["rights"]["evidence"] = ["Evidência sintética"]
+            done["output"] = {"path": "clips/b.mp4", "sha256": "0" * 64, "verified": True}
+            done["delivery"] = {"path": "entrega/00-b/b.mp4", "method": "hardlink"}
+            done["state"] = "verified"
+            # Um item rejeitado e sem prévia não pode prender a escada em "gerar prévias".
+            out = candidate("local", "c", "Rejeitado")
+            set_segment(out, 0, 1)
+            out["approval"]["status"] = "rejected"
+            out["state"] = "rejected"
+            ledger.save_many("fixture", [ledger.add(done), ledger.add(out)])
+            payload = self.call("status", "--project", tmp)
+            self.assertIn("completo", payload["summary"]["next"])
+
     def test_status_never_writes_to_the_project(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
@@ -279,7 +330,7 @@ class StatusCommandTests(unittest.TestCase):
             self.assertIn("gravação interrompida", payload["summary"]["line"])
             self.assertTrue(pending.is_file(), "status concluiu a transação pendente")
             self.assertEqual(before, snapshot(root))
-            self.assertEqual(3, payload["counts"]["candidates"])
+            self.assertEqual(4, payload["counts"]["candidates"])
 
     def test_status_answers_while_another_command_holds_the_lock(self):
         from getbrolls.runtime import project_lock
@@ -288,7 +339,7 @@ class StatusCommandTests(unittest.TestCase):
             fixture(tmp)
             with project_lock(tmp):
                 payload = self.call("status", "--project", tmp)
-            self.assertEqual(3, payload["counts"]["candidates"])
+            self.assertEqual(4, payload["counts"]["candidates"])
 
     def test_status_degrades_on_corrupt_journal_and_references(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -315,7 +366,7 @@ class StatusCommandTests(unittest.TestCase):
                 encoding="utf-8",
             )
             payload = self.call("status", "--project", tmp)
-            self.assertEqual(3, payload["format_pending"])
+            self.assertEqual(4, payload["format_pending"])
             self.assertIsNone(payload["rules_error"])
             self.assertTrue(all(item["format_pending"] for item in payload["items"]))
             self.assertIn("regras editoriais mudaram", payload["summary"]["next"])
@@ -328,7 +379,7 @@ class StatusCommandTests(unittest.TestCase):
             self.assertIn("RULES.md", payload["rules_error"])
             self.assertEqual(0, payload["format_pending"])
             self.assertIsNone(payload["items"][0]["format_pending"])
-            self.assertEqual(3, payload["counts"]["candidates"])
+            self.assertEqual(4, payload["counts"]["candidates"])
 
 
 class ProgressSummaryTests(unittest.TestCase):

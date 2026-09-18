@@ -172,7 +172,21 @@ class SaveEndpointTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
             with self._serving(root) as (server, port):
+                assert server.save_token is not None
                 for token in ("", "outro-token", server.save_token + "x"):
+                    with self.assertRaises(urllib.error.HTTPError) as ctx:
+                        self._post(port, {"items": []}, token)
+                    self.assertEqual(403, ctx.exception.code)
+            self.assertFalse((root / "brolls" / "reviews").exists())
+
+    def test_an_uninitialised_token_refuses_instead_of_matching_the_empty_string(self):
+        """`save_token=""` fazia `compare_digest("", "")` valer: fail-open, não fail-closed."""
+        self.assertIsNone(serve._ExclusiveServer.save_token)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._project(Path(tmp))
+            with self._serving(root) as (server, port):
+                server.save_token = None
+                for token in ("", "qualquer"):
                     with self.assertRaises(urllib.error.HTTPError) as ctx:
                         self._post(port, {"items": []}, token)
                     self.assertEqual(403, ctx.exception.code)
