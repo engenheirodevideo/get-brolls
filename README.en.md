@@ -28,6 +28,7 @@ A preview may download working media so you can see the motion. Final delivery r
 
 ## Updates
 
+- **2.4.0.** Intake interview and a per-project `BRIEF.md` (`init-brief`/`brief`), chat approval (`approve --all --by NAME --channel chat --statement "..."`), a cross-project library of lessons (`learn`/`library`), source analysis before collecting (`inspect`, `preview --scan`), a `entrega/` folder per beat (`deliver`), a Storyboard that saves decisions inside the project, a ready-to-run next step in `status.summary.do`, `search --shot/--dry-run` and `init-rules --format`.
 - **2.3.8.** Paced queue for social batches (`queue`), `instagram_pairs --pace/--max-per-run/--continue-on-error`, yt-dlp sleeps and `Retry-After` handling, readable errors with redacted stderr, interval/NASA/drawtext caching, and a `serve` command for the local Storyboard.
 - **2.3.7.** `status --project` command ("where are we?"), self-explanatory CLI with `--version`, `/get-brolls-setup` plugin command, "First B-roll in 5 minutes" quickstart, pinnable tool paths via `GB_*_PATH`, and [AGENTS.md](AGENTS.md) as the repository hub.
 - **2.3.6.** Claude Code plugin install — the repository is its own skill marketplace.

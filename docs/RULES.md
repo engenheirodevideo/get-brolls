@@ -8,7 +8,7 @@ tags: [get-brolls, user-preferences]
 
 # Regras do usuário
 
-Copie para o projeto com `gb.py init-rules --project ./video-01`. Para já gravar sua declaração sem abrir o arquivo, use `init-rules --mode user_declaration --responsible NOME --declaration "frase"` (`--force` regrava um RULES.md existente). Edite o bloco JSON abaixo: ele é lido pelo CLI, sem executar código. O `.env` guarda parâmetros técnicos; este arquivo guarda suas escolhas editoriais. A skill nunca preenche uma declaração de responsabilidade em seu nome.
+Copie para o projeto com `gb.py init-rules --project ./video-01`. Para já gravar sua declaração sem abrir o arquivo, use `init-rules --mode user_declaration --responsible NOME --declaration "frase"` (`--force` regrava um RULES.md existente). `init-rules --format native|reels|horizontal --force` muda só o `video_format`, preservando o resto — é o comando que resolve o conflito entre o formato do `BRIEF.md` e o deste arquivo. Edite o bloco JSON abaixo: ele é lido pelo CLI, sem executar código. O `.env` guarda parâmetros técnicos; este arquivo guarda suas escolhas editoriais. A skill nunca preenche uma declaração de responsabilidade em seu nome.
 
 ```json
 {

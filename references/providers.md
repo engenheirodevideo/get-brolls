@@ -43,6 +43,11 @@ python3 scripts/gb.py resolve --url <URL> --shot <beat.id> --project <projeto>
 
 Detalhe operacional na seção [YouTube](../docs/GUIDE.md#provedor--youtube) do guia.
 
+`--shot <beat.id>` também funciona no `search`: ele liga cada candidato ao beat do
+BRIEF.md na hora, sem precisar re-registrar por URL depois. E `--dry-run` lista o que
+a fonte devolveu **sem gravar nada** no projeto — use-o para sondar uma query antes de
+sujar as contagens do `status` com material que você não vai usar.
+
 ## Instagram
 
 Procedimento próprio, com navegador e dois streams. Está inteiro em [`references/instagram.md`](instagram.md) — leia antes de tocar em qualquer Reel.
@@ -62,7 +67,7 @@ Chaves de Pexels/Pixabay são opcionais e ficam no ambiente ou num `.env` aponta
 
 ## Domínio público e arquivo
 
-Wikimedia Commons e NASA não pedem chave e costumam ser a rota literal mais rápida para fato histórico, espaço e ciência: `--provider commons` ou `--provider nasa`. Arquivo local entra com `resolve --file --source-url --creator --shot`.
+Wikimedia Commons e NASA não pedem chave e costumam ser a rota literal mais rápida para fato histórico, espaço e ciência: `--provider commons` ou `--provider nasa`. Quando você já tem o link do item no acervo da NASA, `resolve --url https://images.nasa.gov/details/<id>` registra o item direto — vídeo ou imagem estática. Arquivo local entra com `resolve --file --source-url --creator --shot`.
 
 Panorama completo em [Fontes e transportes](../docs/GUIDE.md#fontes-e-transportes).
 
@@ -78,9 +83,36 @@ Quando `inspect` não devolve janela nenhuma — vídeo sem legenda, sem capítu
 python3 scripts/gb.py preview --scan --candidate <ID> --project <projeto>
 ```
 
-O `--scan` não define intervalo: ele só mostra o vídeo todo, um quadro a cada N segundos (N = duração/12), com teto de `GB_SCAN_MAX_SECONDS` (padrão 900 s). Escolha o `--start/--end` olhando o resultado.
+O `--scan` não define intervalo: ele só mostra o vídeo todo, um quadro a cada N segundos (N = duração/12), com teto de `GB_SCAN_MAX_SECONDS` (padrão 900 s). **Ele baixa mídia de trabalho** — até esse teto — e por isso pode levar minutos num vídeo longo; rode em segundo plano se o seu shell tiver limite de tempo. A resposta traz `scan.downloaded_seconds` e um `note` dizendo quanto do vídeo entrou na grade. Escolha o `--start/--end` olhando o resultado.
+
+Quando `inspect` não encontra nada que case com a frase, ele ainda devolve janelas com
+`score: 0` e a `source` que as gerou (capítulo, legenda ou espaçamento pelo relógio):
+são ponto de partida para confirmar no contact sheet, nunca resposta pronta.
 
 Quando o pedido é uma referência estática — um print, uma capa, um quadro só —, `preview --reference-only` gera apenas essa referência, sem GIF.
+
+## Print de tela (UI)
+
+Quando o beat pede a tela real de um produto, de um painel ou de um site — não um
+vídeo dele —, a rota é capturar a página e registrar o arquivo como candidato:
+
+```sh
+python3 scripts/gb.py browser-plan --url <URL_PUBLICA> --project <projeto>
+# execute os passos devolvidos (open / resize / snapshot / screenshot) e então:
+python3 scripts/gb.py resolve --file <CAMINHO_DO_PNG> --source-url <URL_PUBLICA> \
+  --asset-type web_screenshot --shot <beat.id> --project <projeto>
+python3 scripts/gb.py preview --reference-only --candidate <ID> --project <projeto>
+```
+
+`--source-url` é obrigatório para print: sem ele a origem se perde e `resolve` recusa.
+Capture a página de verdade, com o navegador: não descreva de memória nem reconstrua a
+interface. O tamanho de viewport que o `browser-plan` sugere é **dica**, não regra —
+se a tela que interessa só aparece em outra largura, use a que mostra o que a narração
+cita e diga isso na revisão.
+
+`--reference-only` vale também para vídeo cuja fonte não libera o trecho: rode-o
+**sozinho**, sem `--start/--end`, e a skill gera só o cartaz estático (miniatura da
+fonte ou primeiro quadro), o bastante para a pessoa decidir.
 
 ## Quando não há fonte
 

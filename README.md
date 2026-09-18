@@ -28,6 +28,7 @@ A prévia pode baixar mídia de trabalho para mostrar o movimento. A entrega fin
 
 ## Atualizações
 
+- **2.4.0** Entrevista de intake e `BRIEF.md` por projeto (`init-brief`/`brief`), aprovação pelo chat (`approve --all --by NOME --channel chat --statement "..."`), biblioteca de aprendizados entre projetos (`learn`/`library`), análise da fonte antes de coletar (`inspect`, `preview --scan`), pasta `entrega/` por beat (`deliver`), Storyboard que salva as decisões dentro do projeto, próximo passo pronto em `status.summary.do`, `search --shot/--dry-run` e `init-rules --format`.
 - **2.3.8** Fila com ritmo para lotes sociais (`queue`), `instagram_pairs --pace/--max-per-run/--continue-on-error`, pausas do yt-dlp e respeito a `Retry-After`, erros legíveis com stderr redigido, cache por intervalo/NASA/drawtext, e comando `serve` para o Storyboard local.
 - **2.3.7** Comando `status --project` ("onde estamos?"), CLI autoexplicativa com `--version`, comando de plugin `/get-brolls-setup`, quickstart "Primeiro B-roll em 5 minutos", caminhos de ferramentas fixáveis via `GB_*_PATH` e [AGENTS.md](AGENTS.md) como hub do repositório.
 - **2.3.6.** Instalação como plugin do Claude Code — o próprio repositório é o marketplace da skill.

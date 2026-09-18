@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -308,6 +309,30 @@ class LibraryCommandTests(LibraryBase):
     def test_the_cli_refuses_learn_without_anything_to_learn(self):
         error = run_cli(self, "learn", "--project", self.project, ok=False)
         self.assertIn("--query", error["error"])
+
+
+class IsolationIsStructural(unittest.TestCase):
+    """`tests/_isolation.py` era convenção: seis módulos importavam, o resto contava com a sorte.
+
+    `discover -s tests` não importa `tests/__init__.py`, e unittest não tem hook de
+    sessão, então não dá para pôr isso num lugar só. O que dá é garantir por teste:
+    todo módulo que chega na biblioteca, na escada ou na CLI — direta ou
+    indiretamente — importa `_isolation` antes, e nenhuma rodada toca `~/.getbrolls`.
+    """
+
+    REACHES_HOME = re.compile(r"\blibrary\b|\bguidance\b|next_action|commands\.execute|\bexecute\(|run_cli|gb\.py")
+
+    def test_every_module_that_can_reach_the_personal_folder_imports_isolation(self):
+        offenders = []
+        for path in sorted((ROOT / "tests").glob("test_*.py")):
+            text = path.read_text(encoding="utf-8")
+            if self.REACHES_HOME.search(text) and "import _isolation" not in text:
+                offenders.append(path.name)
+        self.assertEqual([], offenders)
+
+    def test_isolation_points_gb_home_away_from_the_real_one(self):
+        self.assertEqual(os.environ["GB_HOME"], str(_isolation.GB_HOME))
+        self.assertNotEqual(Path.home() / ".getbrolls", _isolation.GB_HOME)
 
 
 if __name__ == "__main__":

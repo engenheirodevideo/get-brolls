@@ -6,7 +6,7 @@ updated: 2026-09-17
 tags: [get-brolls, quality, qa, evidence]
 ---
 
-# Qualidade e evidências — GET B-ROLLS 2.3.8
+# Qualidade e evidências — GET B-ROLLS 2.4.0
 
 Este documento reúne o estado de qualidade, as regressões cobertas, os limites conhecidos e as evidências reais por provedor. Resultados ao vivo são registros datados, não promessa de disponibilidade futura nem aprovação editorial.
 
@@ -15,6 +15,16 @@ Este documento reúne o estado de qualidade, as regressões cobertas, os limites
 A suíte automatizada responde se o programa funciona; o **teste cego** responde se a skill entrega o que promete a um criador de conteúdo. O processo, os papéis (executor cego, juiz com gabarito, amostragem humana), a cadência e o corpus de 14 casos estão em [eval/README.md](../eval/README.md); a pontuação por beat e as metas, em [eval/rubric.md](../eval/rubric.md). É medição editorial, fora do CI de propósito: precisa de rede, sessão e tempo de agente, e todo relatório separa **ambiente** (URL fora do ar, sessão, quota) de **comportamento** (stock sem pedido, licença inventada, aprovação pelo próprio agente).
 
 Rodada mais recente: [2026-09-16 — 2.3.7 — Claude Opus](../eval/runs/2026-09-16-2.3.7-claude-opus.md), a linha de base. Instalação limpa a partir do clone até um Storyboard revisável em **≈ 4 minutos** (instalador em 32s, primeira prévia em T+2min16s), com 4 beats, 12 candidatos e 6 prévias, sem nenhuma chave de API. Métricas: **reach literal 100%**, **stock sem pedido 0**, **origem registrada 100%**, **previews corretos 3/4 na primeira tentativa** (meta de 90% não atingida). Causa nomeada da única meta perdida: escolher `--start/--end` às cegas, porque `search` devolve `duration_s: null` — mesma raiz do recorte parcial do beat de keynote. Nada foi aprovado ou coletado pelo agente: a rodada para na revisão humana, por definição.
+
+## QA da versão 2.4.0 — 17/09/2026
+
+A 2.4.0 adiciona a entrevista de intake e o `BRIEF.md` por projeto (`init-brief`/`brief`), a aprovação pelo chat (`approve --all --channel chat --statement`), a declaração de responsabilidade sem editar arquivo (`permit --declared-by/--declaration-text`), a biblioteca de aprendizados entre projetos (`learn`/`library`), a análise da fonte antes de coletar (`inspect`, `preview --scan`), a pasta `entrega/` por beat (`deliver`), o Storyboard que salva as decisões dentro do projeto (`serve --background` + `POST /__save`, `import-review` sem `--file`), o próximo passo pronto em `status.summary.do`, e as flags `search --shot/--dry-run` e `init-rules --format`.
+
+**O que foi testado.** A suíte unitária local passou inteira (505 testes no fecho da implementação, ampliada na onda final de correções); `ruff check`, `ruff format --check` e `pyright` saem em zero, agora também no job `quality` do CI; `scripts/check_anchors.py` confirma que toda âncora de `GUIDE.md` citada em SKILL.md, READMEs e `commands/*.md` resolve. As garantias de proveniência foram verificadas sem relaxamento: `require_fetch` continua exigindo aprovação humana, assinatura conferida e direitos permitidos com evidência; `signature()` mantém a invalidação por mudança de intervalo ou contexto; `validate_manifest` segue restrito a `previews/` e `clips/`; nenhuma feature nova preenche `rights.evidence` ou `approval` sem ação explícita de uma pessoa. A biblioteca entre projetos carrega `rights_not_transferable: true` em toda resposta e não faz `require_fetch` passar em projeto nenhum.
+
+**Rodada cega.** Cinco executores independentes rodaram a 2.4.0-rc em 17/09/2026 contra YouTube e GitHub reais, cada um num caso diferente do corpus (notícia espacial, print de UI, aprovação pelo chat, entrevista preguiçosa e a armadilha do roteiro sem entidade nomeada). Registro consolidado em [eval/runs/2026-09-17-2.4.0-rc-claude-opus.md](../eval/runs/2026-09-17-2.4.0-rc-claude-opus.md). Nenhum executor aprovou nada por conta própria e nenhum inventou licença, entidade ou disponibilidade: todos pararam na revisão humana, como o contrato manda. As fricções que a rodada expôs viraram correções nesta mesma versão — `search --shot` e `--dry-run`, `inspect` com resumo e janelas de fallback em vez de lista vazia, `preview --scan` medido pela mídia que existe de fato, `preview --reference-only` sem intervalo, contagem de "decisões pendentes" só para quem tem prévia, Storyboard vazio reportado, `init-rules --format` e a página de item do `images.nasa.gov` aceita por `resolve --url`.
+
+**Limites conhecidos desta rodada.** O ritmo e o cooldown do lote do Instagram continuam cobertos só por mocks: não houve nova sessão de captura real. Windows é exercitado apenas pela matriz do CI; a proteção de escrita no Windows (`deliver` congela o arquivo, `_thaw_unlink` devolve a escrita antes de apagar) tem regressão offline, não ensaio em máquina real. A varredura remota de `preview --scan` contra uma fonte real não entra na suíte: ela baixa mídia e leva minutos; o que a suíte prova é a grade, os rótulos e a tolerância a mídia mais curta, com fixture local.
 
 ## QA da versão 2.3.8 — 17/09/2026
 

@@ -11,6 +11,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+# A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+
 from getbrolls.commands import PERMIT_PRESETS
 
 CLI = ROOT / "scripts" / "gb.py"

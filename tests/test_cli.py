@@ -9,6 +9,8 @@ import unittest
 from pathlib import Path
 
 CLI = Path(__file__).resolve().parents[1] / "scripts/gb.py"
+# A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 
 
 def _review_payload(page):

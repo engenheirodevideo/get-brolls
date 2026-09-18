@@ -11,6 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts/gb.py"
 sys.path.insert(0, str(ROOT / "scripts"))
 
+# A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, now, set_segment, signature
 from getbrolls.review import (
