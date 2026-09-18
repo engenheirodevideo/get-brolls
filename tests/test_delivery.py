@@ -480,10 +480,6 @@ class VerifyHook(unittest.TestCase):
             self.assertIn("DELIVERY_LINK_FAILED", [w["code"] for w in result.get("warnings", [])])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class MixedDeliveryIndex(unittest.TestCase):
     """Parte link, parte cópia: nenhum aviso global é verdade para os dois."""
 
@@ -561,3 +557,34 @@ class MixedDeliveryIndex(unittest.TestCase):
             self.assertIn("original compartilhado", index)
             self.assertIn("editável", index)
             self.assertIn("**Esta entrega tem os dois casos.**", index)
+
+
+class EmptyDeliveryIndex(unittest.TestCase):
+    """Projeto sem nenhum clipe ainda: a tabela do README precisa continuar uma tabela."""
+
+    def cells(self, line):
+        return [cell.strip() for cell in line.strip().strip("|").split("|")]
+
+    def test_the_empty_row_has_exactly_one_cell_per_header(self):
+        index = delivery.render_index([], "nada pendente")
+        table = [line for line in index.splitlines() if line.startswith("|")]
+        header, divider, row = table
+        self.assertEqual(len(self.cells(header)), len(self.cells(row)))
+        self.assertEqual(len(self.cells(header)), len(self.cells(divider)))
+        # A mensagem fica na coluna do arquivo, e as outras ficam em branco.
+        self.assertEqual(["—", "—", "—", "nenhum trecho coletado ainda", "—", "—"], self.cells(row))
+
+    def test_a_real_empty_project_writes_the_same_table(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project(tmp, [])
+            report = delivery.build_delivery(tmp)
+            self.assertEqual([], report["rows"])
+            table = [
+                line for line in Path(report["readme"]).read_text(encoding="utf-8").splitlines() if line.startswith("|")
+            ]
+            self.assertEqual(3, len(table))
+            self.assertEqual({6}, {len(self.cells(line)) for line in table})
+
+
+if __name__ == "__main__":
+    unittest.main()

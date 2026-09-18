@@ -322,10 +322,6 @@ class DeclaredKeys(unittest.TestCase):
                 config.load_env(env_file)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class BriefAndRulesOutsideTheProjectTests(unittest.TestCase):
     """`GB_BRIEF_FILE`/`GB_RULES_FILE` podem morar em qualquer lugar da máquina."""
 
@@ -386,3 +382,7 @@ class BriefAndRulesOutsideTheProjectTests(unittest.TestCase):
             missing = str(Path(tmp) / "nao" / "existe" / "BRIEF.md")
             error = self.run_cli("brief", "--project", tmp, env={"GB_BRIEF_FILE": missing}, ok=False)
             self.assertIn("GB_BRIEF_FILE", error["error"])
+
+
+if __name__ == "__main__":
+    unittest.main()

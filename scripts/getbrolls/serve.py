@@ -37,11 +37,17 @@ LOG_FILE = ".serve.log"
 # crescer sem teto enche a pasta do projeto do usuário.
 LOG_ROTATE_FILE = ".serve.log.1"
 LOG_KEEP_BYTES = 1024 * 1024
-# Teto do ping de identidade. O `status` é leitura barata: quando o PID morreu nem
-# perguntamos, e quando está vivo o servidor local responde em milissegundos — uma
-# repetição cobre o aperto de um processo que acabou de subir.
+# Teto do ping de identidade no `status`, que é leitura barata: quando o PID morreu
+# nem perguntamos, e quando está vivo o servidor local responde em milissegundos —
+# uma repetição cobre o aperto de um processo que acabou de subir. No pior caso o
+# `status` responde "não está rodando", e ninguém perde nada com isso.
 PING_TIMEOUT_S = 0.25
 PING_RETRIES = 1
+# Quem vai *agir* sobre o processo (parar, ou decidir que precisa subir outro) paga
+# mais para ter certeza: um servidor vivo mas ocupado — máquina fria, um GIF grande
+# sendo servido — demora mais que 0,25 s a responder, e classificá-lo como morto
+# apagaria o PID file sem nunca mandar o SIGTERM, deixando o processo órfão.
+PING_TIMEOUT_ACT_S = 1.0
 # Espera pelo servidor de fundo: generosa de propósito, porque uma máquina de CI
 # fria leva segundos para subir o interpretador e um filho morto falha na hora.
 BACKGROUND_TIMEOUT = 60.0
@@ -411,12 +417,16 @@ def _rotate_log(log):
         return
 
 
-def _ours(data):
+def _ours(data, timeout=PING_TIMEOUT_S):
     """O PID gravado ainda é o nosso servidor? Existir não basta: tem que responder.
 
     A ordem importa para o custo: `_reap` derruba o zumbi do nosso próprio filho já
     encerrado (que ainda passaria no `kill(pid, 0)`), `_alive` responde na hora, e só
     um PID vivo paga o ping. Com o PID morto, `state()` não abre socket nenhum.
+
+    `timeout` é por tentativa. Quem só lê usa o teto curto; quem vai agir sobre o
+    processo passa `PING_TIMEOUT_ACT_S`, porque aqui um falso "não é nosso" custa um
+    processo órfão, não uma linha de status desatualizada.
     """
     if not data:
         return False
@@ -426,18 +436,18 @@ def _ours(data):
     if not _alive(pid):
         return False
     for attempt in range(PING_RETRIES + 1):
-        if _ping(data.get("port"), data.get("session"), timeout=PING_TIMEOUT_S):
+        if _ping(data.get("port"), data.get("session"), timeout=timeout):
             return True
         if attempt < PING_RETRIES and not _alive(pid):
             return False
     return False
 
 
-def state(project):
+def state(project, timeout=PING_TIMEOUT_S):
     """`serve.running` para o `status`: lê o PID file e confirma a identidade pelo ping."""
     data = read_pid(project) or {}
     pid = data.get("pid")
-    running = _ours(data)
+    running = _ours(data, timeout=timeout)
     return {
         "running": running,
         "pid": pid if running else None,
@@ -475,7 +485,9 @@ def start_background(project, port: int = DEFAULT_PORT):
     review = directory / "review.html"
     if not review.is_file():
         raise ValueError(f"Storyboard não encontrado em {review}. Gere-o antes com o comando `review`.")
-    current = state(project)
+    # Antes de subir outro servidor, a pergunta tem que ser respondida com folga: um
+    # servidor vivo e ocupado classificado como morto viraria uma segunda instância.
+    current = state(project, timeout=PING_TIMEOUT_ACT_S)
     if current["running"]:
         return {"background": True, "already_running": True, **current}
     log = directory / LOG_FILE
@@ -563,7 +575,7 @@ def stop(project):
     if not data:
         return {"stopped": False, "reason": "not_running", "pid": None}
     pid = data.get("pid")
-    if not _ours(data):
+    if not _ours(data, timeout=PING_TIMEOUT_ACT_S):
         # O processo pode ter morrido ou o número ter sido reaproveitado por outro
         # programa: só limpamos o arquivo. Nunca matamos um PID que não se identificou.
         path.unlink(missing_ok=True)

@@ -341,7 +341,11 @@ def render_index(rows, for_human=None, created=None, conflicts=(), copies=False)
             "| " + " | ".join(str(cells.get(key) or "—").replace("|", "/").replace("\n", " ") for key in columns) + " |"
         )
     if not rows:
-        lines.append("| " + " | ".join(["—"] * (len(headers) - 4)) + " | nenhum trecho coletado ainda | — | — |")
+        # A linha vazia sai das mesmas colunas do cabeçalho: contar células à mão
+        # deixava a tabela torta (5 células para 6 colunas) em todo projeto sem clipe.
+        empty = {key: "—" for key in columns}
+        empty["file"] = "nenhum trecho coletado ainda"
+        lines.append("| " + " | ".join(empty[key] for key in columns) + " |")
     if conflicts:
         lines += [
             "",

@@ -43,10 +43,6 @@ class StoryboardTest(unittest.TestCase):
         self.assertNotIn('<div class="brand"><svg', page)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 def render_one(**overrides):
     """Um candidato de YouTube renderizado pelo pipeline real, do ledger ao HTML."""
     import tempfile
@@ -277,3 +273,7 @@ class GalleryThumbnailFallbackTest(unittest.TestCase):
         panel = page[page.index("<template") :]
         self.assertIn("Não consegui gerar o movimento — veja o original no link", panel)
         self.assertNotIn("sem imagem da fonte", page)
+
+
+if __name__ == "__main__":
+    unittest.main()

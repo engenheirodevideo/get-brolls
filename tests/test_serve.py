@@ -1,5 +1,6 @@
 """Issue #32: `gb.py serve` sobe um servidor local só-leitura para brolls/review.html."""
 
+import json
 import sys
 import tempfile
 import threading
@@ -79,10 +80,6 @@ class ServeStartTests(unittest.TestCase):
                     second.server_close()
             finally:
                 first.server_close()
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class ServeMissingStoryboardEnvelopeTests(unittest.TestCase):
@@ -512,6 +509,73 @@ class LogRotationTests(unittest.TestCase):
             self.assertFalse((brolls / serve.LOG_ROTATE_FILE).exists())
 
 
+class SlowButAliveServerTests(unittest.TestCase):
+    """Um servidor vivo e lento não pode ser tratado como PID podre e ficar órfão.
+
+    O teto de 0,25 s existe para o `status`, que só lê. Quem vai agir sobre o
+    processo — `stop()` e `start_background()` — paga 1,0 s: classificar como morto
+    um servidor que estava só ocupado apagaria o PID file sem nunca mandar o SIGTERM.
+    """
+
+    def _project(self, root):
+        brolls = root / "brolls"
+        brolls.mkdir(parents=True)
+        (brolls / "review.html").write_text("<html>storyboard</html>", encoding="utf-8")
+        return root
+
+    def slow_ping(self, answers_after=0.5):
+        """Ping de um servidor que só responde depois de `answers_after` segundos."""
+        real = serve._ping
+
+        def ping(port, session, timeout=1.0):
+            time.sleep(min(timeout, answers_after))
+            # Com o teto abaixo do tempo de resposta, o socket estoura antes: False.
+            return real(port, session, timeout=timeout) if timeout > answers_after else False
+
+        return ping
+
+    def test_stop_still_terminates_a_server_that_answers_after_half_a_second(self):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._project(Path(tmp))
+            started = _start_background(self, root)
+            pid = json.loads((root / "brolls" / ".serve.pid").read_text(encoding="utf-8"))["pid"]
+            try:
+                with patch.object(serve, "_ping", self.slow_ping()):
+                    # O `status` desiste aos 0,25 s — e não mexe em nada por isso.
+                    self.assertFalse(serve.state(root)["running"])
+                    self.assertTrue((root / "brolls" / ".serve.pid").is_file())
+                    stopped = serve.stop(root)
+            finally:
+                if serve._alive(pid):  # pragma: no cover - só quando o teste falha
+                    serve.stop(root)
+            self.assertTrue(stopped["stopped"], stopped)
+            self.assertIsNone(stopped["reason"])
+            self.assertEqual(pid, stopped["pid"])
+            self.assertFalse(serve._alive(pid), "o servidor lento ficou órfão")
+            self.assertFalse((root / "brolls" / ".serve.pid").exists())
+            self.assertTrue(started["background"])
+
+    def test_start_background_sees_the_slow_server_instead_of_raising_a_second_one(self):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._project(Path(tmp))
+            first = _start_background(self, root)
+            try:
+                with patch.object(serve, "_ping", self.slow_ping()):
+                    again = serve.start_background(root, port=0)
+                self.assertTrue(again["already_running"])
+                self.assertEqual(first["port"], again["port"])
+            finally:
+                serve.stop(root)
+
+    def test_the_two_budgets_are_the_documented_ones(self):
+        self.assertEqual(0.25, serve.PING_TIMEOUT_S)
+        self.assertEqual(1.0, serve.PING_TIMEOUT_ACT_S)
+
+
 class DeadPidCostsNothingTests(unittest.TestCase):
     """`status` é leitura barata: com o PID morto não se abre socket nenhum."""
 
@@ -567,3 +631,7 @@ class DeadPidCostsNothingTests(unittest.TestCase):
             )
             with patch.object(serve, "_ping", side_effect=AssertionError("o ping não devia acontecer")):
                 self.assertFalse(serve.state(root)["running"])
+
+
+if __name__ == "__main__":
+    unittest.main()

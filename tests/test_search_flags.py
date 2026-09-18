@@ -193,15 +193,17 @@ class ProviderFactsInTheListing(unittest.TestCase):
             self.assertNotIn("channel", rows["youtube:CV8Rv74TPGH"])
 
     def test_the_atalhos_do_not_leak_into_the_manifest(self):
+        expected = {"youtube:" + row["id"]: row["duration"] for row in YTDLP_FLAT["entries"]}
         with tempfile.TemporaryDirectory() as tmp:
             self.stub(tmp)
-            for item in manifest(tmp)["items"]:
+            items = manifest(tmp)["items"]
+            self.assertEqual(sorted(expected), sorted(c["id"] for c in items))
+            for item in items:
                 self.assertNotIn("channel", item)
+                self.assertNotIn("uploader", item)
                 self.assertNotIn("duration_s", item)
-                self.assertEqual(
-                    95 if item["id"].endswith("AV8Rv74TPGE") else item["media"]["duration_s"],
-                    item["media"]["duration_s"],
-                )
+                # A duração continua no lugar de sempre, com o valor literal do stub.
+                self.assertEqual(expected[item["id"]], item["media"]["duration_s"])
 
     def test_summary_line_counts_and_names_the_first_three(self):
         with tempfile.TemporaryDirectory() as tmp:
