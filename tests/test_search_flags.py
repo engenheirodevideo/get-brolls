@@ -229,3 +229,88 @@ class ProviderFactsInTheListing(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LongQueryRetry(unittest.TestCase):
+    """Frase inteira volta vazia; a busca encurta uma vez e conta que encurtou."""
+
+    LONG = "print da página de preços do concorrente com o valor em destaque"
+
+    def test_zero_items_with_a_long_query_retries_once_with_six_tokens(self):
+        seen = []
+
+        def fake(name, query, limit):
+            seen.append(query)
+            return found(2) if len(query.split()) <= 6 else []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(providers, "search", side_effect=fake):
+                result = audited(args(tmp, query=self.LONG), execute)
+        self.assertEqual([self.LONG, "print página preços concorrente valor destaque"], seen)
+        self.assertEqual(2, len(result["items"]))
+        self.assertEqual(self.LONG, result["query"])
+        self.assertEqual("print página preços concorrente valor destaque", result["query_used"])
+        self.assertEqual(self.LONG, result["retry"]["from"])
+        self.assertIn("repeti uma vez", result["summary"]["line"])
+
+    def test_a_short_query_is_never_retried(self):
+        seen = []
+
+        def fake(name, query, limit):
+            seen.append(query)
+            return []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(providers, "search", side_effect=fake):
+                result = audited(args(tmp, query="foguete SLS decolando"), execute)
+        self.assertEqual(["foguete SLS decolando"], seen)
+        self.assertNotIn("retry", result)
+
+    def test_the_zero_is_never_silent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(providers, "search", return_value=[]):
+                result = audited(args(tmp, query="foguete SLS decolando"), execute)
+        line = result["summary"]["line"]
+        self.assertEqual([], result["items"])
+        self.assertIn("Nenhum candidato", line)
+        self.assertIn("foguete SLS decolando", line)
+        self.assertIn("resolve --url", line)
+
+    def test_a_retry_that_also_comes_back_empty_still_explains_itself(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(providers, "search", return_value=[]):
+                result = audited(args(tmp, query=self.LONG), execute)
+        self.assertEqual([], result["items"])
+        self.assertIn("repeti uma vez", result["summary"]["line"])
+        self.assertEqual("print página preços concorrente valor destaque", result["query_used"])
+
+
+class BeatQueryIsEntityAndAction(unittest.TestCase):
+    """`brief --beat` manda entidade + ação, não a frase de leitura humana."""
+
+    def beat(self, target, queries=None):
+        return {
+            "id": "abertura",
+            "target": target,
+            "queries": queries or [],
+            "intent": "literal",
+            "allowed_sources": ["youtube"],
+            "stock": False,
+            "narration": None,
+        }
+
+    def test_a_long_target_is_trimmed_to_six_meaningful_tokens(self):
+        from getbrolls.brief import beat_commands, search_query
+
+        beat = self.beat("print da página de preços do concorrente com o valor em destaque")
+        self.assertEqual("print página preços concorrente valor destaque", search_query(beat))
+        self.assertLessEqual(len(search_query(beat).split()), 6)
+        command = beat_commands("/tmp/projeto", beat)["search"]
+        self.assertIn("print página preços concorrente valor destaque", command)
+        self.assertNotIn("da página", command)
+
+    def test_an_explicit_query_from_the_person_goes_through_untouched(self):
+        from getbrolls.brief import search_query
+
+        beat = self.beat("qualquer coisa", queries=["exatamente o que eu quero buscar aqui agora"])
+        self.assertEqual("exatamente o que eu quero buscar aqui agora", search_query(beat))

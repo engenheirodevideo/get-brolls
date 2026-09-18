@@ -159,6 +159,10 @@ STATUS_STAGES = (
 
 PREVIEW_ARTIFACTS = ("gif_path", "contact_sheet_path", "poster_path")
 
+# Teto de palavras que uma busca leva à fonte. Acima disso a query é uma oração, e
+# API de vídeo casa por palavra: a frase inteira volta vazia sem explicar por quê.
+SEARCH_QUERY_TOKENS = 6
+
 # `--shot` de `search` e de `resolve` valem a mesma coisa: o beat vira sufixo do id.
 SHOT_RE = r"[A-Za-z0-9_-]{1,80}"
 
@@ -689,10 +693,20 @@ def _search_row(c):
     return row
 
 
-def search_summary_line(rows, excluded, errors, dry_run):
-    """Quantos vieram e quais são os três primeiros — o resumo que cabe numa fala."""
+def search_summary_line(rows, excluded, errors, dry_run, query_used=None, retry=None):
+    """Quantos vieram e quais são os três primeiros — o resumo que cabe numa fala.
+
+    Zero candidatos nunca sai calado: a linha diz qual query a fonte recebeu e, se
+    houve encurtamento automático, que ele aconteceu.
+    """
     if not rows:
         line = "Nenhum candidato veio dessa busca."
+        if query_used:
+            line += f' A fonte procurou por "{query_used}".'
+        if retry:
+            line += " " + retry["note"]
+        else:
+            line += " Tente termos mais curtos (entidade + ação), ou registre a URL direto com `resolve --url`."
     else:
         titles = [str(r.get("title") or r.get("id")) for r in rows[:3]]
         line = f"{_count(len(rows), 'candidato', 'candidatos')}: " + ", ".join(titles) + "."
@@ -704,6 +718,8 @@ def search_summary_line(rows, excluded, errors, dry_run):
         line += f" {_count(len(errors), 'fonte falhou', 'fontes falharam')}."
     if dry_run:
         line += " Diagnóstico: nada foi registrado no projeto."
+    if rows and retry:
+        line += " " + retry["note"]
     return line
 
 
@@ -1316,49 +1332,76 @@ def execute(args):
             raise ValueError(
                 "Nenhuma fonte configurada: use resolve --file, Commons/NASA ou configure a chave de um banco."
             )
-        items = []
-        errors = []
-        excluded = 0
-        for name in names:
-            if len(items) >= args.limit:
-                break
-            try:
-                candidates = providers.search(name, args.query, args.limit - len(items))
-            except ValueError as e:
-                errors.append({"provider": name, "error": str(e)})
-                record_warning("PROVIDER_FAILED", f"{name}: {e}")
-                # Fonte que falhou é aprendizado barato e honesto; fica marcado
-                # como `auto` porque ninguém digitou esse registro. Em `--dry-run`,
-                # não: a busca de diagnóstico não escreve em lugar nenhum, e uma
-                # falha de teste não pode virar memória editorial do usuário.
-                if not dry_run:
-                    try:
-                        library.learn_query(args.query, name, "miss", note=str(e), auto=True)
-                    except (ValueError, OSError) as failure:
-                        record_warning("LIBRARY_WRITE_FAILED", str(failure))
-                continue
-            # ledger.add/save stay outside the provider try: a disk/write error here is not the
-            # provider's fault and must not be attributed to it as a search failure.
-            for c in candidates:
-                if not allowed(c, rules):
-                    excluded += 1
+
+        def sweep(query):
+            """Uma varredura pelos provedores escolhidos, com esta query exata."""
+            items, errors, excluded = [], [], 0
+            for name in names:
+                if len(items) >= args.limit:
+                    break
+                try:
+                    candidates = providers.search(name, query, args.limit - len(items))
+                except ValueError as e:
+                    errors.append({"provider": name, "error": str(e)})
+                    record_warning("PROVIDER_FAILED", f"{name}: {e}")
+                    # Fonte que falhou é aprendizado barato e honesto; fica marcado
+                    # como `auto` porque ninguém digitou esse registro. Em `--dry-run`,
+                    # não: a busca de diagnóstico não escreve em lugar nenhum, e uma
+                    # falha de teste não pode virar memória editorial do usuário.
+                    if not dry_run:
+                        try:
+                            library.learn_query(query, name, "miss", note=str(e), auto=True)
+                        except (ValueError, OSError) as failure:
+                            record_warning("LIBRARY_WRITE_FAILED", str(failure))
                     continue
-                c["format"] = format_report(c, rules)
-                c["match"] = {
-                    "kind": args.intent,
-                    "reason": "Candidato de busca: correspondência visual deve ser revisada.",
-                }
-                if shot:
-                    c["id"] += ":shot:" + shot
-                    c["shot"] = shot
-                if dry_run:
-                    # Busca de diagnóstico não entra no manifesto: a contagem do
-                    # `status` é do vídeo, não do que o agente experimentou.
+                # ledger.add/save stay outside the provider try: a disk/write error here is not the
+                # provider's fault and must not be attributed to it as a search failure.
+                for c in candidates:
+                    if not allowed(c, rules):
+                        excluded += 1
+                        continue
+                    c["format"] = format_report(c, rules)
+                    c["match"] = {
+                        "kind": args.intent,
+                        "reason": "Candidato de busca: correspondência visual deve ser revisada.",
+                    }
+                    if shot:
+                        c["id"] += ":shot:" + shot
+                        c["shot"] = shot
+                    if dry_run:
+                        # Busca de diagnóstico não entra no manifesto: a contagem do
+                        # `status` é do vídeo, não do que o agente experimentou.
+                        items.append(c)
+                        continue
+                    c = ledger.add(c)
+                    ledger.save("search", c)
                     items.append(c)
-                    continue
-                c = ledger.add(c)
-                ledger.save("search", c)
-                items.append(c)
+            return items, errors, excluded
+
+        query_used = args.query
+        items, errors, excluded = sweep(query_used)
+        # Frase inteira vira query e volta vazia: as APIs casam por palavra, e uma
+        # oração de doze palavras não casa com título nenhum. Em vez de devolver
+        # `items: []` calado, encurta uma vez e conta o que fez.
+        retry = None
+        tokens = args.query.split()
+        if not items and not errors and len(tokens) > SEARCH_QUERY_TOKENS:
+            # Mesmo corte que `brief --beat` usa para montar a query do beat: tira as
+            # palavras que não estreitam nada e fica com as primeiras que sobraram.
+            from getbrolls.brief import search_query
+
+            short = search_query({"target": args.query, "queries": []}, SEARCH_QUERY_TOKENS)
+            items, errors, excluded = sweep(short)
+            retry = {
+                "from": args.query,
+                "to": short,
+                "note": (
+                    f'A busca por "{args.query}" não trouxe nada, então repeti uma vez '
+                    f'com as {SEARCH_QUERY_TOKENS} primeiras palavras ("{short}"): '
+                    "banco e YouTube casam por palavra, não por frase inteira."
+                ),
+            }
+            query_used = short
         if not items and errors:
             raise ValueError("; ".join(f"{e['provider']}: {e['error']}" for e in errors))
         items.sort(key=lambda c: not domain_matches(c.get("source_url"), rules["preferred_domains"]))
@@ -1366,13 +1409,18 @@ def execute(args):
         result = {
             # Veredito primeiro: quem lê o JSON quer saber o que apareceu antes de
             # abrir a lista inteira.
-            "summary": {"line": search_summary_line(shown, excluded, errors, dry_run)},
+            "summary": {"line": search_summary_line(shown, excluded, errors, dry_run, query_used, retry)},
             "items": shown,
             "errors": errors,
             "excluded_by_rules": excluded,
             "editorial_rules": rules["editorial_rules"],
             "dry_run": dry_run,
+            "query": args.query,
+            # O que a fonte recebeu de fato: sem isto o encurtamento seria invisível.
+            "query_used": query_used,
         }
+        if retry:
+            result["retry"] = retry
         if dry_run:
             result["note"] = (
                 "Busca de diagnóstico: nada foi registrado no projeto. Repita sem "

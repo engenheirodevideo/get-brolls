@@ -34,6 +34,16 @@ SEARCHABLE = ("youtube", "pexels", "pixabay", "commons", "nasa")
 MIN_HINT_S = 0.5
 MAX_HINT_S = 120
 
+# Teto de palavras da query sugerida, igual ao de `search`: fonte de vídeo casa por
+# palavra, e o `target` é escrito para gente ler, não para a API procurar.
+QUERY_MAX_TOKENS = 6
+# Palavras que não estreitam busca nenhuma; sair com elas só gasta espaço do teto.
+QUERY_STOPWORDS = frozenset(
+    """a o as os um uma uns umas de do da dos das em no na nos nas ao aos à às pelo pela
+    pelos pelas com sem por para que e ou mas se como onde quando sobre entre até durante
+    um dos the of and or in on at for with a an to from""".split()
+)
+
 
 def brief_path(project):
     """Arquivo que vale para este projeto: GB_BRIEF_FILE vence o BRIEF.md da pasta."""
@@ -262,6 +272,21 @@ def validate_brief(data, rules=None):
     )
 
 
+def search_query(beat, limit=QUERY_MAX_TOKENS):
+    """Termos que vão para a fonte: entidade + ação, nunca a frase inteira do `target`.
+
+    `target` descreve o que precisa aparecer na tela ("print da página de preços do
+    concorrente com o valor destacado"); mandar isso para a API devolve zero item,
+    porque busca de vídeo casa por palavra. A primeira `queries[]` do beat, quando
+    existe, é escolha da pessoa e passa inteira.
+    """
+    if beat.get("queries"):
+        return beat["queries"][0]
+    words = re.findall(r"[^\W_]+(?:[-'][^\W_]+)*", beat["target"], re.UNICODE)
+    kept = [w for w in words if w.lower() not in QUERY_STOPWORDS] or words
+    return " ".join(kept[:limit]) or beat["target"]
+
+
 def missing_provider_keys(beat):
     """Fontes deste beat que esta máquina não tem chave para consultar.
 
@@ -327,7 +352,7 @@ def beat_commands(project, beat):
     project = shlex.quote(str(Path(project).expanduser().resolve()))
     prefix = f"{_cli_prefix()} "
     provider = next((s for s in beat["allowed_sources"] if s in SEARCHABLE), None)
-    query = beat["queries"][0] if beat["queries"] else beat["target"]
+    query = search_query(beat)
     origin = "--file ARQUIVO" if beat["allowed_sources"] == ["local"] else "--url URL_PUBLICA"
     narration = f" --narration {shlex.quote(beat['narration'])}" if beat.get("narration") else ""
     commands = {}
