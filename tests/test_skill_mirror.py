@@ -123,7 +123,7 @@ class SkillBudgetTests(unittest.TestCase):
         self.assertIn("Stock só sob pedido", text)
         self.assertIn("Parada obrigatória na revisão", text)
         self.assertIn("import-review", text)
-        self.assertIn('approve --all --by NOME --channel chat --statement "frase"', text)
+        self.assertIn('approve --candidate <ID> --by NOME --channel chat --statement "frase"', text)
         self.assertIn("Silêncio não é aprovação", text)
 
     def test_path_and_platform_conventions_survive(self):
@@ -136,9 +136,12 @@ class SkillBudgetTests(unittest.TestCase):
     def test_the_chat_route_shows_every_required_flag(self):
         """Aprovação pelo chat sem --statement não é aprovação."""
         text = body(ROOT_SKILL)
+        # A rota do chat aprova pelos IDs que o agente mostrou; `--all` é a exceção
+        # anunciada, não o caminho padrão.
         for form in (
-            'approve --all --by NOME --channel chat --statement "frase exata" --project <projeto>',
-            'approve --candidate <ID> --by NOME --channel chat --statement "frase exata" --project <projeto>',
+            'approve --candidate ID1 --candidate ID2 … --by NOME --channel chat --statement "frase exata" '
+            "--project <projeto>",
+            "use `--all` só quando todos os candidatos com prévia foram mostrados",
         ):
             self.assertIn(form, text, f"forma incompleta de approve: {form}")
 

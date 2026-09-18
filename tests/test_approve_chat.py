@@ -56,6 +56,100 @@ def fixture(root):
 
 
 class ApproveChatTests(unittest.TestCase):
+    def test_candidate_repeats_and_approves_exactly_those_ids(self):
+        """Fricção 2 da rodada 2: `--all` aprovou um descarte que ainda tinha prévia."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = fixture(tmp)
+            discarded = candidate("local", "d", "Descartado, mas com prévia em disco")
+            set_segment(discarded, 0, 4)
+            discarded["preview"]["gif_path"] = "previews/d.gif"
+            ledger.add(discarded)
+            ledger.save("fixture")
+            result = run_cli(
+                self,
+                "approve",
+                "--candidate",
+                "local:a",
+                "--candidate",
+                "local:b",
+                "--by",
+                "Bruno",
+                "--statement",
+                "Aprovo esses dois que você me mostrou.",
+                "--project",
+                tmp,
+            )
+            self.assertEqual(["local:a", "local:b"], sorted(result["approved"]))
+            self.assertEqual([], result["skipped"])
+            fresh = Ledger(tmp)
+            self.assertEqual("approved", fresh.get("local:a")["approval"]["status"])
+            self.assertEqual("approved", fresh.get("local:b")["approval"]["status"])
+            # O que o agente não citou continua sem decisão, mesmo tendo prévia.
+            self.assertEqual("pending", fresh.get("local:d")["approval"]["status"])
+
+    def test_a_single_candidate_keeps_the_item_response(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            result = run_cli(
+                self,
+                "approve",
+                "--candidate",
+                "local:a",
+                "--by",
+                "Bruno",
+                "--statement",
+                "Aprovo o primeiro.",
+                "--project",
+                tmp,
+            )
+            # Sem `--start/--end`: aprovar confirma o intervalo que a pessoa viu.
+            self.assertEqual("local:a", result["id"])
+            self.assertEqual("approved", result["approval"]["status"])
+            self.assertEqual(1, result["segment"]["revision"])
+
+    def test_an_unknown_id_in_the_list_is_an_error_not_a_silent_skip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            failed = run_cli(
+                self,
+                "approve",
+                "--candidate",
+                "local:a",
+                "--candidate",
+                "local:inexistente",
+                "--by",
+                "Bruno",
+                "--statement",
+                "Aprovo os dois.",
+                "--project",
+                tmp,
+                ok=False,
+            )
+            self.assertIn("local:inexistente", json.dumps(failed, ensure_ascii=False))
+            self.assertEqual("pending", Ledger(tmp).get("local:a")["approval"]["status"])
+
+    def test_approve_all_warns_in_portuguese_naming_what_it_approved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            result = run_cli(
+                self,
+                "approve",
+                "--all",
+                "--by",
+                "Bruno",
+                "--statement",
+                "Aprovei todos.",
+                "--project",
+                tmp,
+            )
+            warnings = [w for w in result.get("warnings", []) if w["code"] == "APPROVE_ALL_WIDE"]
+            self.assertEqual(1, len(warnings), result.get("warnings"))
+            message = warnings[0]["message"]
+            self.assertIn("local:a", message)
+            self.assertIn("local:b", message)
+            self.assertIn("descartou sem rejeitar", message)
+            self.assertIn("--candidate", message)
+
     def test_approve_all_covers_previewed_items_and_lists_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)

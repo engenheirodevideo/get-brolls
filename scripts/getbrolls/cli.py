@@ -153,11 +153,21 @@ def build_parser():
             )
             g.add_argument("--skipped", action="store_true", help="mark: item pulado sem tentar")
             p.add_argument("--reason", help="Motivo real registrado no item (mark)")
-        if name in ("preview", "approve", "permit", "reject", "fetch", "remember"):
+        if name == "approve":
+            # Repetível de propósito: "aprovei todos" do usuário quer dizer "os que
+            # você me mostrou", e só quem mostrou sabe quais foram. Listar os IDs é
+            # mais barato que descobrir depois que `--all` pegou um descarte com
+            # prévia esquecida em disco.
             p.add_argument(
                 "--candidate",
-                required=name != "approve",
-                help="ID do candidato retornado por search/resolve" + (" (ou use --all)" if name == "approve" else ""),
+                action="append",
+                help="ID do candidato a aprovar; repita a flag para aprovar vários (ou use --all)",
+            )
+        elif name in ("preview", "permit", "reject", "fetch", "remember"):
+            p.add_argument(
+                "--candidate",
+                required=True,
+                help="ID do candidato retornado por search/resolve",
             )
         if name in ("preview", "approve"):
             p.add_argument("--start", type=float, help="Início do trecho na origem, em segundos")
@@ -207,7 +217,10 @@ def build_parser():
             p.add_argument(
                 "--all",
                 action="store_true",
-                help="Aplicar a mesma aprovação a todo candidato com prévia gerada e sem aprovação válida",
+                help=(
+                    "Aplicar a mesma aprovação a todo candidato com prévia gerada e sem "
+                    "aprovação válida; use só quando todos eles foram mostrados à pessoa"
+                ),
             )
             p.add_argument(
                 "--channel",

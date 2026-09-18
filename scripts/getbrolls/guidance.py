@@ -43,7 +43,12 @@ TEMPLATES = {
     "search": "search --project {project} --query TERMOS_DA_BUSCA --intent literal",
     "inspect": ("inspect --project {project} --candidate {candidate} --query NARRACAO_OU_ALVO"),
     "preview": ("preview --project {project} --candidate {candidate} --start 0 --end 5"),
-    "approve": ('approve --project {project} --all --by NOME --channel chat --statement "FRASE EXATA DITA POR ELE"'),
+    # IDs explícitos, nunca `--all`: "aprovei todos" quer dizer "os que você me
+    # mostrou", e só quem mostrou sabe quais foram. Repita `--candidate` por item.
+    "approve": (
+        "approve --project {project} --candidate {candidate} --by NOME --channel chat "
+        '--statement "FRASE EXATA DITA POR ELE"'
+    ),
     # Rota do board: sobe o servidor sozinho e devolve a URL; a importação depois
     # não precisa de caminho de arquivo, porque a página grava dentro do projeto.
     "serve-board": "serve --project {project} --background",

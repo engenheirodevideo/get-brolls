@@ -45,7 +45,7 @@ Default não é invenção: ele fica visível no arquivo e na mensagem de devolu
 2. Rode `brief --validate --project ...` e conserte o que ele apontar. **Só busque depois que isso passar.**
 3. Devolva o brief em poucas linhas usando o formato de `templates-de-resposta.md` (a mesma voz dos outros retornos): o que você entendeu, quantos beats, o que assumiu por default e o que falta.
 4. Colete beat a beat com `brief --beat ID --project ...`: ele entrega `search`, `resolve --shot <id>` e `preview --narration` prontos. Todo material de um beat entra com `--shot <beat.id>` — é esse campo que liga o beat ao candidato.
-5. Feche pela decisão humana de sempre: Storyboard (`review` + `import-review --by NOME`) ou fala explícita no chat (`approve --all --by NOME --channel chat --statement "frase exata"`). Nunca deduza aprovação de silêncio.
+5. Feche pela decisão humana de sempre: Storyboard (`review` + `import-review --by NOME`) ou fala explícita no chat (`approve --candidate ID --by NOME --channel chat --statement "frase exata"`). Nunca deduza aprovação de silêncio.
 
 ## Checkpoints — as três paradas com a pessoa
 
@@ -69,8 +69,8 @@ Cada checkpoint cabe em poucas linhas e termina numa pergunta fechada. Não repi
 
 - Um resumo por contact sheet, citando as células e os tempos que você olhou.
 - "Aprova todos, ou quais?"
-- Sim para todos: `approve --all --by NOME --channel chat --statement "frase exata"`.
-- Sim parcial: um `approve --candidate ID --by NOME --channel chat --statement "..."` por item citado.
+- Aprove exatamente os IDs que você mostrou: `approve --candidate ID1 --candidate ID2 … --by NOME --channel chat --statement "frase exata"`.
+- `--all` só quando todos os candidatos com prévia foram mostrados: ele pega o que ficou em disco, inclusive o que você descartou sem rejeitar.
 - Silêncio nunca é aprovação. Com revisor terceiro, prefira o Storyboard (`review` + `import-review --by NOME`).
 
 ## Biblioteca entre projetos

@@ -456,7 +456,7 @@ class BriefDocumentationTests(unittest.TestCase):
         body = interview.read_text(encoding="utf-8")
         self.assertIn("type: reference", body)
         self.assertIn("templates-de-resposta.md", body)
-        self.assertIn("approve --all", body)
+        self.assertIn("approve --candidate", body)
         self.assertIn("brief --validate", body)
         head = command.read_text(encoding="utf-8")
         self.assertIn("name: get-brolls-brief", head)

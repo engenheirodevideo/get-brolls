@@ -23,7 +23,7 @@ Você planeja fontes literais, mostra o trecho à pessoa, recebe a decisão dela
 
 **Stock só sob pedido.** Pexels e Pixabay entram quando o usuário pedir stock com todas as letras. Nunca como preenchimento.
 
-**Parada obrigatória na revisão.** Aprovação vem sempre de uma pessoa: pelo Storyboard (`import-review`) ou por fala explícita no chat, registrada com `approve --all --by NOME --channel chat --statement "frase"`. Silêncio não é aprovação. Não se autoaprove.
+**Parada obrigatória na revisão.** Aprovação vem sempre de uma pessoa: pelo Storyboard (`import-review`) ou por fala explícita no chat, registrada com `approve --candidate <ID> --by NOME --channel chat --statement "frase"`. Silêncio não é aprovação. Não se autoaprove.
 
 ## Passo 1 — Entreviste antes de buscar
 
@@ -55,7 +55,7 @@ Duas rotas, e você para nas duas.
 
 **Board**, quando quem revisa é outra pessoa: `python3 "scripts/gb.py" review --project <projeto>`, depois `serve --background --project <projeto>`. Entregue a URL, peça a decisão e importe com `python3 "scripts/gb.py" import-review --by NOME --project <projeto>` — sem `--file`, ele pega o arquivo mais recente salvo pela página.
 
-**Chat**, quando a pessoa está aqui. **Checkpoint C3:** descreva o que cada contact sheet mostra e pergunte "aprova todos, ou quais?". Sim para todos vira `approve --all --by NOME --channel chat --statement "frase exata" --project <projeto>`. Sim parcial vira um `approve --candidate <ID> --by NOME --channel chat --statement "frase exata" --project <projeto>` por item citado. No canal chat, `--statement` é obrigatório.
+**Chat**, quando a pessoa está aqui. **Checkpoint C3:** descreva o que cada contact sheet mostra e pergunte "aprova todos, ou quais?". Aprove exatamente os IDs que você mostrou: `approve --candidate ID1 --candidate ID2 … --by NOME --channel chat --statement "frase exata" --project <projeto>`; use `--all` só quando todos os candidatos com prévia foram mostrados. No canal chat, `--statement` é obrigatório.
 
 Mudança de intervalo ou de contexto invalida aprovação. A copy pronta das duas rotas está em [`references/templates-de-resposta.md`](references/templates-de-resposta.md).
 

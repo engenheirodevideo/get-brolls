@@ -29,4 +29,4 @@ Corrija o que a mensagem apontar e repita até passar. Só então colete.
 
 5. Devolva o brief ao usuário em poucas linhas, no tom de `${CLAUDE_PLUGIN_ROOT}/references/templates-de-resposta.md`: o que você entendeu, quantos beats, o que assumiu por default e o que ainda falta dele. Peça correção, não aprovação formal.
 
-6. Para coletar, peça o comando pronto de cada beat com `brief --beat ID --project <projeto>` e use `--shot <id>` em todo `resolve`. A decisão humana continua vindo do Storyboard (`review` + `import-review --by NOME`) ou da fala no chat (`approve --all --by NOME --channel chat --statement "frase"`).
+6. Para coletar, peça o comando pronto de cada beat com `brief --beat ID --project <projeto>` e use `--shot <id>` em todo `resolve`. A decisão humana continua vindo do Storyboard (`review` + `import-review --by NOME`) ou da fala no chat (`approve --candidate ID --by NOME --channel chat --statement "frase"`).

@@ -31,8 +31,10 @@ seguem o [glossário](glossario.md).
 > Enquanto você estiver na página, eu fico parado esperando. Me avisa que eu continuo.
 
 Só ofereça a rota do chat quando a pessoa for aprovar de fato: aprovação nunca é inferida
-de silêncio. Se ela disser "aprovei todos", registre com
-`approve --all --by "<NOME>" --channel chat --statement "<frase exata dela>"`.
+de silêncio. Se ela disser "aprovei todos", registre exatamente os IDs que você mostrou:
+`approve --candidate ID1 --candidate ID2 … --by "<NOME>" --channel chat --statement "<frase exata dela>"`.
+Use `--all` só quando todos os candidatos com prévia foram mostrados — "aprovei todos"
+quer dizer "todos os que você me mostrou", não "todo arquivo de prévia que ficou no disco".
 
 ---
 

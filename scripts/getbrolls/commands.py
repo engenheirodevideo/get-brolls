@@ -260,7 +260,8 @@ STATUS_LADDER = (
     (
         lambda c: not c["approved"],
         "Peça a decisão humana: pelo Storyboard (review + import-review) ou pela fala "
-        'no chat (approve --all --by NOME --channel chat --statement "frase").',
+        "no chat (approve --candidate ID --by NOME --channel chat --statement "
+        '"frase"), com os IDs que você mostrou.',
     ),
     (
         lambda c: c["permitted"] < c["approved"],
@@ -494,12 +495,25 @@ def library_command(args):
     return library.learn_from_candidate(args.project, args.from_candidate, shot=args.shot)
 
 
-def approve_all(ledger, args, rules):
-    """Aplica a mesma decisão humana a todo item com prévia e sem aprovação válida."""
+def approve_all(ledger, args, rules, only=None):
+    """Aplica a mesma decisão humana a vários itens de uma vez.
+
+    `only` é a lista de IDs que o agente disse ter mostrado à pessoa: aprova
+    exatamente esses. Sem `only` (`--all`), o alvo é todo item com prévia e sem
+    aprovação válida — e um id desconhecido é erro, nunca silêncio.
+    """
     from .rules import allowed
 
     approved, skipped = [], []
+    wanted = list(only) if only else None
+    if wanted is not None:
+        known = {c["id"] for c in ledger.data["items"]}
+        missing = [i for i in wanted if i not in known]
+        if missing:
+            raise ValueError("Candidato não registrado no projeto: " + ", ".join(missing) + ".")
     for c in ledger.data["items"]:
+        if wanted is not None and c["id"] not in wanted:
+            continue
         if not _has_preview(c):
             reason = "sem prévia gerada; rode preview antes"
         elif not allowed(c, rules):
@@ -518,6 +532,19 @@ def approve_all(ledger, args, rules):
     if approved:
         ledger.save_many("approve-chat" if args.channel == "chat" else "approve", approved)
         render(ledger)
+    if wanted is None and approved:
+        # `--all` mira o disco, não a conversa: a prévia de um candidato descartado
+        # continua lá e entra na leva. Dizer em voz alta o que foi aprovado é o que
+        # permite desfazer na hora, enquanto a pessoa ainda está na frente.
+        record_warning(
+            "APPROVE_ALL_WIDE",
+            f"`--all` aprovou {len(approved)} item(ns) em nome de {args.by}: "
+            + ", ".join(c["id"] for c in approved)
+            + ". Ele pega todo candidato com prévia em disco, inclusive o que você "
+            "descartou sem rejeitar. Se a pessoa não viu exatamente esses, rejeite o "
+            "que sobrou com `reject` — e da próxima vez aprove pelos IDs que você "
+            "mostrou: `approve --candidate ID1 --candidate ID2`.",
+        )
     return {
         "approved": [c["id"] for c in approved],
         "skipped": skipped,
@@ -1218,16 +1245,25 @@ def execute(args):
             raise ValueError("--scan precisa da mídia de trabalho; não use com --reference-only.")
 
     if cmd == "approve":
+        chosen = list(args.candidate or [])
         if args.channel == "chat" and not (args.statement or "").strip():
             raise ValueError("Aprovação pelo chat exige --statement com a frase exata dita pela pessoa.")
-        if args.all and args.candidate:
-            raise ValueError("Use --all sozinho ou --candidate ID, nunca os dois juntos.")
+        if args.all and chosen:
+            raise ValueError("Use --all sozinho ou --candidate ID (repetindo a flag), nunca os dois juntos.")
         if args.all and (args.start is not None or args.end is not None):
             raise ValueError("--all aprova os intervalos já escolhidos; não use --start/--end.")
-        if not args.all and not args.candidate:
-            raise ValueError("Informe --candidate ID, ou use --all para todos os itens com prévia.")
+        if not args.all and not chosen:
+            raise ValueError(
+                "Informe --candidate ID (repita a flag para vários), ou use --all para "
+                "todos os candidatos com prévia."
+            )
+        if len(chosen) > 1 and (args.start is not None or args.end is not None):
+            raise ValueError("--start/--end valem para um candidato só; aprove um por vez para mudar o intervalo.")
         if args.all:
             return approve_all(ledger, args, rules)
+        if len(chosen) > 1:
+            return approve_all(ledger, args, rules, only=chosen)
+        args.candidate = chosen[0]
     c = ledger.get(args.candidate)
     if not allowed(c, rules) and cmd in ("preview", "approve", "permit", "fetch"):
         raise ValueError("Asset bloqueado pelas regras atuais do usuário.")
@@ -1241,7 +1277,13 @@ def execute(args):
         # `--reference-only` não pede mídia nenhuma: é o cartaz estático de um vídeo que
         # a fonte não deixa baixar. Exigir intervalo aqui obrigaria a inventar um.
         reference_without_range = cmd == "preview" and args.reference_only and args.start is None and args.end is None
-        if c.get("media", {}).get("kind") != "image" and not reference_without_range:
+        # `approve --candidate ID` sozinho confirma o intervalo que a pessoa acabou de
+        # ver na prévia: exigir `--start/--end` de novo obrigaria a redigitar o que já
+        # está gravado, e digitar errado apagaria a prévia que ela aprovou.
+        approving_current = cmd == "approve" and args.start is None and args.end is None
+        if approving_current:
+            pass
+        elif c.get("media", {}).get("kind") != "image" and not reference_without_range:
             if args.start is None or args.end is None:
                 raise ValueError(
                     "Vídeo exige --start e --end. Se a fonte não libera o trecho, use "

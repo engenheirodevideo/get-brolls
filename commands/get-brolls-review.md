@@ -37,4 +37,4 @@ Sem `--file`, ele pega sozinho o arquivo mais recente de `brolls/reviews/`. `--b
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" serve --stop --project <projeto>
 ```
 
-Se a pessoa que decide está no próprio chat, você não precisa do board: descreva os contact sheets, pergunte "aprova todos, ou quais?" e registre com `approve --all --by NOME --channel chat --statement "frase exata"`. Silêncio nunca é aprovação.
+Se a pessoa que decide está no próprio chat, você não precisa do board: descreva os contact sheets, pergunte "aprova todos, ou quais?" e registre os IDs que você mostrou com `approve --candidate ID1 --candidate ID2 … --by NOME --channel chat --statement "frase exata"` (`--all` só quando mostrou todos). Silêncio nunca é aprovação.
