@@ -196,19 +196,56 @@ def _missing_beat_phrase(beat):
     )
 
 
-def _blocked_beat_question(beat):
-    """Beat travado vira pergunta, nunca promessa de busca.
+# Quantos beats travados entram na lista antes de virar "(+N)". O resto do texto
+# ocupa três linhas, então este teto mantém a mensagem inteira em oito linhas.
+MAX_BLOCKED_LISTED = 5
+
+
+def _blocked_closing(many):
+    fact = "esses fatos" if many else "qual é esse fato"
+    files = "os seus próprios arquivos para esses trechos" if many else "o seu próprio arquivo para esse trecho"
+    them = "eles" if many else "ele"
+    return (
+        f"Me diga {fact} — o nome, a data, a empresa, o link da página — ou me mande "
+        f"{files}. Enquanto isso não vier eu não busco nada para {them}, porque qualquer "
+        "imagem que eu escolhesse seria aproximação minha, não o que você quis dizer."
+    )
+
+
+def blocked_beats_question(beats):
+    """Todos os beats travados numa pergunta só, nunca promessa de busca.
 
     `blocked_reason` existe justamente porque falta um fato que a skill não pode
-    inventar. Responder "vou buscar" ali é o preenchimento que esta skill não faz:
-    o passo real é a pessoa dizer qual é o fato, o link ou o arquivo dela.
+    inventar. Responder "vou buscar" ali é o preenchimento que esta skill não faz.
+    E citar só o primeiro travado faz a pessoa responder uma pergunta, voltar, e
+    descobrir a próxima: a lista inteira vem de uma vez, para ela resolver de uma vez.
     """
+    listed = list(beats)[:MAX_BLOCKED_LISTED]
+    rest = len(beats) - len(listed)
+    lines = [f'- "{beat["id"]}": {beat["reason"]}'.rstrip() for beat in listed]
+    if rest:
+        lines.append(f"- (+{rest} outro(s) beat(s) travado(s) no BRIEF.md)")
+    head = (
+        f'O beat "{listed[0]["id"]}" está parado esperando você:'
+        if len(beats) == 1
+        else f"{len(beats)} beats do brief estão parados esperando você:"
+    )
+    if len(beats) == 1:
+        # Um só não vira lista: a frase corrida lê melhor e diz a mesma coisa.
+        return f"{head} {listed[0]['reason']} {_blocked_closing(False)}"
+    return "\n".join([head, *lines, _blocked_closing(True)])
+
+
+def blocked_beats_reason(beats):
+    """`why` do degrau: quantos travaram e quais são, sem repetir os motivos."""
+    names = ", ".join(f'"{beat["id"]}"' for beat in list(beats)[:MAX_BLOCKED_LISTED])
+    rest = len(beats) - min(len(beats), MAX_BLOCKED_LISTED)
+    if len(beats) == 1:
+        return f"O beat {names} está travado esperando um fato que só você tem: {beats[0]['reason']}"
     return (
-        f'O beat "{beat["id"]}" está parado esperando você: {beat["reason"]} '
-        "Me diga qual é esse fato — o nome, a data, a empresa, o link da página — ou "
-        "me mande o seu próprio arquivo para esse trecho. Enquanto isso não vier eu "
-        "não busco nada para ele, porque qualquer imagem que eu escolhesse seria "
-        "aproximação minha, não o que você quis dizer."
+        f"{len(beats)} beats do brief estão travados esperando um fato que só você tem: "
+        + names
+        + (f" e mais {rest}." if rest else ".")
     )
 
 
@@ -332,11 +369,10 @@ def next_action(state):
         return _approve_action(state, counts["pending"])
     blocked = list(brief.get("blocked") or [])
     if blocked:
-        first = blocked[0]
         return _action(
             "brief-blocked",
-            f'O beat "{first["id"]}" está travado esperando um fato que só você tem: {first["reason"]}',
-            _blocked_beat_question(first),
+            blocked_beats_reason(blocked),
+            blocked_beats_question(blocked),
             state,
             blocking_human=True,
             command=None,

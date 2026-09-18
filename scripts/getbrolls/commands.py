@@ -10,7 +10,7 @@ from pathlib import Path
 
 from . import __version__
 from .config import CAP_EPSILON
-from .guidance import next_action
+from .guidance import blocked_beats_question, next_action
 from .ledger import Ledger, digest
 from .media import cut, probe, run
 from .models import approve, candidate, now, require_fetch, set_segment, signature
@@ -445,6 +445,10 @@ def brief_report(args):
     if rules_error:
         problems.append(f"RULES.md não pôde ser lido, então não conferi o formato: {rules_error}")
     path = str(brief_path(args.project))
+    # Beats travados valem nas duas rotas: `--validate` chamava de "pode buscar" um
+    # brief com todos os seis beats esperando um fato da pessoa.
+    stalled = blocked_entries(data["beats"])
+    problems += [f'O beat "{entry["id"]}" está travado esperando você: {entry["reason"]}' for entry in stalled]
     if getattr(args, "validate", False):
         beat_count = _count(len(data["beats"]), "beat", "beats")
         return {
@@ -460,7 +464,12 @@ def brief_report(args):
                 ),
                 "problems": problems,
                 "next": (
-                    "Resolva os pontos acima e repita `brief --validate --project ...`."
+                    # A mesma frase que `status.summary.do` daria: beat travado é
+                    # pergunta para a pessoa, e nenhum dos dois comandos pode dizer
+                    # "pode buscar" enquanto ela não responder.
+                    blocked_beats_question(stalled)
+                    if stalled
+                    else "Resolva os pontos acima e repita `brief --validate --project ...`."
                     if problems
                     else "Pode buscar: `brief --project ...` mostra o comando pronto de cada beat."
                 ),
@@ -494,16 +503,13 @@ def brief_report(args):
         }
         for b in beats
     ]
-    # Beat travado espera um fato da pessoa: ele não é "sem candidato ainda".
-    blocked = [entry for entry in listed if entry["resolved"].get("blocked_reason")]
+    # Beat travado espera um fato da pessoa: ele não é "sem candidato ainda". A lista
+    # já entrou em `problems` lá em cima, junto com a da rota `--validate`.
+    blocked = [entry for entry in stalled if entry["id"] in {b["id"] for b in listed}]
     stuck = {entry["id"] for entry in blocked}
     missing = [entry for entry in listed if entry["id"] not in stuck and not entry["candidates"]]
     covered = len(listed) - len(missing) - len(blocked)
     problems += [f'O beat "{entry["id"]}" ainda não tem candidato registrado.' for entry in missing]
-    problems += [
-        f'O beat "{entry["id"]}" está travado esperando você: {entry["resolved"]["blocked_reason"]}'
-        for entry in blocked
-    ]
     return {
         "summary": {
             "line": f'Brief de "{data["video"]["title"]}": '
@@ -518,6 +524,11 @@ def brief_report(args):
                     "counts": {
                         "candidates": len(items),
                         "previews": sum(1 for c in items if _has_preview(c)),
+                        # Sem estes dois a escada nunca via a decisão humana daqui, e o
+                        # `brief` mandava buscar o beat vazio enquanto o `status` pedia
+                        # aprovação do mesmo projeto: dois comandos, dois próximos passos.
+                        "pending": sum(1 for c in items if STAGE_TESTS["pending"](c)),
+                        "rejected": sum(1 for c in items if STAGE_TESTS["rejected"](c)),
                         "approved": sum(1 for c in items if STAGE_TESTS["approved"](c)),
                         "permitted": sum(1 for c in items if STAGE_TESTS["permitted"](c)),
                         "delivered": sum(1 for c in items if STAGE_TESTS["delivered"](c)),
@@ -540,14 +551,7 @@ def brief_report(args):
                             }
                             for entry in missing
                         ],
-                        "blocked": [
-                            {
-                                "id": entry["id"],
-                                "reason": entry["resolved"]["blocked_reason"],
-                                "target": entry["resolved"].get("target"),
-                            }
-                            for entry in blocked
-                        ],
+                        "blocked": blocked,
                         "conflicts": conflicts,
                     },
                     "review_page": (root / "review.html").is_file(),
@@ -840,6 +844,23 @@ def _format_pending(c, rules):
     return c.get("format", {}).get("target", "native") != format_report(c, rules)["target"]
 
 
+def blocked_entries(beats):
+    """Beats travados, na ordem do brief: `{id, reason, target}` para a escada ler.
+
+    Uma leitura só para as duas rotas do `brief` e para o `status`: era a divergência
+    entre elas que fazia um comando pedir o fato e o outro mandar buscar.
+    """
+    return [
+        {
+            "id": beat["id"],
+            "reason": beat["resolved"]["blocked_reason"],
+            "target": beat["resolved"].get("target"),
+        }
+        for beat in beats
+        if beat["resolved"].get("blocked_reason")
+    ]
+
+
 def brief_state(project, rules, items):
     """Cobertura dos beats para a escada de orientação, sem gravar nada no projeto.
 
@@ -869,11 +890,7 @@ def brief_state(project, rules, items):
     progress = beat_progress(beats, items)
     # Beat travado sai das duas contas: ele não está coberto e também não é "ainda vou
     # buscar" — é pergunta em aberto para a pessoa, e vira degrau próprio na escada.
-    blocked = [
-        {"id": b["id"], "reason": b["resolved"]["blocked_reason"], "target": b["resolved"].get("target")}
-        for b in beats
-        if b["resolved"].get("blocked_reason")
-    ]
+    blocked = blocked_entries(beats)
     stuck = {entry["id"] for entry in blocked}
     missing = [
         {
@@ -1563,7 +1580,10 @@ def execute(args):
         c["format"] = format_report(c, rules)
         c = ledger.add(c)
         ledger.save(cmd, c)
-        return c
+        # Mesmos atalhos planos que a busca devolve (`channel`, `uploader`,
+        # `duration_s`): quem lista o C2 lê os dois comandos do mesmo jeito. São só
+        # da resposta — no manifesto continuam em `creator.name` e `media.duration_s`.
+        return _search_row(c)
     if cmd == "import-review":
         from getbrolls.review import import_review
 
