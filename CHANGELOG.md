@@ -10,6 +10,8 @@ tags: [get-brolls]
 
 ## Unreleased
 
+## 2.4.2 — 2026-09-18
+
 - SKILL.md e espelho: a `description` do frontmatter ganha aspas. O `Also in English: …` sem aspas era um `: ` solto dentro de um escalar YAML, e o GitHub parava de renderizar o arquivo com "mapping values are not allowed in this context" (linha 2). Teste novo em `tests/test_skill_mirror.py` recusa valor de primeiro nível sem aspas com `: ` ou ` #`, e aspas que não fecham.
 
 ## 2.4.1 — 2026-09-18
