@@ -248,12 +248,14 @@ class SuggestedCommandRuns(unittest.TestCase):
 class BoardRoute(unittest.TestCase):
     """#44: com o Storyboard gerado, o degrau da decisão humana abre o board sozinho."""
 
-    def test_board_rung_starts_the_server_in_the_background(self):
+    def test_the_board_route_lives_in_the_phrase_and_the_command_still_approves(self):
+        """Degrau e comando nomeiam a mesma ação; o board entra pela frase e pela url."""
         state = dict(LADDER_STATES["approve"], review_page=True)
         action = next_action(state)
         self.assertEqual("approve", action["step"])
-        self.assertIn("serve", action["command"])
-        self.assertIn("--background", action["command"])
+        self.assertIn(" approve --project", action["command"])
+        self.assertNotIn(" serve ", action["command"])
+        self.assertIn("serve --background", action["for_human"])
         # Sem servidor no ar, o endereço quem imprime é o próprio `serve`.
         self.assertIsNone(action["url"])
         self.assertTrue(action["blocking_human"])

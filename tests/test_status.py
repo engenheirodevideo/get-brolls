@@ -632,3 +632,110 @@ class ProgressSummaryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StepCandidateTests(unittest.TestCase):
+    """Cada degrau nomeia um item da própria etapa, nunca um rejeitado da frente."""
+
+    def project(self, tmp):
+        ledger = Ledger(tmp)
+        # Chamariz: rejeitado, primeiro na ordem do manifesto. Era ele que saía como
+        # `--candidate` do `permit`, e a CLI recusava o comando que a escada entregou.
+        decoy = candidate("local", "rejeitado", "Descartado")
+        set_segment(decoy, 0, 1)
+        decoy["preview"]["contact_sheet_path"] = "previews/r.jpg"
+        decoy["approval"]["status"] = "rejected"
+        decoy["state"] = "rejected"
+
+        sem_previa = candidate("local", "sem-previa", "Sem quadro")
+        set_segment(sem_previa, 0, 1)
+        sem_previa["source_url"] = "https://exemplo.test/video"
+
+        pendente = candidate("local", "pendente", "Esperando decisão")
+        set_segment(pendente, 0, 1)
+        pendente["preview"]["contact_sheet_path"] = "previews/p.jpg"
+
+        aprovado = candidate("local", "aprovado", "Aprovado sem permit")
+        set_segment(aprovado, 0, 1)
+        aprovado["preview"]["gif_path"] = "previews/a.gif"
+        aprovado["approval"] = {"status": "approved", "by": "Humano", "at": now(), "revision": 1}
+
+        permitido = candidate("local", "permitido", "Permitido sem corte")
+        set_segment(permitido, 0, 1)
+        permitido["preview"]["gif_path"] = "previews/pe.gif"
+        permitido["approval"] = {"status": "approved", "by": "Humano", "at": now(), "revision": 1}
+        permitido["rights"]["status"] = "permitted"
+
+        coletado = candidate("local", "coletado", "Coletado sem verify")
+        set_segment(coletado, 0, 1)
+        coletado["preview"]["gif_path"] = "previews/co.gif"
+        coletado["approval"] = {"status": "approved", "by": "Humano", "at": now(), "revision": 1}
+        coletado["rights"]["status"] = "permitted"
+        coletado["output"] = {"path": "clips/co.mp4", "sha256": "0" * 64, "verified": False}
+
+        order = (decoy, sem_previa, pendente, aprovado, permitido, coletado)
+        ledger.save_many("fixture", [ledger.add(item) for item in order])
+        return ledger
+
+    def test_each_rung_names_an_item_of_its_own_stage(self):
+        from getbrolls.commands import _step_candidates
+
+        with tempfile.TemporaryDirectory() as tmp:
+            chosen = _step_candidates(self.project(tmp).data["items"])
+        self.assertEqual(
+            {
+                "inspect": "local:sem-previa",
+                "preview": "local:sem-previa",
+                "approve": "local:pendente",
+                "permit": "local:aprovado",
+                "fetch": "local:permitido",
+                "verify": "local:coletado",
+            },
+            chosen,
+        )
+
+    def test_no_rung_ever_names_the_rejected_decoy(self):
+        from getbrolls.commands import _step_candidates
+
+        with tempfile.TemporaryDirectory() as tmp:
+            chosen = _step_candidates(self.project(tmp).data["items"])
+        for step, ident in chosen.items():
+            with self.subTest(step=step):
+                self.assertNotEqual("local:rejeitado", ident)
+
+    def test_the_permit_rung_command_carries_the_approved_item(self):
+        """O bug real: `permit --candidate <rejeitado>` saía pronto no `status.do`."""
+        from getbrolls.commands import _flow_state
+        from getbrolls.guidance import next_action
+
+        brief = {"beats": 1, "covered": 1, "missing": [], "conflicts": []}
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = self.project(tmp)
+            # Descarta o que estava em aberto para a escada chegar ao degrau de permit;
+            # os dois viram rejeitados e passam a disputar a frente da ordem com o chamariz.
+            for item in ledger.data["items"]:
+                if item["id"] in ("local:pendente", "local:sem-previa"):
+                    item["approval"]["status"] = "rejected"
+                    item["state"] = "rejected"
+            ledger.save_many("decide", ledger.data["items"])
+            action = next_action(_flow_state(ledger, None, brief=brief))
+        self.assertEqual("permit", action["step"])
+        self.assertIn("--candidate local:aprovado", action["command"])
+        self.assertNotIn("local:rejeitado", action["command"])
+
+    def test_the_approve_rung_command_approves_instead_of_starting_a_server(self):
+        """Degrau e comando têm que nomear a mesma ação."""
+        from getbrolls.commands import _flow_state
+        from getbrolls.guidance import next_action
+
+        brief = {"beats": 1, "covered": 1, "missing": [], "conflicts": []}
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = self.project(tmp)
+            (ledger.root / "review.html").write_text("<html></html>", encoding="utf-8")
+            action = next_action(_flow_state(ledger, None, brief=brief))
+        self.assertEqual("approve", action["step"])
+        self.assertIn(" approve --project", action["command"])
+        self.assertIn("--candidate local:pendente", action["command"])
+        self.assertNotIn(" serve ", action["command"])
+        # A rota do board continua oferecida, mas na frase e na url, não no comando.
+        self.assertIn("Storyboard", action["for_human"])

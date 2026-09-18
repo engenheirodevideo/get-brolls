@@ -135,11 +135,21 @@ def _pending_preview(state, counts):
     return int(value)
 
 
+def step_candidate(state, step):
+    """Item que este degrau pode nomear — nunca um de outra etapa, nunca um rejeitado.
+
+    Quem lê o estado entrega `candidates` com um id por degrau. Sem esse mapa (estado
+    antigo), cai no `candidate` único de antes.
+    """
+    chosen = (state.get("candidates") or {}).get(step)
+    return chosen if chosen else state.get("candidate")
+
+
 def _action(step, why, for_human, state, url=None, blocking_human=False, command=None):
     return {
         "step": step,
         "why": why,
-        "command": command if command is not None else command_for(step, state["project"], state.get("candidate")),
+        "command": command if command is not None else command_for(step, state["project"], step_candidate(state, step)),
         "url": url,
         "for_human": for_human,
         "blocking_human": blocking_human,
@@ -223,7 +233,10 @@ def _approve_action(state, pending=0):
         state,
         url=url,
         blocking_human=True,
-        command=command_for("serve-board", state["project"]) if board else None,
+        # O comando tem que fazer o que o degrau diz. Entregar `serve` sob o degrau
+        # `approve` fazia o agente subir servidor achando que estava aprovando; a rota
+        # do board continua na frase e na `url`, que é onde ela de fato acontece.
+        command=None,
     )
 
 
@@ -330,7 +343,7 @@ def next_action(state):
                 command=command_for(
                     "inspect",
                     state["project"],
-                    state.get("inspect_candidate") or state.get("candidate"),
+                    state.get("inspect_candidate") or step_candidate(state, "inspect"),
                 ),
             )
         return _action(

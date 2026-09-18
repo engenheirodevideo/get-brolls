@@ -497,6 +497,7 @@ def brief_report(args):
                     "board_url": _live_board_url(args.project),
                     "rights_mode": _rights_mode(rules),
                     "candidate": _pending_candidate(items),
+                    "candidates": _step_candidates(items),
                     "duration_unknown": len(_uninspected(items)),
                     "inspect_candidate": next((c["id"] for c in _uninspected(items)), None),
                 }
@@ -809,14 +810,44 @@ def _pending_candidate(items):
     return None
 
 
+def _step_candidates(items):
+    """Um id por degrau, sempre de um item que está mesmo naquela etapa.
+
+    Um único "próximo candidato" para a escada inteira nomeava o primeiro item da
+    ordem do manifesto, e num projeto com um rejeitado na frente o degrau `permit`
+    saía com o id desse rejeitado: o comando vinha pronto e a CLI recusava na cara
+    da pessoa. Cada degrau filtra pela própria etapa, e quem foi rejeitado não
+    entra em nenhum deles.
+    """
+    alive = [c for c in items if _stage_status(c, "approval") != "rejected"]
+
+    def first(pool, test):
+        return next((c["id"] for c in pool if test(c)), None)
+
+    return {
+        "inspect": first(_uninspected(items), lambda c: True),
+        "preview": first(_needs_preview(items), lambda c: True),
+        "approve": first(alive, STAGE_TESTS["pending"]),
+        "permit": first(alive, lambda c: STAGE_TESTS["approved"](c) and not STAGE_TESTS["permitted"](c)),
+        "fetch": first(alive, lambda c: STAGE_TESTS["permitted"](c) and not STAGE_TESTS["delivered"](c)),
+        "verify": first(alive, lambda c: STAGE_TESTS["delivered"](c) and not STAGE_TESTS["verified"](c)),
+    }
+
+
 def _uninspected(items):
     """Candidatos sem duração conhecida e ainda sem prévia, com URL pública para analisar.
 
     É o que separa o degrau `inspect` do degrau `preview`: sem duração, qualquer
-    `--start/--end` é palpite, e o palpite custa um pedido à fonte.
+    `--start/--end` é palpite, e o palpite custa um pedido à fonte. Item rejeitado
+    fica de fora: ninguém gasta pedido à fonte por um trecho já descartado.
     """
     return [
-        c for c in items if not (c.get("media") or {}).get("duration_s") and c.get("source_url") and not _has_preview(c)
+        c
+        for c in items
+        if not (c.get("media") or {}).get("duration_s")
+        and c.get("source_url")
+        and not _has_preview(c)
+        and _stage_status(c, "approval") != "rejected"
     ]
 
 
@@ -932,6 +963,8 @@ def _flow_state(ledger, rules, counts=None, format_pending=0, brief=_UNSET):
         "board_url": _live_board_url(ledger.root.parent) if review_page else None,
         "rights_mode": _rights_mode(rules),
         "candidate": _pending_candidate(items),
+        # Um id por degrau: o comando pronto nunca nomeia item de outra etapa.
+        "candidates": _step_candidates(items),
         "duration_unknown": len(_uninspected(items)),
         "inspect_candidate": next((c["id"] for c in _uninspected(items)), None),
         "undelivered": len(_undelivered(items)),
