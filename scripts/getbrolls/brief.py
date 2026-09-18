@@ -179,6 +179,10 @@ def resolve_beat(defaults, beat, position):
         ),
         "queries": _queries(beat.get("queries"), f"{where}.queries"),
         "notes": _text(beat.get("notes"), f"{where}.notes", required=False),
+        # Beat travado: falta um fato que só a pessoa tem (a empresa, a data, o link,
+        # o material dela). Não é "sem candidato ainda" — é pergunta em aberto, e por
+        # isso ele sai da conta de cobertura em vez de virar mais uma busca.
+        "blocked_reason": _text(beat.get("blocked_reason"), f"{where}.blocked_reason", required=False),
     }
 
 
@@ -302,5 +306,17 @@ def beat_commands(project, beat):
 
 
 def beat_progress(beats, items):
-    """Candidatos já registrados por beat: o vínculo é `c["shot"] == beat.id`."""
-    return {beat["id"]: [c["id"] for c in items if c.get("shot") == beat["id"]] for beat in beats}
+    """Candidatos vivos por beat: o vínculo é `c["shot"] == beat.id`.
+
+    Rejeitado não conta como material do beat. Contar dava "5 beats cobertos, 0 sem
+    material" num projeto em que todos os candidatos daquele trecho tinham sido
+    descartados — e o beat seguia sem nada para mostrar a quem decide.
+    """
+    return {
+        beat["id"]: [
+            c["id"]
+            for c in items
+            if c.get("shot") == beat["id"] and (c.get("approval") or {}).get("status") != "rejected"
+        ]
+        for beat in beats
+    }

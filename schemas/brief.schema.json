@@ -90,7 +90,8 @@
           "stock": { "type": "boolean" },
           "duration_hint_s": { "type": ["number", "null"], "minimum": 0.5, "maximum": 120 },
           "queries": { "type": "array", "items": { "type": "string" } },
-          "notes": { "type": ["string", "null"] }
+          "notes": { "type": ["string", "null"] },
+          "blocked_reason": { "type": ["string", "null"] }
         }
       }
     }

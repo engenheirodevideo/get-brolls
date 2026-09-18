@@ -165,7 +165,7 @@ class StatusCommandTests(unittest.TestCase):
             before = sorted(p.name for p in Path(tmp).iterdir())
             payload = self.call("status", "--project", tmp)
             summary = payload["summary"]
-            self.assertEqual({"beats": 2, "covered": 0, "missing": 2}, summary["brief"])
+            self.assertEqual({"beats": 2, "covered": 0, "missing": 2, "blocked": 0}, summary["brief"])
             # Nenhum beat tem candidato, mas o item `d` tem prévia e ninguém decidiu:
             # a decisão humana ganha do degrau de buscar material para o primeiro beat.
             self.assertEqual("approve", summary["do"]["step"])

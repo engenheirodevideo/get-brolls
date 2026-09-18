@@ -460,14 +460,22 @@ def brief_report(args):
         }
         for b in beats
     ]
-    missing = [entry for entry in listed if not entry["candidates"]]
-    covered = len(listed) - len(missing)
+    # Beat travado espera um fato da pessoa: ele não é "sem candidato ainda".
+    blocked = [entry for entry in listed if entry["resolved"].get("blocked_reason")]
+    stuck = {entry["id"] for entry in blocked}
+    missing = [entry for entry in listed if entry["id"] not in stuck and not entry["candidates"]]
+    covered = len(listed) - len(missing) - len(blocked)
     problems += [f'O beat "{entry["id"]}" ainda não tem candidato registrado.' for entry in missing]
+    problems += [
+        f'O beat "{entry["id"]}" está travado esperando você: {entry["resolved"]["blocked_reason"]}'
+        for entry in blocked
+    ]
     return {
         "summary": {
             "line": f'Brief de "{data["video"]["title"]}": '
             + _count(len(listed), "beat", "beats")
-            + f", {covered} com candidato e {len(missing)} sem.",
+            + f", {covered} com candidato e {len(missing)} sem"
+            + (f", {len(blocked)} travado(s) esperando você." if blocked else "."),
             "problems": problems,
             # Mesma escada de `status`: a pessoa ouve a mesma frase nos dois comandos.
             "next": next_action(
@@ -488,8 +496,18 @@ def brief_report(args):
                             {
                                 "id": entry["id"],
                                 "search": entry["commands"].get("search"),
+                                "intent": entry["resolved"].get("intent"),
+                                "target": entry["resolved"].get("target"),
                             }
                             for entry in missing
+                        ],
+                        "blocked": [
+                            {
+                                "id": entry["id"],
+                                "reason": entry["resolved"]["blocked_reason"],
+                                "target": entry["resolved"].get("target"),
+                            }
+                            for entry in blocked
                         ],
                         "conflicts": conflicts,
                     },
@@ -508,7 +526,12 @@ def brief_report(args):
         "rights": data["rights"],
         "defaults": data["defaults"],
         "beats": listed,
-        "coverage": {"beats": len(listed), "covered": covered, "missing": len(missing)},
+        "coverage": {
+            "beats": len(listed),
+            "covered": covered,
+            "missing": len(missing),
+            "blocked": len(blocked),
+        },
         "conflicts": conflicts,
     }
 
@@ -769,6 +792,14 @@ def brief_state(project, rules, items):
         return {"error": str(exc)} if exists else None
     beats = data["beats"]
     progress = beat_progress(beats, items)
+    # Beat travado sai das duas contas: ele não está coberto e também não é "ainda vou
+    # buscar" — é pergunta em aberto para a pessoa, e vira degrau próprio na escada.
+    blocked = [
+        {"id": b["id"], "reason": b["resolved"]["blocked_reason"], "target": b["resolved"].get("target")}
+        for b in beats
+        if b["resolved"].get("blocked_reason")
+    ]
+    stuck = {entry["id"] for entry in blocked}
     missing = [
         {
             "id": b["id"],
@@ -779,12 +810,13 @@ def brief_state(project, rules, items):
             "target": b["resolved"].get("target"),
         }
         for b in beats
-        if not progress[b["id"]]
+        if b["id"] not in stuck and not progress[b["id"]]
     ]
     return {
         "beats": len(beats),
-        "covered": len(beats) - len(missing),
+        "covered": len(beats) - len(missing) - len(blocked),
         "missing": missing,
+        "blocked": blocked,
         "conflicts": conflicts,
     }
 
@@ -1030,6 +1062,8 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
                 "beats": brief["beats"],
                 "covered": brief["covered"],
                 "missing": len(brief["missing"]),
+                # Beats que esperam um fato da pessoa: nem cobertos, nem a buscar.
+                "blocked": len(brief.get("blocked") or []),
             }
         ),
     }

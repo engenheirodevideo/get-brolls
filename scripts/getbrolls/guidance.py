@@ -187,6 +187,22 @@ def _missing_beat_phrase(beat):
     )
 
 
+def _blocked_beat_question(beat):
+    """Beat travado vira pergunta, nunca promessa de busca.
+
+    `blocked_reason` existe justamente porque falta um fato que a skill não pode
+    inventar. Responder "vou buscar" ali é o preenchimento que esta skill não faz:
+    o passo real é a pessoa dizer qual é o fato, o link ou o arquivo dela.
+    """
+    return (
+        f'O beat "{beat["id"]}" está parado esperando você: {beat["reason"]} '
+        "Me diga qual é esse fato — o nome, a data, a empresa, o link da página — ou "
+        "me mande o seu próprio arquivo para esse trecho. Enquanto isso não vier eu "
+        "não busco nada para ele, porque qualquer imagem que eu escolhesse seria "
+        "aproximação minha, não o que você quis dizer."
+    )
+
+
 def board_url(state):
     """Endereço real do Storyboard, e só quando o servidor desta sessão está no ar.
 
@@ -305,6 +321,17 @@ def next_action(state):
     # formato passa na frente, porque ele invalida a própria decisão que seria tomada.
     if counts["pending"] > 0:
         return _approve_action(state, counts["pending"])
+    blocked = list(brief.get("blocked") or [])
+    if blocked:
+        first = blocked[0]
+        return _action(
+            "brief-blocked",
+            f'O beat "{first["id"]}" está travado esperando um fato que só você tem: {first["reason"]}',
+            _blocked_beat_question(first),
+            state,
+            blocking_human=True,
+            command=None,
+        )
     if missing:
         first = missing[0]
         return _action(

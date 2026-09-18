@@ -40,7 +40,8 @@ Copie para o projeto com `gb.py init-brief --project ./video-01`, ou deixe o age
       "narration": "Cole aqui a fala exata deste trecho, ou deixe null.",
       "target": "O que precisa aparecer na tela neste trecho",
       "queries": [],
-      "notes": null
+      "notes": null,
+      "blocked_reason": null
     }
   ]
 }
@@ -62,6 +63,8 @@ Copie para o projeto com `gb.py init-brief --project ./video-01`, ou deixe o age
   - `stock`: `true` exige pelo menos um banco em `allowed_sources`; `false` proíbe `pexels`/`pixabay` na lista. As duas incoerências são erro, não aviso.
   - `duration_hint_s`: entre 0,5 e 120 segundos, ou `null`. É sugestão de duração, não corte automático.
   - `queries`: buscas que já funcionaram neste beat; a primeira vira a query do `search` sugerido.
+  - `blocked_reason`: texto ou `null`. Preenchido quando o beat depende de um fato que só a pessoa tem (a empresa, a data, o link da página, um arquivo dela). Beat travado sai das duas contas — não é `covered` nem `missing`, aparece em `blocked` — e `status.summary.do` vira pergunta para a pessoa, com `blocking_human: true`. Enquanto ele estiver preenchido, a skill não busca material para esse trecho: escolher uma imagem aproximada ali seria preencher buraco, que é justamente o que ela não faz. Apague a chave (ou volte para `null`) quando a resposta chegar.
+- `coverage` do `brief` (e `summary.brief` do `status`) somam `covered + missing + blocked = beats`. `covered` conta só beat com pelo menos um candidato **não rejeitado**: quando todos os candidatos do trecho foram descartados, ele volta para `missing`.
 - Chaves desconhecidas são ignoradas: dá para anotar o que quiser sem quebrar a leitura.
 
 ## Como o brief vira comando

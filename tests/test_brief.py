@@ -339,6 +339,110 @@ class BeatProgressTests(unittest.TestCase):
         self.assertEqual([], progress["reacao-publico"])
 
 
+class BlockedBeatTests(unittest.TestCase):
+    """Beat travado espera um fato da pessoa; ele não é "ainda vou buscar"."""
+
+    def blocked(self):
+        data = copy.deepcopy(VALID)
+        data["beats"][0]["blocked_reason"] = "Falta o link da página que o print tem que mostrar."
+        return data
+
+    def test_blocked_reason_is_optional_and_defaults_to_none(self):
+        data, _ = loaded(VALID)
+        self.assertIsNone(data["beats"][0]["resolved"]["blocked_reason"])
+
+    def test_blocked_reason_has_to_be_text(self):
+        data = copy.deepcopy(VALID)
+        data["beats"][0]["blocked_reason"] = 7
+        with self.assertRaises(ValueError) as caught:
+            loaded(data)
+        self.assertIn("blocked_reason", str(caught.exception))
+
+    def test_a_blocked_beat_is_neither_covered_nor_missing(self):
+        from getbrolls.commands import brief_state
+
+        with tempfile.TemporaryDirectory() as tmp:
+            write_brief(tmp, self.blocked())
+            state = brief_state(tmp, None, [])
+        assert state is not None
+        missing, blocked = state["missing"], state["blocked"]
+        assert isinstance(missing, list) and isinstance(blocked, list)
+        self.assertEqual(2, state["beats"])
+        self.assertEqual(0, state["covered"])
+        self.assertEqual(["reacao-publico"], [b["id"] for b in missing])
+        self.assertEqual(["abertura"], [b["id"] for b in blocked])
+        self.assertEqual(state["beats"], int(state["covered"]) + len(missing) + len(blocked))
+
+    def test_the_rung_asks_the_human_instead_of_promising_a_search(self):
+        from getbrolls.guidance import next_action
+
+        state = {
+            "project": "/tmp/projeto",
+            "counts": dict.fromkeys(("candidates", "previews", "pending", "approved"), 0),
+            "brief": {
+                "beats": 2,
+                "covered": 0,
+                "missing": [{"id": "reacao-publico", "search": None}],
+                "blocked": [{"id": "abertura", "reason": "Falta o link da página.", "target": "print"}],
+                "conflicts": [],
+            },
+        }
+        action = next_action(state)
+        self.assertEqual("brief-blocked", action["step"])
+        self.assertTrue(action["blocking_human"])
+        self.assertIn("abertura", action["for_human"])
+        self.assertIn("Falta o link", action["for_human"])
+        self.assertNotIn("vou buscar", action["for_human"])
+        self.assertIsNone(action["command"])
+
+    def test_status_reports_the_blocked_count(self):
+        from getbrolls.ledger import Ledger
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Ledger(tmp)
+            write_brief(tmp, self.blocked())
+            payload = run_cli(self, "status", "--project", tmp)
+        self.assertEqual({"beats": 2, "covered": 0, "missing": 1, "blocked": 1}, payload["summary"]["brief"])
+        self.assertEqual("brief-blocked", payload["summary"]["do"]["step"])
+
+    def test_the_brief_command_lists_the_blocked_beat_as_a_problem(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_brief(tmp, self.blocked())
+            payload = run_cli(self, "brief", "--project", tmp)
+        self.assertEqual(
+            {"beats": 2, "covered": 0, "missing": 1, "blocked": 1},
+            payload["coverage"],
+        )
+        self.assertTrue(any("travado" in problem for problem in payload["summary"]["problems"]))
+
+
+class RejectedCandidatesDoNotCoverABeatTests(unittest.TestCase):
+    """Cobertura conta material vivo: todo candidato rejeitado deixa o beat descoberto."""
+
+    def test_beat_progress_skips_rejected_candidates(self):
+        data, _ = loaded(VALID)
+        items = [
+            {"id": "youtube:aaa", "shot": "abertura", "approval": {"status": "rejected"}},
+            {"id": "youtube:bbb", "shot": "reacao-publico", "approval": {"status": "approved"}},
+        ]
+        progress = brief_module.beat_progress(data["beats"], items)
+        self.assertEqual([], progress["abertura"])
+        self.assertEqual(["youtube:bbb"], progress["reacao-publico"])
+
+    def test_a_beat_whose_candidates_were_all_rejected_goes_back_to_missing(self):
+        from getbrolls.commands import brief_state
+
+        items = [{"id": "youtube:aaa", "shot": "abertura", "approval": {"status": "rejected"}}]
+        with tempfile.TemporaryDirectory() as tmp:
+            write_brief(tmp, VALID)
+            state = brief_state(tmp, None, items)
+        assert state is not None
+        missing = state["missing"]
+        assert isinstance(missing, list)
+        self.assertEqual(0, state["covered"])
+        self.assertEqual({"abertura", "reacao-publico"}, {b["id"] for b in missing})
+
+
 class BriefCommandTests(unittest.TestCase):
     def test_both_subcommands_are_summarised_and_take_project(self):
         for name in ("init-brief", "brief"):
