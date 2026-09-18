@@ -837,10 +837,6 @@ class ScanTests(unittest.TestCase):
             self.assertIn("inteiro", scan["note"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class DirectMediaSourceTests(unittest.TestCase):
     """Fricção 1 da rodada 2: candidato NASA ia para o yt-dlp e voltava "Unsupported URL"."""
 
@@ -1203,7 +1199,7 @@ class LanguageMismatchTests(unittest.TestCase):
         self.assertIsNone(inspecting.guess_language("Jensen Huang GTC 2024"))
 
     def test_only_a_real_difference_is_reported(self):
-        probe = {"subtitle_langs": ["en", "pt"]}
+        probe = {"subtitle_langs": ["pt", "en-orig"], "original_lang": "en-orig"}
         self.assertEqual(("en", "pt"), inspecting.language_mismatch(probe, "o trecho em que ele fala do preço"))
         self.assertIsNone(inspecting.language_mismatch(probe, "the part where he talks about the price"))
         self.assertIsNone(inspecting.language_mismatch({"subtitle_langs": ["pt-BR"]}, "o trecho em que ele fala"))
@@ -1291,3 +1287,7 @@ class PreviewFilesOnEveryBranchTests(unittest.TestCase):
         self.assertIn("screenshot do seu computador", body)
         self.assertIn("tutorial ou demonstração no YouTube", body)
         self.assertIn("recriar a interface de memória", body)
+
+
+if __name__ == "__main__":
+    unittest.main()

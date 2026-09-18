@@ -112,23 +112,40 @@ def guess_language(text):
     return "pt" if pt > en else "en"
 
 
+def source_language(probe):
+    """Idioma **falado** da fonte, nunca o de uma tradução automática.
+
+    O YouTube gera faixas traduzidas sob demanda, e `pt` costuma aparecer na frente
+    numa fonte em inglês. Ler essa faixa invertia o aviso: a query correta, em
+    inglês, era acusada de estar fora do idioma da fonte. A ordem é a de confiança —
+    o que o yt-dlp marcou como original, a faixa `<code>-orig`, e só então a única
+    faixa que sobrou, que aí não tem com o que ser confundida.
+    """
+    declared = base_language(probe.get("original_lang"))
+    if declared:
+        return declared
+    listed = [str(code) for code in (probe.get("subtitle_langs") or [])]
+    for code in listed:
+        if code.endswith("-orig"):
+            return base_language(code[: -len("-orig")])
+    bases = [base for base in (base_language(code) for code in listed) if base]
+    # Duas faixas sem nada dizendo qual é a fala: uma delas é tradução, e não dá para
+    # saber qual. Melhor não avisar nada do que avisar o contrário.
+    return bases[0] if len(set(bases)) == 1 and bases else None
+
+
 def language_mismatch(probe, query):
-    """(idioma da legenda, idioma da frase) quando os dois são conhecidos e diferentes.
+    """(idioma da fonte, idioma da frase) quando os dois são conhecidos e diferentes.
 
     Buscar uma fala em português dentro de uma legenda em inglês pontua zero em toda
     janela, e o resultado parece "a fonte não fala disso" quando o problema é só o
     idioma da consulta.
     """
     asked = guess_language(query)
-    if not asked:
+    spoken = source_language(probe)
+    if not asked or not spoken or spoken == asked:
         return None
-    for code in probe.get("subtitle_langs") or []:
-        spoken = base_language(code)
-        if spoken and spoken != asked:
-            return (spoken, asked)
-        if spoken:
-            return None
-    return None
+    return (spoken, asked)
 
 
 def tokens(text):

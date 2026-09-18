@@ -376,9 +376,14 @@ def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):
             }
         )
     listed, total = relevant_langs(data, langs)
+    # Qual faixa é a fala de verdade. As outras são tradução automática do YouTube, e
+    # comparar a `--query` com uma delas invertia o aviso de idioma: uma fonte em
+    # inglês com faixa `pt` traduzida respondia "legenda em PT" para uma query em EN.
+    original = _original_language(data) or data.get("language")
     return {
         "url": url,
         "title": data.get("title"),
+        "original_lang": str(original) if original else None,
         "duration_s": float(duration) if isinstance(duration, (int, float)) else None,
         "chapters": chapters,
         "subtitle_langs": listed,
