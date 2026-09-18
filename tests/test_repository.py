@@ -274,6 +274,45 @@ class RepositoryDocumentationTests(unittest.TestCase):
         ):
             self.assertIn(command, template, command)
 
+    def test_no_internal_working_material_is_tracked(self):
+        """Planos, discovery e estado de agente são material de trabalho, não
+        parte da skill pública: ficam fora do repositório e do .gitignore para
+        dentro. O que é rastreado também não pode citar caminho de máquina."""
+        tracked = (
+            subprocess.run(
+                ["git", "ls-files", "-z"],
+                cwd=ROOT,
+                check=True,
+                capture_output=True,
+            )
+            .stdout.decode("utf-8")
+            .split("\0")
+        )
+        forbidden_prefixes = (
+            "docs/superpowers/",
+            "docs/discovery/",
+            ".superpowers/",
+            ".claude/",
+            ".agents/",
+            ".codex/",
+            ".playwright-cli/",
+        )
+        for path in tracked:
+            if path.startswith(forbidden_prefixes):
+                self.fail(f"material interno rastreado: {path}")
+        ignore = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+        for prefix in forbidden_prefixes:
+            self.assertIn(prefix, ignore, f".gitignore sem {prefix}")
+        # Caminho real de máquina, não o exemplo `/Users/...` da regra em AGENTS.md.
+        local_path = re.compile(r"/Users/[a-z]+/|/private/tmp/[A-Za-z0-9]|/home/[a-z]+/|claude-501")
+        for path in tracked:
+            if path == "tests/test_repository.py":
+                continue  # o próprio padrão
+            if not path or not path.endswith((".md", ".py", ".json", ".yml", ".yaml", ".toml", ".txt", ".sh", ".ps1")):
+                continue
+            text = (ROOT / path).read_text(encoding="utf-8", errors="replace")
+            self.assertIsNone(local_path.search(text), f"caminho local em {path}")
+
     def test_release_workflow_uses_gh_cli_and_the_pinned_checkout(self):
         release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
         tests = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")

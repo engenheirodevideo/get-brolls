@@ -17,3 +17,13 @@ node_modules/
 .playwright-cli/
 
 .tools/
+
+# Internal working material (planning, discovery, agent state, editor config).
+# Never part of the public skill.
+docs/superpowers/
+docs/discovery/
+.superpowers/
+.claude/
+.agents/
+.codex/
+.playwright-cli/
