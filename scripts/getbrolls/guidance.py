@@ -71,8 +71,54 @@ def command_for(step, project, candidate=None):
 
 
 def _counts(state):
-    keys = ("candidates", "previews", "approved", "permitted", "delivered", "verified")
+    keys = (
+        "candidates",
+        "previews",
+        "pending",
+        "rejected",
+        "approved",
+        "permitted",
+        "delivered",
+        "verified",
+    )
     return {key: (state.get("counts") or {}).get(key, 0) for key in keys}
+
+
+def flow_complete(state, counts):
+    """Todo item aprovado virou arquivo conferido e já está em `entrega/`?
+
+    É o estado que a pessoa chama de "acabou". Candidato que ninguém decidiu não
+    conta: ele é rascunho do agente, não pendência do humano.
+    """
+    approved = counts["approved"]
+    if not approved:
+        return False
+    return (
+        counts["permitted"] >= approved
+        and counts["delivered"] >= approved
+        and counts["verified"] >= counts["delivered"]
+        and not state.get("undelivered")
+    )
+
+
+def leftovers(state, counts):
+    """Candidatos que ninguém aprovou nem rejeitou: viram aparte, nunca próximo passo."""
+    value = state.get("undecided")
+    if value is None:
+        value = counts["candidates"] - counts["approved"] - counts["rejected"]
+    return max(0, int(value))
+
+
+def leftover_aside(count):
+    """Frase do aparte: quem sobrou não vira tarefa, só nota de rodapé."""
+    if not count:
+        return ""
+    noun = "candidato" if count == 1 else "candidatos"
+    verb = "Sobrou" if count == 1 else "Sobraram"
+    return (
+        f" {verb} {count} {noun} sem decisão; se não vai usá-los, rejeite com "
+        "`reject` — ou ignore, que eles não travam nada."
+    )
 
 
 def _pending_preview(state, counts):
@@ -122,6 +168,47 @@ def _missing_beat_phrase(beat):
         "não vou pegar imagem aproximada para tapar buraco. Me diga o que falta — a "
         "empresa, a data, o link, a pessoa — ou me mande seu próprio material para "
         "esse trecho. Se não existir nada disso, este beat fica registrado como sem fonte."
+    )
+
+
+def _approve_action(state, pending=0):
+    """Degrau da decisão humana: board quando a página existe, chat sempre."""
+    board = bool(state.get("review_page"))
+    return _action(
+        "approve",
+        (
+            f"Há {pending} item(ns) com prévia esperando a decisão de uma pessoa."
+            if pending
+            else "Nenhum item aprovado: falta a decisão explícita de uma pessoa."
+        ),
+        (
+            "Agora é com você: vou subir o Storyboard e te mandar o endereço "
+            f"({BOARD_URL}). Decida lá e clique em “Salvar decisões” — elas ficam "
+            "dentro do projeto, é só voltar aqui e dizer “salvei” que eu rodo "
+            "`import-review --by SEU NOME`. Se preferir resolver pelo chat, me diga "
+            "quem aprova e a frase exata. Sem isso eu não coleto nada."
+            if board
+            else "Agora é com você: abra o Storyboard e salve as decisões, ou me "
+            "diga aqui no chat quem aprova e a frase exata da aprovação. Sem isso "
+            "eu não coleto nada."
+        ),
+        state,
+        url=BOARD_URL if board else None,
+        blocking_human=True,
+        command=command_for("serve-board", state["project"]) if board else None,
+    )
+
+
+def _done_action(state, counts):
+    """Fim de fluxo: o que sobrou sem decisão entra como aparte, nunca como tarefa."""
+    aside = leftover_aside(leftovers(state, counts))
+    return _action(
+        "done",
+        "Todo item aprovado está coletado, permitido e verificado." + aside,
+        "Fluxo completo: todos os trechos aprovados estão coletados, permitidos, "
+        "conferidos e organizados em `entrega/`." + aside,
+        state,
+        command=None,
     )
 
 
@@ -188,6 +275,15 @@ def next_action(state):
             "mostrar o que apareceu." + _library_hint() + warning,
             state,
         )
+    if flow_complete(state, counts):
+        # O estado humano vem antes do rascunho do agente: com a entrega pronta e
+        # conferida, mandar inspecionar um candidato descartado diria à pessoa que o
+        # vídeo dela não acabou quando acabou.
+        return _done_action(state, counts)
+    # Decisão humana pendente ganha de qualquer degrau do agente: há prévia na mesa
+    # esperando alguém decidir, e gerar mais prévia empurra a pessoa para longe disso.
+    if counts["pending"] > 0:
+        return _approve_action(state, counts["pending"])
     if _pending_preview(state, counts) > 0:
         if state.get("duration_unknown"):
             # Sem saber a duração, qualquer intervalo é chute — e baixar trecho errado
@@ -217,26 +313,7 @@ def next_action(state):
             state,
         )
     if not counts["approved"]:
-        board = bool(state.get("review_page"))
-        return _action(
-            "approve",
-            "Nenhum item aprovado: falta a decisão explícita de uma pessoa.",
-            (
-                "Agora é com você: vou subir o Storyboard e te mandar o endereço "
-                f"({BOARD_URL}). Decida lá e clique em “Salvar decisões” — elas ficam "
-                "dentro do projeto, é só voltar aqui e dizer “salvei” que eu rodo "
-                "`import-review --by SEU NOME`. Se preferir resolver pelo chat, me diga "
-                "quem aprova e a frase exata. Sem isso eu não coleto nada."
-                if board
-                else "Agora é com você: abra o Storyboard e salve as decisões, ou me "
-                "diga aqui no chat quem aprova e a frase exata da aprovação. Sem isso "
-                "eu não coleto nada."
-            ),
-            state,
-            url=BOARD_URL if board else None,
-            blocking_human=True,
-            command=command_for("serve-board", state["project"]) if board else None,
-        )
+        return _approve_action(state)
     if counts["permitted"] < counts["approved"]:
         per_item = state.get("rights_mode", "per_item_evidence") == "per_item_evidence"
         return _action(
@@ -276,10 +353,4 @@ def next_action(state):
             "arrasta para o editor.",
             state,
         )
-    return _action(
-        "done",
-        "Todo item aprovado está coletado e verificado.",
-        "Terminamos: todos os trechos aprovados estão coletados, permitidos e conferidos.",
-        state,
-        command=None,
-    )
+    return _done_action(state, counts)

@@ -144,7 +144,9 @@ class StatusCommandTests(unittest.TestCase):
                 [plural for _, _, plural in STATUS_STAGES],
                 [stage["stage"] for stage in summary["stages"]],
             )
-            self.assertIn("preview", summary["next"])
+            # O item `d` tem prévia e ninguém decidiu: a decisão humana ganha do
+            # degrau de gerar mais prévia para quem sobrou sem quadro.
+            self.assertIn("decisão humana", summary["next"])
             # `do` é aditivo e tem degraus a mais que `next`: sem BRIEF.md o passo
             # real é fazer o brief, e `summary["brief"]` fica None.
             self.assertEqual("init-brief", summary["do"]["step"])
@@ -254,7 +256,8 @@ class StatusCommandTests(unittest.TestCase):
             fixture(tmp)
             payload = self.call("status", "--project", tmp)
             self.assertNotIn("local:a", payload["stages"]["pending"])
-            self.assertIn("prévias", payload["summary"]["next"])
+            self.assertEqual(["local:d"], payload["stages"]["pending"])
+            self.assertIn("decisão humana", payload["summary"]["next"])
 
     def test_a_storyboard_without_previews_is_reported_as_empty(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -290,6 +293,44 @@ class StatusCommandTests(unittest.TestCase):
             ledger.save_many("fixture", [ledger.add(done), ledger.add(out)])
             payload = self.call("status", "--project", tmp)
             self.assertIn("completo", payload["summary"]["next"])
+
+    def test_a_finished_delivery_is_not_undone_by_an_undecided_candidate(self):
+        """Fricção 1 da rodada 2: `do` mandava inspecionar um descarte depois da entrega."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(tmp)
+            done = candidate("local", "b", "Entregue")
+            set_segment(done, 0, 2)
+            done["preview"]["gif_path"] = "previews/b.gif"
+            done["approval"] = {"status": "approved", "by": "Humano", "at": now(), "revision": 1}
+            done["rights"]["status"] = "permitted"
+            done["rights"]["evidence"] = ["Evidência sintética"]
+            done["output"] = {"path": "clips/b.mp4", "sha256": "0" * 64, "verified": True}
+            done["delivery"] = {"path": "entrega/00-b/b.mp4", "method": "hardlink"}
+            done["state"] = "verified"
+            # Candidato que o agente largou pelo caminho: sem prévia, sem duração, sem decisão.
+            leftover = candidate("youtube", "descartado", "Livestream 24/7")
+            leftover["source_url"] = "https://www.youtube.com/watch?v=descartadoXY"
+            ledger.save_many("fixture", [ledger.add(done), ledger.add(leftover)])
+            payload = self.call("status", "--project", tmp)
+            self.assertIn("completo", payload["summary"]["next"])
+            # O descarte vira aparte com a saída dita, nunca o próximo passo.
+            self.assertIn("1 candidato sem decisão", payload["summary"]["next"])
+            self.assertIn("reject", payload["summary"]["next"])
+            self.assertNotIn("prévia", payload["summary"]["next"])
+
+    def test_a_decision_waiting_on_the_human_outranks_more_previews(self):
+        """Com prévia na mesa, o degrau é decidir — não gerar prévia de quem sobrou."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(tmp)
+            waiting = candidate("local", "b", "Esperando decisão")
+            set_segment(waiting, 0, 2)
+            waiting["preview"]["gif_path"] = "previews/b.gif"
+            leftover = candidate("youtube", "semquadro", "Sem prévia e sem duração")
+            leftover["source_url"] = "https://www.youtube.com/watch?v=semquadroXY"
+            ledger.save_many("fixture", [ledger.add(waiting), ledger.add(leftover)])
+            payload = self.call("status", "--project", tmp)
+            self.assertIn("decisão humana", payload["summary"]["next"])
+            self.assertNotIn("Gere prévias", payload["summary"]["next"])
 
     def test_status_never_writes_to_the_project(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -298,10 +298,25 @@ def status_next(counts, format_pending=0, pending_preview=None, undelivered=0):
             + _count(format_pending, "aprovação", "aprovações")
             + "; gere prévia e revisão novamente antes de coletar."
         )
+    from .guidance import flow_complete, leftover_aside, leftovers
+
+    state = {"undelivered": counts["undelivered"]}
+    counts = {"pending": 0, "rejected": 0, **counts}
+    complete = "Fluxo completo: os itens aprovados estão coletados, verificados e organizados em entrega/."
+    # Mesma preferência de `guidance.next_action`: o estado humano ganha do rascunho
+    # do agente. Com a entrega pronta, sobra de candidato é aparte, não próximo passo.
+    if flow_complete(state, counts):
+        return complete + leftover_aside(leftovers(state, counts))
+    if counts.get("pending"):
+        return (
+            "Peça a decisão humana: há prévia esperando alguém decidir, pelo Storyboard "
+            "(review + import-review) ou pela fala no chat (approve --candidate ID --by "
+            'NOME --channel chat --statement "frase").'
+        )
     for matches, step in STATUS_LADDER:
         if matches(counts):
             return step
-    return "Fluxo completo: os itens aprovados estão coletados e verificados."
+    return complete
 
 
 def _has_preview(c):

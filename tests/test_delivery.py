@@ -262,7 +262,34 @@ class Build(unittest.TestCase):
             # Com o brief válido e tudo conferido, o degrau antes da entrega seria
             # justamente `deliver`: o índice precisa falar do estado DEPOIS dela.
             self.assertNotIn("organizar os trechos conferidos", index)
-            self.assertIn("Terminamos", index)
+            self.assertIn("Fluxo completo", index)
+
+    def test_the_index_never_points_at_a_candidate_the_human_never_saw(self):
+        """Fricção 1 da rodada 2: o README nascia mandando inspecionar um descarte."""
+        from getbrolls.commands import execute
+        from getbrolls.runtime import audited
+
+        with tempfile.TemporaryDirectory() as tmp:
+            leftover = candidate("youtube", "descartado", "Livestream 24/7")
+            leftover["source_url"] = "https://www.youtube.com/watch?v=descartadoXY"
+            project(tmp, [fetched("a", "Palco", shot="abertura"), leftover])
+            Path(tmp, "RULES.md").write_text((ROOT / "docs" / "RULES.md").read_text(encoding="utf-8"), encoding="utf-8")
+            with_brief(tmp)
+            args = types.SimpleNamespace(
+                command="deliver",
+                project=tmp,
+                env_file=None,
+                dry_run=False,
+                confirm_format_change=False,
+            )
+            audited(args, execute)
+            index = (Path(tmp) / "entrega" / "README.md").read_text(encoding="utf-8")
+            self.assertIn("Fluxo completo", index)
+            # O descarte vira aparte, com a saída (`reject`) dita — nunca o próximo passo.
+            self.assertIn("1 candidato sem decisão", index)
+            self.assertIn("reject", index)
+            self.assertNotIn("Antes de gerar prévia", index)
+            self.assertNotIn("inspect --project", index)
 
     def test_a_stray_note_inside_a_beat_folder_is_preserved(self):
         with tempfile.TemporaryDirectory() as tmp:

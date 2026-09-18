@@ -333,6 +333,58 @@ class SameLadder(unittest.TestCase):
         self.assertIn("completo", status_next(counts, 0, pending_preview=0, undelivered=0))
 
 
+class HumanStateWinsOverAgentDraft(unittest.TestCase):
+    """Fricção 1 da rodada 2: com a entrega pronta, o degrau apontava um descarte."""
+
+    def _delivered(self, **extra):
+        counts = full(candidates=16, previews=3, approved=2, permitted=2, delivered=2, verified=2)
+        counts["pending"] = 0
+        counts["rejected"] = 1
+        return base_state(counts=counts, undelivered=0, **extra)
+
+    def test_a_finished_flow_says_so_even_with_candidates_left_without_a_preview(self):
+        # 13 candidatos sem prévia continuam no manifesto; nenhum deles é o próximo passo.
+        action = next_action(self._delivered(pending_preview=13, duration_unknown=5, inspect_candidate="youtube:x"))
+        self.assertEqual("done", action["step"])
+        self.assertIsNone(action["command"])
+        self.assertIn("Fluxo completo", action["for_human"])
+        self.assertIn("13 candidatos sem decisão", action["for_human"])
+        self.assertIn("reject", action["for_human"])
+        self.assertNotIn("prévia dos candidatos", action["for_human"])
+        self.assertFalse(action["blocking_human"])
+
+    def test_the_same_finished_flow_reads_the_same_in_status_next(self):
+        from getbrolls.commands import status_next
+
+        counts = self._delivered()["counts"]
+        phrase = status_next(counts, 0, pending_preview=13, undelivered=0)
+        self.assertIn("Fluxo completo", phrase)
+        self.assertIn("13 candidatos sem decisão", phrase)
+
+    def test_a_pending_decision_wins_over_inspect_and_preview(self):
+        counts = full(candidates=8, previews=3)
+        counts["pending"] = 3
+        state = base_state(
+            counts=counts,
+            pending_preview=5,
+            duration_unknown=5,
+            inspect_candidate="youtube:descartado",
+        )
+        action = next_action(state)
+        self.assertEqual("approve", action["step"])
+        self.assertTrue(action["blocking_human"])
+        self.assertIn("3 item", action["why"])
+
+    def test_status_next_names_the_pending_decision_too(self):
+        from getbrolls.commands import status_next
+
+        counts = full(candidates=8, previews=3)
+        counts.update(pending=3, rejected=0)
+        phrase = status_next(counts, 0, pending_preview=5, undelivered=0)
+        self.assertIn("decisão humana", phrase)
+        self.assertNotIn("Gere prévias", phrase)
+
+
 class MissingBeatPhrasing(unittest.TestCase):
     def test_a_literal_beat_without_material_is_simply_searched(self):
         state = base_state(
