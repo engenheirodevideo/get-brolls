@@ -87,6 +87,31 @@ class SkillMirrorTests(unittest.TestCase):
     def test_root_never_uses_the_plugin_prefix(self):
         self.assertNotIn("CLAUDE_PLUGIN_ROOT", ROOT_SKILL.read_text(encoding="utf-8"))
 
+    def test_frontmatter_is_valid_yaml_without_a_parser(self):
+        """GitHub renderiza o frontmatter como YAML: um `: ` solto num valor sem
+        aspas ("Also in English: …") derruba a página inteira com "mapping values
+        are not allowed in this context". Sem PyYAML na suíte, a regra é sintática:
+        todo valor de primeiro nível que contenha `: ` ou ` #` precisa estar entre
+        aspas, e aspas abertas precisam fechar na mesma linha."""
+        for path in (ROOT_SKILL, MIRROR_SKILL):
+            for line in frontmatter(path).splitlines():
+                if not line or line.startswith((" ", "\t")) or ":" not in line:
+                    continue
+                key, value = line.split(":", 1)
+                value = value.strip()
+                if not value:
+                    continue
+                with self.subTest(file=path.name, key=key):
+                    if value[0] in "'\"":
+                        self.assertEqual(value[-1], value[0], f"aspas sem fechar em {key}")
+                        inner = value[1:-1]
+                        if value[0] == "'":
+                            self.assertNotIn("'", inner.replace("''", ""), f"aspa simples solta em {key}")
+                    else:
+                        self.assertNotIn(": ", value, f"`: ` sem aspas em {key}")
+                        self.assertNotIn(" #", value, f"` #` sem aspas em {key}")
+                        self.assertNotIn(value[0], "[]{}&*!|>%@`", f"{key} começa com caractere reservado")
+
 
 class SkillBudgetTests(unittest.TestCase):
     """O SKILL.md é lido inteiro em toda sessão: tamanho é contrato."""
