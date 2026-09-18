@@ -5,17 +5,13 @@ import json
 import subprocess
 import sys
 import unittest
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-CLI = ROOT / "scripts/gb.py"
-sys.path.insert(0, str(ROOT / "scripts"))
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _paths import CLI, ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
 
 from getbrolls import __version__
-from getbrolls.cli import SUMMARIES, build_parser
+from getbrolls.cli import FORMAT_GATE_SUBCOMMANDS, SUMMARIES, build_parser
 from getbrolls.commands import doctor_summary
 
 
@@ -146,6 +142,66 @@ class ActionableErrorTests(unittest.TestCase):
             media.run([sys.executable, "-c", "raise SystemExit(3)"])
         self.assertNotIn("não encontrado", str(failed.exception))
         self.assertIn("doctor", str(failed.exception))
+
+
+# `--confirm-format-change` só aparece em `--help` onde tem efeito.
+#
+# `execute()` (commands.py) só chega a `sync_formats` depois de passar pelos retornos
+# antecipados de `serve`, `queue`, `init-rules`, `init-brief`, `brief`, `learn`,
+# `library` e `rules`, e por cima de `READ_ONLY_CONSULTS` (`references`, `inspect`).
+# Nesses, a flag continua aceita — scripts e agentes já a passam para eles hoje — mas
+# some do texto de ajuda porque nunca teve efeito ali.
+
+# Subcomandos que aceitam `--project` mas retornam antes de `sync_formats` (ou estão em
+# `READ_ONLY_CONSULTS`): a flag continua aceita por compatibilidade, mas escondida.
+NO_OP_SUBCOMMANDS = (
+    "serve",
+    "queue",
+    "init-rules",
+    "init-brief",
+    "brief",
+    "learn",
+    "library",
+    "rules",
+    "references",
+    "inspect",
+)
+
+
+def _help_text(subcommand):
+    return subparsers(build_parser()).choices[subcommand].format_help()
+
+
+class ConfirmFormatChangeHelpTests(unittest.TestCase):
+    def test_flag_appears_in_help_of_every_format_gate_subcommand(self):
+        for subcommand in FORMAT_GATE_SUBCOMMANDS:
+            with self.subTest(subcommand=subcommand):
+                self.assertIn("--confirm-format-change", _help_text(subcommand))
+
+    def test_flag_is_hidden_from_help_of_no_op_subcommands(self):
+        for subcommand in NO_OP_SUBCOMMANDS:
+            with self.subTest(subcommand=subcommand):
+                text = _help_text(subcommand)
+                self.assertNotIn("--confirm-format-change", text)
+
+    def test_flag_still_parses_on_a_no_op_subcommand(self):
+        parser = build_parser()
+        for subcommand in NO_OP_SUBCOMMANDS:
+            with self.subTest(subcommand=subcommand):
+                extra = []
+                if subcommand == "queue":
+                    extra = ["--action", "status"]
+                elif subcommand == "inspect":
+                    extra = ["--url", "https://example.org/a"]
+                elif subcommand == "library":
+                    extra = ["--search", "termo"]
+                try:
+                    parsed = parser.parse_args(
+                        [subcommand, "--project", "/tmp/whatever", "--confirm-format-change", *extra]
+                    )
+                except SystemExit as exc:
+                    self.fail(f"{subcommand} rejeitou --confirm-format-change: SystemExit({exc.code})")
+                self.assertTrue(getattr(parsed, "confirm_format_change", False))
 
 
 if __name__ == "__main__":

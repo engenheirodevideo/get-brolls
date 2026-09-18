@@ -1,11 +1,12 @@
 """User-editable, local declarative rules. No YAML dependency or code evaluation."""
 
-import json
 import os
 import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from .brief import read_json_block
+from .models import invalidate_approval
 from .queue import validate_pacing_block
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,26 +15,21 @@ TYPES = {"video", "image", "news_screenshot", "web_screenshot"}
 
 def read_rules_block(path):
     """Único bloco ```json de um RULES.md, já validado como objeto."""
-    raw = Path(path).read_text(encoding="utf-8")
-    blocks = re.findall(r"```json\s*\n(.*?)\n```", raw, re.S)
-    if len(blocks) != 1:
-        raise ValueError(
+    return read_json_block(
+        path,
+        missing=(
             "O RULES.md precisa de exatamente um bloco ```json — apague os blocos "
             "extras ou rode `init-rules --force` para gerar um arquivo limpo."
-        )
-    try:
-        r = json.loads(blocks[0])
-    except json.JSONDecodeError:
-        raise ValueError(
+        ),
+        syntax=(
             "O bloco json do RULES.md está com erro de digitação (vírgula ou aspas "
             "sobrando). Rode `init-rules --force` para gerar um arquivo limpo."
-        ) from None
-    if not isinstance(r, dict):
-        raise ValueError(
+        ),
+        not_object=(
             "O bloco json do RULES.md tem que ser um objeto entre chaves. Rode "
             "`init-rules --force` para gerar um arquivo limpo."
-        )
-    return r
+        ),
+    )
 
 
 # A camada global é conveniência editorial: ela nunca fala por uma pessoa. Quem
@@ -278,16 +274,7 @@ def sync_formats(ledger, rules, confirm=False):
         new = format_report(c, rules)
         old = c.get("format", {}).get("target", "native")
         if old != new["target"]:
-            c["approval"] = {
-                "status": "pending",
-                "by": None,
-                "at": None,
-                "revision": None,
-            }
-            c.pop("review", None)
-            c["segment"]["revision"] += 1
-            c["output"] = {"path": None, "sha256": None, "verified": False}
-            c["state"] = "awaiting_approval"
+            invalidate_approval(c, bump_revision=True)
             c["format"] = new
             changed.append(c)
         else:

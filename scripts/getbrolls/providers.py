@@ -124,6 +124,16 @@ def search(provider, query, limit=8, media="any"):
     return items[:limit]
 
 
+def _pick_largest(variants, cap=1920):
+    """Maior variante cujo lado maior não passe de `cap`; sem isso, a maior de todas."""
+    fitting = [v for v in variants if max(v.get("width") or 0, v.get("height") or 0) <= cap]
+    return max(
+        fitting or variants,
+        key=lambda v: (v.get("width") or 0) * (v.get("height") or 0),
+        default={},
+    )
+
+
 def _pexels(query, limit):
     data = get_json(
         "https://api.pexels.com/v1/videos/search",
@@ -144,12 +154,7 @@ def _pexels_rows(data):
         files = [
             v for v in row.get("video_files", []) if v.get("file_type") == "video/mp4" and public_url(v.get("link"))
         ]
-        fitting = [v for v in files if max(v.get("width") or 0, v.get("height") or 0) <= 1920]
-        file = max(
-            fitting or files,
-            key=lambda v: (v.get("width") or 0) * (v.get("height") or 0),
-            default={},
-        )
+        file = _pick_largest(files)
         out.append(
             _media(
                 item,
@@ -188,12 +193,7 @@ def _pixabay_rows(data):
             row.get("user"),
         )
         variants = [v for v in row.get("videos", {}).values() if public_url(v.get("url"))]
-        fitting = [v for v in variants if max(v.get("width") or 0, v.get("height") or 0) <= 1920]
-        v = max(
-            fitting or variants,
-            key=lambda v: (v.get("width") or 0) * (v.get("height") or 0),
-            default={},
-        )
+        v = _pick_largest(variants)
         _poster(item, v.get("thumbnail"))
         out.append(_media(item, v.get("url"), v.get("width"), v.get("height"), row.get("duration")))
     return out
@@ -339,17 +339,8 @@ def _nasa(query, limit, media="any"):
                 )
             ),
         )
-        assets = get_json(
-            "https://images-api.nasa.gov/asset/" + quote(ident, safe=""),
-            cache_ttl=86400,
-        )
         suffixes = (".mp4",) if kind == "video" else NASA_IMAGE_SUFFIXES
-        urls = [
-            encoded_url(v["href"])
-            for v in assets.get("collection", {}).get("items", [])
-            if public_url(v.get("href")) and urlsplit(v["href"]).path.lower().endswith(suffixes)
-        ]
-        urls.sort(key=lambda u: ("~orig" in u, "~medium" not in u, len(u)))
+        urls = _nasa_asset_urls(ident, suffixes)
         out.append(_media(item, urls[0] if urls else None))
     return out
 

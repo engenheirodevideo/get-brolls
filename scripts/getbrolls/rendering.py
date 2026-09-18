@@ -1,8 +1,10 @@
 """Storyboard and credits generated from the canonical manifest."""
 
 import html
+from datetime import date
 from pathlib import Path
 
+from .models import signature
 from .review import review_epoch
 
 
@@ -179,8 +181,8 @@ def render(ledger):
         "---",
         "type: credits",
         "status: current",
-        "created: " + __import__("datetime").date.today().isoformat(),
-        "updated: " + __import__("datetime").date.today().isoformat(),
+        "created: " + date.today().isoformat(),
+        "updated: " + date.today().isoformat(),
         "tags: [get-brolls, credits]",
         "---",
         "",
@@ -210,7 +212,6 @@ def render(ledger):
             content += '<p class="source-note">Aqui só tenho a imagem da fonte: pra gerar o movimento eu precisaria do arquivo original no seu computador.</p>'
         content = f'<section class="review-source"><h2>Fonte coletada</h2>{content}</section>'
         content += script_bubble(c.get("narration"), esc)
-        from .models import signature
 
         records.append(
             {

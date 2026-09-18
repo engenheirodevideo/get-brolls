@@ -70,6 +70,27 @@ def signature(c):
     ).hexdigest()
 
 
+def id_stem(candidate_id):
+    return hashlib.sha256(candidate_id.encode()).hexdigest()[:16]
+
+
+def invalidate_approval(c, bump_revision=False):
+    """Núcleo comum de invalidação: aprovação volta a pendente, review sai,
+    output zera e o estado vira awaiting_approval. `bump_revision=True`
+    incrementa `segment.revision` in place, sem tocar em start_s/end_s nem em
+    `preview` — é o que `sync_formats` (rules.py) precisa. `set_segment`
+    (abaixo) reconstrói `preview` e reescreve `segment` inteiro por conta
+    própria, então chama isto com `bump_revision=False`.
+    """
+    c["approval"] = {"status": "pending", "by": None, "at": None, "revision": None}
+    c.pop("review", None)
+    c["output"] = {"path": None, "sha256": None, "verified": False}
+    c["state"] = "awaiting_approval"
+    if bump_revision:
+        c["segment"]["revision"] += 1
+    return c
+
+
 def set_segment(c, start, end):
     if not all(math.isfinite(x) for x in (start, end)) or start < 0 or end <= start:
         raise ValueError("Intervalo inválido: use segundos finitos, 0 <= início < fim.")
@@ -78,15 +99,12 @@ def set_segment(c, start, end):
         raise ValueError("Intervalo excede a duração do vídeo.")
     if (start, end) != (c["segment"]["start_s"], c["segment"]["end_s"]):
         c["preview"] = {k: v for k, v in c["preview"].items() if k in ("poster_url", "embed_url", "seek_mode")}
-        c.pop("review", None)
+        invalidate_approval(c, bump_revision=False)
         c["segment"] = {
             "start_s": start,
             "end_s": end,
             "revision": c["segment"]["revision"] + 1,
         }
-        c["approval"] = {"status": "pending", "by": None, "at": None, "revision": None}
-        c["state"] = "awaiting_approval"
-        c["output"] = {"path": None, "sha256": None, "verified": False}
     return c
 
 

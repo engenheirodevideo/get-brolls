@@ -43,6 +43,26 @@ SUMMARIES = {
     "deliver": "Organizar os trechos coletados em entrega/, uma pasta por beat",
 }
 
+# Subcomandos que `execute()` (commands.py) de fato leva até
+# `sync_formats(ledger, rules, confirm=...)`: os demais retornam antes (serve, queue,
+# init-rules, init-brief, brief, learn, library, rules) ou estão em READ_ONLY_CONSULTS
+# (references, inspect) — `--confirm-format-change` não tem efeito nenhum lá.
+FORMAT_GATE_SUBCOMMANDS = (
+    "search",
+    "resolve",
+    "preview",
+    "approve",
+    "permit",
+    "reject",
+    "fetch",
+    "verify",
+    "review",
+    "import-review",
+    "remember",
+    "browser-plan",
+    "deliver",
+)
+
 
 def build_parser():
     parser = argparse.ArgumentParser(
@@ -106,11 +126,19 @@ def build_parser():
         )
         if name != "status":
             # Mudar o formato-alvo derruba aprovações humanas; qualquer comando que
-            # sincronize formato precisa deste sim explícito antes de apagá-las.
+            # sincronize formato precisa deste sim explícito antes de apagá-las. Mas
+            # `execute()` só chega a `sync_formats` (commands.py) depois de passar
+            # pelos retornos antecipados de serve/queue/init-rules/init-brief/brief/
+            # learn/library/rules e por cima de READ_ONLY_CONSULTS (references,
+            # inspect) — nesses a flag continua aceita (scripts e agentes já a
+            # passam para eles) mas some do `--help` porque nunca teve efeito ali.
+            reaches_sync_formats = name in FORMAT_GATE_SUBCOMMANDS
             p.add_argument(
                 "--confirm-format-change",
                 action="store_true",
-                help="Confirmar que aprovações já dadas podem ser invalidadas pela mudança de formato",
+                help="Confirmar que aprovações já dadas podem ser invalidadas pela mudança de formato"
+                if reaches_sync_formats
+                else argparse.SUPPRESS,
             )
         if name == "serve":
             g = p.add_mutually_exclusive_group()

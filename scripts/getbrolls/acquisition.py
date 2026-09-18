@@ -1,6 +1,5 @@
 """Private working sources for review; final clips remain approval-gated."""
 
-import hashlib
 import json
 import os
 import tempfile
@@ -8,6 +7,7 @@ from pathlib import Path
 
 from .ledger import digest
 from .media import probe
+from .models import id_stem
 from .runtime import record_warning
 
 INDEX_NAME = "index.json"
@@ -123,7 +123,7 @@ def cache_direct_media(ledger, candidate, refresh=True):
         download(url, target)
         info = probe(target)
         sha = digest(target)
-        final = cache / (hashlib.sha256(candidate["id"].encode()).hexdigest()[:16] + "-" + sha + ".mp4")
+        final = cache / (id_stem(candidate["id"]) + "-" + sha + ".mp4")
         if not final.exists():
             os.replace(target, final)
         elif digest(final) != sha:
@@ -199,7 +199,7 @@ def prepare_source(ledger, candidate, start, end, tolerant=False):
         if end - offset > info["duration_s"] + 0.1 and not tolerant:
             raise ValueError("Original não contém o intervalo solicitado.")
         sha = digest(target)
-        final = cache / (hashlib.sha256(c["id"].encode()).hexdigest()[:16] + "-" + sha + ".mp4")
+        final = cache / (id_stem(c["id"]) + "-" + sha + ".mp4")
         if not final.exists():
             os.replace(target, final)
         elif digest(final) != sha:

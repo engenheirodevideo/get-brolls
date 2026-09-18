@@ -5,7 +5,6 @@ import hashlib
 import http.client
 import ipaddress
 import json
-import os
 import re
 import socket
 import time
@@ -16,6 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from . import __version__
+from .config import cache_root
 from .runtime import record_warning, redact, stderr_tail
 
 
@@ -181,8 +181,7 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
     _network_url(url)
     if params:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
-    cache_root = Path(os.environ.get("GETBROLLS_CACHE_DIR", str(Path.home() / ".cache" / "getbrolls")))
-    cache_path = cache_root / (hashlib.sha256(url.encode()).hexdigest() + ".json")
+    cache_path = cache_root() / (hashlib.sha256(url.encode()).hexdigest() + ".json")
     if cache_ttl and cache_path.is_file() and time.time() - cache_path.stat().st_mtime < cache_ttl:
         try:
             return json.loads(cache_path.read_text(encoding="utf-8"))
@@ -255,7 +254,7 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
     # provider outage, and must not trigger a network retry.
     if cache_ttl and data is not None:
         try:
-            cache_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+            cache_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             temp = cache_path.with_suffix(".tmp")
             temp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
             temp.chmod(0o600)
