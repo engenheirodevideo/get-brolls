@@ -139,6 +139,70 @@ class ProvidersTests(unittest.TestCase):
         self.assertEqual(item["rights"]["status"], "unknown")
         self.assertTrue(item["media_url"].endswith(".mp4"))
 
+    @patch.object(providers, "get_json")
+    def test_a_nasa_details_page_resolves_as_an_image_candidate(self, get):
+        """`search --provider nasa` existia e a página do item era recusada: sem rota."""
+        get.side_effect = [
+            {
+                "collection": {
+                    "items": [
+                        {
+                            "data": [
+                                {
+                                    "nasa_id": "as11-40-5903",
+                                    "title": "Apollo 11",
+                                    "media_type": "image",
+                                    "center": "JSC",
+                                }
+                            ],
+                            "links": [{"rel": "preview", "href": "https://images-assets.nasa.gov/a~thumb.jpg"}],
+                        }
+                    ]
+                }
+            },
+            {
+                "collection": {
+                    "items": [
+                        {"href": "https://images-assets.nasa.gov/as11-40-5903~orig.jpg"},
+                        {"href": "https://images-assets.nasa.gov/metadata.json"},
+                    ]
+                }
+            },
+        ]
+        item = providers.resolve("https://images.nasa.gov/details/as11-40-5903")
+        self.assertEqual("nasa", item["provider"])
+        self.assertEqual("image", item["media"]["kind"])
+        self.assertEqual("image", item["asset_type"])
+        self.assertEqual("https", item["acquisition"]["method"])
+        self.assertTrue(item["media_url"].endswith(".jpg"))
+        self.assertEqual("JSC", item["creator"]["name"])
+        # Nenhuma licença é inventada: continua "unknown" até alguém registrar `permit`.
+        self.assertEqual("unknown", item["rights"]["status"])
+
+    @patch.object(providers, "get_json")
+    def test_an_unknown_nasa_id_says_so_instead_of_inventing_a_candidate(self, get):
+        get.return_value = {"collection": {"items": []}}
+        with self.assertRaises(providers.ProviderError) as caught:
+            providers.resolve("https://images.nasa.gov/details/nao-existe")
+        self.assertIn("nao-existe", str(caught.exception))
+
+    def test_a_nasa_url_without_an_item_id_is_refused_with_the_shape_to_use(self):
+        with self.assertRaises(providers.ProviderError) as caught:
+            providers.resolve("https://images.nasa.gov/search?q=apollo")
+        self.assertIn("images.nasa.gov/details/", str(caught.exception))
+
+    def test_an_unsupported_url_points_at_the_bank_search(self):
+        with self.assertRaises(providers.ProviderError) as caught:
+            providers.resolve("https://example.org/algum-video")
+        self.assertIn("search --provider", str(caught.exception))
+
+    @patch.object(providers, "get_json")
+    def test_refreshing_a_nasa_image_asks_for_the_image_not_an_mp4(self, get):
+        item = providers.candidate("nasa", "as11", "Apollo", "https://images.nasa.gov/details/as11")
+        item["media"]["kind"] = "image"
+        get.return_value = {"collection": {"items": [{"href": "https://images-assets.nasa.gov/as11~orig.jpg"}]}}
+        self.assertTrue(providers.refresh(item)["media_url"].endswith(".jpg"))
+
     @patch.dict(os.environ, {"PEXELS_API_KEY": "fixture-key"})
     @patch.object(providers, "get_json")
     def test_refresh_keeps_approval_and_segment(self, get):

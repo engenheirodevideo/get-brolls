@@ -237,8 +237,9 @@ def validate_brief(data, rules=None):
         if target in FORMATS and target != video["delivery"]["format"]:
             conflicts.append(
                 f'O brief entrega em "{video["delivery"]["format"]}" e o RULES.md está em '
-                f'"{target}". Escolha um dos dois antes de coletar: `init-rules --force` '
-                "muda a regra, ou corrija video.delivery.format no BRIEF.md."
+                f'"{target}". Escolha um dos dois antes de coletar: '
+                f"`init-rules --force --format {video['delivery']['format']}` alinha a "
+                "regra ao brief, ou corrija video.delivery.format no BRIEF.md."
             )
     # RULES.md ilegível ou ausente não é declaração preenchida: a postura que transfere
     # responsabilidade para uma pessoa nunca passa por falta de arquivo para conferir.
@@ -278,7 +279,7 @@ def beat_commands(project, beat):
         commands["search"] = (
             prefix
             + f"search --project {project} --provider {provider} "
-            + f"--query {shlex.quote(query)} --intent {beat['intent']}"
+            + f"--query {shlex.quote(query)} --intent {beat['intent']} --shot {beat['id']}"
         )
     commands["resolve"] = prefix + f"resolve --project {project} {origin} --shot {beat['id']}"
     # Sem --start/--end: o intervalo real sai do que a pessoa viu na fonte, não de um

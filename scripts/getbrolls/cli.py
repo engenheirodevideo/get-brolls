@@ -18,7 +18,7 @@ SUMMARIES = {
     "providers": "Listar fontes disponíveis, transporte e chaves configuradas",
     "doctor": "Diagnosticar dependências, caminhos fixados e fontes utilizáveis",
     "status": "Resumir onde o projeto está por etapa, sem alterar arquivos",
-    "search": "Pesquisar candidatos numa fonte e registrá-los no projeto",
+    "search": "Pesquisar candidatos numa fonte e registrá-los no projeto (--shot liga ao beat; --dry-run não grava)",
     "resolve": "Registrar um candidato a partir de URL pública ou arquivo local",
     "inspect": "Analisar a fonte (duração, capítulos, legendas) antes de coletar",
     "preview": "Gerar prévia (GIF/contact sheet) do intervalo escolhido",
@@ -29,7 +29,7 @@ SUMMARIES = {
     "verify": "Conferir integridade e decodificação dos arquivos coletados",
     "review": "Gerar o Storyboard local em brolls/review.html",
     "import-review": "Importar o JSON de decisões exportado pelo Storyboard",
-    "init-rules": "Criar um RULES.md editável no projeto",
+    "init-rules": "Criar um RULES.md editável no projeto (--format muda o formato-alvo)",
     "rules": "Mostrar as regras editoriais em vigor no projeto",
     "init-brief": "Criar um BRIEF.md editável com o plano deste vídeo",
     "brief": "Mostrar os beats do vídeo e o comando pronto de cada um",
@@ -292,6 +292,12 @@ def build_parser():
                 help="Texto literal da declaração de responsabilidade do usuário",
             )
             p.add_argument(
+                "--format",
+                dest="video_format",
+                choices=["native", "reels", "horizontal"],
+                help="Formato-alvo gravado em video_format; regravar exige --force",
+            )
+            p.add_argument(
                 "--force",
                 action="store_true",
                 help="Regravar o RULES.md existente com as escolhas informadas",
@@ -321,6 +327,15 @@ def build_parser():
                 choices=["literal", "illustrative"],
                 default="literal",
                 help="literal: entidade nomeada; illustrative: ideia genérica",
+            )
+            p.add_argument(
+                "--shot",
+                help="Beat do BRIEF.md a que estes candidatos pertencem, ex.: abertura",
+            )
+            p.add_argument(
+                "--dry-run",
+                action="store_true",
+                help="Listar o que a fonte devolveu sem registrar nada no projeto",
             )
         if name == "resolve":
             p.add_argument("--context-image", help="Print opcional da pessoa; permanece estático")

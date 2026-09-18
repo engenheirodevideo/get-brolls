@@ -288,6 +288,10 @@ class BeatCommandTests(unittest.TestCase):
                 )
                 self.assertEqual("search", parsed["search"].command)
                 self.assertEqual(beat["resolved"]["intent"], parsed["search"].intent)
+                # O `--shot` prometido pelo brief precisa existir também no `search`:
+                # sem ele o candidato nunca se liga ao beat sem re-registro por URL.
+                self.assertEqual(beat["id"], parsed["search"].shot)
+                self.assertFalse(parsed["search"].dry_run)
                 self.assertEqual(beat["id"], parsed["resolve"].shot)
                 self.assertEqual("preview", parsed["preview"].command)
                 # Intervalo não se inventa no brief: quem vê a fonte é que o define.

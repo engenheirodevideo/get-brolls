@@ -3,7 +3,7 @@
 import html
 import os
 import re
-from urllib.parse import parse_qs, quote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from .http import ProviderError, get_json, public_url
 from .models import candidate
@@ -291,6 +291,58 @@ def _nasa(query, limit):
     return out
 
 
+# Arquivos de imagem que o acervo da NASA publica para um mesmo item.
+NASA_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
+
+
+def _nasa_asset_urls(ident, suffixes):
+    """Arquivos públicos deste item, do mais completo para o mais leve."""
+    data = get_json("https://images-api.nasa.gov/asset/" + quote(ident, safe=""), cache_ttl=86400)
+    urls = [
+        v.get("href")
+        for v in data.get("collection", {}).get("items", [])
+        if public_url(v.get("href")) and urlsplit(v["href"]).path.lower().endswith(suffixes)
+    ]
+    urls.sort(key=lambda u: ("~orig" in u, "~medium" not in u, len(u)))
+    return urls
+
+
+def _nasa_details(ident):
+    """`images.nasa.gov/details/<id>` vira candidato pela mesma API pública da busca.
+
+    Recusar esta página enquanto `search --provider nasa` existe deixava o beat de
+    foto estática sem rota nenhuma: a pessoa tem o link do item e não consegue usá-lo.
+    """
+    data = get_json("https://images-api.nasa.gov/search", {"nasa_id": ident}, cache_ttl=86400)
+    rows = data.get("collection", {}).get("items", [])
+    meta = (rows[0].get("data") or [{}])[0] if rows else {}
+    if not meta.get("nasa_id"):
+        raise ProviderError(f"O acervo da NASA não tem item com o id {ident!r}; confira o endereço da página.")
+    nasa_id = str(meta["nasa_id"])
+    video = meta.get("media_type") == "video"
+    item = _base(
+        "nasa",
+        nasa_id,
+        meta.get("title") or nasa_id,
+        "https://images.nasa.gov/details/" + quote(nasa_id, safe=""),
+    )
+    item["creator"]["name"] = meta.get("secondary_creator") or meta.get("center")
+    _license(
+        item,
+        "Verificar condições NASA e autoria do item",
+        "https://www.nasa.gov/nasa-brand-center/images-and-media/",
+        item["creator"]["name"],
+    )
+    _poster(item, next((v.get("href") for v in (rows[0].get("links") or []) if v.get("rel") == "preview"), None))
+    if not video:
+        item["media"]["kind"] = "image"
+        item["asset_type"] = "image"
+    urls = _nasa_asset_urls(nasa_id, (".mp4",) if video else NASA_IMAGE_SUFFIXES)
+    _media(item, urls[0] if urls else None)
+    item["state"] = "candidate"
+    return item
+
+
 def resolve(url):
     if not public_url(url):
         raise ProviderError("Forneça URL pública HTTPS sem credenciais")
@@ -331,13 +383,20 @@ def resolve(url):
             "Instagram · " + match[1],
             "https://www.instagram.com/" + path + "/",
         )
+    elif host in ("images.nasa.gov", "www.images.nasa.gov"):
+        match = re.fullmatch(r"details/(.+)", path)
+        if not match:
+            raise ProviderError("Forneça a URL completa do item: https://images.nasa.gov/details/<id>")
+        return _nasa_details(unquote(match[1]))
     elif host in ("tiktok.com", "www.tiktok.com", "m.tiktok.com"):
         match = re.fullmatch(r"@([A-Za-z0-9_.-]+)/video/(\d+)", path)
         if not match:
             raise ProviderError("Forneça URL completa TikTok @usuario/video/ID; links curtos não são expandidos")
         item = _base("tiktok", match[2], "TikTok · " + match[2], "https://www.tiktok.com/" + path)
     else:
-        raise ProviderError("Fonte de URL não suportada; use busca do banco ou original local")
+        raise ProviderError(
+            "Fonte de URL não suportada; use busca do banco (`search --provider ...`) ou original local"
+        )
     item["state"] = "candidate"
     item["acquisition"].update({"status": "available", "method": "yt-dlp"})
     return item
@@ -368,13 +427,8 @@ def refresh(item):
         )
         rows = _pixabay_rows(data)
     elif name == "nasa":
-        data = get_json("https://images-api.nasa.gov/asset/" + quote(ident, safe=""))
-        urls = [
-            v.get("href")
-            for v in data.get("collection", {}).get("items", [])
-            if public_url(v.get("href")) and urlsplit(v["href"]).path.lower().endswith(".mp4")
-        ]
-        urls.sort(key=lambda u: ("~orig" in u, "~medium" not in u, len(u)))
+        image = (item.get("media") or {}).get("kind") == "image"
+        urls = _nasa_asset_urls(ident, NASA_IMAGE_SUFFIXES if image else (".mp4",))
         if not urls:
             raise ProviderError("Arquivo do provedor não está mais disponível")
         current["media_url"] = urls[0]

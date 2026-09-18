@@ -158,6 +158,9 @@ STATUS_STAGES = (
 
 PREVIEW_ARTIFACTS = ("gif_path", "contact_sheet_path", "poster_path")
 
+# `--shot` de `search` e de `resolve` valem a mesma coisa: o beat vira sufixo do id.
+SHOT_RE = r"[A-Za-z0-9_-]{1,80}"
+
 # Storyboard publicado sem nenhuma prévia: a página sobe, mas não há o que decidir.
 EMPTY_STORYBOARD = (
     "Storyboard vazio: nenhuma prévia. A página sobe, mas não há nada para decidir — "
@@ -305,12 +308,16 @@ def _has_preview(c):
     return any((c.get("preview") or {}).get(key) for key in PREVIEW_ARTIFACTS)
 
 
-def rules_from_flags(template, mode, responsible, declaration):
+def rules_from_flags(template, mode, responsible, declaration, video_format=None):
     """Reescreve só o bloco ```json do modelo, preservando toda a prosa do arquivo."""
     blocks = re.findall(r"```json\s*\n(.*?)\n```", template, re.S)
     if len(blocks) != 1:
         raise ValueError("Modelo de RULES.md precisa de exatamente um bloco JSON.")
     data = json.loads(blocks[0])
+    if video_format is not None:
+        # Único campo que `--format` toca: o resto das regras continua do jeito que a
+        # pessoa deixou. Era esta a lacuna que fazia o conflito brief×rules travar.
+        data["video_format"] = video_format
     rights = data["copyright"]
     rights["mode"] = mode or ("user_declaration" if (responsible or declaration) else rights["mode"])
     if responsible is not None:
@@ -903,14 +910,17 @@ def execute(args):
     if cmd == "init-rules":
         dest = Path(args.project) / "RULES.md"
         dest.parent.mkdir(parents=True, exist_ok=True)
-        has_flags = bool(args.mode or args.responsible or args.declaration)
+        video_format = getattr(args, "video_format", None)
+        has_flags = bool(args.mode or args.responsible or args.declaration or video_format)
         if dest.exists() and not args.force:
             raise ValueError(
                 "RULES.md já existe; edite sem sobrescrever suas regras. "
-                "Use --force com --mode/--responsible/--declaration para regravar só o bloco JSON."
+                "Use --force com --mode/--responsible/--declaration/--format para regravar só o bloco JSON."
             )
         if args.force and not has_flags:
-            raise ValueError("--force só regrava o bloco JSON: informe --mode, --responsible ou --declaration.")
+            raise ValueError(
+                "--force só regrava o bloco JSON: informe --mode, --responsible, --declaration ou --format."
+            )
         template = SKILL_ROOT / "docs" / "RULES.md"
         if has_flags:
             # Regravar preserva o que o usuário já escolheu: a base é o arquivo dele.
@@ -920,9 +930,13 @@ def execute(args):
                 args.mode,
                 args.responsible,
                 args.declaration,
+                video_format=video_format,
             )
             dest.write_text(text, encoding="utf-8")
-            return {"rules": str(dest), "copyright": rights}
+            result = {"rules": str(dest), "copyright": rights}
+            if video_format:
+                result["video_format"] = video_format
+            return result
         shutil.copyfile(template, dest)
         return {"rules": str(dest)}
     if cmd == "init-brief":
@@ -982,6 +996,13 @@ def execute(args):
         args.provider = {"pixel": "pexels", "getbrolls": "auto"}.get(args.provider, args.provider)
         if not 1 <= args.limit <= 50:
             raise ValueError("Use --limit entre 1 e 50.")
+        shot = (getattr(args, "shot", None) or "").strip() or None
+        if shot:
+            # Mesma regra de `resolve --shot`: o beat vira sufixo do id, e é isso que
+            # liga o candidato ao BRIEF.md sem precisar re-registrar por URL depois.
+            if not re.fullmatch(SHOT_RE, shot):
+                raise ValueError("--shot: use 1–80 letras, números, hífen ou underscore.")
+        dry_run = bool(getattr(args, "dry_run", False))
         names = rules["preferred_providers"][args.intent] if args.provider == "auto" else [args.provider]
         if not names:
             raise ValueError(
@@ -1016,6 +1037,14 @@ def execute(args):
                     "kind": args.intent,
                     "reason": "Candidato de busca: correspondência visual deve ser revisada.",
                 }
+                if shot:
+                    c["id"] += ":shot:" + shot
+                    c["shot"] = shot
+                if dry_run:
+                    # Busca de diagnóstico não entra no manifesto: a contagem do
+                    # `status` é do vídeo, não do que o agente experimentou.
+                    items.append(c)
+                    continue
                 c = ledger.add(c)
                 ledger.save("search", c)
                 items.append(c)
@@ -1027,7 +1056,13 @@ def execute(args):
             "errors": errors,
             "excluded_by_rules": excluded,
             "editorial_rules": rules["editorial_rules"],
+            "dry_run": dry_run,
         }
+        if dry_run:
+            result["note"] = (
+                "Busca de diagnóstico: nada foi registrado no projeto. Repita sem "
+                "`--dry-run` para guardar os candidatos que você quiser."
+            )
         # Pistas da biblioteca são memória editorial, não permissão: cada uma
         # repete `rights_not_transferable` e nenhuma toca no candidato.
         found = library.hints(args.query)
@@ -1105,7 +1140,7 @@ def execute(args):
             if args.creator:
                 c["creator"]["name"] = args.creator
         if args.shot:
-            if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", args.shot):
+            if not re.fullmatch(SHOT_RE, args.shot):
                 raise ValueError("--shot: use 1–80 letras, números, hífen ou underscore.")
             c["id"] += ":shot:" + args.shot
             c["shot"] = args.shot

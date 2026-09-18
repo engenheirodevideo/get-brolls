@@ -27,6 +27,56 @@ def run_cli(test, *args, ok=True):
     return json.loads(done.stdout if ok else done.stderr)
 
 
+class VideoFormatFlagTests(unittest.TestCase):
+    """#17: o conflito brief×rules mandava rodar `init-rules --force`, que não mudava o formato."""
+
+    def test_format_sets_video_format_on_a_new_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = run_cli(self, "init-rules", "--project", tmp, "--format", "reels")
+            self.assertEqual("reels", out["video_format"])
+            self.assertEqual("reels", load_rules(tmp)["video_format"])
+
+    def test_format_on_an_existing_file_requires_force(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_cli(self, "init-rules", "--project", tmp)
+            refused = run_cli(self, "init-rules", "--project", tmp, "--format", "reels", ok=False)
+            self.assertIn("--format", json.dumps(refused, ensure_ascii=False))
+            run_cli(self, "init-rules", "--project", tmp, "--format", "reels", "--force")
+            self.assertEqual("reels", load_rules(tmp)["video_format"])
+
+    def test_format_changes_only_that_field_and_keeps_the_prose(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_cli(
+                self,
+                "init-rules",
+                "--project",
+                tmp,
+                "--mode",
+                "user_declaration",
+                "--responsible",
+                "Bruno",
+                "--declaration",
+                TEXT,
+            )
+            before = load_rules(tmp)
+            prose = Path(tmp, "RULES.md").read_text(encoding="utf-8").split("```json")[0]
+            run_cli(self, "init-rules", "--project", tmp, "--format", "horizontal", "--force")
+            after = load_rules(tmp)
+            self.assertEqual("horizontal", after["video_format"])
+            self.assertEqual(before["copyright"], after["copyright"])
+            self.assertEqual(prose, Path(tmp, "RULES.md").read_text(encoding="utf-8").split("```json")[0])
+
+    def test_the_brief_conflict_points_at_a_command_that_can_fix_it(self):
+        from getbrolls.brief import validate_brief
+        from tests.test_brief import VALID
+
+        payload = json.loads(json.dumps(VALID))
+        payload["video"]["delivery"]["format"] = "reels"
+        _, conflicts = validate_brief(payload, {"video_format": "horizontal", "copyright": {}})
+        self.assertTrue(conflicts)
+        self.assertIn("init-rules --force --format reels", conflicts[0])
+
+
 class InitRulesFlagTests(unittest.TestCase):
     def test_without_flags_it_copies_the_template(self):
         with tempfile.TemporaryDirectory() as tmp:
