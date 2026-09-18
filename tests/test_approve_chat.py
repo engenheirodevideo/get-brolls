@@ -7,12 +7,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-CLI = ROOT / "scripts/gb.py"
-sys.path.insert(0, str(ROOT / "scripts"))
-
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _cli import run_cli
+from _paths import CLI, ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
 
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, now, set_segment, signature
@@ -22,17 +20,6 @@ from getbrolls.review import (
     project_id,
     review_epoch,
 )
-
-
-def run_cli(test, *args, ok=True):
-    done = subprocess.run(
-        [sys.executable, str(CLI), *map(str, args)],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-    test.assertEqual(0 if ok else 2, done.returncode, done.stderr)
-    return json.loads(done.stdout if ok else done.stderr)
 
 
 def fixture(root):
@@ -66,14 +53,13 @@ class ApproveChatTests(unittest.TestCase):
             ledger.add(discarded)
             ledger.save("fixture")
             result = run_cli(
-                self,
                 "approve",
                 "--candidate",
                 "local:a",
                 "--candidate",
                 "local:b",
                 "--by",
-                "Bruno",
+                "Ana",
                 "--statement",
                 "Aprovo esses dois que você me mostrou.",
                 "--project",
@@ -91,12 +77,11 @@ class ApproveChatTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
             result = run_cli(
-                self,
                 "approve",
                 "--candidate",
                 "local:a",
                 "--by",
-                "Bruno",
+                "Ana",
                 "--statement",
                 "Aprovo o primeiro.",
                 "--project",
@@ -111,19 +96,18 @@ class ApproveChatTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
             failed = run_cli(
-                self,
                 "approve",
                 "--candidate",
                 "local:a",
                 "--candidate",
                 "local:inexistente",
                 "--by",
-                "Bruno",
+                "Ana",
                 "--statement",
                 "Aprovo os dois.",
                 "--project",
                 tmp,
-                ok=False,
+                expect=2,
             )
             self.assertIn("local:inexistente", json.dumps(failed, ensure_ascii=False))
             self.assertEqual("pending", Ledger(tmp).get("local:a")["approval"]["status"])
@@ -132,11 +116,10 @@ class ApproveChatTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
             result = run_cli(
-                self,
                 "approve",
                 "--all",
                 "--by",
-                "Bruno",
+                "Ana",
                 "--statement",
                 "Aprovei todos.",
                 "--project",
@@ -154,11 +137,10 @@ class ApproveChatTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
             result = run_cli(
-                self,
                 "approve",
                 "--all",
                 "--by",
-                "Bruno",
+                "Ana",
                 "--statement",
                 "Aprovo os dois primeiros trechos.",
                 "--project",
@@ -178,11 +160,10 @@ class ApproveChatTests(unittest.TestCase):
 
             # Rodar de novo não reaprova o que já tem aprovação válida.
             again = run_cli(
-                self,
                 "approve",
                 "--all",
                 "--by",
-                "Bruno",
+                "Ana",
                 "--statement",
                 "Aprovo os dois primeiros trechos.",
                 "--project",
@@ -198,7 +179,6 @@ class ApproveChatTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
             run_cli(
-                self,
                 "approve",
                 "--candidate",
                 "local:a",
@@ -207,7 +187,7 @@ class ApproveChatTests(unittest.TestCase):
                 "--end",
                 1,
                 "--by",
-                "Bruno",
+                "Ana",
                 "--channel",
                 "chat",
                 "--statement",
@@ -216,7 +196,6 @@ class ApproveChatTests(unittest.TestCase):
                 tmp,
             )
             run_cli(
-                self,
                 "approve",
                 "--candidate",
                 "local:b",
@@ -225,7 +204,7 @@ class ApproveChatTests(unittest.TestCase):
                 "--end",
                 2,
                 "--by",
-                "Bruno",
+                "Ana",
                 "--channel",
                 "storyboard",
                 "--project",
@@ -247,21 +226,20 @@ class ApproveChatTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
             error = run_cli(
-                self,
                 "approve",
                 "--all",
                 "--candidate",
                 "local:a",
                 "--by",
-                "Bruno",
+                "Ana",
                 "--statement",
                 "Aprovo.",
                 "--project",
                 tmp,
-                ok=False,
+                expect=2,
             )
             self.assertIn("--all", error["error"])
-            missing = run_cli(self, "approve", "--by", "Bruno", "--statement", "Aprovo.", "--project", tmp, ok=False)
+            missing = run_cli("approve", "--by", "Ana", "--statement", "Aprovo.", "--project", tmp, expect=2)
             self.assertIn("--candidate", missing["error"])
 
 
@@ -272,7 +250,6 @@ class RejectManyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
             result = run_cli(
-                self,
                 "reject",
                 "--candidate",
                 "local:a",
@@ -293,7 +270,7 @@ class RejectManyTests(unittest.TestCase):
     def test_a_single_candidate_keeps_the_old_shape(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
-            result = run_cli(self, "reject", "--candidate", "local:a", "--project", tmp)
+            result = run_cli("reject", "--candidate", "local:a", "--project", tmp)
             self.assertEqual("local:a", result["id"])
             self.assertEqual("rejected", result["state"])
             self.assertIn("Rejeitei local:a", result["summary"]["line"])
@@ -302,7 +279,6 @@ class RejectManyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
             error = run_cli(
-                self,
                 "reject",
                 "--candidate",
                 "local:a",
@@ -310,7 +286,7 @@ class RejectManyTests(unittest.TestCase):
                 "local:nao-existe",
                 "--project",
                 tmp,
-                ok=False,
+                expect=2,
             )
             self.assertIn("local:nao-existe", error["error"])
             # Validação antes da escrita: o item válido da mesma leva não mudou.
@@ -319,7 +295,7 @@ class RejectManyTests(unittest.TestCase):
     def test_the_batch_is_one_transaction(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
-            run_cli(self, "reject", "--candidate", "local:a", "--candidate", "local:b", "--project", tmp)
+            run_cli("reject", "--candidate", "local:a", "--candidate", "local:b", "--project", tmp)
             events = [
                 json.loads(line)
                 for line in (Path(tmp) / "brolls" / "events.jsonl").read_text(encoding="utf-8").splitlines()
@@ -349,11 +325,10 @@ class ApprovedItemsCarryTheAuditTrailTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
             result = run_cli(
-                self,
                 "approve",
                 "--all",
                 "--by",
-                "Bruno Moreira",
+                "Ana Moreira",
                 "--statement",
                 "Aprovo os dois que você mostrou.",
                 "--project",
@@ -374,14 +349,13 @@ class ApprovedItemsCarryTheAuditTrailTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
             result = run_cli(
-                self,
                 "approve",
                 "--candidate",
                 "local:a",
                 "--candidate",
                 "local:b",
                 "--by",
-                "Bruno Moreira",
+                "Ana Moreira",
                 "--statement",
                 "Aprovo esses dois.",
                 "--project",
@@ -397,7 +371,6 @@ class ChatStatementRequiredTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
             single = run_cli(
-                self,
                 "approve",
                 "--candidate",
                 "local:a",
@@ -406,13 +379,13 @@ class ChatStatementRequiredTests(unittest.TestCase):
                 "--end",
                 1,
                 "--by",
-                "Bruno",
+                "Ana",
                 "--project",
                 tmp,
-                ok=False,
+                expect=2,
             )
             self.assertIn("--statement", single["error"])
-            batch = run_cli(self, "approve", "--all", "--by", "Bruno", "--project", tmp, ok=False)
+            batch = run_cli("approve", "--all", "--by", "Ana", "--project", tmp, expect=2)
             self.assertIn("--statement", batch["error"])
             # Nada foi gravado: a recusa acontece antes de tocar no ledger.
             self.assertEqual("pending", Ledger(tmp).get("local:a")["approval"]["status"])
@@ -421,13 +394,12 @@ class ChatStatementRequiredTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
             run_cli(
-                self,
                 "approve",
                 "--all",
                 "--channel",
                 "storyboard",
                 "--by",
-                "Bruno",
+                "Ana",
                 "--project",
                 tmp,
             )
@@ -441,7 +413,7 @@ class ReviewEpochCompatibilityTests(unittest.TestCase):
         c["preview"]["gif_path"] = "previews/a.gif"
         c["approval"] = {
             "status": "approved",
-            "by": "Bruno",
+            "by": "Ana",
             "at": now(),
             "revision": c["segment"]["revision"],
             "signature": signature(c),
@@ -485,7 +457,7 @@ class ReviewEpochCompatibilityTests(unittest.TestCase):
             }
             path = Path(tmp) / "board.json"
             path.write_text(json.dumps(export), encoding="utf-8")
-            result = import_review(Ledger(tmp), str(path), "Bruno")
+            result = import_review(Ledger(tmp), str(path), "Ana")
             self.assertEqual(1, result["imported"])
             self.assertEqual("storyboard", Ledger(tmp).get(c["id"])["approval"]["channel"])
 

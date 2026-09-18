@@ -8,9 +8,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-CLI = Path(__file__).resolve().parents[1] / "scripts/gb.py"
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _media import synth_image, synth_video
+from _paths import CLI
 
 
 def _review_payload(page):
@@ -48,23 +49,7 @@ class CliTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             src = root / "original.mp4"
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-v",
-                    "error",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    "testsrc=size=640x360:duration=3:rate=10",
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
-                    str(src),
-                ],
-                check=True,
-            )
+            synth_video(src, size="640x360", duration=3, rate=10)
             c = self.call("resolve", "--file", src, "--project", root)
             id = c["id"]
             base = ["--candidate", id, "--project", root]
@@ -129,23 +114,7 @@ class CliTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             src = root / "original.mp4"
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-v",
-                    "error",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    "testsrc2=size=160x90:duration=2:rate=10",
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
-                    str(src),
-                ],
-                check=True,
-            )
+            synth_video(src, size="160x90", duration=2, rate=10, pattern="testsrc2")
             c = self.call(
                 "resolve",
                 "--file",
@@ -219,23 +188,7 @@ class CliTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             src = root / "original.mp4"
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-v",
-                    "error",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    "testsrc=size=160x90:duration=3:rate=10",
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
-                    str(src),
-                ],
-                check=True,
-            )
+            synth_video(src, size="160x90", duration=3, rate=10)
             c = self.call("resolve", "--file", src, "--project", root)
             base = ["--candidate", c["id"], "--project", root]
             out = self.call("preview", *base, "--reference-only")
@@ -250,10 +203,7 @@ class CliTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             src = root / "foto.png"
-            subprocess.run(
-                ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=red:s=64x64", "-frames:v", "1", str(src)],
-                check=True,
-            )
+            synth_image(src)
             c = self.call("resolve", "--file", src, "--project", root)
             base = ["--candidate", c["id"], "--project", root]
             out = self.call("preview", *base)

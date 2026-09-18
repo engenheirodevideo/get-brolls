@@ -1,12 +1,10 @@
 import base64
-import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from getbrolls.storyboard import render_page
+from _paths import ROOT
 
-ROOT = Path(__file__).resolve().parents[1]
+from getbrolls.storyboard import render_page
 
 
 class StoryboardTest(unittest.TestCase):

@@ -6,10 +6,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _paths  # noqa: F401  (efeito de import: insere scripts/ em sys.path; ROOT é de getbrolls.rules, não deste helper)
+from _media import synth_image
 
 from getbrolls.browser import plan
 from getbrolls.http import _scrub
@@ -118,21 +118,7 @@ class RulesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             image = root / "news.png"
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-v",
-                    "error",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    "color=c=blue:s=390x844",
-                    "-frames:v",
-                    "1",
-                    str(image),
-                ],
-                check=True,
-            )
+            synth_image(image, color="blue", size="390x844")
 
             def call(*args, ok=True):
                 run = subprocess.run(

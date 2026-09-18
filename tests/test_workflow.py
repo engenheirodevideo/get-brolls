@@ -1,15 +1,15 @@
 import json
 import os
 import shutil
-import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from _media import synth_video
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+
 from getbrolls.config import load_env, settings
 from getbrolls.ledger import Ledger
 from getbrolls.media import probe, review_preview
@@ -111,23 +111,7 @@ class WorkflowTests(unittest.TestCase):
             root = Path(d)
             (root / "previews").mkdir()
             src = root / "source.mp4"
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-v",
-                    "error",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    "testsrc2=size=240x426:duration=2:rate=24",
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
-                    str(src),
-                ],
-                check=True,
-            )
+            synth_video(src, size="240x426", duration=2, rate=24, pattern="testsrc2")
             cfg: dict[str, Any] = settings()
             cfg["frames"] = 5
             result = review_preview(src, root / "previews", "gif", 0, 2, cfg)
@@ -161,23 +145,7 @@ class ContactSheetTests(unittest.TestCase):
 
     def make_source(self, root, seconds=4):
         src = root / "source.mp4"
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-v",
-                "error",
-                "-f",
-                "lavfi",
-                "-i",
-                f"testsrc2=size=240x426:duration={seconds}:rate=24",
-                "-c:v",
-                "libx264",
-                "-pix_fmt",
-                "yuv420p",
-                str(src),
-            ],
-            check=True,
-        )
+        synth_video(src, size="240x426", duration=seconds, rate=24, pattern="testsrc2")
         return src
 
     def test_frame_times_cover_the_whole_interval(self):

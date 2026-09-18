@@ -9,14 +9,14 @@ arquivo editado pela pessoa preservado e `verify` que avisa em vez de reprovar.
 import json
 import os
 import stat
-import sys
 import tempfile
 import types
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+# A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _paths import ROOT
 
 from getbrolls import delivery
 from getbrolls.ledger import Ledger

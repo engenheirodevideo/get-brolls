@@ -2,13 +2,11 @@
 
 import json
 import re
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
 
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, set_segment

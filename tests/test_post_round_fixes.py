@@ -6,18 +6,15 @@ inexistente, o erro de tamanho que mandava ler as regras editoriais.
 """
 
 import json
-import sys
 import tempfile
 import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
-
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _paths import ROOT, SKILLS
 
 from getbrolls import social
 from getbrolls.commands import execute, mark_rejected
@@ -273,7 +270,7 @@ class FormatConflictIsActionable(unittest.TestCase):
         self.assertIn("antes** de você validar", body)
 
     def test_the_skill_and_mirror_say_it_too(self):
-        for path in (ROOT / "SKILL.md", ROOT / "skills/get-brolls/SKILL.md"):
+        for path in SKILLS:
             text = path.read_text(encoding="utf-8")
             self.assertIn("alinhe o `video_format` do RULES.md antes de validar", text)
 
