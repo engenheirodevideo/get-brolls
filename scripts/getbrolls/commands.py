@@ -1254,8 +1254,7 @@ def execute(args):
             raise ValueError("--all aprova os intervalos já escolhidos; não use --start/--end.")
         if not args.all and not chosen:
             raise ValueError(
-                "Informe --candidate ID (repita a flag para vários), ou use --all para "
-                "todos os candidatos com prévia."
+                "Informe --candidate ID (repita a flag para vários), ou use --all para todos os candidatos com prévia."
             )
         if len(chosen) > 1 and (args.start is not None or args.end is not None):
             raise ValueError("--start/--end valem para um candidato só; aprove um por vez para mudar o intervalo.")
