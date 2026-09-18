@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -125,6 +126,22 @@ def find_font():
 def _filter_path(path):
     """Escape a path for use inside an ffmpeg filter option (colons, backslashes)."""
     return str(path).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+
+
+# Caracteres de controle nunca chegam ao banner: um `\n` no título quebraria a linha
+# do id e do corte, e um NUL trunca o arquivo que o ffmpeg lê.
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _banner_text(value):
+    """Texto de uma linha do banner do contact sheet, sem controles.
+
+    `:`, `'` e `%` ficam como estão de propósito: o texto vai por `textfile=` e o
+    banner é desenhado com `expansion=none`, então o ffmpeg trata tudo como literal.
+    Era exatamente aí que o cabeçalho sumia — um título com `%` fazia o drawtext
+    tentar expandir `%{...}` e desistir do filtro inteiro.
+    """
+    return _CONTROL.sub(" ", str(value or "")).strip()
 
 
 def clock(seconds):
@@ -286,8 +303,8 @@ def review_preview(src, directory, stem, start, end, config, label=None):
                 "fontcolor=white:box=1:boxcolor=black@0.65:boxborderw=6,"
             )
             title_file = stage / "title.txt"
-            title = str(label.get("title") or "").replace("\n", " ").strip()
-            ident = str(label.get("id") or "")
+            title = _banner_text(label.get("title"))
+            ident = _banner_text(label.get("id"))
             title_file.write_text(
                 f"{title}\n[{ident}]  corte {clock(src_start)}–{clock(src_end)}"
                 + (f" de {clock(label['duration'])}" if label.get("duration") else "")
@@ -297,7 +314,10 @@ def review_preview(src, directory, stem, start, end, config, label=None):
             banner = (
                 f",pad=iw:ih+72:0:72:color=0x0b0b0b,drawtext=fontfile='{font_opt}':"
                 f"textfile='{_filter_path(title_file)}':x=16:y=12:fontsize=26:"
-                "fontcolor=white:line_spacing=8"
+                # `expansion=none`: sem isso, um título com `%` (ou com `\`) faz o
+                # drawtext tentar expandir `%{...}`, falhar a análise e derrubar o
+                # banner inteiro — o cabeçalho sumia e o resto da folha saía normal.
+                "fontcolor=white:line_spacing=8:expansion=none"
             )
         # Sample one frame per bin start across the whole interval, never only its head.
         run(

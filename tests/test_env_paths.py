@@ -324,3 +324,65 @@ class DeclaredKeys(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BriefAndRulesOutsideTheProjectTests(unittest.TestCase):
+    """`GB_BRIEF_FILE`/`GB_RULES_FILE` podem morar em qualquer lugar da máquina."""
+
+    def run_cli(self, *args, env=None, ok=True):
+        environment = dict(os.environ)
+        environment.update(env or {})
+        done = subprocess.run(
+            [sys.executable, str(CLI), *map(str, args)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=environment,
+        )
+        self.assertEqual(0 if ok else 2, done.returncode, done.stderr)
+        return json.loads(done.stdout if ok else done.stderr)
+
+    def test_init_brief_creates_the_parent_dirs_of_an_outside_path(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as vault:
+            # Fora do projeto e com duas pastas que ainda não existem.
+            target = (Path(vault) / "clientes" / "acme" / "reel-01.md").resolve()
+            result = self.run_cli("init-brief", "--project", tmp, env={"GB_BRIEF_FILE": str(target)})
+            self.assertEqual(str(target), result["brief"])
+            self.assertTrue(target.is_file())
+            # Nada foi criado na pasta do projeto: o arquivo que vale é o apontado.
+            self.assertFalse((Path(tmp) / "BRIEF.md").exists())
+            # E o `brief` lê exatamente esse arquivo.
+            report = self.run_cli("brief", "--project", tmp, env={"GB_BRIEF_FILE": str(target)})
+            self.assertTrue(report["beats"])
+
+    def test_init_rules_always_writes_the_project_file_not_gb_rules_file(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as vault:
+            layer = (Path(vault) / "camada" / "RULES.md").resolve()
+            layer.parent.mkdir(parents=True)
+            layer.write_text(
+                (ROOT / "docs" / "RULES.md").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            result = self.run_cli("init-rules", "--project", tmp, env={"GB_RULES_FILE": str(layer)})
+            self.assertEqual(str(Path(tmp) / "RULES.md"), result["rules"])
+            self.assertEqual(
+                (ROOT / "docs" / "RULES.md").read_text(encoding="utf-8"),
+                (Path(tmp) / "RULES.md").read_text(encoding="utf-8"),
+            )
+            self.assertTrue((Path(tmp) / "RULES.md").is_file())
+
+    def test_a_missing_gb_rules_file_fails_naming_the_variable(self):
+        from getbrolls.rules import load_rules
+
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = str(Path(tmp) / "nao" / "existe" / "RULES.md")
+            with patch.dict(os.environ, {"GB_RULES_FILE": missing}):
+                with self.assertRaises(ValueError) as caught:
+                    load_rules(tmp)
+            self.assertIn("GB_RULES_FILE", str(caught.exception))
+
+    def test_a_missing_gb_brief_file_fails_naming_the_variable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = str(Path(tmp) / "nao" / "existe" / "BRIEF.md")
+            error = self.run_cli("brief", "--project", tmp, env={"GB_BRIEF_FILE": missing}, ok=False)
+            self.assertIn("GB_BRIEF_FILE", error["error"])

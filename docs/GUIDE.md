@@ -135,6 +135,14 @@ Precedência: a variável explícita vence a descoberta. Ausente ou vazia, o com
 GB_FFMPEG_PATH=/opt/homebrew/bin/ffmpeg python3 scripts/gb.py doctor
 ```
 
+#### Brief e regras fora da pasta do projeto
+
+`GB_BRIEF_FILE` e `GB_RULES_FILE` podem apontar para **qualquer lugar** da máquina — fora do projeto e fora da pasta da skill: um cofre de notas, um repositório de cliente, uma pasta sincronizada. Caminho relativo é resolvido a partir da pasta atual, e `~` é expandido. Como qualquer `GB_*`, valem pelo ambiente do processo, pelo `.env` da skill ou por `--env-file`.
+
+`init-brief` escreve exatamente no arquivo que o `brief` vai ler, `GB_BRIEF_FILE` incluído, e **cria as pastas-mãe** que faltarem: `GB_BRIEF_FILE=~/clientes/acme/briefs/reel-01.md python3 scripts/gb.py init-brief --project .` funciona mesmo que `~/clientes/acme/briefs/` ainda não exista.
+
+`GB_RULES_FILE` é outra coisa: não é o RULES.md do projeto, é uma **camada intermediária** entre o RULES.md global (`~/.getbrolls/RULES.md`) e o do projeto, e vem de fora do projeto — por isso os campos de responsabilidade (quem assina, a declaração) são descartados dela, com aviso. Ela precisa existir: apontando para um arquivo inexistente, o comando falha nomeando a variável. `init-rules` sempre grava o `RULES.md` da pasta do projeto (criando as pastas-mãe que faltarem), nunca o arquivo de `GB_RULES_FILE` — para preparar essa camada, copie `docs/RULES.md` para lá à mão e edite o bloco ```json.
+
 ### Codex e Claude Code
 
 Use o repositório oficial [engenheirodevideo/get-brolls](https://github.com/engenheirodevideo/get-brolls): `git clone https://github.com/engenheirodevideo/get-brolls.git`. Clone ou copie a pasta completa da skill para **um** dos destinos abaixo. Escolha instalação pessoal ou por projeto para evitar duplicatas com o mesmo nome. Exclua `.venv/`, `.tools/`, `__pycache__/`, projetos e arquivos privados ao copiar uma árvore de desenvolvimento. Execute o instalador no destino final; não mova uma venv entre pastas:
@@ -761,7 +769,7 @@ Entregável de revisão independente da landing page. `gb.py review` gera `broll
 2. Execute `preview` com intervalo, `--narration` (fala exata, quando fornecida; omita se ausente) e `--reason` (motivo da fonte).
 3. O topo mostra o insert em sua proporção; à direita, fonte e ações de revisão. Galeria sempre estática. O GIF anima só no quadro selecionado; clique para alternar estático/animação. A preferência de movimento reduzido é respeitada.
 4. Revisor aprova, pede ajuste ou sugere fonte; ajustes exigem comentário. Exporte JSON para devolver decisões. O botão PDF gera versão estática dos quadros com fontes/comentários.
-5. Importe com `import-review --by`. Projeto, IDs, assinatura do intervalo/fonte e versão da decisão (`reviewEpoch`) são validados. Mudança de intervalo ou substituição da decisão invalida a exportação anterior. Em caso de revisão desatualizada, regenere o Storyboard, confira e exporte novamente; não altere assinaturas manualmente.
+5. Importe com `import-review --by`. Projeto, IDs, assinatura do intervalo/fonte e versão da decisão (`reviewEpoch`) são validados. Mudança de intervalo ou substituição da decisão invalida a exportação anterior. Em caso de revisão desatualizada, regenere o Storyboard, confira e exporte novamente; não altere assinaturas manualmente. Um board exportado antes da 2.4 continua sendo aceito pela época antiga (`legacy_review_epoch`), mas só enquanto o item não mudou: se a aprovação ou o intervalo mudou depois do export, o trecho é recusado como `stale_epoch` (ou `signature_mismatch`) e a decisão antiga nunca é reaplicada por cima da nova.
 6. Só colete o corte final depois de aprovação humana e registro da permissão. Clips MP4 ficam separados do storyboard.
 
 Configurações, presets e limitações estão no [README](../README.md). `preview` obtém mídia de trabalho remota nas rotas de aquisição implementadas; no Instagram por navegador, importe primeiro o MP4 unido. Um poster isolado, inclusive com `--reference-only`, não comprova movimento.

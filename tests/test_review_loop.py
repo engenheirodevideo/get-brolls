@@ -97,6 +97,49 @@ class PartialImportTests(unittest.TestCase):
             self.assertEqual(1, result["imported"])
             self.assertEqual("signature_mismatch", result["skipped"][0]["reason"])
 
+    def test_a_legacy_epoch_export_is_refused_once_the_item_moved_on(self):
+        """A compatibilidade com a época 2.3.x não pode virar replay de decisão velha.
+
+        Aceitar `legacy_review_epoch` existe para não jogar fora decisão humana já
+        tomada. Mas o board antigo continua sendo um retrato de um estado que passou:
+        se o item mudou depois do export, a decisão dele não vale mais. Aqui são os
+        dois jeitos de o item mudar, e nenhum dos dois é aplicado.
+        """
+        from getbrolls.models import approve, signature
+        from getbrolls.review import legacy_review_epoch
+
+        # 1) Mudou a aprovação (mesmo intervalo): a assinatura ainda bate, a época não.
+        with tempfile.TemporaryDirectory() as folder:
+            ledger = project_with(folder, "one", "two")
+            target = ledger.data["items"][0]
+            payload = exported(ledger)
+            payload["items"][0]["reviewEpoch"] = legacy_review_epoch(target)
+            approve(target, "Outra Pessoa", "chat", "aprovo agora")
+            ledger.save("fixture", target)
+            result = import_review(ledger, save_review(ledger, payload), "Human")
+            skipped = {s["id"]: s["reason"] for s in result["skipped"]}
+            self.assertEqual("stale_epoch", skipped[payload["items"][0]["id"]])
+            self.assertEqual(signature(target), payload["items"][0]["signature"])
+            # Nada de replay: quem assina continua sendo a decisão mais nova.
+            fresh = Ledger(folder).get(payload["items"][0]["id"])
+            self.assertEqual("Outra Pessoa", fresh["approval"]["by"])
+            self.assertNotIn("review", fresh)
+
+        # 2) Mudou o intervalo: aí nem a assinatura bate, e a recusa vem antes.
+        with tempfile.TemporaryDirectory() as folder:
+            ledger = project_with(folder, "one", "two")
+            target = ledger.data["items"][0]
+            payload = exported(ledger)
+            payload["items"][0]["reviewEpoch"] = legacy_review_epoch(target)
+            set_segment(target, 3, 9)
+            ledger.save("fixture", target)
+            result = import_review(ledger, save_review(ledger, payload), "Human")
+            skipped = {s["id"]: s["reason"] for s in result["skipped"]}
+            self.assertEqual("signature_mismatch", skipped[payload["items"][0]["id"]])
+            fresh = Ledger(folder).get(payload["items"][0]["id"])
+            self.assertEqual("pending", fresh["approval"]["status"])
+            self.assertIsNone(fresh["approval"]["by"])
+
     def test_an_adjustment_without_a_comment_is_skipped_as_invalid_item(self):
         with tempfile.TemporaryDirectory() as folder:
             ledger = project_with(folder, "one", "two")
