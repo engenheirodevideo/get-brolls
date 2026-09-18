@@ -285,6 +285,13 @@ def next_action(state):
             blocking_human=True,
         )
     missing = list(brief.get("missing") or [])
+    # Decisão humana pendente ganha de todo degrau de trabalho do agente — inclusive
+    # de "beat sem candidato". Com prévia na mesa esperando alguém decidir, mandar
+    # buscar mais material empurra a pessoa para uma pilha maior em vez da parada
+    # obrigatória da revisão, que é a guarda central desta skill. Só o conflito de
+    # formato passa na frente, porque ele invalida a própria decisão que seria tomada.
+    if counts["pending"] > 0:
+        return _approve_action(state, counts["pending"])
     if missing:
         first = missing[0]
         return _action(
@@ -304,11 +311,6 @@ def next_action(state):
             "mostrar o que apareceu." + _library_hint() + warning,
             state,
         )
-    # Decisão humana pendente ganha de tudo: de gerar mais prévia e também do veredito
-    # de fim de fluxo. Há prévia na mesa esperando alguém decidir, e dizer "terminamos"
-    # ali desmancharia a parada obrigatória da revisão.
-    if counts["pending"] > 0:
-        return _approve_action(state, counts["pending"])
     if flow_complete(state, counts):
         # O estado humano vem antes do rascunho do agente: com a entrega pronta e
         # conferida, mandar inspecionar um candidato descartado diria à pessoa que o

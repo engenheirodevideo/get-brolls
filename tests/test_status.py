@@ -166,11 +166,28 @@ class StatusCommandTests(unittest.TestCase):
             payload = self.call("status", "--project", tmp)
             summary = payload["summary"]
             self.assertEqual({"beats": 2, "covered": 0, "missing": 2}, summary["brief"])
-            # Nenhum beat tem candidato: o passo é buscar pelo primeiro deles.
+            # Nenhum beat tem candidato, mas o item `d` tem prévia e ninguém decidiu:
+            # a decisão humana ganha do degrau de buscar material para o primeiro beat.
+            self.assertEqual("approve", summary["do"]["step"])
+            self.assertTrue(summary["do"]["blocking_human"])
+            self.assertNotIn("abertura", summary["do"]["for_human"])
+            self.assertEqual(before, sorted(p.name for p in Path(tmp).iterdir()))
+
+    def test_brief_search_comes_back_once_nobody_owes_a_decision(self):
+        from tests.test_brief import VALID, write_brief
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = fixture(tmp)
+            # Decide o único item com prévia pendente: a escada volta ao beat sem material.
+            undecided = next(c for c in ledger.data["items"] if c["title"] == "Aguardando decisão")
+            undecided["approval"]["status"] = "rejected"
+            undecided["state"] = "rejected"
+            ledger.save_many("decide", [undecided])
+            write_brief(tmp, VALID)
+            summary = self.call("status", "--project", tmp)["summary"]
             self.assertEqual("brief-search", summary["do"]["step"])
             self.assertIn("abertura", summary["do"]["for_human"])
             self.assertIn("search --project", summary["do"]["command"])
-            self.assertEqual(before, sorted(p.name for p in Path(tmp).iterdir()))
 
     def test_status_tells_a_broken_brief_apart_from_a_missing_one(self):
         from tests.test_brief import VALID, write_brief

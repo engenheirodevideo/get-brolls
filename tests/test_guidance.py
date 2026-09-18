@@ -428,6 +428,73 @@ class HumanStateWinsOverAgentDraft(unittest.TestCase):
         self.assertNotIn("Gere prévias", phrase)
 
 
+class HumanDecisionOutranksAgentWork(unittest.TestCase):
+    """Prévia esperando decisão ganha de qualquer degrau de trabalho do agente."""
+
+    def _pending_with_missing_beats(self):
+        return base_state(
+            brief={
+                "beats": 3,
+                "covered": 1,
+                "missing": [
+                    {"id": "abertura", "search": None, "intent": "literal", "target": "foguete SLS"},
+                    {"id": "fecho", "search": None, "intent": "literal", "target": "plateia"},
+                ],
+                "conflicts": [],
+            },
+            counts=full(candidates=6, previews=5, pending=5),
+        )
+
+    def test_pending_previews_beat_the_missing_beat_rung(self):
+        action = next_action(self._pending_with_missing_beats())
+        self.assertEqual("approve", action["step"])
+        self.assertTrue(action["blocking_human"])
+        self.assertIn("5 item(ns)", action["why"])
+        self.assertNotIn("abertura", action["for_human"])
+
+    def test_no_search_inspect_or_preview_rung_wins_while_a_human_owes_a_decision(self):
+        for extra in (
+            {},
+            {"duration_unknown": 2, "inspect_candidate": "youtube:abc"},
+            {"counts": full(candidates=6, previews=0, pending=5)},
+        ):
+            with self.subTest(extra=sorted(extra)):
+                state = dict(self._pending_with_missing_beats(), **extra)
+                self.assertEqual("approve", next_action(state)["step"])
+
+    def test_only_the_format_conflict_outranks_the_human_decision(self):
+        state = dict(self._pending_with_missing_beats(), format_pending=2)
+        self.assertEqual("format", next_action(state)["step"])
+
+    def test_without_pending_previews_the_missing_beat_rung_comes_back(self):
+        state = dict(self._pending_with_missing_beats(), counts=full(candidates=6, previews=5))
+        self.assertEqual("brief-search", next_action(state)["step"])
+
+    def test_status_ladder_and_status_next_agree_with_the_guidance_rung(self):
+        """`summary.next` e `summary.do` não podem nomear etapas diferentes."""
+        from getbrolls.commands import STATUS_LADDER, status_next
+
+        counts = {
+            "candidates": 6,
+            "previews": 5,
+            "pending": 5,
+            "rejected": 0,
+            "approved": 0,
+            "permitted": 0,
+            "delivered": 0,
+            "verified": 0,
+        }
+        line = status_next(counts, 0, pending_preview=1, undelivered=0)
+        self.assertIn("decisão", line)
+        # A escada bruta só é consultada depois da decisão humana: o degrau de busca
+        # dela jamais pode responder por um projeto com prévia na mesa.
+        ladder = next(
+            step for matches, step in STATUS_LADDER if matches({**counts, "pending_preview": 1, "undelivered": 0})
+        )
+        self.assertNotIn("search", ladder)
+        self.assertNotEqual(ladder, line)
+
+
 class MissingBeatPhrasing(unittest.TestCase):
     def test_a_literal_beat_without_material_is_simply_searched(self):
         state = base_state(
