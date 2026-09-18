@@ -1258,8 +1258,10 @@ class PreviewFilesOnEveryBranchTests(unittest.TestCase):
         item = {"preview": {"contact_sheet_path": "previews/a.jpg", "poster_path": None, "gif_path": None}}
         files = preview_files(FakeLedger(), item)
         self.assertEqual({"contact_sheet", "poster", "gif", "review"}, set(files))
-        self.assertTrue(files["contact_sheet"].endswith("brolls/previews/a.jpg"))
-        self.assertTrue(Path(files["contact_sheet"]).is_absolute())
+        sheet = Path(files["contact_sheet"])
+        # Comparar por partes: no Windows o caminho resolvido usa `\`.
+        self.assertEqual(sheet.parts[-3:], ("brolls", "previews", "a.jpg"))
+        self.assertTrue(sheet.is_absolute())
         self.assertIsNone(files["poster"])
 
     def test_providers_reference_locates_the_contact_sheet_in_both_shapes(self):
