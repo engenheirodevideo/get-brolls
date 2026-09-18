@@ -345,6 +345,8 @@ def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):
         # Quantas faixas a fonte anuncia ao todo; `subtitle_langs` mostra só as úteis.
         "subtitle_langs_total": total,
         "description": data.get("description") or "",
+        # Só o que a fonte declara: serve para avisar sobre 360°/VR antes da prévia.
+        "tags": [str(tag) for tag in (data.get("tags") or []) if tag],
         "subtitles": subtitles,
     }
 

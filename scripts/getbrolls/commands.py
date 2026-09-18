@@ -1024,7 +1024,7 @@ def execute(args):
         return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"items": []}
 
     if cmd == "inspect":
-        return inspect_source(ledger, args)
+        return inspect_source(ledger, args, config)
 
     if cmd == "search":
         from getbrolls import library
@@ -1531,7 +1531,40 @@ def preview_files(ledger, c):
     return files
 
 
-def inspect_source(ledger, args):
+# Fonte acima disto já é vídeo de evento inteiro/livestream: o trecho existe, mas
+# achar onde ele está custa caro, e vale avisar antes de pedir mídia.
+LONG_SOURCE_S = 1800
+# "360" solto no título ou nas tags do vídeo; `360p` e `1360` não contam.
+_THREE_SIXTY = re.compile(r"(?<![0-9a-zA-Z])360(?![0-9a-zA-Z])", re.IGNORECASE)
+
+
+def clamp_windows(windows, cap):
+    """Encurta a janela sugerida até o teto de prévia: sugerir o que `preview` recusa é pior que sugerir menos.
+
+    Mexe só no fim, e no lugar: a janela continua começando onde a fonte disse que o
+    assunto começa, e o contrato de chaves de `candidate_windows` fica igual.
+    """
+    if not cap or cap <= 0:
+        return windows
+    for window in windows:
+        if window["end_s"] - window["start_s"] > cap:
+            window["end_s"] = round(window["start_s"] + cap, 3)
+    return windows
+
+
+def inspect_warnings(probe):
+    """Avisos sobre a fonte em si — o que costuma virar retrabalho depois da prévia."""
+    found = []
+    duration = probe.get("duration_s")
+    if duration and float(duration) > LONG_SOURCE_S:
+        found.append(f"fonte longa: {int(round(float(duration) / 60))} min")
+    haystack = " ".join([str(probe.get("title") or ""), *(probe.get("tags") or [])])
+    if _THREE_SIXTY.search(haystack):
+        found.append("vídeo 360°")
+    return found
+
+
+def inspect_source(ledger, args, config=None):
     """O que a fonte já conta sobre si, antes de qualquer pedido de mídia.
 
     Somente leitura sobre decisão e intervalo: com `--candidate`, o único campo que
@@ -1557,14 +1590,16 @@ def inspect_source(ledger, args):
         if not (url or "").strip():
             raise ValueError("--url não pode ser vazio: informe a URL pública da fonte.")
     probe = probe_remote(url, cache=ledger.root.parent / ".getbrolls-sources")
-    windows = candidate_windows(probe, args.query, args.max_windows or 3)
+    cap = float((config or {}).get("max_seconds") or 0)
+    windows = clamp_windows(candidate_windows(probe, args.query, args.max_windows or 3), cap)
     if c is not None and probe["duration_s"]:
         # Único efeito no projeto: agora `set_segment` sabe recusar o que não cabe.
         c["media"]["duration_s"] = probe["duration_s"]
         ledger.save("inspect", c)
     return {
         # Veredito primeiro, como nos outros comandos: quantas janelas e qual a melhor.
-        "summary": inspect_summary(windows, probe),
+        "summary": inspect_summary(windows, probe, cap),
+        "warnings": inspect_warnings(probe),
         "candidate": c["id"] if c is not None else None,
         "url": url,
         "title": probe.get("title"),
@@ -1586,7 +1621,7 @@ def _has_cues(probe):
     return any((entry or {}).get("cues") for entry in (probe.get("subtitles") or {}).values())
 
 
-def inspect_summary(windows, probe):
+def inspect_summary(windows, probe, cap=0.0):
     """`{line, next}` em PT-BR: quantas janelas saíram, qual a melhor e o que fazer com ela."""
     if not windows:
         return {
@@ -1615,6 +1650,12 @@ def inspect_summary(windows, probe):
     )
     if probe.get("duration_s"):
         line += f" O vídeo tem {_clock(probe['duration_s'])}."
+    if cap:
+        # A janela já sai cortada no teto; dizer o teto evita pedir um intervalo que
+        # o `preview` recusaria logo depois.
+        line += f" A prévia aceita no máximo {cap:g} s por vez (GB_PREVIEW_MAX_SECONDS)."
+    for warning in inspect_warnings(probe):
+        line += f" Atenção — {warning}."
     return {
         "line": line,
         "next": (

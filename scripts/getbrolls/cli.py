@@ -60,6 +60,13 @@ def build_parser():
     for name in ("providers", "doctor"):
         p = sub.add_parser(name, help=SUMMARIES[name], description=SUMMARIES[name])
         if name == "doctor":
+            # O SKILL.md diz que `--project` vai em todo comando, e a primeira chamada
+            # do fluxo é o `doctor`: recusá-lo ali é contradizer a instrução logo na
+            # largada. Aceito e ignorado — o diagnóstico é da instalação, não do projeto.
+            p.add_argument(
+                "--project",
+                help="Aceito por uniformidade e ignorado: o diagnóstico é da instalação, não do projeto",
+            )
             p.add_argument(
                 "--live",
                 action="store_true",

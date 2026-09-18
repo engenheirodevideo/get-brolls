@@ -537,6 +537,81 @@ class InspectCommandTests(unittest.TestCase):
             build_parser().parse_args(["inspect", "--project", "/tmp/p"])
 
 
+class SuggestedWindowFitsThePreviewTests(unittest.TestCase):
+    """Fricção 3 da rodada 2: o `inspect` sugeria 11 s e o `preview` recusava aos 10 s."""
+
+    def test_a_long_window_is_clamped_to_the_preview_ceiling(self):
+        from getbrolls.commands import clamp_windows
+
+        windows = [{"start_s": 122.0, "end_s": 133.0, "text": "x", "source": "chapter", "score": 0.0}]
+        clamped = clamp_windows(windows, 10.0)
+        self.assertEqual(132.0, clamped[0]["end_s"])
+        self.assertEqual(122.0, clamped[0]["start_s"])
+        # O contrato de chaves da janela não muda com o corte.
+        self.assertEqual({"start_s", "end_s", "text", "source", "score"}, set(clamped[0]))
+
+    def test_the_command_suggests_an_interval_the_preview_accepts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = stub_ytdlp(tmp, WITH_EVERYTHING, VTT)
+            run_cli(["init-rules", "--project", tmp])
+            done = run_cli(
+                ["inspect", "--project", tmp, "--url", URL, "--query", "céu laranja"],
+                env={**env, "GB_PREVIEW_MAX_SECONDS": "10"},
+            )
+            self.assertEqual(0, done.returncode, done.stdout + done.stderr)
+            payload = json.loads(done.stdout)
+            for window in payload["candidate_windows"]:
+                self.assertLessEqual(window["end_s"] - window["start_s"], 10.0 + 1e-6)
+            self.assertIn("GB_PREVIEW_MAX_SECONDS", payload["summary"]["line"])
+            self.assertIn("10 s", payload["summary"]["line"])
+
+
+class UnusualSourceWarningsTests(unittest.TestCase):
+    """Fricção 6 da rodada 2: nem duração de risco nem 360° apareciam antes da prévia."""
+
+    def test_a_long_source_and_a_360_video_are_announced(self):
+        from getbrolls.commands import inspect_warnings
+
+        self.assertEqual([], inspect_warnings({"duration_s": 120.0, "title": "Curto"}))
+        self.assertEqual(["fonte longa: 207 min"], inspect_warnings({"duration_s": 12420.0, "title": "Transmissão"}))
+        self.assertEqual(["vídeo 360°"], inspect_warnings({"duration_s": 60.0, "title": "NASA KSC 360 tour"}))
+        self.assertEqual(["vídeo 360°"], inspect_warnings({"duration_s": 60.0, "title": "Tour", "tags": ["vr", "360"]}))
+        # `360p` e `1360` são resolução e número, não formato esférico.
+        self.assertEqual([], inspect_warnings({"duration_s": 60.0, "title": "Arquivo em 360p", "tags": ["1360"]}))
+
+    def test_the_command_reports_the_warnings_in_the_payload_and_in_the_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = {
+                **WITH_EVERYTHING,
+                "title": "Cobertura 360 do lançamento",
+                "duration": 12600,
+                "tags": ["360"],
+            }
+            env = stub_ytdlp(tmp, payload, VTT)
+            run_cli(["init-rules", "--project", tmp])
+            done = run_cli(["inspect", "--project", tmp, "--url", URL], env=env)
+            self.assertEqual(0, done.returncode, done.stdout + done.stderr)
+            body = json.loads(done.stdout)
+            self.assertEqual(["fonte longa: 210 min", "vídeo 360°"], body["warnings"])
+            self.assertIn("fonte longa", body["summary"]["line"])
+            self.assertIn("360", body["summary"]["line"])
+
+
+class DoctorAcceptsProjectTests(unittest.TestCase):
+    """Fricção 4 da rodada 2: o SKILL manda `--project` em todo comando e o doctor recusava."""
+
+    def test_doctor_takes_and_ignores_project(self):
+        parsed = build_parser().parse_args(["doctor", "--project", "/tmp/p"])
+        self.assertEqual("doctor", parsed.command)
+        self.assertEqual("/tmp/p", parsed.project)
+        with tempfile.TemporaryDirectory() as tmp:
+            done = run_cli(["doctor", "--project", tmp])
+            self.assertEqual(0, done.returncode, done.stdout + done.stderr)
+            self.assertIn("summary", json.loads(done.stdout))
+            # Comando de diagnóstico não cria projeto nenhum.
+            self.assertFalse((Path(tmp) / "brolls").exists())
+
+
 class ScanTests(unittest.TestCase):
     def test_preview_scan_is_a_flag_and_the_cap_is_a_known_env_var(self):
         from getbrolls.config import KEYS, settings
