@@ -23,7 +23,7 @@ from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, now, set_segment
 
 
-def fetched(source_id, title, shot=None, clip: str | None = "clips/x.mp4", sheet="previews/x.jpg"):
+def fetched(source_id, title, shot=None, clip: str | None = "clips/x.mp4", sheet: str | None = "previews/x.jpg"):
     c = candidate("local", source_id, title, source_url="https://example.org/" + source_id)
     set_segment(c, 0, 2)
     c["creator"]["name"] = "Autora Exemplo"
@@ -314,10 +314,15 @@ class Build(unittest.TestCase):
             audited(args, execute)
             index = (Path(tmp) / "entrega" / "README.md").read_text(encoding="utf-8")
             self.assertNotIn("Fluxo completo", index)
-            self.assertNotIn("sem decisão", index)
-            # A seção "Próximo passo" pede a decisão que falta, nas duas rotas.
-            self.assertIn("Storyboard", index)
-            self.assertIn("Agora é com você", index)
+            # A seção "Próximo passo" diz o que está pronto e o que ficou pendente.
+            self.assertIn(
+                "Entrega pronta (1 trecho). Há 1 prévia sem decisão no projeto — decida ou rejeite.",
+                index,
+            )
+            # Quem lê este arquivo está na pasta, não na conversa: prometer que o
+            # agente "vai subir o Storyboard" aqui é promessa que o README não cumpre.
+            self.assertNotIn("vou subir o Storyboard", index)
+            self.assertNotIn("Agora é com você", index)
 
     def test_a_stray_note_inside_a_beat_folder_is_preserved(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -477,3 +482,82 @@ class VerifyHook(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MixedDeliveryIndex(unittest.TestCase):
+    """Parte link, parte cópia: nenhum aviso global é verdade para os dois."""
+
+    ROWS = [
+        {
+            "beat": "abertura",
+            "narration": "Fala 1",
+            "target": "Palco",
+            "file": "01/a.mp4",
+            "state": "verified",
+            "rights": "permitted",
+            "method": "hardlink",
+        },
+        {
+            "beat": "meio",
+            "narration": "Fala 2",
+            "target": "Plateia",
+            "file": "02/b.mp4",
+            "state": "verified",
+            "rights": "permitted",
+            "method": "copy",
+        },
+    ]
+
+    def test_the_column_answers_per_row_instead_of_one_global_warning(self):
+        index = delivery.render_index(self.ROWS, "nada pendente")
+        self.assertIn("| Beat | Narração | Alvo | Arquivo | Estado | Direitos | Edição |", index)
+        self.assertIn("| 01/a.mp4 | verified | permitted | original compartilhado |", index)
+        self.assertIn("| 02/b.mp4 | verified | permitted | editável |", index)
+        self.assertIn("**Esta entrega tem os dois casos.**", index)
+        # Os avisos globais mentiriam sobre metade dos arquivos.
+        self.assertNotIn("**Editar aqui é editar o original.**", index)
+        self.assertNotIn("**Esta é uma cópia independente**", index)
+
+    def test_a_uniform_delivery_keeps_the_single_warning_and_no_column(self):
+        links = delivery.render_index([self.ROWS[0]], "x")
+        self.assertIn("**Editar aqui é editar o original.**", links)
+        self.assertNotIn("Edição |", links)
+        self.assertNotIn("original compartilhado", links)
+        copies = delivery.render_index([self.ROWS[1]], "x", copies=True)
+        self.assertIn("**Esta é uma cópia independente**", copies)
+        self.assertNotIn("Edição |", copies)
+
+    def test_a_real_mixed_delivery_produces_the_column(self):
+        from unittest.mock import patch
+
+        real = delivery.link_or_copy
+        calls = {"n": 0}
+
+        def alternating(src, dest, read_only=False):
+            # O primeiro arquivo vira link, o segundo cai para cópia — o caso real é
+            # o sistema recusar o link de um arquivo só (outro volume, por exemplo).
+            calls["n"] += 1
+            if calls["n"] == 2:
+                import shutil
+
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest)
+                return "copy"
+            return real(src, dest, read_only=read_only)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project(
+                tmp,
+                [
+                    fetched("a", "Palco", shot="abertura", clip="clips/a.mp4", sheet=None),
+                    fetched("b", "Plateia", shot="meio", clip="clips/b.mp4", sheet=None),
+                ],
+            )
+            with patch.object(delivery, "link_or_copy", alternating):
+                report = delivery.build_delivery(tmp)
+            self.assertEqual({"hardlink", "copy"}, {i["method"] for i in report["items"]})
+            index = Path(report["readme"]).read_text(encoding="utf-8")
+            self.assertIn("| Edição |", index)
+            self.assertIn("original compartilhado", index)
+            self.assertIn("editável", index)
+            self.assertIn("**Esta entrega tem os dois casos.**", index)

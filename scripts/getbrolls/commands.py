@@ -808,7 +808,7 @@ def deliver_report(ledger, rules, dry_run=False):
         ledger.root.parent,
         dry_run=dry_run,
         ledger=ledger,
-        for_human=lambda: _flow_next(ledger, rules),
+        for_human=lambda: _delivery_next(ledger, rules),
     )
     verb = "Organizaria" if dry_run else "Organizei"
     beats = len({item["beat"] for item in report["items"]})
@@ -823,6 +823,26 @@ def deliver_report(ledger, rules, dry_run=False):
         line += " Deixei intocado o que você criou lá: " + ", ".join(report["kept"]) + "."
     # Mesma escada de `status` e `brief`: a pessoa ouve a mesma frase em qualquer comando.
     return {"summary": {"line": line, "next": _flow_next(ledger, rules)}, **report}
+
+
+def _delivery_next(ledger, rules):
+    """O "Próximo passo" do `entrega/README.md`, que não é o mesmo da conversa.
+
+    Com entrega pronta e prévia sem decisão, a escada normal mandaria subir o
+    Storyboard — mas quem está lendo esse README está na pasta de arquivos, não na
+    conversa, e o servidor pode nem estar de pé. Aqui o texto diz o que está pronto
+    e o que ficou pendente, sem prometer nada que este arquivo não possa cumprir.
+    """
+    items = ledger.data["items"]
+    delivered = sum(1 for c in items if (c.get("delivery") or {}).get("path"))
+    pending = sum(1 for c in items if STAGE_TESTS["pending"](c))
+    if delivered and pending:
+        return (
+            f"Entrega pronta ({_count(delivered, 'trecho', 'trechos')}). "
+            f"Há {_count(pending, 'prévia', 'prévias')} sem decisão no projeto — "
+            "decida ou rejeite."
+        )
+    return _flow_next(ledger, rules)
 
 
 def _needs_preview(items):

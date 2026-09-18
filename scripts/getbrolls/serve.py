@@ -32,6 +32,16 @@ PING_PATH = "/__ping"
 MAX_SAVE_BYTES = 2000000
 PID_FILE = ".serve.pid"
 LOG_FILE = ".serve.log"
+# O log da rodada anterior fica guardado em `.serve.log.1`, cortado no último 1 MB:
+# perder o motivo da queda anterior é pior que um arquivo a mais, e deixar o log
+# crescer sem teto enche a pasta do projeto do usuário.
+LOG_ROTATE_FILE = ".serve.log.1"
+LOG_KEEP_BYTES = 1024 * 1024
+# Teto do ping de identidade. O `status` é leitura barata: quando o PID morreu nem
+# perguntamos, e quando está vivo o servidor local responde em milissegundos — uma
+# repetição cobre o aperto de um processo que acabou de subir.
+PING_TIMEOUT_S = 0.25
+PING_RETRIES = 1
 # Espera pelo servidor de fundo: generosa de propósito, porque uma máquina de CI
 # fria leva segundos para subir o interpretador e um filho morto falha na hora.
 BACKGROUND_TIMEOUT = 60.0
@@ -377,11 +387,50 @@ def _ping(port, session, timeout=1.0):
     return isinstance(answer, dict) and answer.get("session") == session
 
 
+def _rotate_log(log):
+    """Guarda o log da rodada anterior em `.serve.log.1`, com no máximo `LOG_KEEP_BYTES`.
+
+    Roda no `start_background`, antes de zerar o log novo. Só o último 1 MB é
+    guardado: o fim do arquivo é onde está o erro, e o começo de um log de horas de
+    servidor não ajuda ninguém. Falha de disco aqui nunca impede o servidor de subir.
+    """
+    try:
+        if not log.is_file() or log.stat().st_size == 0:
+            return
+        with open(log, "rb") as stream:
+            if log.stat().st_size > LOG_KEEP_BYTES:
+                stream.seek(-LOG_KEEP_BYTES, os.SEEK_END)
+            kept = stream.read()
+        rotated = log.with_name(LOG_ROTATE_FILE)
+        rotated.write_bytes(kept)
+        try:
+            os.chmod(rotated, 0o600)
+        except OSError:
+            pass
+    except OSError:
+        return
+
+
 def _ours(data):
-    """O PID gravado ainda é o nosso servidor? Existir não basta: tem que responder."""
+    """O PID gravado ainda é o nosso servidor? Existir não basta: tem que responder.
+
+    A ordem importa para o custo: `_reap` derruba o zumbi do nosso próprio filho já
+    encerrado (que ainda passaria no `kill(pid, 0)`), `_alive` responde na hora, e só
+    um PID vivo paga o ping. Com o PID morto, `state()` não abre socket nenhum.
+    """
     if not data:
         return False
-    return _alive(data.get("pid")) and _ping(data.get("port"), data.get("session"))
+    pid = data.get("pid")
+    if isinstance(pid, int) and pid > 0:
+        _reap(pid)
+    if not _alive(pid):
+        return False
+    for attempt in range(PING_RETRIES + 1):
+        if _ping(data.get("port"), data.get("session"), timeout=PING_TIMEOUT_S):
+            return True
+        if attempt < PING_RETRIES and not _alive(pid):
+            return False
+    return False
 
 
 def state(project):
@@ -430,6 +479,7 @@ def start_background(project, port: int = DEFAULT_PORT):
     if current["running"]:
         return {"background": True, "already_running": True, **current}
     log = directory / LOG_FILE
+    _rotate_log(log)
     log.write_text("", encoding="utf-8")
     scripts = Path(__file__).resolve().parents[1]
     command = [

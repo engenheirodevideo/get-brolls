@@ -291,8 +291,35 @@ def render_origin(c, media_name, created=None, method="hardlink"):
     return "\n".join(lines)
 
 
+# Numa entrega misturada (parte link, parte cópia), nenhum aviso global é verdade: um
+# diz "editar aqui é editar o original" sobre arquivos que são cópias independentes, o
+# outro diz o contrário sobre hardlinks. A resposta vira coluna, linha a linha.
+MIXED_NOTE = (
+    "**Esta entrega tem os dois casos.** Parte dos arquivos é o mesmo arquivo de "
+    "`brolls/` com outro nome (hardlink) e parte é cópia independente — o sistema não "
+    "deixou criar link para todos. A coluna **Edição** diz qual é qual: "
+    "`original compartilhado` vem somente-leitura e editar ali edita o original "
+    "(copie antes de mexer); `editável` você muda à vontade. Para receber tudo como "
+    "cópia, rode o `deliver` com `GB_DELIVERY_COPY=1`."
+)
+# Rótulo por linha quando a entrega é misturada.
+EDIT_LABELS = {"copy": "editável", "hardlink": "original compartilhado", "symlink": "original compartilhado"}
+
+
+def _mixed(rows):
+    """A entrega tem cópia e link ao mesmo tempo? Aí nenhum aviso global serve."""
+    kinds = {"copy" if row.get("method") == "copy" else "link" for row in rows if row.get("method")}
+    return len(kinds) > 1
+
+
 def render_index(rows, for_human=None, created=None, conflicts=(), copies=False):
     """`entrega/README.md`: a tabela que responde “onde estão meus arquivos”."""
+    mixed = _mixed(rows)
+    columns = ["beat", "narration", "target", "file", "state", "rights"]
+    headers = ["Beat", "Narração", "Alvo", "Arquivo", "Estado", "Direitos"]
+    if mixed:
+        columns.append("edit")
+        headers.append("Edição")
     lines = _frontmatter("delivery-index", created, ["get-brolls", "entrega"])
     lines += [
         "# Seus trechos",
@@ -301,22 +328,20 @@ def render_index(rows, for_human=None, created=None, conflicts=(), copies=False)
         "para o seu editor; o `ORIGEM.md` ao lado diz de onde ele veio e o que você me "
         "disse sobre poder usar.",
         "",
-        COPY_NOTE if copies else EDIT_WARNING,
+        MIXED_NOTE if mixed else (COPY_NOTE if copies else EDIT_WARNING),
         "",
-        "| Beat | Narração | Alvo | Arquivo | Estado | Direitos |",
-        "|---|---|---|---|---|---|",
+        "| " + " | ".join(headers) + " |",
+        "|" + "---|" * len(headers),
     ]
     for row in rows:
+        cells = dict(row)
+        if mixed:
+            cells["edit"] = EDIT_LABELS.get(row.get("method") or "", "—")
         lines.append(
-            "| "
-            + " | ".join(
-                str(row.get(key) or "—").replace("|", "/").replace("\n", " ")
-                for key in ("beat", "narration", "target", "file", "state", "rights")
-            )
-            + " |"
+            "| " + " | ".join(str(cells.get(key) or "—").replace("|", "/").replace("\n", " ") for key in columns) + " |"
         )
     if not rows:
-        lines.append("| — | — | — | nenhum trecho coletado ainda | — | — |")
+        lines.append("| " + " | ".join(["—"] * (len(headers) - 4)) + " | nenhum trecho coletado ainda | — | — |")
     if conflicts:
         lines += [
             "",
@@ -525,6 +550,9 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
                     "file": f"{group['dir']}/{names['media']}",
                     "state": c.get("state"),
                     "rights": (c.get("rights") or {}).get("status"),
+                    # Como este arquivo chegou aqui: é o que decide se editar nele
+                    # editaria o original.
+                    "method": method,
                 }
             )
     expected.add(INDEX)

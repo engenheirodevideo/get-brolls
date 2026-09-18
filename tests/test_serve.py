@@ -473,3 +473,97 @@ class SaveWriteHardeningTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 serve.save_review(brolls, {"items": []})
             self.assertEqual([], list(elsewhere.iterdir()))
+
+
+class LogRotationTests(unittest.TestCase):
+    """O log da rodada anterior não pode sumir nem crescer sem teto."""
+
+    def test_the_previous_log_is_kept_in_serve_log_1_on_start(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            brolls = Path(tmp) / "brolls"
+            brolls.mkdir(parents=True)
+            log = brolls / serve.LOG_FILE
+            log.write_text("por que o servidor caiu ontem\n", encoding="utf-8")
+            serve._rotate_log(log)
+            rotated = brolls / serve.LOG_ROTATE_FILE
+            self.assertEqual("por que o servidor caiu ontem\n", rotated.read_text(encoding="utf-8"))
+
+    def test_only_the_last_megabyte_survives_the_rotation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            brolls = Path(tmp) / "brolls"
+            brolls.mkdir(parents=True)
+            log = brolls / serve.LOG_FILE
+            log.write_bytes(b"a" * (serve.LOG_KEEP_BYTES + 5000) + b"FIM")
+            serve._rotate_log(log)
+            kept = (brolls / serve.LOG_ROTATE_FILE).read_bytes()
+            self.assertEqual(serve.LOG_KEEP_BYTES, len(kept))
+            # O fim do log é o que interessa: é onde está o erro.
+            self.assertTrue(kept.endswith(b"FIM"))
+
+    def test_a_missing_or_empty_log_rotates_to_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            brolls = Path(tmp) / "brolls"
+            brolls.mkdir(parents=True)
+            log = brolls / serve.LOG_FILE
+            serve._rotate_log(log)
+            self.assertFalse((brolls / serve.LOG_ROTATE_FILE).exists())
+            log.write_text("", encoding="utf-8")
+            serve._rotate_log(log)
+            self.assertFalse((brolls / serve.LOG_ROTATE_FILE).exists())
+
+
+class DeadPidCostsNothingTests(unittest.TestCase):
+    """`status` é leitura barata: com o PID morto não se abre socket nenhum."""
+
+    def dead_pid(self):
+        import subprocess as _subprocess
+
+        done = _subprocess.Popen([sys.executable, "-c", "pass"])
+        done.wait(timeout=10)
+        return done.pid
+
+    def test_state_with_a_dead_pid_answers_under_a_quarter_second(self):
+        import json as _json
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            brolls = root / "brolls"
+            brolls.mkdir(parents=True)
+            (brolls / ".serve.pid").write_text(
+                _json.dumps(
+                    {
+                        # Porta que ninguém escuta e que, num firewall calado, seguraria
+                        # o ping até o timeout.
+                        "pid": self.dead_pid(),
+                        "port": 9,
+                        "session": "sessao-de-um-processo-morto",
+                        "urls": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            started = time.monotonic()
+            answer = serve.state(root)
+            elapsed = time.monotonic() - started
+            self.assertFalse(answer["running"])
+            self.assertIsNone(answer["pid"])
+            self.assertLessEqual(elapsed, 0.25, f"`state()` levou {elapsed:.3f} s com o PID morto")
+
+    def test_the_ping_never_waits_longer_than_a_quarter_second_per_try(self):
+        self.assertEqual(0.25, serve.PING_TIMEOUT_S)
+        self.assertEqual(1, serve.PING_RETRIES)
+
+    def test_a_dead_pid_does_not_open_a_socket_at_all(self):
+        import json as _json
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            brolls = root / "brolls"
+            brolls.mkdir(parents=True)
+            (brolls / ".serve.pid").write_text(
+                _json.dumps({"pid": self.dead_pid(), "port": 9, "session": "x", "urls": []}),
+                encoding="utf-8",
+            )
+            with patch.object(serve, "_ping", side_effect=AssertionError("o ping não devia acontecer")):
+                self.assertFalse(serve.state(root)["running"])
