@@ -11,6 +11,7 @@ tags: [get-brolls]
 ## Unreleased
 
 - `.env.example` reescrito em inglês, por seção (prévias, chaves de provedor, regras e brief, pasta pessoal, caminhos de ferramentas, fonte, ritmo da fila, cache e entrega): cada variável traz o que faz, valores aceitos, faixa e padrão, tirados de `config.py` e `queue.py`, e o cabeçalho explica o formato do arquivo (sem interpolação, o shell vence, chave desconhecida é erro). As mesmas linhas continuam ativas; nenhuma mudança de comportamento. `.env.example.pt-BR` traz os mesmos comentários em português, e `tests/test_env_paths.py` exige que os dois arquivos só difiram nos comentários (mesmas chaves, ordem, valores e estado).
+- Docs: os READMEs ganham a linha da 2.4.3 na lista de atualizações; o template de PR pede `scripts/check.sh` e diz que o espelho da skill é gerado; `docs/QUALITY.md` chama a rodada da 2.3.7 de linha de base, não de rodada mais recente.
 
 ## 2.4.3 — 2026-09-18
 
