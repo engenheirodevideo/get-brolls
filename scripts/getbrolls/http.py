@@ -275,6 +275,22 @@ def download(url, target, max_bytes=512 * 1024 * 1024):
     target = Path(target)
     if max_bytes <= 0:
         raise ProviderError("Limite de bytes inválido")
+
+    def too_big(size=None):
+        """Diz o tamanho e o teto, em MB, e o que fazer — não manda ler RULES.md.
+
+        O teto de download não vem das regras editoriais: é limite de transporte.
+        Mandar a pessoa abrir `docs/RULES.md` a fazia procurar um ajuste que não
+        existe lá, e a mensagem não dizia nem quanto o arquivo tinha.
+        """
+        cap = max_bytes / (1024 * 1024)
+        actual = f"{size / (1024 * 1024):.1f} MB" if size else "tamanho acima do teto"
+        return ProviderError(
+            f"Mídia excede limite de download: o arquivo tem {actual} e o teto desta "
+            f"coleta é {cap:.0f} MB. Escolha um trecho menor com `preview --start/--end` "
+            "antes do `fetch`, ou use uma variante de resolução mais baixa da mesma fonte."
+        )
+
     created = False
     success = False
     try:
@@ -282,7 +298,7 @@ def download(url, target, max_bytes=512 * 1024 * 1024):
         with _opener().open(request, timeout=30) as response:
             length = response.headers.get("Content-Length")
             if length and int(length) > max_bytes:
-                raise ProviderError("Mídia excede limite de download")
+                raise too_big(int(length))
             try:
                 output = target.open("xb")
             except OSError as error:
@@ -298,7 +314,7 @@ def download(url, target, max_bytes=512 * 1024 * 1024):
                         break
                     received += len(chunk)
                     if received > max_bytes:
-                        raise ProviderError("Mídia excede limite de download")
+                        raise too_big(received)
                     try:
                         output.write(chunk)
                     except OSError as error:

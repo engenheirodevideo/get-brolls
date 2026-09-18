@@ -39,6 +39,8 @@ Para quando o projeto ainda não tem `BRIEF.md` e alguém pediu b-roll. O objeti
 
 Default não é invenção: ele fica visível no arquivo e na mensagem de devolução, e a pessoa pode mudar qualquer um. O que **nunca** tem default é declaração de responsabilidade preenchida em nome de alguém.
 
+**Quando a pessoa nomeia a plataforma, o RULES.md muda junto.** Se ela disse "Reel", "Stories", "Shorts" (→ `reels`) ou "vídeo horizontal", "YouTube", "TikTok no computador" (→ `horizontal`), esse é o formato do vídeo — e o `video_format` do RULES.md, que nasce em `native`, tem que dizer o mesmo **antes** de você validar. Rode `init-rules --format reels --force --project ...` (ou `--format horizontal`) junto com o `init-brief`, e só então `brief --validate`. Pular isso faz o `brief` devolver um conflito de formato que parece um erro do arquivo quando é só o default do RULES.md que ninguém alinhou — e o conflito bloqueia a revisão mais adiante.
+
 ## Depois da entrevista
 
 1. Escreva o `BRIEF.md` na pasta do projeto (use `init-brief --project ...` para partir do modelo, ou escreva o arquivo direto — um único bloco ```json).

@@ -37,6 +37,10 @@ MAX_HINT_S = 120
 # Teto de palavras da query sugerida, igual ao de `search`: fonte de vídeo casa por
 # palavra, e o `target` é escrito para gente ler, não para a API procurar.
 QUERY_MAX_TOKENS = 6
+# Fontes que publicam foto, na ordem em que valem a tentativa para um beat de imagem.
+STILL_SOURCES = ("commons", "nasa")
+# O `target` fala de um quadro parado, não de um vídeo: a busca tem que pedir imagem.
+STILL_WORDS = ("foto", "fotografia", "imagem", "print", "still", "captura de tela", "screenshot", "retrato")
 # Palavras que não estreitam busca nenhuma; sair com elas só gasta espaço do teto.
 QUERY_STOPWORDS = frozenset(
     """a o as os um uma uns umas de do da dos das em no na nos nas ao aos à às pelo pela
@@ -249,11 +253,15 @@ def validate_brief(data, rules=None):
     if isinstance(rules, dict):
         target = rules.get("video_format")
         if target in FORMATS and target != video["delivery"]["format"]:
+            # A mensagem tem que caber numa ação: sem o comando literal, agentes leram
+            # isto como "o brief está inválido" e pararam o fluxo inteiro num aviso.
             conflicts.append(
                 f'O brief entrega em "{video["delivery"]["format"]}" e o RULES.md está em '
-                f'"{target}". Escolha um dos dois antes de coletar: '
-                f"`init-rules --force --format {video['delivery']['format']}` alinha a "
-                "regra ao brief, ou corrija video.delivery.format no BRIEF.md."
+                f'"{target}". Não é erro do brief; é um default do RULES.md que ninguém '
+                "alinhou ainda. Resolva com um destes dois, e siga: "
+                f"`init-rules --format {video['delivery']['format']} --force --project <projeto>` "
+                "alinha a regra ao brief (é o caso quando a pessoa nomeou a plataforma), "
+                f'ou troque "video.delivery.format" para "{target}" no BRIEF.md.'
             )
     # RULES.md ilegível ou ausente não é declaração preenchida: a postura que transfere
     # responsabilidade para uma pessoa nunca passa por falta de arquivo para conferir.
@@ -285,6 +293,14 @@ def search_query(beat, limit=QUERY_MAX_TOKENS):
     words = re.findall(r"[^\W_]+(?:[-'][^\W_]+)*", beat["target"], re.UNICODE)
     kept = [w for w in words if w.lower() not in QUERY_STOPWORDS] or words
     return " ".join(kept[:limit]) or beat["target"]
+
+
+def wants_a_still(beat):
+    """O beat pede um quadro parado? `target`/`notes` dizem, e o asset_type confirma."""
+    if str(beat.get("asset_type") or "").startswith("image"):
+        return True
+    haystack = " ".join(str(beat.get(key) or "") for key in ("target", "notes")).lower()
+    return any(word in haystack for word in STILL_WORDS)
 
 
 def missing_provider_keys(beat):
@@ -351,16 +367,22 @@ def beat_commands(project, beat):
     """
     project = shlex.quote(str(Path(project).expanduser().resolve()))
     prefix = f"{_cli_prefix()} "
-    provider = next((s for s in beat["allowed_sources"] if s in SEARCHABLE), None)
+    still = wants_a_still(beat)
+    # Um beat de foto no YouTube devolve vídeo, sempre: a fonte de imagem vem antes,
+    # e a busca sai com `--media image` para o acervo não responder só com vídeo.
+    provider = next((s for s in beat["allowed_sources"] if still and s in STILL_SOURCES), None) or next(
+        (s for s in beat["allowed_sources"] if s in SEARCHABLE), None
+    )
     query = search_query(beat)
     origin = "--file ARQUIVO" if beat["allowed_sources"] == ["local"] else "--url URL_PUBLICA"
     narration = f" --narration {shlex.quote(beat['narration'])}" if beat.get("narration") else ""
     commands = {}
     if provider:
+        media = " --media image" if still and provider in STILL_SOURCES else ""
         commands["search"] = (
             prefix
             + f"search --project {project} --provider {provider} "
-            + f"--query {shlex.quote(query)} --intent {beat['intent']} --shot {beat['id']}"
+            + f"--query {shlex.quote(query)}{media} --intent {beat['intent']} --shot {beat['id']}"
         )
     # Banco de imagem não tem página para colar: sugerir `resolve --url` num beat que
     # só aceita pexels/pixabay manda a pessoa procurar um link que não existe.

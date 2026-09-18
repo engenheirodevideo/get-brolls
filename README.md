@@ -206,10 +206,13 @@ python3 scripts/gb.py queue --action add|next|mark|status ...   # enfileira, dá
 
 ```text
 python3 scripts/gb.py import-review ...   # importa suas decisões do storyboard
+python3 scripts/gb.py reject --candidate ID --reason "por que saiu"   # descarta e guarda o porquê
 python3 scripts/gb.py permit ...          # registra as condições de uso da fonte
 python3 scripts/gb.py fetch ...           # baixa o corte final aprovado
 python3 scripts/gb.py verify ...          # confere a entrega no projeto
 ```
+
+`--reason` é opcional e fica gravado no candidato como `rejection.reason`; o `status` mostra esse texto em `items[].rejection_reason`, então quem abrir o projeto meses depois lê por que aquele trecho saiu sem precisar perguntar a ninguém.
 
 **6. Se perdeu?** Pergunte onde o projeto está:
 

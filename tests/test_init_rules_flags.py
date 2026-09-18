@@ -77,7 +77,7 @@ class VideoFormatFlagTests(unittest.TestCase):
         payload["video"]["delivery"]["format"] = "reels"
         _, conflicts = validate_brief(payload, {"video_format": "horizontal", "copyright": {}})
         self.assertTrue(conflicts)
-        self.assertIn("init-rules --force --format reels", conflicts[0])
+        self.assertIn("init-rules --format reels --force --project", conflicts[0])
 
 
 class InitRulesFlagTests(unittest.TestCase):
