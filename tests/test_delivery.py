@@ -291,6 +291,34 @@ class Build(unittest.TestCase):
             self.assertNotIn("Antes de gerar prévia", index)
             self.assertNotIn("inspect --project", index)
 
+    def test_the_index_asks_for_the_pending_decision_instead_of_saying_it_is_done(self):
+        """Entregar o que foi aprovado não fecha o fluxo enquanto houver prévia sem decisão."""
+        from getbrolls.commands import execute
+        from getbrolls.runtime import audited
+
+        with tempfile.TemporaryDirectory() as tmp:
+            waiting = candidate("local", "espera", "Prévia esperando decisão")
+            set_segment(waiting, 0, 2)
+            waiting["preview"]["contact_sheet_path"] = "previews/espera.jpg"
+            waiting["state"] = "awaiting_approval"
+            project(tmp, [fetched("a", "Palco", shot="abertura"), waiting])
+            Path(tmp, "RULES.md").write_text((ROOT / "docs" / "RULES.md").read_text(encoding="utf-8"), encoding="utf-8")
+            with_brief(tmp)
+            args = types.SimpleNamespace(
+                command="deliver",
+                project=tmp,
+                env_file=None,
+                dry_run=False,
+                confirm_format_change=False,
+            )
+            audited(args, execute)
+            index = (Path(tmp) / "entrega" / "README.md").read_text(encoding="utf-8")
+            self.assertNotIn("Fluxo completo", index)
+            self.assertNotIn("sem decisão", index)
+            # A seção "Próximo passo" pede a decisão que falta, nas duas rotas.
+            self.assertIn("Storyboard", index)
+            self.assertIn("Agora é com você", index)
+
     def test_a_stray_note_inside_a_beat_folder_is_preserved(self):
         with tempfile.TemporaryDirectory() as tmp:
             project(tmp, [fetched("a", "Palco", shot="abertura")])

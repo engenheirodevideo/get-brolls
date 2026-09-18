@@ -304,16 +304,17 @@ def status_next(counts, format_pending=0, pending_preview=None, undelivered=0):
     state = {"undelivered": counts["undelivered"]}
     counts = {"pending": 0, "rejected": 0, **counts}
     complete = "Fluxo completo: os itens aprovados estão coletados, verificados e organizados em entrega/."
-    # Mesma preferência de `guidance.next_action`: o estado humano ganha do rascunho
-    # do agente. Com a entrega pronta, sobra de candidato é aparte, não próximo passo.
-    if flow_complete(state, counts):
-        return complete + leftover_aside(leftovers(state, counts))
+    # Mesma ordem de `guidance.next_action`: decisão humana pendente ganha de tudo,
+    # inclusive do veredito de fim de fluxo. Só depois dela é que a entrega pronta vira
+    # "Fluxo completo", e aí a sobra sem prévia é aparte, não próximo passo.
     if counts.get("pending"):
         return (
             "Peça a decisão humana: há prévia esperando alguém decidir, pelo Storyboard "
             "(review + import-review) ou pela fala no chat (approve --candidate ID --by "
             'NOME --channel chat --statement "frase").'
         )
+    if flow_complete(state, counts):
+        return complete + leftover_aside(leftovers(state, counts))
     for matches, step in STATUS_LADDER:
         if matches(counts):
             return step
@@ -1561,15 +1562,29 @@ def inspect_warnings(probe):
     haystack = " ".join([str(probe.get("title") or ""), *(probe.get("tags") or [])])
     if _THREE_SIXTY.search(haystack):
         found.append("vídeo 360°")
+    downloaded = probe.get("downloaded_bytes")
+    if downloaded:
+        # Esta fonte não tem página de metadados: a análise só existe porque o arquivo
+        # veio inteiro. Dizer o preço evita repetir a conta sem perceber.
+        found.append(
+            f"esta fonte não tem metadados públicos, então analisá-la exigiu baixar o "
+            f"arquivo inteiro ({downloaded / (1024 * 1024):.1f} MB) para o cache privado"
+        )
     return found
 
 
 def inspect_source(ledger, args, config=None):
-    """O que a fonte já conta sobre si, antes de qualquer pedido de mídia.
+    """O que a fonte já conta sobre si, antes de escolher intervalo.
 
-    Somente leitura sobre decisão e intervalo: com `--candidate`, o único campo que
-    passa a existir no projeto é `media.duration_s` — nada de aprovação, segmento,
-    prévia ou arquivo em `clips/`.
+    Na rota normal (página que o yt-dlp lê) nada de mídia é pedido: só metadados e
+    legenda. Numa fonte de arquivo direto (NASA, Commons, bancos) não existe metadado
+    para pedir: a duração só sai do arquivo, então o `inspect` **baixa o arquivo
+    inteiro** uma vez para o cache privado — e diz isso, com o tamanho, no resumo e
+    em `warnings[]`.
+
+    Somente leitura sobre decisão e intervalo em qualquer rota: com `--candidate`, o
+    único campo que passa a existir no projeto é `media.duration_s` — nada de
+    aprovação, segmento, prévia ou arquivo em `clips/`.
     """
     from .acquisition import direct_media
     from .inspecting import candidate_windows
@@ -1635,7 +1650,13 @@ def probe_direct(ledger, source, url=None):
     path = cache_direct_media(ledger, source)
     info = probe(path)
     duration = info.get("duration_s")
+    try:
+        downloaded = Path(path).stat().st_size
+    except OSError:
+        downloaded = 0
     return {
+        # Analisar esta fonte custou o arquivo inteiro; quem lê o resumo precisa saber.
+        "downloaded_bytes": downloaded,
         "url": url or source.get("source_url") or source.get("media_url"),
         "title": source.get("title"),
         "duration_s": float(duration) if duration else None,

@@ -318,6 +318,36 @@ class StatusCommandTests(unittest.TestCase):
             self.assertIn("reject", payload["summary"]["next"])
             self.assertNotIn("prévia", payload["summary"]["next"])
 
+    def test_a_partial_approval_does_not_close_the_flow(self):
+        """Aprovar 2 de 5 e entregar não é "acabou": 3 prévias seguem sem decisão."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(tmp)
+            items = []
+            for index in range(2):
+                done = candidate("local", f"ok{index}", f"Entregue {index}")
+                set_segment(done, 0, 2)
+                done["preview"]["gif_path"] = f"previews/ok{index}.gif"
+                done["approval"] = {"status": "approved", "by": "Humano", "at": now(), "revision": 1}
+                done["rights"]["status"] = "permitted"
+                done["rights"]["evidence"] = ["Evidência sintética"]
+                done["output"] = {"path": f"clips/ok{index}.mp4", "sha256": "0" * 64, "verified": True}
+                done["delivery"] = {"path": f"entrega/00-ok{index}/ok{index}.mp4", "method": "hardlink"}
+                done["state"] = "verified"
+                items.append(done)
+            for index in range(3):
+                waiting = candidate("local", f"espera{index}", f"Esperando {index}")
+                set_segment(waiting, 0, 2)
+                waiting["preview"]["contact_sheet_path"] = f"previews/espera{index}.jpg"
+                waiting["state"] = "awaiting_approval"
+                items.append(waiting)
+            ledger.save_many("fixture", [ledger.add(item) for item in items])
+            payload = self.call("status", "--project", tmp)
+            self.assertNotIn("completo", payload["summary"]["next"])
+            self.assertIn("decisão humana", payload["summary"]["next"])
+            self.assertEqual(
+                3, next(s["count"] for s in payload["summary"]["stages"] if s["stage"] == "decisões pendentes")
+            )
+
     def test_a_decision_waiting_on_the_human_outranks_more_previews(self):
         """Com prévia na mesa, o degrau é decidir — não gerar prévia de quem sobrou."""
         with tempfile.TemporaryDirectory() as tmp:

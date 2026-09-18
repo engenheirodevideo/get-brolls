@@ -318,7 +318,8 @@ class ProbeRemoteTests(unittest.TestCase):
                 probe = social.probe_remote(URL, cache=cache)
             saved = Path(probe["subtitles"]["pt"]["path"])
             self.assertEqual(cache, saved.parent)
-            self.assertEqual(0o600, stat.S_IMODE(saved.stat().st_mode))
+            if os.name != "nt":  # Windows não tem bits POSIX de permissão
+                self.assertEqual(0o600, stat.S_IMODE(saved.stat().st_mode))
             self.assertIn("tempestade", saved.read_text(encoding="utf-8").lower())
             self.assertTrue(probe["subtitles"]["pt"]["cues"])
 
@@ -337,7 +338,8 @@ class ProbeRemoteTests(unittest.TestCase):
                 probe = social.probe_remote(URL, cache=cache)
             saved = Path(probe["subtitles"]["pt"]["path"])
             self.assertFalse(saved.is_symlink())
-            self.assertEqual(0o600, stat.S_IMODE(saved.lstat().st_mode))
+            if os.name != "nt":  # Windows não tem bits POSIX de permissão
+                self.assertEqual(0o600, stat.S_IMODE(saved.lstat().st_mode))
             self.assertEqual("não me sobrescreva", victim.read_text(encoding="utf-8"))
 
     def test_hundreds_of_auto_translations_do_not_flood_the_answer(self):
@@ -905,6 +907,41 @@ class DirectMediaSourceTests(unittest.TestCase):
             self.assertAlmostEqual(8.0, stored["media"]["duration_s"], places=1)
             self.assertIsNone(stored["segment"]["start_s"])
             self.assertEqual("pending", stored["approval"]["status"])
+
+    def test_the_download_this_route_costs_is_announced_with_its_size(self):
+        from getbrolls.commands import inspect_warnings
+
+        found = inspect_warnings({"duration_s": 8.0, "title": "Rollout", "downloaded_bytes": 3 * 1024 * 1024})
+        self.assertEqual(1, len(found))
+        self.assertIn("baixar o arquivo inteiro", found[0])
+        self.assertIn("3.0 MB", found[0])
+        # Rota normal (página com metadados) não baixa nada e não avisa nada.
+        self.assertEqual([], inspect_warnings({"duration_s": 8.0, "title": "Rollout"}))
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
+    def test_inspect_on_a_direct_source_says_it_had_to_download_the_file(self):
+        from getbrolls.commands import execute
+        from getbrolls.runtime import audited
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(tmp)
+            candidate_id = self._candidate(tmp)
+            run_cli(["init-rules", "--project", tmp])
+            args = self._args(
+                command="inspect",
+                project=tmp,
+                candidate=candidate_id,
+                url=None,
+                query=None,
+                max_windows=3,
+            )
+            download, refresh, probe_remote, segment = self._patches(fixture)
+            with download, refresh, probe_remote, segment:
+                payload = audited(args, execute)
+            warning = next(w for w in payload["warnings"] if "arquivo inteiro" in w)
+            self.assertIn("MB", warning)
+            self.assertIn("arquivo inteiro", payload["summary"]["line"])
+            self.assertNotIn("downloaded_bytes", payload)
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
     def test_preview_uses_the_direct_download_instead_of_ytdlp(self):

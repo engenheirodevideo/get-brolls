@@ -361,6 +361,38 @@ class HumanStateWinsOverAgentDraft(unittest.TestCase):
         self.assertIn("Fluxo completo", phrase)
         self.assertIn("13 candidatos sem decisão", phrase)
 
+    def test_a_decision_still_pending_is_never_called_a_finished_flow(self):
+        """A parada obrigatória da revisão não pode virar aparte de "sobraram"."""
+        counts = full(candidates=5, previews=5, approved=2, permitted=2, delivered=2, verified=2)
+        counts["pending"] = 3
+        state = base_state(counts=counts, undelivered=0)
+        action = next_action(state)
+        self.assertEqual("approve", action["step"])
+        self.assertTrue(action["blocking_human"])
+        self.assertNotIn("Fluxo completo", action["for_human"])
+        self.assertNotIn("sem decisão", action["for_human"])
+        # E com as três decididas, aí sim o fluxo fecha.
+        decided = full(candidates=5, previews=5, approved=5, permitted=5, delivered=5, verified=5)
+        decided["pending"] = 0
+        self.assertEqual("done", next_action(base_state(counts=decided, undelivered=0))["step"])
+
+    def test_status_next_also_refuses_to_close_with_a_decision_pending(self):
+        from getbrolls.commands import status_next
+
+        counts = full(candidates=5, previews=5, approved=2, permitted=2, delivered=2, verified=2)
+        counts.update(pending=3, rejected=0)
+        phrase = status_next(counts, 0, pending_preview=0, undelivered=0)
+        self.assertIn("decisão humana", phrase)
+        self.assertNotIn("Fluxo completo", phrase)
+
+    def test_an_item_with_a_preview_and_no_decision_is_not_a_leftover(self):
+        """ "Sobraram N" conta só candidato sem prévia: com prévia, é decisão pendente."""
+        from getbrolls.guidance import leftovers
+
+        counts = full(candidates=10, previews=5, approved=2, permitted=2, delivered=2, verified=2)
+        counts.update(pending=3, rejected=0)
+        self.assertEqual(5, leftovers(base_state(counts=counts), counts))
+
     def test_a_pending_decision_wins_over_inspect_and_preview(self):
         counts = full(candidates=8, previews=3)
         counts["pending"] = 3

@@ -92,11 +92,14 @@ def _counts(state):
 def flow_complete(state, counts):
     """Todo item aprovado virou arquivo conferido e já está em `entrega/`?
 
-    É o estado que a pessoa chama de "acabou". Candidato que ninguém decidiu não
-    conta: ele é rascunho do agente, não pendência do humano.
+    É o estado que a pessoa chama de "acabou". Candidato sem prévia que ninguém
+    decidiu não conta: ele é rascunho do agente, não pendência do humano. Já item
+    **com prévia** e sem decisão conta, e trava: a pessoa viu aquele quadro e ainda
+    não disse nada sobre ele. Chamar isso de "fluxo completo" apagaria a parada
+    obrigatória da revisão humana, que é a guarda central desta skill.
     """
     approved = counts["approved"]
-    if not approved:
+    if not approved or counts["pending"]:
         return False
     return (
         counts["permitted"] >= approved
@@ -107,10 +110,14 @@ def flow_complete(state, counts):
 
 
 def leftovers(state, counts):
-    """Candidatos que ninguém aprovou nem rejeitou: viram aparte, nunca próximo passo."""
+    """Candidatos sem prévia e sem decisão: viram aparte, nunca próximo passo.
+
+    Quem tem prévia e ainda não foi decidido fica **fora** desta conta: aquilo é
+    decisão humana pendente, e vira degrau próprio — nunca um "ignore se quiser".
+    """
     value = state.get("undecided")
     if value is None:
-        value = counts["candidates"] - counts["approved"] - counts["rejected"]
+        value = counts["candidates"] - counts["approved"] - counts["rejected"] - counts["pending"]
     return max(0, int(value))
 
 
@@ -280,15 +287,16 @@ def next_action(state):
             "mostrar o que apareceu." + _library_hint() + warning,
             state,
         )
+    # Decisão humana pendente ganha de tudo: de gerar mais prévia e também do veredito
+    # de fim de fluxo. Há prévia na mesa esperando alguém decidir, e dizer "terminamos"
+    # ali desmancharia a parada obrigatória da revisão.
+    if counts["pending"] > 0:
+        return _approve_action(state, counts["pending"])
     if flow_complete(state, counts):
         # O estado humano vem antes do rascunho do agente: com a entrega pronta e
         # conferida, mandar inspecionar um candidato descartado diria à pessoa que o
         # vídeo dela não acabou quando acabou.
         return _done_action(state, counts)
-    # Decisão humana pendente ganha de qualquer degrau do agente: há prévia na mesa
-    # esperando alguém decidir, e gerar mais prévia empurra a pessoa para longe disso.
-    if counts["pending"] > 0:
-        return _approve_action(state, counts["pending"])
     if _pending_preview(state, counts) > 0:
         if state.get("duration_unknown"):
             # Sem saber a duração, qualquer intervalo é chute — e baixar trecho errado
