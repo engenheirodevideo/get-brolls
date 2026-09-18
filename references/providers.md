@@ -83,7 +83,7 @@ Quando `inspect` não devolve janela nenhuma — vídeo sem legenda, sem capítu
 python3 scripts/gb.py preview --scan --candidate <ID> --project <projeto>
 ```
 
-O `--scan` não define intervalo: ele só mostra o vídeo todo, um quadro a cada N segundos (N = duração/12), com teto de `GB_SCAN_MAX_SECONDS` (padrão 900 s). **Ele baixa mídia de trabalho** — até esse teto — e por isso pode levar minutos num vídeo longo; rode em segundo plano se o seu shell tiver limite de tempo. A resposta traz `scan.downloaded_seconds` e um `note` dizendo quanto do vídeo entrou na grade. Escolha o `--start/--end` olhando o resultado.
+O `--scan` não define intervalo: ele só mostra o vídeo todo, um quadro a cada N segundos (N = duração/12), com teto de `GB_SCAN_MAX_SECONDS` (padrão 900 s). **Ele baixa mídia de trabalho** — até esse teto — e por isso pode levar minutos num vídeo longo; rode em segundo plano se o seu shell tiver limite de tempo. A resposta traz `scan.downloaded_seconds`, `scan.start_s`/`scan.end_s` e um `note` dizendo que trecho da fonte entrou na grade — os rótulos de `frame_times_s` são tempo da fonte, mesmo quando a mídia de trabalho começa depois do zero. **Prefira `inspect --query` primeiro:** ele responde de graça, sem baixar nada, e só quando não sobrar pista é que a varredura (que baixa o vídeo inteiro até o teto) compensa. A varredura ignora o intervalo já escolhido no candidato: ela é exploratória e não define nem invalida segmento. Escolha o `--start/--end` olhando o resultado.
 
 Quando `inspect` não encontra nada que case com a frase, ele ainda devolve janelas com
 `score: 0` e a `source` que as gerou (capítulo, legenda ou espaçamento pelo relógio):

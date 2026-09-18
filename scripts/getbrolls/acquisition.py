@@ -88,6 +88,61 @@ def _reuse_from_index(cache, candidate_id, start, end):
     return None
 
 
+def direct_media(candidate):
+    """A fonte publica o arquivo direto (mp4/jpg) em vez de uma página para o yt-dlp?
+
+    É o caso do acervo da NASA e dos bancos de imagem: `source_url` é a página do
+    item, e mandá-la ao yt-dlp devolve "Unsupported URL". Quem tem `media_url` e não
+    é rota de yt-dlp se lê pelo próprio arquivo.
+    """
+    return bool(candidate.get("media_url")) and (candidate.get("acquisition") or {}).get("method") != "yt-dlp"
+
+
+def cache_direct_media(ledger, candidate, refresh=True):
+    """Baixa uma vez o arquivo direto no cache privado e devolve o caminho local.
+
+    Só mexe no cache: nada é gravado no candidato nem em `brolls/`, então `inspect`
+    continua somente leitura sobre decisão, intervalo e direitos.
+    """
+    cache = ledger.root.parent / ".getbrolls-sources"
+    cache.mkdir(exist_ok=True)
+    reused = _reuse_from_index(cache, candidate["id"], 0, 0)
+    if reused is not None:
+        return Path(reused["path"])
+    url = candidate.get("media_url")
+    if refresh:
+        from .providers import refresh as refresh_candidate
+
+        url = (refresh_candidate(candidate) or {}).get("media_url") or url
+    if not url:
+        raise ValueError("Arquivo do provedor não está mais disponível.")
+    from .http import download
+
+    with tempfile.TemporaryDirectory(dir=cache) as work:
+        target = Path(work) / "source.bin"
+        download(url, target)
+        info = probe(target)
+        sha = digest(target)
+        final = cache / (hashlib.sha256(candidate["id"].encode()).hexdigest()[:16] + "-" + sha + ".mp4")
+        if not final.exists():
+            os.replace(target, final)
+        elif digest(final) != sha:
+            raise ValueError("Cache de mídia inconsistente; não foi sobrescrito.")
+    index = _load_index(cache)
+    entries = index.setdefault(candidate["id"], [])
+    entries[:] = [e for e in entries if e.get("sha") != sha]
+    entries.append(
+        {
+            "path": str(final.resolve()),
+            "sha": sha,
+            "start": 0,
+            "duration": info["duration_s"],
+        }
+    )
+    _save_index(cache, index)
+    return final
+
+
 def prepare_source(ledger, candidate, start, end, tolerant=False):
     """Deixa a mídia de trabalho pronta para [start, end] em tempo da fonte.
 

@@ -47,7 +47,9 @@ Escreva o `BRIEF.md` com `python3 "scripts/gb.py" init-brief --project <projeto>
 
 `python3 "scripts/gb.py" inspect --candidate <ID> --query "fala ou alvo" --project <projeto>` lê da fonte duração, capítulos e legendas e devolve janelas pontuadas. Escolha `--start/--end` a partir delas, nunca de palpite.
 
-Depois, `python3 "scripts/gb.py" preview --candidate <ID> --start <INICIO> --end <FIM> --project <projeto>` gera poster, contact sheet e GIF. A resposta traz `files.contact_sheet` (caminho absoluto) e `preview.frame_times_s` (o tempo de cada célula). **Abra esse arquivo e olhe antes de seguir.** Cite em `--reason` as células e os tempos que você viu; se não servirem, ajuste o intervalo. Nunca descreva quadro que não conferiu. Sem pista alguma, `preview --scan` varre o vídeo inteiro.
+Depois, `python3 "scripts/gb.py" preview --candidate <ID> --start <INICIO> --end <FIM> --project <projeto>` gera poster, contact sheet e GIF. A resposta traz `files.contact_sheet` e `preview.frame_times_s` (tempo de cada célula). **Abra esse arquivo e olhe antes de seguir.** Cite em `--reason` as células e os tempos que você viu; se não servirem, ajuste o intervalo. Nunca descreva quadro que não conferiu.
+
+Sem pista alguma, `preview --scan` baixa e varre o vídeo inteiro (minutos): use depois de `inspect`. Ele ignora o intervalo já escolhido — é exploratório.
 
 ## Passo 5 — Revisão humana
 

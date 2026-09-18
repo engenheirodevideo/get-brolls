@@ -1571,6 +1571,7 @@ def inspect_source(ledger, args, config=None):
     passa a existir no projeto é `media.duration_s` — nada de aprovação, segmento,
     prévia ou arquivo em `clips/`.
     """
+    from .acquisition import direct_media
     from .inspecting import candidate_windows
     from .social import probe_remote
 
@@ -1580,16 +1581,28 @@ def inspect_source(ledger, args, config=None):
     if args.candidate:
         c = ledger.get(args.candidate)
         url = c.get("source_url")
-        if not url:
+        if not url and not direct_media(c):
             raise ValueError(
                 "Este candidato não tem URL pública para analisar; use `inspect --url` "
                 "ou importe o original local com `resolve --file`."
             )
+        source = c
     else:
         url = args.url
         if not (url or "").strip():
             raise ValueError("--url não pode ser vazio: informe a URL pública da fonte.")
-    probe = probe_remote(url, cache=ledger.root.parent / ".getbrolls-sources")
+        # `probe_remote` resolveria a mesma URL logo abaixo: resolver aqui não custa
+        # pedido a mais e revela a fonte de arquivo direto antes de chamar o yt-dlp.
+        from getbrolls import providers
+
+        source = providers.resolve(url)
+    if direct_media(source):
+        # NASA, Commons e os bancos publicam o arquivo; `source_url` é a página do
+        # item, e o yt-dlp responde "Unsupported URL" para ela. A duração sai do
+        # ffprobe do próprio arquivo, e legenda não existe nessa rota.
+        probe = probe_direct(ledger, source, url)
+    else:
+        probe = probe_remote(url, cache=ledger.root.parent / ".getbrolls-sources")
     cap = float((config or {}).get("max_seconds") or 0)
     windows = clamp_windows(candidate_windows(probe, args.query, args.max_windows or 3), cap)
     if c is not None and probe["duration_s"]:
@@ -1608,6 +1621,30 @@ def inspect_source(ledger, args, config=None):
         "subtitle_langs": probe["subtitle_langs"],
         "subtitle_langs_total": probe.get("subtitle_langs_total", len(probe["subtitle_langs"])),
         "candidate_windows": windows,
+    }
+
+
+def probe_direct(ledger, source, url=None):
+    """O mesmo contrato de `social.probe_remote`, lido do arquivo direto da fonte.
+
+    Sem capítulo e sem legenda: um mp4 servido por URL não traz nenhum dos dois. O
+    que ele traz é a duração real, que é o que separa a janela do palpite.
+    """
+    from .acquisition import cache_direct_media
+
+    path = cache_direct_media(ledger, source)
+    info = probe(path)
+    duration = info.get("duration_s")
+    return {
+        "url": url or source.get("source_url") or source.get("media_url"),
+        "title": source.get("title"),
+        "duration_s": float(duration) if duration else None,
+        "chapters": [],
+        "subtitle_langs": [],
+        "subtitle_langs_total": 0,
+        "description": "",
+        "tags": [],
+        "subtitles": {},
     }
 
 
@@ -1667,15 +1704,34 @@ def inspect_summary(windows, probe, cap=0.0):
     }
 
 
-def _scan_note(span, duration, capped, ceiling):
-    """Frase em PT-BR dizendo quanto do vídeo entrou na varredura, e por quê."""
-    if capped:
+def _scan_note(start, end, duration, ceiling, has_segment=False):
+    """Frase em PT-BR dizendo que trecho da fonte entrou na grade, e por quê.
+
+    `start`/`end` são tempo da fonte, os mesmos números dos rótulos: dizer "os
+    primeiros N s" quando a mídia de trabalho começa no minuto 2 mandaria a pessoa
+    procurar no lugar errado.
+    """
+    span = end - start
+    ignored = (
+        " A varredura ignora o intervalo já escolhido neste candidato: ela é "
+        "exploratória, não define nem invalida segmento."
+        if has_segment
+        else ""
+    )
+    if end >= duration - 0.1 and start <= 0.1:
+        return f"Baixei e varri o vídeo inteiro ({span:.0f} s) para montar a grade." + ignored
+    if span >= float(ceiling) - 0.1 and duration > float(ceiling):
         return (
-            f"Varri os primeiros {span:.0f} s de um vídeo de {duration:.0f} s: o teto "
-            f"GB_SCAN_MAX_SECONDS está em {int(ceiling)} s. Para ver o resto, aumente o "
-            "teto ou varra o candidato de novo depois de escolher um trecho."
+            f"Varri de {_clock(start)} a {_clock(end)} ({span:.0f} s) de um vídeo de "
+            f"{duration:.0f} s: o teto GB_SCAN_MAX_SECONDS está em {int(ceiling)} s. Para "
+            "ver o resto, aumente o teto ou varra o candidato de novo depois de escolher "
+            "um trecho." + ignored
         )
-    return f"Baixei e varri o vídeo inteiro ({span:.0f} s) para montar a grade."
+    return (
+        f"Varri de {_clock(start)} a {_clock(end)} ({span:.0f} s) de um vídeo de "
+        f"{duration:.0f} s: a mídia de trabalho que tenho aqui não cobre o resto. Os "
+        "rótulos da grade são tempo da fonte, não do arquivo baixado." + ignored
+    )
 
 
 def scan_candidate(ledger, c, config):
@@ -1686,9 +1742,16 @@ def scan_candidate(ledger, c, config):
         raise ValueError("Imagem estática não tem o que varrer; gere a prévia normal.")
     duration = c["media"].get("duration_s")
     if not duration and c["provider"] != "local":
-        from .social import probe_remote
+        from .acquisition import direct_media
 
-        probe_data = probe_remote(c["source_url"], cache=ledger.root.parent / ".getbrolls-sources")
+        if direct_media(c):
+            # Fonte de arquivo direto: o yt-dlp não lê a página dela, mas o ffprobe lê
+            # o arquivo — e é o mesmo arquivo que a varredura vai usar logo em seguida.
+            probe_data = probe_direct(ledger, c)
+        else:
+            from .social import probe_remote
+
+            probe_data = probe_remote(c["source_url"], cache=ledger.root.parent / ".getbrolls-sources")
         duration = probe_data["duration_s"]
         if duration:
             c["media"]["duration_s"] = duration
@@ -1731,14 +1794,26 @@ def scan_candidate(ledger, c, config):
         source_offset=offset,
     )
     # `scan` fica fora de `preview`/`segment`: varrer não decide nem invalida nada.
+    # Os rótulos saem em tempo da fonte, e é esse mesmo trecho que a nota descreve.
+    covered_start = float(offset) + local_start
+    covered_end = covered_start + span
     capped = span < duration - 0.1
     c["scan"] = {
         **result,
         "capped": capped,
         "duration_s": duration,
+        # Trecho da fonte que a grade cobre, no mesmo relógio de `frame_times_s`.
+        "start_s": round(covered_start, 3),
+        "end_s": round(covered_end, 3),
         # O que realmente entrou na grade, em segundos de mídia baixada.
         "downloaded_seconds": round(span, 3),
-        "note": _scan_note(span, duration, capped, config["scan_max_seconds"]),
+        "note": _scan_note(
+            covered_start,
+            covered_end,
+            duration,
+            config["scan_max_seconds"],
+            has_segment=c["segment"]["start_s"] is not None,
+        ),
     }
     ledger.save("preview", c)
     render(ledger)

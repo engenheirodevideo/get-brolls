@@ -809,3 +809,307 @@ class ScanTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DirectMediaSourceTests(unittest.TestCase):
+    """Fricção 1 da rodada 2: candidato NASA ia para o yt-dlp e voltava "Unsupported URL"."""
+
+    MEDIA_URL = "https://images-assets.nasa.gov/video/KSC-2022/KSC-2022~medium.mp4"
+
+    def _fixture(self, tmp, seconds=8):
+        """Arquivo local no lugar do `media_url`: nada sai para a rede no teste."""
+        src = Path(tmp) / "nasa.mp4"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                f"testsrc=size=160x90:duration={seconds}:rate=10",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                str(src),
+            ],
+            check=True,
+        )
+        return src
+
+    def _candidate(self, tmp):
+        from getbrolls.ledger import Ledger
+        from getbrolls.models import candidate
+
+        ledger = Ledger(tmp)
+        item = candidate("nasa", "KSC-2022", "Rollout for launch")
+        item["source_url"] = "https://images.nasa.gov/details/KSC-2022"
+        item["media_url"] = self.MEDIA_URL
+        item["acquisition"].update({"status": "available", "method": "https", "evidence": []})
+        stored = ledger.add(item)
+        ledger.save("fixture", stored)
+        return stored["id"]
+
+    def _args(self, **extra):
+        base = dict(env_file=None, confirm_format_change=False, project=None)
+        base.update(extra)
+        return types.SimpleNamespace(**base)
+
+    def _patches(self, fixture):
+        def fake_download(url, target, **kwargs):
+            self.assertEqual(self.MEDIA_URL, url)
+            shutil.copyfile(fixture, target)
+            return target
+
+        def explode(*args, **kwargs):
+            raise AssertionError("fonte de arquivo direto não pode ir para o yt-dlp")
+
+        return (
+            patch("getbrolls.http.download", side_effect=fake_download),
+            patch("getbrolls.providers.refresh", side_effect=lambda item: dict(item)),
+            patch("getbrolls.social.probe_remote", side_effect=explode),
+            patch("getbrolls.social.download_segment", side_effect=explode),
+        )
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
+    def test_inspect_reads_the_duration_from_the_direct_file_and_reports_no_subtitles(self):
+        from getbrolls.commands import execute
+        from getbrolls.runtime import audited
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(tmp)
+            candidate_id = self._candidate(tmp)
+            run_cli(["init-rules", "--project", tmp])
+            args = self._args(
+                command="inspect",
+                project=tmp,
+                candidate=candidate_id,
+                url=None,
+                query="rollout",
+                max_windows=3,
+            )
+            download, refresh, probe_remote, segment = self._patches(fixture)
+            with download, refresh, probe_remote, segment:
+                payload = audited(args, execute)
+            self.assertAlmostEqual(8.0, payload["duration_s"], places=1)
+            self.assertEqual([], payload["subtitle_langs"])
+            self.assertEqual([], payload["chapters"])
+            self.assertTrue(payload["candidate_windows"])
+            for window in payload["candidate_windows"]:
+                self.assertLessEqual(window["end_s"], 8.05)
+            # Único efeito no projeto: a duração, como em qualquer `inspect`.
+            from getbrolls.ledger import Ledger
+
+            stored = Ledger(tmp).get(candidate_id)
+            self.assertAlmostEqual(8.0, stored["media"]["duration_s"], places=1)
+            self.assertIsNone(stored["segment"]["start_s"])
+            self.assertEqual("pending", stored["approval"]["status"])
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
+    def test_preview_uses_the_direct_download_instead_of_ytdlp(self):
+        from getbrolls.commands import execute
+        from getbrolls.runtime import audited
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(tmp)
+            candidate_id = self._candidate(tmp)
+            run_cli(["init-rules", "--project", tmp])
+            args = self._args(
+                command="preview",
+                project=tmp,
+                candidate=candidate_id,
+                start=1.0,
+                end=4.0,
+                scan=False,
+                reference_only=False,
+                narration=None,
+                reason=None,
+            )
+            download, refresh, probe_remote, segment = self._patches(fixture)
+            with download, refresh, probe_remote, segment:
+                payload = audited(args, execute)
+            self.assertTrue(Path(payload["files"]["contact_sheet"]).is_file())
+            self.assertEqual((1.0, 4.0), (payload["segment"]["start_s"], payload["segment"]["end_s"]))
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
+    def test_scan_works_on_a_direct_source_without_a_known_duration(self):
+        from getbrolls.commands import execute
+        from getbrolls.runtime import audited
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(tmp)
+            candidate_id = self._candidate(tmp)
+            run_cli(["init-rules", "--project", tmp])
+            args = self._args(
+                command="preview",
+                project=tmp,
+                candidate=candidate_id,
+                start=None,
+                end=None,
+                scan=True,
+                reference_only=False,
+                narration=None,
+                reason=None,
+            )
+            download, refresh, probe_remote, segment = self._patches(fixture)
+            with download, refresh, probe_remote, segment:
+                payload = audited(args, execute)
+            self.assertTrue(Path(payload["files"]["scan"]).is_file())
+            self.assertEqual(12, payload["scan"]["frames"])
+            self.assertLessEqual(payload["scan"]["frame_times_s"][-1], 8.0)
+
+
+# Uma cor por faixa de 15 s: o quadro diz sozinho em que segundo da fonte ele estava.
+SCAN_COLORS = {"red": (255, 0, 0), "green": (0, 128, 0), "blue": (0, 0, 255), "yellow": (255, 255, 0)}
+SCAN_BAND_S = 15
+
+
+def color_at(source_second):
+    """Cor que a fonte mostra nesse segundo, pela ordem das faixas."""
+    return list(SCAN_COLORS)[min(int(source_second // SCAN_BAND_S), len(SCAN_COLORS) - 1)]
+
+
+def cell_rgb(sheet, index, cols=4, width=240, height=136, padding=6, margin=6):
+    """RGB do centro da célula `index` do contact sheet, sem dependência de imagem."""
+    col, row = index % cols, index // cols
+    x = margin + col * (width + padding) + width // 2
+    y = margin + row * (height + padding) + height // 2
+    with tempfile.TemporaryDirectory() as work:
+        raw = Path(work) / "pixel.raw"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-i",
+                str(sheet),
+                "-vf",
+                # 2x2: o recorte de 1 px é recusado pelo croma do JPEG.
+                f"crop=2:2:{x}:{y}",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                str(raw),
+            ],
+            check=True,
+        )
+        return tuple(raw.read_bytes()[:3])
+
+
+def nearest_color(rgb):
+    return min(SCAN_COLORS, key=lambda name: sum((a - b) ** 2 for a, b in zip(SCAN_COLORS[name], rgb, strict=False)))
+
+
+class ScanLabelsMatchTheSourceTests(unittest.TestCase):
+    """Fricção 4 da rodada 2: a célula da grade não mostrava o que o rótulo prometia."""
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
+    def test_a_working_copy_that_starts_at_20s_still_labels_source_time(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            whole = Path(tmp) / "fonte.mp4"
+            inputs = []
+            for name in SCAN_COLORS:
+                inputs += ["-f", "lavfi", "-i", f"color=c={name}:s=160x90:d={SCAN_BAND_S}:r=10"]
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    *inputs,
+                    "-filter_complex",
+                    "".join(f"[{i}:v]" for i in range(len(SCAN_COLORS))) + f"concat=n={len(SCAN_COLORS)}:v=1[v]",
+                    "-map",
+                    "[v]",
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(whole),
+                ],
+                check=True,
+            )
+            # A mídia de trabalho é um recorte que começa aos 20 s da fonte — é o que
+            # sobra de uma prévia anterior, e é com ela que a varredura tem de contar.
+            trimmed = Path(tmp) / "trabalho.mp4"
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-ss",
+                    "20",
+                    "-i",
+                    str(whole),
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(trimmed),
+                ],
+                check=True,
+            )
+            run_cli(["init-rules", "--project", tmp])
+            resolved = run_cli(["resolve", "--file", str(trimmed), "--project", tmp])
+            candidate_id = json.loads(resolved.stdout)["id"]
+            manifest = Path(tmp) / "brolls/manifest.json"
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+            for item in data["items"]:
+                item["local_start_s"] = 20.0
+                item["media"]["duration_s"] = float(SCAN_BAND_S * len(SCAN_COLORS))
+            manifest.write_text(json.dumps(data), encoding="utf-8")
+
+            done = run_cli(["preview", "--project", tmp, "--candidate", candidate_id, "--scan"])
+            self.assertEqual(0, done.returncode, done.stdout + done.stderr)
+            scan = json.loads(done.stdout)["scan"]
+            times = scan["frame_times_s"]
+            self.assertAlmostEqual(20.0, times[0], places=1)
+            self.assertAlmostEqual(20.0, scan["start_s"], places=1)
+            self.assertAlmostEqual(60.0, scan["end_s"], delta=0.6)
+            sheet = Path(tmp) / "brolls" / scan["scan_path"]
+            self.assertTrue(sheet.is_file())
+            for index in (0, 4, 8, 11):
+                label = times[index]
+                with self.subTest(cell=index, label=label):
+                    self.assertEqual(color_at(label), nearest_color(cell_rgb(sheet, index)))
+            # A nota diz o trecho real da fonte, não "os primeiros N s".
+            self.assertIn("0:20", scan["note"])
+            self.assertNotIn("primeiros", scan["note"])
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
+    def test_the_scan_says_it_ignores_the_stored_segment(self):
+        """Fricção 2 da rodada 2: `--scan` parecia não fazer nada em quem já tinha intervalo."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "original.mp4"
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=160x90:duration=12:rate=10",
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(src),
+                ],
+                check=True,
+            )
+            run_cli(["init-rules", "--project", tmp])
+            resolved = run_cli(["resolve", "--file", str(src), "--project", tmp])
+            candidate_id = json.loads(resolved.stdout)["id"]
+            run_cli(["preview", "--project", tmp, "--candidate", candidate_id, "--start", "4", "--end", "6"])
+            done = run_cli(["preview", "--project", tmp, "--candidate", candidate_id, "--scan"])
+            self.assertEqual(0, done.returncode, done.stdout + done.stderr)
+            payload = json.loads(done.stdout)
+            scan = payload["scan"]
+            self.assertIn("ignora o intervalo já escolhido", scan["note"])
+            # A grade é do vídeo inteiro, não do intervalo guardado.
+            self.assertAlmostEqual(0.0, scan["frame_times_s"][0], places=1)
+            self.assertGreater(scan["frame_times_s"][-1], 6.0)
+            # E varrer não mexe no que já estava decidido.
+            self.assertEqual((4.0, 6.0), (payload["segment"]["start_s"], payload["segment"]["end_s"]))
