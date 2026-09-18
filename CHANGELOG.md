@@ -10,6 +10,7 @@ tags: [get-brolls]
 
 ## 2.4.0 — 2026-09-17
 
+- **Novo caso cego de TikTok público (`eval/corpus/social-tiktok-publico.md`).** O corpus passa a 16 casos e ganha a rota de rede social: o roteiro descreve o post do perfil `@nasa` sem dar o link, então o executor precisa descobrir a URL canônica no navegador, registrar com `resolve --url` e provar `inspect`/`preview` sobre a fonte TikTok. O gabarito traz a verificação real (`yt-dlp --dump-single-json`: uploader `nasa`, 58 s, 4 formatos, sem login), marca stock como inaceitável no beat que tenta o preenchimento genérico e transforma em regressão de comportamento declarar que TikTok "exige sessão" quando o vídeo é público.
 - **Onda final de correções menores: nenhum achado adiado.** Um item por linha, cada um com teste:
   - `approve --all` e `approve --candidate ID …` devolvem `approved_items` com a folha de contato e o intervalo de cada item aprovado: a trilha de auditoria mostra o que a pessoa viu, não só quantos itens foram.
   - `permit --declared-by` recusa nome genérico de uma palavra (`eu`, `user`, `cliente`, `usuário`, `me`, `admin`) e exige duas palavras — nome e sobrenome, ou nome e inicial. "teste" continua valendo: as evals assinam "Ana Teste".
