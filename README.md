@@ -28,6 +28,7 @@ A prévia pode baixar mídia de trabalho para mostrar o movimento. A entrega fin
 
 ## Atualizações
 
+- **2.4.3** Portão único de release (`scripts/preflight.sh`), versão escrita numa passada (`scripts/bump_version.py`) e espelho do SKILL.md gerado (`scripts/gen_skill_mirror.py`). `GB_CACHE_DIR` passa a valer no `.env`; `GETBROLLS_CACHE_DIR` continua funcionando. Sem mudança no fluxo de coleta.
 - **2.4.2** Frontmatter do SKILL.md válido como YAML (a `description` ganha aspas; o GitHub não renderizava o arquivo).
 - **2.4.1** Correção do workflow de release (FFmpeg no runner) e registro do ensaio ao vivo do Instagram. Sem mudança de comportamento na CLI.
 - **2.4.0** Entrevista de intake e `BRIEF.md` por projeto (`init-brief`/`brief`), aprovação pelo chat (`approve --all --by NOME --channel chat --statement "..."`), biblioteca de aprendizados entre projetos (`learn`/`library`), análise da fonte antes de coletar (`inspect`, `preview --scan`), pasta `entrega/` por beat (`deliver`), Storyboard que salva as decisões dentro do projeto, próximo passo pronto em `status.summary.do`, `search --shot/--dry-run` e `init-rules --format`.
