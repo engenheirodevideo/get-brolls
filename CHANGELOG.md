@@ -10,6 +10,8 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- Removidos do repositório `docs/superpowers/` (plano de execução da 2.4) e `docs/discovery/` (cinco notas de discovery), material interno de trabalho que entrou com o PR #46 e citava caminhos de máquina. `.gitignore` passa a cobrir esses diretórios e o estado de agentes/editores (`.superpowers/`, `.claude/`, `.agents/`, `.codex/`, `.playwright-cli/`); `tests/test_repository.py` falha se qualquer um voltar a ser rastreado ou se um arquivo versionado citar caminho local.
+
 ## 2.4.2 — 2026-09-18
 
 - SKILL.md e espelho: a `description` do frontmatter ganha aspas. O `Also in English: …` sem aspas era um `: ` solto dentro de um escalar YAML, e o GitHub parava de renderizar o arquivo com "mapping values are not allowed in this context" (linha 2). Teste novo em `tests/test_skill_mirror.py` recusa valor de primeiro nível sem aspas com `: ` ou ` #`, e aspas que não fecham.
