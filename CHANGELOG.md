@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-17
+updated: 2026-09-18
 tags: [get-brolls]
 ---
 
@@ -10,7 +10,11 @@ tags: [get-brolls]
 
 ## Unreleased
 
-- Release workflow: instala FFmpeg antes da suíte offline e o teste de contact sheet sem `drawtext` passa a ser pulado sem FFmpeg — a tag `v2.4.0` falhou nesse passo e a release foi publicada à mão com as mesmas notas.
+## 2.4.1 — 2026-09-18
+
+- Release workflow: instala FFmpeg antes da suíte offline e o teste de contact sheet sem `drawtext` passa a ser pulado sem FFmpeg — a tag `v2.4.0` falhou nesse passo e a release foi publicada à mão com as mesmas notas. Esta versão existe para provar o `release.yml` corrigido numa tag real; não há mudança de comportamento na CLI.
+- Instagram: o ensaio ao vivo do par vídeo/áudio de um Reel público (`instagram_pairs.py`, `resolve` + `preview`) está registrado em `docs/QUALITY.md` e no relatório da rodada da 2.4.0. Lote, cooldown 403/429 e Reel privado continuam sem ensaio.
+- Espelho do SKILL.md: a linha de comentário de sincronia difere entre a raiz e `skills/get-brolls/SKILL.md` por construção (cada lado diz de onde vem) e já é ignorada pelo teste de espelho.
 
 ## 2.4.0 — 2026-09-17
 
