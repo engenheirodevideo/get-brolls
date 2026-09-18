@@ -73,6 +73,64 @@ def parse_vtt(text):
     return cues
 
 
+# Cabeçalho opcional do WebVTT: `Language: pt-BR` logo depois do `WEBVTT`.
+_VTT_LANGUAGE_RE = re.compile(r"^\s*Language\s*:\s*([A-Za-z]{2,3}(?:[-_][A-Za-z0-9]+)*)\s*$", re.M)
+
+# Palavras curtas que só existem em um dos dois idiomas. Não é detector de idioma:
+# é o suficiente para perceber que a frase da pessoa e a legenda não se falam.
+_PT_MARKERS = frozenset(
+    "de da do das dos que nao para com uma como quando onde porque isso essa esse pelo pela "
+    "num numa mas ele ela eles elas voce nos entao ja tambem sobre ate sem muito ser esta "
+    "estao foi sao tem".split()
+)
+_EN_MARKERS = frozenset(
+    "the of and to in that for with this these those from have has was were are is it its "
+    "you we they there here about when where because but also into over".split()
+)
+
+
+def parse_vtt_language(text):
+    """Idioma declarado no cabeçalho `Language:` do WebVTT, ou None quando não há um."""
+    match = _VTT_LANGUAGE_RE.search(str(text or "")[:2000])
+    return match.group(1).replace("_", "-") if match else None
+
+
+def base_language(code):
+    """`pt-BR` → `pt`; `und`, vazio e lixo → None."""
+    head = str(code or "").strip().replace("_", "-").split("-")[0].lower()
+    return head if head and head.isalpha() and head not in ("und", "zxx", "mul") else None
+
+
+def guess_language(text):
+    """`pt`, `en` ou None — heurística de palavras funcionais, sem dependência nova."""
+    words = set(tokens(text))
+    if not words:
+        return None
+    pt, en = len(words & _PT_MARKERS), len(words & _EN_MARKERS)
+    if pt == en:
+        return None
+    return "pt" if pt > en else "en"
+
+
+def language_mismatch(probe, query):
+    """(idioma da legenda, idioma da frase) quando os dois são conhecidos e diferentes.
+
+    Buscar uma fala em português dentro de uma legenda em inglês pontua zero em toda
+    janela, e o resultado parece "a fonte não fala disso" quando o problema é só o
+    idioma da consulta.
+    """
+    asked = guess_language(query)
+    if not asked:
+        return None
+    for code in probe.get("subtitle_langs") or []:
+        spoken = base_language(code)
+        if spoken and spoken != asked:
+            return (spoken, asked)
+        if spoken:
+            return None
+    return None
+
+
 def tokens(text):
     """Palavras normalizadas: sem acento, sem caixa, sem pontuação."""
     flat = unicodedata.normalize("NFKD", str(text or ""))

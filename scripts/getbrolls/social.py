@@ -310,10 +310,14 @@ def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):
         ordered = [found.pop(code) for code in langs if code in found]
         ordered += [found[code] for code in sorted(found)]
         for vtt in ordered:
-            from .inspecting import parse_vtt
+            from .inspecting import parse_vtt, parse_vtt_language
 
             text = vtt.read_text(encoding="utf-8", errors="replace")
+            # O cabeçalho `Language:` do próprio arquivo vale mais que o sufixo do
+            # nome quando o sufixo não diz nada.
             language = _language_from(vtt.name)
+            if language == "und":
+                language = parse_vtt_language(text) or language
             destination = None
             if cache is not None:
                 stem = hashlib.sha256(url.encode()).hexdigest()[:16]

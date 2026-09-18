@@ -1175,3 +1175,70 @@ class ScanLabelsMatchTheSourceTests(unittest.TestCase):
             self.assertGreater(scan["frame_times_s"][-1], 6.0)
             # E varrer não mexe no que já estava decidido.
             self.assertEqual((4.0, 6.0), (payload["segment"]["start_s"], payload["segment"]["end_s"]))
+
+
+class LanguageMismatchTests(unittest.TestCase):
+    """Legenda em EN e `--query` em PT pontuam zero: isso é idioma, não conteúdo."""
+
+    def test_the_vtt_language_header_is_read(self):
+        self.assertEqual("en", inspecting.parse_vtt_language("WEBVTT\nKind: captions\nLanguage: en\n\n"))
+        self.assertEqual("pt-BR", inspecting.parse_vtt_language("WEBVTT\nLanguage: pt_BR\n\n"))
+        self.assertIsNone(inspecting.parse_vtt_language("WEBVTT\n\n00:00:00.000 --> 00:00:01.000\noi\n"))
+
+    def test_a_language_code_reduces_to_its_base(self):
+        self.assertEqual("pt", inspecting.base_language("pt-BR"))
+        for empty in ("und", "", None, "zxx", "123"):
+            self.assertIsNone(inspecting.base_language(empty))
+
+    def test_the_query_language_comes_from_function_words(self):
+        self.assertEqual("pt", inspecting.guess_language("o momento em que ele diz que não funciona"))
+        self.assertEqual("en", inspecting.guess_language("the moment when he says that it does not work"))
+        # Sem palavra funcional de nenhum dos dois: melhor não arriscar um palpite.
+        self.assertIsNone(inspecting.guess_language("Jensen Huang GTC 2024"))
+
+    def test_only_a_real_difference_is_reported(self):
+        probe = {"subtitle_langs": ["en", "pt"]}
+        self.assertEqual(("en", "pt"), inspecting.language_mismatch(probe, "o trecho em que ele fala do preço"))
+        self.assertIsNone(inspecting.language_mismatch(probe, "the part where he talks about the price"))
+        self.assertIsNone(inspecting.language_mismatch({"subtitle_langs": ["pt-BR"]}, "o trecho em que ele fala"))
+        # Sem legenda declarada não há com o que comparar.
+        self.assertIsNone(inspecting.language_mismatch({"subtitle_langs": []}, "o trecho em que ele fala"))
+
+    def test_the_warning_names_both_sides_and_says_what_to_do(self):
+        from getbrolls.commands import inspect_warnings
+
+        warnings = inspect_warnings({"subtitle_langs": ["en"]}, "o trecho em que ele fala do preço")
+        self.assertIn(
+            "legenda em EN, sua --query está em PT: traduza a fala ao idioma da fonte",
+            warnings,
+        )
+
+    def test_the_summary_line_says_it_too(self):
+        from getbrolls.commands import inspect_summary
+
+        probe = {"duration_s": 90.0, "subtitle_langs": ["en"], "subtitles": {}}
+        windows = [{"start_s": 0.0, "end_s": 12.0, "text": "", "source": "even_spacing", "score": 0.0}]
+        line = inspect_summary(windows, probe, 0.0, "o trecho em que ele fala do preço")["line"]
+        self.assertIn("legenda em EN", line)
+        self.assertIn("traduza a fala ao idioma da fonte", line)
+        # Sem janela nenhuma o aviso continua aparecendo: é ele que explica o zero.
+        empty = inspect_summary([], probe, 0.0, "o trecho em que ele fala do preço")["line"]
+        self.assertIn("legenda em EN", empty)
+
+    def test_the_skill_and_its_mirror_ask_for_the_query_in_the_source_language(self):
+        for path in (ROOT / "SKILL.md", ROOT / "skills/get-brolls/SKILL.md"):
+            self.assertIn("no idioma da fonte", path.read_text(encoding="utf-8"))
+
+    def test_the_skill_states_the_per_preview_cap_and_one_call_each(self):
+        for path in (ROOT / "SKILL.md", ROOT / "skills/get-brolls/SKILL.md"):
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("GB_PREVIEW_MAX_SECONDS", text)
+            self.assertIn("10 s por prévia", text)
+            self.assertIn("um `preview` por chamada", text)
+
+    def test_the_skill_locates_the_contact_sheet_in_the_manifest_too(self):
+        for path in (ROOT / "SKILL.md", ROOT / "skills/get-brolls/SKILL.md"):
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("files.contact_sheet", text)
+            self.assertIn("preview.contact_sheet_path", text)
+            self.assertIn("relativo a `brolls/`", text)

@@ -1878,9 +1878,29 @@ def clamp_windows(windows, cap):
     return windows
 
 
-def inspect_warnings(probe):
+LANGUAGE_NAMES = {"pt": "PT", "en": "EN", "es": "ES", "fr": "FR", "de": "DE", "it": "IT", "ja": "JA"}
+
+
+def language_warning(probe, query):
+    """Aviso de idioma: a frase da pessoa e a legenda da fonte não se falam."""
+    from .inspecting import language_mismatch
+
+    found = language_mismatch(probe, query)
+    if not found:
+        return None
+    spoken, asked = found
+    return (
+        f"legenda em {LANGUAGE_NAMES.get(spoken, spoken.upper())}, sua --query está em "
+        f"{LANGUAGE_NAMES.get(asked, asked.upper())}: traduza a fala ao idioma da fonte"
+    )
+
+
+def inspect_warnings(probe, query=None):
     """Avisos sobre a fonte em si — o que costuma virar retrabalho depois da prévia."""
     found = []
+    language = language_warning(probe, query)
+    if language:
+        found.append(language)
     duration = probe.get("duration_s")
     if duration and float(duration) > LONG_SOURCE_S:
         found.append(f"fonte longa: {int(round(float(duration) / 60))} min")
@@ -1951,8 +1971,8 @@ def inspect_source(ledger, args, config=None):
         ledger.save("inspect", c)
     return {
         # Veredito primeiro, como nos outros comandos: quantas janelas e qual a melhor.
-        "summary": inspect_summary(windows, probe, cap),
-        "warnings": inspect_warnings(probe),
+        "summary": inspect_summary(windows, probe, cap, args.query),
+        "warnings": inspect_warnings(probe, args.query),
         "candidate": c["id"] if c is not None else None,
         "url": url,
         "title": probe.get("title"),
@@ -2004,11 +2024,15 @@ def _has_cues(probe):
     return any((entry or {}).get("cues") for entry in (probe.get("subtitles") or {}).values())
 
 
-def inspect_summary(windows, probe, cap=0.0):
+def inspect_summary(windows, probe, cap=0.0, query=None):
     """`{line, next}` em PT-BR: quantas janelas saíram, qual a melhor e o que fazer com ela."""
+    # Sem isto, "nenhuma janela casou" parece resposta sobre o conteúdo da fonte
+    # quando o que houve foi a frase e a legenda estarem em idiomas diferentes.
+    mismatch = language_warning(probe, query)
     if not windows:
         return {
-            "line": "A fonte não deu capítulo, legenda nem marcação de tempo: não tenho por onde começar.",
+            "line": "A fonte não deu capítulo, legenda nem marcação de tempo: não tenho por onde começar."
+            + (f" Atenção: {mismatch}." if mismatch else ""),
             "next": "Rode `preview --scan` para ver a grade do vídeo inteiro e escolher o trecho olhando.",
         }
     best = windows[0]
@@ -2037,7 +2061,7 @@ def inspect_summary(windows, probe, cap=0.0):
         # A janela já sai cortada no teto; dizer o teto evita pedir um intervalo que
         # o `preview` recusaria logo depois.
         line += f" A prévia aceita no máximo {cap:g} s por vez (GB_PREVIEW_MAX_SECONDS)."
-    for warning in inspect_warnings(probe):
+    for warning in inspect_warnings(probe, query):
         line += f" Atenção — {warning}."
     return {
         "line": line,

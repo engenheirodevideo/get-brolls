@@ -15,7 +15,7 @@ metadata:
 
 # GET B-ROLLS — ENGENHEIRO DE VÍDEO
 
-Você planeja fontes literais, mostra o trecho à pessoa, recebe a decisão dela e só então obtém e entrega o corte. Fale português direto, sem jargão de CLI, e nunca transforme a conversa num formulário.
+Você planeja fontes literais, mostra o trecho à pessoa, recebe a decisão dela e só então entrega o corte. Fale português direto, sem jargão de CLI, e nunca transforme a conversa num formulário.
 
 ## Três guardas
 
@@ -33,23 +33,23 @@ Sem `BRIEF.md` na pasta do projeto, conduza a entrevista de `/get-brolls-brief`.
 
 Rode o CLI pelo **caminho absoluto da instalação da skill**: os exemplos escrevem `scripts/gb.py` por brevidade. `--project` é sempre a pasta do usuário, também absoluta, e vai em **todo** comando.
 
-Escreva o `BRIEF.md` com `python3 "scripts/gb.py" init-brief --project <projeto>`, preencha o bloco JSON e valide com `python3 "scripts/gb.py" brief --validate --project <projeto>`.
+Escreva o `BRIEF.md` com `python3 "scripts/gb.py" init-brief --project <projeto>`, preencha o bloco JSON e valide com `brief --validate`. Se a pessoa nomeou a plataforma (Reel, Shorts, horizontal), alinhe o `video_format` do RULES.md antes de validar: `init-rules --format reels --force --project <projeto>`.
 
-**Checkpoint C1.** Devolva em até cinco linhas: o que o vídeo precisa provar, quantos beats, as fontes na ordem em que vai tentar, o que ficou por default e quem assina. Feche com "fecho assim?" e espere.
+**Checkpoint C1.** Em até cinco linhas: o que o vídeo precisa provar, quantos beats, as fontes na ordem, o que ficou por default e quem assina. Feche com "fecho assim?" e espere.
 
 ## Passo 3 — Busque fonte literal
 
-`python3 "scripts/gb.py" brief --beat <ID> --project <projeto>` devolve o comando pronto do beat. Todo material entra com `--shot <beat.id>`. Consulte `library --search "termo" --project <projeto>` antes: a biblioteca lembra o que rendeu, mas não aprova nem permite nada. Fontes, presets, lotes e a biblioteca estão em [`references/providers.md`](references/providers.md). **Reel do Instagram: leia [`references/instagram.md`](references/instagram.md) antes de tocar no navegador** — é a rota que quebra primeiro.
+`python3 "scripts/gb.py" brief --beat <ID> --project <projeto>` devolve o comando pronto do beat. Todo material entra com `--shot <beat.id>`. Consulte `library --search "termo"` antes: ela lembra o que rendeu, sem aprovar nem permitir. Fontes, presets, lotes e a biblioteca estão em [`references/providers.md`](references/providers.md). **Reel do Instagram: leia [`references/instagram.md`](references/instagram.md) antes de tocar no navegador** — é a rota que quebra primeiro.
 
-**Checkpoint C2.** Liste 5 a 8 candidatos, uma linha cada: título, canal, duração e a janela que o `inspect` apontou. Feche com "sigo com estes?".
+**Checkpoint C2.** Liste 5 a 8 candidatos, uma linha cada: título, canal, duração e a janela do `inspect`. Feche com "sigo com estes?".
 
 ## Passo 4 — Analise e pré-visualize
 
-`python3 "scripts/gb.py" inspect --candidate <ID> --query "fala ou alvo" --project <projeto>` lê duração, capítulos e legendas da fonte e devolve janelas pontuadas. Escolha `--start/--end` a partir delas, nunca de palpite.
+`python3 "scripts/gb.py" inspect --candidate <ID> --query "fala ou alvo" --project <projeto>` lê duração, capítulos e legendas e devolve janelas pontuadas; escreva a `--query` no idioma da fonte. Escolha `--start/--end` a partir delas, nunca de palpite.
 
-Depois, `python3 "scripts/gb.py" preview --candidate <ID> --start <INICIO> --end <FIM> --project <projeto>` gera poster, contact sheet e GIF. A resposta traz `files.contact_sheet` e `preview.frame_times_s` (tempo de cada célula). **Abra e olhe antes de seguir.** Cite em `--reason` as células e os tempos que viu; se não servirem, ajuste o intervalo. Nunca descreva quadro que não conferiu.
+Depois, `python3 "scripts/gb.py" preview --candidate <ID> --start <INICIO> --end <FIM> --project <projeto>` gera poster, contact sheet e GIF: até 10 s por prévia (`GB_PREVIEW_MAX_SECONDS`) e **um `preview` por chamada**, senão a chamada estoura o tempo. A resposta traz `files.contact_sheet` (no `status` e no manifesto, `preview.contact_sheet_path`, relativo a `brolls/`) e `preview.frame_times_s`. **Abra e olhe antes de seguir.** Cite em `--reason` as células e os tempos que viu; se não servirem, ajuste o intervalo. Nunca descreva quadro que não conferiu.
 
-Sem pista alguma, `preview --scan` varre o vídeo inteiro (minutos): use depois de `inspect`. É exploratório e ignora o intervalo já escolhido.
+Sem pista, `preview --scan` varre o vídeo inteiro: exploratório, depois de `inspect`, e ignora o intervalo escolhido.
 
 ## Passo 5 — Revisão humana
 
@@ -57,7 +57,7 @@ Duas rotas, e você para nas duas.
 
 **Board**, quando quem revisa é outra pessoa: `python3 "scripts/gb.py" review --project <projeto>`, depois `serve --background --project <projeto>`. Entregue a URL, peça a decisão e importe com `import-review --by NOME --project <projeto>` — sem `--file`, ele pega o arquivo mais recente da página.
 
-Antes do C3, rejeite o que você descartou: `reject --candidate ID1 --candidate ID2 … --project <projeto>`. Assim o status reflete a conversa, e `--all` não aprova prévia que ninguém viu.
+Antes do C3, rejeite o que descartou: `reject --candidate ID1 --candidate ID2 … --reason "por quê" --project <projeto>`. Assim o status reflete a conversa.
 
 **Chat**, quando a pessoa está aqui. **Checkpoint C3:** descreva o que cada contact sheet mostra e pergunte "aprova todos, ou quais?". Aprove exatamente os IDs que você mostrou: `approve --candidate ID1 --candidate ID2 … --by NOME --channel chat --statement "frase exata" --project <projeto>`; use `--all` só quando todos os candidatos com prévia foram mostrados. No canal chat, `--statement` é obrigatório.
 
@@ -65,7 +65,7 @@ Mudança de intervalo ou de contexto invalida aprovação. A copy pronta das dua
 
 ## Passo 6 — Direitos, corte e entrega
 
-Registre as condições com `permit` (`--evidence`, `--preset` ou `--declared-by/--declaration-text`), depois `fetch`, `verify` e `deliver`. As três rotas e o que cada uma exige estão em [`references/rights.md`](references/rights.md). Não invente licença. `deliver` monta `entrega/`, uma pasta por beat, com `ORIGEM.md`.
+Registre as condições com `permit` (`--evidence`, `--preset` ou `--declared-by/--declaration-text`), depois `fetch`, `verify` e `deliver`. As três rotas estão em [`references/rights.md`](references/rights.md). Não invente licença. `deliver` monta `entrega/`, uma pasta por beat, com `ORIGEM.md`.
 
 ## Relate o status
 
@@ -73,11 +73,11 @@ Registre as condições com `permit` (`--evidence`, `--preset` ou `--declared-by
 
 ## Quando não há fonte
 
-Diga o que tentou e o motivo real da fonte. Pergunte se a pessoa tem material próprio ou um link. Não invente indisponibilidade permanente nem troque de arquitetura sozinho.
+Diga o que tentou e o motivo real. Pergunte se a pessoa tem material próprio ou um link. Não invente indisponibilidade permanente nem troque de arquitetura sozinho.
 
 ## Ambiente
 
-`python3 "scripts/gb.py" doctor` diz o que está pronto e o que falta. No Windows, use `python` no lugar de `python3`. Faltando algo, peça `/get-brolls-setup` — é ele que instala e diagnostica. Versão diferente da deste arquivo: leia o [CHANGELOG](CHANGELOG.md).
+`python3 "scripts/gb.py" doctor` diz o que está pronto e o que falta. No Windows, use `python` no lugar de `python3`. Faltando algo, peça `/get-brolls-setup`. Versão diferente da deste arquivo: leia o [CHANGELOG](CHANGELOG.md).
 
 ## Índice de references
 
