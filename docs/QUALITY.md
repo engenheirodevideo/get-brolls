@@ -6,7 +6,7 @@ updated: 2026-09-18
 tags: [get-brolls, quality, qa, evidence]
 ---
 
-# Qualidade e evidências — GET B-ROLLS 2.4.2
+# Qualidade e evidências — GET B-ROLLS 2.4.3
 
 Este documento reúne o estado de qualidade, as regressões cobertas, os limites conhecidos e as evidências reais por provedor. Resultados ao vivo são registros datados, não promessa de disponibilidade futura nem aprovação editorial.
 
@@ -26,7 +26,7 @@ A 2.4.0 adiciona a entrevista de intake e o `BRIEF.md` por projeto (`init-brief`
 
 **Sonda real de legendas.** O `inspect` foi verificado contra o YouTube de verdade: `--dump-single-json` implicava `--simulate` e o yt-dlp nunca escrevia os `.vtt`, então a rodada cega recebeu zero falas em todo vídeo; com `--no-simulate` + `--write-info-json` a sonda volta com legenda e janelas de texto, provado por `tests/test_inspect_network.py` (opt-in, `GB_EVAL_NETWORK=1`) contra `https://www.youtube.com/watch?v=AV8Rv74TPGE`.
 
-**Rodada cega completa e onda pós-rodada.** A rodada da 2.4.0 foi executada inteira: **16 casos** do corpus, por seis executores independentes, cada um cego ao gabarito. Os números por caso são do juiz e ficam em `eval/runs/`; aqui fica o que as fricções viraram. Cada item abaixo é uma correção desta versão, com teste:
+**Rodada cega completa e onda pós-rodada.** A rodada da 2.4.0 foi executada inteira: **16 casos** do corpus, por seis executores independentes, cada um cego ao gabarito. Os números por caso são do juiz e ficam na seção [Rodada final (16 casos)](../eval/runs/2026-09-17-2.4.0-rc-claude-opus.md#rodada-final-16-casos) de `eval/runs/2026-09-17-2.4.0-rc-claude-opus.md`, que também reúne a linha de base, as rodadas 1-3 e a confirmação pós-onda (c2); aqui fica o que as fricções viraram. Cada item abaixo é uma correção desta versão, com teste:
 
 - **Escada do `status`.** Com prévia esperando decisão, a revisão humana ganha do degrau "beat sem candidato" e de todo degrau de busca/análise/prévia; só o conflito de formato passa na frente. E cada degrau nomeia um candidato da própria etapa — `permit` chegou a sair com o id de um item rejeitado, comando que a própria CLI recusa.
 - **Cobertura de beats honesta.** `beats[].blocked_reason` tira da conta o trecho que espera um fato da pessoa (`blocked: N`, `blocking_human: true`), e `covered` passa a exigir candidato não rejeitado.

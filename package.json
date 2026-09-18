@@ -1,6 +1,6 @@
 {
   "name": "get-brolls-tools",
-  "version": "2.4.2",
+  "version": "2.4.3",
   "private": true,
   "description": "Dependency manifest for the local Get B-rolls browser tools",
   "dependencies": {

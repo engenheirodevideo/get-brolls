@@ -16,7 +16,7 @@ Nada aqui substitui [QUALITY.md](../docs/QUALITY.md). Lá ficam as evidências d
 
 A rodada da 2.4.0 foi executada **por inteiro**: os **16 casos** do corpus, distribuídos entre seis executores independentes, cada um cego ao gabarito do seu caso. É a primeira rodada em que nenhum caso ficou de fora — as anteriores cobriam uma amostra. As fricções relatadas pelos executores foram tratadas numa onda de correção dentro da própria 2.4.0, e cada uma virou teste na suíte (a lista está no CHANGELOG e em [QUALITY.md](../docs/QUALITY.md)).
 
-Esta nota registra só o **processo**: que a rodada aconteceu e com que cobertura. As notas por beat, as métricas e o veredito de cada caso são do juiz e ficam nos arquivos de `runs/` — nada aqui os antecipa nem os substitui.
+Esta nota registra só o **processo**: que a rodada aconteceu e com que cobertura. As notas por beat, as métricas e o veredito de cada caso são do juiz e ficam em [runs/2026-09-17-2.4.0-rc-claude-opus.md](runs/2026-09-17-2.4.0-rc-claude-opus.md) — o mesmo arquivo reúne a baseline, as rodadas 1 a 3 e, na seção [Rodada final (16 casos)](runs/2026-09-17-2.4.0-rc-claude-opus.md#rodada-final-16-casos), os 16 casos completos com a confirmação pós-onda (c2); nada aqui os antecipa nem os substitui.
 
 ## O que estamos medindo — o propósito do produto
 

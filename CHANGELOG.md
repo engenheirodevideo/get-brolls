@@ -10,6 +10,19 @@ tags: [get-brolls]
 
 ## Unreleased
 
+## 2.4.3 — 2026-09-18
+
+- Release: `scripts/preflight.sh` é o portão único antes de publicar — coerência de versão, frontmatter YAML de todo `.md` versionado, guarda de material interno, espelho da skill, âncoras da documentação, suíte offline e seção do CHANGELOG. `release.yml` passa a chamá-lo no lugar dos passos soltos; o gatilho continua sendo só o push da tag. `--ref <commit>` confere um commit específico num clone temporário.
+- Versão: `scripts/bump_version.py X.Y.Z` escreve toda a superfície de versão numa passada (`__init__.py`, `package.json`, `package-lock.json`, manifestos do plugin, `SKILL.md`, READMEs, `docs/QUALITY.md`, stub do CHANGELOG) e regenera o espelho; `--check` só confere. `tests/test_version_coherence.py` falha quando uma fonte diverge.
+- Espelho do SKILL.md: `skills/get-brolls/SKILL.md` passa a ser gerado por `scripts/gen_skill_mirror.py` a partir do `SKILL.md` da raiz, nunca editado à mão. `--check` roda no CI, em `check.sh`/`check.ps1` e no preflight, e recusa caminho relativo que não existe no repositório. O conteúdo dos dois arquivos não mudou.
+- Guarda de material interno: a expressão de caminho local cobre caminhos do Windows e pastas de usuário com maiúscula, e varre também `.canvas`, `.svg`, `.html`, `.css`, `.js`, `.cfg` e `.ini`. `.gitattributes` marca os diretórios internos com `export-ignore`.
+- Cache: `GB_CACHE_DIR` é o nome da variável da pasta de cache e passa a valer também no `.env`. `GETBROLLS_CACHE_DIR` continua funcionando quando exportada no shell; com as duas definidas, vale `GB_CACHE_DIR`. Valor vazio conta como não definido (antes, vazio apontava o cache para a pasta atual).
+- CLI: `--confirm-format-change` aparece no `--help` só dos subcomandos em que tem efeito (os que passam pela sincronização de formato). Continua aceita nos demais, então comando já copiado não quebra.
+- Fila: `queue.hint()` aceita `at=` como o resto da API da fila. O teste que dependia do relógio real tinha data fixa e venceria 24 h depois; volta a ser determinístico.
+- Interno, sem mudança de comportamento: `invalidate_approval()` concentra o que `set_segment` e `sync_formats` já faziam igual (aprovação pendente, `review` removido, `output` zerado, estado `awaiting_approval`), com testes de caracterização dos dois caminhos; `id_stem()` substitui nove cópias do mesmo hash de id, fixado por digests literais; `read_json_block()` serve BRIEF.md e RULES.md com as mesmas mensagens; `_pick_largest()` serve Pexels e Pixabay, e a NASA reaproveita `_nasa_asset_urls()`.
+- Testes: `tests/_paths.py`, `tests/_cli.py` e `tests/_media.py` substituem os blocos repetidos de caminho, chamada da CLI e clipe sintético. Três arquivos que alcançavam `~/.getbrolls` via `load_rules` passam a importar `_isolation`, e a guarda estrutural reconhece `load_rules`, `import execute` e `from getbrolls.cli import main`.
+- CI: cache de `pip` e `npm` nos jobs de teste e qualidade, e o espelho da skill é conferido em todo sistema operacional.
+- Docs: o início rápido usa `serve --background` e `serve --stop` em vez de um segundo terminal; `AGENTS.md` e `CONTRIBUTING.md` descrevem os scripts novos e a regra de que `main` é produção; `docs/QUALITY.md` e `eval/README.md` apontam para a seção exata da rodada de 16 casos.
 - Removidos do repositório `docs/superpowers/` (plano de execução da 2.4) e `docs/discovery/` (cinco notas de discovery), material interno de trabalho que entrou com o PR #46 e citava caminhos de máquina. `.gitignore` passa a cobrir esses diretórios e o estado de agentes/editores (`.superpowers/`, `.claude/`, `.agents/`, `.codex/`, `.playwright-cli/`); `tests/test_repository.py` falha se qualquer um voltar a ser rastreado ou se um arquivo versionado citar caminho local.
 
 ## 2.4.2 — 2026-09-18

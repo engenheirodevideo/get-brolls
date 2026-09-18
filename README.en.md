@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/badge/node-22%2B-green?style=flat-square" alt="Node 22+">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
     <img src="https://img.shields.io/github/actions/workflow/status/engenheirodevideo/get-brolls/test.yml?branch=main&style=flat-square&label=tests" alt="Tests status">
-    <img src="https://img.shields.io/badge/version-2.4.2-blue?style=flat-square" alt="Version 2.4.2">
+    <img src="https://img.shields.io/badge/version-2.4.3-blue?style=flat-square" alt="Version 2.4.3">
   </p>
 </div>
 
@@ -158,13 +158,14 @@ The shortest command-line sequence, using a keyless source (NASA). Replace `/pat
 python3 scripts/gb.py search --provider nasa --query "Artemis launch" --limit 3 --intent literal --project /path/to/my-video
 python3 scripts/gb.py preview --candidate "<ID>" --start 0 --end 4 --project /path/to/my-video
 python3 scripts/gb.py review --project /path/to/my-video
-python3 scripts/gb.py serve --project /path/to/my-video
+python3 scripts/gb.py serve --background --project /path/to/my-video
 ```
 
-Open [the local storyboard](http://localhost:8767/review.html), decide on the shots, and export the JSON — opening it via `file://` can disable local saving, so export before closing the page. Then, from another terminal:
+Open [the local storyboard](http://localhost:8767/review.html) at the URL the command returned right away, decide on the shots, and export the JSON — opening it via `file://` can disable local saving, so export before closing the page.
 
 ```sh
-python3 scripts/gb.py import-review --file /path/to/review.json --by "Your name" --project /path/to/my-video
+python3 scripts/gb.py import-review --by "Your name" --project /path/to/my-video
+python3 scripts/gb.py serve --stop --project /path/to/my-video
 python3 scripts/gb.py permit --candidate "<ID>" --evidence "Real conditions of use for this source" --project /path/to/my-video
 python3 scripts/gb.py fetch --candidate "<ID>" --project /path/to/my-video
 python3 scripts/gb.py verify --project /path/to/my-video
@@ -302,19 +303,20 @@ python3 scripts/gb.py references --project /path/to/my-video
 python3 scripts/gb.py search --provider youtube --query "NASA Artemis launch" --limit 3 --intent literal --project /path/to/my-video
 python3 scripts/gb.py preview --candidate "<ID>" --start 0 --end 5 --reason "Show the liftoff mentioned in the video" --project /path/to/my-video
 python3 scripts/gb.py review --project /path/to/my-video
-python3 scripts/gb.py serve --project /path/to/my-video
+python3 scripts/gb.py serve --background --project /path/to/my-video
 ```
 
-Open [the local storyboard](http://localhost:8767/review.html), review the shots, and export your decisions — opening it via `file://` can disable local saving, so export before closing the page. Then, from another terminal in the skill folder:
+Open [the local storyboard](http://localhost:8767/review.html) at the URL the command returned right away, review the shots, and export your decisions — opening it via `file://` can disable local saving, so export before closing the page.
 
 ```sh
-python3 scripts/gb.py import-review --file /path/to/review.json --by "Reviewer's name" --project /path/to/my-video
+python3 scripts/gb.py import-review --by "Reviewer's name" --project /path/to/my-video
+python3 scripts/gb.py serve --stop --project /path/to/my-video
 python3 scripts/gb.py permit --candidate "<ID>" --evidence "Real evidence of the conditions of use" --project /path/to/my-video
 python3 scripts/gb.py fetch --candidate "<ID>" --project /path/to/my-video
 python3 scripts/gb.py verify --project /path/to/my-video
 ```
 
-Replace the name, exported file, and evidence with real data. Repeat `permit` and `fetch` for every approved candidate. `approve` can also record an explicit decision you have already received. `verify` checks file integrity and decoding; the editorial judgment remains yours.
+Replace the name and evidence with real data. Repeat `permit` and `fetch` for every approved candidate. `approve` can also record an explicit decision you have already received. `verify` checks file integrity and decoding; the editorial judgment remains yours.
 
 `status` answers where the collection stands at any moment — candidates, previews, decisions, permissions, and deliveries, with the suggested next step — and never changes the project. Flow commands also return a `summary` field with a one-line account of what just happened. [Project state and progress.](docs/GUIDE.md#estado-do-projeto-e-progresso)
 
