@@ -5,12 +5,36 @@ import shutil
 import subprocess
 import unicodedata
 import unittest
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _paths import ROOT
+
+# Caminho local de máquina: Unix (/Users, /home, com usuário maiúsculo ou não) e
+# Windows (C:\Users\...), mais o marcador do worktree temporário do agente.
+LOCAL_PATH_PATTERN = re.compile(
+    r"/Users/[A-Za-z0-9._-]+/|[A-Za-z]:\\Users\\[A-Za-z0-9._-]+|/private/tmp/[A-Za-z0-9]|/home/[A-Za-z0-9._-]+/|claude-501"
+)
+
+# Extensões varridas pela procura de caminho local dentro do conteúdo rastreado.
+LOCAL_PATH_SCAN_SUFFIXES = (
+    ".md",
+    ".py",
+    ".json",
+    ".yml",
+    ".yaml",
+    ".toml",
+    ".txt",
+    ".sh",
+    ".ps1",
+    ".canvas",
+    ".svg",
+    ".html",
+    ".css",
+    ".js",
+    ".cfg",
+    ".ini",
+)
 
 
 def github_slug(heading):
@@ -136,6 +160,12 @@ class RepositoryDocumentationTests(unittest.TestCase):
         self.assertIn("bash -n", workflow)
         self.assertIn("[scriptblock]::Create", workflow)
 
+    def test_ci_caches_pip_and_npm_and_checks_the_skill_mirror(self):
+        workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
+        self.assertIn("cache: 'pip'", workflow)
+        self.assertIn("cache: 'npm'", workflow)
+        self.assertIn("gen_skill_mirror.py --check", workflow)
+
     def test_quality_stack_is_configured_and_runs_in_ci(self):
         # Lint e type check são parte do contrato de contribuição: config versionada,
         # ferramentas pinadas e um job próprio no CI.
@@ -169,10 +199,24 @@ class RepositoryDocumentationTests(unittest.TestCase):
             )
             self.assertEqual(0, parsed.returncode, parsed.stderr)
         text = shell.read_text(encoding="utf-8")
-        for step in ("ruff check", "ruff format --check", "pyright", "unittest discover -s tests"):
+        for step in (
+            "ruff check",
+            "ruff format --check",
+            "pyright",
+            "gen_skill_mirror.py --check",
+            "check_anchors.py",
+            "unittest discover -s tests",
+        ):
             self.assertIn(step, text, step)
         windows = powershell.read_text(encoding="utf-8")
-        for step in ("ruff check", "ruff format --check", "pyright", "unittest"):
+        for step in (
+            "ruff check",
+            "ruff format --check",
+            "pyright",
+            "gen_skill_mirror.py",
+            "check_anchors.py",
+            "unittest",
+        ):
             self.assertIn(step, windows, step)
         contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
         self.assertIn("scripts/check.sh", contributing)
@@ -304,14 +348,27 @@ class RepositoryDocumentationTests(unittest.TestCase):
         for prefix in forbidden_prefixes:
             self.assertIn(prefix, ignore, f".gitignore sem {prefix}")
         # Caminho real de máquina, não o exemplo `/Users/...` da regra em AGENTS.md.
-        local_path = re.compile(r"/Users/[a-z]+/|/private/tmp/[A-Za-z0-9]|/home/[a-z]+/|claude-501")
         for path in tracked:
             if path == "tests/test_repository.py":
                 continue  # o próprio padrão
-            if not path or not path.endswith((".md", ".py", ".json", ".yml", ".yaml", ".toml", ".txt", ".sh", ".ps1")):
+            if not path or not path.endswith(LOCAL_PATH_SCAN_SUFFIXES):
                 continue
             text = (ROOT / path).read_text(encoding="utf-8", errors="replace")
-            self.assertIsNone(local_path.search(text), f"caminho local em {path}")
+            self.assertIsNone(LOCAL_PATH_PATTERN.search(text), f"caminho local em {path}")
+
+    def test_local_path_pattern_catches_windows_and_uppercase_user_dirs(self):
+        """Regressão do regex endurecido: cobre caminho do Windows e usuário
+        com maiúscula, sem depender de `git ls-files` — a asserção é sobre o
+        padrão em si. Exemplos sintéticos, não caminhos reais de máquina."""
+        matching_samples = (
+            r"C:\Users\Foo\projeto\notas.md",
+            "/Users/Fulano/workspace/nota.md",
+            "/home/Fulano/projetos/nota.md",
+        )
+        for sample in matching_samples:
+            self.assertIsNotNone(LOCAL_PATH_PATTERN.search(sample), sample)
+        for suffix in (".canvas", ".svg", ".html"):
+            self.assertIn(suffix, LOCAL_PATH_SCAN_SUFFIXES, suffix)
 
     def test_release_workflow_uses_gh_cli_and_the_pinned_checkout(self):
         release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
@@ -330,12 +387,18 @@ class RepositoryDocumentationTests(unittest.TestCase):
             "--verify-tag",
             "--notes-file",
             "CHANGELOG.md",
-            # Portões antes de publicar: versão igual à tag e suíte offline verde.
-            "__version__",
-            "python3 -m unittest discover -s tests",
+            # O portão antes de publicar é o preflight, chamado contra a
+            # árvore já checada (na tag push, é o próprio commit da tag):
+            # versão coerente, docs e suíte offline ficam dentro dele
+            # (tests/test_repository.py::PreflightTests confere o script em si).
+            "bash scripts/preflight.sh",
+            '--version "$VERSION"',
             "--prerelease",
         ):
             self.assertIn(marker, release, marker)
+        # Disparo manual validaria um commit diferente da tag publicada;
+        # só o push de tag pode acionar o release.
+        self.assertNotIn("workflow_dispatch", release)
         # O comentário da versão acompanha a Action; o contrato é só o SHA.
         self.assertEqual(
             [f"uses: {checkout}"],
@@ -346,6 +409,39 @@ class RepositoryDocumentationTests(unittest.TestCase):
             ],
             "release.yml deve usar apenas o checkout já fixado por SHA",
         )
+
+    def test_preflight_script_exists_and_contains_the_release_gates(self):
+        """`scripts/preflight.sh` é o portão de fato: quem lê `release.yml`
+        vê a chamada, mas os passos verificados (versão coerente e suíte
+        offline) vivem no script, para rodar igual local e no CI."""
+        preflight = ROOT / "scripts" / "preflight.sh"
+        self.assertTrue(preflight.is_file())
+        self.assertTrue(os.access(preflight, os.X_OK), "scripts/preflight.sh precisa do bit executável")
+        text = preflight.read_text(encoding="utf-8")
+        self.assertNotIn("\r", text, "scripts/preflight.sh deve usar LF, não CRLF")
+        for marker in (
+            "--ref",
+            "--version",
+            "__version__",
+            "python3 -m unittest discover -s tests",
+            "gen_skill_mirror.py --check",
+            "check_anchors.py",
+            "PREFLIGHT OK",
+        ):
+            self.assertIn(marker, text, marker)
+        self.assertNotIn(
+            "git archive",
+            text,
+            "preflight.sh não deve usar git archive: esconde paths export-ignore e não tem .git para git ls-files",
+        )
+        if os.name != "nt" and shutil.which("bash"):
+            parsed = subprocess.run(
+                ["bash", "-n", str(preflight)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(0, parsed.returncode, parsed.stderr)
 
     def test_python_text_io_declares_utf8_explicitly(self):
         problems = []

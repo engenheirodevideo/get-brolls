@@ -24,9 +24,11 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
+          cache: 'pip'
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
+          cache: 'npm'
       - name: Install FFmpeg (macOS)
         if: runner.os == 'macOS'
         run: brew install ffmpeg
@@ -63,6 +65,8 @@ jobs:
         shell: pwsh
         run: ./scripts/playwright.ps1 --version
       - run: python -m unittest discover -s tests -v
+      - name: Check the skill mirror is in sync
+        run: python scripts/gen_skill_mirror.py --check
       - name: Check Bash scripts
         if: runner.os != 'Windows'
         run: find scripts -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
@@ -81,6 +85,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.11'
+          cache: 'pip'
       - name: Install quality tooling
         run: python -m pip install -r requirements-dev.txt
       - run: ruff check .

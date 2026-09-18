@@ -14,6 +14,12 @@ ruff format --check .
 echo "==> pyright"
 pyright
 
+echo "==> gen_skill_mirror --check"
+python3 scripts/gen_skill_mirror.py --check
+
+echo "==> check_anchors"
+python3 scripts/check_anchors.py
+
 echo "==> unittest"
 python3 -m unittest discover -s tests
 

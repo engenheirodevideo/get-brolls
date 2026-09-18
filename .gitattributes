@@ -4,3 +4,14 @@
 *.sh text eol=lf
 *.ps1 text eol=crlf
 *.cmd text eol=crlf
+
+# Defesa em profundidade: material de trabalho interno fica fora de qualquer
+# `git archive`, mesmo que um dia volte a ser versionado por engano. A defesa
+# principal continua sendo o teste-guarda, que impede esses caminhos no índice.
+docs/superpowers/ export-ignore
+docs/discovery/ export-ignore
+.superpowers/ export-ignore
+.claude/ export-ignore
+.agents/ export-ignore
+.codex/ export-ignore
+.playwright-cli/ export-ignore
