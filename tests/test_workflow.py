@@ -186,6 +186,7 @@ class ContactSheetTests(unittest.TestCase):
         self.assertEqual(frame_times(7, 12, 5), [7.0, 8.0, 9.0, 10.0, 11.0])
         self.assertEqual(frame_times(0, 2, 4), [0.0, 0.5, 1.0, 1.5])
 
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg required")
     def test_sheet_without_drawtext_is_padded_and_reports_times(self):
         with tempfile.TemporaryDirectory() as d, patch("getbrolls.media.drawtext_available", return_value=False):
             root = Path(d)

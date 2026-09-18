@@ -33,6 +33,8 @@ jobs:
           PY
           printf 'TAG=%s\n' "$TAG" >> "$GITHUB_ENV"
           printf 'VERSION=%s\n' "$VERSION" >> "$GITHUB_ENV"
+      - name: Install FFmpeg (the contact-sheet tests need it)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Run the offline test suite
         run: python3 -m unittest discover -s tests
       - name: Extract changelog section

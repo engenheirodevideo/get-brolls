@@ -8,6 +8,10 @@ tags: [get-brolls]
 
 # Changelog
 
+## Unreleased
+
+- Release workflow: instala FFmpeg antes da suíte offline e o teste de contact sheet sem `drawtext` passa a ser pulado sem FFmpeg — a tag `v2.4.0` falhou nesse passo e a release foi publicada à mão com as mesmas notas.
+
 ## 2.4.0 — 2026-09-17
 
 - **Onda pós-rodada: as fricções dos seis executores cegos, uma correção por linha, cada uma com teste.**
