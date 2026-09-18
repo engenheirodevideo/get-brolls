@@ -6,6 +6,7 @@ import http.client
 import ipaddress
 import json
 import os
+import re
 import socket
 import time
 import urllib.error
@@ -51,6 +52,27 @@ def public_url(url):
         if key.lower() in SECRET_NAMES or key.lower().startswith(("x-amz-", "x-goog-")):
             return None
     return url
+
+
+# Characters RFC 3986 lets a URL path carry unescaped. "%" joins them so a path that
+# is already percent-encoded is recognised as fine and never encoded a second time.
+PATH_SAFE = "/~:@!$&'()*+,;=-._"
+_PATH_OK = re.compile("[A-Za-z0-9" + re.escape(PATH_SAFE + "%") + "]*")
+
+
+def encoded_url(url):
+    """Percent-encode the path of `url`; scheme, host and query are left untouched.
+
+    The NASA archive publishes ids with spaces in them, so its file URLs arrive with
+    raw spaces in the path. `http.client` refuses those outright ("URL can't contain
+    control characters"), which turned a valid item into a dead end at download time.
+    """
+    if not isinstance(url, str):
+        return url
+    parts = urllib.parse.urlsplit(url)
+    if _PATH_OK.fullmatch(parts.path):
+        return url
+    return urllib.parse.urlunsplit(parts._replace(path=urllib.parse.quote(parts.path, safe=PATH_SAFE + "%")))
 
 
 def _network_url(url):
@@ -247,6 +269,9 @@ def download(url, target, max_bytes=512 * 1024 * 1024):
     """Stream only public HTTPS to an exclusive file; remove partials on failure."""
     if not public_url(url):
         raise ProviderError("URL de mídia pública sem credenciais obrigatória")
+    # Defensive for every host, not only NASA: a path with a space (or any other
+    # character outside RFC 3986) would otherwise reach http.client and be refused.
+    url = encoded_url(url)
     target = Path(target)
     if max_bytes <= 0:
         raise ProviderError("Limite de bytes inválido")

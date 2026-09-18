@@ -5,7 +5,7 @@ import os
 import re
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
-from .http import ProviderError, get_json, public_url
+from .http import ProviderError, encoded_url, get_json, public_url
 from .models import candidate
 
 KEYS = {
@@ -264,6 +264,8 @@ def _nasa(query, limit):
             "https://images.nasa.gov/details/" + quote(ident, safe=""),
         )
         item["creator"]["name"] = meta.get("secondary_creator") or meta.get("center")
+        # Sem isto o relatório da busca mostrava `media.kind: None` para todo item da NASA.
+        item["media"]["kind"] = "video"
         _license(
             item,
             "Verificar condições NASA e autoria do item",
@@ -272,9 +274,11 @@ def _nasa(query, limit):
         )
         _poster(
             item,
-            next(
-                (v.get("href") for v in row.get("links", []) if v.get("rel") == "preview"),
-                None,
+            encoded_url(
+                next(
+                    (v.get("href") for v in row.get("links", []) if v.get("rel") == "preview"),
+                    None,
+                )
             ),
         )
         assets = get_json(
@@ -282,7 +286,7 @@ def _nasa(query, limit):
             cache_ttl=86400,
         )
         urls = [
-            v.get("href")
+            encoded_url(v["href"])
             for v in assets.get("collection", {}).get("items", [])
             if public_url(v.get("href")) and urlsplit(v["href"]).path.lower().endswith(".mp4")
         ]
@@ -299,7 +303,7 @@ def _nasa_asset_urls(ident, suffixes):
     """Arquivos públicos deste item, do mais completo para o mais leve."""
     data = get_json("https://images-api.nasa.gov/asset/" + quote(ident, safe=""), cache_ttl=86400)
     urls = [
-        v.get("href")
+        encoded_url(v["href"])
         for v in data.get("collection", {}).get("items", [])
         if public_url(v.get("href")) and urlsplit(v["href"]).path.lower().endswith(suffixes)
     ]
@@ -333,9 +337,12 @@ def _nasa_details(ident):
         "https://www.nasa.gov/nasa-brand-center/images-and-media/",
         item["creator"]["name"],
     )
-    _poster(item, next((v.get("href") for v in (rows[0].get("links") or []) if v.get("rel") == "preview"), None))
+    _poster(
+        item,
+        encoded_url(next((v.get("href") for v in (rows[0].get("links") or []) if v.get("rel") == "preview"), None)),
+    )
+    item["media"]["kind"] = "video" if video else "image"
     if not video:
-        item["media"]["kind"] = "image"
         item["asset_type"] = "image"
     urls = _nasa_asset_urls(nasa_id, (".mp4",) if video else NASA_IMAGE_SUFFIXES)
     _media(item, urls[0] if urls else None)
