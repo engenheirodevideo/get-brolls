@@ -227,10 +227,6 @@ class ProviderFactsInTheListing(unittest.TestCase):
             self.assertIn("Diagnóstico", dry["summary"]["line"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class LongQueryRetry(unittest.TestCase):
     """Frase inteira volta vazia; a busca encurta uma vez e conta que encurtou."""
 
@@ -314,3 +310,7 @@ class BeatQueryIsEntityAndAction(unittest.TestCase):
 
         beat = self.beat("qualquer coisa", queries=["exatamente o que eu quero buscar aqui agora"])
         self.assertEqual("exatamente o que eu quero buscar aqui agora", search_query(beat))
+
+
+if __name__ == "__main__":
+    unittest.main()

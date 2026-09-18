@@ -324,10 +324,6 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(builder.return_value.open.call_count, 3)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 COMMONS_FILE = {
     "query": {
         "pages": {
@@ -484,3 +480,7 @@ class SearchMediaFlagTests(unittest.TestCase):
         with patch.object(providers, "_youtube", return_value=[]) as fake:
             providers.search("youtube", "SLS", 5, media="image")
         self.assertEqual(("SLS", 5), fake.call_args[0])
+
+
+if __name__ == "__main__":
+    unittest.main()
