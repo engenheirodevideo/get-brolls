@@ -32,6 +32,9 @@ PING_PATH = "/__ping"
 MAX_SAVE_BYTES = 2000000
 PID_FILE = ".serve.pid"
 LOG_FILE = ".serve.log"
+# Espera pelo servidor de fundo: generosa de propósito, porque uma máquina de CI
+# fria leva segundos para subir o interpretador e um filho morto falha na hora.
+BACKGROUND_TIMEOUT = 60.0
 REVIEWS_DIR = "reviews"
 
 
@@ -216,6 +219,13 @@ def save_review(directory, data):
     extra = 0
     while True:
         path = reviews / (f"{stamp}.json" if not extra else f"{stamp}-{extra}.json")
+        # `O_NOFOLLOW` não existe no Windows (vale 0 ali), então a recusa do link
+        # plantado é feita antes do `open`, com `lstat`, igual em todo sistema.
+        if path.is_symlink():
+            raise ValueError(
+                f"{path} é um link simbólico; apague esse link antes de salvar as "
+                "decisões — o arquivo tem que ficar dentro do projeto."
+            )
         try:
             handle = os.open(path, flags, 0o600)
         except FileExistsError:
@@ -388,6 +398,24 @@ def state(project):
     }
 
 
+def _payload_in(output: str) -> bool:
+    """A linha JSON com a porta já apareceu no log do servidor de fundo?"""
+    for line in output.splitlines():
+        try:
+            candidate = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(candidate, dict) and candidate.get("port"):
+            return True
+    return False
+
+
+def _tail(output: str, lines: int = 20) -> str:
+    """O fim do log junto do erro: sem isso, a falha do filho fica invisível."""
+    text = "\n".join(output.splitlines()[-lines:]).strip()
+    return f"\n\nÚltimas linhas do log:\n{text}" if text else ""
+
+
 def start_background(project, port: int = DEFAULT_PORT):
     """Sobe o servidor num processo solto e devolve as URLs quando ele já responde.
 
@@ -403,15 +431,22 @@ def start_background(project, port: int = DEFAULT_PORT):
         return {"background": True, "already_running": True, **current}
     log = directory / LOG_FILE
     log.write_text("", encoding="utf-8")
+    scripts = Path(__file__).resolve().parents[1]
     command = [
         sys.executable,
-        str(Path(__file__).resolve().parents[2] / "scripts" / "gb.py"),
+        str(scripts.parent / "scripts" / "gb.py"),
         "serve",
         "--project",
         str(Path(project).expanduser().resolve()),
         "--port",
         str(port),
     ]
+    # O filho precisa achar `getbrolls` e falar UTF-8 mesmo num console legado:
+    # nada disso pode depender do diretório de trabalho ou do locale da máquina.
+    environment = dict(os.environ)
+    existing = environment.get("PYTHONPATH")
+    environment["PYTHONPATH"] = str(scripts) + (os.pathsep + existing if existing else "")
+    environment["PYTHONIOENCODING"] = "utf-8"
     extra = {}
     if os.name == "nt":
         # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP: o servidor sobrevive ao console.
@@ -425,17 +460,21 @@ def start_background(project, port: int = DEFAULT_PORT):
             stderr=stream,
             stdin=subprocess.DEVNULL,
             cwd=str(directory),
+            env=environment,
             **extra,
         )
     payload = None
-    deadline = time.monotonic() + 15
+    # Máquina de CI fria gasta segundos só para subir o interpretador; a espera é
+    # longa porque quem morre é detectado na hora, não por esgotar o relógio.
+    deadline = time.monotonic() + BACKGROUND_TIMEOUT
     while time.monotonic() < deadline:
-        if process.poll() is not None and not log.read_text(encoding="utf-8").strip():
+        output = log.read_text(encoding="utf-8", errors="replace")
+        if process.poll() is not None and not _payload_in(output):
             raise ValueError(
                 "O servidor do Storyboard não subiu. Rode `serve` sem `--background` "
-                f"para ver o erro; a saída ficou em {log}."
+                f"para ver o erro; a saída ficou em {log}.{_tail(output)}"
             )
-        for line in log.read_text(encoding="utf-8").splitlines():
+        for line in output.splitlines():
             try:
                 candidate = json.loads(line)
             except ValueError:
@@ -451,6 +490,7 @@ def start_background(project, port: int = DEFAULT_PORT):
         raise ValueError(
             "O servidor do Storyboard não respondeu a tempo. Rode `serve` sem "
             f"`--background` para ver o que aconteceu (saída em {log})."
+            f"{_tail(log.read_text(encoding='utf-8', errors='replace'))}"
         )
     record = {
         "pid": process.pid,

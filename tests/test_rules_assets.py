@@ -281,6 +281,7 @@ class FormatChangeGateTests(unittest.TestCase):
                 [sys.executable, str(CLI), "review", "--project", folder],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertNotEqual(0, blocked.returncode)
             self.assertIn("--confirm-format-change", blocked.stdout + blocked.stderr)

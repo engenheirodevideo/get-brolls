@@ -78,7 +78,8 @@ class LibraryTests(LibraryBase):
     def test_the_index_is_written_atomically_and_private(self):
         library.learn_query("foguete decolando", "youtube", "hit")
         path = library.index_path()
-        self.assertEqual(0o600, stat.S_IMODE(path.stat().st_mode))
+        if os.name != "nt":  # Windows não tem bits POSIX de permissão
+            self.assertEqual(0o600, stat.S_IMODE(path.stat().st_mode))
         self.assertFalse(list(path.parent.glob("*.tmp")))
         data = json.loads(path.read_text(encoding="utf-8"))
         self.assertEqual(1, data["schema_version"])
@@ -89,7 +90,8 @@ class LibraryTests(LibraryBase):
         answer = library.learn_query("foguete decolando", "youtube", "miss", note="Só resultados de simulação.")
         note = library.library_dir() / answer["entry"]["note"]
         self.assertIn("simulação", note.read_text(encoding="utf-8"))
-        self.assertEqual(0o600, stat.S_IMODE(note.stat().st_mode))
+        if os.name != "nt":  # Windows não tem bits POSIX de permissão
+            self.assertEqual(0o600, stat.S_IMODE(note.stat().st_mode))
 
     def test_off_disables_reading_and_writing(self):
         os.environ["GB_LIBRARY"] = "off"

@@ -1,4 +1,5 @@
 import ast
+import os
 import re
 import shutil
 import subprocess
@@ -130,6 +131,10 @@ class RepositoryDocumentationTests(unittest.TestCase):
         self.assertIn("macos-latest", workflow)
         self.assertIn("windows-latest", workflow)
         self.assertIn("./scripts/install.ps1\n", workflow)
+        # A sintaxe dos scripts é conferida nos dois sistemas: `bash -n` no Unix,
+        # `[scriptblock]::Create` no Windows.
+        self.assertIn("bash -n", workflow)
+        self.assertIn("[scriptblock]::Create", workflow)
 
     def test_quality_stack_is_configured_and_runs_in_ci(self):
         # Lint e type check são parte do contrato de contribuição: config versionada,
@@ -153,8 +158,15 @@ class RepositoryDocumentationTests(unittest.TestCase):
         powershell = ROOT / "scripts/check.ps1"
         self.assertTrue(shell.is_file())
         self.assertTrue(powershell.is_file())
-        if shutil.which("bash"):
-            parsed = subprocess.run(["bash", "-n", str(shell)], capture_output=True, text=True)
+        # No Windows o `bash` que existe é o do WSL/Git Bash, que nem sempre entende
+        # um caminho `D:\...`: a sintaxe do shell é conferida pelo job Unix do CI.
+        if os.name != "nt" and shutil.which("bash"):
+            parsed = subprocess.run(
+                ["bash", "-n", str(shell)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
             self.assertEqual(0, parsed.returncode, parsed.stderr)
         text = shell.read_text(encoding="utf-8")
         for step in ("ruff check", "ruff format --check", "pyright", "unittest discover -s tests"):

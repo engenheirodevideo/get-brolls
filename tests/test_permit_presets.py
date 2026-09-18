@@ -24,6 +24,7 @@ def call(*args, ok=True) -> Any:
         [sys.executable, str(CLI), *[str(a) for a in args]],
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     if ok:
         assert proc.returncode == 0, proc.stdout + proc.stderr

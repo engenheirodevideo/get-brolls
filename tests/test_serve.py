@@ -104,6 +104,7 @@ class ServeMissingStoryboardEnvelopeTests(unittest.TestCase):
                 ],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
             payload = json.loads(proc.stdout.strip().splitlines()[-1])
@@ -223,6 +224,22 @@ class SaveEndpointTests(unittest.TestCase):
             self.assertFalse((root / "brolls" / "reviews").exists())
 
 
+def _serve_log(root):
+    """O log do servidor de fundo, para a falha dizer o que o filho reclamou."""
+    log = Path(root) / "brolls" / serve.LOG_FILE
+    if not log.is_file():
+        return f"(sem {log})"
+    return f"{log}:\n{log.read_text(encoding='utf-8', errors='replace')}"
+
+
+def _start_background(test, root):
+    """`start_background` com o log do filho anexado quando ele não sobe."""
+    try:
+        return serve.start_background(root, port=0)
+    except ValueError as exc:  # pragma: no cover - só quando o CI falha
+        raise test.failureException(f"{exc}\n\n{_serve_log(root)}") from exc
+
+
 class BackgroundServeTests(unittest.TestCase):
     """`serve --background` roda igual no Windows: subprocesso solto + PID em arquivo."""
 
@@ -235,7 +252,7 @@ class BackgroundServeTests(unittest.TestCase):
     def test_background_writes_pid_file_and_stop_terminates(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
-            started = serve.start_background(root, port=0)
+            started = _start_background(self, root)
             try:
                 self.assertTrue(started["background"])
                 pid_file = root / "brolls" / ".serve.pid"
@@ -313,7 +330,7 @@ class ServerIdentityTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
-            serve.start_background(root, port=0)
+            _start_background(self, root)
             try:
                 self.assertTrue(serve.state(root)["running"])
                 pid_file = root / "brolls" / ".serve.pid"

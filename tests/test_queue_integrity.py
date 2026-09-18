@@ -293,6 +293,7 @@ class ActiveItemNextTests(unittest.TestCase):
                 ],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 env=env,
                 check=True,
             )
@@ -300,6 +301,7 @@ class ActiveItemNextTests(unittest.TestCase):
                 [sys.executable, str(CLI), "queue", "--project", tmp, "--action", "next"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 env=env,
                 check=True,
             )
@@ -309,6 +311,7 @@ class ActiveItemNextTests(unittest.TestCase):
                 [sys.executable, str(CLI), "queue", "--project", tmp, "--action", "next"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 env=env,
                 check=True,
             )

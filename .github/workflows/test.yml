@@ -66,6 +66,10 @@ jobs:
       - name: Check Bash scripts
         if: runner.os != 'Windows'
         run: find scripts -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+      - name: Check PowerShell scripts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: pwsh -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw scripts/check.ps1)) | Out-Null"
       - run: node --check assets/storyboard.js
       - run: node --check assets/review.js
 
