@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/badge/node-22%2B-green?style=flat-square" alt="Node 22+">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="Licença MIT">
     <img src="https://img.shields.io/github/actions/workflow/status/engenheirodevideo/get-brolls/test.yml?branch=main&style=flat-square&label=tests" alt="Status dos testes">
-    <img src="https://img.shields.io/badge/version-2.4.1-blue?style=flat-square" alt="Versão 2.4.1">
+    <img src="https://img.shields.io/badge/version-2.4.2-blue?style=flat-square" alt="Versão 2.4.2">
   </p>
 </div>
 
@@ -28,6 +28,7 @@ A prévia pode baixar mídia de trabalho para mostrar o movimento. A entrega fin
 
 ## Atualizações
 
+- **2.4.2** Frontmatter do SKILL.md válido como YAML (a `description` ganha aspas; o GitHub não renderizava o arquivo).
 - **2.4.1** Correção do workflow de release (FFmpeg no runner) e registro do ensaio ao vivo do Instagram. Sem mudança de comportamento na CLI.
 - **2.4.0** Entrevista de intake e `BRIEF.md` por projeto (`init-brief`/`brief`), aprovação pelo chat (`approve --all --by NOME --channel chat --statement "..."`), biblioteca de aprendizados entre projetos (`learn`/`library`), análise da fonte antes de coletar (`inspect`, `preview --scan`), pasta `entrega/` por beat (`deliver`), Storyboard que salva as decisões dentro do projeto, próximo passo pronto em `status.summary.do`, `search --shot/--dry-run` e `init-rules --format`.
 - **2.3.8** Fila com ritmo para lotes sociais (`queue`), `instagram_pairs --pace/--max-per-run/--continue-on-error`, pausas do yt-dlp e respeito a `Retry-After`, erros legíveis com stderr redigido, cache por intervalo/NASA/drawtext, e comando `serve` para o Storyboard local.
