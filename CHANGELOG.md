@@ -10,6 +10,8 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- SKILL.md e espelho: a `description` do frontmatter ganha aspas. O `Also in English: …` sem aspas era um `: ` solto dentro de um escalar YAML, e o GitHub parava de renderizar o arquivo com "mapping values are not allowed in this context" (linha 2). Teste novo em `tests/test_skill_mirror.py` recusa valor de primeiro nível sem aspas com `: ` ou ` #`, e aspas que não fecham.
+
 ## 2.4.1 — 2026-09-18
 
 - Release workflow: instala FFmpeg antes da suíte offline e o teste de contact sheet sem `drawtext` passa a ser pulado sem FFmpeg — a tag `v2.4.0` falhou nesse passo e a release foi publicada à mão com as mesmas notas. Esta versão existe para provar o `release.yml` corrigido numa tag real; não há mudança de comportamento na CLI.
