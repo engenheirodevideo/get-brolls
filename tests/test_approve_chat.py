@@ -167,7 +167,7 @@ class ApproveChatTests(unittest.TestCase):
             self.assertEqual(["local:a", "local:b"], sorted(result["approved"]))
             self.assertEqual(["local:c"], [item["id"] for item in result["skipped"]])
             self.assertIn("prévia", result["skipped"][0]["reason"])
-            self.assertIn("Registrei", result["summary"])
+            self.assertIn("Registrei", result["summary"]["line"])
 
             ledger = Ledger(tmp)
             approval = ledger.get("local:a")["approval"]
@@ -282,7 +282,7 @@ class RejectManyTests(unittest.TestCase):
                 tmp,
             )
             self.assertEqual(["local:a", "local:b"], result["rejected"])
-            self.assertIn("Rejeitei 2 itens", result["summary"])
+            self.assertIn("Rejeitei 2 itens", result["summary"]["line"])
             ledger = Ledger(tmp)
             for ident in ("local:a", "local:b"):
                 self.assertEqual("rejected", ledger.get(ident)["approval"]["status"])
@@ -296,7 +296,7 @@ class RejectManyTests(unittest.TestCase):
             result = run_cli(self, "reject", "--candidate", "local:a", "--project", tmp)
             self.assertEqual("local:a", result["id"])
             self.assertEqual("rejected", result["state"])
-            self.assertIn("Rejeitei local:a", result["summary"])
+            self.assertIn("Rejeitei local:a", result["summary"]["line"])
 
     def test_an_unknown_id_stops_the_batch_before_anything_is_written(self):
         with tempfile.TemporaryDirectory() as tmp:

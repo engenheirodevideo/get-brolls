@@ -91,6 +91,16 @@ são ponto de partida para confirmar no contact sheet, nunca resposta pronta.
 
 Quando o pedido é uma referência estática — um print, uma capa, um quadro só —, `preview --reference-only` gera apenas essa referência, sem GIF.
 
+## Onde ficam os arquivos da prévia
+
+Toda resposta de `preview` — corte normal, `--reference-only`, `--scan` e imagem estática — traz `files`, com o **caminho absoluto** de `contact_sheet`, `poster`, `gif`, `review` e, na varredura, `scan`. É esse caminho que você abre para olhar.
+
+No `status` e dentro do `manifest.json` o mesmo arquivo aparece como `preview.contact_sheet_path`, e ali ele é **relativo a `brolls/`** (`previews/<id>.jpg`). Os dois falam do mesmo arquivo; o que muda é a forma. Para montar o caminho absoluto a partir do manifesto, junte `<projeto>/brolls/` na frente.
+
+## Um `preview` por chamada
+
+Não encadeie várias prévias numa chamada só de shell. Cada `preview` baixa mídia de trabalho e chama o FFmpeg; três ou quatro em sequência passam do teto de tempo da ferramenta, e a chamada morre no meio — com arquivos pela metade e nenhum resumo. Rode um `preview` por chamada, leia o `files.contact_sheet` daquele item, e só então peça o próximo. Vale o mesmo para `preview --scan`, que sozinho já pode levar minutos.
+
 ## Print de tela (UI)
 
 Quando o beat pede a tela real de um produto, de um painel ou de um site — não um
@@ -113,6 +123,26 @@ cita e diga isso na revisão.
 `--reference-only` vale também para vídeo cuja fonte não libera o trecho: rode-o
 **sozinho**, sem `--start/--end`, e a skill gera só o cartaz estático (miniatura da
 fonte ou primeiro quadro), o bastante para a pessoa decidir.
+
+**Aviso de cookies antes de capturar.** Muita página abre com uma faixa de consentimento
+por cima justamente do que a narração cita, e o print sai com o banner tapando a tela. Feche
+a faixa com os helpers do navegador antes do `screenshot` — clique na opção **mais
+preservadora de privacidade** que a página oferecer ("Rejeitar tudo", "Somente essenciais",
+"Continuar sem aceitar"), nunca em "Aceitar tudo", e não aceite termos em nome do usuário.
+Nada disso é automático: não existe código na skill que dispense banner sozinho, é uma
+interação do navegador, feita à vista, antes da captura. Se a faixa não fechar, diga isso na
+revisão em vez de entregar um print tapado.
+
+**Tela de um aplicativo de desktop.** Quando o beat pede a interface de um programa que roda
+na máquina — um editor, uma IDE, um terminal, um painel instalado —, não existe URL para o
+`browser-plan` abrir. Duas rotas, nessa ordem: (1) a tela do próprio usuário — peça a ele o
+screenshot do seu computador e registre o arquivo com `resolve --file --source-url` (a
+`--source-url` aqui é a página oficial do produto) e `--asset-type web_screenshot`; ou (2) uma
+captura pública da interface — um tutorial ou demonstração no YouTube que mostre a mesma tela,
+achado com `search --provider youtube`, localizado com `inspect --query` e confirmado com
+`preview`. A rota (1) mostra a tela real dele e é sempre a melhor quando ele pode mandar; a
+rota (2) é material de terceiro e passa pelo `permit` como qualquer outro. O que não vale é
+recriar a interface de memória.
 
 ## Quando não há fonte
 

@@ -269,7 +269,7 @@ class QueueCliTests(unittest.TestCase):
                 REEL,
             )
             self.assertEqual(2, len(added["added"]))
-            self.assertIn("Enfileirei", added["summary"])
+            self.assertIn("Enfileirei", added["summary"]["line"])
             self.assertTrue((Path(tmp) / "work/queue.json").is_file())
             first = self.run_cli("queue", "--project", tmp, "--action", "next")
             self.assertEqual("instagram:ABC123xyz", first["item"]["id"])
@@ -280,7 +280,7 @@ class QueueCliTests(unittest.TestCase):
             self.assertGreater(waiting["wait_seconds"], 0)
             self.assertLessEqual(waiting["wait_seconds"], 30)
             self.assertTrue(waiting["resume_at"])
-            self.assertIn("Aguarde", waiting["summary"])
+            self.assertIn("Aguarde", waiting["summary"]["line"])
             failed = self.run_cli(
                 "queue",
                 "--project",

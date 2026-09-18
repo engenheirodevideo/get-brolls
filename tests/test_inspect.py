@@ -684,6 +684,9 @@ class ScanTests(unittest.TestCase):
             self.assertEqual(0, done.returncode, done.stdout + done.stderr)
             payload = json.loads(done.stdout)
             self.assertTrue(Path(payload["files"]["scan"]).is_file())
+            # `--scan` não é uma resposta menor que as outras: `files` traz o mesmo
+            # contrato, com a varredura a mais.
+            self.assertLessEqual({"contact_sheet", "poster", "gif", "review", "scan"}, set(payload["files"]))
             self.assertEqual(12, payload["scan"]["frames"])
             self.assertAlmostEqual(20 / 12, payload["scan"]["every_s"], places=2)
             # Rótulos em tempo da fonte, como `preview.frame_times_s`: é com eles que
@@ -1018,6 +1021,9 @@ class DirectMediaSourceTests(unittest.TestCase):
             with download, refresh, probe_remote, segment:
                 payload = audited(args, execute)
             self.assertTrue(Path(payload["files"]["scan"]).is_file())
+            # `--scan` não é uma resposta menor que as outras: `files` traz o mesmo
+            # contrato, com a varredura a mais.
+            self.assertLessEqual({"contact_sheet", "poster", "gif", "review", "scan"}, set(payload["files"]))
             self.assertEqual(12, payload["scan"]["frames"])
             self.assertLessEqual(payload["scan"]["frame_times_s"][-1], 8.0)
 
@@ -1242,3 +1248,46 @@ class LanguageMismatchTests(unittest.TestCase):
             self.assertIn("files.contact_sheet", text)
             self.assertIn("preview.contact_sheet_path", text)
             self.assertIn("relativo a `brolls/`", text)
+
+
+class PreviewFilesOnEveryBranchTests(unittest.TestCase):
+    """Toda rota de `preview` devolve `files` com caminho absoluto; nenhuma fica muda."""
+
+    def test_the_scan_branch_carries_the_other_artifacts_too(self):
+        from getbrolls.commands import preview_files
+
+        class FakeLedger:
+            root = Path("/tmp/projeto/brolls")
+
+        item = {"preview": {"contact_sheet_path": "previews/a.jpg", "poster_path": None, "gif_path": None}}
+        files = preview_files(FakeLedger(), item)
+        self.assertEqual({"contact_sheet", "poster", "gif", "review"}, set(files))
+        self.assertTrue(files["contact_sheet"].endswith("brolls/previews/a.jpg"))
+        self.assertTrue(Path(files["contact_sheet"]).is_absolute())
+        self.assertIsNone(files["poster"])
+
+    def test_providers_reference_locates_the_contact_sheet_in_both_shapes(self):
+        body = (ROOT / "references/providers.md").read_text(encoding="utf-8")
+        self.assertIn("`contact_sheet`", body)
+        self.assertIn("preview.contact_sheet_path", body)
+        self.assertIn("relativo a `brolls/`", body)
+        self.assertIn("`--reference-only`, `--scan`", body)
+
+    def test_providers_reference_says_one_preview_per_call(self):
+        body = (ROOT / "references/providers.md").read_text(encoding="utf-8")
+        self.assertIn("Um `preview` por chamada", body)
+        self.assertIn("teto de tempo da ferramenta", body)
+
+    def test_providers_reference_covers_consent_banners_before_capture(self):
+        body = (ROOT / "references/providers.md").read_text(encoding="utf-8")
+        self.assertIn("Aviso de cookies antes de capturar", body)
+        self.assertIn("mais\npreservadora de privacidade", body)
+        self.assertIn("Rejeitar tudo", body)
+        self.assertIn("não existe código na skill que dispense banner sozinho", body)
+
+    def test_providers_reference_covers_the_desktop_app_screen(self):
+        body = (ROOT / "references/providers.md").read_text(encoding="utf-8")
+        self.assertIn("Tela de um aplicativo de desktop", body)
+        self.assertIn("screenshot do seu computador", body)
+        self.assertIn("tutorial ou demonstração no YouTube", body)
+        self.assertIn("recriar a interface de memória", body)

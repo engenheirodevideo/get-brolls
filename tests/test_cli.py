@@ -69,10 +69,10 @@ class CliTest(unittest.TestCase):
             id = c["id"]
             base = ["--candidate", id, "--project", root]
             # Cada comando do fluxo também diz, em uma linha, o que acabou de fazer.
-            self.assertIn("Registrei o candidato", c["summary"])
+            self.assertIn("Registrei o candidato", c["summary"]["line"])
             self.call("fetch", *base, ok=False)
             preview = self.call("preview", *base, "--start", 0.5, "--end", 1.5)
-            self.assertIn("Gerei a prévia", preview["summary"])
+            self.assertIn("Gerei a prévia", preview["summary"]["line"])
             approved = self.call(
                 "approve",
                 *base,
@@ -85,7 +85,7 @@ class CliTest(unittest.TestCase):
                 "--statement",
                 "Aprovo este trecho para o vídeo.",
             )
-            self.assertIn("Registrei a aprovação humana", approved["summary"])
+            self.assertIn("Registrei a aprovação humana", approved["summary"]["line"])
             self.call("fetch", *base, ok=False)
             permitted = self.call(
                 "permit",
@@ -93,15 +93,15 @@ class CliTest(unittest.TestCase):
                 "--evidence",
                 "Vídeo sintético de teste gerado localmente",
             )
-            self.assertIn("condições de uso", permitted["summary"])
+            self.assertIn("condições de uso", permitted["summary"]["line"])
             out = self.call("fetch", *base)
             self.assertTrue(out["output"]["verified"])
-            self.assertIn("Coletei o corte final", out["summary"])
+            self.assertIn("Coletei o corte final", out["summary"]["line"])
             verified = self.call("verify", "--project", root)
             self.assertEqual(verified["count"], 1)
-            self.assertIn("1 arquivo coletado: íntegro e decodificável", verified["summary"])
+            self.assertIn("1 arquivo coletado: íntegro e decodificável", verified["summary"]["line"])
             reviewed = self.call("review", "--project", root)
-            self.assertIn("Gerei o Storyboard", reviewed["summary"])
+            self.assertIn("Gerei o Storyboard", reviewed["summary"]["line"])
             state = self.call("status", "--project", root)
             self.assertEqual(1, state["counts"]["verified"])
             self.assertIn("completo", state["summary"]["next"])

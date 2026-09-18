@@ -292,7 +292,11 @@ def with_summary(command, result):
     formatter = FLOW_SUMMARIES.get(command)
     if formatter is None or not isinstance(result, dict) or "summary" in result:
         return result
-    return {**result, "summary": formatter(result)}
+    line = formatter(result)
+    # `summary` é sempre um objeto com `line`. Alguns comandos devolviam a frase solta
+    # como string, e quem lê o JSON tinha que saber de cor qual comando fala de que
+    # jeito — a mesma leitura (`summary.line`) tem que servir para todos.
+    return {**result, "summary": line if isinstance(line, dict) else {"line": line}}
 
 
 # Escada do fluxo: a primeira condição verdadeira nomeia o próximo passo real.
@@ -2189,5 +2193,7 @@ def scan_candidate(ledger, c, config):
     render(ledger)
     return {
         **c,
-        "files": {"scan": str((ledger.root / result["scan_path"]).resolve())},
+        # Mesmo contrato das outras rotas de `preview`: caminho absoluto de tudo o que
+        # existe para olhar, e não só da varredura recém-gerada.
+        "files": {**preview_files(ledger, c), "scan": str((ledger.root / result["scan_path"]).resolve())},
     }

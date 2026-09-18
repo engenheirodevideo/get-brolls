@@ -564,19 +564,19 @@ class ProgressSummaryTests(unittest.TestCase):
         enriched = with_summary("search", result)
         self.assertEqual(result, {k: v for k, v in enriched.items() if k != "summary"})
         self.assertNotIn("summary", result, "o resultado original não pode ser mutado")
-        self.assertIn("1 registrado", enriched["summary"])
-        self.assertIn("2 excluídos pelas regras", enriched["summary"])
+        self.assertIn("1 registrado", enriched["summary"]["line"])
+        self.assertIn("2 excluídos pelas regras", enriched["summary"]["line"])
 
     def test_summary_lines_describe_verb_object_and_result(self):
         lines = {
             "preview": with_summary(
                 "preview",
                 {"id": "local:a", "state": "awaiting_approval", "approval": {"status": "pending"}},
-            )["summary"],
-            "fetch": with_summary("fetch", {"id": "local:a", "output": {"path": "clips/a.mp4"}})["summary"],
-            "verify": with_summary("verify", {"verified": [], "count": 2})["summary"],
-            "permit": with_summary("permit", {"id": "local:a", "rights": {"status": "permitted"}})["summary"],
-            "import-review": with_summary("import-review", {"imported": 3, "by": "Revisor"})["summary"],
+            )["summary"]["line"],
+            "fetch": with_summary("fetch", {"id": "local:a", "output": {"path": "clips/a.mp4"}})["summary"]["line"],
+            "verify": with_summary("verify", {"verified": [], "count": 2})["summary"]["line"],
+            "permit": with_summary("permit", {"id": "local:a", "rights": {"status": "permitted"}})["summary"]["line"],
+            "import-review": with_summary("import-review", {"imported": 3, "by": "Revisor"})["summary"]["line"],
         }
         self.assertIn("Gerei a prévia de local:a", lines["preview"])
         self.assertIn("clips/a.mp4", lines["fetch"])
@@ -593,24 +593,24 @@ class ProgressSummaryTests(unittest.TestCase):
             "search",
             {"items": [], "errors": [], "note": "APIs atuais pesquisam vídeos."},
         )
-        self.assertIn("0 registrados", enriched["summary"])
-        self.assertIn("APIs atuais pesquisam vídeos.", enriched["summary"])
+        self.assertIn("0 registrados", enriched["summary"]["line"])
+        self.assertIn("APIs atuais pesquisam vídeos.", enriched["summary"]["line"])
 
     def test_reference_only_preview_says_it_generated_static_reference(self):
         line = with_summary(
             "preview",
             {"id": "local:a", "state": "reference_only", "approval": {"status": "pending"}},
-        )["summary"]
+        )["summary"]["line"]
         self.assertIn("somente a referência estática", line)
 
     def test_singular_and_plural_agree_with_the_counts(self):
         self.assertIn(
             "1 arquivo coletado: íntegro e decodificável",
-            with_summary("verify", {"verified": [], "count": 1})["summary"],
+            with_summary("verify", {"verified": [], "count": 1})["summary"]["line"],
         )
         self.assertIn(
             "2 arquivos coletados: íntegros e decodificáveis",
-            with_summary("verify", {"verified": [], "count": 2})["summary"],
+            with_summary("verify", {"verified": [], "count": 2})["summary"]["line"],
         )
         line = FLOW_SUMMARIES["status"]({"counts": {"candidates": 1, "previews": 2}})
         self.assertIn("1 candidato encontrado", line)
@@ -622,16 +622,40 @@ class ProgressSummaryTests(unittest.TestCase):
             with_summary(
                 "approve",
                 {"id": "local:a", "state": "approved", "approval": {"by": "Humano"}},
-            )["summary"],
+            )["summary"]["line"],
         )
-        self.assertIn(
-            "Rejeitei local:a",
-            with_summary("reject", {"id": "local:a", "state": "rejected"})["summary"],
-        )
+        rejected = with_summary("reject", {"id": "local:a", "state": "rejected"})["summary"]
+        assert isinstance(rejected, dict)
+        self.assertIn("Rejeitei local:a", rejected["line"])
 
 
-if __name__ == "__main__":
-    unittest.main()
+class EverySummaryIsAnObjectWithALine(unittest.TestCase):
+    """Uma leitura só serve para todo comando: `summary.line`."""
+
+    SAMPLES = {
+        "search": {"items": [], "errors": [], "excluded_by_rules": 0},
+        "resolve": {"id": "local:a", "state": "registered"},
+        "preview": {"id": "local:a", "state": "awaiting_approval", "approval": {"status": "pending"}},
+        "approve": {"id": "local:a", "state": "approved", "approval": {"by": "Humano"}},
+        "reject": {"id": "local:a", "state": "rejected"},
+        "review": {"items": 2, "path": "brolls/review.html"},
+        "import-review": {"imported": 1, "by": "Revisor"},
+        "permit": {"id": "local:a", "rights": {"status": "permitted"}},
+        "fetch": {"id": "local:a", "output": {"path": "clips/a.mp4"}},
+        "verify": {"verified": [], "count": 1},
+        "status": {"counts": {"candidates": 1}},
+    }
+
+    def test_every_flow_command_answers_with_a_dict_carrying_line(self):
+        for command in FLOW_SUMMARIES:
+            with self.subTest(command=command):
+                summary = with_summary(command, dict(self.SAMPLES.get(command, {})))["summary"]
+                self.assertIsInstance(summary, dict, f"{command} devolveu summary fora de objeto")
+                self.assertIn("line", summary)
+                self.assertTrue(str(summary["line"]).strip())
+
+    def test_a_command_that_already_built_its_own_summary_is_left_alone(self):
+        self.assertEqual({"summary": {"line": "x"}}, with_summary("status", {"summary": {"line": "x"}}))
 
 
 class StepCandidateTests(unittest.TestCase):
@@ -739,3 +763,7 @@ class StepCandidateTests(unittest.TestCase):
         self.assertNotIn(" serve ", action["command"])
         # A rota do board continua oferecida, mas na frase e na url, não no comando.
         self.assertIn("Storyboard", action["for_human"])
+
+
+if __name__ == "__main__":
+    unittest.main()
