@@ -47,22 +47,27 @@ if __name__ == "__main__":
     unittest.main()
 
 
+def render_one(**overrides):
+    """Um candidato de YouTube renderizado pelo pipeline real, do ledger ao HTML."""
+    import tempfile
+
+    from getbrolls.ledger import Ledger
+    from getbrolls.models import candidate, set_segment
+    from getbrolls.rendering import render
+
+    with tempfile.TemporaryDirectory() as d:
+        ledger = Ledger(d)
+        c = candidate("youtube", "abc", "Foguete decolando")
+        c["source_url"] = "https://www.youtube.com/watch?v=abc"
+        set_segment(c, 7, 12)
+        c["preview"].update(overrides)
+        ledger.data["items"].append(c)
+        return Path(render(ledger)).read_text(encoding="utf-8")
+
+
 class ContactSheetRenderingTest(unittest.TestCase):
     def render_item(self, **overrides):
-        import tempfile
-
-        from getbrolls.ledger import Ledger
-        from getbrolls.models import candidate, set_segment
-        from getbrolls.rendering import render
-
-        with tempfile.TemporaryDirectory() as d:
-            ledger = Ledger(d)
-            c = candidate("youtube", "abc", "Foguete decolando")
-            c["source_url"] = "https://www.youtube.com/watch?v=abc"
-            set_segment(c, 7, 12)
-            c["preview"].update(overrides)
-            ledger.data["items"].append(c)
-            return Path(render(ledger)).read_text(encoding="utf-8")
+        return render_one(**overrides)
 
     def test_contact_sheet_is_inline_with_legend_when_unlabelled(self):
         page = self.render_item(
@@ -175,3 +180,100 @@ class StoryboardV2Test(unittest.TestCase):
         css = page.split("</style>")[0]
         self.assertIn(".brand-logo{display:block;width:48px;height:48px;max-width:none;object-fit:contain", css)
         self.assertNotIn("brand-logo-frame", page)
+
+
+class PanelStringsSnapshotTest(unittest.TestCase):
+    """As frases do painel de decisão: mudá-las é decisão de produto, não refactor.
+
+    Elas estavam sem teste nenhum — `REVIEW_PANEL` e as mensagens do `review.js`
+    passaram três rodadas de UX copy sem rede. Este teste é a rede: quem trocar um
+    texto vê o teste vermelho e decide de propósito.
+    """
+
+    ASSETS = ROOT / "assets"
+
+    def page(self):
+        return render_one(
+            poster_path="previews/a-poster.jpg",
+            contact_sheet_path="previews/a-sheet.jpg",
+        )
+
+    def test_panel_placeholders_and_labels_are_exactly_these(self):
+        page = self.page()
+        self.assertIn('placeholder="Me conta em uma linha o que você queria…"', page)
+        self.assertIn('<input data-suggestion type="url" placeholder="https://…">', page)
+        self.assertIn("<h2>Esse trecho serve?</h2>", page)
+        self.assertIn("<label>O que mudar<textarea data-comment", page)
+        self.assertIn("Achou outro vídeo? cole o link (opcional)", page)
+        self.assertIn(" Não é esse vídeo: procure outro</label>", page)
+        self.assertIn(
+            '<button class="confirm-review" type="button" hidden>Confirmar pedido de ajuste</button>',
+            page,
+        )
+        self.assertIn('<button class="comment-toggle" type="button" aria-expanded="false">Comentar</button>', page)
+
+    def test_the_three_decision_buttons_say_what_each_one_causes(self):
+        page = self.page()
+        self.assertIn('title="Marca o trecho como aprovado. Depois eu baixo ele pra sua pasta.">Aprovar</button>', page)
+        self.assertIn(
+            'title="Você escreve o que mudar (outro pedaço do vídeo, ou outro vídeo) e eu refaço.">Pedir ajuste</button>',
+            page,
+        )
+        self.assertIn('title="Descarta o trecho. Eu não baixo ele.">Reprovar</button>', page)
+
+    def test_review_js_error_and_confirm_strings_are_exactly_these(self):
+        js = (self.ASSETS / "review.js").read_text(encoding="utf-8")
+        self.assertIn('status.textContent = "Me conta em uma linha o que você queria.";', js)
+        self.assertIn('wanted() === "changes" ? "Confirmar pedido de ajuste" : "Confirmar: procure outro vídeo"', js)
+        self.assertIn('note("Não consegui salvar no projeto; baixei o arquivo em vez disso.");', js)
+        self.assertIn('"Decisões salvas em getbrolls-review.json (na sua pasta de Downloads). "', js)
+        self.assertIn('"Agora volte à conversa e diga onde salvou."', js)
+        self.assertIn('copy.textContent = "Copiar caminho";', js)
+        for state, label in (
+            ("pending", "Você ainda não disse"),
+            ("approved", "Aprovado"),
+            ("changes", "Pedi ajuste"),
+            ("rejected", "Não serve"),
+            ("alternative", "Pedi outro vídeo"),
+        ):
+            self.assertIn(f'{state}: "{label}"', js)
+
+    def test_the_live_region_is_mounted_empty_at_load_without_a_timer(self):
+        """Determinismo: a região viva existe desde o load e o export só troca o texto."""
+        js = (self.ASSETS / "review.js").read_text(encoding="utf-8")
+        self.assertIn('<p class="export-done" role="status" aria-live="polite"></p>', js)
+        self.assertIn('const done = document.querySelector(".export-done");', js)
+        # O `setTimeout(…, 100)` que atrasava o anúncio saiu de cena.
+        self.assertNotIn("bar.after(done)", js)
+        self.assertNotIn("}, 100);", js)
+        # O único `setTimeout` que sobra é o `revokeObjectURL`, que não é anúncio.
+        self.assertEqual(1, js.count("setTimeout("))
+        self.assertIn("setTimeout(() => URL.revokeObjectURL(url), 1000);", js)
+        # Vazia ela não pinta faixa nenhuma na página.
+        self.assertIn(".export-done:empty{display:none}", (self.ASSETS / "review.css").read_text(encoding="utf-8"))
+
+    def test_the_panel_column_has_no_fixed_width_that_would_overflow_375px(self):
+        """375 px sem overflow: nada no painel pode ter largura fixa maior que isso."""
+        import re
+
+        css = (self.ASSETS / "review.css").read_text(encoding="utf-8")
+        for value in re.findall(r"(?:^|[;{])\s*(?:min-)?width:\s*(\d+)px", css):
+            self.assertLessEqual(int(value), 375, f"largura fixa de {value}px estoura a tela de 375 px")
+
+
+class GalleryThumbnailFallbackTest(unittest.TestCase):
+    """Sem imagem, a miniatura diz só a tarja; a frase longa fica no detalhe."""
+
+    def test_the_gallery_fallback_is_the_badge_text_and_the_panel_keeps_the_long_one(self):
+        page = render_page([{"title": "Sem imagem", "content": "<p>x</p>", "no_preview": True}])
+        self.assertIn('<div class="thumbs"><span class="placeholder">só imagem</span>', page)
+        self.assertIn('<span class="preview-badge">só imagem</span>', page)
+        # O cartão da galeria não repete a explicação comprida.
+        gallery = page.split('<div class="gallery">')[1].split("<template")[0]
+        self.assertNotIn("Não consegui gerar o movimento", gallery)
+
+    def test_the_detail_panel_still_carries_the_full_explanation(self):
+        page = render_one()
+        panel = page[page.index("<template") :]
+        self.assertIn("Não consegui gerar o movimento — veja o original no link", panel)
+        self.assertNotIn("sem imagem da fonte", page)

@@ -44,7 +44,7 @@
   const summary = document.createElement("div");
   summary.className = "review-summary";
   summary.innerHTML =
-    '<p data-summary></p><div class="summary-actions"><button type="button" id="next-pending">Próximo pendente →</button><button type="button" id="export-review" title="Baixa um arquivo com tudo o que você decidiu. É o que você manda de volta pro agente.">Salvar decisões</button><button type="button" id="print-review">Imprimir / PDF</button></div><span data-storage-status role="status"></span>';
+    '<p data-summary></p><div class="summary-actions"><button type="button" id="next-pending">Próximo pendente →</button><button type="button" id="export-review" title="Baixa um arquivo com tudo o que você decidiu. É o que você manda de volta pro agente.">Salvar decisões</button><button type="button" id="print-review">Imprimir / PDF</button></div><span data-storage-status role="status"></span><p class="export-done" role="status" aria-live="polite"></p>';
   document.querySelector(".review-toolbar")?.remove();
 
   // Gallery: status tag per card, pending filter.
@@ -423,33 +423,25 @@
     note("");
   }
   function announce(text, path) {
-    const bar = document.querySelector(".summary-actions");
-    if (!bar) return;
-    // A região viva entra vazia e só depois recebe o texto: um role="status" já
-    // preenchido no momento da inserção costuma não ser anunciado pelo leitor de tela.
-    let done = bar.parentElement.querySelector(".export-done");
-    if (!done) {
-      done = document.createElement("p");
-      done.className = "export-done";
-      done.setAttribute("role", "status");
-      bar.after(done);
-    }
-    done.textContent = "";
-    setTimeout(() => {
-      done.textContent = text;
-      if (!path || !navigator.clipboard) return;
-      const copy = document.createElement("button");
-      copy.type = "button";
-      copy.className = "copy-path";
-      copy.textContent = "Copiar caminho";
-      copy.title = "Copia o caminho do arquivo de decisões para você colar na conversa.";
-      copy.onclick = () =>
-        navigator.clipboard.writeText(path).then(
-          () => (copy.textContent = "Caminho copiado"),
-          () => (copy.textContent = path),
-        );
-      done.append(" ", copy);
-    }, 100);
+    // A região viva já nasce montada e vazia junto da barra de resumo, no load: um
+    // `role="status"` inserido no DOM já preenchido costuma não ser anunciado pelo
+    // leitor de tela. Aqui só trocamos o texto, sem `setTimeout` — o anúncio vira
+    // parte do mesmo passo do export, e o teste consegue observar o resultado.
+    const done = document.querySelector(".export-done");
+    if (!done) return;
+    done.textContent = text;
+    if (!path || !navigator.clipboard) return;
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "copy-path";
+    copy.textContent = "Copiar caminho";
+    copy.title = "Copia o caminho do arquivo de decisões para você colar na conversa.";
+    copy.onclick = () =>
+      navigator.clipboard.writeText(path).then(
+        () => (copy.textContent = "Caminho copiado"),
+        () => (copy.textContent = path),
+      );
+    done.append(" ", copy);
   }
   function buildPrintNotes() {
     document.querySelector(".print-notes")?.remove();

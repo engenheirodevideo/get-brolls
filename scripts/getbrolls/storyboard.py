@@ -26,10 +26,14 @@ def render_page(
     options = []
 
     def image(path, label):
+        # Sem imagem, a miniatura diz o mesmo que a tarja ao lado dela: "só imagem".
+        # A explicação comprida vive no painel de detalhe (`rendering.source_card`),
+        # onde há espaço e onde a pessoa já parou para ler; no cartão da galeria ela
+        # quebrava o layout e repetia a tarja.
         return (
             f'<img loading="lazy" src="{esc(path)}" alt="{esc(label)}">'
             if path
-            else '<span class="placeholder">Não consegui gerar o movimento — veja o original no link</span>'
+            else '<span class="placeholder">só imagem</span>'
         )
 
     for i, item in enumerate(items):

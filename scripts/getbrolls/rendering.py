@@ -72,7 +72,11 @@ def source_card(c, source, sheet, poster, esc):
     image = (
         f'<img class="source-thumbnail" src="{esc(thumb)}" alt="" loading="lazy">'
         if thumb
-        else '<span class="source-thumbnail placeholder">sem imagem da fonte</span>'
+        # O painel de detalhe é onde a frase comprida cabe: a galeria só mostra a
+        # tarja "só imagem", e aqui a pessoa fica sabendo o que fazer a respeito.
+        else (
+            '<span class="source-thumbnail placeholder">Não consegui gerar o movimento — veja o original no link</span>'
+        )
     )
     usage = {
         "unknown": "ainda não conferido",
