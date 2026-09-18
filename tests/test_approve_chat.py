@@ -265,6 +265,83 @@ class ApproveChatTests(unittest.TestCase):
             self.assertIn("--candidate", missing["error"])
 
 
+class RejectManyTests(unittest.TestCase):
+    """`reject` aceita a flag repetida: descartar 37 itens um a um era o atrito."""
+
+    def test_candidate_repeats_and_rejects_every_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            result = run_cli(
+                self,
+                "reject",
+                "--candidate",
+                "local:a",
+                "--candidate",
+                "local:b",
+                "--project",
+                tmp,
+            )
+            self.assertEqual(["local:a", "local:b"], result["rejected"])
+            self.assertIn("Rejeitei 2 itens", result["summary"])
+            ledger = Ledger(tmp)
+            for ident in ("local:a", "local:b"):
+                self.assertEqual("rejected", ledger.get(ident)["approval"]["status"])
+                self.assertEqual("rejected", ledger.get(ident)["state"])
+            # Quem não foi nomeado continua intacto.
+            self.assertNotEqual("rejected", ledger.get("local:c")["state"])
+
+    def test_a_single_candidate_keeps_the_old_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            result = run_cli(self, "reject", "--candidate", "local:a", "--project", tmp)
+            self.assertEqual("local:a", result["id"])
+            self.assertEqual("rejected", result["state"])
+            self.assertIn("Rejeitei local:a", result["summary"])
+
+    def test_an_unknown_id_stops_the_batch_before_anything_is_written(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            error = run_cli(
+                self,
+                "reject",
+                "--candidate",
+                "local:a",
+                "--candidate",
+                "local:nao-existe",
+                "--project",
+                tmp,
+                ok=False,
+            )
+            self.assertIn("local:nao-existe", error["error"])
+            # Validação antes da escrita: o item válido da mesma leva não mudou.
+            self.assertNotEqual("rejected", Ledger(tmp).get("local:a")["state"])
+
+    def test_the_batch_is_one_transaction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            run_cli(self, "reject", "--candidate", "local:a", "--candidate", "local:b", "--project", tmp)
+            events = [
+                json.loads(line)
+                for line in (Path(tmp) / "brolls" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            batch = [e for e in events if e["operation"] == "reject"]
+            self.assertEqual(["local:a", "local:b"], [e["id"] for e in batch])
+            self.assertEqual(1, len({e["transaction"].split(":")[0] for e in batch}))
+
+    def test_reject_still_requires_a_candidate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            done = subprocess.run(
+                [sys.executable, str(CLI), "reject", "--project", tmp],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertNotEqual(0, done.returncode)
+            self.assertIn("--candidate", done.stderr)
+
+
 class ApprovedItemsCarryTheAuditTrailTests(unittest.TestCase):
     """A saída precisa dizer o que foi aprovado, não só quantos itens."""
 

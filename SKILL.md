@@ -57,7 +57,7 @@ Duas rotas, e você para nas duas.
 
 **Board**, quando quem revisa é outra pessoa: `python3 "scripts/gb.py" review --project <projeto>`, depois `serve --background --project <projeto>`. Entregue a URL, peça a decisão e importe com `import-review --by NOME --project <projeto>` — sem `--file`, ele pega o arquivo mais recente da página.
 
-Antes do C3, rejeite o que você descartou: `reject --candidate ID --project <projeto>`, um por vez. Assim o status reflete a conversa, e `--all` não aprova prévia que ninguém viu.
+Antes do C3, rejeite o que você descartou: `reject --candidate ID1 --candidate ID2 … --project <projeto>`. Assim o status reflete a conversa, e `--all` não aprova prévia que ninguém viu.
 
 **Chat**, quando a pessoa está aqui. **Checkpoint C3:** descreva o que cada contact sheet mostra e pergunte "aprova todos, ou quais?". Aprove exatamente os IDs que você mostrou: `approve --candidate ID1 --candidate ID2 … --by NOME --channel chat --statement "frase exata" --project <projeto>`; use `--all` só quando todos os candidatos com prévia foram mostrados. No canal chat, `--statement` é obrigatório.
 

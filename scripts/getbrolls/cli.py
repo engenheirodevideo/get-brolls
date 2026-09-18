@@ -24,7 +24,7 @@ SUMMARIES = {
     "preview": "Gerar prévia (GIF/contact sheet) do intervalo escolhido",
     "approve": "Registrar aprovação humana já recebida para o intervalo atual",
     "permit": "Registrar as condições reais de uso do trecho antes da coleta",
-    "reject": "Marcar o candidato como rejeitado e invalidar sua revisão",
+    "reject": "Marcar candidatos como rejeitados e invalidar suas revisões (--candidate repetível)",
     "fetch": "Produzir o corte final aprovado e permitido em clips/",
     "verify": "Conferir integridade e decodificação dos arquivos coletados",
     "review": "Gerar o Storyboard local em brolls/review.html",
@@ -170,7 +170,18 @@ def build_parser():
                 action="append",
                 help="ID do candidato a aprovar; repita a flag para aprovar vários (ou use --all)",
             )
-        elif name in ("preview", "permit", "reject", "fetch", "remember"):
+        elif name == "reject":
+            # Repetível como `approve`, e pelo mesmo motivo: quem descarta descarta em
+            # leva, olhando a mesma lista que mostrou. Sem `--all`: rejeitar em massa o
+            # que ninguém viu apagaria candidato bom por engano, e aqui não há `--all`
+            # que valha o risco.
+            p.add_argument(
+                "--candidate",
+                action="append",
+                required=True,
+                help="ID do candidato a rejeitar; repita a flag para rejeitar vários",
+            )
+        elif name in ("preview", "permit", "fetch", "remember"):
             p.add_argument(
                 "--candidate",
                 required=True,

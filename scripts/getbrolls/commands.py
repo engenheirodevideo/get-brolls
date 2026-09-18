@@ -260,7 +260,11 @@ FLOW_SUMMARIES = {
         else f"Registrei a aprovação humana de {_identifier(r)}: "
         f"estado {r.get('state')}, por {(r.get('approval') or {}).get('by')}."
     ),
-    "reject": lambda r: f"Rejeitei {_identifier(r)}: estado {r.get('state')}, revisão invalidada.",
+    "reject": lambda r: (
+        f"Rejeitei {_count(len(r['rejected']), 'item', 'itens')}: " + ", ".join(r["rejected"]) + "; revisão invalidada."
+        if isinstance(r.get("rejected"), list)
+        else f"Rejeitei {_identifier(r)}: estado {r.get('state')}, revisão invalidada."
+    ),
     "review": lambda r: f"Gerei o Storyboard em {r.get('review')}.",
     "import-review": lambda r: (
         f"Importei {_count(r.get('imported') or 0, 'decisão', 'decisões')} assinada(s) por {r.get('by')}."
@@ -490,6 +494,7 @@ def brief_report(args):
                         "conflicts": conflicts,
                     },
                     "review_page": (root / "review.html").is_file(),
+                    "board_url": _live_board_url(args.project),
                     "rights_mode": _rights_mode(rules),
                     "candidate": _pending_candidate(items),
                     "duration_unknown": len(_uninspected(items)),
@@ -534,6 +539,33 @@ def library_command(args):
     if args.preference:
         return library.learn_preference(args.preference, by=args.by)
     return library.learn_from_candidate(args.project, args.from_candidate, shot=args.shot)
+
+
+def reject_all(ledger, only):
+    """Rejeita vários itens de uma vez, como `approve` faz com os IDs mostrados.
+
+    Valida antes de gravar: um ID desconhecido derruba a leva inteira, e só depois
+    disso as mudanças vão em uma única transação. Não existe `--all` aqui: rejeitar
+    em massa o que ninguém olhou apagaria candidato bom sem ninguém ver.
+    """
+    known = {c["id"]: c for c in ledger.data["items"]}
+    missing = [i for i in only if i not in known]
+    if missing:
+        raise ValueError("Candidato não registrado no projeto: " + ", ".join(missing) + ".")
+    # Ordem da pessoa, sem repetir o mesmo item duas vezes na transação.
+    chosen, seen = [], set()
+    for ident in only:
+        if ident in seen:
+            continue
+        seen.add(ident)
+        chosen.append(known[ident])
+    for c in chosen:
+        c["approval"]["status"] = "rejected"
+        c["state"] = "rejected"
+        c.pop("review", None)
+    ledger.save_many("reject", chosen)
+    render(ledger)
+    return {"rejected": [c["id"] for c in chosen]}
 
 
 def approve_all(ledger, args, rules, only=None):
@@ -858,15 +890,46 @@ def _undelivered(items):
 _UNSET = object()
 
 
+def _live_board_url(project):
+    """URL do Storyboard quando o servidor desta sessão responde; senão None.
+
+    Somente leitura: `serve.read_pid` lê o arquivo e `serve.state` confirma a
+    identidade por um ping. Sem `.serve.pid` não há consulta nenhuma — e sem
+    servidor no ar não inventamos porta, porque `serve --background` usa uma porta
+    livre qualquer quando a padrão está ocupada.
+    """
+    from . import serve
+
+    try:
+        if not serve.read_pid(project):
+            return None
+        info = serve.state(project)
+    except (OSError, ValueError):
+        return None
+    if not info.get("running"):
+        return None
+    urls = [u for u in (info.get("urls") or []) if isinstance(u, str) and u.endswith("review.html")]
+    for url in urls:
+        if "127.0.0.1" in url:
+            return url
+    if urls:
+        return urls[0]
+    port = info.get("port")
+    return f"http://127.0.0.1:{port}/review.html" if port else None
+
+
 def _flow_state(ledger, rules, counts=None, format_pending=0, brief=_UNSET):
     """Estado que a escada de `guidance` lê: a mesma leitura em status, brief e deliver."""
     items = ledger.data["items"]
+    review_page = (ledger.root / "review.html").is_file()
     return {
         "project": str(ledger.root.parent),
         "counts": counts or {key: sum(1 for c in items if STAGE_TESTS[key](c)) for key in STAGE_TESTS},
         "format_pending": format_pending,
         "brief": brief_state(ledger.root.parent, rules, items) if brief is _UNSET else brief,
-        "review_page": (ledger.root / "review.html").is_file(),
+        "review_page": review_page,
+        # Só perguntamos ao servidor quando existe página para ele servir.
+        "board_url": _live_board_url(ledger.root.parent) if review_page else None,
         "rights_mode": _rights_mode(rules),
         "candidate": _pending_candidate(items),
         "duration_unknown": len(_uninspected(items)),
@@ -1384,6 +1447,12 @@ def execute(args):
             return approve_all(ledger, args, rules)
         if len(chosen) > 1:
             return approve_all(ledger, args, rules, only=chosen)
+        args.candidate = chosen[0]
+    if cmd == "reject":
+        # `--candidate` é repetível: `argparse` entrega lista mesmo com um ID só.
+        chosen = list(args.candidate or [])
+        if len(chosen) > 1:
+            return reject_all(ledger, chosen)
         args.candidate = chosen[0]
     c = ledger.get(args.candidate)
     if not allowed(c, rules) and cmd in ("preview", "approve", "permit", "fetch"):

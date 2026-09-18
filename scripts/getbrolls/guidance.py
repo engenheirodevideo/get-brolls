@@ -9,14 +9,8 @@ dita, evidência real), o comando traz o lugar em MAIÚSCULAS para ele preencher
 import shlex
 from pathlib import Path
 
-from .serve import DEFAULT_PORT
-
 ROOT = Path(__file__).resolve().parents[2]
 CLI = ROOT / "scripts" / "gb.py"
-
-# Endereço do Storyboard quando servido por `serve`; só entra na resposta se a
-# página existir no projeto — senão a pessoa abriria um endereço morto.
-BOARD_URL = f"http://127.0.0.1:{DEFAULT_PORT}/review.html"
 
 # Degraus com comando próprio, do topo da escada para a base.
 STEPS = (
@@ -183,9 +177,32 @@ def _missing_beat_phrase(beat):
     )
 
 
+def board_url(state):
+    """Endereço real do Storyboard, e só quando o servidor desta sessão está no ar.
+
+    `serve --background` cai numa porta livre quando a padrão está ocupada, então
+    endereço fixo mentiria. Sem servidor no ar não há porta para prometer: quem
+    imprime o endereço certo é o próprio `serve`. Quem lê o estado é quem preenche
+    `board_url`; aqui nada é consultado nem gravado.
+    """
+    url = state.get("board_url")
+    return url if isinstance(url, str) and url else None
+
+
+def _board_phrase(url):
+    """Como falar do board: com o endereço vivo, ou prometendo o que `serve` imprimir."""
+    if url:
+        return f"o Storyboard já está no ar em {url}"
+    return (
+        "vou subir o Storyboard com `serve --background` e te mandar o endereço que "
+        "esse comando imprimir (a porta muda quando a padrão está ocupada)"
+    )
+
+
 def _approve_action(state, pending=0):
     """Degrau da decisão humana: board quando a página existe, chat sempre."""
     board = bool(state.get("review_page"))
+    url = board_url(state) if board else None
     return _action(
         "approve",
         (
@@ -194,18 +211,17 @@ def _approve_action(state, pending=0):
             else "Nenhum item aprovado: falta a decisão explícita de uma pessoa."
         ),
         (
-            "Agora é com você: vou subir o Storyboard e te mandar o endereço "
-            f"({BOARD_URL}). Decida lá e clique em “Salvar decisões” — elas ficam "
-            "dentro do projeto, é só voltar aqui e dizer “salvei” que eu rodo "
-            "`import-review --by SEU NOME`. Se preferir resolver pelo chat, me diga "
-            "quem aprova e a frase exata. Sem isso eu não coleto nada."
+            f"Agora é com você: {_board_phrase(url)}. Decida lá e clique em “Salvar "
+            "decisões” — elas ficam dentro do projeto, é só voltar aqui e dizer "
+            "“salvei” que eu rodo `import-review --by SEU NOME`. Se preferir resolver "
+            "pelo chat, me diga quem aprova e a frase exata. Sem isso eu não coleto nada."
             if board
             else "Agora é com você: abra o Storyboard e salve as decisões, ou me "
             "diga aqui no chat quem aprova e a frase exata da aprovação. Sem isso "
             "eu não coleto nada."
         ),
         state,
-        url=BOARD_URL if board else None,
+        url=url,
         blocking_human=True,
         command=command_for("serve-board", state["project"]) if board else None,
     )
@@ -227,8 +243,9 @@ def _done_action(state, counts):
 def next_action(state):
     """Único passo que faz sentido agora, com a frase para repassar sem parafrasear.
 
-    `state` = {project, counts, format_pending, brief, review_page, rights_mode,
-    candidate, duration_unknown, inspect_candidate}. `brief` é None quando o arquivo nem existe, `{"error": "..."}` quando
+    `state` = {project, counts, format_pending, brief, review_page, board_url,
+    rights_mode, candidate, duration_unknown, inspect_candidate}. `board_url` só
+    vem preenchido quando o servidor do Storyboard está no ar. `brief` é None quando o arquivo nem existe, `{"error": "..."}` quando
     existe mas não passa na validação, e {beats, covered, missing[{id, search}],
     conflicts[]} quando está válido.
     """

@@ -453,6 +453,78 @@ class StatusCommandTests(unittest.TestCase):
             self.assertEqual(4, payload["counts"]["candidates"])
 
 
+class BoardUrlTests(unittest.TestCase):
+    """A URL do board sai do servidor real; `serve --background` usa porta livre."""
+
+    def project(self, tmp, *, pid_record=None):
+        ledger = Ledger(tmp)
+        item = candidate("local", "d", "Com prévia")
+        set_segment(item, 0, 1)
+        item["preview"]["gif_path"] = "previews/d.gif"
+        ledger.save_many("fixture", [ledger.add(item)])
+        (ledger.root / "review.html").write_text("<html></html>", encoding="utf-8")
+        if pid_record is not None:
+            (ledger.root / ".serve.pid").write_text(json.dumps(pid_record), encoding="utf-8")
+        return ledger
+
+    def do(self, ledger):
+        """Mesmo `summary.do` do `status`, com o brief já dado como válido."""
+        from getbrolls.commands import _flow_state
+        from getbrolls.guidance import next_action
+
+        brief = {"beats": 1, "covered": 1, "missing": [], "conflicts": []}
+        return next_action(_flow_state(ledger, None, brief=brief))
+
+    def test_without_a_pid_file_no_port_is_promised(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            do = self.do(self.project(tmp))
+            self.assertEqual("approve", do["step"])
+            self.assertIsNone(do["url"])
+            self.assertIn("serve --background", do["for_human"])
+            self.assertNotIn("127.0.0.1", do["for_human"])
+
+    def test_a_stale_pid_file_does_not_become_a_url(self):
+        """PID morto: `serve.state` responde `running: False` e nada é prometido."""
+        with tempfile.TemporaryDirectory() as tmp:
+            record = {"pid": 999999999, "port": 57114, "session": "x", "urls": []}
+            do = self.do(self.project(tmp, pid_record=record))
+            self.assertIsNone(do["url"])
+            self.assertNotIn("57114", do["for_human"])
+
+    def test_a_running_server_lends_its_own_port(self):
+        from unittest import mock
+
+        from getbrolls import serve
+
+        with tempfile.TemporaryDirectory() as tmp:
+            record = {"pid": 4321, "port": 57219, "session": "s", "urls": []}
+            ledger = self.project(tmp, pid_record=record)
+            live = {
+                "running": True,
+                "pid": 4321,
+                "port": 57219,
+                "urls": [
+                    "http://localhost:57219/review.html",
+                    "http://127.0.0.1:57219/review.html",
+                ],
+                "pid_file": str(ledger.root / ".serve.pid"),
+            }
+            with mock.patch.object(serve, "state", return_value=live):
+                do = self.do(ledger)
+            self.assertEqual("http://127.0.0.1:57219/review.html", do["url"])
+            self.assertIn("http://127.0.0.1:57219/review.html", do["for_human"])
+            self.assertNotIn("8767", do["for_human"])
+
+    def test_asking_the_server_never_writes_to_the_project(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            record = {"pid": 999999999, "port": 57114, "session": "x", "urls": []}
+            ledger = self.project(tmp, pid_record=record)
+            before = snapshot(ledger.root)
+            self.do(ledger)
+            self.do(ledger)
+            self.assertEqual(before, snapshot(ledger.root))
+
+
 class ProgressSummaryTests(unittest.TestCase):
     def test_every_flow_command_declares_a_one_line_summary(self):
         for command in (

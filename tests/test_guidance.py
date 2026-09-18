@@ -100,10 +100,20 @@ class Guidance(unittest.TestCase):
         self.assertIn("--channel chat", action["command"])
         self.assertIn("FRASE", action["command"])
 
-    def test_board_url_only_when_the_page_exists(self):
+    def test_board_url_only_when_the_server_is_up(self):
         self.assertIsNone(next_action(LADDER_STATES["approve"])["url"])
-        state = dict(LADDER_STATES["approve"], review_page=True)
-        self.assertEqual("http://127.0.0.1:8767/review.html", next_action(state)["url"])
+        # Página gerada, servidor parado: não há porta para prometer.
+        page = dict(LADDER_STATES["approve"], review_page=True)
+        action = next_action(page)
+        self.assertIsNone(action["url"])
+        self.assertIn("serve --background", action["for_human"])
+        self.assertNotIn("127.0.0.1", action["for_human"])
+        # Servidor no ar: vale a porta que ele gravou, não a padrão.
+        live = dict(page, board_url="http://127.0.0.1:57114/review.html")
+        action = next_action(live)
+        self.assertEqual("http://127.0.0.1:57114/review.html", action["url"])
+        self.assertIn("http://127.0.0.1:57114/review.html", action["for_human"])
+        self.assertNotIn("8767", action["for_human"])
 
     def test_blocking_human_only_on_review_permit_and_format(self):
         blocking = {step: next_action(state)["blocking_human"] for step, state in LADDER_STATES.items()}
@@ -244,7 +254,8 @@ class BoardRoute(unittest.TestCase):
         self.assertEqual("approve", action["step"])
         self.assertIn("serve", action["command"])
         self.assertIn("--background", action["command"])
-        self.assertEqual("http://127.0.0.1:8767/review.html", action["url"])
+        # Sem servidor no ar, o endereço quem imprime é o próprio `serve`.
+        self.assertIsNone(action["url"])
         self.assertTrue(action["blocking_human"])
         parsed = build_parser().parse_args(shlex.split(action["command"])[2:])
         self.assertEqual(ABSOLUTE, parsed.project)
