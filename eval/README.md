@@ -12,6 +12,12 @@ Esta pasta guarda o processo de **teste cego**: o jeito de medir se a skill entr
 
 Nada aqui substitui [QUALITY.md](../docs/QUALITY.md). Lá ficam as evidências de código e os ensaios por provedor; aqui fica o comportamento do conjunto skill + CLI + agente diante de um roteiro.
 
+## Estado do processo — 2.4.0
+
+A rodada da 2.4.0 foi executada **por inteiro**: os **16 casos** do corpus, distribuídos entre seis executores independentes, cada um cego ao gabarito do seu caso. É a primeira rodada em que nenhum caso ficou de fora — as anteriores cobriam uma amostra. As fricções relatadas pelos executores foram tratadas numa onda de correção dentro da própria 2.4.0, e cada uma virou teste na suíte (a lista está no CHANGELOG e em [QUALITY.md](../docs/QUALITY.md)).
+
+Esta nota registra só o **processo**: que a rodada aconteceu e com que cobertura. As notas por beat, as métricas e o veredito de cada caso são do juiz e ficam nos arquivos de `runs/` — nada aqui os antecipa nem os substitui.
+
 ## O que estamos medindo — o propósito do produto
 
 O produto tem uma cadeia de seis passos. O teste cego mede a cadeia inteira, não um comando isolado:
