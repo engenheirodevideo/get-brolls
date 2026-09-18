@@ -148,6 +148,34 @@
           "type": "boolean"
         }
       }
+    },
+    "delivery": {
+      "description": "Camada derivada escrita por `deliver`. `path` é relativo à RAIZ DO PROJETO (começa em `entrega/`), ao contrário de `output.path`, que é relativo a `brolls/`. `method` diz como o arquivo foi ligado ao original.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "path",
+        "method"
+      ],
+      "properties": {
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "method": {
+          "enum": [
+            "hardlink",
+            "symlink",
+            "copy",
+            "planned",
+            null
+          ]
+        }
+      }
     }
   }
 }

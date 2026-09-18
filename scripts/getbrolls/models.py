@@ -1,9 +1,11 @@
-import hashlib, json, math
-from datetime import datetime, timezone
+import hashlib
+import json
+import math
+from datetime import UTC, datetime
 
 
 def now():
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def candidate(provider, source_id, title, source_url=None):
@@ -75,11 +77,7 @@ def set_segment(c, start, end):
     if duration and end > duration + 0.1:
         raise ValueError("Intervalo excede a duração do vídeo.")
     if (start, end) != (c["segment"]["start_s"], c["segment"]["end_s"]):
-        c["preview"] = {
-            k: v
-            for k, v in c["preview"].items()
-            if k in ("poster_url", "embed_url", "seek_mode")
-        }
+        c["preview"] = {k: v for k, v in c["preview"].items() if k in ("poster_url", "embed_url", "seek_mode")}
         c.pop("review", None)
         c["segment"] = {
             "start_s": start,
@@ -92,16 +90,25 @@ def set_segment(c, start, end):
     return c
 
 
-def approve(c, by):
+def approve(c, by, channel="storyboard", statement=None):
+    """Registra a decisão humana já recebida, dizendo por onde ela chegou."""
     if c["segment"]["start_s"] is None and c.get("media", {}).get("kind") != "image":
         raise ValueError("Mostre e selecione um intervalo antes de aprovar.")
     if not by.strip():
         raise ValueError("Informe quem aprovou.")
+    if channel not in ("chat", "storyboard"):
+        raise ValueError("Canal de aprovação inválido: use chat ou storyboard.")
+    if statement is not None and not isinstance(statement, str):
+        raise ValueError("Frase de aprovação inválida.")
+    if channel == "chat" and not (statement or "").strip():
+        raise ValueError("Aprovação pelo chat exige --statement com a frase exata dita pela pessoa.")
     c["approval"] = {
         "status": "approved",
         "by": by,
         "at": now(),
         "revision": c["segment"]["revision"],
+        "channel": channel,
+        "statement": statement or None,
         "signature": signature(c),
     }
     c["state"] = "approved"
@@ -109,17 +116,9 @@ def approve(c, by):
 
 
 def require_fetch(c):
-    if c["approval"]["status"] != "approved" or c["approval"].get(
-        "signature"
-    ) != signature(c):
-        raise ValueError(
-            "Aprovação humana ausente ou inválida para esta fonte e intervalo."
-        )
+    if c["approval"]["status"] != "approved" or c["approval"].get("signature") != signature(c):
+        raise ValueError("Aprovação humana ausente ou inválida para esta fonte e intervalo.")
     if c["rights"]["status"] != "permitted" or not c["rights"]["evidence"]:
-        raise ValueError(
-            "Registre a autorização/condições de uso com permit --evidence antes de obter mídia."
-        )
+        raise ValueError("Registre a autorização/condições de uso com permit --evidence antes de obter mídia.")
     if c["acquisition"]["status"] != "available":
-        raise ValueError(
-            "Esta fonte é somente referência; forneça um original local autorizado."
-        )
+        raise ValueError("Esta fonte é somente referência; forneça um original local autorizado.")

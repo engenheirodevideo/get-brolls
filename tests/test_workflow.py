@@ -1,13 +1,20 @@
-import unittest, tempfile, os, sys, json, shutil, subprocess
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from getbrolls.config import load_env, settings
-from getbrolls.models import candidate, set_segment, signature, require_fetch
 from getbrolls.ledger import Ledger
+from getbrolls.media import probe, review_preview
+from getbrolls.models import candidate, require_fetch, set_segment, signature
 from getbrolls.review import import_review, project_id, review_epoch
-from getbrolls.media import review_preview, probe
 
 
 class WorkflowTests(unittest.TestCase):
@@ -60,11 +67,18 @@ class WorkflowTests(unittest.TestCase):
             path = Path(d) / "review.json"
             payload["items"][1]["signature"] = "stale"
             path.write_text(json.dumps(payload), encoding="utf-8")
-            before = ledger.path.read_bytes()
-            with self.assertRaisesRegex(ValueError, "desatualizada"):
-                import_review(ledger, path, "Human")
-            self.assertEqual(before, ledger.path.read_bytes())
-            self.assertEqual(ledger.get("local:0")["approval"]["status"], "pending")
+            # Importação parcial (#44): o trecho que mudou é pulado com o motivo, e
+            # só ele — o outro segue valendo, porque a decisão humana dele continua de pé.
+            result = import_review(ledger, path, "Human")
+            self.assertEqual(1, result["imported"])
+            self.assertEqual(
+                [("local:1", "signature_mismatch")],
+                [(s["id"], s["reason"]) for s in result["skipped"]],
+            )
+            self.assertEqual(ledger.get("local:0")["approval"]["status"], "approved")
+            self.assertEqual(ledger.get("local:1")["approval"]["status"], "pending")
+            payload["items"][0]["reviewEpoch"] = review_epoch(ledger.get("local:0"))
+            payload["items"][0]["signature"] = signature(ledger.get("local:0"))
             payload["items"][1]["signature"] = signature(ledger.get("local:1"))
             path.write_text(json.dumps(payload), encoding="utf-8")
             import_review(ledger, path, "Human")
@@ -88,9 +102,7 @@ class WorkflowTests(unittest.TestCase):
         c["id"] += ":shot:two"
         self.assertNotEqual(signature(c), original)
 
-    @unittest.skipUnless(
-        shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg required"
-    )
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg required")
     def test_gif_static_duration_aspect_fallback(self):
         with (
             tempfile.TemporaryDirectory() as d,
@@ -116,7 +128,7 @@ class WorkflowTests(unittest.TestCase):
                 ],
                 check=True,
             )
-            cfg = settings()
+            cfg: dict[str, Any] = settings()
             cfg["frames"] = 5
             result = review_preview(src, root / "previews", "gif", 0, 2, cfg)
             info = probe(root / result["gif_path"])
@@ -144,13 +156,25 @@ if __name__ == "__main__":
 class ContactSheetTests(unittest.TestCase):
     """The CLI contact sheet mirrors gb_contact.sh: padded grid, cell times, labels when possible."""
 
+    # Preenchido pelo fake de ffmpeg antes do diretório temporário sumir.
+    banner_text = ""
+
     def make_source(self, root, seconds=4):
         src = root / "source.mp4"
         subprocess.run(
             [
-                "ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                "ffmpeg",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
                 f"testsrc2=size=240x426:duration={seconds}:rate=24",
-                "-c:v", "libx264", "-pix_fmt", "yuv420p", str(src),
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                str(src),
             ],
             check=True,
         )
@@ -163,18 +187,14 @@ class ContactSheetTests(unittest.TestCase):
         self.assertEqual(frame_times(0, 2, 4), [0.0, 0.5, 1.0, 1.5])
 
     def test_sheet_without_drawtext_is_padded_and_reports_times(self):
-        with tempfile.TemporaryDirectory() as d, patch(
-            "getbrolls.media.drawtext_available", return_value=False
-        ):
+        with tempfile.TemporaryDirectory() as d, patch("getbrolls.media.drawtext_available", return_value=False):
             root = Path(d)
             (root / "previews").mkdir()
             src = self.make_source(root)
             cfg = settings()
             cfg["mode"] = "static"
             cfg["frames"] = 6
-            result = review_preview(
-                src, root / "previews", "plain", 1, 3, cfg, label={"title": "T", "id": "x"}
-            )
+            result = review_preview(src, root / "previews", "plain", 1, 3, cfg, label={"title": "T", "id": "x"})
             self.assertFalse(result["sheet_labels"])
             self.assertEqual(result["sheet_grid"], [4, 2])
             self.assertEqual(len(result["frame_times_s"]), 6)
@@ -195,10 +215,11 @@ class ContactSheetTests(unittest.TestCase):
             out.write_bytes(b"")
             return ""
 
-        with tempfile.TemporaryDirectory() as d, patch.object(
-            media, "drawtext_available", return_value=True
-        ), patch.object(media, "find_font", return_value="/fonts/Arial.ttf"), patch.object(
-            media, "run", side_effect=fake_run
+        with (
+            tempfile.TemporaryDirectory() as d,
+            patch.object(media, "drawtext_available", return_value=True),
+            patch.object(media, "find_font", return_value="/fonts/Arial.ttf"),
+            patch.object(media, "run", side_effect=fake_run),
         ):
             root = Path(d)
             (root / "previews").mkdir()
@@ -206,7 +227,12 @@ class ContactSheetTests(unittest.TestCase):
             cfg["mode"] = "static"
             cfg["frames"] = 3
             result = media.review_preview(
-                root / "in.mp4", root / "previews", "lab", 2, 5, cfg,
+                root / "in.mp4",
+                root / "previews",
+                "lab",
+                2,
+                5,
+                cfg,
                 label={"title": "Foguete", "id": "youtube:abc"},
             )
             self.assertTrue(result["sheet_labels"])
@@ -233,10 +259,11 @@ class ContactSheetTests(unittest.TestCase):
             Path(args[-1]).write_bytes(b"")
             return ""
 
-        with tempfile.TemporaryDirectory() as d, patch.object(
-            media, "drawtext_available", return_value=True
-        ), patch.object(media, "find_font", return_value="/fonts/Arial.ttf"), patch.object(
-            media, "run", side_effect=fake_run
+        with (
+            tempfile.TemporaryDirectory() as d,
+            patch.object(media, "drawtext_available", return_value=True),
+            patch.object(media, "find_font", return_value="/fonts/Arial.ttf"),
+            patch.object(media, "run", side_effect=fake_run),
         ):
             root = Path(d)
             (root / "previews").mkdir()
@@ -245,7 +272,12 @@ class ContactSheetTests(unittest.TestCase):
             cfg["frames"] = 4
             # yt-dlp downloaded 59–65 s into a file that starts at 0.
             result = media.review_preview(
-                root / "in.mp4", root / "previews", "off", 0, 6, cfg,
+                root / "in.mp4",
+                root / "previews",
+                "off",
+                0,
+                6,
+                cfg,
                 label={"title": "Liftoff", "id": "youtube:x", "offset": 59, "duration": 122.4},
             )
             self.assertEqual(result["frame_times_s"], [59.0, 60.5, 62.0, 63.5])

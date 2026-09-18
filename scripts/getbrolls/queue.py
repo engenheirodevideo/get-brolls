@@ -10,7 +10,7 @@ import os
 import random
 import re
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 PROVIDERS = ("instagram", "tiktok", "youtube")
@@ -41,7 +41,7 @@ LIMITS = (
 
 
 def _now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _at(value):
@@ -88,9 +88,7 @@ def _check(data, path):
         provider = item.get("provider")
         if status == "active":
             if not item.get("started_at"):
-                raise ValueError(
-                    f"queue.json inválido em {path}: item ativo sem started_at ({item_id!r})."
-                )
+                raise ValueError(f"queue.json inválido em {path}: item ativo sem started_at ({item_id!r}).")
             if provider in active_by_provider:
                 raise ValueError(
                     f"queue.json inválido em {path}: mais de um item ativo para {provider!r} "
@@ -188,7 +186,7 @@ def validate_pacing_block(block):
     if not isinstance(block, dict) or any(
         provider not in PROVIDERS or not isinstance(values, dict) for provider, values in block.items()
     ):
-        raise ValueError("pacing: use {\"instagram\"|\"tiktok\"|\"youtube\": {...}}.")
+        raise ValueError('pacing: use {"instagram"|"tiktok"|"youtube": {...}}.')
     known = {key for key, _, _, _ in LIMITS}
     for provider, values in block.items():
         if set(values) - known:
@@ -242,7 +240,11 @@ def add(data, provider, urls, at=None):
                 "reason": None,
             }
         )
-    return {"added": added, "duplicates": duplicates, "pending": sum(1 for i in data["items"] if i["status"] == "pending")}
+    return {
+        "added": added,
+        "duplicates": duplicates,
+        "pending": sum(1 for i in data["items"] if i["status"] == "pending"),
+    }
 
 
 def _finished_since(data, provider, since, now=None):
@@ -274,7 +276,10 @@ def _gate(data, provider, moment, limits, state=None):
     allowed = _parse(state.get("next_allowed_at"))
     if allowed and allowed > moment:
         holds.append((allowed, "pace"))
-    for window, cap, reason in ((timedelta(hours=1), limits["max_per_hour"], "max_per_hour"), (timedelta(days=1), limits["max_per_day"], "max_per_day")):
+    for window, cap, reason in (
+        (timedelta(hours=1), limits["max_per_hour"], "max_per_hour"),
+        (timedelta(days=1), limits["max_per_day"], "max_per_day"),
+    ):
         finished = sorted(_finished_since(data, provider, moment - window, now=moment))
         if len(finished) >= cap:
             holds.append((finished[len(finished) - cap] + window, reason))
@@ -344,9 +349,7 @@ def mark(data, item_id, status, reason=None, at=None):
     if item is None:
         raise ValueError(f"Item não está na fila: {item_id}")
     if item["status"] in TERMINAL_STATUSES:
-        raise ValueError(
-            f"Item {item_id} já está em estado final ({item['status']}); não é possível marcar novamente."
-        )
+        raise ValueError(f"Item {item_id} já está em estado final ({item['status']}); não é possível marcar novamente.")
     moment = _at(at)
     item["status"] = status
     item["finished_at"] = _stamp(moment)
@@ -399,7 +402,9 @@ def report(data, at=None, rules=None):
         cooldown_until = _parse(state.get("cooldown_until"))
         providers[provider] = {
             "pending": sum(1 for i in data["items"] if i["provider"] == provider and i["status"] == "pending"),
-            "cooldown_until": state.get("cooldown_until") if cooldown_until is not None and cooldown_until > moment else None,
+            "cooldown_until": state.get("cooldown_until")
+            if cooldown_until is not None and cooldown_until > moment
+            else None,
             "cooldown_strikes": state.get("cooldown_strikes", 0),
             "next_allowed_at": _stamp(resume_at) if resume_at else None,
             "wait_seconds": max(0, int((resume_at - moment).total_seconds() + 0.999)) if resume_at else 0,

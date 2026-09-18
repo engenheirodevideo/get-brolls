@@ -8,7 +8,7 @@ tags: [get-brolls, user-preferences]
 
 # Regras do usuário
 
-Copie para o projeto com `gb.py init-rules --project ./video-01`. Edite o bloco JSON abaixo: ele é lido pelo CLI, sem executar código. O `.env` guarda parâmetros técnicos; este arquivo guarda suas escolhas editoriais. A skill nunca preenche uma declaração de responsabilidade em seu nome.
+Copie para o projeto com `gb.py init-rules --project ./video-01`. Para já gravar sua declaração sem abrir o arquivo, use `init-rules --mode user_declaration --responsible NOME --declaration "frase"` (`--force` regrava um RULES.md existente). `init-rules --format native|reels|horizontal --force` muda só o `video_format`, preservando o resto — é o comando que resolve o conflito entre o formato do `BRIEF.md` e o deste arquivo. Edite o bloco JSON abaixo: ele é lido pelo CLI, sem executar código. O `.env` guarda parâmetros técnicos; este arquivo guarda suas escolhas editoriais. A skill nunca preenche uma declaração de responsabilidade em seu nome.
 
 ```json
 {
@@ -45,7 +45,7 @@ Copie para o projeto com `gb.py init-rules --project ./video-01`. Edite o bloco 
 - `preferred_providers`: ordem real da busca automática para cada intenção. Somente provedores suportados; indisponíveis por falta de chave são informados.
 - `preferred_domains`: sites a priorizar na pesquisa pelo navegador e na ordenação de resultados; `blocked_domains` exclui o domínio e subdomínios.
 - `editorial_rules`: instruções para o agente, por exemplo “preservar data/manchete”, “não usar stock para representar a pessoa citada”. Texto editorial requer interpretação do agente; não é classificador visual automático.
-- `copyright.mode`: `per_item_evidence` ou `user_declaration`. O segundo exige nome e declaração preenchidos pelo usuário e `permit --declaration` em cada asset. O registro identifica uma declaração do usuário, não uma licença verificada automaticamente. Nenhuma modalidade altera as condições da fonte nem comprova direitos por si só.
+- `copyright.mode`: `per_item_evidence` ou `user_declaration`. O segundo exige nome e declaração preenchidos pelo usuário — pelo arquivo ou por `init-rules --responsible/--declaration` — e `permit --declaration` em cada asset. A declaração dita no chat também pode ir direto no asset com `permit --declared-by NOME --declaration-text "frase"`. O registro identifica uma declaração do usuário, não uma licença verificada automaticamente. Nenhuma modalidade altera as condições da fonte nem comprova direitos por si só.
 - `browser`: viewport móvel/desktop e tamanho de captura. Viewport móvel muda o layout; não simula sozinho hardware, touch e user-agent de um celular.
 
 ## Memória de referências

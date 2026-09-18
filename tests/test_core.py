@@ -1,9 +1,13 @@
-import unittest, sys, tempfile, subprocess, shutil
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from getbrolls.models import candidate, set_segment, approve, require_fetch
-from getbrolls.media import probe, cut, preview
+from getbrolls.media import cut, preview, probe
+from getbrolls.models import approve, candidate, require_fetch, set_segment
 
 
 class CoreTests(unittest.TestCase):

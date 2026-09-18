@@ -1,9 +1,10 @@
 """Reviewable Playwright CLI capture plan; browser interactions stay with agent."""
 
-from pathlib import Path
+from datetime import UTC
+
 from .http import public_url
-from .rules import domain_matches
 from .review import project_id
+from .rules import domain_matches
 
 
 def plan(ledger, url, rules):
@@ -11,15 +12,9 @@ def plan(ledger, url, rules):
         raise ValueError("Use uma URL pública HTTPS sem credenciais.")
     if domain_matches(url, rules["blocked_domains"]):
         raise ValueError("Domínio bloqueado pelo usuário.")
-    if not any(
-        t in rules["asset_types"] for t in ("web_screenshot", "news_screenshot")
-    ):
+    if not any(t in rules["asset_types"] for t in ("web_screenshot", "news_screenshot")):
         raise ValueError("Screenshots desabilitados em RULES.md.")
-    asset_type = (
-        "news_screenshot"
-        if "news_screenshot" in rules["asset_types"]
-        else "web_screenshot"
-    )
+    asset_type = "news_screenshot" if "news_screenshot" in rules["asset_types"] else "web_screenshot"
     b = rules["browser"]
     mode = b["viewport"]
     w = b[mode + "_width"]
@@ -27,9 +22,9 @@ def plan(ledger, url, rules):
     session = "gb-" + project_id(ledger)[:8]
     directory = ledger.root.parent / "output/playwright"
     directory.mkdir(parents=True, exist_ok=True)
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     png = directory / ("capture-" + stamp + ".png")
     prefix = [
         "npx",
@@ -43,9 +38,7 @@ def plan(ledger, url, rules):
         prefix + ["open", url, "--headed"],
         prefix + ["resize", str(w), str(h)],
         prefix + ["snapshot"],
-        prefix
-        + ["screenshot", "--filename=" + str(png)]
-        + (["--full-page"] if b["full_page"] else []),
+        prefix + ["screenshot", "--filename=" + str(png)] + (["--full-page"] if b["full_page"] else []),
     ]
     return {
         "asset_type": asset_type,

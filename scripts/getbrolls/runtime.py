@@ -9,9 +9,10 @@ import sys
 import time
 import traceback
 from pathlib import Path
+
 from .models import now
 
-ACTIVE = contextvars.ContextVar("getbrolls_operation", default=None)
+ACTIVE: contextvars.ContextVar[dict | None] = contextvars.ContextVar("getbrolls_operation", default=None)
 
 
 def _acquire_lock(stream, platform=None, windows=None):
@@ -27,7 +28,7 @@ def _acquire_lock(stream, platform=None, windows=None):
             stream.flush()
         stream.seek(0)
         try:
-            windows.locking(stream.fileno(), windows.LK_NBLCK, 1)
+            windows.locking(stream.fileno(), windows.LK_NBLCK, 1)  # pyright: ignore[reportAttributeAccessIssue]
         except OSError as exc:
             raise BlockingIOError from exc
         return
@@ -43,7 +44,7 @@ def _release_lock(stream, platform=None, windows=None):
             import msvcrt as windows
 
         stream.seek(0)
-        windows.locking(stream.fileno(), windows.LK_UNLCK, 1)
+        windows.locking(stream.fileno(), windows.LK_UNLCK, 1)  # pyright: ignore[reportAttributeAccessIssue]
         return
     import fcntl
 
@@ -97,9 +98,7 @@ def project_lock(project):
         try:
             _acquire_lock(lock)
         except BlockingIOError:
-            raise ValueError(
-                "Outro comando está usando este projeto. Aguarde terminar antes de repetir."
-            ) from None
+            raise ValueError("Outro comando está usando este projeto. Aguarde terminar antes de repetir.") from None
         try:
             yield
         finally:
@@ -107,7 +106,10 @@ def project_lock(project):
 
 
 # Comandos que só leem o projeto: sem trava exclusiva e sem criar a árvore.
-READ_ONLY_COMMANDS = ("status", "serve")
+# `brief` entra aqui porque só lê BRIEF.md, RULES.md e o manifesto já existente.
+# `doctor` aceita `--project` por uniformidade com o resto da CLI, mas diagnostica a
+# instalação: não pode criar `brolls/` numa pasta que talvez nem seja um projeto.
+READ_ONLY_COMMANDS = ("status", "serve", "brief", "doctor")
 # (comando, ação) somente leitura, além dos comandos inteiros acima: `queue --action status`
 # só consulta queue.json (mesmo contrato de `status`), nunca deve tomar a trava exclusiva.
 READ_ONLY_ACTIONS = {("queue", "status")}
@@ -144,9 +146,7 @@ def audited(args, execute):
         OverflowError,
     ) as exc:
         event["status"] = "error"
-        event["recovery_pending"] = bool(
-            log and (log.parent / ".pending-transaction.json").exists()
-        )
+        event["recovery_pending"] = bool(log and (log.parent / ".pending-transaction.json").exists())
         # Diagnostics survive regardless of classification, redacted like everything else here.
         event["type"] = type(exc).__name__
         event["repr"] = redact(repr(exc))
@@ -167,9 +167,7 @@ def audited(args, execute):
                 event["message"] = redact(exc) + " Confira docs/RULES.md."
                 current = ACTIVE.get()
                 if current is not None:
-                    current["warnings"].append(
-                        {"code": "PROVIDER_ERROR", "message": redact(exc)}
-                    )
+                    current["warnings"].append({"code": "PROVIDER_ERROR", "message": redact(exc)})
                     event["warnings"] = current["warnings"]
             else:
                 event["error_code"] = "IO_ERROR" if isinstance(exc, OSError) else "INVALID_DATA"

@@ -2,7 +2,7 @@
 type: instructions
 status: current
 created: 2026-09-15
-updated: 2026-09-16
+updated: 2026-09-17
 tags: [get-brolls, documentation]
 ---
 
@@ -51,6 +51,8 @@ Use a pasta da skill como base para scripts e um `--project` explícito para a c
 Distribua instruções, comandos e código próprio. O destinatário instala bibliotecas oficiais conforme [GUIDE](docs/GUIDE.md#instalação). Nunca copie `.venv/`, `.tools/`, `node_modules/`, bibliotecas, executáveis externos ou perfis de navegador para a fonte de distribuição.
 
 Não grave chaves, cookies, URLs assinadas, configs CDN, originais ou projetos de clientes nos exemplos, logs públicos ou documentação. Mantenha os pares Instagram em pasta privada do projeto; relatórios mostram fonte pública e resultado técnico, sem assinatura CDN. Credenciais de Pexels/Pixabay pertencem ao ambiente do usuário ou ao `.env` privado.
+
+Issues, PRs e comentários públicos no GitHub relatam só o técnico: sintoma, evidência `arquivo:linha`, proposta, esforço. Nunca inclua relatos pessoais, nomes de terceiros, caminhos locais (`/Users/...`, `/private/tmp/...`, worktrees, scratchpads), transcrições de sessão ou detalhes do ambiente de quem reportou. Contexto privado fica nas notas locais do mantenedor, fora do repositório.
 
 Execute comandos do mesmo projeto serialmente. Preserve originais, eventos e journal. Se a gravação do estado terminou e a página falhou, regenere `review`; não apague o projeto para contornar erro.
 

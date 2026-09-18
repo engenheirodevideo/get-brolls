@@ -3,9 +3,20 @@
 import os
 from pathlib import Path
 
+# Folga de ponto flutuante ao comparar um intervalo com o teto de prévia. `16.1 - 6.1`
+# dá 10.000000000000002 em binário: sem a folga, o `--end` que o próprio `inspect`
+# sugere seria recusado pelo `preview` logo depois. Um intervalo igual ao teto vale.
+CAP_EPSILON = 1e-6
+
 KEYS = {
     "GB_GIF_SCOPE",
     "GB_RULES_FILE",
+    # Caminho alternativo do BRIEF.md do projeto; padrão `<projeto>/BRIEF.md`.
+    "GB_BRIEF_FILE",
+    # Pasta pessoal da skill (RULES.md global e biblioteca); padrão ~/.getbrolls.
+    "GB_HOME",
+    # `off` desliga leitura e escrita da biblioteca global.
+    "GB_LIBRARY",
     "PEXELS_API_KEY",
     "PIXABAY_API_KEY",
     "YOUTUBE_API_KEY",
@@ -15,6 +26,8 @@ KEYS = {
     "GB_GIF_COLORS",
     "GB_GIF_MAX_MB",
     "GB_PREVIEW_MAX_SECONDS",
+    # Teto da varredura do vídeo inteiro em `preview --scan`, em segundos.
+    "GB_SCAN_MAX_SECONDS",
     "GB_STATIC_FRAMES",
     "GB_YTDLP_PATH",
     "GB_VENV_PATH",
@@ -29,6 +42,8 @@ KEYS = {
     "GB_MAX_PER_DAY",
     # Pausas do yt-dlp entre pedidos: "requests,min,max" em segundos.
     "GB_YTDLP_SLEEP",
+    # `1` faz `deliver` copiar em vez de hardlinkar: cópias independentes, editáveis.
+    "GB_DELIVERY_COPY",
 }
 
 # Optional pins: an explicit path always wins over the usual discovery.
@@ -55,8 +70,7 @@ def load_env(path):
         value = value.strip()
         if key not in KEYS:
             raise ValueError(
-                f".env: variável desconhecida na linha {number}: {key}. "
-                "Aceitas: " + ", ".join(sorted(KEYS)) + "."
+                f".env: variável desconhecida na linha {number}: {key}. Aceitas: " + ", ".join(sorted(KEYS)) + "."
             )
         if value[:1] in ('"', "'"):
             if len(value) < 2 or value[-1] != value[0]:
@@ -79,14 +93,10 @@ def executable_override(key):
     path = Path(value).expanduser().resolve()
     if not path.is_file():
         detail = "não é um arquivo executável" if path.exists() else "não existe"
-        raise ValueError(
-            f"{key}: {value} {detail}. Aponte para o executável correto ou remova a variável."
-        )
+        raise ValueError(f"{key}: {value} {detail}. Aponte para o executável correto ou remova a variável.")
     # No Windows a executabilidade vem da extensão; os.access(X_OK) aceita qualquer legível.
     if os.name != "nt" and not os.access(path, os.X_OK):
-        raise ValueError(
-            f"{key}: {value} não é executável. Ajuste as permissões ou remova a variável."
-        )
+        raise ValueError(f"{key}: {value} não é executável. Ajuste as permissões ou remova a variável.")
     return str(path)
 
 
@@ -147,4 +157,5 @@ def settings():
         max_mb=integer("GB_GIF_MAX_MB", 5, 1, 30),
         max_seconds=integer("GB_PREVIEW_MAX_SECONDS", 10, 1, 30),
         frames=integer("GB_STATIC_FRAMES", 12, 1, 30),
+        scan_max_seconds=integer("GB_SCAN_MAX_SECONDS", 900, 30, 7200),
     )

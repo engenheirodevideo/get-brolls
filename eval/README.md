@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-16
-updated: 2026-09-16
+updated: 2026-09-17
 tags: [get-brolls, eval, blind-tests, quality]
 ---
 
@@ -11,6 +11,12 @@ tags: [get-brolls, eval, blind-tests, quality]
 Esta pasta guarda o processo de **teste cego**: o jeito de medir se a skill entrega o que promete a um criador de conteúdo real. É medição **editorial**, não de código. A suíte `python3 -m unittest discover -s tests` responde se o programa funciona; o teste cego responde outra pergunta: *dado um roteiro que o agente nunca viu, ele acha a fonte literal certa, mostra a prévia certa e para na hora certa?*
 
 Nada aqui substitui [QUALITY.md](../docs/QUALITY.md). Lá ficam as evidências de código e os ensaios por provedor; aqui fica o comportamento do conjunto skill + CLI + agente diante de um roteiro.
+
+## Estado do processo — 2.4.0
+
+A rodada da 2.4.0 foi executada **por inteiro**: os **16 casos** do corpus, distribuídos entre seis executores independentes, cada um cego ao gabarito do seu caso. É a primeira rodada em que nenhum caso ficou de fora — as anteriores cobriam uma amostra. As fricções relatadas pelos executores foram tratadas numa onda de correção dentro da própria 2.4.0, e cada uma virou teste na suíte (a lista está no CHANGELOG e em [QUALITY.md](../docs/QUALITY.md)).
+
+Esta nota registra só o **processo**: que a rodada aconteceu e com que cobertura. As notas por beat, as métricas e o veredito de cada caso são do juiz e ficam nos arquivos de `runs/` — nada aqui os antecipa nem os substitui.
 
 ## O que estamos medindo — o propósito do produto
 
@@ -43,7 +49,7 @@ O executor **nunca** abre `## Gabarito`. É isso que torna o teste cego: se ele 
 
 ## Fluxo de uma rodada
 
-1. Escolha os casos (rodada completa = os 14 de [corpus/](corpus/); smoke = 3).
+1. Escolha os casos (rodada completa = os 16 de [corpus/](corpus/); smoke = 3).
 2. Para cada caso, dispare o executor com `/get-brolls-eval` ([commands/get-brolls-eval.md](../commands/get-brolls-eval.md)) passando só o id ou o texto do roteiro.
 3. O executor cria um projeto isolado, executa `search` → `preview` → `review`, para no Storyboard e coleta `python3 scripts/gb.py status --project <projeto>`.
 4. O executor preenche um relatório a partir de [runs/TEMPLATE.md](runs/TEMPLATE.md).
@@ -53,7 +59,7 @@ O executor **nunca** abre `## Gabarito`. É isso que torna o teste cego: se ele 
 
 ## Cadência
 
-- **Rodada completa (14 casos)** — a cada release candidate, antes de publicar a tag.
+- **Rodada completa (16 casos)** — a cada release candidate, antes de publicar a tag.
 - **Smoke de 3 casos** — depois de qualquer mudança em `SKILL.md`, no espelho `skills/get-brolls/SKILL.md` ou nos prompts/comandos que dirigem o agente. Escolha um caso de notícia, um de print de UI e a armadilha.
 - **Fora de ciclo** — quando um provedor mudar de comportamento ou quando um usuário relatar que o agente "encheu com stock".
 
@@ -69,13 +75,13 @@ Consequência prática: todo relatório separa **ambiente** (URL fora do ar, blo
 eval/
 ├── README.md              # este processo
 ├── rubric.md              # como pontuar beat a beat e fechar a rodada
-├── corpus/                # 14 casos: ## Roteiro (visível) + ## Gabarito (oculto)
+├── corpus/                # 16 casos: ## Roteiro (visível) + ## Gabarito (oculto)
 └── runs/
     ├── TEMPLATE.md        # modelo do relatório
     └── 2026-09-16-2.3.7-claude-opus.md   # baseline inaugural
 ```
 
-## Corpus — os 14 casos
+## Corpus — os 16 casos
 
 Cada caso tem um `## Roteiro` escrito como um criador de conteúdo escreveria e um `## Gabarito` com o tipo de asset esperado, a literalidade exigida, fontes plausíveis e se stock é aceitável (padrão: não).
 
@@ -95,3 +101,5 @@ Cada caso tem um `## Roteiro` escrito como um criador de conteúdo escreveria e 
 | Stock sob pedido | [stock-abertura-meditacao](corpus/stock-abertura-meditacao.md) | Stock **é** a resposta certa quando pedido — e a direção de arte é o critério |
 | Stock sob pedido | [stock-fundo-abstrato-tech](corpus/stock-fundo-abstrato-tech.md) | Permissão parcial: não generalizar stock para o beat proibido |
 | Armadilha | [trap-reuniao-fechada](corpus/trap-reuniao-fechada.md) | Reportar indisponibilidade e perguntar, em vez de inventar |
+| Brief/intake | [brief-entrevista-preguicosa](corpus/brief-entrevista-preguicosa.md) | Parar de perguntar, gravar o `BRIEF.md` e aplicar defaults sem inventar direitos |
+| Rede social | [social-tiktok-publico](corpus/social-tiktok-publico.md) | Descobrir a URL do TikTok público no navegador e não declarar "exige sessão" |

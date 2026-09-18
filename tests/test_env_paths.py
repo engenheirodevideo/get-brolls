@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -12,6 +13,9 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+
+# A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 
 from getbrolls import config, media, social
 
@@ -70,9 +74,10 @@ class ExecutableOverrideTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             ffmpeg = make_executable(d, "ffmpeg-pinned")
             ffprobe = make_executable(d, "ffprobe-pinned")
-            with clean_env(
-                GB_FFMPEG_PATH=str(ffmpeg), GB_FFPROBE_PATH=str(ffprobe)
-            ), patch("getbrolls.media.subprocess.run") as runner:
+            with (
+                clean_env(GB_FFMPEG_PATH=str(ffmpeg), GB_FFPROBE_PATH=str(ffprobe)),
+                patch("getbrolls.media.subprocess.run") as runner,
+            ):
                 runner.return_value = subprocess.CompletedProcess([], 0, stdout="{}")
                 media.run(["ffmpeg", "-v", "error"])
                 self.assertEqual(runner.call_args[0][0][0], str(ffmpeg))
@@ -181,9 +186,7 @@ class EnvFileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             ffmpeg = make_executable(d, "ffmpeg-pinned")
             env_file = Path(d) / ".env"
-            env_file.write_text(
-                "GB_FFMPEG_PATH=" + str(ffmpeg) + "\nGB_VENV_PATH=\n", encoding="utf-8"
-            )
+            env_file.write_text("GB_FFMPEG_PATH=" + str(ffmpeg) + "\nGB_VENV_PATH=\n", encoding="utf-8")
             with clean_env():
                 config.load_env(env_file)
                 self.assertEqual(os.environ["GB_FFMPEG_PATH"], str(ffmpeg))
@@ -194,9 +197,7 @@ class EnvFileTests(unittest.TestCase):
             from_file = make_executable(d, "ffmpeg-file")
             from_process = make_executable(d, "ffmpeg-process")
             env_file = Path(d) / ".env"
-            env_file.write_text(
-                "GB_FFMPEG_PATH=" + str(from_file) + "\n", encoding="utf-8"
-            )
+            env_file.write_text("GB_FFMPEG_PATH=" + str(from_file) + "\n", encoding="utf-8")
             with clean_env(GB_FFMPEG_PATH=str(from_process)):
                 config.load_env(env_file)
                 self.assertEqual(config.tool_path("ffmpeg"), str(from_process))
@@ -220,9 +221,7 @@ class EnvFileVocabularyTests(unittest.TestCase):
             font.write_text("fixture", encoding="utf-8")
             env_file = Path(d) / ".env"
             env_file.write_text(f"GB_FONT_FILE={font}\n", encoding="utf-8")
-            environment = {
-                k: v for k, v in os.environ.items() if k != "GB_FONT_FILE"
-            }
+            environment = {k: v for k, v in os.environ.items() if k != "GB_FONT_FILE"}
             with patch.dict(os.environ, environment, clear=True):
                 config.load_env(env_file)
                 self.assertEqual(str(font), os.environ["GB_FONT_FILE"])
@@ -249,9 +248,7 @@ class DoctorReportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             ffmpeg = make_executable(d, "ffmpeg-pinned")
             payload = self.doctor(d, GB_FFMPEG_PATH=str(ffmpeg))
-            self.assertEqual(
-                payload["tool_paths"], {"GB_FFMPEG_PATH": str(ffmpeg.resolve())}
-            )
+            self.assertEqual(payload["tool_paths"], {"GB_FFMPEG_PATH": str(ffmpeg.resolve())})
             self.assertTrue(payload["executables"]["ffmpeg"])
 
     def test_doctor_without_override_reports_nothing(self):
@@ -262,9 +259,7 @@ class DoctorReportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             missing = str(Path(d) / "gb-inexistente-ffmpeg")
             payload = self.doctor(d, GB_FFMPEG_PATH=missing)
-            entry = next(
-                e for e in payload["summary"]["missing"] if e["item"] == "GB_FFMPEG_PATH"
-            )
+            entry = next(e for e in payload["summary"]["missing"] if e["item"] == "GB_FFMPEG_PATH")
             self.assertIn(missing, entry["note"])
             self.assertEqual({}, payload["tool_paths"])
 
@@ -273,9 +268,7 @@ class DoctorReportTests(unittest.TestCase):
         # (ex.: ffmpeg num runner limpo) apontam para o gerenciador, não o instalador.
         with tempfile.TemporaryDirectory() as d:
             payload = self.doctor(d, GB_VENV_PATH=str(Path(d) / "sem-venv"))
-            entries = [
-                e for e in payload["summary"]["missing"] if e["item"] == "GB_VENV_PATH"
-            ]
+            entries = [e for e in payload["summary"]["missing"] if e["item"] == "GB_VENV_PATH"]
             self.assertTrue(entries, payload["summary"]["missing"])
             for entry in entries:
                 self.assertIn("install.sh", entry["fix"])
@@ -292,6 +285,103 @@ class DoctorReportTests(unittest.TestCase):
             for name, path in resolved.items():
                 if path is not None:
                     self.assertTrue(Path(path).is_absolute(), name)
+
+
+class DeclaredKeys(unittest.TestCase):
+    """Toda `GB_*` lida pelo código precisa estar em `config.KEYS` e no `.env.example`.
+
+    Uma variável fora de `KEYS` faz `load_env` recusar o `.env` inteiro: a pessoa põe
+    no arquivo a variável que a documentação promete e todo comando para de rodar.
+    """
+
+    READER = re.compile(r'(?:os\.environ\.get|os\.getenv|os\.environ\[)\(?"(GB_[A-Z0-9_]+)"')
+
+    def _read_keys(self):
+        found = {}
+        for path in sorted((ROOT / "scripts" / "getbrolls").glob("*.py")):
+            for key in self.READER.findall(path.read_text(encoding="utf-8")):
+                found.setdefault(key, path.name)
+        return found
+
+    def test_every_gb_variable_the_code_reads_is_declared_in_keys(self):
+        found = self._read_keys()
+        self.assertTrue(found)
+        undeclared = {key: where for key, where in found.items() if key not in config.KEYS}
+        self.assertEqual({}, undeclared)
+
+    def test_every_declared_key_appears_in_the_env_example(self):
+        example = (ROOT / ".env.example").read_text(encoding="utf-8")
+        missing = [key for key in sorted(config.KEYS) if key not in example]
+        self.assertEqual([], missing)
+
+    def test_gb_brief_file_in_a_dot_env_does_not_break_every_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env_file = Path(tmp) / ".env"
+            env_file.write_text("GB_BRIEF_FILE=\nGB_SCAN_MAX_SECONDS=120\n", encoding="utf-8")
+            with patch.dict(os.environ, {}, clear=False):
+                config.load_env(env_file)
+
+
+class BriefAndRulesOutsideTheProjectTests(unittest.TestCase):
+    """`GB_BRIEF_FILE`/`GB_RULES_FILE` podem morar em qualquer lugar da máquina."""
+
+    def run_cli(self, *args, env=None, ok=True):
+        environment = dict(os.environ)
+        environment.update(env or {})
+        done = subprocess.run(
+            [sys.executable, str(CLI), *map(str, args)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=environment,
+        )
+        self.assertEqual(0 if ok else 2, done.returncode, done.stderr)
+        return json.loads(done.stdout if ok else done.stderr)
+
+    def test_init_brief_creates_the_parent_dirs_of_an_outside_path(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as vault:
+            # Fora do projeto e com duas pastas que ainda não existem.
+            target = (Path(vault) / "clientes" / "acme" / "reel-01.md").resolve()
+            result = self.run_cli("init-brief", "--project", tmp, env={"GB_BRIEF_FILE": str(target)})
+            self.assertEqual(str(target), result["brief"])
+            self.assertTrue(target.is_file())
+            # Nada foi criado na pasta do projeto: o arquivo que vale é o apontado.
+            self.assertFalse((Path(tmp) / "BRIEF.md").exists())
+            # E o `brief` lê exatamente esse arquivo.
+            report = self.run_cli("brief", "--project", tmp, env={"GB_BRIEF_FILE": str(target)})
+            self.assertTrue(report["beats"])
+
+    def test_init_rules_always_writes_the_project_file_not_gb_rules_file(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as vault:
+            layer = (Path(vault) / "camada" / "RULES.md").resolve()
+            layer.parent.mkdir(parents=True)
+            layer.write_text(
+                (ROOT / "docs" / "RULES.md").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            result = self.run_cli("init-rules", "--project", tmp, env={"GB_RULES_FILE": str(layer)})
+            self.assertEqual(str(Path(tmp) / "RULES.md"), result["rules"])
+            self.assertEqual(
+                (ROOT / "docs" / "RULES.md").read_text(encoding="utf-8"),
+                (Path(tmp) / "RULES.md").read_text(encoding="utf-8"),
+            )
+            self.assertTrue((Path(tmp) / "RULES.md").is_file())
+
+    def test_a_missing_gb_rules_file_fails_naming_the_variable(self):
+        from getbrolls.rules import load_rules
+
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = str(Path(tmp) / "nao" / "existe" / "RULES.md")
+            with patch.dict(os.environ, {"GB_RULES_FILE": missing}):
+                with self.assertRaises(ValueError) as caught:
+                    load_rules(tmp)
+            self.assertIn("GB_RULES_FILE", str(caught.exception))
+
+    def test_a_missing_gb_brief_file_fails_naming_the_variable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = str(Path(tmp) / "nao" / "existe" / "BRIEF.md")
+            error = self.run_cli("brief", "--project", tmp, env={"GB_BRIEF_FILE": missing}, ok=False)
+            self.assertIn("GB_BRIEF_FILE", error["error"])
 
 
 if __name__ == "__main__":

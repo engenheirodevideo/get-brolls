@@ -3,8 +3,9 @@
 import html
 import os
 import re
-from urllib.parse import parse_qs, quote, urlsplit
-from .http import get_json, public_url, ProviderError
+from urllib.parse import parse_qs, quote, unquote, urlsplit
+
+from .http import ProviderError, encoded_url, get_json, public_url
 from .models import candidate
 
 KEYS = {
@@ -34,7 +35,11 @@ def capabilities():
             "embed": False,
             "seek": "local" if name == "local" else "unsupported",
             "download": True,
-            "transport": "browser-cdn-pairs / yt-dlp" if name == "instagram" else "yt-dlp" if name in ("youtube", "tiktok") else name,
+            "transport": "browser-cdn-pairs / yt-dlp"
+            if name == "instagram"
+            else "yt-dlp"
+            if name in ("youtube", "tiktok")
+            else name,
             "configured": not key or bool(os.environ.get(key)),
             "env_key": key,
         }
@@ -44,9 +49,7 @@ def capabilities():
 def _key(provider):
     key = os.environ.get(KEYS[provider])
     if not key:
-        raise ProviderError(
-            "Configure %s para pesquisar em %s" % (KEYS[provider], provider)
-        )
+        raise ProviderError(f"Configure {KEYS[provider]} para pesquisar em {provider}")
     return key
 
 
@@ -88,11 +91,18 @@ def _text(raw):
     return html.unescape(re.sub("<[^>]+>", "", str(raw or ""))).strip()
 
 
-def search(provider, query, limit=8):
+MEDIA_CHOICES = ("image", "video", "any")
+# Fontes que publicam foto e vídeo no mesmo acervo; nas outras `--media` não muda nada.
+MEDIA_AWARE = ("nasa", "commons")
+
+
+def search(provider, query, limit=8, media="any"):
     if not isinstance(limit, int) or not 1 <= limit <= 50:
         raise ProviderError("Limite deve estar entre 1 e 50")
     if not isinstance(query, str) or not query.strip() or len(query) > 500:
         raise ProviderError("Consulta deve ter entre 1 e 500 caracteres")
+    if media not in MEDIA_CHOICES:
+        raise ProviderError("--media aceita image, video ou any")
     fn = {
         "pexels": _pexels,
         "pixabay": _pixabay,
@@ -101,15 +111,16 @@ def search(provider, query, limit=8):
         "nasa": _nasa,
     }.get(provider)
     if not fn:
-        raise ProviderError(
-            "Busca indisponível nesta fonte; forneça URL ou arquivo local"
-        )
-    items = fn(query.strip(), limit)
+        raise ProviderError("Busca indisponível nesta fonte; forneça URL ou arquivo local")
+    if provider in MEDIA_AWARE:
+        items = fn(query.strip(), limit, media)
+    else:
+        # YouTube e os bancos só devolvem vídeo: pedir imagem ali não é erro do usuário,
+        # é fonte errada — e quem escolhe a fonte é o beat, não esta função.
+        items = fn(query.strip(), limit)
     for item in items:
         item["query"] = query.strip()
-        item["match"]["kind"] = (
-            "illustrative" if provider in ("pexels", "pixabay") else "literal"
-        )
+        item["match"]["kind"] = "illustrative" if provider in ("pexels", "pixabay") else "literal"
     return items[:limit]
 
 
@@ -125,21 +136,15 @@ def _pexels(query, limit):
 def _pexels_rows(data):
     out = []
     for row in data.get("videos", []):
-        item = _base("pexels", row["id"], "Pexels · %s" % row["id"], row.get("url"))
+        item = _base("pexels", row["id"], f"Pexels · {row['id']}", row.get("url"))
         user = row.get("user") or {}
         item["creator"] = {"name": user.get("name"), "url": public_url(user.get("url"))}
-        _license(
-            item, "Pexels License", "https://www.pexels.com/license/", user.get("name")
-        )
+        _license(item, "Pexels License", "https://www.pexels.com/license/", user.get("name"))
         _poster(item, row.get("image"))
         files = [
-            v
-            for v in row.get("video_files", [])
-            if v.get("file_type") == "video/mp4" and public_url(v.get("link"))
+            v for v in row.get("video_files", []) if v.get("file_type") == "video/mp4" and public_url(v.get("link"))
         ]
-        fitting = [
-            v for v in files if max(v.get("width") or 0, v.get("height") or 0) <= 1920
-        ]
+        fitting = [v for v in files if max(v.get("width") or 0, v.get("height") or 0) <= 1920]
         file = max(
             fitting or files,
             key=lambda v: (v.get("width") or 0) * (v.get("height") or 0),
@@ -172,7 +177,7 @@ def _pixabay_rows(data):
         item = _base(
             "pixabay",
             row["id"],
-            row.get("tags") or "Pixabay · %s" % row["id"],
+            row.get("tags") or f"Pixabay · {row['id']}",
             row.get("pageURL"),
         )
         item["creator"]["name"] = row.get("user")
@@ -182,30 +187,21 @@ def _pixabay_rows(data):
             "https://pixabay.com/service/license-summary/",
             row.get("user"),
         )
-        variants = [
-            v for v in row.get("videos", {}).values() if public_url(v.get("url"))
-        ]
-        fitting = [
-            v
-            for v in variants
-            if max(v.get("width") or 0, v.get("height") or 0) <= 1920
-        ]
+        variants = [v for v in row.get("videos", {}).values() if public_url(v.get("url"))]
+        fitting = [v for v in variants if max(v.get("width") or 0, v.get("height") or 0) <= 1920]
         v = max(
             fitting or variants,
             key=lambda v: (v.get("width") or 0) * (v.get("height") or 0),
             default={},
         )
         _poster(item, v.get("thumbnail"))
-        out.append(
-            _media(
-                item, v.get("url"), v.get("width"), v.get("height"), row.get("duration")
-            )
-        )
+        out.append(_media(item, v.get("url"), v.get("width"), v.get("height"), row.get("duration")))
     return out
 
 
 def _youtube(query, limit):
     from . import social
+
     out = []
     for row in social.search(query, limit):
         ident = row.get("id")
@@ -221,45 +217,91 @@ def _youtube(query, limit):
     return out
 
 
-def _commons(query, limit):
+def _commons(query, limit, media="any"):
+    kinds = {"image": "bitmap", "video": "video"}.get(media)
     data = get_json(
         "https://commons.wikimedia.org/w/api.php",
         {
             "action": "query",
             "format": "json",
             "generator": "search",
-            "gsrsearch": query + " filetype:video",
+            "gsrsearch": query + (f" filetype:{kinds}" if kinds else " filetype:video|bitmap"),
             "gsrnamespace": 6,
             "gsrlimit": limit,
             "prop": "imageinfo",
             "iiprop": "url|size|mime|extmetadata",
         },
     )
+    wanted = {"image": ("image/",), "video": ("video/",)}.get(media, ("video/", "image/"))
     out = []
     for row in data.get("query", {}).get("pages", {}).values():
         info = (row.get("imageinfo") or [{}])[0]
-        if not info.get("mime", "").startswith("video/"):
+        if not info.get("mime", "").startswith(wanted):
             continue
-        item = _base("commons", row["pageid"], row["title"], info.get("descriptionurl"))
-        metadata = info.get("extmetadata", {})
-        field = lambda key: _text(metadata.get(key, {}).get("value")) or None
-        item["creator"]["name"] = field("Artist")
-        _license(
-            item,
-            field("LicenseShortName"),
-            public_url(field("LicenseUrl")),
-            field("Attribution") or field("Artist"),
-        )
-        _poster(item, info.get("thumburl"))
-        out.append(_media(item, info.get("url"), info.get("width"), info.get("height")))
+        out.append(_commons_item(row, info))
     return out
 
 
-def _nasa(query, limit):
+def _commons_item(row, info):
+    """Um arquivo do Commons vira candidato: mesma leitura na busca e na página dele."""
+    item = _base("commons", row["pageid"], row["title"], info.get("descriptionurl"))
+    metadata = info.get("extmetadata", {})
+
+    def field(key, metadata=metadata):
+        return _text(metadata.get(key, {}).get("value")) or None
+
+    item["creator"]["name"] = field("Artist")
+    _license(
+        item,
+        field("LicenseShortName"),
+        public_url(field("LicenseUrl")),
+        field("Attribution") or field("Artist"),
+    )
+    mime = str(info.get("mime") or "")
+    if mime.startswith("image/"):
+        item["media"]["kind"] = "image"
+        item["asset_type"] = "image"
+    elif mime.startswith("video/"):
+        item["media"]["kind"] = "video"
+    _poster(item, info.get("thumburl"))
+    return _media(item, info.get("url"), info.get("width"), info.get("height"))
+
+
+def _commons_file(title):
+    """`commons.wikimedia.org/wiki/File:…` vira candidato pela mesma API pública da busca.
+
+    Recusar a página enquanto `search --provider commons` existe deixava quem já tem o
+    link do arquivo sem rota nenhuma — e o Commons é onde mora a foto histórica literal.
+    """
+    data = get_json(
+        "https://commons.wikimedia.org/w/api.php",
+        {
+            "action": "query",
+            "format": "json",
+            "titles": title,
+            "prop": "imageinfo",
+            "iiprop": "url|size|mime|extmetadata",
+        },
+        cache_ttl=86400,
+    )
+    pages = list((data.get("query") or {}).get("pages", {}).values())
+    row = pages[0] if pages else {}
+    info = (row.get("imageinfo") or [{}])[0]
+    if row.get("missing") is not None or not info.get("url") or not row.get("pageid"):
+        raise ProviderError(f"O Commons não tem o arquivo {title!r}; confira o endereço da página.")
+    mime = str(info.get("mime") or "")
+    if not mime.startswith(("video/", "image/")):
+        raise ProviderError(f"O arquivo {title!r} não é vídeo nem imagem; o Commons também guarda som e documento.")
+    return _commons_item(row, info)
+
+
+def _nasa(query, limit, media="any"):
+    media_type = {"image": "image", "video": "video"}.get(media, "image,video")
     data = get_json(
         "https://images-api.nasa.gov/search",
-        {"q": query, "media_type": "video", "page_size": limit},
+        {"q": query, "media_type": media_type, "page_size": limit},
     )
+    accepted = {"image": ("image",), "video": ("video",)}.get(media, ("image", "video"))
     out = []
     for row in data.get("collection", {}).get("items", []):
         if len(out) >= limit:
@@ -268,7 +310,8 @@ def _nasa(query, limit):
             break
         meta = (row.get("data") or [{}])[0]
         ident = meta.get("nasa_id")
-        if not ident or meta.get("media_type") != "video":
+        kind = meta.get("media_type")
+        if not ident or kind not in accepted:
             continue
         item = _base(
             "nasa",
@@ -277,6 +320,10 @@ def _nasa(query, limit):
             "https://images.nasa.gov/details/" + quote(ident, safe=""),
         )
         item["creator"]["name"] = meta.get("secondary_creator") or meta.get("center")
+        # Sem isto o relatório da busca mostrava `media.kind: None` para todo item da NASA.
+        item["media"]["kind"] = kind
+        if kind == "image":
+            item["asset_type"] = "image"
         _license(
             item,
             "Verificar condições NASA e autoria do item",
@@ -285,28 +332,81 @@ def _nasa(query, limit):
         )
         _poster(
             item,
-            next(
-                (
-                    v.get("href")
-                    for v in row.get("links", [])
-                    if v.get("rel") == "preview"
-                ),
-                None,
+            encoded_url(
+                next(
+                    (v.get("href") for v in row.get("links", []) if v.get("rel") == "preview"),
+                    None,
+                )
             ),
         )
         assets = get_json(
             "https://images-api.nasa.gov/asset/" + quote(ident, safe=""),
             cache_ttl=86400,
         )
+        suffixes = (".mp4",) if kind == "video" else NASA_IMAGE_SUFFIXES
         urls = [
-            v.get("href")
+            encoded_url(v["href"])
             for v in assets.get("collection", {}).get("items", [])
-            if public_url(v.get("href"))
-            and urlsplit(v["href"]).path.lower().endswith(".mp4")
+            if public_url(v.get("href")) and urlsplit(v["href"]).path.lower().endswith(suffixes)
         ]
         urls.sort(key=lambda u: ("~orig" in u, "~medium" not in u, len(u)))
         out.append(_media(item, urls[0] if urls else None))
     return out
+
+
+# Arquivos de imagem que o acervo da NASA publica para um mesmo item.
+NASA_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
+
+
+def _nasa_asset_urls(ident, suffixes):
+    """Arquivos públicos deste item, do mais completo para o mais leve."""
+    data = get_json("https://images-api.nasa.gov/asset/" + quote(ident, safe=""), cache_ttl=86400)
+    urls = [
+        encoded_url(v["href"])
+        for v in data.get("collection", {}).get("items", [])
+        if public_url(v.get("href")) and urlsplit(v["href"]).path.lower().endswith(suffixes)
+    ]
+    urls.sort(key=lambda u: ("~orig" in u, "~medium" not in u, len(u)))
+    return urls
+
+
+def _nasa_details(ident):
+    """`images.nasa.gov/details/<id>` vira candidato pela mesma API pública da busca.
+
+    Recusar esta página enquanto `search --provider nasa` existe deixava o beat de
+    foto estática sem rota nenhuma: a pessoa tem o link do item e não consegue usá-lo.
+    """
+    data = get_json("https://images-api.nasa.gov/search", {"nasa_id": ident}, cache_ttl=86400)
+    rows = data.get("collection", {}).get("items", [])
+    meta = (rows[0].get("data") or [{}])[0] if rows else {}
+    if not meta.get("nasa_id"):
+        raise ProviderError(f"O acervo da NASA não tem item com o id {ident!r}; confira o endereço da página.")
+    nasa_id = str(meta["nasa_id"])
+    video = meta.get("media_type") == "video"
+    item = _base(
+        "nasa",
+        nasa_id,
+        meta.get("title") or nasa_id,
+        "https://images.nasa.gov/details/" + quote(nasa_id, safe=""),
+    )
+    item["creator"]["name"] = meta.get("secondary_creator") or meta.get("center")
+    _license(
+        item,
+        "Verificar condições NASA e autoria do item",
+        "https://www.nasa.gov/nasa-brand-center/images-and-media/",
+        item["creator"]["name"],
+    )
+    _poster(
+        item,
+        encoded_url(next((v.get("href") for v in (rows[0].get("links") or []) if v.get("rel") == "preview"), None)),
+    )
+    item["media"]["kind"] = "video" if video else "image"
+    if not video:
+        item["asset_type"] = "image"
+    urls = _nasa_asset_urls(nasa_id, (".mp4",) if video else NASA_IMAGE_SUFFIXES)
+    _media(item, urls[0] if urls else None)
+    item["state"] = "candidate"
+    return item
 
 
 def resolve(url):
@@ -349,18 +449,24 @@ def resolve(url):
             "Instagram · " + match[1],
             "https://www.instagram.com/" + path + "/",
         )
+    elif host in ("images.nasa.gov", "www.images.nasa.gov"):
+        match = re.fullmatch(r"details/(.+)", path)
+        if not match:
+            raise ProviderError("Forneça a URL completa do item: https://images.nasa.gov/details/<id>")
+        return _nasa_details(unquote(match[1]))
+    elif host in ("commons.wikimedia.org", "commons.m.wikimedia.org"):
+        match = re.fullmatch(r"wiki/(File:.+)", unquote(path))
+        if not match:
+            raise ProviderError("Forneça a URL completa do arquivo: https://commons.wikimedia.org/wiki/File:<nome>")
+        return _commons_file(match[1].replace("_", " "))
     elif host in ("tiktok.com", "www.tiktok.com", "m.tiktok.com"):
         match = re.fullmatch(r"@([A-Za-z0-9_.-]+)/video/(\d+)", path)
         if not match:
-            raise ProviderError(
-                "Forneça URL completa TikTok @usuario/video/ID; links curtos não são expandidos"
-            )
-        item = _base(
-            "tiktok", match[2], "TikTok · " + match[2], "https://www.tiktok.com/" + path
-        )
+            raise ProviderError("Forneça URL completa TikTok @usuario/video/ID; links curtos não são expandidos")
+        item = _base("tiktok", match[2], "TikTok · " + match[2], "https://www.tiktok.com/" + path)
     else:
         raise ProviderError(
-            "Fonte de URL não suportada; use busca do banco ou original local"
+            "Fonte de URL não suportada; use busca do banco (`search --provider ...`) ou original local"
         )
     item["state"] = "candidate"
     item["acquisition"].update({"status": "available", "method": "yt-dlp"})
@@ -392,14 +498,8 @@ def refresh(item):
         )
         rows = _pixabay_rows(data)
     elif name == "nasa":
-        data = get_json("https://images-api.nasa.gov/asset/" + quote(ident, safe=""))
-        urls = [
-            v.get("href")
-            for v in data.get("collection", {}).get("items", [])
-            if public_url(v.get("href"))
-            and urlsplit(v["href"]).path.lower().endswith(".mp4")
-        ]
-        urls.sort(key=lambda u: ("~orig" in u, "~medium" not in u, len(u)))
+        image = (item.get("media") or {}).get("kind") == "image"
+        urls = _nasa_asset_urls(ident, NASA_IMAGE_SUFFIXES if image else (".mp4",))
         if not urls:
             raise ProviderError("Arquivo do provedor não está mais disponível")
         current["media_url"] = urls[0]
@@ -417,11 +517,7 @@ def refresh(item):
         )
         pages = data.get("query", {}).get("pages", {})
         info = (pages.get(ident, {}).get("imageinfo") or [{}])[0]
-        media_url = (
-            public_url(info.get("url"))
-            if info.get("mime", "").startswith("video/")
-            else None
-        )
+        media_url = public_url(info.get("url")) if info.get("mime", "").startswith("video/") else None
         if not media_url:
             raise ProviderError("Arquivo do provedor não está mais disponível")
         current["media_url"] = media_url

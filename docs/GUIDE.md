@@ -21,6 +21,7 @@ Este é o manual operacional único do **GET B-ROLLS — ENGENHEIRO DE VÍDEO**:
 - [Captura pelo navegador](#captura-de-notícias-e-páginas-pelo-navegador)
 - [Instagram](#instagram--navegadorplaywright-dois-streams-e-mp4)
 - [Storyboard](#storyboard)
+- [Apêndice — utilitários legados](#apêndice--utilitários-legados)
 
 ## Instalação
 
@@ -134,6 +135,14 @@ Precedência: a variável explícita vence a descoberta. Ausente ou vazia, o com
 GB_FFMPEG_PATH=/opt/homebrew/bin/ffmpeg python3 scripts/gb.py doctor
 ```
 
+#### Brief e regras fora da pasta do projeto
+
+`GB_BRIEF_FILE` e `GB_RULES_FILE` podem apontar para **qualquer lugar** da máquina — fora do projeto e fora da pasta da skill: um cofre de notas, um repositório de cliente, uma pasta sincronizada. Caminho relativo é resolvido a partir da pasta atual, e `~` é expandido. Como qualquer `GB_*`, valem pelo ambiente do processo, pelo `.env` da skill ou por `--env-file`.
+
+`init-brief` escreve exatamente no arquivo que o `brief` vai ler, `GB_BRIEF_FILE` incluído, e **cria as pastas-mãe** que faltarem: `GB_BRIEF_FILE=~/clientes/acme/briefs/reel-01.md python3 scripts/gb.py init-brief --project .` funciona mesmo que `~/clientes/acme/briefs/` ainda não exista.
+
+`GB_RULES_FILE` é outra coisa: não é o RULES.md do projeto, é uma **camada intermediária** entre o RULES.md global (`~/.getbrolls/RULES.md`) e o do projeto, e vem de fora do projeto — por isso os campos de responsabilidade (quem assina, a declaração) são descartados dela, com aviso. Ela precisa existir: apontando para um arquivo inexistente, o comando falha nomeando a variável. `init-rules` sempre grava o `RULES.md` da pasta do projeto (criando as pastas-mãe que faltarem), nunca o arquivo de `GB_RULES_FILE` — para preparar essa camada, copie `docs/RULES.md` para lá à mão e edite o bloco ```json.
+
 ### Codex e Claude Code
 
 Use o repositório oficial [engenheirodevideo/get-brolls](https://github.com/engenheirodevideo/get-brolls): `git clone https://github.com/engenheirodevideo/get-brolls.git`. Clone ou copie a pasta completa da skill para **um** dos destinos abaixo. Escolha instalação pessoal ou por projeto para evitar duplicatas com o mesmo nome. Exclua `.venv/`, `.tools/`, `__pycache__/`, projetos e arquivos privados ao copiar uma árvore de desenvolvimento. Execute o instalador no destino final; não mova uma venv entre pastas:
@@ -230,23 +239,21 @@ Coleta B-roll dirigida pelo contrato de edição. Confirma no navegador antes de
 > **Literal primeiro.** O material padrão é footage, print ou imagem real do fato, da pessoa, do produto, da notícia ou da tela que a narração cita. Bancos de stock (Pexels/Pixabay) entram **somente quando o usuário pedir stock explicitamente** — nunca como preenchimento automático de um beat sem fonte literal. A responsabilidade pelas condições de uso do material é de quem produz o vídeo; a skill responde pela fidelidade/literalidade e pelo registro de origem de cada asset, feito por `permit` e pela proveniência gravada no ledger.
 >
 > **Meta editorial: 8+ clipes literais por roteiro quando o conteúdo comportar.** Se os beats óbvios não fecham 8, amplie: mais empresas/pessoas citadas, cobertura de telejornal do mesmo fato, produto nomeado, pregão/mercado real ou segmentos extras da mesma fonte forte. Prefira 1080p quando disponível e confirme com ffprobe; não faça upscale para simular qualidade.
-1. **plan** — dos blocos do contrato (`clips[].bloco_roteiro` / `fala`), derive N beats visuais (query em inglês). Prefira **entidade literal nomeada** (pessoa/produto/logo do que a fala cita: Sam Altman, OpenAI, SoftBank, Codex…) — é onde o YouTube dá material real e limpo. Beats abstratos (back-office, "dev", "automação") caem em tutorial/vlog/stock/desenho; use no máximo um demo de produto real (ex.: dashboard ERP) ou deixe no rosto do talento.
-2. **search** — YouTube sem baixar: `search.sh "<query>" [n]` → `ID | DURATION | TITLE`.
-3. **confirm** — preview por **contact sheet** (não um frame solto): `contact.sh <id> <START-END> <out.jpg> [interval_seg=1.5] [cols=4]` amostra quadros igualmente espaçados e organiza uma grade numerada para ler movimento, sequência e overlays antes de baixar. Use `1.5s` como visão ampla e `0.5s` quando precisar de densidade. `frame.sh` é o fallback. **Gate: o usuário ou revisor aprova antes do corte final.**
-4. **download** — segmento trimado 1080p: `fetch.sh <id> <START-END> <NN_entity_context> <PROJETO>/brolls`.
-5. **verify** — `verify.sh <PROJETO>/brolls` (tabela ffprobe + tamanho).
-6. **(opcional) vertical** — `vertical.sh <in>` pra 9:16 com fundo borrado.
+1. **plan** — dos beats de `BRIEF.md` (substituiu `clips[].bloco_roteiro` na 2.4) ou da fala do roteiro, derive N beats visuais (query em inglês). Prefira **entidade literal nomeada** (pessoa/produto/logo do que a fala cita: Sam Altman, OpenAI, SoftBank, Codex…) — é onde o YouTube dá material real e limpo. Beats abstratos (back-office, "dev", "automação") caem em tutorial/vlog/stock/desenho; use no máximo um demo de produto real (ex.: dashboard ERP) ou deixe no rosto do talento.
+2. **search** — candidato registrado no projeto, sem baixar: `python3 scripts/gb.py search --project <PROJETO> --query "<query>" --intent literal`. Acrescente `--shot <beat.id>` para já ligar cada candidato ao beat do `BRIEF.md` (mesma semântica do `resolve --shot`: o beat vira sufixo do id). Para sondar uma query sem sujar as contagens do projeto, use `--dry-run`: a fonte responde, a lista sai, e nada é gravado.
+3. **confirm** — preview por **contact sheet** (não um frame solto): `python3 scripts/gb.py preview --project <PROJETO> --candidate <ID> --start <INICIO> --end <FIM> --narration "<fala>" --reason "<motivo>"` amostra quadros igualmente espaçados numa grade numerada para ler movimento, sequência e overlays antes de baixar. **Gate: o usuário ou revisor aprova antes do corte final** (`review`/`import-review` ou `approve --channel chat`).
+4. **download** — segmento trimado 1080p, após aprovação e `permit`: `python3 scripts/gb.py fetch --project <PROJETO> --candidate <ID>`.
+5. **verify** — `python3 scripts/gb.py verify --project <PROJETO>` (tabela ffprobe + tamanho).
+6. **deliver** — `python3 scripts/gb.py deliver --project <PROJETO>` organiza o que já foi coletado em `entrega/`, uma pasta por beat (`NN-<beat.id>-<slug do alvo>`) com o `.mp4`, o contact sheet e um `ORIGEM.md` (fonte, autor, intervalo, direitos, sha256), mais um `entrega/README.md` com a tabela de tudo. A pasta é derivada e regenerável: o `verify` a refaz sozinho ao terminar, `brolls/` continua sendo a verdade e nada lá é apagado ou renomeado. Os arquivos entram por **hardlink** (symlink e depois cópia, quando o sistema não deixar), então não ocupam disco duas vezes — mas hardlink é o *mesmo* arquivo com outro nome: **editar em `entrega/` é editar o original**. Por isso a mídia entregue nasce somente-leitura, e o `README.md` e cada `ORIGEM.md` dizem isso. Para receber cópias independentes e editáveis, rode com `GB_DELIVERY_COPY=1`. Rodar de novo é seguro: nada muda, links órfãos somem, e o que você criou dentro de `entrega/` é preservado e listado em `kept`. Um arquivo entregue que você editou não é sobrescrito — o comando termina o resto e falha no fim nomeando todos os conflitos. `--dry-run` mostra o plano sem escrever nada (nem na pasta, nem no manifesto) e reporta o método como `planned`.
 
 ### Imagens de notícia (manchete/dado)
+- **Rota completa do print de tela** (capturar, registrar, revisar) em [`references/providers.md`](../references/providers.md).
 - **Print de site precisa virar arquivo local verificável.** Use a captura do navegador autorizado, confira o arquivo visualmente e importe com URL, manchete, autor e data reais. Se a integração só devolver um identificador interno sem caminho acessível, registre a limitação em vez de prometer o asset.
 - **Prefira notícia em VÍDEO**: cobertura real (Reuters/CNBC/Bloomberg) no YouTube pelo mesmo fluxo (vira mp4 no projeto).
 - **Estático** = entregar **lista de links + o que grifar** num `BROLL-MAP.md`, pro humano printar. Alguns sites (PYMNTS) caem em Cloudflare; Benzinga abre normal.
 
-### Engine / scripts
-Os utilitários YouTube acompanham a própria skill:
-`${GB_SKILL_DIR}/scripts/getbrolls/tools/youtube/search.sh`, `contact.sh` (contact sheet — preview padrão),
-`frame.sh` (still fallback), `fetch.sh`, `verify.sh`, `vertical.sh`.
-Dependências: `yt-dlp` + FFmpeg. Capturas de página usam a integração de navegador autorizada ou o launcher Playwright do sistema.
+### Engine
+Motor: `yt-dlp` + FFmpeg pela CLI (`scripts/gb.py`). Capturas de página usam a integração de navegador autorizada ou o launcher Playwright do sistema. Os helpers `.sh` que existiam antes da CLI unificada continuam disponíveis só como utilitários avulsos — ver [Apêndice — utilitários legados](#apêndice--utilitários-legados).
 
 ### Saída
 `<PROJETO>/brolls/NN_entity_context.mp4`. Registrar no ledger (`step: get-brolls`, outputs = arquivos baixados).
@@ -295,7 +302,7 @@ Fluxo único: descobrir → obter mídia de trabalho/mostrar sequência → revi
 
 Motor: yt-dlp + FFmpeg, **sem API key**. `search --provider youtube` usa ytsearch. `resolve --url` aceita URL de vídeo/shorts; `preview` obtém o intervalo e gera GIF/contact sheet, mantendo aprovação pendente. `fetch` publica os bytes revisados após decisão humana e registro de condições do projeto.
 
-Utilitários em `scripts/getbrolls/tools/youtube/`: `search.sh`, `contact.sh`, `frame.sh`, `fetch.sh`, `verify.sh` e `vertical.sh`. Eles usam `VIDEO_ID`; a CLI principal aceita URL e integra ledger/revisão. Configure EJS/runtime conforme este guia. Se o site exigir sessão ou negar mídia, reporte o erro real; não troque silenciosamente para API com chave.
+Fluxo: `search --provider youtube --query "..."` → `preview --candidate ID --start ... --end ...` → `fetch --candidate ID` → `verify --project ...`. Configure EJS/runtime conforme este guia. Se o site exigir sessão ou negar mídia, reporte o erro real; não troque silenciosamente para API com chave. Os scripts `.sh` de `scripts/getbrolls/tools/youtube/` que usam `VIDEO_ID` direto continuam existindo como utilitários avulsos, fora do ledger/revisão — ver [Apêndice — utilitários legados](#apêndice--utilitários-legados).
 
 ## Provedor — Instagram
 
@@ -308,6 +315,10 @@ O MP4 unido entra com `resolve --file --source-url --creator --shot`; depois pre
 Recebe URL completa `https://www.tiktok.com/@usuario/video/ID` e usa o extrator TikTok do yt-dlp para obter o intervalo. `resolve --url`, `preview`, revisão e `fetch` seguem o mesmo fluxo. Sem API key da plataforma.
 
 Descubra a URL pelo navegador; não há busca global TikTok por palavra-chave implementada. Links encurtados precisam ser abertos no navegador para obter URL canônica. A existência do extrator não garante acesso a todo vídeo; teste a URL real e registre eventual exigência de sessão/indisponibilidade. Consulte [Qualidade e evidências](QUALITY.md) para a evidência desta versão.
+
+Desde a 2.4.0, `resolve --url` de um post do TikTok faz **um** pedido de metadados ao yt-dlp (`--dump-single-json --skip-download`) e já grava `title`, `creator.name`, `creator.handle` (o `@usuario`) e `media.duration_s`. Antes disso o candidato entrava como `TikTok · <id>` com autoria e duração nulas, e o checkpoint C2 — "título, canal, duração" — não tinha o que listar. O pedido é opcional por construção: se a página recusar (post privado, região bloqueada, 429), o candidato é registrado do mesmo jeito, com os campos vazios e um aviso no diagnóstico.
+
+**Como achar os posts recentes de um perfil.** A grade pública de `tiktok.com/@usuario` não serve para visitante: ela carrega por JavaScript atrás de checagem de sessão, e um visitante deslogado recebe uma página vazia ou um desafio. A rota que funciona sem sessão é a página de incorporação — `https://www.tiktok.com/embed/@usuario` —, que lista os posts recentes do perfil com os ids de cada um no HTML. Abra essa página no navegador, colete os ids que interessam e monte a URL canônica de cada um (`https://www.tiktok.com/@usuario/video/<id>`) para passar ao `resolve --url`. Continua valendo o de sempre: a página de incorporação é ponto de partida para achar o endereço, não autorização de uso — as condições do post seguem pelo `permit`, como em qualquer outra fonte.
 
 ## Provedor — Pexels
 
@@ -615,7 +626,7 @@ python3 "$GB_SKILL_DIR/scripts/gb.py" review --project "$GB_PROJECT"
 
 Windows PowerShell usa os mesmos argumentos com `python "$env:GB_SKILL_DIR\scripts\gb.py"`, `$env:GB_PROJECT`, `$env:REEL_URL` e `$env:CREATOR`.
 
-Use o ID local retornado e um intervalo que caiba no vídeo. Confira visualmente sincronização, identidade e conteúdo; áudio presente não comprova que é o áudio correto. O candidato fica pendente; não se autoaprove. O download das partes para inspecionar a mídia é preparação, distinta do corte final aprovado.
+Use o ID local retornado e um intervalo que caiba no vídeo. Confira visualmente sincronização, identidade e conteúdo; áudio presente não comprova que é o áudio correto. O candidato fica pendente; não se autoaprove. Aprovação vem sempre de uma pessoa: pelo Storyboard (`import-review`) ou por fala explícita no chat (`approve --by NOME --channel chat --statement "frase"`, com `--statement` obrigatório no canal chat). Nunca inferir de silêncio. O download das partes para inspecionar a mídia é preparação, distinta do corte final aprovado.
 
 ### Teste de instalação
 
@@ -762,9 +773,22 @@ Entregável de revisão independente da landing page. `gb.py review` gera `broll
 2. Execute `preview` com intervalo, `--narration` (fala exata, quando fornecida; omita se ausente) e `--reason` (motivo da fonte).
 3. O topo mostra o insert em sua proporção; à direita, fonte e ações de revisão. Galeria sempre estática. O GIF anima só no quadro selecionado; clique para alternar estático/animação. A preferência de movimento reduzido é respeitada.
 4. Revisor aprova, pede ajuste ou sugere fonte; ajustes exigem comentário. Exporte JSON para devolver decisões. O botão PDF gera versão estática dos quadros com fontes/comentários.
-5. Importe com `import-review --by`. Projeto, IDs, assinatura do intervalo/fonte e versão da decisão (`reviewEpoch`) são validados. Mudança de intervalo ou substituição da decisão invalida a exportação anterior. Em caso de revisão desatualizada, regenere o Storyboard, confira e exporte novamente; não altere assinaturas manualmente.
+5. Importe com `import-review --by`. Projeto, IDs, assinatura do intervalo/fonte e versão da decisão (`reviewEpoch`) são validados. Mudança de intervalo ou substituição da decisão invalida a exportação anterior. Em caso de revisão desatualizada, regenere o Storyboard, confira e exporte novamente; não altere assinaturas manualmente. Um board exportado antes da 2.4 continua sendo aceito pela época antiga (`legacy_review_epoch`), mas só enquanto o item não mudou: se a aprovação ou o intervalo mudou depois do export, o trecho é recusado como `stale_epoch` (ou `signature_mismatch`) e a decisão antiga nunca é reaplicada por cima da nova.
 6. Só colete o corte final depois de aprovação humana e registro da permissão. Clips MP4 ficam separados do storyboard.
 
 Configurações, presets e limitações estão no [README](../README.md). `preview` obtém mídia de trabalho remota nas rotas de aquisição implementadas; no Instagram por navegador, importe primeiro o MP4 unido. Um poster isolado, inclusive com `--reference-only`, não comprova movimento.
 
 Configuração padrão: `GB_GIF_SCOPE=broll`. O print opcional da pessoa permanece estático. Para revisar composição pronta do mesmo insert, escolha `full` e forneça `--full-preview-file`. O objetivo continua ser decidir a direção da coleta; nenhuma montagem adicional é exigida.
+
+## Apêndice — utilitários legados
+
+O fluxo principal é `python3 scripts/gb.py <subcomando>` (ver [Fluxo editorial](#fluxo-editorial)). Os scripts abaixo, em `${GB_SKILL_DIR}/scripts/getbrolls/tools/youtube/`, são anteriores à CLI unificada e continuam no repositório como utilitários avulsos de linha de comando — não fazem parte do caminho recomendado nem do fluxo revisado pelo Storyboard:
+
+- `search.sh "<query>" [n]` → `ID | DURATION | TITLE` no YouTube, sem baixar.
+- `contact.sh <id> <START-END> <out.jpg> [interval_seg=1.5] [cols=4]` gera um contact sheet manual.
+- `frame.sh` extrai um still isolado (fallback do contact sheet).
+- `fetch.sh <id> <START-END> <NN_entity_context> <PROJETO>/brolls` baixa o segmento trimado direto, fora do ledger/revisão da CLI.
+- `verify.sh <PROJETO>/brolls` roda ffprobe/tamanho manualmente.
+- `vertical.sh <in>` reformata um clipe existente para 9:16 com fundo borrado; não tem equivalente em `gb.py`.
+
+Dependências: `yt-dlp` + FFmpeg. Usar esses scripts pula o registro em `events.jsonl`, a assinatura de revisão e o `permit`; prefira `gb.py` para qualquer material que vá para `clips/` ou para o Storyboard.

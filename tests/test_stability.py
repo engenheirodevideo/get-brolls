@@ -1,4 +1,8 @@
-import json, os, sys, tempfile, unittest
+import json
+import os
+import sys
+import tempfile
+import unittest
 from pathlib import Path
 from unittest.mock import patch
 
@@ -40,9 +44,7 @@ class StabilityTests(unittest.TestCase):
                 {"blocked_domains": ["..example.com"]},
             ):
                 rule = {**base, **change}
-                Path(tmp, "RULES.md").write_text(
-                    "```json\n" + json.dumps(rule) + "\n```", encoding="utf-8"
-                )
+                Path(tmp, "RULES.md").write_text("```json\n" + json.dumps(rule) + "\n```", encoding="utf-8")
                 with self.subTest(change=change), self.assertRaises(ValueError):
                     load_rules(tmp)
 
@@ -50,9 +52,7 @@ class StabilityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp, "brolls")
             root.mkdir()
-            (root / "manifest.json").write_text(
-                '{"items": [1]}', encoding="utf-8"
-            )
+            (root / "manifest.json").write_text('{"items": [1]}', encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "manifest"):
                 Ledger(tmp)
 
@@ -72,7 +72,8 @@ class StabilityTests(unittest.TestCase):
 
             with patch.object(module.os, "replace", side_effect=interrupted):
                 from argparse import Namespace
-                from getbrolls.runtime import audited, OperationError
+
+                from getbrolls.runtime import OperationError, audited
 
                 with self.assertRaises(OperationError) as failure:
                     audited(
@@ -84,25 +85,19 @@ class StabilityTests(unittest.TestCase):
             recovered = Ledger(tmp)
             self.assertEqual(recovered.get(c["id"])["title"], "One")
             events = [
-                json.loads(line)
-                for line in (recovered.root / "events.jsonl")
-                .read_text(encoding="utf-8")
-                .splitlines()
+                json.loads(line) for line in (recovered.root / "events.jsonl").read_text(encoding="utf-8").splitlines()
             ]
             self.assertEqual(len(events), 1)
             Ledger(tmp)
             self.assertEqual(
-                len(
-                    (recovered.root / "events.jsonl")
-                    .read_text(encoding="utf-8")
-                    .splitlines()
-                ),
+                len((recovered.root / "events.jsonl").read_text(encoding="utf-8").splitlines()),
                 1,
             )
 
     def test_log_redaction_and_single_json_warning(self):
         from argparse import Namespace
-        from getbrolls.runtime import audited, OperationError, record_warning
+
+        from getbrolls.runtime import OperationError, audited, record_warning
 
         with (
             tempfile.TemporaryDirectory() as tmp,
@@ -113,7 +108,7 @@ class StabilityTests(unittest.TestCase):
             def fail(_):
                 raise ValueError("fixture-private-key https://example.org/?key=secret")
 
-            with self.assertRaises(OperationError) as failure:
+            with self.assertRaises(OperationError):
                 audited(args, fail)
             log = Path(tmp, "brolls/diagnostics.jsonl").read_text(encoding="utf-8")
             self.assertNotIn("fixture-private-key", log)
@@ -138,9 +133,9 @@ class StabilityTests(unittest.TestCase):
                 self.assertEqual(result["warnings"][0]["code"], "LOG_UNAVAILABLE")
 
     def test_preview_scope_keeps_context_static(self):
-        from getbrolls.previewing import prepare_preview
         from getbrolls.config import settings
         from getbrolls.models import set_segment
+        from getbrolls.previewing import prepare_preview
 
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Ledger(tmp)
@@ -169,7 +164,7 @@ class StabilityTests(unittest.TestCase):
                 patch(
                     "getbrolls.previewing.image_preview",
                     return_value={"poster_path": "previews/person.jpg"},
-                ) as still,
+                ),
             ):
                 prepare_preview(ledger, c, 5, 7, cfg)
                 self.assertEqual(video.call_args.args[0], "broll.mp4")

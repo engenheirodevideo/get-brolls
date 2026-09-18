@@ -36,7 +36,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" preview --project <projeto> --cand
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" review --project <projeto>
 ```
 
-No Windows, use `python`. Sirva a pasta com `python3 -m http.server 8767 --bind 127.0.0.1 --directory <projeto>/brolls` e entregue `http://127.0.0.1:8767/review.html`.
+No Windows, use `python`. Sirva o Storyboard com `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" serve --project <projeto>` e entregue a URL que o comando devolver.
 
 5. **Parar na revisão humana.** Não execute `approve`, `permit`, `fetch` nem `verify`. Não aprove nada em nome do usuário e não declare condição de uso ou licença. A parada faz parte do que está sendo medido.
 

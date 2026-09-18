@@ -9,29 +9,31 @@ ASSETS = Path(__file__).resolve().parents[2] / "assets"
 
 def brand_logo():
     encoded = base64.b64encode((ASSETS / "brand-logo.png").read_bytes()).decode("ascii")
-    return (
-        '<img class="brand-logo" '
-        f'src="data:image/png;base64,{encoded}" '
-        'alt="Engenheiro de vídeo">'
-    )
+    return f'<img class="brand-logo" src="data:image/png;base64,{encoded}" alt="Engenheiro de vídeo">'
 
 
 def render_page(
     items,
     title="Storyboard da coleta",
-    subtitle="Prévias, intervalos e fontes para revisar.",
-    note="A seleção visual não concede permissão de uso. Confira as condições de cada fonte.",
+    subtitle="Veja cada trecho e diga se serve. Leva uns 2 minutos.",
+    note="Aprovar aqui quer dizer “quero esse trecho”, não “posso publicar esse trecho”: antes de subir seu vídeo, confira a licença de cada fonte pelo link do original em cada card.",
 ):
-    esc = lambda value: escape(str(value or ""), quote=True)
+    def esc(value):
+        return escape(str(value or ""), quote=True)
+
     templates = []
     gallery = []
     options = []
 
     def image(path, label):
+        # Sem imagem, a miniatura diz o mesmo que a tarja ao lado dela: "só imagem".
+        # A explicação comprida vive no painel de detalhe (`rendering.source_card`),
+        # onde há espaço e onde a pessoa já parou para ler; no cartão da galeria ela
+        # quebrava o layout e repetia a tarja.
         return (
             f'<img loading="lazy" src="{esc(path)}" alt="{esc(label)}">'
             if path
-            else '<span class="placeholder">Sem prévia</span>'
+            else '<span class="placeholder">só imagem</span>'
         )
 
     for i, item in enumerate(items):
@@ -42,7 +44,7 @@ def render_page(
         left = (
             image(presenter, "Gravação — " + item["title"])
             if presenter
-            else '<p class="empty">Gravação não fornecida para este quadro.</p>'
+            else '<p class="empty">Sem imagem do seu vídeo aqui.</p>'
         )
         if item.get("gif"):
             left = f'<button class="gif-preview" data-gif="{esc(item["gif"])}" data-poster="{esc(presenter)}" aria-label="Assistir trecho: {esc(item["title"])}" aria-pressed="false">{left}<span>▶ Assistir trecho</span></button>'
@@ -58,9 +60,7 @@ def render_page(
                 presenter or item.get("poster"),
                 ("Miniatura da fonte — " if item.get("no_preview") else "Prévia — ") + item["title"],
             )
-        badge = (
-            '<span class="preview-badge">Sem prévia</span>' if item.get("no_preview") else ""
-        )
+        badge = '<span class="preview-badge">só imagem</span>' if item.get("no_preview") else ""
         gallery.append(
             f'<button class="shot" data-index="{i}" aria-current="false"><div class="thumbs">{thumbnail}{badge}</div><h3>{name}</h3><div class="time">{time}</div></button>'
         )
@@ -78,7 +78,7 @@ def render_page(
     board = (
         f"""<div class="tools" id="tools"><div class="selection"><button id="prev" aria-label="Quadro anterior">←</button><select id="select" aria-label="Escolher quadro">{"".join(options)}</select><button id="next" aria-label="Próximo quadro">→</button></div><div class="modes" role="group" aria-label="Visualização"><button data-mode="side" aria-pressed="true">Lado a lado</button><button data-mode="material" aria-pressed="false">Só material</button></div></div><div class="viewer" id="viewer"></div><div class="caption" id="caption" aria-live="polite"></div><div class="gallery-head"><h2>Storyboard</h2>{gallery_tools}</div><div class="gallery">{"".join(gallery)}</div>{"".join(templates)}"""
         if items
-        else '<p class="empty-board">Nenhum quadro nesta coleta. Importe uma fonte e prepare a prévia para começar.</p>'
+        else '<p class="empty-board">Nada aqui ainda. Volte pra conversa e peça os trechos — eu preencho essa página.</p>'
     )
     sub = f'<p class="sub">{esc(subtitle)}</p>' if subtitle else ""
     header = (

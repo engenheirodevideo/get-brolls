@@ -1,6 +1,12 @@
-import hashlib, json, subprocess, os, time
+import hashlib
+import json
+import os
+import re
+import subprocess
+import time
 from pathlib import Path
-from .config import tool_path
+
+from .config import CAP_EPSILON, tool_path
 from .runtime import record_warning, stderr_tail
 
 
@@ -18,9 +24,7 @@ def run(args):
             "verifique python3 scripts/gb.py doctor."
         ) from e
     except subprocess.TimeoutExpired as e:
-        raise ValueError(
-            f"{name} excedeu 180s; confirme arquivo e intervalo ou tente novamente."
-        ) from e
+        raise ValueError(f"{name} excedeu 180s; confirme arquivo e intervalo ou tente novamente.") from e
     except subprocess.CalledProcessError as e:
         tail = stderr_tail(e.stderr)
         raise ValueError(
@@ -28,9 +32,7 @@ def run(args):
             + (f" stderr: {tail}" if tail else "")
         ) from e
     except (subprocess.SubprocessError, OSError) as e:
-        raise ValueError(
-            "Falha de mídia: confirme arquivo e intervalo; verifique python3 scripts/gb.py doctor."
-        ) from e
+        raise ValueError("Falha de mídia: confirme arquivo e intervalo; verifique python3 scripts/gb.py doctor.") from e
 
 
 _DRAWTEXT = {}
@@ -48,6 +50,7 @@ def _drawtext_cache_path(ffmpeg_path):
         mtime = 0
     key = hashlib.sha256(f"{ffmpeg_path}:{mtime}".encode()).hexdigest()
     return _cache_dir() / f"drawtext-{key}.json"
+
 
 # Fontes TrueType habituais por sistema; GB_FONT_FILE sempre vence.
 DEFAULT_FONTS = (
@@ -112,9 +115,7 @@ def find_font():
     if pinned:
         path = Path(pinned).expanduser()
         if not path.is_file():
-            raise ValueError(
-                f"GB_FONT_FILE não aponta para uma fonte existente: {pinned}"
-            )
+            raise ValueError(f"GB_FONT_FILE não aponta para uma fonte existente: {pinned}")
         return str(path.resolve())
     for candidate in DEFAULT_FONTS:
         if Path(candidate).is_file():
@@ -125,6 +126,22 @@ def find_font():
 def _filter_path(path):
     """Escape a path for use inside an ffmpeg filter option (colons, backslashes)."""
     return str(path).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+
+
+# Caracteres de controle nunca chegam ao banner: um `\n` no título quebraria a linha
+# do id e do corte, e um NUL trunca o arquivo que o ffmpeg lê.
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _banner_text(value):
+    """Texto de uma linha do banner do contact sheet, sem controles.
+
+    `:`, `'` e `%` ficam como estão de propósito: o texto vai por `textfile=` e o
+    banner é desenhado com `expansion=none`, então o ffmpeg trata tudo como literal.
+    Era exatamente aí que o cabeçalho sumia — um título com `%` fazia o drawtext
+    tentar expandir `%{...}` e desistir do filtro inteiro.
+    """
+    return _CONTROL.sub(" ", str(value or "")).strip()
 
 
 def clock(seconds):
@@ -243,13 +260,12 @@ def review_preview(src, directory, stem, start, end, config, label=None):
     a banner with title, id and window. Without drawtext the sheet is plain and the
     Storyboard prints the per-cell legend from ``frame_times_s`` instead.
     """
-    import math, tempfile
+    import math
+    import tempfile
 
     directory = Path(directory)
-    if end - start > config["max_seconds"]:
-        raise ValueError(
-            "Trecho excede GB_PREVIEW_MAX_SECONDS; selecione um insert menor ou ajuste a configuração."
-        )
+    if end - start > config["max_seconds"] + CAP_EPSILON:
+        raise ValueError("Trecho excede GB_PREVIEW_MAX_SECONDS; selecione um insert menor ou ajuste a configuração.")
     # Stage every output before replacing any prior preview.
     with tempfile.TemporaryDirectory(dir=directory) as stage:
         stage = Path(stage)
@@ -287,8 +303,8 @@ def review_preview(src, directory, stem, start, end, config, label=None):
                 "fontcolor=white:box=1:boxcolor=black@0.65:boxborderw=6,"
             )
             title_file = stage / "title.txt"
-            title = str(label.get("title") or "").replace("\n", " ").strip()
-            ident = str(label.get("id") or "")
+            title = _banner_text(label.get("title"))
+            ident = _banner_text(label.get("id"))
             title_file.write_text(
                 f"{title}\n[{ident}]  corte {clock(src_start)}–{clock(src_end)}"
                 + (f" de {clock(label['duration'])}" if label.get("duration") else "")
@@ -298,7 +314,10 @@ def review_preview(src, directory, stem, start, end, config, label=None):
             banner = (
                 f",pad=iw:ih+72:0:72:color=0x0b0b0b,drawtext=fontfile='{font_opt}':"
                 f"textfile='{_filter_path(title_file)}':x=16:y=12:fontsize=26:"
-                "fontcolor=white:line_spacing=8"
+                # `expansion=none`: sem isso, um título com `%` (ou com `\`) faz o
+                # drawtext tentar expandir `%{...}`, falhar a análise e derrubar o
+                # banner inteiro — o cabeçalho sumia e o resto da folha saía normal.
+                "fontcolor=white:line_spacing=8:expansion=none"
             )
         # Sample one frame per bin start across the whole interval, never only its head.
         run(
@@ -343,6 +362,61 @@ def review_preview(src, directory, stem, start, end, config, label=None):
     return result
 
 
+def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):
+    """Varredura do vídeo inteiro: um quadro a cada span/frames segundos, baixa resolução.
+
+    Não é a prévia do trecho (essa é `review_preview`, presa a GB_PREVIEW_MAX_SECONDS):
+    é o mapa do vídeo para escolher onde olhar. Não define intervalo nenhum.
+
+    `start` é tempo do arquivo de trabalho; `source_offset` é onde esse arquivo começa
+    dentro da fonte. `frame_times_s` sai em tempo da fonte, como em `review_preview`:
+    é com esse número que a pessoa monta o `--start/--end` do `preview`.
+    """
+    import math
+    import tempfile
+
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    if span <= 0:
+        raise ValueError("Varredura exige duração conhecida maior que zero.")
+    n = max(1, int(frames))
+    cols = min(4, n)
+    rows = math.ceil(n / cols)
+    relative = "previews/" + stem + "-scan.jpg"
+    with tempfile.TemporaryDirectory(dir=directory) as stage:
+        sheet = Path(stage) / "scan.jpg"
+        run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-y",
+                "-ss",
+                str(start),
+                "-t",
+                str(span),
+                "-i",
+                str(src),
+                "-vf",
+                f"fps={n / span}:start_time=0,scale=240:-2:flags=lanczos,"
+                f"tile={cols}x{rows}:nb_frames={n}:padding=6:margin=6:color=0x111111",
+                "-frames:v",
+                "1",
+                str(sheet),
+            ]
+        )
+        if not sheet.exists():
+            raise ValueError("Não foi possível varrer o vídeo.")
+        os.replace(sheet, directory / (stem + "-scan.jpg"))
+    return {
+        "scan_path": relative,
+        "span_s": round(span, 3),
+        "every_s": round(span / n, 3),
+        "frames": n,
+        "frame_times_s": frame_times(start + source_offset, start + source_offset + span, n),
+    }
+
+
 def image_preview(src, directory, stem):
     import tempfile
 
@@ -375,7 +449,8 @@ def image_preview(src, directory, stem):
 
 
 def copy_image(src, dst):
-    import tempfile, shutil
+    import shutil
+    import tempfile
 
     dst = Path(dst)
     if dst.exists():

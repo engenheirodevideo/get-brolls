@@ -31,9 +31,18 @@ def write_pairs(configs, stems):
 
 def batch_args(root, *extra, project=True):
     args = [
-        "--config-dir", str(root / "configs"), "--output-dir", str(root / "out"),
-        "--parts-dir", str(root / "parts"), "--config-output-root", str(root),
-        "--layout", "flat", "--summary-json", str(root / "work/summary.json"),
+        "--config-dir",
+        str(root / "configs"),
+        "--output-dir",
+        str(root / "out"),
+        "--parts-dir",
+        str(root / "parts"),
+        "--config-output-root",
+        str(root),
+        "--layout",
+        "flat",
+        "--summary-json",
+        str(root / "work/summary.json"),
     ]
     if project:
         args += ["--project", str(root)]
@@ -70,12 +79,17 @@ class PairsBatchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_pairs(root / "configs", ["01_A", "02_B", "03_C"])
-            with patch.object(ig, "process_one", side_effect=fake_process), patch.object(ig.random, "uniform", return_value=7.5):
+            with (
+                patch.object(ig, "process_one", side_effect=fake_process),
+                patch.object(ig.random, "uniform", return_value=7.5),
+            ):
                 self.assertEqual(0, ig.main(batch_args(root, "--pace", "5-10")))
             self.assertEqual([7.5, 7.5], [call.args[0] for call in self.sleep.call_args_list])
             summary = json.loads((root / "work/summary.json").read_text(encoding="utf-8"))
             self.assertEqual(1, summary["schema_version"])
-            self.assertEqual({"done": 3, "failed": 0, "skipped": 0}, {k: summary[k] for k in ("done", "failed", "skipped")})
+            self.assertEqual(
+                {"done": 3, "failed": 0, "skipped": 0}, {k: summary[k] for k in ("done", "failed", "skipped")}
+            )
             self.assertEqual(["done"] * 3, [item["status"] for item in summary["results"]])
             self.assertIsNone(summary["stopped_by"])
             self.sleep.reset_mock()
@@ -143,7 +157,10 @@ class PairsBatchTests(unittest.TestCase):
                 commands.append(cmd)
                 raise subprocess.CalledProcessError(22, cmd, stderr=b"curl: (22) The requested URL returned error: 403")
 
-            with patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS), patch.object(ig.subprocess, "run", side_effect=forbidden):
+            with (
+                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(ig.subprocess, "run", side_effect=forbidden),
+            ):
                 self.assertEqual(1, ig.main(batch_args(root, "--pace", "0", "--continue-on-error")))
             self.assertEqual(1, len(commands), "após 403/429 o lote para de imediato")
             self.assertIn("--retry", commands[0])
@@ -168,7 +185,10 @@ class PairsBatchTests(unittest.TestCase):
             def forbidden(cmd, **kwargs):
                 raise subprocess.CalledProcessError(22, cmd, stderr=b"curl: (22) The requested URL returned error: 403")
 
-            with patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS), patch.object(ig.subprocess, "run", side_effect=forbidden):
+            with (
+                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(ig.subprocess, "run", side_effect=forbidden),
+            ):
                 self.assertEqual(1, ig.main(batch_args(root, "--pace", "0")))
             summary = json.loads((root / "work/summary.json").read_text(encoding="utf-8"))
             self.assertEqual(["failed"], [item["status"] for item in summary["results"]])
@@ -187,13 +207,27 @@ class PairsBatchTests(unittest.TestCase):
                 raise subprocess.CalledProcessError(22, cmd, stderr=b"curl: (22) The requested URL returned error: 403")
 
             args = [
-                "--config-dir", str(root / "configs"), "--output-dir", str(root / "out"),
-                "--parts-dir", str(root / "parts"), "--config-output-root", str(root),
-                "--project", str(project),
-                "--layout", "flat", "--summary-json", str(root / "work/summary.json"),
-                "--pace", "0",
+                "--config-dir",
+                str(root / "configs"),
+                "--output-dir",
+                str(root / "out"),
+                "--parts-dir",
+                str(root / "parts"),
+                "--config-output-root",
+                str(root),
+                "--project",
+                str(project),
+                "--layout",
+                "flat",
+                "--summary-json",
+                str(root / "work/summary.json"),
+                "--pace",
+                "0",
             ]
-            with patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS), patch.object(ig.subprocess, "run", side_effect=forbidden):
+            with (
+                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(ig.subprocess, "run", side_effect=forbidden),
+            ):
                 self.assertEqual(1, ig.main(args))
             saved = queue.load(queue.queue_path(project))
             self.assertTrue(saved["providers"]["instagram"]["cooldown_until"])
@@ -209,7 +243,10 @@ class PairsBatchTests(unittest.TestCase):
 
             stderr = io.StringIO()
             with contextlib.redirect_stderr(stderr):
-                with patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS), patch.object(ig.subprocess, "run", side_effect=forbidden):
+                with (
+                    patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                    patch.object(ig.subprocess, "run", side_effect=forbidden),
+                ):
                     self.assertEqual(1, ig.main(batch_args(root, "--pace", "0", project=False)))
             self.assertIn("WARNING: cooldown não registrado", stderr.getvalue())
 
@@ -223,7 +260,10 @@ class PairsBatchTests(unittest.TestCase):
 
             stderr = io.StringIO()
             with contextlib.redirect_stderr(stderr):
-                with patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS), patch.object(ig.subprocess, "run", side_effect=forbidden):
+                with (
+                    patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                    patch.object(ig.subprocess, "run", side_effect=forbidden),
+                ):
                     self.assertEqual(1, ig.main(batch_args(root, "--pace", "0")))
             self.assertIn("WARNING: cooldown não registrado", stderr.getvalue())
 
@@ -236,9 +276,18 @@ class PairsBatchTests(unittest.TestCase):
             def timeout(cmd, **kwargs):
                 raise subprocess.CalledProcessError(28, cmd, stderr=b"curl: (28) timeout")
 
-            with patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS), patch.object(ig.subprocess, "run", side_effect=timeout):
+            with (
+                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(ig.subprocess, "run", side_effect=timeout),
+            ):
                 with self.assertRaises(ig.CollectError) as raised:
-                    ig.download_or_reuse(cfg_path=conf, part_path=root / "p.mp4", config_output_root=root, force_download=False, prefer_config_output=False)
+                    ig.download_or_reuse(
+                        cfg_path=conf,
+                        part_path=root / "p.mp4",
+                        config_output_root=root,
+                        force_download=False,
+                        prefer_config_output=False,
+                    )
             self.assertFalse(getattr(raised.exception, "cooldown", False))
 
     def test_unsafe_stem_is_rejected_before_any_path_is_built(self):
@@ -246,9 +295,15 @@ class PairsBatchTests(unittest.TestCase):
             root = Path(tmp)
             with self.assertRaises(ig.CollectError):
                 ig.process_one(
-                    stem="../escape", video_config=root / "v.conf", audio_config=root / "a.conf",
-                    output=root / "out.mp4", parts_dir=root / "parts", config_output_root=root,
-                    force_download=False, prefer_config_output=False, copy_streams=False,
+                    stem="../escape",
+                    video_config=root / "v.conf",
+                    audio_config=root / "a.conf",
+                    output=root / "out.mp4",
+                    parts_dir=root / "parts",
+                    config_output_root=root,
+                    force_download=False,
+                    prefer_config_output=False,
+                    copy_streams=False,
                 )
             self.assertEqual([], list(root.iterdir()))
 
@@ -261,11 +316,24 @@ class PairsBatchTests(unittest.TestCase):
             audio.write_text('url = "https://example.org/a"\n', encoding="utf-8")
             output = root / "out.mp4"
             with patch.object(ig, "process_one", side_effect=fake_process):
-                code = ig.main([
-                    "--video-config", str(video), "--audio-config", str(audio), "--output", str(output),
-                    "--parts-dir", str(root / "parts"), "--config-output-root", str(root),
-                    "--summary-json", str(root / "work/summary.json"), "--pace", "0",
-                ])
+                code = ig.main(
+                    [
+                        "--video-config",
+                        str(video),
+                        "--audio-config",
+                        str(audio),
+                        "--output",
+                        str(output),
+                        "--parts-dir",
+                        str(root / "parts"),
+                        "--config-output-root",
+                        str(root),
+                        "--summary-json",
+                        str(root / "work/summary.json"),
+                        "--pace",
+                        "0",
+                    ]
+                )
             self.assertEqual(0, code)
             summary = json.loads((root / "work/summary.json").read_text(encoding="utf-8"))
             self.assertEqual(1, summary["count"])
@@ -290,14 +358,27 @@ class PairsBatchTests(unittest.TestCase):
 class SocialSleepTests(unittest.TestCase):
     def test_ytdlp_command_sleeps_between_requests(self):
         env = {k: v for k, v in os.environ.items() if k != "GB_YTDLP_SLEEP"}
-        with patch.object(social, "local_ytdlp", return_value=None), patch.object(social.shutil, "which", side_effect=lambda name: "/usr/bin/yt-dlp" if name == "yt-dlp" else None):
+        with (
+            patch.object(social, "local_ytdlp", return_value=None),
+            patch.object(
+                social.shutil, "which", side_effect=lambda name: "/usr/bin/yt-dlp" if name == "yt-dlp" else None
+            ),
+        ):
             with patch.dict(os.environ, env, clear=True):
                 command = social.command()
-                for flag, value in (("--sleep-requests", "1"), ("--sleep-interval", "3"), ("--max-sleep-interval", "8")):
+                for flag, value in (
+                    ("--sleep-requests", "1"),
+                    ("--sleep-interval", "3"),
+                    ("--max-sleep-interval", "8"),
+                ):
                     self.assertEqual(value, command[command.index(flag) + 1])
             with patch.dict(os.environ, {**env, "GB_YTDLP_SLEEP": "2,5,9"}, clear=True):
                 command = social.command()
-                for flag, value in (("--sleep-requests", "2"), ("--sleep-interval", "5"), ("--max-sleep-interval", "9")):
+                for flag, value in (
+                    ("--sleep-requests", "2"),
+                    ("--sleep-interval", "5"),
+                    ("--max-sleep-interval", "9"),
+                ):
                     self.assertEqual(value, command[command.index(flag) + 1])
             for bad in ("1,2", "a,b,c", "1,9,5", "-1,2,3"):
                 with patch.dict(os.environ, {**env, "GB_YTDLP_SLEEP": bad}, clear=True), self.subTest(bad=bad):
@@ -315,7 +396,10 @@ class RetryAfterTests(unittest.TestCase):
     @patch.object(http, "_safe_network")
     @patch.object(http.urllib.request, "build_opener")
     def test_429_with_short_retry_after_sleeps_and_retries_once(self, builder, safe, sleep):
-        builder.return_value.open.side_effect = [self.response(429, {"Retry-After": "5"}), self.response(429, {"Retry-After": "5"})]
+        builder.return_value.open.side_effect = [
+            self.response(429, {"Retry-After": "5"}),
+            self.response(429, {"Retry-After": "5"}),
+        ]
         with self.assertRaisesRegex(http.ProviderError, "429"):
             http.get_json("https://example.org/")
         self.assertEqual(2, builder.return_value.open.call_count)

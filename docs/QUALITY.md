@@ -6,15 +6,58 @@ updated: 2026-09-17
 tags: [get-brolls, quality, qa, evidence]
 ---
 
-# Qualidade e evidências — GET B-ROLLS 2.3.8
+# Qualidade e evidências — GET B-ROLLS 2.4.0
 
 Este documento reúne o estado de qualidade, as regressões cobertas, os limites conhecidos e as evidências reais por provedor. Resultados ao vivo são registros datados, não promessa de disponibilidade futura nem aprovação editorial.
 
 ## Blind tests
 
-A suíte automatizada responde se o programa funciona; o **teste cego** responde se a skill entrega o que promete a um criador de conteúdo. O processo, os papéis (executor cego, juiz com gabarito, amostragem humana), a cadência e o corpus de 14 casos estão em [eval/README.md](../eval/README.md); a pontuação por beat e as metas, em [eval/rubric.md](../eval/rubric.md). É medição editorial, fora do CI de propósito: precisa de rede, sessão e tempo de agente, e todo relatório separa **ambiente** (URL fora do ar, sessão, quota) de **comportamento** (stock sem pedido, licença inventada, aprovação pelo próprio agente).
+A suíte automatizada responde se o programa funciona; o **teste cego** responde se a skill entrega o que promete a um criador de conteúdo. O processo, os papéis (executor cego, juiz com gabarito, amostragem humana), a cadência e o corpus de 16 casos estão em [eval/README.md](../eval/README.md); a pontuação por beat e as metas, em [eval/rubric.md](../eval/rubric.md). É medição editorial, fora do CI de propósito: precisa de rede, sessão e tempo de agente, e todo relatório separa **ambiente** (URL fora do ar, sessão, quota) de **comportamento** (stock sem pedido, licença inventada, aprovação pelo próprio agente).
 
 Rodada mais recente: [2026-09-16 — 2.3.7 — Claude Opus](../eval/runs/2026-09-16-2.3.7-claude-opus.md), a linha de base. Instalação limpa a partir do clone até um Storyboard revisável em **≈ 4 minutos** (instalador em 32s, primeira prévia em T+2min16s), com 4 beats, 12 candidatos e 6 prévias, sem nenhuma chave de API. Métricas: **reach literal 100%**, **stock sem pedido 0**, **origem registrada 100%**, **previews corretos 3/4 na primeira tentativa** (meta de 90% não atingida). Causa nomeada da única meta perdida: escolher `--start/--end` às cegas, porque `search` devolve `duration_s: null` — mesma raiz do recorte parcial do beat de keynote. Nada foi aprovado ou coletado pelo agente: a rodada para na revisão humana, por definição.
+
+## QA da versão 2.4.0 — 17/09/2026
+
+A 2.4.0 adiciona a entrevista de intake e o `BRIEF.md` por projeto (`init-brief`/`brief`), a aprovação pelo chat (`approve --all --channel chat --statement`), a declaração de responsabilidade sem editar arquivo (`permit --declared-by/--declaration-text`), a biblioteca de aprendizados entre projetos (`learn`/`library`), a análise da fonte antes de coletar (`inspect`, `preview --scan`), a pasta `entrega/` por beat (`deliver`), o Storyboard que salva as decisões dentro do projeto (`serve --background` + `POST /__save`, `import-review` sem `--file`), o próximo passo pronto em `status.summary.do`, e as flags `search --shot/--dry-run` e `init-rules --format`.
+
+**O que foi testado.** A suíte unitária local passou inteira (505 testes no fecho da implementação, ampliada na onda final de correções); `ruff check`, `ruff format --check` e `pyright` saem em zero, agora também no job `quality` do CI; `scripts/check_anchors.py` confirma que toda âncora de `GUIDE.md` citada em SKILL.md, READMEs e `commands/*.md` resolve. As garantias de proveniência foram verificadas sem relaxamento: `require_fetch` continua exigindo aprovação humana, assinatura conferida e direitos permitidos com evidência; `signature()` mantém a invalidação por mudança de intervalo ou contexto; `validate_manifest` segue restrito a `previews/` e `clips/`; nenhuma feature nova preenche `rights.evidence` ou `approval` sem ação explícita de uma pessoa. A biblioteca entre projetos carrega `rights_not_transferable: true` em toda resposta e não faz `require_fetch` passar em projeto nenhum.
+
+**Rodada cega.** Cinco executores independentes rodaram a 2.4.0-rc em 17/09/2026 contra YouTube e GitHub reais, cada um num caso diferente do corpus (notícia espacial, print de UI, aprovação pelo chat, entrevista preguiçosa e a armadilha do roteiro sem entidade nomeada). Registro consolidado em [eval/runs/2026-09-17-2.4.0-rc-claude-opus.md](../eval/runs/2026-09-17-2.4.0-rc-claude-opus.md). Nenhum executor aprovou nada por conta própria e nenhum inventou licença, entidade ou disponibilidade: todos pararam na revisão humana, como o contrato manda. As fricções que a rodada expôs viraram correções nesta mesma versão — `search --shot` e `--dry-run`, `inspect` com resumo e janelas de fallback em vez de lista vazia, `preview --scan` medido pela mídia que existe de fato, `preview --reference-only` sem intervalo, contagem de "decisões pendentes" só para quem tem prévia, Storyboard vazio reportado, `init-rules --format` e a página de item do `images.nasa.gov` aceita por `resolve --url`.
+
+**Sonda real de legendas.** O `inspect` foi verificado contra o YouTube de verdade: `--dump-single-json` implicava `--simulate` e o yt-dlp nunca escrevia os `.vtt`, então a rodada cega recebeu zero falas em todo vídeo; com `--no-simulate` + `--write-info-json` a sonda volta com legenda e janelas de texto, provado por `tests/test_inspect_network.py` (opt-in, `GB_EVAL_NETWORK=1`) contra `https://www.youtube.com/watch?v=AV8Rv74TPGE`.
+
+**Rodada cega completa e onda pós-rodada.** A rodada da 2.4.0 foi executada inteira: **16 casos** do corpus, por seis executores independentes, cada um cego ao gabarito. Os números por caso são do juiz e ficam em `eval/runs/`; aqui fica o que as fricções viraram. Cada item abaixo é uma correção desta versão, com teste:
+
+- **Escada do `status`.** Com prévia esperando decisão, a revisão humana ganha do degrau "beat sem candidato" e de todo degrau de busca/análise/prévia; só o conflito de formato passa na frente. E cada degrau nomeia um candidato da própria etapa — `permit` chegou a sair com o id de um item rejeitado, comando que a própria CLI recusa.
+- **Cobertura de beats honesta.** `beats[].blocked_reason` tira da conta o trecho que espera um fato da pessoa (`blocked: N`, `blocking_human: true`), e `covered` passa a exigir candidato não rejeitado.
+- **Ambiente separado de conteúdo.** Beat que só aceita banco sem a chave de API pede `PEXELS_API_KEY`/`PIXABAY_API_KEY` no `.env` em vez de perguntar "a empresa, a data"; `brief --validate` reporta como `warnings[]` e segue válido. O erro de tamanho de download diz tamanho e teto em MB e não manda mais ler as regras editoriais.
+- **Busca que não some.** Query longa é repetida uma vez com os termos que estreitam, `query_used`/`retry` registram o que a fonte recebeu e `summary.line` sempre explica o zero. `search --media` abre a rota de foto em NASA e Commons, e `resolve --url` passa a aceitar página de arquivo do Commons.
+- **Metadado na hora certa.** `resolve --url` de YouTube/TikTok preenche título, canal/`@handle` e duração com um pedido só, que é o que o checkpoint C2 promete listar.
+- **Idioma.** `inspect` avisa quando a legenda da fonte e a `--query` estão em idiomas diferentes, em vez de devolver janelas com `score: 0` que pareciam "a fonte não fala disso".
+- **Contrato de resposta.** `summary` é sempre objeto com `line` em todo comando, e toda rota de `preview` devolve `files` com caminhos absolutos.
+- **Registro do descarte.** `reject --reason` grava o porquê (`rejection.reason`, visível no `status`), e a linha do `reject` só fala em revisão invalidada quando havia uma.
+
+As garantias de proveniência seguem sem relaxamento nesta onda: `require_fetch`, `signature()` e `validate_manifest` estão intocados, e nenhuma das correções acima preenche `rights.evidence` ou `approval` sem ação humana explícita.
+
+**Onda final de correções menores.** Os achados que sobraram das revisões da 2.4.0 foram todos fechados, nenhum adiado, cada um com teste:
+
+- `approve --all` e `approve --candidate ID …` devolvem `approved_items` com a folha de contato e o intervalo de cada item aprovado: a trilha de auditoria mostra o que a pessoa viu, não só quantos itens foram.
+- `permit --declared-by` recusa nome genérico de uma palavra (`eu`, `user`, `cliente`, `usuário`, `me`, `admin`) e exige duas palavras — nome e sobrenome, ou nome e inicial. "teste" continua valendo: as evals assinam "Ana Teste".
+- A região viva do Storyboard nasce montada e vazia (`role="status"`, `aria-live="polite"`) no load, e o export só troca o texto — sem o `setTimeout(…, 100)` que tornava o anúncio não determinístico. Payload do export e os 375 px sem overflow intactos.
+- A miniatura da galeria sem imagem diz só "só imagem", a mesma frase da tarja; a explicação comprida ficou no painel de detalhe.
+- `preview --scan` contra fonte real ganhou prova opt-in em `tests/test_inspect_network.py` (`GB_EVAL_NETWORK=1`): grade de 12 células cobrindo `start_s=0` a `end_s=95` do vídeo de 95 s, todos os rótulos dentro do trecho.
+- `serve` guarda o log da rodada anterior em `.serve.log.1`, cortado no último 1 MB, e `status`/`state()` não abre socket nenhum quando o PID morreu (`_reap` + `_alive` antes do ping; ping vivo com teto de 0,25 s e uma repetição).
+- `search --dry-run` não registra mais o `learn_query(auto=True)` da fonte que falhou: diagnóstico não vira memória editorial.
+- `entrega/README.md` de entrega misturada (parte hardlink, parte cópia) ganha a coluna **Edição** por linha — `original compartilhado` / `editável` — no lugar do aviso global que era falso para metade dos arquivos.
+- Importação parcial: board exportado antes da 2.4 continua aceito pela época antiga, mas recusado como `stale_epoch` (ou `signature_mismatch`) assim que o item mudou depois do export — nunca há replay por cima da decisão mais nova.
+- `GB_BRIEF_FILE` e `GB_RULES_FILE` documentados no GUIDE: podem apontar para qualquer lugar da máquina, `init-brief` cria as pastas-mãe do destino, e `GB_RULES_FILE` é camada intermediária (precisa existir), não o RULES.md do projeto.
+- Intervalo igual a `GB_PREVIEW_MAX_SECONDS` é aceito: `16.1 - 6.1` dá 10.000000000000002 em binário, e o `preview` recusava exatamente o `--end` que o `inspect` acabara de sugerir.
+- A busca devolve `channel`/`uploader` e `duration_s` por item quando a fonte responde (o YouTube responde) e um `summary.line` com a contagem e os três primeiros títulos.
+- Cabeçalho do contact sheet: o banner é desenhado com `expansion=none`, então um título com `%`, `:`, `'` ou `\` não derruba mais o filtro — era isso que deixava 1 folha em 5 sem cabeçalho na rodada cega.
+- SKILL.md (e espelho) mandam rejeitar o descarte com `reject --candidate ID --project …` antes do C3, para o `status` refletir a conversa.
+- O "Próximo passo" do `entrega/README.md` com entrega pronta e prévia pendente diz "Entrega pronta (N trechos). Há M prévias sem decisão no projeto — decida ou rejeite.", nunca que o agente vai subir o Storyboard.
+
+**Limites conhecidos desta rodada.** O ritmo e o cooldown do lote do Instagram continuam cobertos só por mocks: não houve nova sessão de captura real. Windows é exercitado apenas pela matriz do CI; a proteção de escrita no Windows (`deliver` congela o arquivo, `_thaw_unlink` devolve a escrita antes de apagar) tem regressão offline, não ensaio em máquina real. A varredura remota de `preview --scan` contra uma fonte real agora existe, mas fora da suíte padrão: ela baixa mídia e leva cerca de 70 s, então roda só com `GB_EVAL_NETWORK=1`; a suíte comum continua provando a grade, os rótulos e a tolerância a mídia mais curta com fixture local.
 
 ## QA da versão 2.3.8 — 17/09/2026
 

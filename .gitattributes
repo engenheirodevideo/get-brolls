@@ -1,0 +1,6 @@
+# Fim de linha estável: o checkout do Windows não pode transformar um script
+# de shell em CRLF (bash recusa) nem tirar o CRLF de um script do PowerShell.
+* text=auto
+*.sh text eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf

@@ -6,13 +6,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+
+# A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+
 from getbrolls import __version__
 
 PLUGIN_JSON = ROOT / ".claude-plugin" / "plugin.json"
 MARKETPLACE_JSON = ROOT / ".claude-plugin" / "marketplace.json"
-ROOT_SKILL = ROOT / "SKILL.md"
-MIRROR_SKILL = ROOT / "skills" / "get-brolls" / "SKILL.md"
-SETUP_COMMAND = ROOT / "commands" / "get-brolls-setup.md"
+COMMANDS = ROOT / "commands"
+SETUP_COMMAND = COMMANDS / "get-brolls-setup.md"
+REFERENCES = ROOT / "references"
 
 
 def frontmatter_field(path, field):
@@ -44,60 +48,6 @@ class PluginManifestTests(unittest.TestCase):
         self.assertEqual(entries[0].get("version"), __version__)
 
 
-# Único trecho que pode divergir, e só nas linhas de mecânica de instalação.
-DIVERGENT_SECTION = "Instalação e contexto"
-
-# Mecânica de instalação: o que legitimamente muda entre clone-como-skill e plugin.
-INSTALLATION_MARKERS = (
-    "CLAUDE_PLUGIN_ROOT",
-    "scripts/",
-    ".env",
-    "--env-file",
-    "/plugin",
-    'python3 "',
-)
-
-
-def skill_body(path):
-    """Corpo do SKILL.md sem frontmatter e sem o comentário HTML de sincronia."""
-    text = path.read_text(encoding="utf-8")
-    text = re.sub(r"\A---\n.*?\n---\n", "", text, flags=re.DOTALL)
-    return [line for line in text.splitlines() if not line.startswith("<!--")]
-
-
-def normalize(line):
-    """Reduz o espelho ao mesmo texto da raiz: prefixo do plugin e invocação explícita."""
-    line = line.replace('"${CLAUDE_PLUGIN_ROOT}/', '"').replace("${CLAUDE_PLUGIN_ROOT}/", "")
-    line = re.sub(r'`python3 "([^"`]+)"`', r"`\1`", line)
-    # Só o fim da linha é ruído: a indentação faz parte do texto comparado.
-    return line.rstrip()
-
-
-def normalized_sections(path):
-    """Linhas normalizadas por seção `##`, preservando a ordem do documento."""
-    sections = {"": []}
-    current = ""
-    for line in skill_body(path):
-        if line.startswith("## "):
-            current = line[3:].strip()
-            sections[current] = []
-            continue
-        if not line.strip():
-            continue
-        # Linha que some ao normalizar é mantida: some como divergência, não em silêncio.
-        sections[current].append(normalize(line))
-    return sections
-
-
-def editorial_only(lines):
-    """Linhas da seção de instalação que não descrevem mecânica de instalação."""
-    return [
-        line
-        for line in lines
-        if not any(marker in line for marker in INSTALLATION_MARKERS)
-    ]
-
-
 class SetupCommandTests(unittest.TestCase):
     def test_setup_command_is_discoverable_and_complete(self):
         self.assertTrue(SETUP_COMMAND.is_file(), "commands/get-brolls-setup.md ausente")
@@ -112,59 +62,106 @@ class SetupCommandTests(unittest.TestCase):
         ):
             self.assertIn(marker, body, f"passo ausente no comando de setup: {marker}")
 
+    def test_every_command_is_discoverable(self):
+        """Todo comando do plugin traz name/description e roda pela raiz do plugin."""
+        expected = {
+            "get-brolls-setup",
+            "get-brolls-brief",
+            "get-brolls-eval",
+            "get-brolls-status",
+            "get-brolls-review",
+        }
+        found = set()
+        for path in sorted(COMMANDS.glob("*.md")):
+            name = frontmatter_field(path, "name")
+            self.assertEqual(name, path.stem, f"{path.name}: name diverge do arquivo")
+            self.assertTrue(frontmatter_field(path, "description"), f"{path.name} sem description")
+            found.add(name)
+        self.assertEqual(expected, found, "conjunto de comandos do plugin mudou")
+
+    def test_status_command_repasses_the_ready_sentence(self):
+        body = (COMMANDS / "get-brolls-status.md").read_text(encoding="utf-8")
+        self.assertIn('"${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" status --project', body)
+        self.assertIn("summary.do.for_human", body)
+        self.assertIn("sem parafrasear", body)
+
+    def test_review_command_serves_then_imports(self):
+        body = (COMMANDS / "get-brolls-review.md").read_text(encoding="utf-8")
+        for marker in (
+            '"${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" review --project',
+            '"${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" serve --background --project',
+            '"${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" import-review --by',
+            "127.0.0.1:8767/review.html",
+        ):
+            self.assertIn(marker, body, f"passo ausente no comando de revisão: {marker}")
+        self.assertNotIn("--file", body.split("import-review --by")[1].split("\n")[0])
+
     def test_plugin_manifest_needs_no_commands_key(self):
         data = json.loads(PLUGIN_JSON.read_text(encoding="utf-8"))
         self.assertNotIn("commands", data)
 
 
-class SkillMirrorTests(unittest.TestCase):
-    def test_description_identical(self):
-        root_desc = frontmatter_field(ROOT_SKILL, "description")
-        mirror_desc = frontmatter_field(MIRROR_SKILL, "description")
-        self.assertIsNotNone(root_desc)
-        self.assertEqual(root_desc, mirror_desc)
+class ReferencesTests(unittest.TestCase):
+    """`references/` viaja com o plugin: é de onde o agente tira a copy pronta."""
 
-    def test_versions_match_package(self):
-        self.assertEqual(frontmatter_field(ROOT_SKILL, "version"), __version__)
-        self.assertEqual(frontmatter_field(MIRROR_SKILL, "version"), __version__)
+    EXPECTED = (
+        "templates-de-resposta.md",
+        "glossario.md",
+        "interview.md",
+        "providers.md",
+        "instagram.md",
+        "rights.md",
+    )
 
-    def test_mirror_plugin_root_targets_exist(self):
-        body = MIRROR_SKILL.read_text(encoding="utf-8")
-        refs = re.findall(r"\$\{CLAUDE_PLUGIN_ROOT\}/([\w./\-]+)", body)
-        self.assertTrue(refs, "espelho sem referências ${CLAUDE_PLUGIN_ROOT}")
-        for ref in refs:
-            target = ROOT / ref.split("#", 1)[0]
-            self.assertTrue(target.exists(), f"alvo inexistente: {ref}")
+    def test_reference_files_ship_with_the_plugin(self):
+        self.assertTrue(REFERENCES.is_dir(), "pasta references/ ausente")
+        for name in self.EXPECTED:
+            path = REFERENCES / name
+            self.assertTrue(path.is_file(), f"references/{name} ausente")
+            self.assertEqual("reference", frontmatter_field(path, "type"))
 
-    def test_mirror_body_matches_root_outside_the_installation_section(self):
-        root = normalized_sections(ROOT_SKILL)
-        mirror = normalized_sections(MIRROR_SKILL)
-        self.assertEqual(
-            list(root), list(mirror), "seções divergentes entre raiz e espelho"
-        )
-        self.assertTrue(
-            root[DIVERGENT_SECTION] and mirror[DIVERGENT_SECTION],
-            "seção de instalação ausente; a allowlist deixaria de proteger algo",
-        )
-        for section in root:
-            if section == DIVERGENT_SECTION:
-                continue
-            self.assertEqual(
-                root[section],
-                mirror[section],
-                f"espelho fora de sincronia na seção: {section or 'introdução'}",
-            )
+    def test_providers_reference_keeps_the_two_editorial_guards(self):
+        body = (REFERENCES / "providers.md").read_text(encoding="utf-8")
+        self.assertIn("Literal primeiro", body)
+        self.assertIn("pedir stock explicitamente", body)
 
-    def test_installation_section_may_diverge_only_on_installation_mechanics(self):
-        root = normalized_sections(ROOT_SKILL)[DIVERGENT_SECTION]
-        mirror = normalized_sections(MIRROR_SKILL)[DIVERGENT_SECTION]
-        self.assertEqual(
-            editorial_only(root),
-            editorial_only(mirror),
-            "seção de instalação divergindo fora da mecânica de instalação: "
-            "só linhas sobre ${CLAUDE_PLUGIN_ROOT}, scripts/, .env, --env-file, "
-            "/plugin ou python3 podem diferir entre raiz e espelho",
-        )
+    def test_instagram_reference_keeps_the_two_stream_procedure(self):
+        body = (REFERENCES / "instagram.md").read_text(encoding="utf-8")
+        for marker in (
+            "_video.conf",
+            "_audio.conf",
+            "instagram_pairs.py",
+            "--fail-on-duplicate-audio",
+            "wait_seconds",
+            "--pace 20-60",
+            "cooldown",
+        ):
+            self.assertIn(marker, body, f"procedimento do Instagram perdeu: {marker}")
+
+    def test_every_reference_states_the_path_convention(self):
+        """Cada reference é lida sozinha: a regra de caminho vai em cada uma."""
+        for name in ("providers.md", "instagram.md", "rights.md"):
+            body = (REFERENCES / name).read_text(encoding="utf-8")
+            self.assertIn("caminho absoluto da instalação da skill", body, name)
+            self.assertIn("${CLAUDE_PLUGIN_ROOT}/scripts/gb.py", body, name)
+            self.assertIn("--project", body, name)
+            self.assertIn("No Windows, use `python`", body, name)
+
+    def test_providers_reference_keeps_the_scan_fallback(self):
+        body = (REFERENCES / "providers.md").read_text(encoding="utf-8")
+        for marker in ("preview --scan", "GB_SCAN_MAX_SECONDS", "900", "--reference-only"):
+            self.assertIn(marker, body, f"providers.md perdeu: {marker}")
+
+    def test_rights_reference_covers_the_three_permit_routes(self):
+        body = (REFERENCES / "rights.md").read_text(encoding="utf-8")
+        for marker in ("--evidence", "--preset", "--declared-by", "--declaration-text"):
+            self.assertIn(marker, body, f"rota de permit ausente: {marker}")
+
+    def test_response_templates_cover_both_approval_routes(self):
+        body = (REFERENCES / "templates-de-resposta.md").read_text(encoding="utf-8")
+        self.assertIn("Salvar decisões", body)
+        self.assertIn("aprovei todos", body)
+        self.assertIn("--channel chat", body)
 
 
 if __name__ == "__main__":

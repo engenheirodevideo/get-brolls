@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/badge/node-22%2B-green?style=flat-square" alt="Node 22+">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
     <img src="https://img.shields.io/github/actions/workflow/status/engenheirodevideo/get-brolls/test.yml?branch=main&style=flat-square&label=tests" alt="Tests status">
-    <img src="https://img.shields.io/badge/version-2.3.8-blue?style=flat-square" alt="Version 2.3.8">
+    <img src="https://img.shields.io/badge/version-2.4.0-blue?style=flat-square" alt="Version 2.4.0">
   </p>
 </div>
 
@@ -28,6 +28,7 @@ A preview may download working media so you can see the motion. Final delivery r
 
 ## Updates
 
+- **2.4.0.** Intake interview and a per-project `BRIEF.md` (`init-brief`/`brief`), chat approval (`approve --all --by NAME --channel chat --statement "..."`), a cross-project library of lessons (`learn`/`library`), source analysis before collecting (`inspect`, `preview --scan`), a `entrega/` folder per beat (`deliver`), a Storyboard that saves decisions inside the project, a ready-to-run next step in `status.summary.do`, `search --shot/--dry-run` and `init-rules --format`.
 - **2.3.8.** Paced queue for social batches (`queue`), `instagram_pairs --pace/--max-per-run/--continue-on-error`, yt-dlp sleeps and `Retry-After` handling, readable errors with redacted stderr, interval/NASA/drawtext caching, and a `serve` command for the local Storyboard.
 - **2.3.7.** `status --project` command ("where are we?"), self-explanatory CLI with `--version`, `/get-brolls-setup` plugin command, "First B-roll in 5 minutes" quickstart, pinnable tool paths via `GB_*_PATH`, and [AGENTS.md](AGENTS.md) as the repository hub.
 - **2.3.6.** Claude Code plugin install — the repository is its own skill marketplace.
@@ -169,6 +170,20 @@ python3 scripts/gb.py verify --project /path/to/my-video
 
 At the end, `verify` answers `"count": 1` and the approved clip is in `/path/to/my-video/brolls/clips/`, with origin, creator, and decision recorded in `brolls/credits.md`. Replacing `nasa` with `commons` follows the same flow.
 
+### Onboarding checklist — chat only
+
+If you have never opened a terminal, this is the whole list. Every step is a conversation with the agent; none of them asks for a command.
+
+1. **Install once.** Ask for `/get-brolls-setup`. It installs everything and answers in one line whether you are ready. Repeat after every `/plugin update`.
+2. **Say what you need.** `/get-brolls I need supporting footage for my Reel about X` — and say which folder the project lives in.
+3. **Answer the interview.** At most seven questions, one at a time. "Whatever you think" is a valid answer: the agent applies a default and shows you what it assumed. To start there directly, use `/get-brolls-brief`.
+4. **Check the brief.** It hands back five lines of what it understood and asks whether that is right. Correct it there.
+5. **Look at the shortlist.** Before downloading anything, it lists 5 to 8 candidates with title, creator, and the exact window. Say which ones work.
+6. **Approve the previews.** Either in chat ("I approve all", or naming the ones you want), or on the Storyboard: ask for `/get-brolls-review`, it sends you a link, you click Approve / Request change / Reject and then **Save decisions**, and come back to say you saved. Nothing is downloaded without this step.
+7. **Say who owns the material.** The agent records the usage conditions from what you tell it. You are the one answering for those conditions; it only records what was said and where each file came from.
+8. **Receive.** The cuts land in `entrega/`, one folder per shot, each with an `ORIGEM.md` naming its source.
+9. **Lost the thread?** Ask for `/get-brolls-status`: it tells you where things stand and what comes next.
+
 ## Commands
 
 In order of use — from first contact to delivery:
@@ -184,6 +199,9 @@ In order of use — from first contact to delivery:
 ```text
 /get-brolls <your request>   # Claude Code — describe the inserts and the project folder
 $get-brolls <your request>   # Codex — same thing
+/get-brolls-brief            # interviews you and writes the video's BRIEF.md
+/get-brolls-review           # builds the Storyboard, sends the link, imports the decisions
+/get-brolls-status           # says where the collection stands and what comes next
 ```
 
 **3. Check the environment** when something misbehaves:
@@ -244,8 +262,8 @@ The `review` command generates `brolls/review.html`: a local page where you can 
 |---|---|
 | Selected shot | Switch between a still image and a GIF while preserving the original aspect ratio. |
 | Context and origin | Inspect the supplied narration, time range, selection rationale, creator, and source link. |
-| Decision per shot | Approve it, request an adjustment with a comment, or suggest a different source. |
-| Export review | Save a JSON file for the agent to import into the project. |
+| Decision per shot | Approve, Request a change (comment required; "find another video" lives inside it), or Reject. |
+| Save decisions | Download a JSON file for the agent to import into the project. |
 | Print / PDF | Generate a static version with frames, sources, and comments. |
 
 The gallery remains static; animation runs only in the selected shot and respects reduced-motion preferences. An optional screenshot of the speaker provides context and remains static. To evaluate a finished composition using the same insert, set `GB_GIF_SCOPE=full` and provide `--full-preview-file`.

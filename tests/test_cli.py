@@ -1,7 +1,22 @@
-import unittest, subprocess, sys, tempfile, shutil, json, os
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
 from pathlib import Path
 
 CLI = Path(__file__).resolve().parents[1] / "scripts/gb.py"
+# A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+
+
+def _review_payload(page):
+    match = re.search(r"window.GETBROLLS_REVIEW=(.*?);</script>", page)
+    assert match, "review.html sem o payload embutido"
+    return match.group(1)
 
 
 class CliTest(unittest.TestCase):
@@ -54,14 +69,23 @@ class CliTest(unittest.TestCase):
             id = c["id"]
             base = ["--candidate", id, "--project", root]
             # Cada comando do fluxo também diz, em uma linha, o que acabou de fazer.
-            self.assertIn("Registrei o candidato", c["summary"])
+            self.assertIn("Registrei o candidato", c["summary"]["line"])
             self.call("fetch", *base, ok=False)
             preview = self.call("preview", *base, "--start", 0.5, "--end", 1.5)
-            self.assertIn("Gerei a prévia", preview["summary"])
+            self.assertIn("Gerei a prévia", preview["summary"]["line"])
             approved = self.call(
-                "approve", *base, "--start", 0.5, "--end", 1.5, "--by", "Fixture humano"
+                "approve",
+                *base,
+                "--start",
+                0.5,
+                "--end",
+                1.5,
+                "--by",
+                "Fixture humano",
+                "--statement",
+                "Aprovo este trecho para o vídeo.",
             )
-            self.assertIn("Registrei a aprovação humana", approved["summary"])
+            self.assertIn("Registrei a aprovação humana", approved["summary"]["line"])
             self.call("fetch", *base, ok=False)
             permitted = self.call(
                 "permit",
@@ -69,19 +93,23 @@ class CliTest(unittest.TestCase):
                 "--evidence",
                 "Vídeo sintético de teste gerado localmente",
             )
-            self.assertIn("condições de uso", permitted["summary"])
+            self.assertIn("condições de uso", permitted["summary"]["line"])
             out = self.call("fetch", *base)
             self.assertTrue(out["output"]["verified"])
-            self.assertIn("Coletei o corte final", out["summary"])
+            self.assertIn("Coletei o corte final", out["summary"]["line"])
             verified = self.call("verify", "--project", root)
             self.assertEqual(verified["count"], 1)
-            self.assertIn("1 arquivo coletado: íntegro e decodificável", verified["summary"])
+            self.assertIn("1 arquivo coletado: íntegro e decodificável", verified["summary"]["line"])
             reviewed = self.call("review", "--project", root)
-            self.assertIn("Gerei o Storyboard", reviewed["summary"])
+            self.assertIn("Gerei o Storyboard", reviewed["summary"]["line"])
             state = self.call("status", "--project", root)
             self.assertEqual(1, state["counts"]["verified"])
             self.assertIn("completo", state["summary"]["next"])
-            self.call("fetch", *base, ok=False)
+            # Recoletar a mesma revisão não pode explodir dentro do ffmpeg por causa
+            # do arquivo congelado por `deliver`: a recusa é explícita e diz o que fazer.
+            again = self.call("fetch", *base, ok=False)
+            self.assertIn("Arquivo final já existe", json.dumps(again, ensure_ascii=False))
+            self.assertIn("verify", json.dumps(again, ensure_ascii=False))
             self.assertTrue((root / "brolls/review.html").exists())
             self.assertIn(
                 "Vídeo sintético",
@@ -97,7 +125,6 @@ class CliTest(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
     def test_shots_context_and_import_cli_sync(self):
-        import re
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -132,36 +159,48 @@ class CliTest(unittest.TestCase):
                 "--project",
                 root,
             )
-            other = self.call(
-                "resolve", "--file", src, "--shot", "two", "--project", root
-            )
+            other = self.call("resolve", "--file", src, "--shot", "two", "--project", root)
             self.assertNotEqual(c["id"], other["id"])
             base = ["--candidate", c["id"], "--project", root]
+            self.call("preview", *base, "--start", 0, "--end", 1, "--narration", "Line one")
             self.call(
-                "preview", *base, "--start", 0, "--end", 1, "--narration", "Line one"
+                "approve",
+                *base,
+                "--start",
+                0,
+                "--end",
+                1,
+                "--by",
+                "Human",
+                "--statement",
+                "Aprovo este trecho para o vídeo.",
             )
-            self.call("approve", *base, "--start", 0, "--end", 1, "--by", "Human")
 
             def payload():
                 page = (root / "brolls/review.html").read_text(encoding="utf-8")
-                return json.loads(
-                    re.search(r"window.GETBROLLS_REVIEW=(.*?);</script>", page).group(1)
-                )
+                return json.loads(_review_payload(page))
 
             data = payload()
             self.assertEqual(data["items"][0]["review"]["state"], "approved")
             data["items"] = [{**data["items"][0], "state": "approved"}]
             review = root / "decision.json"
             review.write_text(json.dumps(data), encoding="utf-8")
-            self.call(
-                "import-review", "--file", review, "--by", "Human", "--project", root
-            )
+            self.call("import-review", "--file", review, "--by", "Human", "--project", root)
             self.call("reject", *base)
             self.assertEqual(payload()["items"][0]["review"]["state"], "pending")
-            self.call("approve", *base, "--start", 0, "--end", 1, "--by", "Human")
             self.call(
-                "preview", *base, "--start", 0, "--end", 1, "--narration", "Line two"
+                "approve",
+                *base,
+                "--start",
+                0,
+                "--end",
+                1,
+                "--by",
+                "Human",
+                "--statement",
+                "Aprovo este trecho para o vídeo.",
             )
+            self.call("preview", *base, "--start", 0, "--end", 1, "--narration", "Line two")
             self.call(
                 "import-review",
                 "--file",
@@ -173,6 +212,72 @@ class CliTest(unittest.TestCase):
                 ok=False,
             )
             self.assertEqual(payload()["items"][0]["review"]["state"], "pending")
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
+    def test_reference_only_needs_no_interval_and_still_leaves_something_to_look_at(self):
+        """A fonte que não libera o trecho ainda merece um cartaz, e `status` precisa contá-lo."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src = root / "original.mp4"
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=160x90:duration=3:rate=10",
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(src),
+                ],
+                check=True,
+            )
+            c = self.call("resolve", "--file", src, "--project", root)
+            base = ["--candidate", c["id"], "--project", root]
+            out = self.call("preview", *base, "--reference-only")
+            self.assertEqual("reference_only", out["state"])
+            poster = out["preview"]["poster_path"]
+            self.assertTrue((root / "brolls" / poster).is_file())
+            state = self.call("status", "--project", root)
+            self.assertEqual(1, state["counts"]["previews"])
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
+    def test_a_local_image_preview_produces_an_artifact_and_counts_as_a_preview(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src = root / "foto.png"
+            subprocess.run(
+                ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=red:s=64x64", "-frames:v", "1", str(src)],
+                check=True,
+            )
+            c = self.call("resolve", "--file", src, "--project", root)
+            base = ["--candidate", c["id"], "--project", root]
+            out = self.call("preview", *base)
+            self.assertTrue((root / "brolls" / out["preview"]["poster_path"]).is_file())
+            state = self.call("status", "--project", root)
+            self.assertEqual(1, state["counts"]["previews"])
+            self.assertEqual([c["id"]], state["stages"]["previews"])
+
+    def test_a_video_without_an_interval_is_told_about_reference_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src = root / "original.mp4"
+            src.write_bytes(b"not a real video")
+            resolved = subprocess.run(
+                [sys.executable, str(CLI), "resolve", "--file", str(src), "--project", str(root)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            if resolved.returncode != 0:
+                self.skipTest("resolve recusou o arquivo sintético")
+            id = json.loads(resolved.stdout)["id"]
+            failed = self.call("preview", "--candidate", id, "--project", root, ok=False)
+            self.assertIn("--reference-only", json.dumps(failed, ensure_ascii=False))
 
     def test_social_resolve_keeps_acquisition_and_url_validation(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -234,28 +339,20 @@ class CliTest(unittest.TestCase):
             manifest = Path(tmp) / "brolls/manifest.json"
             data = json.loads(manifest.read_text(encoding="utf-8"))
             data["items"][0]["title"] = "<img src=x onerror=alert(1)>"
-            data["items"][0]["preview"]["poster_url"] = (
-                "https://example.org/poster.jpg?access_token=SECRET_TEST"
-            )
+            data["items"][0]["preview"]["poster_url"] = "https://example.org/poster.jpg?access_token=SECRET_TEST"
             manifest.write_text(json.dumps(data), encoding="utf-8")
             self.call("review", "--project", tmp)
             page = (Path(tmp) / "brolls/review.html").read_text(encoding="utf-8")
             dom = DOM()
             dom.feed(page)
-            self.assertFalse(
-                any(t == "iframe" for t, a in dom.nodes), "Player must be lazy"
-            )
-            self.assertFalse(
-                any(
-                    t in ("iframe", "video") or "data-youtube" in a
-                    for t, a in dom.nodes
-                )
-            )
+            self.assertFalse(any(t == "iframe" for t, a in dom.nodes), "Player must be lazy")
+            self.assertFalse(any(t in ("iframe", "video") or "data-youtube" in a for t, a in dom.nodes))
             self.assertNotIn("SECRET_TEST", page)
             self.assertFalse(any("onerror" in a for t, a in dom.nodes))
             self.assertIn("&lt;img src=x onerror=alert(1)&gt;", page)
             self.assertIn("Abrir fonte original", page)
-            self.assertIn("Exportar revisão", page)
+            self.assertIn("Salvar decisões", page)
+            self.assertNotIn("Exportar revisão", page)
 
 
 if __name__ == "__main__":

@@ -1,11 +1,16 @@
 import ast
+import os
 import re
+import shutil
+import subprocess
 import unicodedata
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
+
+# A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 
 
 def github_slug(heading):
@@ -43,10 +48,7 @@ HUB_INVOCATIONS = (
 class AgentsHubTests(unittest.TestCase):
     def test_hub_links_every_entry_point_and_names_each_invocation(self):
         agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        links = {
-            raw.strip().strip("<>").partition("#")[0]
-            for raw in re.findall(r"\[[^\]]+\]\(([^)]+)\)", agents)
-        }
+        links = {raw.strip().strip("<>").partition("#")[0] for raw in re.findall(r"\[[^\]]+\]\(([^)]+)\)", agents)}
         missing = [target for target in HUB_TARGETS if target not in links]
         self.assertEqual([], missing, "hub sem link para: " + ", ".join(missing))
         for marker in HUB_INVOCATIONS:
@@ -60,13 +62,8 @@ class AgentsHubTests(unittest.TestCase):
         ):
             self.assertTrue((ROOT / relative).is_file(), f"ausente: {relative}")
         agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        links = {
-            raw.strip().strip("<>").partition("#")[0]
-            for raw in re.findall(r"\[[^\]]+\]\(([^)]+)\)", agents)
-        }
-        self.assertIn(
-            "eval/README.md", links, "hub sem link para a medição editorial"
-        )
+        links = {raw.strip().strip("<>").partition("#")[0] for raw in re.findall(r"\[[^\]]+\]\(([^)]+)\)", agents)}
+        self.assertIn("eval/README.md", links, "hub sem link para a medição editorial")
 
     def test_agent_routers_point_to_the_hub(self):
         for name in ("CLAUDE.md", "GEMINI.md", "README.md", "README.en.md"):
@@ -81,10 +78,7 @@ class AgentsHubTests(unittest.TestCase):
 
 class RepositoryDocumentationTests(unittest.TestCase):
     def test_relative_markdown_links_and_anchors_resolve(self):
-        documents = {
-            path.resolve(): path.read_text(encoding="utf-8")
-            for path in ROOT.glob("*.md")
-        }
+        documents = {path.resolve(): path.read_text(encoding="utf-8") for path in ROOT.glob("*.md")}
         anchors = {
             path: {github_slug(match) for match in re.findall(r"^#{1,6}\s+(.+?)\s*$", text, re.MULTILINE)}
             for path, text in documents.items()
@@ -118,21 +112,15 @@ class RepositoryDocumentationTests(unittest.TestCase):
         self.assertIn("<h1>GET B-ROLLS</h1>", english)
         for readme in (portuguese, english):
             self.assertIn("Bruno Moreira — Engenheiro de Vídeo", readme)
-            self.assertIn(
-                "https://www.instagram.com/zbrunomoreira/", readme
-            )
+            self.assertIn("https://www.instagram.com/zbrunomoreira/", readme)
 
     def test_native_windows_entrypoints_are_present_and_documented(self):
         installer = ROOT / "scripts/install.ps1"
         playwright = ROOT / "scripts/playwright.ps1"
         self.assertTrue(installer.is_file())
         self.assertTrue(playwright.is_file())
-        self.assertIn(
-            ".venv\\Scripts\\python.exe", installer.read_text(encoding="utf-8")
-        )
-        self.assertIn(
-            "playwright-cli.cmd", playwright.read_text(encoding="utf-8")
-        )
+        self.assertIn(".venv\\Scripts\\python.exe", installer.read_text(encoding="utf-8"))
+        self.assertIn("playwright-cli.cmd", playwright.read_text(encoding="utf-8"))
         self.assertIn("Invoke-Native", installer.read_text(encoding="utf-8"))
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("macOS e Windows", readme)
@@ -143,14 +131,68 @@ class RepositoryDocumentationTests(unittest.TestCase):
         self.assertIn("macos-latest", workflow)
         self.assertIn("windows-latest", workflow)
         self.assertIn("./scripts/install.ps1\n", workflow)
+        # A sintaxe dos scripts é conferida nos dois sistemas: `bash -n` no Unix,
+        # `[scriptblock]::Create` no Windows.
+        self.assertIn("bash -n", workflow)
+        self.assertIn("[scriptblock]::Create", workflow)
+
+    def test_quality_stack_is_configured_and_runs_in_ci(self):
+        # Lint e type check são parte do contrato de contribuição: config versionada,
+        # ferramentas pinadas e um job próprio no CI.
+        config = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        for marker in ("[tool.ruff]", "[tool.pyright]", "line-length = 120", 'pythonVersion = "3.11"'):
+            self.assertIn(marker, config, marker)
+        dev = (ROOT / "requirements-dev.txt").read_text(encoding="utf-8")
+        self.assertRegex(dev, r"(?m)^ruff==\d+\.\d+")
+        self.assertRegex(dev, r"(?m)^pyright==\d+\.\d+")
+        runtime = (ROOT / "requirements.txt").read_text(encoding="utf-8").lower()
+        for tool in ("ruff", "pyright"):
+            self.assertNotIn(tool, runtime, "ferramenta de dev não entra no runtime")
+        workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
+        self.assertIn("\n  quality:\n", workflow)
+        for step in ("ruff check .", "ruff format --check .", "pyright"):
+            self.assertIn(step, workflow, step)
+
+    def test_local_quality_commands_exist_for_both_platforms(self):
+        shell = ROOT / "scripts/check.sh"
+        powershell = ROOT / "scripts/check.ps1"
+        self.assertTrue(shell.is_file())
+        self.assertTrue(powershell.is_file())
+        # No Windows o `bash` que existe é o do WSL/Git Bash, que nem sempre entende
+        # um caminho `D:\...`: a sintaxe do shell é conferida pelo job Unix do CI.
+        if os.name != "nt" and shutil.which("bash"):
+            parsed = subprocess.run(
+                ["bash", "-n", str(shell)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(0, parsed.returncode, parsed.stderr)
+        text = shell.read_text(encoding="utf-8")
+        for step in ("ruff check", "ruff format --check", "pyright", "unittest discover -s tests"):
+            self.assertIn(step, text, step)
+        windows = powershell.read_text(encoding="utf-8")
+        for step in ("ruff check", "ruff format --check", "pyright", "unittest"):
+            self.assertIn(step, windows, step)
+        contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+        self.assertIn("scripts/check.sh", contributing)
 
     def test_delivery_has_no_parallel_artifact_or_reference_trees(self):
-        for name in ("artifacts", "dist", "references", "reference", "broll", "instagram"):
+        # `references/` é a pasta oficial de copy do plugin desde a 2.4; o que segue
+        # proibido é uma segunda árvore de entrega ou um `reference/` no singular.
+        for name in ("artifacts", "dist", "reference", "broll", "instagram"):
             self.assertFalse((ROOT / name).exists(), name)
+        names = {p.name for p in (ROOT / "references").iterdir() if p.is_file()}
+        self.assertLessEqual({"glossario.md", "templates-de-resposta.md"}, names)
+        self.assertTrue(all(name.endswith(".md") for name in names), names)
         scripts = ROOT / "scripts"
         self.assertEqual(
             ["getbrolls"],
-            sorted(path.name for path in scripts.iterdir() if path.is_dir() and path.name != "__pycache__" and not path.name.startswith(".")),
+            sorted(
+                path.name
+                for path in scripts.iterdir()
+                if path.is_dir() and path.name != "__pycache__" and not path.name.startswith(".")
+            ),
         )
 
     def test_public_source_has_no_legacy_product_identity(self):
@@ -159,11 +201,7 @@ class RepositoryDocumentationTests(unittest.TestCase):
         for path in ROOT.rglob("*"):
             if not path.is_file() or "__pycache__" in path.parts or path.suffix in {".pyc", ".png"}:
                 continue
-            if (
-                legacy in path.name.lower()
-                or legacy
-                in path.read_text(encoding="utf-8", errors="ignore").lower()
-            ):
+            if legacy in path.name.lower() or legacy in path.read_text(encoding="utf-8", errors="ignore").lower():
                 problems.append(str(path.relative_to(ROOT)))
         self.assertEqual([], problems)
 
@@ -200,7 +238,10 @@ class RepositoryDocumentationTests(unittest.TestCase):
             self.assertNotIn('"', snippet, snippet)
 
     def test_readmes_require_the_whole_stack_before_use(self):
-        for name, heading in (("README.md", "### 0. Instale a stack inteira"), ("README.en.md", "### 0. Install the whole stack")):
+        for name, heading in (
+            ("README.md", "### 0. Instale a stack inteira"),
+            ("README.en.md", "### 0. Install the whole stack"),
+        ):
             readme = (ROOT / name).read_text(encoding="utf-8")
             self.assertIn(heading, readme)
             self.assertLess(readme.index(heading), readme.index("### 1. "))
@@ -237,9 +278,8 @@ class RepositoryDocumentationTests(unittest.TestCase):
         release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
         tests = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
         pinned = re.search(r"actions/checkout@[0-9a-f]{40}", tests)
-        self.assertIsNotNone(
-            pinned, "test.yml sem actions/checkout fixado por SHA de 40 dígitos"
-        )
+        self.assertIsNotNone(pinned, "test.yml sem actions/checkout fixado por SHA de 40 dígitos")
+        assert pinned is not None
         checkout = pinned.group(0)
         self.assertIn(checkout, release)
         for marker in (

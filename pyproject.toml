@@ -1,0 +1,38 @@
+# Configuração das ferramentas de qualidade (dev-only).
+# O runtime da CLI continua sem dependência nenhuma: ruff e pyright são
+# instalados só por quem desenvolve, via requirements-dev.txt.
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["**/__pycache__", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+# `ruff format` já mantém o código em 120 colunas. O que sobra de E501 são
+# literais que não podem ser quebrados sem mudar o que a pessoa lê: mensagens
+# em português e os templates HTML do Storyboard.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Os testes inserem `scripts/` em sys.path antes de importar `getbrolls`;
+# o import depois do código é intencional, não desleixo.
+"tests/*" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["getbrolls"]
+
+[tool.pyright]
+typeCheckingMode = "basic"
+pythonVersion = "3.11"
+include = ["scripts", "tests"]
+exclude = ["**/__pycache__", ".venv"]
+extraPaths = ["scripts"]
+
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+extraPaths = ["scripts"]
+reportMissingImports = "none"
+
+[[tool.pyright.executionEnvironments]]
+root = "."
