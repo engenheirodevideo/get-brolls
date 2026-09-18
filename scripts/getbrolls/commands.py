@@ -400,7 +400,16 @@ def brief_report(args):
 
     Somente leitura, como `status`: não cria a árvore do projeto nem grava no ledger.
     """
-    from getbrolls.brief import beat_commands, beat_progress, brief_path, load_brief, validate_brief
+    from getbrolls.brief import (
+        beat_commands,
+        beat_progress,
+        brief_path,
+        load_brief,
+        missing_provider_keys,
+        provider_unavailable,
+        provider_warnings,
+        validate_brief,
+    )
     from getbrolls.rules import load_rules
 
     rules, rules_error = None, None
@@ -437,6 +446,8 @@ def brief_report(args):
             "valid": True,
             "beats": len(data["beats"]),
             "conflicts": conflicts,
+            # Ambiente, não conteúdo: o brief segue válido sem a chave do provedor.
+            "warnings": provider_warnings(data["beats"]),
         }
     beats = data["beats"]
     if getattr(args, "beat", None):
@@ -498,6 +509,11 @@ def brief_report(args):
                                 "search": entry["commands"].get("search"),
                                 "intent": entry["resolved"].get("intent"),
                                 "target": entry["resolved"].get("target"),
+                                "unavailable": (
+                                    missing_provider_keys(entry["resolved"])
+                                    if provider_unavailable(entry["resolved"])
+                                    else []
+                                ),
                             }
                             for entry in missing
                         ],
@@ -777,6 +793,8 @@ def brief_state(project, rules, items):
         beat_progress,
         brief_path,
         load_brief,
+        missing_provider_keys,
+        provider_unavailable,
         validate_brief,
     )
 
@@ -808,6 +826,9 @@ def brief_state(project, rules, items):
             # busca ali contradiz a guarda "literal primeiro, nada de preenchimento".
             "intent": b["resolved"].get("intent"),
             "target": b["resolved"].get("target"),
+            # Toda fonte permitida depende de uma chave que falta aqui: o degrau vira
+            # pedido de configuração, não pergunta sobre o conteúdo do trecho.
+            "unavailable": (missing_provider_keys(b["resolved"]) if provider_unavailable(b["resolved"]) else []),
         }
         for b in beats
         if b["id"] not in stuck and not progress[b["id"]]

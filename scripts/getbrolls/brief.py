@@ -262,6 +262,58 @@ def validate_brief(data, rules=None):
     )
 
 
+def missing_provider_keys(beat):
+    """Fontes deste beat que esta máquina não tem chave para consultar.
+
+    Banco de imagem só responde com chave de API. Sem ela o problema não é o beat
+    estar mal descrito — é o ambiente, e a pergunta certa é pela chave, não pela
+    empresa ou pela data.
+    """
+    from .providers import KEYS
+
+    return [
+        {"provider": name, "env_key": KEYS[name]}
+        for name in beat["allowed_sources"]
+        if name in KEYS and not os.environ.get(KEYS[name])
+    ]
+
+
+def stock_only(beat):
+    """Beat que só pode ser atendido por banco (pexels/pixabay), e por mais nada."""
+    return bool(beat["allowed_sources"]) and set(beat["allowed_sources"]) <= set(STOCK_SOURCES)
+
+
+def provider_unavailable(beat):
+    """Falta chave para toda fonte permitida deste beat: é ambiente, não conteúdo."""
+    blocked = {entry["provider"] for entry in missing_provider_keys(beat)}
+    return bool(beat["allowed_sources"]) and set(beat["allowed_sources"]) <= blocked
+
+
+def unavailable_phrase(entries):
+    """Uma frase só: qual provedor falta, qual variável e onde ela mora."""
+    names = " e ".join(dict.fromkeys(entry["provider"] for entry in entries))
+    keys = " e ".join(dict.fromkeys(entry["env_key"] for entry in entries))
+    return (
+        f"A única fonte permitida para este trecho é {names}, e ela não está "
+        f"disponível neste ambiente: falta a chave de API. Coloque {keys} no arquivo "
+        "`.env` da skill (ou no ambiente) e eu busco na hora. Enquanto a chave não "
+        "existir, nenhuma busca aqui é possível — não é falta de informação sua."
+    )
+
+
+def provider_warnings(beats):
+    """Avisos de ambiente do brief: chave de provedor que falta aqui, beat por beat.
+
+    Não invalida o brief — o arquivo está certo; quem não está pronto é a máquina.
+    """
+    return [
+        f'O provedor {entry["provider"]} exigido pelo beat "{beat["id"]}" não está '
+        f"configurado neste ambiente: coloque {entry['env_key']} no `.env` da skill."
+        for beat in beats
+        for entry in missing_provider_keys(beat["resolved"])
+    ]
+
+
 def _cli_prefix():
     return f'python3 "{CLI}"'
 
@@ -285,7 +337,10 @@ def beat_commands(project, beat):
             + f"search --project {project} --provider {provider} "
             + f"--query {shlex.quote(query)} --intent {beat['intent']} --shot {beat['id']}"
         )
-    commands["resolve"] = prefix + f"resolve --project {project} {origin} --shot {beat['id']}"
+    # Banco de imagem não tem página para colar: sugerir `resolve --url` num beat que
+    # só aceita pexels/pixabay manda a pessoa procurar um link que não existe.
+    if not stock_only(beat):
+        commands["resolve"] = prefix + f"resolve --project {project} {origin} --shot {beat['id']}"
     # Sem --start/--end: o intervalo real sai do que a pessoa viu na fonte, não de um
     # palpite do brief; `duration_hint_s` fica em `resolved` como sugestão.
     # Analisar vem antes de pré-visualizar: a fonte diz a duração e onde está o assunto.
@@ -302,6 +357,12 @@ def beat_commands(project, beat):
             + ", ".join(beat["allowed_sources"])
             + "): descubra a URL no navegador e registre com o resolve acima."
         )
+    absent = missing_provider_keys(beat)
+    if absent and provider_unavailable(beat):
+        # Problema de ambiente, não de brief: some com o `search` que só daria erro e
+        # troca a nota por aquela que diz o que de fato destrava o trecho.
+        commands.pop("search", None)
+        commands["note"] = unavailable_phrase(absent)
     return commands
 
 

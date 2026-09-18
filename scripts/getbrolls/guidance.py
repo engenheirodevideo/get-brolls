@@ -177,6 +177,15 @@ def _missing_beat_phrase(beat):
     real é humano: falta o fato (entidade, data, link) ou o material da própria pessoa.
     """
     name = beat["id"]
+    unavailable = list(beat.get("unavailable") or [])
+    if unavailable:
+        # Nada aqui é dúvida sobre o trecho: falta chave de API nesta máquina. Pedir
+        # "a empresa, a data" mandaria a pessoa responder uma pergunta que não é a dela.
+        from .brief import unavailable_phrase
+
+        return f'O beat "{name}" está parado por configuração, não por falta de informação. ' + unavailable_phrase(
+            unavailable
+        )
     if (beat.get("intent") or "literal") == "literal":
         return f'O beat "{name}" ainda está sem material: vou buscar por ele agora e te mostrar as opções.'
     return (

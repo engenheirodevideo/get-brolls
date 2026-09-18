@@ -443,6 +443,86 @@ class RejectedCandidatesDoNotCoverABeatTests(unittest.TestCase):
         self.assertEqual({"abertura", "reacao-publico"}, {b["id"] for b in missing})
 
 
+class StockOnlyBeatWithoutKeyTests(unittest.TestCase):
+    """Sem chave de API o problema é o ambiente; a pergunta certa é pela chave."""
+
+    def setUp(self):
+        self.saved = {key: os.environ.pop(key, None) for key in ("PEXELS_API_KEY", "PIXABAY_API_KEY")}
+
+    def tearDown(self):
+        for key, value in self.saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    def brief(self):
+        data = copy.deepcopy(VALID)
+        data["rights"]["stock_allowed"] = True
+        data["beats"][0]["allowed_sources"] = ["pexels", "pixabay"]
+        data["beats"][0]["stock"] = True
+        return data
+
+    def resolved(self):
+        data, _ = loaded(self.brief())
+        return data["beats"][0]["resolved"]
+
+    def test_the_beat_reports_which_key_is_missing(self):
+        entries = brief_module.missing_provider_keys(self.resolved())
+        self.assertEqual(
+            [
+                {"provider": "pexels", "env_key": "PEXELS_API_KEY"},
+                {"provider": "pixabay", "env_key": "PIXABAY_API_KEY"},
+            ],
+            entries,
+        )
+        self.assertTrue(brief_module.provider_unavailable(self.resolved()))
+
+    def test_the_commands_drop_search_and_never_suggest_resolve_url(self):
+        commands = brief_module.beat_commands("/tmp/projeto", self.resolved())
+        self.assertNotIn("search", commands)
+        self.assertNotIn("resolve", commands)
+        self.assertIn("PEXELS_API_KEY", commands["note"])
+        self.assertIn(".env", commands["note"])
+
+    def test_a_configured_key_brings_the_search_back(self):
+        os.environ["PEXELS_API_KEY"] = "chave-de-teste"
+        commands = brief_module.beat_commands("/tmp/projeto", self.resolved())
+        self.assertIn("search", commands)
+        self.assertIn("--provider pexels", commands["search"])
+        # Continua sem `resolve --url`: banco não tem página para colar.
+        self.assertNotIn("resolve", commands)
+
+    def test_validate_warns_without_calling_the_brief_invalid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_brief(tmp, self.brief())
+            payload = run_cli(self, "brief", "--validate", "--project", tmp)
+        self.assertTrue(payload["valid"])
+        self.assertTrue(any("pexels" in w and "abertura" in w for w in payload["warnings"]))
+        self.assertTrue(any("PEXELS_API_KEY" in w for w in payload["warnings"]))
+
+    def test_the_rung_asks_for_the_key_not_for_the_company_or_the_date(self):
+        from getbrolls.ledger import Ledger
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Ledger(tmp)
+            write_brief(tmp, self.brief())
+            phrase = run_cli(self, "status", "--project", tmp)["summary"]["do"]["for_human"]
+        self.assertIn("PEXELS_API_KEY", phrase)
+        self.assertIn(".env", phrase)
+        self.assertNotIn("a empresa", phrase)
+        self.assertNotIn("a data", phrase)
+
+    def test_the_beat_view_of_the_brief_says_the_same_thing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_brief(tmp, self.brief())
+            payload = run_cli(self, "brief", "--beat", "abertura", "--project", tmp)
+        commands = payload["beats"][0]["commands"]
+        self.assertNotIn("resolve", commands)
+        self.assertIn("PEXELS_API_KEY", commands["note"])
+        self.assertIn("PEXELS_API_KEY", payload["summary"]["next"])
+
+
 class BriefCommandTests(unittest.TestCase):
     def test_both_subcommands_are_summarised_and_take_project(self):
         for name in ("init-brief", "brief"):
