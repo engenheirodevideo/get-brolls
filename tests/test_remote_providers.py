@@ -81,7 +81,7 @@ class ProvidersTests(unittest.TestCase):
         self.assertEqual(get.call_args.kwargs["cache_ttl"], 86400)
 
     @patch.object(providers, "get_json")
-    def test_commons_filters_images_and_strips_author_html(self, get):
+    def test_commons_honours_the_media_filter_and_strips_author_html(self, get):
         get.return_value = {
             "query": {
                 "pages": {
@@ -108,10 +108,13 @@ class ProvidersTests(unittest.TestCase):
                 }
             }
         }
-        rows = providers.search("commons", "science", 3)
+        rows = providers.search("commons", "science", 3, media="video")
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["creator"]["name"], "Name")
         self.assertIsNone(rows[0]["rights"]["license_url"])
+        # Sem filtro, a foto do acervo também é candidato legítimo: era essa a rota
+        # que faltava para um beat de imagem estática.
+        self.assertEqual(2, len(providers.search("commons", "science", 3)))
 
     @patch.object(providers, "get_json")
     def test_nasa_enriches_asset_and_preserves_third_party_creator(self, get):
@@ -323,3 +326,161 @@ class HTTPTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+COMMONS_FILE = {
+    "query": {
+        "pages": {
+            "123": {
+                "pageid": 123,
+                "title": "File:Apollo 11 Launch.jpg",
+                "imageinfo": [
+                    {
+                        "url": "https://upload.wikimedia.org/apollo.jpg",
+                        "descriptionurl": "https://commons.wikimedia.org/wiki/File:Apollo_11_Launch.jpg",
+                        "thumburl": "https://upload.wikimedia.org/thumb.jpg",
+                        "mime": "image/jpeg",
+                        "width": 2000,
+                        "height": 1500,
+                        "extmetadata": {
+                            "Artist": {"value": "<a href='#'>NASA</a>"},
+                            "LicenseShortName": {"value": "Public domain"},
+                            "LicenseUrl": {"value": "https://creativecommons.org/publicdomain/mark/1.0/"},
+                        },
+                    }
+                ],
+            }
+        }
+    }
+}
+
+
+class CommonsFilePageTests(unittest.TestCase):
+    """Quem já tem o link do arquivo no Commons precisa conseguir registrá-lo."""
+
+    @patch.object(providers, "get_json", return_value=COMMONS_FILE)
+    def test_a_file_page_becomes_an_image_candidate(self, fetched):
+        item = providers.resolve("https://commons.wikimedia.org/wiki/File:Apollo_11_Launch.jpg")
+        self.assertEqual("commons", item["provider"])
+        self.assertEqual("image", item["media"]["kind"])
+        self.assertEqual("image", item.get("asset_type"))
+        self.assertEqual("NASA", item["creator"]["name"])
+        self.assertEqual("Public domain", item["rights"]["license_name"])
+        self.assertEqual("https://upload.wikimedia.org/apollo.jpg", item["media_url"])
+        # O underscore da URL vira espaço, como a API espera no `titles`.
+        self.assertEqual("File:Apollo 11 Launch.jpg", fetched.call_args[0][1]["titles"])
+
+    @patch.object(providers, "get_json", return_value=COMMONS_FILE)
+    def test_a_video_file_keeps_the_video_kind(self, _fetched):
+        payload = json.loads(json.dumps(COMMONS_FILE))
+        payload["query"]["pages"]["123"]["imageinfo"][0]["mime"] = "video/webm"
+        with patch.object(providers, "get_json", return_value=payload):
+            item = providers.resolve("https://commons.wikimedia.org/wiki/File:Apollo_11_Launch.webm")
+        self.assertEqual("video", item["media"]["kind"])
+        self.assertNotIn("asset_type", item)
+
+    @patch.object(providers, "get_json", return_value={"query": {"pages": {"-1": {"missing": ""}}}})
+    def test_a_missing_file_says_so_instead_of_registering_nothing(self, _fetched):
+        with self.assertRaises(ValueError) as caught:
+            providers.resolve("https://commons.wikimedia.org/wiki/File:Nao_existe.jpg")
+        self.assertIn("Commons não tem o arquivo", str(caught.exception))
+
+    def test_a_page_that_is_not_a_file_is_refused_with_the_right_shape(self):
+        with self.assertRaises(ValueError) as caught:
+            providers.resolve("https://commons.wikimedia.org/wiki/Main_Page")
+        self.assertIn("wiki/File:", str(caught.exception))
+
+    @patch.object(providers, "get_json", return_value=COMMONS_FILE)
+    def test_a_sound_file_is_refused(self, _fetched):
+        payload = json.loads(json.dumps(COMMONS_FILE))
+        payload["query"]["pages"]["123"]["imageinfo"][0]["mime"] = "audio/ogg"
+        with patch.object(providers, "get_json", return_value=payload):
+            with self.assertRaises(ValueError) as caught:
+                providers.resolve("https://commons.wikimedia.org/wiki/File:Som.ogg")
+        self.assertIn("não é vídeo nem imagem", str(caught.exception))
+
+
+NASA_SEARCH = {
+    "collection": {
+        "items": [
+            {
+                "data": [{"nasa_id": "foto-1", "title": "SLS na plataforma", "media_type": "image"}],
+                "links": [{"rel": "preview", "href": "https://images-assets.nasa.gov/foto-1/thumb.jpg"}],
+            },
+            {
+                "data": [{"nasa_id": "video-1", "title": "Decolagem", "media_type": "video"}],
+                "links": [{"rel": "preview", "href": "https://images-assets.nasa.gov/video-1/thumb.jpg"}],
+            },
+        ]
+    }
+}
+NASA_ASSETS = {
+    "collection": {
+        "items": [
+            {"href": "https://images-assets.nasa.gov/foto-1/foto-1~orig.jpg"},
+            {"href": "https://images-assets.nasa.gov/video-1/video-1~orig.mp4"},
+        ]
+    }
+}
+
+
+class SearchMediaFlagTests(unittest.TestCase):
+    """`--media` abre a rota das fontes que publicam foto e vídeo no mesmo acervo."""
+
+    def fetch(self, media_types):
+        def fake(url, params=None, headers=None, cache_ttl=None):
+            if "images-api.nasa.gov/search" in url:
+                media_types.append((params or {}).get("media_type"))
+                return NASA_SEARCH
+            return NASA_ASSETS
+
+        return fake
+
+    def test_nasa_defaults_to_both_kinds(self):
+        seen = []
+        with patch.object(providers, "get_json", side_effect=self.fetch(seen)):
+            items = providers.search("nasa", "SLS", 5)
+        self.assertEqual(["image,video"], seen)
+        self.assertEqual({"image", "video"}, {i["media"]["kind"] for i in items})
+
+    def test_asking_for_images_only_keeps_the_stills(self):
+        seen = []
+        with patch.object(providers, "get_json", side_effect=self.fetch(seen)):
+            items = providers.search("nasa", "SLS", 5, media="image")
+        self.assertEqual(["image"], seen)
+        self.assertEqual(["image"], [i["media"]["kind"] for i in items])
+        # O arquivo escolhido é a foto, não o mp4 do outro item.
+        self.assertTrue(items[0]["media_url"].endswith(".jpg"))
+
+    def test_asking_for_video_only_keeps_the_clips(self):
+        seen = []
+        with patch.object(providers, "get_json", side_effect=self.fetch(seen)):
+            items = providers.search("nasa", "SLS", 5, media="video")
+        self.assertEqual(["video"], seen)
+        self.assertEqual(["video"], [i["media"]["kind"] for i in items])
+
+    def test_commons_asks_the_api_for_the_right_filetype(self):
+        seen = {}
+
+        def fake(url, params=None, headers=None, cache_ttl=None):
+            seen["gsrsearch"] = (params or {}).get("gsrsearch")
+            return {"query": {"pages": {}}}
+
+        for media, expected in (
+            ("image", "filetype:bitmap"),
+            ("video", "filetype:video"),
+            ("any", "filetype:video|bitmap"),
+        ):
+            with self.subTest(media=media):
+                with patch.object(providers, "get_json", side_effect=fake):
+                    providers.search("commons", "apollo", 5, media=media)
+                self.assertIn(expected, seen["gsrsearch"])
+
+    def test_an_unknown_media_value_is_refused(self):
+        with self.assertRaises(ValueError):
+            providers.search("nasa", "SLS", 5, media="gif")
+
+    def test_youtube_ignores_the_flag_instead_of_breaking(self):
+        with patch.object(providers, "_youtube", return_value=[]) as fake:
+            providers.search("youtube", "SLS", 5, media="image")
+        self.assertEqual(("SLS", 5), fake.call_args[0])

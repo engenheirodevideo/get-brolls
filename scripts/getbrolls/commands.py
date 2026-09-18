@@ -13,7 +13,7 @@ from .config import CAP_EPSILON
 from .guidance import next_action
 from .ledger import Ledger, digest
 from .media import cut, probe, run
-from .models import approve, candidate, require_fetch, set_segment, signature
+from .models import approve, candidate, now, require_fetch, set_segment, signature
 from .presets import PERMIT_PRESETS
 from .queue import execute as queue_execute
 from .queue import hint as queue_hint
@@ -226,6 +226,21 @@ def _identifier(result):
     return result.get("id") or "candidato"
 
 
+def _rejection_note(result):
+    """Fecho da linha de `reject`: o motivo dito, e "revisão invalidada" só quando havia uma.
+
+    O item recém-buscado nunca passou por revisão nenhuma. Dizer que a revisão dele
+    foi invalidada inventava um passo que não existiu e assustava quem só descartou
+    um candidato ruim.
+    """
+    reason = (result.get("rejection") or {}).get("reason") or result.get("reason")
+    tail = f": {reason}" if reason else ""
+    # `review` some do candidato ao rejeitar, então quem sabe se havia uma é o próprio
+    # resultado: `invalidated` vem dos lotes, `review` da rota de um item só.
+    had_review = bool(result.get("invalidated_review") or (result.get("rejection") or {}).get("invalidated_review"))
+    return (tail + "; revisão invalidada." if had_review else tail + ".") if (tail or had_review) else "."
+
+
 def _note(result):
     """Observação do provedor, quando houver, colada ao fim da linha humana."""
     note = result.get("note")
@@ -265,9 +280,9 @@ FLOW_SUMMARIES = {
         f"estado {r.get('state')}, por {(r.get('approval') or {}).get('by')}."
     ),
     "reject": lambda r: (
-        f"Rejeitei {_count(len(r['rejected']), 'item', 'itens')}: " + ", ".join(r["rejected"]) + "; revisão invalidada."
+        f"Rejeitei {_count(len(r['rejected']), 'item', 'itens')}: " + ", ".join(r["rejected"]) + _rejection_note(r)
         if isinstance(r.get("rejected"), list)
-        else f"Rejeitei {_identifier(r)}: estado {r.get('state')}, revisão invalidada."
+        else f"Rejeitei {_identifier(r)}: estado {r.get('state')}" + _rejection_note(r)
     ),
     "review": lambda r: f"Gerei o Storyboard em {r.get('review')}.",
     "import-review": lambda r: (
@@ -589,7 +604,27 @@ def library_command(args):
     return library.learn_from_candidate(args.project, args.from_candidate, shot=args.shot)
 
 
-def reject_all(ledger, only):
+def mark_rejected(c, reason=None):
+    """Descarta o candidato e guarda o porquê, quando a pessoa disse por quê.
+
+    O motivo vive em `rejection`, não em `approval`: `approval` é o registro da
+    decisão humana e seu formato é lido pela revisão. Sem motivo, nada é gravado —
+    inventar um texto aqui seria pôr palavra na boca de quem descartou.
+    """
+    c["approval"]["status"] = "rejected"
+    c["state"] = "rejected"
+    # Só há revisão a invalidar quando o item já tinha uma; num candidato recém-buscado
+    # não havia passo nenhum, e anunciar que ele foi desfeito assusta à toa.
+    had_review = c.pop("review", None) is not None
+    c["rejection"] = {
+        "reason": (reason or "").strip() or None,
+        "at": now(),
+        "invalidated_review": had_review,
+    }
+    return c
+
+
+def reject_all(ledger, only, reason=None):
     """Rejeita vários itens de uma vez, como `approve` faz com os IDs mostrados.
 
     Valida antes de gravar: um ID desconhecido derruba a leva inteira, e só depois
@@ -608,12 +643,14 @@ def reject_all(ledger, only):
         seen.add(ident)
         chosen.append(known[ident])
     for c in chosen:
-        c["approval"]["status"] = "rejected"
-        c["state"] = "rejected"
-        c.pop("review", None)
+        mark_rejected(c, reason)
     ledger.save_many("reject", chosen)
     render(ledger)
-    return {"rejected": [c["id"] for c in chosen]}
+    return {
+        "rejected": [c["id"] for c in chosen],
+        "reason": (reason or "").strip() or None,
+        "invalidated_review": any(c["rejection"]["invalidated_review"] for c in chosen),
+    }
 
 
 def approve_all(ledger, args, rules, only=None):
@@ -1122,6 +1159,8 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
                 "state": c.get("state"),
                 "segment": c.get("segment"),
                 "approval": (c.get("approval") or {}).get("status"),
+                # Por que este saiu: quem lê a lista não precisa abrir o manifesto.
+                "rejection_reason": (c.get("rejection") or {}).get("reason"),
                 "rights": (c.get("rights") or {}).get("status"),
                 "preview": _has_preview(c),
                 "format_pending": pending_format[c["id"]],
@@ -1344,7 +1383,9 @@ def execute(args):
                 if len(items) >= args.limit:
                     break
                 try:
-                    candidates = providers.search(name, query, args.limit - len(items))
+                    candidates = providers.search(
+                        name, query, args.limit - len(items), media=getattr(args, "media", "any")
+                    )
                 except ValueError as e:
                     errors.append({"provider": name, "error": str(e)})
                     record_warning("PROVIDER_FAILED", f"{name}: {e}")
@@ -1457,6 +1498,10 @@ def execute(args):
             c["preview"]["seek_mode"] = "local"
         else:
             c = providers.resolve(args.url)
+            fill_remote_metadata(c)
+        # Mesmo registro que `search` faz: a intenção é da pessoa, e sem ela o
+        # candidato de URL entrava sempre como "literal", inclusive quando não era.
+        c["match"]["kind"] = getattr(args, "intent", None) or c["match"].get("kind") or "literal"
         for argument, field in (
             (args.context_image, "context_image"),
             (args.full_preview_file, "full_preview"),
@@ -1592,7 +1637,7 @@ def execute(args):
         # `--candidate` é repetível: `argparse` entrega lista mesmo com um ID só.
         chosen = list(args.candidate or [])
         if len(chosen) > 1:
-            return reject_all(ledger, chosen)
+            return reject_all(ledger, chosen, getattr(args, "reason", None))
         args.candidate = chosen[0]
     c = ledger.get(args.candidate)
     if not allowed(c, rules) and cmd in ("preview", "approve", "permit", "fetch"):
@@ -1671,9 +1716,7 @@ def execute(args):
         c["rights"]["status"] = "permitted"
         c["rights"]["evidence"].append(evidence)
     elif cmd == "reject":
-        c["approval"]["status"] = "rejected"
-        c["state"] = "rejected"
-        c.pop("review", None)
+        mark_rejected(c, getattr(args, "reason", None))
     elif cmd == "preview":
         context_before = signature(c)
         if not args.reference_only and c["provider"] != "local":
@@ -1845,6 +1888,41 @@ def _already_collected(rel):
         "trecho já está coletada — rode `verify` para conferir, ou gere uma prévia "
         "nova (novo `--start`/`--end`) se quiser outro corte."
     )
+
+
+# Páginas em que o yt-dlp lê título, canal e duração sem baixar mídia. Instagram fica
+# de fora: a rota dele é o navegador, e um pedido solto ali só gasta bloqueio.
+METADATA_PROVIDERS = ("youtube", "tiktok")
+
+
+def fill_remote_metadata(c):
+    """Preenche título, autoria e duração na hora do `resolve`, com um pedido só.
+
+    Sem isto o candidato entrava com `title: "TikTok · 7312…"`, `creator: null` e
+    `duration_s: null`, e o C2 — "título, canal, duração" — não tinha o que listar.
+    Nada aqui é obrigatório: a página pode recusar, e a URL continua registrada.
+    """
+    if c.get("provider") not in METADATA_PROVIDERS or not c.get("source_url"):
+        return c
+    from .social import metadata
+
+    try:
+        found = metadata(c["source_url"])
+    except (ValueError, OSError):
+        return c
+    if found.get("title"):
+        c["title"] = found["title"]
+    # O handle público é o que a pessoa reconhece; o nome de exibição vem junto.
+    name = found.get("creator") or found.get("handle")
+    if name:
+        c["creator"]["name"] = name
+    if found.get("handle"):
+        c["creator"]["handle"] = found["handle"]
+    if found.get("creator_url"):
+        c["creator"]["url"] = found["creator_url"]
+    if found.get("duration_s"):
+        c["media"]["duration_s"] = found["duration_s"]
+    return c
 
 
 def preview_files(ledger, c):

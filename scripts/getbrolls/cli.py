@@ -360,6 +360,12 @@ def build_parser():
                 help="literal: entidade nomeada; illustrative: ideia genérica",
             )
             p.add_argument(
+                "--media",
+                choices=["image", "video", "any"],
+                default="any",
+                help="Tipo de arquivo na fonte: image, video ou any (padrão); só NASA e Commons têm os dois",
+            )
+            p.add_argument(
                 "--shot",
                 help="Beat do BRIEF.md a que estes candidatos pertencem, ex.: abertura",
             )
@@ -367,6 +373,11 @@ def build_parser():
                 "--dry-run",
                 action="store_true",
                 help="Listar o que a fonte devolveu sem registrar nada no projeto",
+            )
+        if name == "reject":
+            p.add_argument(
+                "--reason",
+                help="Por que este material foi descartado; fica gravado no candidato",
             )
         if name == "resolve":
             p.add_argument("--context-image", help="Print opcional da pessoa; permanece estático")
@@ -384,8 +395,17 @@ def build_parser():
             p.add_argument("--source-url", help="URL pública original do arquivo local")
             p.add_argument("--creator", help="Autor informado da fonte")
             p.add_argument("--shot", help="Identificador único do insert, ex.: insert-02")
+            p.add_argument(
+                "--intent",
+                choices=["literal", "illustrative"],
+                default="literal",
+                help="literal: entidade nomeada; illustrative: ideia genérica",
+            )
             g = p.add_mutually_exclusive_group(required=True)
-            g.add_argument("--url", help="URL pública da fonte (YouTube, Instagram, TikTok)")
+            g.add_argument(
+                "--url",
+                help="URL pública da fonte (YouTube, Instagram, TikTok, Wikimedia Commons, NASA)",
+            )
             g.add_argument("--file", help="Arquivo local já autorizado para importação")
     return parser
 

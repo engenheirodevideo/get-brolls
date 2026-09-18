@@ -54,7 +54,11 @@ Procedimento próprio, com navegador e dois streams. Está inteiro em [`referenc
 
 ## TikTok
 
-Descubra a URL completa pelo navegador e registre com `resolve --url`. Veja [TikTok](../docs/GUIDE.md#provedor--tiktok).
+Descubra a URL completa pelo navegador e registre com `resolve --url` — o registro já traz título, `@handle` e duração, num pedido só de metadados.
+
+A grade pública de `tiktok.com/@usuario` **quebra para visitante deslogado**: ela carrega por JavaScript atrás de checagem de sessão e devolve página vazia ou desafio. Para listar os posts recentes de um perfil sem sessão, abra `https://www.tiktok.com/embed/@usuario`: essa página de incorporação traz os posts recentes com os ids no HTML. Pegue os ids, monte `https://www.tiktok.com/@usuario/video/<id>` e passe cada um ao `resolve --url`. Achar o endereço não é permissão: as condições do post seguem pelo `permit`.
+
+Veja [TikTok](../docs/GUIDE.md#provedor--tiktok).
 
 ## Bancos genéricos (só sob pedido)
 
@@ -67,7 +71,7 @@ Chaves de Pexels/Pixabay são opcionais e ficam no ambiente ou num `.env` aponta
 
 ## Domínio público e arquivo
 
-Wikimedia Commons e NASA não pedem chave e costumam ser a rota literal mais rápida para fato histórico, espaço e ciência: `--provider commons` ou `--provider nasa`. Quando você já tem o link do item no acervo da NASA, `resolve --url https://images.nasa.gov/details/<id>` registra o item direto — vídeo ou imagem estática. Arquivo local entra com `resolve --file --source-url --creator --shot`.
+Wikimedia Commons e NASA não pedem chave e costumam ser a rota literal mais rápida para fato histórico, espaço e ciência: `--provider commons` ou `--provider nasa`. Quando você já tem o link do item, `resolve --url` registra direto: `https://images.nasa.gov/details/<id>` no acervo da NASA e `https://commons.wikimedia.org/wiki/File:<nome>` no Commons — vídeo ou imagem estática nos dois. Para um beat de foto, peça imagem à fonte: `search --provider commons --media image` (ou `--provider nasa`); `--media` aceita `image`, `video` e `any` (padrão), e só NASA e Commons publicam os dois tipos — YouTube e os bancos ignoram a flag. Arquivo local entra com `resolve --file --source-url --creator --shot`.
 
 Panorama completo em [Fontes e transportes](../docs/GUIDE.md#fontes-e-transportes).
 

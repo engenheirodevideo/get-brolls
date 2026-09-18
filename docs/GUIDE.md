@@ -316,6 +316,10 @@ Recebe URL completa `https://www.tiktok.com/@usuario/video/ID` e usa o extrator 
 
 Descubra a URL pelo navegador; não há busca global TikTok por palavra-chave implementada. Links encurtados precisam ser abertos no navegador para obter URL canônica. A existência do extrator não garante acesso a todo vídeo; teste a URL real e registre eventual exigência de sessão/indisponibilidade. Consulte [Qualidade e evidências](QUALITY.md) para a evidência desta versão.
 
+Desde a 2.4.0, `resolve --url` de um post do TikTok faz **um** pedido de metadados ao yt-dlp (`--dump-single-json --skip-download`) e já grava `title`, `creator.name`, `creator.handle` (o `@usuario`) e `media.duration_s`. Antes disso o candidato entrava como `TikTok · <id>` com autoria e duração nulas, e o checkpoint C2 — "título, canal, duração" — não tinha o que listar. O pedido é opcional por construção: se a página recusar (post privado, região bloqueada, 429), o candidato é registrado do mesmo jeito, com os campos vazios e um aviso no diagnóstico.
+
+**Como achar os posts recentes de um perfil.** A grade pública de `tiktok.com/@usuario` não serve para visitante: ela carrega por JavaScript atrás de checagem de sessão, e um visitante deslogado recebe uma página vazia ou um desafio. A rota que funciona sem sessão é a página de incorporação — `https://www.tiktok.com/embed/@usuario` —, que lista os posts recentes do perfil com os ids de cada um no HTML. Abra essa página no navegador, colete os ids que interessam e monte a URL canônica de cada um (`https://www.tiktok.com/@usuario/video/<id>`) para passar ao `resolve --url`. Continua valendo o de sempre: a página de incorporação é ponto de partida para achar o endereço, não autorização de uso — as condições do post seguem pelo `permit`, como em qualquer outra fonte.
+
 ## Provedor — Pexels
 
 PEXELS_API_KEY no ambiente. API de vídeos, poster e variante MP4. Reconsulta ID no fetch. Verifique licença e requisitos da API. https://www.pexels.com/api/documentation/

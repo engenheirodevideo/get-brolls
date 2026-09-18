@@ -239,7 +239,7 @@ class LongQueryRetry(unittest.TestCase):
     def test_zero_items_with_a_long_query_retries_once_with_six_tokens(self):
         seen = []
 
-        def fake(name, query, limit):
+        def fake(name, query, limit, media="any"):
             seen.append(query)
             return found(2) if len(query.split()) <= 6 else []
 
@@ -256,7 +256,7 @@ class LongQueryRetry(unittest.TestCase):
     def test_a_short_query_is_never_retried(self):
         seen = []
 
-        def fake(name, query, limit):
+        def fake(name, query, limit, media="any"):
             seen.append(query)
             return []
 

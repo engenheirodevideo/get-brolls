@@ -240,6 +240,42 @@ def relevant_langs(data, langs):
     return listed[:MAX_SUBTITLE_LANGS], len(every)
 
 
+def metadata(url):
+    """Título, autoria e duração da página, num pedido só e sem baixar mídia.
+
+    É o mínimo que o C2 precisa para listar canal e duração, e `probe_remote` seria
+    caro demais aqui: ele ainda escreve as legendas em disco. Falhar não é erro — a
+    URL continua registrável —, então o chamador recebe `{}` e segue.
+    """
+    from .providers import resolve
+
+    # Só páginas reconhecidas, nunca uma URL qualquer vinda do chat.
+    resolve(url)
+    try:
+        raw, warnings = run(["--dump-single-json", "--skip-download", "--", url], timeout=60)
+    except (ProviderError, OSError) as exc:
+        record_warning("YTDLP_WARNING", f"metadados não vieram desta página: {exc}")
+        return {}
+    for w in warnings:
+        record_warning("YTDLP_WARNING", w)
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    duration = data.get("duration")
+    # `uploader_id` do TikTok já vem como `@handle`; o do YouTube é o id do canal.
+    handle = data.get("uploader_id") or data.get("channel_id")
+    return {
+        "title": data.get("title") or data.get("fulltitle") or None,
+        "creator": data.get("uploader") or data.get("channel") or None,
+        "handle": str(handle) if handle else None,
+        "creator_url": data.get("uploader_url") or data.get("channel_url") or None,
+        "duration_s": float(duration) if isinstance(duration, (int, float)) else None,
+    }
+
+
 def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):
     """O que a fonte conta sobre si: duração, capítulos, legendas e descrição.
 
