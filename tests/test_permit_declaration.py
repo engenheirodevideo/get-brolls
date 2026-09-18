@@ -92,6 +92,52 @@ class PermitDeclarationTests(unittest.TestCase):
             alone = run_cli(self, *base, "--declared-by", "Bruno Moreira", ok=False)
             self.assertIn("--declaration-text", alone["error"])
 
+    def test_generic_single_word_names_are_refused_by_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ident = fixture(tmp)
+            base = ["permit", "--candidate", ident, "--project", tmp, "--declaration-text", TEXT]
+            for generic in ("eu", "user", "cliente", "usuário", "usuario", "me", "admin", "Admin"):
+                refused = run_cli(self, *base, "--declared-by", generic, ok=False)
+                self.assertIn("--declared-by", refused["error"])
+                self.assertIn("não identifica ninguém", refused["error"])
+
+    def test_one_word_is_refused_even_when_it_is_a_real_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ident = fixture(tmp)
+            refused = run_cli(
+                self,
+                "permit",
+                "--candidate",
+                ident,
+                "--project",
+                tmp,
+                "--declaration-text",
+                TEXT,
+                "--declared-by",
+                "Bruno",
+                ok=False,
+            )
+            self.assertIn("duas palavras", refused["error"])
+
+    def test_name_plus_surname_or_initial_is_accepted_and_teste_still_passes(self):
+        for name in ("Bruno Moreira", "Bruno M.", "Ana Teste"):
+            with tempfile.TemporaryDirectory() as tmp:
+                ident = fixture(tmp)
+                result = run_cli(
+                    self,
+                    "permit",
+                    "--candidate",
+                    ident,
+                    "--project",
+                    tmp,
+                    "--declaration-text",
+                    TEXT,
+                    "--declared-by",
+                    name,
+                )
+                self.assertEqual("user_declaration", result["rights"]["basis"])
+                self.assertEqual(name, result["rights"]["responsible_person"])
+
     def test_without_new_flags_permit_keeps_current_behaviour(self):
         with tempfile.TemporaryDirectory() as tmp:
             ident = fixture(tmp)

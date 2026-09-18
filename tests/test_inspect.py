@@ -552,6 +552,31 @@ class SuggestedWindowFitsThePreviewTests(unittest.TestCase):
         # O contrato de chaves da janela não muda com o corte.
         self.assertEqual({"start_s", "end_s", "text", "source", "score"}, set(clamped[0]))
 
+    def test_a_window_exactly_at_the_ceiling_is_left_alone(self):
+        """`16.1 - 6.1` dá 10.000000000000002: o corte não pode morder o que já cabe."""
+        from getbrolls.commands import clamp_windows
+
+        windows = [{"start_s": 6.1, "end_s": 16.1, "text": "x", "source": "chapter", "score": 0.0}]
+        self.assertEqual(16.1, clamp_windows(windows, 10.0)[0]["end_s"])
+
+    def test_preview_accepts_an_interval_equal_to_the_ceiling(self):
+        """O teto é inclusivo: o intervalo que o `inspect` sugere tem que passar."""
+        from getbrolls.config import settings
+        from getbrolls.media import review_preview
+
+        config = settings()
+        cap = float(config["max_seconds"])
+        with tempfile.TemporaryDirectory() as tmp:
+            over = self.assertRaises(ValueError)
+            with over:
+                review_preview("/nao/existe.mp4", tmp, "x", 6.1, 6.1 + cap + 1, config)
+            self.assertIn("GB_PREVIEW_MAX_SECONDS", str(over.exception))
+            for start in (0.0, 6.1, 8.6):
+                # Passa do guarda de teto e só falha adiante, por falta de mídia.
+                with self.assertRaises(Exception) as caught:
+                    review_preview("/nao/existe.mp4", tmp, "x", start, start + cap, config)
+                self.assertNotIn("GB_PREVIEW_MAX_SECONDS", str(caught.exception))
+
     def test_the_command_suggests_an_interval_the_preview_accepts(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = stub_ytdlp(tmp, WITH_EVERYTHING, VTT)

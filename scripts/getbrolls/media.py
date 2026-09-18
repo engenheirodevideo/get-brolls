@@ -5,7 +5,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from .config import tool_path
+from .config import CAP_EPSILON, tool_path
 from .runtime import record_warning, stderr_tail
 
 
@@ -247,7 +247,7 @@ def review_preview(src, directory, stem, start, end, config, label=None):
     import tempfile
 
     directory = Path(directory)
-    if end - start > config["max_seconds"]:
+    if end - start > config["max_seconds"] + CAP_EPSILON:
         raise ValueError("Trecho excede GB_PREVIEW_MAX_SECONDS; selecione um insert menor ou ajuste a configuração.")
     # Stage every output before replacing any prior preview.
     with tempfile.TemporaryDirectory(dir=directory) as stage:

@@ -265,6 +265,56 @@ class ApproveChatTests(unittest.TestCase):
             self.assertIn("--candidate", missing["error"])
 
 
+class ApprovedItemsCarryTheAuditTrailTests(unittest.TestCase):
+    """A saída precisa dizer o que foi aprovado, não só quantos itens."""
+
+    def test_approve_all_lists_contact_sheet_and_segment_per_item(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            result = run_cli(
+                self,
+                "approve",
+                "--all",
+                "--by",
+                "Bruno Moreira",
+                "--statement",
+                "Aprovo os dois que você mostrou.",
+                "--project",
+                tmp,
+            )
+            rows = {row["id"]: row for row in result["approved_items"]}
+            self.assertEqual(sorted(result["approved"]), sorted(rows))
+            self.assertEqual("previews/b.png", rows["local:b"]["contact_sheet"])
+            # Sem folha de contato o campo existe e diz `null`, nunca some.
+            self.assertIsNone(rows["local:a"]["contact_sheet"])
+            self.assertEqual(
+                {"start_s": 0, "end_s": 2, "revision": 1},
+                rows["local:b"]["segment"],
+            )
+            self.assertEqual("Com prévia 2", rows["local:b"]["title"])
+
+    def test_candidate_list_carries_the_same_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            result = run_cli(
+                self,
+                "approve",
+                "--candidate",
+                "local:a",
+                "--candidate",
+                "local:b",
+                "--by",
+                "Bruno Moreira",
+                "--statement",
+                "Aprovo esses dois.",
+                "--project",
+                tmp,
+            )
+            self.assertEqual(2, len(result["approved_items"]))
+            for row in result["approved_items"]:
+                self.assertEqual({"id", "title", "contact_sheet", "segment"}, set(row))
+
+
 class ChatStatementRequiredTests(unittest.TestCase):
     def test_chat_approval_without_statement_is_refused(self):
         with tempfile.TemporaryDirectory() as tmp:

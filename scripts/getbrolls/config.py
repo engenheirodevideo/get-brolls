@@ -3,6 +3,11 @@
 import os
 from pathlib import Path
 
+# Folga de ponto flutuante ao comparar um intervalo com o teto de prévia. `16.1 - 6.1`
+# dá 10.000000000000002 em binário: sem a folga, o `--end` que o próprio `inspect`
+# sugere seria recusado pelo `preview` logo depois. Um intervalo igual ao teto vale.
+CAP_EPSILON = 1e-6
+
 KEYS = {
     "GB_GIF_SCOPE",
     "GB_RULES_FILE",

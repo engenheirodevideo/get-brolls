@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .config import CAP_EPSILON
 from .guidance import next_action
 from .ledger import Ledger, digest
 from .media import cut, probe, run
@@ -167,11 +168,50 @@ EMPTY_STORYBOARD = (
     "gere as prévias com `preview` antes de mandar o endereço para alguém."
 )
 
-# Nomes que não identificam ninguém: uma declaração precisa de uma pessoa real.
 # Comandos que só consultam o projeto: `inspect` grava no máximo `media.duration_s`
 # e `references` não grava nada — nenhum dos dois muda formato nem aprovação.
 READ_ONLY_CONSULTS = ("references", "inspect")
-GENERIC_NAMES = ("usuário", "usuario", "eu", "user", "cliente")
+# Nomes de uma palavra que não identificam ninguém. "teste" fica de fora de propósito:
+# as evals assinam como "Ana Teste", que é nome + sobrenome e passa na regra de duas
+# palavras. A lista só morde quando a palavra vem sozinha.
+GENERIC_NAMES = (
+    "usuário",
+    "usuario",
+    "eu",
+    "user",
+    "cliente",
+    "me",
+    "admin",
+    "você",
+    "voce",
+    "pessoa",
+    "responsável",
+    "responsavel",
+)
+
+
+def _check_declared_by(name):
+    """Quem assina a declaração precisa ser identificável: nome e sobrenome.
+
+    Duas recusas, com mensagens diferentes porque o conserto é diferente: uma
+    palavra genérica ("eu", "cliente") pede o nome da pessoa; uma palavra só, ainda
+    que seja um nome de verdade, pede o sobrenome. "teste" continua valendo — as
+    evals assinam "Ana Teste", que já cumpre a regra das duas palavras.
+    """
+    if not name:
+        raise ValueError("Informe em --declared-by o nome real de quem assume a responsabilidade.")
+    parts = [part for part in name.split() if part.strip(".")]
+    if len(parts) == 1 and parts[0].lower() in GENERIC_NAMES:
+        raise ValueError(
+            f"--declared-by recusa {parts[0]!r}: isso não identifica ninguém. "
+            "Escreva o nome e o sobrenome de quem assume a responsabilidade."
+        )
+    if len(parts) < 2:
+        raise ValueError(
+            "--declared-by precisa de pelo menos duas palavras (nome e sobrenome, ou "
+            f"nome e inicial). {name!r} tem só uma: quem assina precisa dar para "
+            "identificar depois."
+        )
 
 
 def _count(value, singular, plural):
@@ -548,10 +588,64 @@ def approve_all(ledger, args, rules, only=None):
         )
     return {
         "approved": [c["id"] for c in approved],
+        # A trilha de auditoria precisa dizer *o quê* foi aprovado, não só quantos:
+        # a folha de contato é a imagem que a pessoa viu e o intervalo é o que ela
+        # aceitou. Sem isso, `--all` vira um número sem como conferir depois.
+        "approved_items": [_approved_row(c) for c in approved],
         "skipped": skipped,
         "by": args.by,
         "channel": args.channel,
         "statement": args.statement,
+    }
+
+
+def _search_row(c):
+    """A cópia que sai no JSON: o candidato mais o que a fonte já sabe e o manifesto não guarda.
+
+    Cópia rasa de propósito. `channel`/`uploader` e `duration_s` são atalhos de
+    leitura para quem consome a busca; colar isso no candidato guardado mudaria o
+    schema do manifesto sem necessidade.
+    """
+    row = dict(c)
+    channel = ((c.get("creator") or {}).get("name") or "").strip()
+    if channel:
+        row["channel"] = channel
+        row["uploader"] = channel
+    duration = (c.get("media") or {}).get("duration_s")
+    if duration is not None:
+        row["duration_s"] = duration
+    return row
+
+
+def search_summary_line(rows, excluded, errors, dry_run):
+    """Quantos vieram e quais são os três primeiros — o resumo que cabe numa fala."""
+    if not rows:
+        line = "Nenhum candidato veio dessa busca."
+    else:
+        titles = [str(r.get("title") or r.get("id")) for r in rows[:3]]
+        line = f"{_count(len(rows), 'candidato', 'candidatos')}: " + ", ".join(titles) + "."
+        if len(rows) > 3:
+            line += f" (+{len(rows) - 3} na lista)"
+    if excluded:
+        line += f" {_count(excluded, 'excluído pelas regras', 'excluídos pelas regras')}."
+    if errors:
+        line += f" {_count(len(errors), 'fonte falhou', 'fontes falharam')}."
+    if dry_run:
+        line += " Diagnóstico: nada foi registrado no projeto."
+    return line
+
+
+def _approved_row(c):
+    """O registro mínimo para conferir uma aprovação: id, o que foi visto, e o intervalo."""
+    return {
+        "id": c["id"],
+        "title": c.get("title"),
+        "contact_sheet": (c.get("preview") or {}).get("contact_sheet_path"),
+        "segment": {
+            "start_s": c["segment"]["start_s"],
+            "end_s": c["segment"]["end_s"],
+            "revision": c["segment"]["revision"],
+        },
     }
 
 
@@ -1063,11 +1157,14 @@ def execute(args):
                 errors.append({"provider": name, "error": str(e)})
                 record_warning("PROVIDER_FAILED", f"{name}: {e}")
                 # Fonte que falhou é aprendizado barato e honesto; fica marcado
-                # como `auto` porque ninguém digitou esse registro.
-                try:
-                    library.learn_query(args.query, name, "miss", note=str(e), auto=True)
-                except (ValueError, OSError) as failure:
-                    record_warning("LIBRARY_WRITE_FAILED", str(failure))
+                # como `auto` porque ninguém digitou esse registro. Em `--dry-run`,
+                # não: a busca de diagnóstico não escreve em lugar nenhum, e uma
+                # falha de teste não pode virar memória editorial do usuário.
+                if not dry_run:
+                    try:
+                        library.learn_query(args.query, name, "miss", note=str(e), auto=True)
+                    except (ValueError, OSError) as failure:
+                        record_warning("LIBRARY_WRITE_FAILED", str(failure))
                 continue
             # ledger.add/save stay outside the provider try: a disk/write error here is not the
             # provider's fault and must not be attributed to it as a search failure.
@@ -1094,8 +1191,12 @@ def execute(args):
         if not items and errors:
             raise ValueError("; ".join(f"{e['provider']}: {e['error']}" for e in errors))
         items.sort(key=lambda c: not domain_matches(c.get("source_url"), rules["preferred_domains"]))
+        shown = [_search_row(c) for c in items]
         result = {
-            "items": items,
+            # Veredito primeiro: quem lê o JSON quer saber o que apareceu antes de
+            # abrir a lista inteira.
+            "summary": {"line": search_summary_line(shown, excluded, errors, dry_run)},
+            "items": shown,
             "errors": errors,
             "excluded_by_rules": excluded,
             "editorial_rules": rules["editorial_rules"],
@@ -1314,8 +1415,7 @@ def execute(args):
         elif args.declared_by or args.declaration_text:
             name = (args.declared_by or "").strip()
             text = (args.declaration_text or "").strip()
-            if not name or name.lower() in GENERIC_NAMES:
-                raise ValueError("Informe em --declared-by o nome real de quem assume a responsabilidade.")
+            _check_declared_by(name)
             if len(text) < 20:
                 raise ValueError("--declaration-text precisa da frase literal da pessoa, com 20 caracteres ou mais.")
             evidence = "Declaração do usuário " + name + ": " + text
@@ -1350,7 +1450,7 @@ def execute(args):
         if not args.reference_only and c["provider"] != "local":
             # Vídeo sem --start/--end já parou antes, no guard de `preview`/`approve`.
             asked = args.end - args.start  # pyright: ignore[reportOptionalOperand]
-            if asked > config["max_seconds"]:
+            if asked > float(config["max_seconds"]) + CAP_EPSILON:
                 raise ValueError(
                     f"Trecho de {asked:g} s excede o teto de prévia: GB_PREVIEW_MAX_SECONDS "
                     f"está em {config['max_seconds']} s. Encurte o intervalo, ou aumente a "
@@ -1548,7 +1648,7 @@ def clamp_windows(windows, cap):
     if not cap or cap <= 0:
         return windows
     for window in windows:
-        if window["end_s"] - window["start_s"] > cap:
+        if window["end_s"] - window["start_s"] > cap + CAP_EPSILON:
             window["end_s"] = round(window["start_s"] + cap, 3)
     return windows
 

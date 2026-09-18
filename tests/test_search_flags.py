@@ -19,10 +19,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 
-from getbrolls import providers
+from getbrolls import library, providers
 from getbrolls.commands import execute
 from getbrolls.models import candidate
-from getbrolls.runtime import audited
+from getbrolls.runtime import OperationError, audited
 
 
 def found(n=2):
@@ -118,12 +118,111 @@ class DryRun(unittest.TestCase):
             self.assertEqual("abertura", result["items"][0]["shot"])
             self.assertEqual([], manifest(tmp)["items"])
 
+    def test_dry_run_does_not_learn_the_automatic_miss(self):
+        """Diagnóstico não vira memória editorial: a fonte que falhou no teste não fica marcada."""
+        boom = providers.ProviderError("chave ausente")
+        query = "consulta exclusiva do teste de dry-run"
+
+        def learned():
+            return [q for q in library.load_index()["queries"] if q.get("query") == query]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(providers, "search", side_effect=boom):
+                with self.assertRaises(OperationError):
+                    audited(args(tmp, dry_run=True, query=query), execute)
+            self.assertEqual([], learned())
+            # Sem `--dry-run`, a mesma falha continua sendo aprendida.
+            with patch.object(providers, "search", side_effect=boom):
+                with self.assertRaises(OperationError):
+                    audited(args(tmp, query=query), execute)
+            rows = learned()
+            self.assertEqual(1, len(rows))
+            self.assertTrue(rows[0]["auto"])
+            self.assertEqual("miss", rows[0]["outcome"])
+
     def test_a_normal_search_reports_dry_run_false(self):
         with tempfile.TemporaryDirectory() as tmp:
             with patch.object(providers, "search", return_value=found(1)):
                 result = audited(args(tmp), execute)
             self.assertFalse(result["dry_run"])
             self.assertNotIn("nada foi registrado", result.get("note") or "")
+
+
+YTDLP_FLAT = {
+    "entries": [
+        {
+            "id": "AV8Rv74TPGE",
+            "title": "Decolagem do SLS",
+            "channel": "NASA",
+            "duration": 95,
+            "thumbnails": [{"url": "https://i.ytimg.com/vi/AV8Rv74TPGE/hq.jpg"}],
+        },
+        {
+            "id": "BV8Rv74TPGF",
+            "title": "Separação dos boosters",
+            "uploader": "Canal do Espaço",
+            "duration": 42,
+            "thumbnails": [],
+        },
+        {"id": "CV8Rv74TPGH", "title": "Vista da órbita", "duration": 12, "thumbnails": []},
+        {"id": "DV8Rv74TPGI", "title": "Retorno da cápsula", "duration": 8, "thumbnails": []},
+    ]
+}
+
+
+class ProviderFactsInTheListing(unittest.TestCase):
+    """O que o YouTube já responde na busca: canal e duração, sem outra chamada."""
+
+    def stub(self, tmp, **extra):
+        from getbrolls import social
+
+        with patch.object(social, "run", return_value=(json.dumps(YTDLP_FLAT), [])):
+            return audited(args(tmp, limit=5, **extra), execute)
+
+    def test_channel_uploader_and_duration_reach_the_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self.stub(tmp)
+            rows = {r["id"]: r for r in result["items"]}
+            first = rows["youtube:AV8Rv74TPGE"]
+            self.assertEqual("NASA", first["channel"])
+            self.assertEqual("NASA", first["uploader"])
+            self.assertEqual(95, first["duration_s"])
+            # `uploader` vale quando a fonte não manda `channel`.
+            self.assertEqual("Canal do Espaço", rows["youtube:BV8Rv74TPGF"]["channel"])
+            # Sem canal nenhum, a chave não é inventada.
+            self.assertNotIn("channel", rows["youtube:CV8Rv74TPGH"])
+
+    def test_the_atalhos_do_not_leak_into_the_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.stub(tmp)
+            for item in manifest(tmp)["items"]:
+                self.assertNotIn("channel", item)
+                self.assertNotIn("duration_s", item)
+                self.assertEqual(
+                    95 if item["id"].endswith("AV8Rv74TPGE") else item["media"]["duration_s"],
+                    item["media"]["duration_s"],
+                )
+
+    def test_summary_line_counts_and_names_the_first_three(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            line = self.stub(tmp)["summary"]["line"]
+            self.assertIn("4 candidatos", line)
+            self.assertIn("Decolagem do SLS", line)
+            self.assertIn("Separação dos boosters", line)
+            self.assertIn("Vista da órbita", line)
+            # O quarto vira contagem, não título.
+            self.assertNotIn("Retorno da cápsula", line)
+            self.assertIn("+1", line)
+
+    def test_summary_line_says_when_nothing_came_and_flags_the_dry_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(providers, "search", return_value=[]):
+                empty = audited(args(tmp), execute)
+            self.assertIn("Nenhum candidato", empty["summary"]["line"])
+            with patch.object(providers, "search", return_value=found(1)):
+                dry = audited(args(tmp, dry_run=True), execute)
+            self.assertIn("1 candidato", dry["summary"]["line"])
+            self.assertIn("Diagnóstico", dry["summary"]["line"])
 
 
 if __name__ == "__main__":
