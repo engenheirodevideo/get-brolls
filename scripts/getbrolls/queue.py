@@ -413,7 +413,7 @@ def report(data, at=None, rules=None):
     return {"counts": counts, "providers": providers, "checked_at": _stamp(moment)}
 
 
-def hint(project):
+def hint(project, at=None):
     """Read-only one-line view for `status`; None when the project has no queue."""
     path = queue_path(project)
     if not path.is_file():
@@ -431,7 +431,7 @@ def hint(project):
         # RULES.md is optional/best-effort here: fall back to pacing defaults/env.
         rules = None
     try:
-        summary = report(data, rules=rules)
+        summary = report(data, at=at, rules=rules)
     except ValueError as exc:
         return {"error": str(exc)}
     counts = summary["counts"]

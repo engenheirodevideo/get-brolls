@@ -1,6 +1,5 @@
 """Existing workflow command handlers; CLI parsing and reporting live separately."""
 
-import hashlib
 import json
 import os
 import re
@@ -13,7 +12,7 @@ from .config import CAP_EPSILON
 from .guidance import blocked_beats_question, next_action
 from .ledger import Ledger, digest
 from .media import cut, probe, run
-from .models import approve, candidate, now, require_fetch, set_segment, signature
+from .models import approve, candidate, id_stem, now, require_fetch, set_segment, signature
 from .presets import PERMIT_PRESETS
 from .queue import execute as queue_execute
 from .queue import hint as queue_hint
@@ -1798,18 +1797,11 @@ def execute(args):
                 )
             from getbrolls.http import download
 
-            temp = (
-                ledger.root / "previews" / ("download-" + hashlib.sha256(c["id"].encode()).hexdigest()[:16] + ".part")
-            )
+            temp = ledger.root / "previews" / ("download-" + id_stem(c["id"]) + ".part")
             download(url, temp)
             src = temp
         if c.get("media", {}).get("kind") == "image":
-            rel = (
-                "clips/"
-                + hashlib.sha256(c["id"].encode()).hexdigest()[:16]
-                + f"-r{c['segment']['revision']}"
-                + Path(src).suffix.lower()
-            )
+            rel = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}" + Path(src).suffix.lower()
             dest = ledger.root / rel
             if dest.exists():
                 raise ValueError(_already_collected(rel))
@@ -1821,7 +1813,7 @@ def execute(args):
             ledger.save(cmd, c)
             render(ledger)
             return c
-        rel = "clips/" + hashlib.sha256(c["id"].encode()).hexdigest()[:16] + f"-r{c['segment']['revision']}.mp4"
+        rel = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}.mp4"
         # O arquivo entregue nasce somente-leitura (delivery._freeze congela o inode
         # compartilhado): sem esta checagem o ffmpeg falharia por permissão, sem dizer
         # o motivo. Recusar aqui, antes de gastar a fonte, explica o que fazer.
@@ -1867,7 +1859,7 @@ def reference_poster(ledger, c):
 
     if c["preview"].get("poster_path"):
         return c["preview"]["poster_path"]
-    stem = hashlib.sha256(c["id"].encode()).hexdigest()[:16] + "-ref"
+    stem = id_stem(c["id"]) + "-ref"
     previews = ledger.root / "previews"
     previews.mkdir(parents=True, exist_ok=True)
     source = c.get("local_path")
@@ -2243,7 +2235,7 @@ def scan_candidate(ledger, c, config):
     if not source:
         raise ValueError("A varredura precisa da mídia de trabalho; esta fonte só permite referência estática.")
     offset = c.get("local_start_s", 0)
-    stem = hashlib.sha256(c["id"].encode()).hexdigest()[:16]
+    stem = id_stem(c["id"])
     # Tempo do arquivo de trabalho para o ffmpeg; tempo da fonte nos rótulos.
     local_start = max(0, -offset)
     # A grade se mede pelo que existe no arquivo de trabalho, não pelo que foi pedido:

@@ -11,18 +11,15 @@ comandos chegam ao fim.
 
 import io
 import shutil
-import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
-
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _media import synth_video
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
 
 from getbrolls import cli, http, providers
 
@@ -85,23 +82,7 @@ class NasaSpacedUrlFlow(unittest.TestCase):
     def setUpClass(cls):
         cls._tmp = tempfile.TemporaryDirectory()
         source = Path(cls._tmp.name) / "fixture.mp4"
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-v",
-                "error",
-                "-f",
-                "lavfi",
-                "-i",
-                "testsrc=size=320x180:duration=6:rate=10",
-                "-c:v",
-                "libx264",
-                "-pix_fmt",
-                "yuv420p",
-                str(source),
-            ],
-            check=True,
-        )
+        synth_video(source, size="320x180", duration=6, rate=10)
         cls.media_bytes = source.read_bytes()
 
     @classmethod

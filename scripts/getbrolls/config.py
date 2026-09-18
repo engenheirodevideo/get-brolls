@@ -44,6 +44,10 @@ KEYS = {
     "GB_YTDLP_SLEEP",
     # `1` faz `deliver` copiar em vez de hardlinkar: cópias independentes, editáveis.
     "GB_DELIVERY_COPY",
+    # Pasta do cache local (drawtext, respostas HTTP); padrão ~/.cache/getbrolls.
+    # GETBROLLS_CACHE_DIR (nome antigo) continua funcionando via ambiente real, mas
+    # só o nome novo é aceito em `.env`.
+    "GB_CACHE_DIR",
 }
 
 # Optional pins: an explicit path always wins over the usual discovery.
@@ -130,6 +134,17 @@ def active_overrides():
     """Validated GB_*_PATH pins currently in effect, for doctor reporting."""
     resolved = {key: pin_override(key) for key in PATH_KEYS}
     return {key: str(value) for key, value in resolved.items() if value}
+
+
+def cache_root():
+    """Pasta do cache local: GB_CACHE_DIR vence; GETBROLLS_CACHE_DIR é o fallback antigo.
+
+    Uma string vazia conta como "não definida" (o `or` cai para o nome antigo,
+    e depois para o padrão) — isso é proposital: uma variável exportada vazia
+    não deve forçar o cache para a raiz.
+    """
+    value = os.environ.get("GB_CACHE_DIR") or os.environ.get("GETBROLLS_CACHE_DIR")
+    return Path(value) if value else Path.home() / ".cache" / "getbrolls"
 
 
 def settings():

@@ -5,18 +5,15 @@ tinha `%`: o `drawtext` lia o `textfile` com expansão ligada, tentava expandir 
 `%{...}` que não existe, e desistia do filtro — a folha saía, o cabeçalho não.
 """
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
-
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
 
 from getbrolls import media
 

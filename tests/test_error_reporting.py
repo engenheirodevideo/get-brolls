@@ -13,7 +13,6 @@ import io
 import os
 import socket
 import subprocess
-import sys
 import tempfile
 import unittest
 import urllib.error
@@ -21,8 +20,7 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
 
 from getbrolls import cli, http, media, providers, runtime, social
 from getbrolls import instagram_pairs as ig
@@ -149,13 +147,17 @@ class GetJsonCacheWriteTests(unittest.TestCase):
         response.headers = {}
         response.read.return_value = b'{"ok": true}'
         builder.return_value.open.return_value.__enter__.return_value = response
-        with tempfile.TemporaryDirectory() as tmp:
-            cache_dir = Path(tmp) / "ro-cache"
-            cache_dir.mkdir()
-            with patch.dict(os.environ, {"GETBROLLS_CACHE_DIR": str(cache_dir)}):
-                with patch("pathlib.Path.mkdir", side_effect=OSError(errno.ENOSPC, "no space")):
-                    result = http.get_json("https://example.org/api", cache_ttl=60)
-        self.assertEqual(result, {"ok": True})
+        for name in ("GB_CACHE_DIR", "GETBROLLS_CACHE_DIR"):
+            with self.subTest(env=name):
+                other = "GETBROLLS_CACHE_DIR" if name == "GB_CACHE_DIR" else "GB_CACHE_DIR"
+                with tempfile.TemporaryDirectory() as tmp:
+                    cache_dir = Path(tmp) / "ro-cache"
+                    cache_dir.mkdir()
+                    with patch.dict(os.environ, {name: str(cache_dir)}):
+                        os.environ.pop(other, None)
+                        with patch("pathlib.Path.mkdir", side_effect=OSError(errno.ENOSPC, "no space")):
+                            result = http.get_json("https://example.org/api", cache_ttl=60)
+                self.assertEqual(result, {"ok": True})
 
 
 class DownloadErrorSeparationTests(unittest.TestCase):
@@ -250,7 +252,7 @@ class DrawtextCacheTests(unittest.TestCase):
         media._DRAWTEXT.clear()
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.env_patch = patch.dict("os.environ", {"GETBROLLS_CACHE_DIR": self.tmp.name})
+        self.env_patch = patch.dict("os.environ", {"GB_CACHE_DIR": self.tmp.name})
         self.env_patch.start()
         self.addCleanup(self.env_patch.stop)
         # A real file on disk gives drawtext_available() a real, stable mtime to key its
@@ -259,16 +261,25 @@ class DrawtextCacheTests(unittest.TestCase):
         self.ffmpeg_file.write_bytes(b"x")
 
     def test_probe_result_is_persisted_to_disk_and_reused(self):
-        with (
-            patch.object(media, "tool_path", return_value=str(self.ffmpeg_file)),
-            patch.object(media, "run", return_value=" ... drawtext ... ") as run_mock,
-        ):
-            self.assertTrue(media.drawtext_available())
-            self.assertEqual(run_mock.call_count, 1)
-            media._DRAWTEXT.clear()
-            # Second call (new "process") must not re-invoke ffmpeg -filters; reads the disk cache.
-            self.assertTrue(media.drawtext_available())
-            self.assertEqual(run_mock.call_count, 1)
+        for name in ("GB_CACHE_DIR", "GETBROLLS_CACHE_DIR"):
+            with self.subTest(env=name):
+                other = "GETBROLLS_CACHE_DIR" if name == "GB_CACHE_DIR" else "GB_CACHE_DIR"
+                media._DRAWTEXT.clear()
+                # Both names point at the same tmp dir; clear the leftover disk cache
+                # from the previous iteration so each name is probed from scratch.
+                media._drawtext_cache_path(str(self.ffmpeg_file)).unlink(missing_ok=True)
+                with patch.dict(os.environ, {name: self.tmp.name}):
+                    os.environ.pop(other, None)
+                    with (
+                        patch.object(media, "tool_path", return_value=str(self.ffmpeg_file)),
+                        patch.object(media, "run", return_value=" ... drawtext ... ") as run_mock,
+                    ):
+                        self.assertTrue(media.drawtext_available())
+                        self.assertEqual(run_mock.call_count, 1)
+                        media._DRAWTEXT.clear()
+                        # Second call (new "process") must not re-invoke ffmpeg -filters; reads the disk cache.
+                        self.assertTrue(media.drawtext_available())
+                        self.assertEqual(run_mock.call_count, 1)
 
     def test_probe_failure_records_warning_distinct_from_missing_filter(self):
         event = {"warnings": [], "state_committed": False}
@@ -489,27 +500,36 @@ class Finding27DrawtextProbeFailureNotCachedTests(unittest.TestCase):
         media._DRAWTEXT.clear()
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.env_patch = patch.dict("os.environ", {"GETBROLLS_CACHE_DIR": self.tmp.name})
+        self.env_patch = patch.dict("os.environ", {"GB_CACHE_DIR": self.tmp.name})
         self.env_patch.start()
         self.addCleanup(self.env_patch.stop)
         self.ffmpeg_file = Path(self.tmp.name) / "ffmpeg-bin"
         self.ffmpeg_file.write_bytes(b"x")
 
     def test_probe_failure_does_not_persist_false_to_disk(self):
-        with (
-            patch.object(media, "tool_path", return_value=str(self.ffmpeg_file)),
-            patch.object(media, "run", side_effect=ValueError("ffmpeg não encontrado")),
-        ):
-            self.assertFalse(media.drawtext_available())
-        cache_path = media._drawtext_cache_path(str(self.ffmpeg_file))
-        self.assertFalse(cache_path.exists())
-        media._DRAWTEXT.clear()
-        # A later working probe must not be short-circuited by a stale disk cache from the failure.
-        with (
-            patch.object(media, "tool_path", return_value=str(self.ffmpeg_file)),
-            patch.object(media, "run", return_value=" ... drawtext ... "),
-        ):
-            self.assertTrue(media.drawtext_available())
+        for name in ("GB_CACHE_DIR", "GETBROLLS_CACHE_DIR"):
+            with self.subTest(env=name):
+                other = "GETBROLLS_CACHE_DIR" if name == "GB_CACHE_DIR" else "GB_CACHE_DIR"
+                media._DRAWTEXT.clear()
+                # Both names point at the same tmp dir; clear the leftover disk cache
+                # from the previous iteration so each name is probed from scratch.
+                media._drawtext_cache_path(str(self.ffmpeg_file)).unlink(missing_ok=True)
+                with patch.dict(os.environ, {name: self.tmp.name}):
+                    os.environ.pop(other, None)
+                    with (
+                        patch.object(media, "tool_path", return_value=str(self.ffmpeg_file)),
+                        patch.object(media, "run", side_effect=ValueError("ffmpeg não encontrado")),
+                    ):
+                        self.assertFalse(media.drawtext_available())
+                    cache_path = media._drawtext_cache_path(str(self.ffmpeg_file))
+                    self.assertFalse(cache_path.exists())
+                    media._DRAWTEXT.clear()
+                    # A later working probe must not be short-circuited by a stale disk cache from the failure.
+                    with (
+                        patch.object(media, "tool_path", return_value=str(self.ffmpeg_file)),
+                        patch.object(media, "run", return_value=" ... drawtext ... "),
+                    ):
+                        self.assertTrue(media.drawtext_available())
 
 
 class Finding28DownloadCatchAllTests(unittest.TestCase):

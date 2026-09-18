@@ -1,11 +1,11 @@
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+
 from getbrolls.media import cut, preview, probe
 from getbrolls.models import approve, candidate, require_fetch, set_segment
 

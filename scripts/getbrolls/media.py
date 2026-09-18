@@ -1,12 +1,15 @@
 import hashlib
 import json
+import math
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
-from .config import CAP_EPSILON, tool_path
+from .config import CAP_EPSILON, cache_root, tool_path
 from .runtime import record_warning, stderr_tail
 
 
@@ -39,7 +42,7 @@ _DRAWTEXT = {}
 
 
 def _cache_dir():
-    return Path(os.environ.get("GETBROLLS_CACHE_DIR", str(Path.home() / ".cache" / "getbrolls")))
+    return cache_root()
 
 
 def _drawtext_cache_path(ffmpeg_path):
@@ -67,8 +70,9 @@ DEFAULT_FONTS = (
 def drawtext_available():
     """True when the resolved ffmpeg was built with the drawtext filter (libfreetype).
 
-    Persisted per-process (`_DRAWTEXT`) and on disk under `GETBROLLS_CACHE_DIR`, keyed by the
-    resolved ffmpeg path + mtime, so every CLI process doesn't rerun `ffmpeg -filters`.
+    Persisted per-process (`_DRAWTEXT`) and on disk under `GB_CACHE_DIR` (falls back to
+    `GETBROLLS_CACHE_DIR`), keyed by the resolved ffmpeg path + mtime, so every CLI process
+    doesn't rerun `ffmpeg -filters`.
     """
     try:
         name = tool_path("ffmpeg")
@@ -260,9 +264,6 @@ def review_preview(src, directory, stem, start, end, config, label=None):
     a banner with title, id and window. Without drawtext the sheet is plain and the
     Storyboard prints the per-cell legend from ``frame_times_s`` instead.
     """
-    import math
-    import tempfile
-
     directory = Path(directory)
     if end - start > config["max_seconds"] + CAP_EPSILON:
         raise ValueError("Trecho excede GB_PREVIEW_MAX_SECONDS; selecione um insert menor ou ajuste a configuração.")
@@ -372,9 +373,6 @@ def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):
     dentro da fonte. `frame_times_s` sai em tempo da fonte, como em `review_preview`:
     é com esse número que a pessoa monta o `--start/--end` do `preview`.
     """
-    import math
-    import tempfile
-
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     if span <= 0:
@@ -418,8 +416,6 @@ def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):
 
 
 def image_preview(src, directory, stem):
-    import tempfile
-
     directory = Path(directory)
     rel = "previews/" + stem + "-poster.jpg"
     with tempfile.TemporaryDirectory(dir=directory) as stage:
@@ -449,9 +445,6 @@ def image_preview(src, directory, stem):
 
 
 def copy_image(src, dst):
-    import shutil
-    import tempfile
-
     dst = Path(dst)
     if dst.exists():
         raise ValueError("Arquivo final já existe; não foi sobrescrito.")

@@ -1,12 +1,14 @@
 import json
 import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+# A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate
 from getbrolls.rules import load_rules

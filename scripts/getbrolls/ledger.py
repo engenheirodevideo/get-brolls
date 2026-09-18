@@ -6,7 +6,7 @@ import os
 import uuid
 from pathlib import Path
 
-from .models import now
+from .models import id_stem, now
 
 
 def digest(path):
@@ -194,7 +194,7 @@ class Ledger:
             ) from None
         atomic_write(self.path, json.dumps(data, ensure_ascii=False, indent=2))
         for c in data["items"]:
-            path = self.root / "candidates" / (hashlib.sha256(c["id"].encode()).hexdigest()[:16] + ".json")
+            path = self.root / "candidates" / (id_stem(c["id"]) + ".json")
             atomic_write(path, json.dumps(c, ensure_ascii=False, indent=2))
         event_path = self.root / "events.jsonl"
         prior = event_path.read_text(encoding="utf-8") if event_path.exists() else ""

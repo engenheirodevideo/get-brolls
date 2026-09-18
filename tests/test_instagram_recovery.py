@@ -1,15 +1,15 @@
 import shutil
 import socket
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+from _media import synth_audio
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+
 from getbrolls import instagram_pairs as ig
 
 
@@ -164,21 +164,7 @@ class InstagramRecoveryTests(unittest.TestCase):
                 ],
                 check=True,
             )
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-v",
-                    "error",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    "sine=frequency=440:duration=1",
-                    "-c:a",
-                    "aac",
-                    str(audio),
-                ],
-                check=True,
-            )
+            synth_audio(audio, frequency=440, duration=1)
             for stem in ("01_TEST", "02_TEST"):
                 (configs / (stem + "_video.conf")).write_text(
                     f'url = "https://example.org/video"\noutput = "{video}"\n', encoding="utf-8"

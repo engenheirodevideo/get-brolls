@@ -8,10 +8,8 @@ fluxo do mundo nunca chega a rodar.
 
 import re
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-SKILLS = (ROOT / "SKILL.md", ROOT / "skills" / "get-brolls" / "SKILL.md")
+from _paths import SKILLS
 
 # (frase que a pessoa escreve, palavra-gatilho que precisa estar na description)
 PHRASES = [

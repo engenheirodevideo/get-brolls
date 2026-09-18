@@ -6,13 +6,13 @@ import os
 import re
 import socket
 import ssl
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+
 from getbrolls import http
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, set_segment

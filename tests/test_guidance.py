@@ -9,11 +9,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
-
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _media import synth_video
+from _paths import CLI
 
 from getbrolls.cli import build_parser
 from getbrolls.guidance import STEPS, command_for, next_action
@@ -201,26 +200,10 @@ class SuggestedCommandRuns(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
     def test_preview_rung_command_runs_on_a_local_candidate(self):
-        cli = str(Path(__file__).resolve().parents[1] / "scripts/gb.py")
+        cli = str(CLI)
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "original.mp4"
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-v",
-                    "error",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    "testsrc=size=160x90:duration=6:rate=10",
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
-                    str(src),
-                ],
-                check=True,
-            )
+            synth_video(src, size="160x90", duration=6, rate=10)
             resolved = subprocess.run(
                 [sys.executable, cli, "resolve", "--file", str(src), "--project", tmp],
                 capture_output=True,

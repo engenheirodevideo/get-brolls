@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/badge/node-22%2B-green?style=flat-square" alt="Node 22+">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="Licença MIT">
     <img src="https://img.shields.io/github/actions/workflow/status/engenheirodevideo/get-brolls/test.yml?branch=main&style=flat-square&label=tests" alt="Status dos testes">
-    <img src="https://img.shields.io/badge/version-2.4.2-blue?style=flat-square" alt="Versão 2.4.2">
+    <img src="https://img.shields.io/badge/version-2.4.3-blue?style=flat-square" alt="Versão 2.4.3">
   </p>
 </div>
 
@@ -135,13 +135,14 @@ A sequência mais curta pelo terminal, usando uma fonte sem chave (NASA). Troque
 python3 scripts/gb.py search --provider nasa --query "Artemis launch" --limit 3 --intent literal --project /caminho/meu-video
 python3 scripts/gb.py preview --candidate "<ID>" --start 0 --end 4 --project /caminho/meu-video
 python3 scripts/gb.py review --project /caminho/meu-video
-python3 scripts/gb.py serve --project /caminho/meu-video
+python3 scripts/gb.py serve --background --project /caminho/meu-video
 ```
 
-Abra [o storyboard local](http://localhost:8767/review.html), decida os trechos e exporte o JSON — abrir a página por `file://` pode desativar o salvamento local, então exporte antes de fechar. Depois, em outro terminal:
+Abra [o storyboard local](http://localhost:8767/review.html) pela URL que o comando devolveu na hora, decida os trechos e exporte o JSON — abrir a página por `file://` pode desativar o salvamento local, então exporte antes de fechar.
 
 ```sh
-python3 scripts/gb.py import-review --file /caminho/revisao.json --by "Seu nome" --project /caminho/meu-video
+python3 scripts/gb.py import-review --by "Seu nome" --project /caminho/meu-video
+python3 scripts/gb.py serve --stop --project /caminho/meu-video
 python3 scripts/gb.py permit --candidate "<ID>" --evidence "Condições de uso reais dessa fonte" --project /caminho/meu-video
 python3 scripts/gb.py fetch --candidate "<ID>" --project /caminho/meu-video
 python3 scripts/gb.py verify --project /caminho/meu-video
@@ -281,19 +282,20 @@ python3 scripts/gb.py references --project /caminho/meu-video
 python3 scripts/gb.py search --provider youtube --query "NASA Artemis launch" --limit 3 --intent literal --project /caminho/meu-video
 python3 scripts/gb.py preview --candidate "<ID>" --start 0 --end 5 --reason "Mostrar a decolagem citada no vídeo" --project /caminho/meu-video
 python3 scripts/gb.py review --project /caminho/meu-video
-python3 scripts/gb.py serve --project /caminho/meu-video
+python3 scripts/gb.py serve --background --project /caminho/meu-video
 ```
 
-Abra [o storyboard local](http://localhost:8767/review.html), revise os trechos e exporte as decisões — abrir por `file://` pode desativar o salvamento local, então exporte antes de fechar. Depois, em outro terminal na pasta da skill:
+Abra [o storyboard local](http://localhost:8767/review.html) pela URL que o comando devolveu na hora, revise os trechos e exporte as decisões — abrir por `file://` pode desativar o salvamento local, então exporte antes de fechar.
 
 ```sh
-python3 scripts/gb.py import-review --file /caminho/revisao.json --by "Nome de quem revisou" --project /caminho/meu-video
+python3 scripts/gb.py import-review --by "Nome de quem revisou" --project /caminho/meu-video
+python3 scripts/gb.py serve --stop --project /caminho/meu-video
 python3 scripts/gb.py permit --candidate "<ID>" --evidence "Evidência real das condições de uso" --project /caminho/meu-video
 python3 scripts/gb.py fetch --candidate "<ID>" --project /caminho/meu-video
 python3 scripts/gb.py verify --project /caminho/meu-video
 ```
 
-Substitua o nome, o arquivo exportado e a evidência pelos dados reais. Repita `permit` e `fetch` para cada candidato aprovado. `approve` também pode registrar uma decisão explícita já recebida. `verify` confere integridade e decodificação dos arquivos; a avaliação editorial é sua.
+Substitua o nome e a evidência pelos dados reais. Repita `permit` e `fetch` para cada candidato aprovado. `approve` também pode registrar uma decisão explícita já recebida. `verify` confere integridade e decodificação dos arquivos; a avaliação editorial é sua.
 
 `status` responde onde a coleta está a qualquer momento — candidatos, prévias, decisões, permissões e entregas, com o próximo passo sugerido — e não altera o projeto. Os comandos do fluxo também devolvem um campo `summary` com uma linha dizendo o que acabou de acontecer. [Detalhes do estado e do progresso.](docs/GUIDE.md#estado-do-projeto-e-progresso)
 

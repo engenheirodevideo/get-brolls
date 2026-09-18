@@ -4,19 +4,15 @@ import json
 import os
 import re
 import stat
-import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
-CLI = ROOT / "scripts/gb.py"
-sys.path.insert(0, str(ROOT / "scripts"))
-
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _cli import run_cli
+from _paths import ROOT
 
 from getbrolls import library
 from getbrolls.cli import SUMMARIES, build_parser
@@ -24,18 +20,6 @@ from getbrolls.ledger import Ledger
 from getbrolls.memory import remember
 from getbrolls.models import approve, candidate, require_fetch, set_segment
 from getbrolls.review import project_id
-
-
-def run_cli(test, *args, ok=True, env=None):
-    done = subprocess.run(
-        [sys.executable, str(CLI), *map(str, args)],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        env={**os.environ, **(env or {})},
-    )
-    test.assertEqual(0 if ok else 2, done.returncode, done.stderr)
-    return json.loads(done.stdout if ok else done.stderr)
 
 
 def approved_candidate(project, source_url="https://www.youtube.com/watch?v=abc"):
@@ -240,9 +224,8 @@ class LibraryCommandTests(LibraryBase):
 
     def test_learn_and_library_through_the_cli(self):
         env = {"GB_HOME": str(self.home)}
-        run_cli(self, "init-rules", "--project", self.project, env=env)
+        run_cli("init-rules", "--project", self.project, env=env)
         answer = run_cli(
-            self,
             "learn",
             "--project",
             self.project,
@@ -255,7 +238,7 @@ class LibraryCommandTests(LibraryBase):
             env=env,
         )
         self.assertTrue(answer["rights_not_transferable"])
-        found = run_cli(self, "library", "--project", self.project, "--search", "foguete", env=env)
+        found = run_cli("library", "--project", self.project, "--search", "foguete", env=env)
         self.assertTrue(found["rights_not_transferable"])
         self.assertEqual(1, len(found["queries"]))
 
@@ -309,7 +292,7 @@ class LibraryCommandTests(LibraryBase):
         build_parser().parse_args(shlex.split(with_library["command"])[2:])
 
     def test_the_cli_refuses_learn_without_anything_to_learn(self):
-        error = run_cli(self, "learn", "--project", self.project, ok=False)
+        error = run_cli("learn", "--project", self.project, expect=2)
         self.assertIn("--query", error["error"])
 
 
@@ -322,7 +305,13 @@ class IsolationIsStructural(unittest.TestCase):
     indiretamente — importa `_isolation` antes, e nenhuma rodada toca `~/.getbrolls`.
     """
 
-    REACHES_HOME = re.compile(r"\blibrary\b|\bguidance\b|next_action|commands\.execute|\bexecute\(|run_cli|gb\.py")
+    # `import execute`/`import main` pegam o caso de `execute`/`cli.main` entrarem só
+    # como referência (ex.: `audited(args, execute)`), sem "execute(" literal no texto;
+    # `load_rules` é o próprio ponto que lê `~/.getbrolls/RULES.md` em `rules.py`.
+    REACHES_HOME = re.compile(
+        r"\blibrary\b|\bguidance\b|next_action|commands\.execute|\bexecute\(|run_cli|gb\.py"
+        r"|load_rules|import execute\b|from getbrolls\.cli import main\b"
+    )
 
     def test_every_module_that_can_reach_the_personal_folder_imports_isolation(self):
         offenders = []

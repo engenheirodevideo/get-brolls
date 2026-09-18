@@ -3,20 +3,28 @@
 Desde a 2.4 o SKILL.md não tem seção de instalação, então a única divergência
 legítima entre `SKILL.md` e `skills/get-brolls/SKILL.md` é o prefixo
 `${CLAUDE_PLUGIN_ROOT}/` nos caminhos citados pelo plugin — e o comentário HTML
-de sincronia, que diz de qual lado o arquivo está.
+de sincronia, que diz de qual lado o arquivo está. A sincronia em si é gerada
+por `scripts/gen_skill_mirror.py --check`; esta suíte assere o contrato do
+conteúdo, não a mecânica de sincronia.
 """
 
+import contextlib
+import io
 import re
+import subprocess
 import sys
+import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+from _paths import ROOT
+
 from getbrolls import __version__
 
 ROOT_SKILL = ROOT / "SKILL.md"
 MIRROR_SKILL = ROOT / "skills" / "get-brolls" / "SKILL.md"
+GEN_SKILL_MIRROR = ROOT / "scripts" / "gen_skill_mirror.py"
 
 MAX_WORDS = 900
 MAX_WORDS_PER_PARAGRAPH = 80
@@ -54,22 +62,74 @@ def field(path, name):
     return None
 
 
-def normalize(text):
-    """Reduz o espelho ao texto da raiz: some o prefixo do plugin."""
-    return text.replace("${CLAUDE_PLUGIN_ROOT}/", "")
-
-
-def strip_sync_comment(text):
-    return [line for line in text.splitlines() if not line.startswith("<!--")]
-
-
 class SkillMirrorTests(unittest.TestCase):
-    def test_bodies_are_identical_apart_from_the_plugin_prefix(self):
-        self.assertEqual(
-            strip_sync_comment(body(ROOT_SKILL)),
-            strip_sync_comment(normalize(body(MIRROR_SKILL))),
-            "espelho fora de sincronia com a raiz",
+    def test_generator_reproduces_the_versioned_mirror_byte_for_byte(self):
+        """`--check` roda o gerador contra o `SKILL.md` atual e compara com o
+        espelho versionado: sai 0 quando os dois batem byte a byte."""
+        result = subprocess.run(
+            [sys.executable, str(GEN_SKILL_MIRROR), "--check"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
         )
+        self.assertEqual(
+            result.returncode,
+            0,
+            f"espelho fora de sincronia com o gerador:\n{result.stdout}{result.stderr}",
+        )
+
+    def test_editing_the_mirror_by_hand_makes_check_exit_1(self):
+        """`--check` detecta divergência: aponta o gerador para uma cópia
+        editada à mão do espelho, fora do repositório, e nunca escreve no
+        `skills/get-brolls/SKILL.md` versionado."""
+        import gen_skill_mirror
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tampered = Path(tmp) / "SKILL.md"
+            mirror_text = MIRROR_SKILL.read_text(encoding="utf-8")
+            tampered.write_text(
+                mirror_text.replace("perguntas do brief.", "perguntas do brief editadas à mão."),
+                encoding="utf-8",
+            )
+
+            buffer = io.StringIO()
+            with unittest.mock.patch.object(gen_skill_mirror, "MIRROR_SKILL", tampered):
+                with contextlib.redirect_stdout(buffer):
+                    exit_code = gen_skill_mirror.main(["--check"])
+
+        self.assertEqual(exit_code, 1, "edição manual do espelho deveria falhar o --check")
+        self.assertIn("perguntas do brief", buffer.getvalue())
+        # A cópia editada nunca substitui o espelho versionado de verdade.
+        self.assertNotIn("editadas à mão", MIRROR_SKILL.read_text(encoding="utf-8"))
+
+    def test_broken_repo_path_reference_fails_loudly(self):
+        """Um candidato que comece com pasta de topo conhecida (`scripts/`, ...)
+        mas não exista de verdade (nem arquivo, nem pasta) é um caminho quebrado
+        no `SKILL.md` da raiz: precisa falhar alto, em `--check` e na escrita,
+        não ficar sem prefixo em silêncio."""
+        import gen_skill_mirror
+
+        broken_ref = "scripts/does-not-exist-getbrolls.py"
+        frontmatter_text, existing_body = gen_skill_mirror.split_frontmatter(ROOT_SKILL.read_text(encoding="utf-8"))
+        tampered_root = frontmatter_text + existing_body + f"\n\nVeja também `{broken_ref}`.\n"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tampered_root_path = Path(tmp) / "SKILL.md"
+            tampered_root_path.write_text(tampered_root, encoding="utf-8")
+            mirror_target = Path(tmp) / "mirror-skill.md"
+
+            for argv in (["--check"], []):
+                with self.subTest(argv=argv or ["<escrita>"]):
+                    buffer = io.StringIO()
+                    with (
+                        unittest.mock.patch.object(gen_skill_mirror, "ROOT_SKILL", tampered_root_path),
+                        unittest.mock.patch.object(gen_skill_mirror, "MIRROR_SKILL", mirror_target),
+                        contextlib.redirect_stderr(buffer),
+                    ):
+                        exit_code = gen_skill_mirror.main(argv)
+                    self.assertEqual(exit_code, 1)
+                    self.assertIn(broken_ref, buffer.getvalue())
+                    self.assertFalse(mirror_target.exists(), "não deve escrever o espelho com caminho quebrado")
 
     def test_frontmatters_are_identical(self):
         self.assertEqual(frontmatter(ROOT_SKILL), frontmatter(MIRROR_SKILL))
@@ -187,7 +247,6 @@ class SkillCommandsExistTests(unittest.TestCase):
     """Todo subcomando citado no SKILL.md existe de verdade na CLI."""
 
     def test_every_mentioned_subcommand_is_registered(self):
-        sys.path.insert(0, str(ROOT / "scripts"))
         from getbrolls.cli import SUMMARIES
 
         mentioned = set(re.findall(r"gb\.py\" ([a-z\-]+)", body(ROOT_SKILL)))

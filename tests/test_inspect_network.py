@@ -7,15 +7,12 @@ com `GB_EVAL_NETWORK=1`, porque pede o vídeo de verdade ao YouTube.
 """
 
 import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
-
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
 
 from getbrolls import inspecting, social
 

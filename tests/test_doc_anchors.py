@@ -1,12 +1,8 @@
 """Garante que toda âncora `GUIDE.md#...` citada nos docs do plugin resolve
 para um heading real de `docs/GUIDE.md` (contrato de docs, não de código)."""
 
-import sys
 import unittest
 from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
 
 import check_anchors as anchors  # noqa: E402
 

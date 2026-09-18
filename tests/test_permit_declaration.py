@@ -1,34 +1,17 @@
 """Declaração de responsabilidade dita no chat, sem edição manual de RULES.md."""
 
-import json
-import subprocess
-import sys
 import tempfile
 import unittest
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-CLI = ROOT / "scripts/gb.py"
-sys.path.insert(0, str(ROOT / "scripts"))
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _cli import run_cli
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
 
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, set_segment
 
 TEXT = "Gravei este material e assumo a responsabilidade pelo uso."
-
-
-def run_cli(test, *args, ok=True):
-    done = subprocess.run(
-        [sys.executable, str(CLI), *map(str, args)],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-    test.assertEqual(0 if ok else 2, done.returncode, done.stderr)
-    return json.loads(done.stdout if ok else done.stderr)
 
 
 def fixture(root):
@@ -45,7 +28,6 @@ class PermitDeclarationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ident = fixture(tmp)
             result = run_cli(
-                self,
                 "permit",
                 "--candidate",
                 ident,
@@ -70,26 +52,24 @@ class PermitDeclarationTests(unittest.TestCase):
             ident = fixture(tmp)
             base = ["permit", "--candidate", ident, "--project", tmp]
             error = run_cli(
-                self,
                 *base,
                 "--declared-by",
                 "usuário",
                 "--declaration-text",
                 TEXT,
-                ok=False,
+                expect=2,
             )
             self.assertIn("nome", error["error"].lower())
             short = run_cli(
-                self,
                 *base,
                 "--declared-by",
                 "Bruno Moreira",
                 "--declaration-text",
                 "curto demais",
-                ok=False,
+                expect=2,
             )
             self.assertIn("20", short["error"])
-            alone = run_cli(self, *base, "--declared-by", "Bruno Moreira", ok=False)
+            alone = run_cli(*base, "--declared-by", "Bruno Moreira", expect=2)
             self.assertIn("--declaration-text", alone["error"])
 
     def test_generic_single_word_names_are_refused_by_name(self):
@@ -97,7 +77,7 @@ class PermitDeclarationTests(unittest.TestCase):
             ident = fixture(tmp)
             base = ["permit", "--candidate", ident, "--project", tmp, "--declaration-text", TEXT]
             for generic in ("eu", "user", "cliente", "usuário", "usuario", "me", "admin", "Admin"):
-                refused = run_cli(self, *base, "--declared-by", generic, ok=False)
+                refused = run_cli(*base, "--declared-by", generic, expect=2)
                 self.assertIn("--declared-by", refused["error"])
                 self.assertIn("não identifica ninguém", refused["error"])
 
@@ -105,7 +85,6 @@ class PermitDeclarationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ident = fixture(tmp)
             refused = run_cli(
-                self,
                 "permit",
                 "--candidate",
                 ident,
@@ -115,7 +94,7 @@ class PermitDeclarationTests(unittest.TestCase):
                 TEXT,
                 "--declared-by",
                 "Bruno",
-                ok=False,
+                expect=2,
             )
             self.assertIn("duas palavras", refused["error"])
 
@@ -124,7 +103,6 @@ class PermitDeclarationTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp:
                 ident = fixture(tmp)
                 result = run_cli(
-                    self,
                     "permit",
                     "--candidate",
                     ident,
@@ -142,12 +120,12 @@ class PermitDeclarationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ident = fixture(tmp)
             base = ["permit", "--candidate", ident, "--project", tmp]
-            result = run_cli(self, *base, "--evidence", "Material próprio do teste")
+            result = run_cli(*base, "--evidence", "Material próprio do teste")
             self.assertEqual("per_item_evidence", result["rights"]["basis"])
             self.assertIsNone(result["rights"].get("declaration_channel"))
-            nothing = run_cli(self, *base, ok=False)
+            nothing = run_cli(*base, expect=2)
             self.assertIn("--evidence", nothing["error"])
-            declaration = run_cli(self, *base, "--declaration", ok=False)
+            declaration = run_cli(*base, "--declaration", expect=2)
             self.assertIn("RULES.md", declaration["error"])
 
 

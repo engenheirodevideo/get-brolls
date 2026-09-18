@@ -49,6 +49,27 @@ QUERY_STOPWORDS = frozenset(
 )
 
 
+def read_json_block(path, missing, syntax, not_object=None):
+    """Lê `path` e devolve o único bloco ```json nele, já decodificado.
+
+    `missing` e `syntax` são as mensagens (já prontas, em português) para os
+    casos de zero/mais de um bloco e de JSON malformado, respectivamente. Se
+    `not_object` for informado, o resultado também precisa ser um objeto
+    (dict), senão essa mensagem é levantada.
+    """
+    raw = Path(path).read_text(encoding="utf-8")
+    blocks = re.findall(r"```json\s*\n(.*?)\n```", raw, re.S)
+    if len(blocks) != 1:
+        raise ValueError(missing)
+    try:
+        value = json.loads(blocks[0])
+    except json.JSONDecodeError:
+        raise ValueError(syntax) from None
+    if not_object is not None and not isinstance(value, dict):
+        raise ValueError(not_object)
+    return value
+
+
 def brief_path(project):
     """Arquivo que vale para este projeto: GB_BRIEF_FILE vence o BRIEF.md da pasta."""
     override = os.environ.get("GB_BRIEF_FILE")
@@ -70,20 +91,17 @@ def load_brief(project):
             "Este projeto ainda não tem BRIEF.md. Rode `/get-brolls-brief` para fazer a "
             "entrevista, ou `init-brief --project ...` para criar o modelo e preencher."
         )
-    raw = path.read_text(encoding="utf-8")
-    blocks = re.findall(r"```json\s*\n(.*?)\n```", raw, re.S)
-    if len(blocks) != 1:
-        raise ValueError(
+    return read_json_block(
+        path,
+        missing=(
             "O BRIEF.md precisa de exatamente um bloco ```json — apague os blocos extras "
             "ou rode `init-brief` numa pasta limpa para começar de um modelo."
-        )
-    try:
-        return json.loads(blocks[0])
-    except json.JSONDecodeError:
-        raise ValueError(
+        ),
+        syntax=(
             "O bloco json do BRIEF.md está com erro de digitação (vírgula ou aspas "
             "sobrando). Conserte essa linha e rode `brief --validate` de novo."
-        ) from None
+        ),
+    )
 
 
 def _text(value, field, required=True):

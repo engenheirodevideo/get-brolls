@@ -5,6 +5,7 @@ import json
 
 from .ledger import digest
 from .media import image_preview, review_preview
+from .models import id_stem
 
 
 def prepare_preview(ledger, c, start, end, config):
@@ -33,7 +34,7 @@ def prepare_preview(ledger, c, start, end, config):
         end = duration
     c["preview_scope"] = scope
     config_hash = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()[:8]
-    stem = hashlib.sha256(c["id"].encode()).hexdigest()[:16] + f"-r{c['segment']['revision']}-{config_hash}"
+    stem = id_stem(c["id"]) + f"-r{c['segment']['revision']}-{config_hash}"
     if c["media"].get("kind") == "image":
         result = image_preview(src, ledger.root / "previews", stem)
     else:

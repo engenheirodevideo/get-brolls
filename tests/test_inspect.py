@@ -14,11 +14,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
-
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _media import synth_video
+from _paths import ROOT, SKILLS
 
 from getbrolls import inspecting, social
 from getbrolls.cli import build_parser
@@ -660,23 +659,7 @@ class ScanTests(unittest.TestCase):
     def test_scan_maps_the_whole_local_video_without_choosing_an_interval(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "original.mp4"
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-v",
-                    "error",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    "testsrc=size=160x90:duration=20:rate=10",
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
-                    str(src),
-                ],
-                check=True,
-            )
+            synth_video(src, size="160x90", duration=20, rate=10)
             run_cli(["init-rules", "--project", tmp])
             resolved = run_cli(["resolve", "--file", str(src), "--project", tmp])
             candidate = json.loads(resolved.stdout)["id"]
@@ -705,23 +688,7 @@ class ScanTests(unittest.TestCase):
     def test_the_cap_limits_how_much_of_a_long_video_is_scanned(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "original.mp4"
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-v",
-                    "error",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    "testsrc=size=160x90:duration=60:rate=10",
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
-                    str(src),
-                ],
-                check=True,
-            )
+            synth_video(src, size="160x90", duration=60, rate=10)
             run_cli(["init-rules", "--project", tmp])
             resolved = run_cli(["resolve", "--file", str(src), "--project", tmp])
             candidate = json.loads(resolved.stdout)["id"]
@@ -772,23 +739,7 @@ class ScanTests(unittest.TestCase):
         """A duração anunciada pode passar do arquivo real; a grade segue o arquivo."""
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "original.mp4"
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-v",
-                    "error",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    "testsrc=size=160x90:duration=8:rate=10",
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
-                    str(src),
-                ],
-                check=True,
-            )
+            synth_video(src, size="160x90", duration=8, rate=10)
             run_cli(["init-rules", "--project", tmp])
             resolved = run_cli(["resolve", "--file", str(src), "--project", tmp])
             candidate = json.loads(resolved.stdout)["id"]
@@ -811,23 +762,7 @@ class ScanTests(unittest.TestCase):
     def test_a_whole_short_video_says_so_in_the_note(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "original.mp4"
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-v",
-                    "error",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    "testsrc=size=160x90:duration=6:rate=10",
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
-                    str(src),
-                ],
-                check=True,
-            )
+            synth_video(src, size="160x90", duration=6, rate=10)
             run_cli(["init-rules", "--project", tmp])
             resolved = run_cli(["resolve", "--file", str(src), "--project", tmp])
             candidate = json.loads(resolved.stdout)["id"]
@@ -845,23 +780,7 @@ class DirectMediaSourceTests(unittest.TestCase):
     def _fixture(self, tmp, seconds=8):
         """Arquivo local no lugar do `media_url`: nada sai para a rede no teste."""
         src = Path(tmp) / "nasa.mp4"
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-v",
-                "error",
-                "-f",
-                "lavfi",
-                "-i",
-                f"testsrc=size=160x90:duration={seconds}:rate=10",
-                "-c:v",
-                "libx264",
-                "-pix_fmt",
-                "yuv420p",
-                str(src),
-            ],
-            check=True,
-        )
+        synth_video(src, size="160x90", duration=seconds, rate=10)
         return src
 
     def _candidate(self, tmp):
@@ -1146,23 +1065,7 @@ class ScanLabelsMatchTheSourceTests(unittest.TestCase):
         """Fricção 2 da rodada 2: `--scan` parecia não fazer nada em quem já tinha intervalo."""
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "original.mp4"
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-v",
-                    "error",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    "testsrc=size=160x90:duration=12:rate=10",
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
-                    str(src),
-                ],
-                check=True,
-            )
+            synth_video(src, size="160x90", duration=12, rate=10)
             run_cli(["init-rules", "--project", tmp])
             resolved = run_cli(["resolve", "--file", str(src), "--project", tmp])
             candidate_id = json.loads(resolved.stdout)["id"]
@@ -1228,18 +1131,18 @@ class LanguageMismatchTests(unittest.TestCase):
         self.assertIn("legenda em EN", empty)
 
     def test_the_skill_and_its_mirror_ask_for_the_query_in_the_source_language(self):
-        for path in (ROOT / "SKILL.md", ROOT / "skills/get-brolls/SKILL.md"):
+        for path in SKILLS:
             self.assertIn("no idioma da fonte", path.read_text(encoding="utf-8"))
 
     def test_the_skill_states_the_per_preview_cap_and_one_call_each(self):
-        for path in (ROOT / "SKILL.md", ROOT / "skills/get-brolls/SKILL.md"):
+        for path in SKILLS:
             text = path.read_text(encoding="utf-8")
             self.assertIn("GB_PREVIEW_MAX_SECONDS", text)
             self.assertIn("10 s por prévia", text)
             self.assertIn("um `preview` por chamada", text)
 
     def test_the_skill_locates_the_contact_sheet_in_the_manifest_too(self):
-        for path in (ROOT / "SKILL.md", ROOT / "skills/get-brolls/SKILL.md"):
+        for path in SKILLS:
             text = path.read_text(encoding="utf-8")
             self.assertIn("files.contact_sheet", text)
             self.assertIn("preview.contact_sheet_path", text)

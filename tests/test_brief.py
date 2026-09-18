@@ -4,18 +4,14 @@ import copy
 import json
 import os
 import shlex
-import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-CLI = ROOT / "scripts/gb.py"
-sys.path.insert(0, str(ROOT / "scripts"))
-
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _cli import run_cli
+from _paths import ROOT, SKILLS
 
 from getbrolls import brief as brief_module
 from getbrolls.cli import SUMMARIES, build_parser
@@ -64,17 +60,6 @@ def write_brief(project, data):
         encoding="utf-8",
     )
     return path
-
-
-def run_cli(test, *args, ok=True):
-    done = subprocess.run(
-        [sys.executable, str(CLI), *map(str, args)],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-    test.assertEqual(0 if ok else 2, done.returncode, done.stderr or done.stdout)
-    return json.loads(done.stdout if ok else done.stderr)
 
 
 def loaded(data, rules=None):
@@ -401,14 +386,14 @@ class BlockedBeatTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             Ledger(tmp)
             write_brief(tmp, self.blocked())
-            payload = run_cli(self, "status", "--project", tmp)
+            payload = run_cli("status", "--project", tmp)
         self.assertEqual({"beats": 2, "covered": 0, "missing": 1, "blocked": 1}, payload["summary"]["brief"])
         self.assertEqual("brief-blocked", payload["summary"]["do"]["step"])
 
     def test_the_brief_command_lists_the_blocked_beat_as_a_problem(self):
         with tempfile.TemporaryDirectory() as tmp:
             write_brief(tmp, self.blocked())
-            payload = run_cli(self, "brief", "--project", tmp)
+            payload = run_cli("brief", "--project", tmp)
         self.assertEqual(
             {"beats": 2, "covered": 0, "missing": 1, "blocked": 1},
             payload["coverage"],
@@ -496,7 +481,7 @@ class StockOnlyBeatWithoutKeyTests(unittest.TestCase):
     def test_validate_warns_without_calling_the_brief_invalid(self):
         with tempfile.TemporaryDirectory() as tmp:
             write_brief(tmp, self.brief())
-            payload = run_cli(self, "brief", "--validate", "--project", tmp)
+            payload = run_cli("brief", "--validate", "--project", tmp)
         self.assertTrue(payload["valid"])
         self.assertTrue(any("pexels" in w and "abertura" in w for w in payload["warnings"]))
         self.assertTrue(any("PEXELS_API_KEY" in w for w in payload["warnings"]))
@@ -507,7 +492,7 @@ class StockOnlyBeatWithoutKeyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             Ledger(tmp)
             write_brief(tmp, self.brief())
-            phrase = run_cli(self, "status", "--project", tmp)["summary"]["do"]["for_human"]
+            phrase = run_cli("status", "--project", tmp)["summary"]["do"]["for_human"]
         self.assertIn("PEXELS_API_KEY", phrase)
         self.assertIn(".env", phrase)
         self.assertNotIn("a empresa", phrase)
@@ -516,7 +501,7 @@ class StockOnlyBeatWithoutKeyTests(unittest.TestCase):
     def test_the_beat_view_of_the_brief_says_the_same_thing(self):
         with tempfile.TemporaryDirectory() as tmp:
             write_brief(tmp, self.brief())
-            payload = run_cli(self, "brief", "--beat", "abertura", "--project", tmp)
+            payload = run_cli("brief", "--beat", "abertura", "--project", tmp)
         commands = payload["beats"][0]["commands"]
         self.assertNotIn("resolve", commands)
         self.assertIn("PEXELS_API_KEY", commands["note"])
@@ -533,19 +518,19 @@ class BriefCommandTests(unittest.TestCase):
 
     def test_init_brief_copies_the_template_and_refuses_to_overwrite(self):
         with tempfile.TemporaryDirectory() as tmp:
-            result = run_cli(self, "init-brief", "--project", tmp)
+            result = run_cli("init-brief", "--project", tmp)
             self.assertTrue(Path(result["brief"]).is_file())
             self.assertEqual(
                 TEMPLATE.read_text(encoding="utf-8"),
                 (Path(tmp) / "BRIEF.md").read_text(encoding="utf-8"),
             )
-            again = run_cli(self, "init-brief", "--project", tmp, ok=False)
+            again = run_cli("init-brief", "--project", tmp, expect=2)
             self.assertIn("já existe", again["error"])
 
     def test_brief_puts_the_summary_first_and_lists_ready_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
             write_brief(tmp, VALID)
-            result = run_cli(self, "brief", "--project", tmp)
+            result = run_cli("brief", "--project", tmp)
             self.assertEqual("summary", next(iter(result)))
             self.assertEqual(["line", "problems", "next"], list(result["summary"]))
             # `next` vem da mesma escada de `status` (guidance.next_action): nenhum
@@ -578,13 +563,13 @@ class BriefCommandTests(unittest.TestCase):
     def test_validate_only_reports_health_without_the_command_list(self):
         with tempfile.TemporaryDirectory() as tmp:
             write_brief(tmp, VALID)
-            result = run_cli(self, "brief", "--project", tmp, "--validate")
+            result = run_cli("brief", "--project", tmp, "--validate")
             self.assertTrue(result["valid"])
             self.assertEqual(2, result["beats"])
             broken = copy.deepcopy(VALID)
             broken["beats"][0]["target"] = ""
             write_brief(tmp, broken)
-            failure = run_cli(self, "brief", "--project", tmp, "--validate", ok=False)
+            failure = run_cli("brief", "--project", tmp, "--validate", expect=2)
             self.assertIn("target", failure["error"])
 
     def test_validate_does_not_call_a_brief_with_problems_valid(self):
@@ -594,7 +579,7 @@ class BriefCommandTests(unittest.TestCase):
             data["defaults"]["stock"] = True
             data["defaults"]["allowed_sources"] = ["pexels"]
             write_brief(tmp, data)
-            result = run_cli(self, "brief", "--project", tmp, "--validate")
+            result = run_cli("brief", "--project", tmp, "--validate")
             self.assertTrue(result["summary"]["problems"])
             self.assertNotIn("válido", result["summary"]["line"])
             self.assertIn("brief --validate", result["summary"]["next"])
@@ -602,32 +587,24 @@ class BriefCommandTests(unittest.TestCase):
     def test_init_brief_writes_the_file_that_brief_will_read(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "briefs" / "video-01.md"
-            environment = dict(os.environ, GB_BRIEF_FILE=str(target))
-            done = subprocess.run(
-                [sys.executable, str(CLI), "init-brief", "--project", tmp],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                env=environment,
-            )
-            self.assertEqual(0, done.returncode, done.stderr)
+            result = run_cli("init-brief", "--project", tmp, env={"GB_BRIEF_FILE": str(target)})
             self.assertTrue(target.is_file())
             self.assertFalse((Path(tmp) / "BRIEF.md").exists())
-            self.assertEqual(target.resolve(), Path(json.loads(done.stdout)["brief"]).resolve())
+            self.assertEqual(target.resolve(), Path(result["brief"]).resolve())
 
     def test_beat_filter_selects_one_beat_and_names_the_valid_ids(self):
         with tempfile.TemporaryDirectory() as tmp:
             write_brief(tmp, VALID)
-            result = run_cli(self, "brief", "--project", tmp, "--beat", "abertura")
+            result = run_cli("brief", "--project", tmp, "--beat", "abertura")
             self.assertEqual(1, len(result["beats"]))
             self.assertEqual("abertura", result["beats"][0]["id"])
-            missing = run_cli(self, "brief", "--project", tmp, "--beat", "inexistente", ok=False)
+            missing = run_cli("brief", "--project", tmp, "--beat", "inexistente", expect=2)
             self.assertIn("reacao-publico", missing["error"])
 
     def test_brief_never_creates_the_project_tree(self):
         with tempfile.TemporaryDirectory() as tmp:
             write_brief(tmp, VALID)
-            run_cli(self, "brief", "--project", tmp)
+            run_cli("brief", "--project", tmp)
             self.assertFalse((Path(tmp) / "brolls").exists())
 
 
@@ -647,7 +624,7 @@ class BriefDocumentationTests(unittest.TestCase):
         self.assertIn("references/interview.md", head)
 
     def test_both_skills_mention_the_interview_before_searching(self):
-        for path in (ROOT / "SKILL.md", ROOT / "skills/get-brolls/SKILL.md"):
+        for path in SKILLS:
             body = path.read_text(encoding="utf-8")
             self.assertIn("BRIEF.md", body)
             self.assertIn("/get-brolls-brief", body)
