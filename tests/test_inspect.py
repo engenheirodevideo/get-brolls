@@ -37,6 +37,49 @@ A tempestade de areia cobriu a cidade
 Depois disso, os moradores voltaram às ruas
 """
 
+# Legenda automática do YouTube, copiada de um arquivo real baixado com yt-dlp
+# (`https://www.youtube.com/watch?v=AV8Rv74TPGE`, faixa `pt`). Três coisas que o VTT
+# de estúdio não tem e quebram um leitor ingênuo: tags `<00:00:00.560><c>…</c>` de
+# tempo por palavra, linhas só com um espaço dentro do bloco, e o par de cues em
+# rolagem — um cue de 10 ms repetindo a linha anterior e o seguinte reabrindo com ela.
+# `<SP>` marca a linha de um espaço só, que sumiria em qualquer editor.
+YOUTUBE_AUTO_VTT = """\
+WEBVTT
+Kind: captions
+Language: pt
+
+00:00:00.320 --> 00:00:02.389 align:start position:0%
+<SP>
+Me<00:00:00.560><c> permita</c><00:00:01.040><c> te</c><00:00:01.199><c> fazer</c><00:00:01.439><c> uma</c><00:00:01.680><c> pergunta.</c><00:00:02.200><c> Quanto</c>
+
+00:00:02.389 --> 00:00:02.399 align:start position:0%
+Me permita te fazer uma pergunta. Quanto
+<SP>
+
+00:00:02.399 --> 00:00:04.190 align:start position:0%
+Me permita te fazer uma pergunta. Quanto
+é<00:00:02.520><c> que</c><00:00:02.679><c> você</c><00:00:03.040><c> está</c><00:00:03.280><c> pagando</c><00:00:03.639><c> de</c><00:00:03.840><c> energia</c>
+
+00:00:04.190 --> 00:00:04.200 align:start position:0%
+é que você está pagando de energia
+<SP>
+
+00:00:04.200 --> 00:00:06.869 align:start position:0%
+é que você está pagando de energia
+elétrica<00:00:04.680><c> aí</c><00:00:04.880><c> na</c><00:00:05.000><c> sua</c><00:00:05.279><c> casa?</c><00:00:05.879><c> Eh,</c><00:00:06.359><c> essas</c>
+
+00:00:06.869 --> 00:00:06.879 align:start position:0%
+elétrica aí na sua casa? Eh, essas
+<SP>
+
+00:00:06.879 --> 00:00:09.030 align:start position:0%
+elétrica aí na sua casa? Eh, essas
+contas<00:00:07.359><c> todas</c><00:00:08.000><c> estão</c><00:00:08.320><c> pesando</c><00:00:08.679><c> no</c><00:00:08.880><c> seu</c>
+
+00:00:09.030 --> 00:00:09.040 align:start position:0%
+contas todas estão pesando no seu
+""".replace("<SP>", " ")
+
 WITH_EVERYTHING = {
     "id": "abcdefghijk",
     "title": "Tempestade de areia",
@@ -60,23 +103,33 @@ BARE = {
     "subtitles": {},
 }
 
+# O contrato real do yt-dlp, e a razão do bug que este arquivo passou a cobrir:
+# `--dump-single-json` implica `--simulate`, e em modo simulado nada chega ao disco —
+# nem `.vtt`, nem `.info.json`. Com `--no-simulate` é o contrário: os arquivos aparecem
+# e o stdout deixa de trazer o JSON. O dublê tem que obedecer aos dois lados, senão
+# a suíte fica verde enquanto o `inspect` real volta sem uma única legenda.
 STUB = """#!{python}
 import json, os, sys
 data = json.loads(os.environ["GB_TEST_YTDLP_JSON"])
 subtitle = os.environ.get("GB_TEST_YTDLP_VTT")
 argv = sys.argv[1:]
-if "-o" in argv:
-    template = argv[argv.index("-o") + 1]
-    if subtitle:
+writing = "--no-simulate" in argv
+template = argv[argv.index("-o") + 1] if "-o" in argv else None
+if writing and template:
+    if "--write-info-json" in argv and not os.environ.get("GB_TEST_YTDLP_NO_INFO"):
+        with open(template.replace("%(ext)s", "info.json"), "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(data))
+    if subtitle and "--write-auto-subs" in argv:
         for lang in ("pt",):
             path = template.replace("%(ext)s", lang + ".vtt")
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write(subtitle)
-print(json.dumps(data))
+if not writing:
+    print(json.dumps(data))
 """
 
 
-def stub_ytdlp(directory, payload, vtt=None):
+def stub_ytdlp(directory, payload, vtt=None, no_info=False):
     """yt-dlp falso no disco: nenhum teste toca a rede."""
     path = Path(directory) / "yt-dlp-stub.py"
     path.write_text(STUB.format(python=sys.executable), encoding="utf-8")
@@ -88,6 +141,9 @@ def stub_ytdlp(directory, payload, vtt=None):
         executable = Path(directory) / "yt-dlp-stub.cmd"
         executable.write_text(f'@echo off\r\n"{sys.executable}" "{path}" %*\r\n', encoding="utf-8")
     env = {"GB_YTDLP_PATH": str(executable), "GB_TEST_YTDLP_JSON": json.dumps(payload)}
+    if no_info:
+        # Fonte que engasgou no meio: legenda no disco, mas nenhum `.info.json`.
+        env["GB_TEST_YTDLP_NO_INFO"] = "1"
     if vtt is not None:
         env["GB_TEST_YTDLP_VTT"] = vtt
     return env
@@ -102,6 +158,31 @@ class VttTests(unittest.TestCase):
         # Tags de estilo do VTT não entram no texto pontuado.
         self.assertNotIn("<", cues[1]["text"])
         self.assertEqual(24.0, cues[2]["end_s"])
+
+    def test_youtube_auto_captions_survive_word_tags_blank_lines_and_rolling(self):
+        """O formato que o `inspect` encontra de verdade, não o VTT limpo de estúdio."""
+        cues = inspecting.parse_vtt(YOUTUBE_AUTO_VTT)
+        spoken = [cue["text"] for cue in cues]
+        # Nada de tag de tempo/estilo sobrando no texto pontuado.
+        self.assertFalse([t for t in spoken if "<" in t or ">" in t])
+        # Nenhum cue vazio: a linha de um espaço só não vira fala nem corta o bloco.
+        self.assertFalse([t for t in spoken if not t.strip()])
+        # A primeira fala não se perde atrás da linha em branco que abre o bloco.
+        self.assertEqual("Me permita te fazer uma pergunta. Quanto", spoken[0])
+        self.assertAlmostEqual(0.32, cues[0]["start_s"])
+        # Rolagem não conta duas vezes: cada frase aparece uma vez só.
+        self.assertEqual(len(spoken), len(set(spoken)))
+        joined = " ".join(spoken)
+        self.assertEqual(1, joined.count("Me permita te fazer uma pergunta."))
+        self.assertIn("é que você está pagando de energia", joined)
+        self.assertIn("elétrica aí na sua casa?", joined)
+
+    def test_rolling_captions_do_not_inflate_the_score(self):
+        """Sem deduplicar, a janela repetiria as mesmas palavras e a nota subiria sozinha."""
+        cues = inspecting.parse_vtt(YOUTUBE_AUTO_VTT)
+        text = " ".join(cue["text"] for cue in cues)
+        self.assertEqual(1, inspecting.tokens(text).count("permita"))
+        self.assertEqual(1, inspecting.tokens(text).count("energia"))
 
     def test_short_timestamps_without_hours_are_accepted(self):
         cues = inspecting.parse_vtt("WEBVTT\n\n01:02.500 --> 01:06.000\noi\n")
@@ -289,6 +370,17 @@ class ProbeRemoteTests(unittest.TestCase):
         self.assertEqual([], probe["subtitle_langs"])
         self.assertEqual({}, probe["subtitles"])
 
+    def test_without_an_info_json_the_metadata_comes_from_a_second_simulated_call(self):
+        """Sem `.info.json`, o probe ainda responde — e o erro de verdade não some."""
+        with tempfile.TemporaryDirectory() as tmp:
+            env = stub_ytdlp(tmp, WITH_EVERYTHING, VTT, no_info=True)
+            with patch.dict(os.environ, env):
+                probe = social.probe_remote(URL, cache=Path(tmp) / ".getbrolls-sources")
+        self.assertEqual(120.0, probe["duration_s"])
+        self.assertEqual("Tempestade de areia", probe["title"])
+        # A legenda que chegou antes do tropeço continua valendo.
+        self.assertTrue(probe["subtitles"]["pt"]["cues"])
+
     def test_the_probe_keeps_the_ytdlp_pacing_flags(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = stub_ytdlp(tmp, BARE)
@@ -304,11 +396,51 @@ class ProbeRemoteTests(unittest.TestCase):
                 with patch.object(social, "run", spy):
                     social.probe_remote(URL, cache=Path(tmp) / ".getbrolls-sources")
         self.assertIn("--skip-download", captured["args"])
-        self.assertIn("--dump-single-json", captured["args"])
+        # `--no-simulate` é o que faz o yt-dlp escrever de fato; `--dump-single-json`
+        # implicaria `--simulate` e não sobraria legenda nenhuma no disco.
+        self.assertIn("--no-simulate", captured["args"])
+        self.assertIn("--ignore-errors", captured["args"])
+        self.assertNotIn("--dump-single-json", captured["args"])
+        self.assertIn("--write-info-json", captured["args"])
         self.assertIn("--write-auto-subs", captured["args"])
         self.assertIn("pt,en", captured["args"])
         self.assertIn("--sleep-requests", captured["command"])
         self.assertEqual("2", captured["command"][captured["command"].index("--sleep-requests") + 1])
+
+
+class SummaryTests(unittest.TestCase):
+    """O veredito em PT-BR não pode soar igual quando houve legenda e quando não houve."""
+
+    def setUp(self):
+        from getbrolls import commands
+
+        self.summary = commands.inspect_summary
+
+    def test_without_any_cue_the_summary_says_no_subtitles_were_obtained(self):
+        probe = {"duration_s": 90.0, "subtitles": {}}
+        windows = [{"start_s": 22.5, "end_s": 34.5, "text": "", "source": "even_spacing", "score": 0.0}]
+        line = self.summary(windows, probe)["line"]
+        self.assertIn("Sem legendas obtidas", line)
+        self.assertNotIn("ponto de partida", line)
+
+    def test_with_cues_but_no_match_the_summary_says_nothing_matched(self):
+        probe = {
+            "duration_s": 90.0,
+            "subtitles": {"pt": {"cues": [{"start_s": 0.0, "end_s": 4.0, "text": "chuva na serra"}]}},
+        }
+        windows = [{"start_s": 0.0, "end_s": 4.0, "text": "chuva na serra", "source": "subtitle", "score": 0.0}]
+        line = self.summary(windows, probe)["line"]
+        self.assertIn("Nenhuma casou com a frase", line)
+        self.assertNotIn("Sem legendas obtidas", line)
+
+    def test_a_match_is_announced_as_a_match(self):
+        probe = {
+            "duration_s": 90.0,
+            "subtitles": {"pt": {"cues": [{"start_s": 0.0, "end_s": 4.0, "text": "conta de luz"}]}},
+        }
+        windows = [{"start_s": 0.0, "end_s": 4.0, "text": "conta de luz", "source": "subtitle", "score": 1.0}]
+        line = self.summary(windows, probe)["line"]
+        self.assertIn("A mais parecida", line)
 
 
 def run_cli(args, env=None):

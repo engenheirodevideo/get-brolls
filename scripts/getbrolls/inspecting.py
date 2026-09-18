@@ -47,16 +47,28 @@ def parse_vtt(text):
         start = _seconds(match.group("start"))
         end = _seconds(match.group("end"))
         body = []
-        while index < len(lines) and lines[index].strip():
+        # Só a linha realmente vazia fecha o bloco: a legenda automática do YouTube
+        # abre e fecha os cues com uma linha de um espaço só, e tratá-la como fim de
+        # bloco engolia a primeira fala do vídeo inteiro.
+        while index < len(lines) and lines[index] != "":
             body.append(_TAG_RE.sub("", lines[index]).strip())
             index += 1
         spoken = " ".join(part for part in body if part).strip()
         if start is None or end is None or end <= start or not spoken:
             continue
-        # Legenda automática repete a linha anterior para simular rolagem.
-        if cues and cues[-1]["text"] == spoken:
-            cues[-1]["end_s"] = end
-            continue
+        # Rolagem da legenda automática: o cue seguinte reabre com a linha anterior
+        # inteira e só então acrescenta a fala nova. Repetir isso encheria a janela
+        # das mesmas palavras e inflaria a nota de `score` sem o vídeo dizer nada a mais.
+        if cues:
+            previous = cues[-1]["text"]
+            if spoken == previous:
+                cues[-1]["end_s"] = end
+                continue
+            if spoken.startswith(previous + " "):
+                spoken = spoken[len(previous) + 1 :].strip()
+                if not spoken:
+                    cues[-1]["end_s"] = end
+                    continue
         cues.append({"start_s": start, "end_s": end, "text": spoken})
     return cues
 

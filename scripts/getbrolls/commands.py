@@ -1525,6 +1525,11 @@ def _clock(seconds):
     return f"{total // 60}:{total % 60:02d}"
 
 
+def _has_cues(probe):
+    """Alguma legenda chegou de fato, com falas dentro? Anunciar idioma não é ter legenda."""
+    return any((entry or {}).get("cues") for entry in (probe.get("subtitles") or {}).values())
+
+
 def inspect_summary(windows, probe):
     """`{line, next}` em PT-BR: quantas janelas saíram, qual a melhor e o que fazer com ela."""
     if not windows:
@@ -1534,14 +1539,22 @@ def inspect_summary(windows, probe):
         }
     best = windows[0]
     found = best["score"] > 0
+    # Janela de relógio sem uma única fala lida: são pontos igualmente espaçados, e
+    # chamá-los de "ponto de partida" deixaria parecer que alguém leu o vídeo.
+    blind = not found and not _has_cues(probe) and best.get("source") == "even_spacing"
     where = f"{_clock(best['start_s'])}–{_clock(best['end_s'])}"
+    if found:
+        middle = f"A mais parecida com o que você pediu está em {where}"
+    elif blind:
+        middle = (
+            f"Sem legendas obtidas para esta fonte: não li nenhuma fala, e {where} é só "
+            "um ponto igualmente espaçado no relógio, não um trecho encontrado"
+        )
+    else:
+        middle = f"Nenhuma casou com a frase, então a primeira é só um ponto de partida: {where}"
     line = (
         f"Analisei a fonte e separei {_count(len(windows), 'janela', 'janelas')}. "
-        + (
-            f"A mais parecida com o que você pediu está em {where}"
-            if found
-            else f"Nenhuma casou com a frase, então a primeira é só um ponto de partida: {where}"
-        )
+        + middle
         + (f" ({best['source']})." if best.get("source") else ".")
     )
     if probe.get("duration_s"):

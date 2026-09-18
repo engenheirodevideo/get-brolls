@@ -257,10 +257,21 @@ def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):
         cache.chmod(0o700)
     subtitles = {}
     with tempfile.TemporaryDirectory(dir=str(cache) if cache else None) as work:
-        raw, warnings = run(
+        info = Path(work) / "probe.info.json"
+        # `--dump-single-json` implicaria `--simulate`, e em modo simulado o yt-dlp não
+        # escreve arquivo nenhum: os `.vtt` nunca chegavam ao disco e o `inspect` voltava
+        # sem uma única fala, por mais legendas que a fonte anunciasse. Com `--no-simulate`
+        # os arquivos aparecem e o stdout deixa de trazer JSON, então os metadados vêm do
+        # `.info.json` escrito ao lado das legendas.
+        _, warnings = run(
             [
-                "--dump-single-json",
+                # Uma faixa que falha (429 num idioma só, tradução que sumiu) não pode
+                # derrubar a análise inteira: sem isto, o `pt` já baixado ia para o lixo
+                # junto com o erro do `en`. O que falta é tratado logo abaixo.
+                "--ignore-errors",
+                "--no-simulate",
                 "--skip-download",
+                "--write-info-json",
                 "--write-auto-subs",
                 "--sub-langs",
                 ",".join(langs),
@@ -268,6 +279,8 @@ def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):
                 "vtt",
                 "-o",
                 str(Path(work) / "probe.%(ext)s"),
+                "--quiet",
+                "--no-warnings",
                 "--",
                 url,
             ],
@@ -275,6 +288,16 @@ def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):
         )
         for w in warnings:
             record_warning("YTDLP_WARNING", w)
+        if info.is_file():
+            raw = info.read_text(encoding="utf-8", errors="replace")
+        else:
+            # `--ignore-errors` engole o motivo junto com o erro. Um segundo pedido, só
+            # de metadados (simulado, sem escrever arquivo nenhum), devolve a
+            # classificação de sempre — vídeo privado, 429, sessão exigida — em vez de um
+            # "metadados inválidos" genérico, e ainda salva título, duração e capítulos.
+            raw, more = run(["--dump-single-json", "--skip-download", "--", url], timeout=60)
+            for w in more:
+                record_warning("YTDLP_WARNING", w)
         try:
             data = json.loads(raw)
         except ValueError:
