@@ -337,7 +337,7 @@ Execute um comando por projeto de cada vez. Preserve originais, cache e históri
 | [AGENTS.md](AGENTS.md) | Índice para agentes e mantenedores: mapa do repositório, instalação por agente e regras de manutenção. |
 | [docs/GUIDE.md](docs/GUIDE.md) · [SKILL.md](SKILL.md) | Manual completo e instruções de execução para o agente. |
 | [docs/QUALITY.md](docs/QUALITY.md) | Testes, evidências reais e limites conhecidos. |
-| [docs/RULES.md](docs/RULES.md) · [.env.example](.env.example) | Regras editoriais e opções de configuração. |
+| [docs/RULES.md](docs/RULES.md) · [.env.example.pt-BR](.env.example.pt-BR) | Regras editoriais e opções de configuração. |
 | [docs/SECURITY.md](docs/SECURITY.md) | Tratamento de dados privados e relato de vulnerabilidades. |
 | `scripts/getbrolls/` | Núcleo único: CLI, provedores, Storyboard, coletor Instagram e utilitários YouTube. |
 | `assets/` | Logo, estilos e scripts usados pelo Storyboard gerado. |

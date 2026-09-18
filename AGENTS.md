@@ -26,7 +26,7 @@ Este arquivo é o índice central para agentes e mantenedores: tudo que um agent
 | Segurança, egress e dados privados | [SECURITY.md](docs/SECURITY.md) |
 | O que mudou em cada versão | [CHANGELOG.md](CHANGELOG.md) |
 | Visão do produto e primeiro uso | [README.md](README.md) · [README.en.md](README.en.md) |
-| Regras editoriais e configuração do projeto | [RULES.md](docs/RULES.md) · [.env.example](.env.example) |
+| Regras editoriais e configuração do projeto | [RULES.md](docs/RULES.md) · [.env.example.pt-BR](.env.example.pt-BR) ([English](.env.example)) |
 
 Os roteadores por agente ([CLAUDE.md](CLAUDE.md) e [GEMINI.md](GEMINI.md)) apontam para este mapa; as regras de manutenção do repositório continuam nas seções abaixo.
 
