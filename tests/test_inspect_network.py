@@ -37,5 +37,46 @@ class InspectOverTheNetworkTests(unittest.TestCase):
         self.assertGreaterEqual(len(with_text), 1, f"janelas sem texto: {windows}")
 
 
+@unittest.skipUnless(os.environ.get("GB_EVAL_NETWORK") == "1", "rede: defina GB_EVAL_NETWORK=1")
+class ScanOverTheNetworkTests(unittest.TestCase):
+    """`preview --scan` numa fonte real: a grade cobre o vídeo inteiro, do 0 ao fim.
+
+    O dublê de yt-dlp não baixa mídia, então a varredura só é provada aqui: o que
+    pode dar errado é justamente a mídia de trabalho começar fora do zero ou vir
+    mais curta do que a fonte anunciou, e aí os rótulos apontam para tempos que não
+    existem no vídeo.
+    """
+
+    DURATION_S = 95
+
+    def test_the_grid_covers_the_whole_source_with_labels_inside_the_span(self):
+        from getbrolls import providers
+        from getbrolls.commands import scan_candidate
+        from getbrolls.config import settings
+        from getbrolls.ledger import Ledger
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(tmp)
+            # Pelo `resolve` real: é ele que grava a rota de aquisição da fonte.
+            c = ledger.add(providers.resolve(URL))
+            ledger.save("fixture", c)
+            scan_candidate(ledger, c, settings())
+            scan = Ledger(tmp).get(c["id"])["scan"]
+            self.assertTrue((Path(tmp) / "brolls" / scan["scan_path"]).is_file())
+
+        self.assertEqual(0, scan["start_s"])
+        self.assertAlmostEqual(self.DURATION_S, scan["end_s"], delta=2)
+        self.assertAlmostEqual(self.DURATION_S, scan["duration_s"], delta=2)
+        # Vídeo curto: nada foi cortado pelo teto de varredura.
+        self.assertFalse(scan["capped"])
+        # A grade tem uma célula por rótulo, e nenhum rótulo cai fora do trecho.
+        self.assertEqual(scan["frames"], len(scan["frame_times_s"]))
+        self.assertEqual(12, scan["frames"])
+        for time_s in scan["frame_times_s"]:
+            self.assertGreaterEqual(time_s, scan["start_s"])
+            self.assertLess(time_s, scan["end_s"])
+        self.assertEqual(sorted(scan["frame_times_s"]), scan["frame_times_s"])
+
+
 if __name__ == "__main__":
     unittest.main()

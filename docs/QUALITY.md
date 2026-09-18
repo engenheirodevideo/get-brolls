@@ -26,7 +26,25 @@ A 2.4.0 adiciona a entrevista de intake e o `BRIEF.md` por projeto (`init-brief`
 
 **Sonda real de legendas.** O `inspect` foi verificado contra o YouTube de verdade: `--dump-single-json` implicava `--simulate` e o yt-dlp nunca escrevia os `.vtt`, então a rodada cega recebeu zero falas em todo vídeo; com `--no-simulate` + `--write-info-json` a sonda volta com legenda e janelas de texto, provado por `tests/test_inspect_network.py` (opt-in, `GB_EVAL_NETWORK=1`) contra `https://www.youtube.com/watch?v=AV8Rv74TPGE`.
 
-**Limites conhecidos desta rodada.** O ritmo e o cooldown do lote do Instagram continuam cobertos só por mocks: não houve nova sessão de captura real. Windows é exercitado apenas pela matriz do CI; a proteção de escrita no Windows (`deliver` congela o arquivo, `_thaw_unlink` devolve a escrita antes de apagar) tem regressão offline, não ensaio em máquina real. A varredura remota de `preview --scan` contra uma fonte real não entra na suíte: ela baixa mídia e leva minutos; o que a suíte prova é a grade, os rótulos e a tolerância a mídia mais curta, com fixture local.
+**Onda final de correções menores.** Os achados que sobraram das revisões da 2.4.0 foram todos fechados, nenhum adiado, cada um com teste:
+
+- `approve --all` e `approve --candidate ID …` devolvem `approved_items` com a folha de contato e o intervalo de cada item aprovado: a trilha de auditoria mostra o que a pessoa viu, não só quantos itens foram.
+- `permit --declared-by` recusa nome genérico de uma palavra (`eu`, `user`, `cliente`, `usuário`, `me`, `admin`) e exige duas palavras — nome e sobrenome, ou nome e inicial. "teste" continua valendo: as evals assinam "Ana Teste".
+- A região viva do Storyboard nasce montada e vazia (`role="status"`, `aria-live="polite"`) no load, e o export só troca o texto — sem o `setTimeout(…, 100)` que tornava o anúncio não determinístico. Payload do export e os 375 px sem overflow intactos.
+- A miniatura da galeria sem imagem diz só "só imagem", a mesma frase da tarja; a explicação comprida ficou no painel de detalhe.
+- `preview --scan` contra fonte real ganhou prova opt-in em `tests/test_inspect_network.py` (`GB_EVAL_NETWORK=1`): grade de 12 células cobrindo `start_s=0` a `end_s=95` do vídeo de 95 s, todos os rótulos dentro do trecho.
+- `serve` guarda o log da rodada anterior em `.serve.log.1`, cortado no último 1 MB, e `status`/`state()` não abre socket nenhum quando o PID morreu (`_reap` + `_alive` antes do ping; ping vivo com teto de 0,25 s e uma repetição).
+- `search --dry-run` não registra mais o `learn_query(auto=True)` da fonte que falhou: diagnóstico não vira memória editorial.
+- `entrega/README.md` de entrega misturada (parte hardlink, parte cópia) ganha a coluna **Edição** por linha — `original compartilhado` / `editável` — no lugar do aviso global que era falso para metade dos arquivos.
+- Importação parcial: board exportado antes da 2.4 continua aceito pela época antiga, mas recusado como `stale_epoch` (ou `signature_mismatch`) assim que o item mudou depois do export — nunca há replay por cima da decisão mais nova.
+- `GB_BRIEF_FILE` e `GB_RULES_FILE` documentados no GUIDE: podem apontar para qualquer lugar da máquina, `init-brief` cria as pastas-mãe do destino, e `GB_RULES_FILE` é camada intermediária (precisa existir), não o RULES.md do projeto.
+- Intervalo igual a `GB_PREVIEW_MAX_SECONDS` é aceito: `16.1 - 6.1` dá 10.000000000000002 em binário, e o `preview` recusava exatamente o `--end` que o `inspect` acabara de sugerir.
+- A busca devolve `channel`/`uploader` e `duration_s` por item quando a fonte responde (o YouTube responde) e um `summary.line` com a contagem e os três primeiros títulos.
+- Cabeçalho do contact sheet: o banner é desenhado com `expansion=none`, então um título com `%`, `:`, `'` ou `\` não derruba mais o filtro — era isso que deixava 1 folha em 5 sem cabeçalho na rodada cega.
+- SKILL.md (e espelho) mandam rejeitar o descarte com `reject --candidate ID --project …` antes do C3, para o `status` refletir a conversa.
+- O "Próximo passo" do `entrega/README.md` com entrega pronta e prévia pendente diz "Entrega pronta (N trechos). Há M prévias sem decisão no projeto — decida ou rejeite.", nunca que o agente vai subir o Storyboard.
+
+**Limites conhecidos desta rodada.** O ritmo e o cooldown do lote do Instagram continuam cobertos só por mocks: não houve nova sessão de captura real. Windows é exercitado apenas pela matriz do CI; a proteção de escrita no Windows (`deliver` congela o arquivo, `_thaw_unlink` devolve a escrita antes de apagar) tem regressão offline, não ensaio em máquina real. A varredura remota de `preview --scan` contra uma fonte real agora existe, mas fora da suíte padrão: ela baixa mídia e leva cerca de 70 s, então roda só com `GB_EVAL_NETWORK=1`; a suíte comum continua provando a grade, os rótulos e a tolerância a mídia mais curta com fixture local.
 
 ## QA da versão 2.3.8 — 17/09/2026
 

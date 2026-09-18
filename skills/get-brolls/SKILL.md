@@ -31,31 +31,33 @@ Sem `BRIEF.md` na pasta do projeto, conduza a entrevista de `/get-brolls-brief`.
 
 ## Passo 2 — Confirme o brief
 
-Rode o CLI pelo **caminho absoluto da instalação da skill**: os exemplos escrevem `${CLAUDE_PLUGIN_ROOT}/scripts/gb.py` por brevidade, mas resolva o caminho real antes de executar. `--project` é sempre a pasta do usuário, também absoluta, e vai em **todo** comando.
+Rode o CLI pelo **caminho absoluto da instalação da skill**: os exemplos escrevem `${CLAUDE_PLUGIN_ROOT}/scripts/gb.py` por brevidade. `--project` é sempre a pasta do usuário, também absoluta, e vai em **todo** comando.
 
 Escreva o `BRIEF.md` com `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" init-brief --project <projeto>`, preencha o bloco JSON e valide com `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" brief --validate --project <projeto>`.
 
-**Checkpoint C1.** Devolva em até cinco linhas: o que o vídeo precisa provar, quantos beats, as fontes na ordem em que vai tentar, o que ficou por default e quem assina a responsabilidade. Feche com "fecho assim?" e espere.
+**Checkpoint C1.** Devolva em até cinco linhas: o que o vídeo precisa provar, quantos beats, as fontes na ordem em que vai tentar, o que ficou por default e quem assina. Feche com "fecho assim?" e espere.
 
 ## Passo 3 — Busque fonte literal
 
-`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" brief --beat <ID> --project <projeto>` devolve o comando pronto do beat. Todo material entra com `--shot <beat.id>`. Consulte `library --search "termo" --project <projeto>` antes de buscar: a biblioteca lembra o que rendeu, mas não aprova nem permite nada. Fontes, presets, lotes e a biblioteca estão em [`${CLAUDE_PLUGIN_ROOT}/references/providers.md`](${CLAUDE_PLUGIN_ROOT}/references/providers.md). **Reel do Instagram: leia [`${CLAUDE_PLUGIN_ROOT}/references/instagram.md`](${CLAUDE_PLUGIN_ROOT}/references/instagram.md) antes de tocar no navegador** — é a rota que quebra primeiro.
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" brief --beat <ID> --project <projeto>` devolve o comando pronto do beat. Todo material entra com `--shot <beat.id>`. Consulte `library --search "termo" --project <projeto>` antes: a biblioteca lembra o que rendeu, mas não aprova nem permite nada. Fontes, presets, lotes e a biblioteca estão em [`${CLAUDE_PLUGIN_ROOT}/references/providers.md`](${CLAUDE_PLUGIN_ROOT}/references/providers.md). **Reel do Instagram: leia [`${CLAUDE_PLUGIN_ROOT}/references/instagram.md`](${CLAUDE_PLUGIN_ROOT}/references/instagram.md) antes de tocar no navegador** — é a rota que quebra primeiro.
 
 **Checkpoint C2.** Liste 5 a 8 candidatos, uma linha cada: título, canal, duração e a janela que o `inspect` apontou. Feche com "sigo com estes?".
 
 ## Passo 4 — Analise e pré-visualize
 
-`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" inspect --candidate <ID> --query "fala ou alvo" --project <projeto>` lê da fonte duração, capítulos e legendas e devolve janelas pontuadas. Escolha `--start/--end` a partir delas, nunca de palpite.
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" inspect --candidate <ID> --query "fala ou alvo" --project <projeto>` lê duração, capítulos e legendas da fonte e devolve janelas pontuadas. Escolha `--start/--end` a partir delas, nunca de palpite.
 
-Depois, `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" preview --candidate <ID> --start <INICIO> --end <FIM> --project <projeto>` gera poster, contact sheet e GIF. A resposta traz `files.contact_sheet` e `preview.frame_times_s` (tempo de cada célula). **Abra esse arquivo e olhe antes de seguir.** Cite em `--reason` as células e os tempos que você viu; se não servirem, ajuste o intervalo. Nunca descreva quadro que não conferiu.
+Depois, `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" preview --candidate <ID> --start <INICIO> --end <FIM> --project <projeto>` gera poster, contact sheet e GIF. A resposta traz `files.contact_sheet` e `preview.frame_times_s` (tempo de cada célula). **Abra e olhe antes de seguir.** Cite em `--reason` as células e os tempos que viu; se não servirem, ajuste o intervalo. Nunca descreva quadro que não conferiu.
 
-Sem pista alguma, `preview --scan` baixa e varre o vídeo inteiro (minutos): use depois de `inspect`. Ele ignora o intervalo já escolhido — é exploratório.
+Sem pista alguma, `preview --scan` varre o vídeo inteiro (minutos): use depois de `inspect`. É exploratório e ignora o intervalo já escolhido.
 
 ## Passo 5 — Revisão humana
 
 Duas rotas, e você para nas duas.
 
-**Board**, quando quem revisa é outra pessoa: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" review --project <projeto>`, depois `serve --background --project <projeto>`. Entregue a URL, peça a decisão e importe com `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" import-review --by NOME --project <projeto>` — sem `--file`, ele pega o arquivo mais recente salvo pela página.
+**Board**, quando quem revisa é outra pessoa: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" review --project <projeto>`, depois `serve --background --project <projeto>`. Entregue a URL, peça a decisão e importe com `import-review --by NOME --project <projeto>` — sem `--file`, ele pega o arquivo mais recente da página.
+
+Antes do C3, rejeite o que você descartou: `reject --candidate ID --project <projeto>`, um por vez. Assim o status reflete a conversa, e `--all` não aprova prévia que ninguém viu.
 
 **Chat**, quando a pessoa está aqui. **Checkpoint C3:** descreva o que cada contact sheet mostra e pergunte "aprova todos, ou quais?". Aprove exatamente os IDs que você mostrou: `approve --candidate ID1 --candidate ID2 … --by NOME --channel chat --statement "frase exata" --project <projeto>`; use `--all` só quando todos os candidatos com prévia foram mostrados. No canal chat, `--statement` é obrigatório.
 
@@ -71,11 +73,11 @@ Registre as condições com `permit` (`--evidence`, `--preset` ou `--declared-by
 
 ## Quando não há fonte
 
-Diga o que você tentou e o motivo real devolvido pela fonte. Pergunte se a pessoa tem material próprio ou um link. Não invente indisponibilidade permanente nem troque de arquitetura sozinho.
+Diga o que tentou e o motivo real da fonte. Pergunte se a pessoa tem material próprio ou um link. Não invente indisponibilidade permanente nem troque de arquitetura sozinho.
 
 ## Ambiente
 
-`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" doctor` diz o que está pronto e o que falta. No Windows, use `python` no lugar de `python3`. Se faltar qualquer coisa, peça ao usuário que rode `/get-brolls-setup` — é esse comando que instala e diagnostica. Se o `doctor` informar versão diferente da deste arquivo, leia o [CHANGELOG](${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md).
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" doctor` diz o que está pronto e o que falta. No Windows, use `python` no lugar de `python3`. Faltando algo, peça `/get-brolls-setup` — é ele que instala e diagnostica. Versão diferente da deste arquivo: leia o [CHANGELOG](${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md).
 
 ## Índice de references
 
