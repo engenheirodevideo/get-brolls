@@ -85,10 +85,32 @@ def record_commit():
 
 
 SENSITIVE_HEADERS = ("Authorization", "Cookie", "Set-Cookie", "X-Api-Key")
-_HEADER_PATTERN = re.compile(r"(?i)\b(" + "|".join(re.escape(h) for h in SENSITIVE_HEADERS) + r")\s*:\s*[^\r\n]+")
-# `key=`/`token=`/`signature=`/`sig=` outside a full URL (a full URL is already
-# wiped out whole by the `https?://` pass below, before this pattern would see it).
-_QUERY_SECRET_PATTERN = re.compile(r"(?i)\b(key|token|signature|sig)=[^&\s\"'<>]+")
+# Accepts both `Name: value` and a quoted/JSON-rendered form (`"Name": "value"`,
+# `{'Name': 'value'}`): an optional quote on each side of the separator, and `=` as
+# well as `:`. The value stops at a quote or newline so the surrounding braces/quotes
+# of a dict repr survive. No nested quantifiers — linear on adversarial input.
+_HEADER_PATTERN = re.compile(
+    r"(?i)\b(" + "|".join(re.escape(h) for h in SENSITIVE_HEADERS) + r")\s*[\"']?\s*[:=]\s*[\"']?[^\r\n\"']+"
+)
+# A bearer token with no header name in front of it (e.g. copied into an error
+# message or a shell command). 8+ chars of the base64url/JWT-safe alphabet.
+_BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{8,}")
+# Any identifier ENDING in one of these keywords (so `access_token`, `api_key`,
+# `apikey`, `client_secret`, `X-Amz-Signature` and `X-Amz-Credential` all match, not
+# just the bare word), plus a short list of known credential-shaped query names that
+# don't end in a keyword (`Key-Pair-Id`), followed by `=` and a value. A full URL is
+# already wiped out whole by the `https?://` pass below, before this pattern would
+# see it. No nested quantifiers — linear on adversarial input.
+_QUERY_SECRET_PATTERN = re.compile(
+    r"(?i)(?<![A-Za-z0-9])"
+    # The name prefix is BOUNDED: an unbounded `[...]*` here rescans the rest of the
+    # text from every position of a long run of `-`/`_`/`.`, which is quadratic.
+    # The secret word must be a whole segment of the name (`api_key`, `X-Amz-Signature`),
+    # or one of the glued spellings: `monkey=` and `turkey=` are not secrets.
+    r"((?:[A-Za-z0-9_.-]{0,40}[_.-])?"
+    r"(?:api_?key|access_?token|key|token|secret|signature|sig|policy|credential|password)|Key-Pair-Id)"
+    r"\s*=\s*[\"']?[^&\s\"'<>]+"
+)
 
 
 def scrub_home(text):
@@ -130,6 +152,7 @@ def redact(text):
     value = _HEADER_PATTERN.sub(lambda m: f"{m.group(1)}: [REDACTED]", value)
     value = re.sub(r'https?://[^\s"<>]+', "[URL omitida]", value)
     value = _QUERY_SECRET_PATTERN.sub(lambda m: f"{m.group(1)}=[REDACTED]", value)
+    value = _BEARER_PATTERN.sub("Bearer [REDACTED]", value)
     return value[:1200]
 
 

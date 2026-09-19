@@ -305,6 +305,26 @@ class EventRenderingTests(unittest.TestCase):
         value = rendered.split("a=", 1)[1]
         self.assertLessEqual(len(value), 500)
 
+    def test_a_secret_straddling_the_500_char_cut_is_fully_redacted_not_truncated(self):
+        """Finding: truncation ran BEFORE redaction, so a secret starting before char
+        500 and ending after it kept its visible prefix in the log line."""
+        secret = "PXL-SUPERSECRETVALUE1234567890"
+        with patch.dict(os.environ, {"PEXELS_API_KEY": secret}):
+            rendered = logs.render_fields("e", {"a": "A" * 490 + secret})
+        self.assertNotIn(secret, rendered)
+        self.assertNotIn(secret[:10], rendered)
+
+    def test_control_characters_force_quoting_and_escaping(self):
+        """Finding: an ESC/NUL/backspace-only value (no space/quote/`=`) reached the
+        log raw, unquoted, letting it fake terminal-control payloads in the log."""
+        rendered = logs.render_fields("e", {"a": "a\x1b[31mb"})
+        self.assertNotIn("\x1b", rendered)
+        self.assertEqual(1, len(rendered.splitlines()))
+
+        rendered = logs.render_fields("e", {"a": "x\ry"})
+        self.assertNotIn("\r", rendered)
+        self.assertEqual(1, len(rendered.splitlines()))
+
     def test_odd_type_never_raises(self):
         class Explode:
             def __str__(self):

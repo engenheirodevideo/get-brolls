@@ -396,6 +396,85 @@ class ManifestItemSchemaVersionTests(unittest.TestCase):
             self.assertIn("manifest.json inválido", error["error"])
             self.assertEqual(raw, path.read_text(encoding="utf-8"))
 
+    def test_an_item_schema_version_of_true_or_a_float_is_refused(self):
+        """Finding: the item-level check used plain `!=`, so `True` (`True == 1`) and
+        `1.0` (`1.0 == 1`) passed as if they were the int `1`. The top-level
+        `schema_version` check already requires `type(value) is int`; the item-level
+        one must mirror that strictness instead of a looser `!=`."""
+        for bad_value in (True, 1.0):
+            with self.subTest(schema_version=bad_value), tempfile.TemporaryDirectory() as tmp:
+                path = self._manifest_path(tmp)
+                item = candidate("local", "future", "Manifesto de versão futura")
+                item["schema_version"] = bad_value
+                raw = json.dumps({"schema_version": 1, "items": [item]})
+                path.write_text(raw, encoding="utf-8")
+
+                error = run_cli("status", project=tmp, expect=2)
+                self.assertEqual("INVALID_DATA", error["error_code"])
+                self.assertIn("manifest.json inválido", error["error"])
+
+    def test_an_item_schema_version_of_the_real_int_1_still_loads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._manifest_path(tmp)
+            item = candidate("local", "legacy", "Manifesto com schema_version 1")
+            item["schema_version"] = 1
+            raw = json.dumps({"schema_version": 1, "items": [item]})
+            path.write_text(raw, encoding="utf-8")
+
+            result = run_cli("status", project=tmp)
+            self.assertEqual(1, result["counts"]["candidates"])
+
+
+class ReviewTemplateVersionTypeConfusionTests(unittest.TestCase):
+    """Item 5 (review side): `import_review` compared `templateVersion` with plain
+    `!=`, so a float like `2.0` (`2.0 == 2`) silently passed as if it were the real
+    int `REVIEW_TEMPLATE_VERSION`. Must mirror `validate_manifest`'s `type(...) is
+    int` strictness and still be refused with the usual "outra coleta" message."""
+
+    def _payload(self, ledger):
+        page = Path(render(ledger)).read_text(encoding="utf-8")
+        payload = _review_payload(page)
+        for entry in payload["items"]:
+            entry["state"] = "approved"
+        return payload
+
+    def test_a_float_template_version_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(tmp)
+            item = candidate("local", "one", "Synthetic")
+            set_segment(item, 0, 1)
+            ledger.add(item)
+            ledger.save("fixture")
+            payload = self._payload(ledger)
+            payload["templateVersion"] = 2.0
+            path = _save_review(ledger, payload, "20260918-100000.json")
+            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=2)
+            self.assertIn("outra coleta", error["error"])
+
+    def test_a_boolean_template_version_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(tmp)
+            item = candidate("local", "one", "Synthetic")
+            set_segment(item, 0, 1)
+            ledger.add(item)
+            ledger.save("fixture")
+            payload = self._payload(ledger)
+            payload["templateVersion"] = True
+            path = _save_review(ledger, payload, "20260918-100000.json")
+            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=2)
+            self.assertIn("outra coleta", error["error"])
+
+    def test_the_real_int_template_version_still_works(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(tmp)
+            item = candidate("local", "one", "Synthetic")
+            set_segment(item, 0, 1)
+            ledger.add(item)
+            ledger.save("fixture")
+            path = _save_review(ledger, self._payload(ledger), "20260918-100000.json")
+            result = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp)
+            self.assertEqual(1, result["imported"])
+
 
 @skip_unless_ffmpeg
 class PermitOnPendingCandidateTests(unittest.TestCase):

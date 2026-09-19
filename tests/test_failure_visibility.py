@@ -13,6 +13,7 @@ import json
 import os
 import stat
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -256,6 +257,54 @@ class RedactExtendedScrubbingTests(unittest.TestCase):
                 if expect_absent:
                     self.assertNotIn(expect_absent, result)
 
+    def test_table_widened_query_and_header_patterns(self):
+        """The `\\b` anchor used to miss a keyword-suffixed identifier
+        (`access_token=`, `api_key=`, `apikey=`), and header redaction used to miss
+        a JSON/dict-rendered header name and a bare `Bearer <token>`."""
+        cases = [
+            ("access_token=ya29.SECRETVALUE no corpo", "[REDACTED]", "ya29.SECRETVALUE"),
+            ("apikey=SECRETVALUE sem separador", "[REDACTED]", "SECRETVALUE"),
+            ("api_key=SECRETVALUE com underscore", "[REDACTED]", "SECRETVALUE"),
+            ("client_secret=SECRETVALUE oauth", "[REDACTED]", "SECRETVALUE"),
+            ("password=SECRETVALUE login", "[REDACTED]", "SECRETVALUE"),
+            ("X-Amz-Signature=SECRETVALUE assinado", "[REDACTED]", "SECRETVALUE"),
+            ("Key-Pair-Id=SECRETVALUE cloudfront", "[REDACTED]", "SECRETVALUE"),
+            ("Policy=SECRETVALUE cloudfront", "[REDACTED]", "SECRETVALUE"),
+            ('{"Authorization": "Bearer SECRETVALUE"}', "[REDACTED]", "SECRETVALUE"),
+            ("{'Authorization': 'Bearer SECRETVALUE'}", "[REDACTED]", "SECRETVALUE"),
+            ("headers={'X-Api-Key': 'SECRETVALUE'}", "[REDACTED]", "SECRETVALUE"),
+            ("Bearer SECRETVALUE12 sem nome de header", "[REDACTED]", "SECRETVALUE12"),
+        ]
+        for text, expect_present, expect_absent in cases:
+            with self.subTest(text=text):
+                result = runtime.redact(text)
+                self.assertIn(expect_present, result)
+                self.assertNotIn(expect_absent, result)
+
+    def test_prose_mentioning_token_or_chave_with_no_value_stays_intact(self):
+        """A widened pattern must not fire on ordinary prose that merely contains
+        one of the trigger words without an `=`/`:` value attached."""
+        cases = [
+            "esse token não tem valor nenhum aqui, só a palavra",
+            "troque a chave da porta antes de sair",
+            '--statement "aprovo isso, mesmo citando token e chave no texto"',
+        ]
+        for text in cases:
+            with self.subTest(text=text):
+                self.assertEqual(text, runtime.redact(text))
+
+    def test_redact_stays_linear_on_a_large_adversarial_string(self):
+        """No nested quantifiers were introduced: the widened patterns must stay
+        linear, not blow up on a 100k-char string engineered to maximize
+        backtracking attempts."""
+        import time
+
+        adversarial = "key" * 20000 + "token=" * 10000 + "Bearer " * 10000 + "a" * 30000
+        started = time.monotonic()
+        runtime.redact(adversarial)
+        elapsed = time.monotonic() - started
+        self.assertLess(elapsed, 1.0, f"redact() took {elapsed:.3f}s on a 100k-char input")
+
     def test_existing_provider_key_and_url_redaction_still_works(self):
         with patch.dict(os.environ, {"PEXELS_API_KEY": "pexels-secret-key"}):
             result = runtime.redact("chave pexels-secret-key na URL https://example.org/x?key=1")
@@ -272,6 +321,27 @@ class RedactExtendedScrubbingTests(unittest.TestCase):
         for value in (None, 123, b"bytes", ["a", "list"], {"a": 1}):
             with self.subTest(value=value):
                 runtime.redact(value)  # must not raise
+
+    def test_the_character_before_the_name_survives_redaction(self):
+        self.assertEqual(
+            "Defina PEXELS_API_KEY=[REDACTED] no .env", runtime.redact("Defina PEXELS_API_KEY=suachave no .env")
+        )
+
+    def test_words_that_merely_end_in_a_secret_word_are_left_alone(self):
+        text = "monkey=banana e turkey=1 e hotkey=ctrl"
+        self.assertEqual(text, runtime.redact(text))
+
+    def test_glued_spellings_are_still_caught(self):
+        result = runtime.redact("apikey=aaa111 accesstoken=bbb222 api_key=ccc333 access_token=ddd444")
+        for secret in ("aaa111", "bbb222", "ccc333", "ddd444"):
+            self.assertNotIn(secret, result)
+
+    def test_a_long_run_of_separators_before_a_secret_name_stays_linear(self):
+        # An unbounded name prefix rescans the rest of the text from every `-`: quadratic.
+        for shape in (("-" * 100_000) + "key=x", ("_.-" * 33_000) + "sig=x"):
+            started = time.perf_counter()
+            runtime.redact(shape)
+            self.assertLess(time.perf_counter() - started, 5.0)
 
     def test_redact_leaves_paths_intact_so_the_message_stays_actionable(self):
         # The person (or the agent driving the CLI) copies paths out of error

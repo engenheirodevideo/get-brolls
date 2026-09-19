@@ -72,7 +72,7 @@ def _strip_never_inherited(path, data, warnings, label):
                 "responsabilidade e declaração valem só no projeto em que o "
                 "vídeo é feito. Preencha no RULES.md deste projeto."
             )
-            logs.event(log, logging.INFO, "rules_key_not_inherited", key=key, layer=label)
+            logs.event(log, logging.INFO, "rules_key_not_inherited", rule=key, layer=label)
     return data
 
 

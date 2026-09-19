@@ -48,8 +48,10 @@ def validate_manifest(data):  # noqa: C901, PLR0912 - existing size; validator w
                 if not isinstance(c.get(field), str):
                     raise ValueError
             # Older manifests on disk predate this field: only refuse a value that is
-            # present and unrecognized, never its absence.
-            if "schema_version" in c and c["schema_version"] != 1:
+            # present and unrecognized, never its absence. Same strictness as the
+            # top-level check above: `True == 1` and `1.0 == 1` must not pass as the
+            # int `1`.
+            if "schema_version" in c and (type(c["schema_version"]) is not int or c["schema_version"] != 1):
                 raise ValueError
             for field in (
                 "media",

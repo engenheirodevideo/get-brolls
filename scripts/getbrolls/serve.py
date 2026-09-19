@@ -73,6 +73,31 @@ class _ExclusiveServer(ThreadingHTTPServer):
     session_id: str = ""
 
 
+def _resolve_allowed_target(base, parts, relative):
+    """Resolve the top-level allowed folder and the request's target file for
+    `_served_file_allowed`. Returns `(folder, resolved)`, or `None` when the folder
+    is a symlink, resolution fails, or the resolved folder is not a direct child of
+    the served directory (see `_served_file_allowed` for why each check exists).
+    """
+    unresolved_folder = base / parts[0]
+    # `previews`/`clips` resolved THROUGH its own symlink would serve the whole link
+    # target tree; only a real folder directly under the served directory is trusted
+    # as an allowlisted top-level folder.
+    if unresolved_folder.is_symlink():
+        return None
+    try:
+        served_root = base.resolve(strict=False)
+        folder = unresolved_folder.resolve(strict=False)
+        resolved = (base / relative).resolve(strict=False)
+    except (OSError, ValueError):
+        # `ValueError` covers an embedded NUL byte (e.g. a percent-encoded `%00` in
+        # the request path), which `Path.resolve()` raises instead of `OSError`.
+        return None
+    if folder.parent != served_root:
+        return None
+    return folder, resolved
+
+
 class _NoCacheHandler(SimpleHTTPRequestHandler):
     """SimpleHTTPRequestHandler servindo um diretório fixo, sem cache e sem log no console.
 
@@ -121,11 +146,10 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
             return False
         if any(part.startswith(".") for part in parts):
             return False
-        try:
-            folder = (base / parts[0]).resolve(strict=False)
-            resolved = (base / relative).resolve(strict=False)
-        except OSError:
+        target = _resolve_allowed_target(base, parts, relative)
+        if target is None:
             return False
+        folder, resolved = target
         return folder in resolved.parents
 
     def list_directory(self, path):
@@ -507,9 +531,13 @@ def _rotate_log(log):
                 stream.seek(-LOG_KEEP_BYTES, os.SEEK_END)
             kept = stream.read()
         rotated = log.with_name(LOG_ROTATE_FILE)
-        rotated.write_bytes(kept)
-        with contextlib.suppress(OSError):
-            rotated.chmod(0o600)
+        # Same discipline as `_write_private_text`: private from the first byte, and
+        # `O_NOFOLLOW` refuses a symlink planted at the rotated name instead of
+        # writing through it.
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+        handle = os.open(rotated, flags, 0o600)
+        with os.fdopen(handle, "wb") as stream:
+            stream.write(kept)
     except OSError:
         return
 

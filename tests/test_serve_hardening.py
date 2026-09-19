@@ -225,6 +225,22 @@ class EncodedPathAllowlistTests(unittest.TestCase):
                     with self.subTest(refused=raw):
                         self.assertEqual(404, self._status(port, raw))
 
+    def test_a_percent_encoded_nul_byte_is_refused_without_killing_the_server(self):
+        """A `%00` decodes to an embedded NUL, which makes `Path.resolve()` raise
+        `ValueError` instead of `OSError`. Both must be caught: the request answers 404,
+        and the worker thread must not die (the server keeps answering afterwards)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _project_with_review(Path(tmp))
+            brolls = root / "brolls"
+            (brolls / "previews").mkdir()
+            (brolls / "previews" / "poster.jpg").write_bytes(b"poster")
+            with _serving(root) as (_server, port):
+                for raw in ("/previews/%00x.jpg", "/previews/%00../manifest.json"):
+                    with self.subTest(refused=raw):
+                        self.assertEqual(404, self._status(port, raw))
+                # The server must still be alive and answering the next request.
+                self.assertEqual(200, self._status(port, "/previews/poster.jpg"))
+
 
 class SymlinkEscapeTests(unittest.TestCase):
     """Um symlink plantado dentro de previews/ não pode servir arquivo de fora."""
@@ -245,6 +261,28 @@ class SymlinkEscapeTests(unittest.TestCase):
                     self.assertEqual(404, ctx.exception.code)
             finally:
                 outside.unlink(missing_ok=True)
+
+    @unittest.skipIf(os.name == "nt", "symlinks sem privilégio não são criáveis no Windows")
+    def test_previews_itself_as_a_symlink_to_an_outside_folder_is_refused(self):
+        """`brolls/previews` resolved THROUGH its own symlink used to serve the whole
+        target tree: the allowlist check must refuse when the top-level folder is a
+        link, not just when a file inside it is."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _project_with_review(Path(tmp))
+            outside = Path(tmp).parent / f"gb-outside-dir-{os.getpid()}"
+            outside.mkdir()
+            (outside / "secret.txt").write_text("segredo", encoding="utf-8")
+            try:
+                (root / "brolls" / "previews").symlink_to(outside, target_is_directory=True)
+                with _serving(root) as (_server, port):
+                    with self.assertRaises(urllib.error.HTTPError) as ctx:
+                        urllib.request.urlopen(f"http://127.0.0.1:{port}/previews/secret.txt", timeout=5)
+                    self.assertEqual(404, ctx.exception.code)
+            finally:
+                (root / "brolls" / "previews").unlink()
+                import shutil
+
+                shutil.rmtree(outside)
 
 
 class PrivateFileModeTests(unittest.TestCase):
@@ -279,6 +317,38 @@ class PrivateFileModeTests(unittest.TestCase):
                 self.assertEqual(0, stat.S_IMODE(log_file.stat().st_mode) & 0o077)
             finally:
                 serve.stop(root)
+
+
+class LogRotationTests(unittest.TestCase):
+    """Item 6: `.serve.log.1` is created private (never world-readable, never a
+    symlink target) instead of written-then-chmod'd."""
+
+    @unittest.skipIf(os.name == "nt", "bits de permissão são um conceito POSIX")
+    def test_rotated_log_is_0600_right_after_rotation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _project_with_review(Path(tmp))
+            log = root / "brolls" / serve.LOG_FILE
+            log.write_text("log da rodada anterior\n", encoding="utf-8")
+            log.chmod(0o644)
+            serve._rotate_log(log)
+            rotated = root / "brolls" / serve.LOG_ROTATE_FILE
+            self.assertTrue(rotated.is_file())
+            self.assertEqual(0, stat.S_IMODE(rotated.stat().st_mode) & 0o077)
+            self.assertEqual("log da rodada anterior\n", rotated.read_text(encoding="utf-8"))
+
+    @unittest.skipIf(os.name == "nt", "symlinks sem privilégio não são criáveis no Windows")
+    def test_a_symlink_planted_at_the_rotated_name_is_not_written_through(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _project_with_review(Path(tmp))
+            brolls = root / "brolls"
+            log = brolls / serve.LOG_FILE
+            log.write_text("conteudo novo\n", encoding="utf-8")
+            victim = brolls / "victim.txt"
+            victim.write_text("nao mexer", encoding="utf-8")
+            rotated = brolls / serve.LOG_ROTATE_FILE
+            rotated.symlink_to(victim)
+            serve._rotate_log(log)
+            self.assertEqual("nao mexer", victim.read_text(encoding="utf-8"))
 
 
 class BackgroundEnvironmentTests(unittest.TestCase):

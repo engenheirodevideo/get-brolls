@@ -25,6 +25,7 @@ import re
 import shutil
 import stat
 import unicodedata
+from collections import namedtuple
 from datetime import date
 from pathlib import Path
 
@@ -408,16 +409,19 @@ def _brief_beats(project):
 def _plan(project, items):
     """Um grupo por beat, na ordem do brief; sem brief, na ordem do manifesto.
 
-    Fica de fora quem não tem `output.path`, quem tem `output.verified` explicitamente
-    `False` (verificação de sha256 que falhou) e quem foi rejeitado na aprovação — mesmo
-    que `reject` já limpe `output` nesses casos, a checagem aqui é defesa extra. Um item
-    sem a chave `verified`, ou com ela em `True`, segue endereçado normalmente.
+    Fica de fora quem não tem `output.path`, quem tem a chave `output.verified`
+    presente com um valor falso (`False`, `0`, `None` — verificação de sha256 que
+    falhou ou nunca rodou) e quem foi rejeitado na aprovação — mesmo que `reject` já
+    limpe `output` nesses casos, a checagem aqui é defesa extra. Um item sem a chave
+    `verified` (manifesto antigo) segue endereçado normalmente; a mesma regra que
+    `STAGE_TESTS["verified"]` usa em `commands.py`.
     """
     collected, skipped = [], []
     for c in items:
-        if not (c.get("output") or {}).get("path"):
+        output = c.get("output") or {}
+        if not output.get("path"):
             continue
-        if (c.get("output") or {}).get("verified") is False:
+        if "verified" in output and not output["verified"]:
             skipped.append(
                 {
                     "id": c["id"],
@@ -532,29 +536,66 @@ def _confined(path, real_root):
     return parent_real == real_root or real_root in parent_real.parents
 
 
+_SweepContext = namedtuple("_SweepContext", "expected dry_run owned brolls_root real_root")
+
+
+def _sweep_empty_directory(path, rel, ctx):
+    """One orphaned-beat-directory candidate for `_sweep`: `"removed"`, `"kept"`, or
+    `None` (not a candidate at all — same gate `_sweep` used to apply inline).
+
+    A symlinked "directory" needs its own removal path: `rmdir` on a symlink to an
+    empty directory raises `NotADirectoryError` on POSIX, and blindly removing it
+    could take someone else's folder with it. It is only `unlink()`'d (never
+    `rmdir()`'d) when the same rules that already cover a symlinked FILE — `_ours`
+    and `_symlink_targets_brolls` — recognize it as this generator's own; otherwise
+    it is foreign and stays. A real empty directory that fails to `rmdir`
+    (permissions, a race) is left in place and reported as a warning, never an
+    aborted delivery.
+    """
+    if not (
+        BEAT_DIR_RE.match(path.name)
+        and not any(path.iterdir())
+        and rel not in ctx.expected
+        and _confined(path, ctx.real_root)
+    ):
+        return None
+    if path.is_symlink():
+        if not _ours(rel, path, ctx.owned, ctx.brolls_root):
+            return "kept"
+        if not ctx.dry_run:
+            _thaw_unlink(path)
+        return "removed"
+    if not ctx.dry_run:
+        try:
+            path.rmdir()
+        except OSError as exc:
+            record_warning(
+                "DELIVERY_SWEEP_RMDIR_FAILED",
+                f"Não consegui apagar a pasta vazia {path} ({exc}); ela continua em entrega/.",
+            )
+            return None
+    return "removed"
+
+
 def _sweep(root, expected, dry_run, owned=(), brolls_root=None):
     """Apaga só o que este gerador escreveu e que deixou de existir no plano."""
     removed, kept = [], []
     owned = set(owned)
     if not root.is_dir():
         return removed, kept
-    real_root = root.resolve()
+    ctx = _SweepContext(expected, dry_run, owned, brolls_root, root.resolve())
     for path in sorted(root.rglob("*"), reverse=True):
         rel = path.relative_to(root).as_posix()
         if path.is_dir():
-            if (
-                BEAT_DIR_RE.match(path.name)
-                and not any(path.iterdir())
-                and rel not in expected
-                and _confined(path, real_root)
-            ):
-                if not dry_run:
-                    path.rmdir()
+            outcome = _sweep_empty_directory(path, rel, ctx)
+            if outcome == "removed":
                 removed.append(rel)
+            elif outcome == "kept":
+                kept.append(rel)
             continue
         if rel in expected:
             continue
-        if _ours(rel, path, owned, brolls_root) and _confined(path, real_root):
+        if _ours(rel, path, owned, brolls_root) and _confined(path, ctx.real_root):
             if not dry_run:
                 _thaw_unlink(path)
             removed.append(rel)

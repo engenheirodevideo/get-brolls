@@ -100,7 +100,8 @@ class RulesLayersLoggingTests(unittest.TestCase):
             load_rules(self.project)
         joined = _joined(cm)
         self.assertIn("event=rules_key_not_inherited", joined)
-        self.assertIn("key=copyright", joined)
+        # The field is `rule=`, not `key=`: `key=` reads as a secret assignment to the redaction filter.
+        self.assertIn("rule=copyright", joined)
         self.assertIn("layer=global", joined)
 
 

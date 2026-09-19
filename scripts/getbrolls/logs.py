@@ -33,7 +33,10 @@ _LEVELS = {
     "WARNING": logging.WARNING,
     "ERROR": logging.ERROR,
 }
-_UNQUOTED_SAFE = re.compile(r'[\s"\'=]')
+# Control characters (ESC, NUL, backspace, ...) force quoting too, even with no
+# space/quote/`=` in the value: unquoted they reach the log raw and a later
+# `cat`/`less -R` of the file would render them as terminal control codes.
+_UNQUOTED_SAFE = re.compile(r'[\s"\'=]|[\x00-\x1f\x7f]')
 _MAX_VALUE_CHARS = 500
 MAX_BYTES = 1_000_000
 BACKUP_COUNT = 3
@@ -108,13 +111,20 @@ class _LineFormatter(logging.Formatter):
 
 
 def _format_value(value):
-    """One log field's value: `-` for None, quoted when it needs to be, capped at 500 chars."""
+    """One log field's value: `-` for None, redacted, quoted when it needs to be,
+    capped at 500 chars.
+
+    Redaction runs BEFORE the length cut: a secret that starts before char 500 and
+    ends after it must not survive as a visible prefix once the tail is cut off.
+    """
     if value is None:
         return "-"
     try:
         text = str(value)
     except Exception:  # noqa: BLE001 - logging must never break a command
         text = "<unrepr>"
+    with contextlib.suppress(Exception):  # logging must never break a command
+        text = runtime.scrub_home(runtime.redact(text))
     if len(text) > _MAX_VALUE_CHARS:
         text = text[:_MAX_VALUE_CHARS]
     if text == "" or _UNQUOTED_SAFE.search(text):

@@ -158,6 +158,55 @@ class SymlinkedDeliveryRoot(unittest.TestCase):
             finally:
                 beat_link.unlink()
 
+    def test_a_real_empty_beat_directory_rmdir_failure_is_a_warning_not_a_crash(self):
+        """The same non-fatal contract `_freeze` already has: an `OSError` while
+        removing an empty, orphaned beat directory must not abort `_sweep`."""
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "entrega"
+            root.mkdir()
+            beat_dir = root / "01-abertura-alvo"
+            beat_dir.mkdir()
+
+            def refuse(*_args, **_kwargs):
+                raise OSError(13, "Permission denied")
+
+            event = {"warnings": [], "state_committed": False}
+            token = runtime.ACTIVE.set(event)
+            try:
+                with patch.object(Path, "rmdir", refuse):
+                    removed, kept = delivery._sweep(root, expected=set(), dry_run=False, owned=(), brolls_root=None)
+            finally:
+                runtime.ACTIVE.reset(token)
+            self.assertEqual([], removed)
+            self.assertEqual([], kept)
+            self.assertTrue(beat_dir.is_dir())
+            self.assertTrue(any(w["code"] == "DELIVERY_SWEEP_RMDIR_FAILED" for w in event["warnings"]))
+
+    def test_an_empty_symlinked_beat_directory_is_kept_not_crashed_on(self):
+        """Finding: `path.is_dir()` follows symlinks, so a symlink named like a beat
+        directory pointing at an EMPTY outside directory used to satisfy the
+        `rmdir` gate and then raise `NotADirectoryError`, breaking `deliver` for
+        good until someone found and removed the link by hand."""
+        with tempfile.TemporaryDirectory() as tmp:
+            if not _symlinks_available(tmp):
+                self.skipTest("symlinks indisponíveis neste ambiente")
+            root = Path(tmp) / "entrega"
+            root.mkdir()
+            empty_outside = Path(tmp) / "vazio-de-fora"
+            empty_outside.mkdir()
+            beat_link = root / "01-abertura-alvo"
+            beat_link.symlink_to(empty_outside, target_is_directory=True)
+            try:
+                removed, kept = delivery._sweep(root, expected=set(), dry_run=False, owned=(), brolls_root=None)
+                self.assertEqual([], removed)
+                self.assertEqual(["01-abertura-alvo"], kept)
+                self.assertTrue(beat_link.is_symlink())
+                self.assertTrue(empty_outside.is_dir())
+            finally:
+                beat_link.unlink()
+
 
 @unittest.skipIf(os.name == "nt", "Symlinks exigem privilégio extra no Windows nativo.")
 class ForeignSymlinksSurviveSweep(unittest.TestCase):
@@ -302,15 +351,20 @@ class UnverifiedAndRejectedItemsAreNeverDelivered(unittest.TestCase):
             self.assertEqual(1, len(report["skipped"]))
             self.assertEqual(bad["id"], report["skipped"][0]["id"])
 
-    def test_an_item_with_verified_unset_still_delivers_normally(self):
-        """`verified: None` (nem `True` nem `False` explícito) não pode mudar o comportamento."""
-        with tempfile.TemporaryDirectory() as tmp:
-            fine = fetched("a", "Palco", shot="abertura")
-            fine["output"]["verified"] = None
-            project(tmp, [fine])
-            report = delivery.build_delivery(tmp)
-            self.assertEqual(1, len(report["items"]))
-            self.assertEqual([], report["skipped"])
+    def test_falsy_but_not_the_false_singleton_is_also_skipped(self):
+        """Finding: the old guard used `is False`, so `0`/`None` (falsy, but not the
+        `False` singleton) slipped through and were delivered anyway, while
+        `STAGE_TESTS["verified"]` in commands.py (which uses `bool(...)`) already
+        reported the same item as unverified — an inconsistent reader."""
+        for falsy in (0, None, 0.0, ""):
+            with self.subTest(verified=falsy), tempfile.TemporaryDirectory() as tmp:
+                bad = fetched("a", "Palco", shot="abertura")
+                bad["output"]["verified"] = falsy
+                project(tmp, [bad])
+                report = delivery.build_delivery(tmp)
+                self.assertEqual([], report["items"])
+                self.assertEqual(1, len(report["skipped"]))
+                self.assertEqual(bad["id"], report["skipped"][0]["id"])
 
     def test_an_item_with_verified_true_still_delivers_normally(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -320,6 +374,18 @@ class UnverifiedAndRejectedItemsAreNeverDelivered(unittest.TestCase):
             report = delivery.build_delivery(tmp)
             self.assertEqual(1, len(report["items"]))
             self.assertEqual([], report["skipped"])
+
+    def test_an_item_whose_output_has_no_verified_key_still_delivers(self):
+        """Older manifests written before `verified` existed must keep delivering:
+        the rule is about a falsy value that IS present, not about absence."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fine = fetched("a", "Palco", shot="abertura")
+            del fine["output"]["verified"]
+            # `validate_manifest` requires the key, so this bypasses the ledger and
+            # calls `_plan` directly, the way a hand-edited old manifest would look.
+            groups, skipped = delivery._plan(tmp, [fine])
+            self.assertEqual([], skipped)
+            self.assertEqual(1, sum(len(g["items"]) for g in groups))
 
     def test_a_freshly_fetched_clip_with_no_shot_still_delivers_as_an_orphan(self):
         """`fetch` grava `verified: True`; a checagem não pode excluir clipes recém-buscados."""
