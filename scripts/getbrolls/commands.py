@@ -167,6 +167,9 @@ PREVIEW_ARTIFACTS = ("gif_path", "contact_sheet_path", "poster_path")
 # API de vídeo casa por palavra: a frase inteira volta vazia sem explicar por quê.
 SEARCH_QUERY_TOKENS = 6
 
+# Quantos títulos o resumo falado de busca mostra antes de dizer "e mais N na lista".
+SEARCH_SUMMARY_PREVIEW_TITLES = 3
+
 # `--shot` de `search` e de `resolve` valem a mesma coisa: o beat vira sufixo do id.
 SHOT_RE = r"[A-Za-z0-9_-]{1,80}"
 
@@ -214,7 +217,7 @@ def _check_declared_by(name):
             f"--declared-by recusa {parts[0]!r}: isso não identifica ninguém. "
             "Escreva o nome e o sobrenome de quem assume a responsabilidade."
         )
-    if len(parts) < 2:
+    if len(parts) < 2:  # noqa: PLR2004 - nome e sobrenome, o mínimo de palavras exigido pela mensagem abaixo
         raise ValueError(
             "--declared-by precisa de pelo menos duas palavras (nome e sobrenome, ou "
             f"nome e inicial). {name!r} tem só uma: quem assina precisa dar para "
@@ -588,7 +591,7 @@ def library_command(args):
     from getbrolls import library
 
     if args.command == "library":
-        if not 1 <= args.limit <= 20:
+        if not 1 <= args.limit <= 20:  # noqa: PLR2004 - matches the "--limit entre 1 e 20" message below
             raise ValueError("Use --limit entre 1 e 20.")
         return library.search(args.search, limit=args.limit)
     given = [
@@ -679,7 +682,7 @@ def reject_all(ledger, only, reason=None):
     }
 
 
-def approve_all(ledger, args, rules, only=None):
+def approve_all(ledger, args, rules, only=None):  # noqa: C901, PLR0912 - existing size; one branch per rejection reason across the batch
     """Aplica a mesma decisão humana a vários itens de uma vez.
 
     `only` é a lista de IDs que o agente disse ter mostrado à pessoa: aprova
@@ -775,7 +778,7 @@ def _search_row(c):
     return row
 
 
-def search_summary_line(rows, excluded, errors, dry_run, query_used=None, retry=None):
+def search_summary_line(rows, excluded, errors, dry_run, query_used=None, retry=None):  # noqa: PLR0913 - existing size; one field per fact the spoken summary line reports
     """Quantos vieram e quais são os três primeiros — o resumo que cabe numa fala.
 
     Zero candidatos nunca sai calado: a linha diz qual query a fonte recebeu e, se
@@ -790,10 +793,10 @@ def search_summary_line(rows, excluded, errors, dry_run, query_used=None, retry=
         else:
             line += " Tente termos mais curtos (entidade + ação), ou registre a URL direto com `resolve --url`."
     else:
-        titles = [str(r.get("title") or r.get("id")) for r in rows[:3]]
+        titles = [str(r.get("title") or r.get("id")) for r in rows[:SEARCH_SUMMARY_PREVIEW_TITLES]]
         line = f"{_count(len(rows), 'candidato', 'candidatos')}: " + ", ".join(titles) + "."
-        if len(rows) > 3:
-            line += f" (+{len(rows) - 3} na lista)"
+        if len(rows) > SEARCH_SUMMARY_PREVIEW_TITLES:
+            line += f" (+{len(rows) - SEARCH_SUMMARY_PREVIEW_TITLES} na lista)"
     if excluded:
         line += f" {_count(excluded, 'excluído pelas regras', 'excluídos pelas regras')}."
     if errors:
@@ -1322,7 +1325,7 @@ def _inspect_windows_source(windows):
     return "none"
 
 
-def execute(args):
+def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shrink when the dispatcher is split
     from getbrolls.config import load_env, settings
 
     if args.env_file and not Path(args.env_file).is_file():
@@ -1500,7 +1503,7 @@ def execute(args):
                 "note": "APIs atuais pesquisam vídeos. Para imagem/notícia use importação local ou browser-plan.",
             }
         args.provider = {"pixel": "pexels", "getbrolls": "auto"}.get(args.provider, args.provider)
-        if not 1 <= args.limit <= 50:
+        if not 1 <= args.limit <= 50:  # noqa: PLR2004 - matches the "--limit entre 1 e 50" message below
             raise ValueError("Use --limit entre 1 e 50.")
         shot = (getattr(args, "shot", None) or "").strip() or None
         # Mesma regra de `resolve --shot`: o beat vira sufixo do id, e é isso que
@@ -1784,7 +1787,7 @@ def execute(args):
                     {
                         "id": c["id"],
                         "media": info,
-                        "hd": min(info["width"], info["height"]) >= 1080,
+                        "hd": min(info["width"], info["height"]) >= 1080,  # noqa: PLR2004 - 1080p, o piso convencional de "HD"
                     }
                 )
         # `entrega/` é camada derivada: refazê-la nunca pode reprovar a conferência dos
@@ -1891,7 +1894,7 @@ def execute(args):
             name = (args.declared_by or "").strip()
             text = (args.declaration_text or "").strip()
             _check_declared_by(name)
-            if len(text) < 20:
+            if len(text) < 20:  # noqa: PLR2004 - matches the "20 caracteres ou mais" message below
                 raise ValueError("--declaration-text precisa da frase literal da pessoa, com 20 caracteres ou mais.")
             evidence = "Declaração do usuário " + name + ": " + text
             c["rights"]["basis"] = "user_declaration"
@@ -2211,6 +2214,9 @@ def preview_files(ledger, c):
 # Fonte acima disto já é vídeo de evento inteiro/livestream: o trecho existe, mas
 # achar onde ele está custa caro, e vale avisar antes de pedir mídia.
 LONG_SOURCE_S = 1800
+
+# Folga de ponto flutuante ao comparar tempos de mídia (start/end/duração) em segundos.
+TIME_TOLERANCE_S = 0.1
 # "360" solto no título ou nas tags do vídeo; `360p` e `1360` não contam.
 _THREE_SIXTY = re.compile(r"(?<![0-9a-zA-Z])360(?![0-9a-zA-Z])", re.IGNORECASE)
 
@@ -2286,7 +2292,7 @@ def inspect_source(ledger, args, config=None):
     from .inspecting import candidate_windows
     from .social import probe_remote
 
-    if args.max_windows is not None and not 1 <= args.max_windows <= 20:
+    if args.max_windows is not None and not 1 <= args.max_windows <= 20:  # noqa: PLR2004 - matches the "--max-windows entre 1 e 20" message below
         raise ValueError("Use --max-windows entre 1 e 20.")
     c = None
     if args.candidate:
@@ -2447,7 +2453,7 @@ def _scan_note(start, end, duration, ceiling, has_segment=False):
         if has_segment
         else ""
     )
-    if end >= duration - 0.1 and start <= 0.1:
+    if end >= duration - TIME_TOLERANCE_S and start <= TIME_TOLERANCE_S:
         return f"Baixei e varri o vídeo inteiro ({span:.0f} s) para montar a grade." + ignored
     if span >= float(ceiling) - 0.1 and duration > float(ceiling):
         return (
@@ -2463,7 +2469,7 @@ def _scan_note(start, end, duration, ceiling, has_segment=False):
     )
 
 
-def scan_candidate(ledger, c, config):
+def scan_candidate(ledger, c, config):  # noqa: C901 - existing size; contact-sheet setup with one branch per cache/state check
     """Contact sheet de baixa resolução do vídeo inteiro; não escolhe intervalo nenhum."""
     from .media import scan_sheet
 

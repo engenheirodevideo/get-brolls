@@ -178,7 +178,7 @@ def _thaw_unlink(path):
     path.unlink()
 
 
-def link_or_copy(src, dest, read_only=False):
+def link_or_copy(src, dest, read_only=False):  # noqa: C901, PLR0912 - existing size; hardlink/reflink/copy fallback ladder across OSes
     """Liga `dest` a `src` pelo jeito mais barato que o sistema aceitar.
 
     Hardlink primeiro (não ocupa disco e não quebra ao mover a pasta de dentro),
@@ -564,7 +564,7 @@ def _sweep(root, expected, dry_run, owned=(), brolls_root=None):
     return removed, kept
 
 
-def build_delivery(project, dry_run=False, ledger=None, for_human=None):
+def build_delivery(project, dry_run=False, ledger=None, for_human=None):  # noqa: C901, PLR0912, PLR0915 - existing size; rebuilds `entrega/` through every item/state combination
     """Refaz `entrega/` a partir do que já está coletado em `brolls/`.
 
     Não toca em `brolls/`, não decide nada e não inventa direito de uso: só reorganiza

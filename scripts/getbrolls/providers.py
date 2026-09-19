@@ -97,9 +97,9 @@ MEDIA_AWARE = ("nasa", "commons")
 
 
 def search(provider, query, limit=8, media="any"):
-    if not isinstance(limit, int) or not 1 <= limit <= 50:
+    if not isinstance(limit, int) or not 1 <= limit <= 50:  # noqa: PLR2004 - matches the "entre 1 e 50" message below
         raise ProviderError("Limite deve estar entre 1 e 50")
-    if not isinstance(query, str) or not query.strip() or len(query) > 500:
+    if not isinstance(query, str) or not query.strip() or len(query) > 500:  # noqa: PLR2004 - matches the "entre 1 e 500 caracteres" message below
         raise ProviderError("Consulta deve ter entre 1 e 500 caracteres")
     if media not in MEDIA_CHOICES:
         raise ProviderError("--media aceita image, video ou any")
@@ -397,7 +397,7 @@ def _nasa_details(ident):
     return item
 
 
-def resolve(url):
+def resolve(url):  # noqa: C901 - existing size; one branch per recognized source host/URL shape
     if not public_url(url):
         raise ProviderError("Forneça URL pública HTTPS sem credenciais")
     p = urlsplit(url)
@@ -410,7 +410,7 @@ def resolve(url):
             else (parse_qs(p.query).get("v") or [None])[0]
             if path == "watch"
             else path.split("/")[1]
-            if path.startswith(("shorts/", "embed/")) and len(path.split("/")) == 2
+            if path.startswith(("shorts/", "embed/")) and len(path.split("/")) == 2  # noqa: PLR2004 - caminho "shorts/<id>" ou "embed/<id>": exatamente 2 partes
             else None
         )
         if not ident or not re.fullmatch(r"[A-Za-z0-9_-]{11}", ident):

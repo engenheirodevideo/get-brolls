@@ -136,7 +136,7 @@ def rules_layers(project):
     return layers, warnings
 
 
-def load_rules(project):
+def load_rules(project):  # noqa: C901, PLR0912 - existing size; validator with one check per RULES.md field
     layers, warnings = rules_layers(project)
     r, sources = {}, {}
     for path, data in layers:
@@ -218,7 +218,7 @@ def load_rules(project):
             'Em RULES.md, "browser" precisa de "viewport" ("mobile" ou "desktop") e de "full_page" (true ou false).'
         )
     for key in ("mobile_width", "mobile_height", "desktop_width", "desktop_height"):
-        if type(browser.get(key)) is not int or not 240 <= browser[key] <= 3840:
+        if type(browser.get(key)) is not int or not 240 <= browser[key] <= 3840:  # noqa: PLR2004 - matches the "entre 240 e 3840" message below
             raise ValueError("Em RULES.md, " + key + " tem que ser um número inteiro entre 240 e 3840.")
     # Optional `pacing` block for the social queue; the environment still wins.
     validate_pacing_block(r.get("pacing"))
@@ -281,7 +281,7 @@ def format_report(c, rules):
         else "native"
         if target == "native"
         else "matches"
-        if abs(w / h - (9 / 16 if target == "reels" else 16 / 9)) < 0.025
+        if abs(w / h - (9 / 16 if target == "reels" else 16 / 9)) < 0.025  # noqa: PLR2004 - folga de tolerância na razão de aspecto
         else "needs_layout_review"
     )
     return {

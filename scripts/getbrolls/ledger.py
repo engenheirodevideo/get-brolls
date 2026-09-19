@@ -30,7 +30,7 @@ def atomic_write(path, text):
         temp.unlink(missing_ok=True)
 
 
-def validate_manifest(data):
+def validate_manifest(data):  # noqa: C901, PLR0912 - existing size; validator with one check per manifest field
     try:
         if (
             not isinstance(data, dict)

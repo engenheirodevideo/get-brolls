@@ -956,7 +956,7 @@ def color_at(source_second):
     return list(SCAN_COLORS)[min(int(source_second // SCAN_BAND_S), len(SCAN_COLORS) - 1)]
 
 
-def cell_rgb(sheet, index, cols=4, width=240, height=136, padding=6, margin=6):
+def cell_rgb(sheet, index, cols=4, width=240, height=136, padding=6, margin=6):  # noqa: PLR0913 - existing size; one field per contact-sheet cell-geometry parameter
     """RGB do centro da célula `index` do contact sheet, sem dependência de imagem."""
     col, row = index % cols, index // cols
     x = margin + col * (width + padding) + width // 2

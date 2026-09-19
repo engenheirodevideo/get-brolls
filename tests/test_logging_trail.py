@@ -82,7 +82,7 @@ class CandidateWalkThroughLoggingTests(unittest.TestCase):
     """Walks one candidate through the whole approval/rights trail and checks
     the resulting `getbrolls.log` line by line."""
 
-    def test_the_full_trail_is_logged_in_order_with_the_right_fields(self):
+    def test_the_full_trail_is_logged_in_order_with_the_right_fields(self):  # noqa: PLR0915 - existing size; asserts every step of the approval/rights trail in order
         with tempfile.TemporaryDirectory() as tmp:
             root, src = _project(tmp)
             base = ["--project", str(root)]

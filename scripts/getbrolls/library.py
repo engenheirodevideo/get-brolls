@@ -256,7 +256,7 @@ def learn_query(query, provider, outcome, note=None, auto=False):
 def learn_preference(text, by=None):
     """Guarda uma preferência editorial dita por uma pessoa."""
     text = (text or "").strip()
-    if len(text) < 5:
+    if len(text) < 5:  # noqa: PLR2004 - matches the "pelo menos 5 caracteres" message below
         raise ValueError("Escreva a preferência como ela foi dita, com pelo menos 5 caracteres.")
     if not enabled():
         result = _off(entry=None)

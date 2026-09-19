@@ -190,7 +190,7 @@ def cache_direct_media(ledger, candidate, refresh=True):
     return final
 
 
-def prepare_source(ledger, candidate, start, end, tolerant=False):
+def prepare_source(ledger, candidate, start, end, tolerant=False):  # noqa: C901, PLR0915 - existing size; walks every source-readiness state (local/remote, cache hit/miss, tolerant)
     """Deixa a mídia de trabalho pronta para [start, end] em tempo da fonte.
 
     `tolerant=True` aceita que o arquivo baixado seja mais curto do que o pedido — é

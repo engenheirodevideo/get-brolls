@@ -37,7 +37,7 @@ def sleep_settings():
         values = tuple(int(part.strip()) for part in parts)
     except ValueError:
         values = ()
-    if len(values) != 3 or any(v < 0 for v in values) or values[1] > values[2]:
+    if len(values) != 3 or any(v < 0 for v in values) or values[1] > values[2]:  # noqa: PLR2004 - "requests,min,max": exatamente 3 campos
         raise ValueError('GB_YTDLP_SLEEP: use "requests,min,max" em segundos inteiros, com min <= max.')
     return values
 
@@ -252,7 +252,7 @@ SUBTITLE_LANGS = ("pt", "en")
 def _language_from(name):
     """`probe.pt.vtt` → `pt`; `probe.pt-BR.vtt` → `pt-BR`."""
     parts = Path(name).name.split(".")
-    return parts[-2] if len(parts) >= 3 else "und"
+    return parts[-2] if len(parts) >= 3 else "und"  # noqa: PLR2004 - "nome.idioma.vtt": pelo menos 3 partes (ver exemplo acima)
 
 
 # Teto da lista de idiomas na resposta: o YouTube anuncia centenas de traduções
@@ -345,7 +345,7 @@ def metadata(url):
     }
 
 
-def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):
+def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):  # noqa: C901 - existing size; one branch per cache/retry/subtitle-language outcome
     """O que a fonte conta sobre si: duração, capítulos, legendas e descrição.
 
     Um único pedido ao yt-dlp, sem baixar vídeo, com as mesmas pausas de

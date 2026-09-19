@@ -155,7 +155,7 @@ def _curl_resolution(host: str, source: Path) -> str | None:
         if any(not item.is_global for item in parsed):
             _die_url_refused("private_address", f"hostname do config curl resolveu para endereço privado: {source}")
         selected = parsed[0]
-        target = f"[{selected}]" if selected.version == 6 else str(selected)
+        target = f"[{selected}]" if selected.version == 6 else str(selected)  # noqa: PLR2004 - IP versão 6 (IPv6)
         return f"{host}:443:{target}"
     if not address.is_global:
         _die_url_refused("private_address", f"a URL do config curl não pode apontar para endereço privado: {source}")
@@ -287,7 +287,7 @@ def _log_pair_stage(stage: str | None, started: float, *, status: str, size: int
     )
 
 
-def download_or_reuse(
+def download_or_reuse(  # noqa: C901, PLR0913, PLR0915 - existing size; one download/reuse/verify branch per source combination
     *,
     cfg_path: Path,
     part_path: Path,
@@ -351,7 +351,7 @@ def download_or_reuse(
             stderr = exc.stderr or b""
             if isinstance(stderr, bytes):
                 stderr = stderr.decode("utf-8", errors="replace")
-            blocked = BLOCKED_RE.search(stderr) if exc.returncode == 22 else None
+            blocked = BLOCKED_RE.search(stderr) if exc.returncode == 22 else None  # noqa: PLR2004 - curl exit 22 (--fail), ver comentário no topo do arquivo
             if blocked:
                 _log_pair_stage(stage, started, status="error")
                 message = (
@@ -512,7 +512,7 @@ def publish_exclusive(source: Path, destination: Path) -> None:
         raise
 
 
-def process_one(
+def process_one(  # noqa: PLR0913 - existing size; one field per stem/config/output path the pair processor needs
     *,
     stem: str,
     video_config: Path,
@@ -773,7 +773,7 @@ def _record_failure(
     return None, None
 
 
-def run_batch(pairs, *, output_for, args) -> dict:
+def run_batch(pairs, *, output_for, args) -> dict:  # noqa: C901 - existing size; pace/cap/summary/block-detection loop over the stems
     """Processa stems em ordem com ritmo, teto por execução, resumo incremental e detecção de bloqueio."""
     low, high = parse_pace(args.pace)
     if args.max_per_run < 1:

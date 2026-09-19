@@ -8,7 +8,7 @@ from .media import image_preview, review_preview
 from .models import id_stem
 
 
-def prepare_preview(ledger, c, start, end, config):
+def prepare_preview(ledger, c, start, end, config):  # noqa: C901 - existing size; validates staleness/scope then dispatches by media kind
     src = c["local_path"]
     if digest(src) != c["local_sha256"]:
         raise ValueError("Original local mudou: importe novamente.")
@@ -27,7 +27,7 @@ def prepare_preview(ledger, c, start, end, config):
                 "GB_GIF_SCOPE=full exige --full-preview-file com a composição do insert. Forneça esse arquivo ou use GB_GIF_SCOPE=broll."
             )
         duration = c["full_preview_media"]["duration_s"]
-        if abs(duration - (end - start)) > 0.25:
+        if abs(duration - (end - start)) > 0.25:  # noqa: PLR2004 - folga de 0,25 s ao comparar a duração da composição com o trecho
             raise ValueError("A composição deve conter apenas o mesmo insert e ter a duração do trecho selecionado.")
         src = c["full_preview_path"]
         start = 0

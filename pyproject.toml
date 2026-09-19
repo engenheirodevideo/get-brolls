@@ -39,13 +39,20 @@ select = [
     "S",
     "T20",
     "ARG",
+    "C90",
+    "PLC",
+    "PLR",
 ]
 # `ruff format` já mantém o código em 120 colunas. O que sobra de E501 são
 # literais que não podem ser quebrados sem mudar o que a pessoa lê: mensagens
 # em português e os templates HTML do Storyboard.
 # RUF001/RUF002/RUF003: este projeto usa travessão, "×" e espaço fino de propósito
 # em mensagens e docs para quem lê em português; não são erros de digitação.
-ignore = ["E501", "RUF001", "RUF002", "RUF003"]
+# PLC0415: comandos de produção importam sob demanda de propósito, para o
+# start-up continuar rápido e para evitar ciclo de import (runtime↔logs,
+# runtime↔http, rules↔queue…); nos testes o import fica dentro do teste que
+# precisa do módulo para que `_isolation`/`_paths` rodem antes.
+ignore = ["E501", "RUF001", "RUF002", "RUF003", "PLC0415"]
 
 [tool.ruff.lint.per-file-ignores]
 # Os testes inserem `scripts/` em sys.path antes de importar `getbrolls`;

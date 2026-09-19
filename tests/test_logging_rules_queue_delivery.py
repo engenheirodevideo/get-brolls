@@ -440,7 +440,7 @@ class AcquisitionMaterializationLoggingTests(unittest.TestCase):
             self.assertIn("reason=digest_mismatch", joined)
 
 
-def _fetched(source_id, title, shot=None, clip="clips/x.mp4", sheet=None, creator=None):
+def _fetched(source_id, title, shot=None, clip="clips/x.mp4", sheet=None, creator=None):  # noqa: PLR0913 - existing size; one field per candidate attribute the fixture builds
     c = candidate("local", source_id, title, source_url="https://example.org/" + source_id)
     set_segment(c, 0, 2)
     c["creator"]["name"] = creator or "Autora Exemplo"

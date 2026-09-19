@@ -160,7 +160,7 @@ def contact_sheet_figure(candidate, sheet, esc):
     times = preview.get("frame_times_s") or []
     grid = preview.get("sheet_grid") or []
     caption = f"Os quadros do trecho ({len(times)})" if times else "Os quadros do trecho"
-    if len(grid) == 2:
+    if len(grid) == 2:  # noqa: PLR2004 - `grid` é [colunas, linhas]
         caption += f" · grade {grid[0]}×{grid[1]}"
     caption += " · " + cut_label(candidate)
     legend = ""

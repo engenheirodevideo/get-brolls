@@ -322,7 +322,7 @@ def preview(src, dst, start, end):
         raise ValueError("Não foi possível criar a prévia.")
 
 
-def review_preview(src, directory, stem, start, end, config, label=None):
+def review_preview(src, directory, stem, start, end, config, label=None):  # noqa: PLR0913 - existing size; one field per input the preview/contact-sheet/GIF build needs
     """Full selected interval, native aspect, static gallery and bounded GIF.
 
     The contact sheet follows the original gb_contact.sh: evenly sampled frames tiled
@@ -438,7 +438,7 @@ def review_preview(src, directory, stem, start, end, config, label=None):
     return result
 
 
-def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):
+def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):  # noqa: PLR0913 - existing size; one field per input the full-video contact sheet needs
     """Varredura do vídeo inteiro: um quadro a cada span/frames segundos, baixa resolução.
 
     Não é a prévia do trecho (essa é `review_preview`, presa a GB_PREVIEW_MAX_SECONDS):

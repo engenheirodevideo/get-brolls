@@ -83,7 +83,7 @@ def load_env(path):
                 f".env: variável desconhecida na linha {number}: {key}. Aceitas: " + ", ".join(sorted(KEYS)) + "."
             )
         if value[:1] in ('"', "'"):
-            if len(value) < 2 or value[-1] != value[0]:
+            if len(value) < 2 or value[-1] != value[0]:  # noqa: PLR2004 - par de aspas: abertura + fechamento
                 raise ValueError(f".env: aspas inválidas na linha {number}.")
             value = value[1:-1]
         os.environ.setdefault(key, value)

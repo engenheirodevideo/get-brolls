@@ -175,7 +175,7 @@ READ_ONLY_COMMANDS = ("status", "serve", "brief", "doctor")
 READ_ONLY_ACTIONS = {("queue", "status")}
 
 
-def audited(args, execute):
+def audited(args, execute):  # noqa: C901, PLR0912, PLR0915 - existing size; wraps every command with locking, logging and the audit trail
     started = time.monotonic()
     event = {
         "at": now(),

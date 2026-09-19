@@ -139,7 +139,7 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         origin = self.headers.get("Origin")
         return not (origin and origin != f"http://{host}")
 
-    def do_POST(self):
+    def do_POST(self):  # noqa: PLR0911 - existing size; one route per POST endpoint, one early return per refusal/response
         if not self._local_request():
             self._refuse(403, "Pedido de outra origem; este servidor só atende esta máquina.")
             return
@@ -324,7 +324,7 @@ def save_review(directory, data):
                     "decisões — o arquivo tem que ficar dentro do projeto."
                 ) from None
             extra += 1
-            if extra > 50:
+            if extra > 50:  # noqa: PLR2004 - teto de tentativas de nome alternativo antes de desistir
                 raise
             continue
         except OSError as exc:
@@ -394,7 +394,7 @@ def _urls(port):
     ]
 
 
-def _alive(pid):
+def _alive(pid):  # noqa: PLR0911 - existing size; one early return per platform/liveness check outcome
     """O processo do PID file ainda existe? Somente leitura, e igual no Windows.
 
     `os.kill(pid, 0)` no Windows mataria o processo (a stdlib mapeia qualquer sinal
@@ -412,7 +412,7 @@ def _alive(pid):
         code = ctypes.c_ulong()
         ok = kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
         kernel32.CloseHandle(handle)
-        return bool(ok) and code.value == 259  # STILL_ACTIVE
+        return bool(ok) and code.value == 259  # noqa: PLR2004 - STILL_ACTIVE, constante da API do Windows
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -584,7 +584,7 @@ def _tail(output: str, lines: int = 20) -> str:
     return f"\n\nÚltimas linhas do log:\n{text}" if text else ""
 
 
-def start_background(project, port: int = DEFAULT_PORT):
+def start_background(project, port: int = DEFAULT_PORT):  # noqa: C901 - existing size; spawns, waits for and validates the detached server across platforms
     """Sobe o servidor num processo solto e devolve as URLs quando ele já responde.
 
     Um subprocesso (nunca `fork`) mantém o mesmo comportamento no Windows: o filho

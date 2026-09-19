@@ -150,7 +150,7 @@ def _opener():
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ARG002 - overrides `HTTPRedirectHandler`'s fixed signature
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ARG002, PLR0913 - overrides `HTTPRedirectHandler`'s fixed signature
         logs.event(_logger, logging.WARNING, "request_refused", host=_host_of(req.full_url), reason="redirect_refused")
         raise ProviderError("Redirecionamento de API não permitido")
 
@@ -169,6 +169,10 @@ def _scrub(value):
 
 
 RETRY_AFTER_CAP_S = 60
+
+# `get_json` tenta 3 vezes (`for attempt in range(3)`); o índice da última tentativa
+# (0-based) é quando parar de tentar de novo e propagar o erro.
+LAST_ATTEMPT_INDEX = 2
 
 
 def _retry_after_seconds(value, cap: int | None = RETRY_AFTER_CAP_S):
@@ -193,7 +197,7 @@ def _retry_after_seconds(value, cap: int | None = RETRY_AFTER_CAP_S):
     return limit(max(0, int(delta + 0.999)))
 
 
-def get_json(url, params=None, headers=None, cache_ttl=0):
+def get_json(url, params=None, headers=None, cache_ttl=0):  # noqa: C901, PLR0912, PLR0915 - existing size; request/cache/retry/error handling for one endpoint call
     _network_url(url)
     if params:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
@@ -272,7 +276,7 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
                 raise ProviderError(
                     f"Autenticação/permissão ou quota recusada pelo provedor (HTTP {code}){suffix}"
                 ) from None
-            if code == 429:
+            if code == 429:  # noqa: PLR2004 - HTTP 429 Too Many Requests
                 # Honour a short Retry-After once; never sleep past the CLI budget.
                 wait = _retry_after_seconds(retry_after, cap=None) if retry_after else None
                 if wait is not None and wait <= RETRY_AFTER_CAP_S and not waited_for_quota:
@@ -299,7 +303,7 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
                         f"Quota atingida (HTTP 429); o provedor pede {wait} s de espera antes de repetir"
                     ) from None
                 raise ProviderError("Quota atingida (HTTP 429); aguarde o limite do provedor") from None
-            if code < 500 or attempt == 2:
+            if code < 500 or attempt == LAST_ATTEMPT_INDEX:  # noqa: PLR2004 - 500, início dos erros 5xx do provedor
                 logs.event(
                     _logger,
                     logging.WARNING,
@@ -323,7 +327,7 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
                 reason=code,
             )
         except (urllib.error.URLError, TimeoutError, OSError) as error:
-            if attempt == 2:
+            if attempt == LAST_ATTEMPT_INDEX:
                 logs.event(
                     _logger,
                     logging.WARNING,
@@ -399,7 +403,7 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
     return data
 
 
-def download(url, target, max_bytes=512 * 1024 * 1024):
+def download(url, target, max_bytes=512 * 1024 * 1024):  # noqa: C901, PLR0912, PLR0915 - existing size; streaming download with cleanup on every failure path
     """Stream only public HTTPS to an exclusive file; remove partials on failure."""
     if not public_url(url):
         logs.event(_logger, logging.WARNING, "request_refused", host=_host_of(url), reason="not_public_url")

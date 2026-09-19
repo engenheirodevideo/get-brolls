@@ -68,7 +68,7 @@ FORMAT_GATE_SUBCOMMANDS = (
 )
 
 
-def build_parser():
+def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse builder with one branch per subcommand/flag
     parser = argparse.ArgumentParser(
         description="Get B-rolls — pesquisar, revisar e coletar trechos por fonte.",
         epilog="Use `<subcomando> --help` para os argumentos de cada etapa.",

@@ -14,6 +14,9 @@ _log = logs.get(__name__.rsplit(".", 1)[-1])
 
 ASSETS = Path(__file__).resolve().parents[2] / "assets"
 
+# Versão do esquema do JSON de decisões que o Storyboard exporta e que `import_review` aceita.
+REVIEW_TEMPLATE_VERSION = 2
+
 
 # Campos da decisão que definem a época: chaves acrescentadas depois (canal, frase)
 # não podem invalidar um board já exportado.
@@ -60,7 +63,7 @@ def enhance(page, ledger, records):
         json.dumps(
             {
                 "type": "getbrolls-review",
-                "templateVersion": 2,
+                "templateVersion": REVIEW_TEMPLATE_VERSION,
                 "project": project_id(ledger),
                 "items": records,
             },
@@ -116,7 +119,7 @@ def _import_review_result(review_state):
     return "pending"
 
 
-def import_review(ledger, file, by, rules=None):
+def import_review(ledger, file, by, rules=None):  # noqa: C901, PLR0912, PLR0915 - existing size; validates the saved decision file then applies it item by item
     if not by.strip():
         raise ValueError('Diga quem revisou: acrescente --by "seu nome" ao comando.')
     file_source = "explicit" if file is not None else "latest"
@@ -131,7 +134,7 @@ def import_review(ledger, file, by, rules=None):
             )
         file = found
     path = Path(file)
-    if path.stat().st_size > 2000000:
+    if path.stat().st_size > 2000000:  # noqa: PLR2004 - 2 MB, matches the message below
         raise ValueError(
             "Esse arquivo de escolhas passa de 2 MB — não parece ser o que a página "
             "salvou. Confira se apontou para o getbrolls-review.json certo."
@@ -140,7 +143,7 @@ def import_review(ledger, file, by, rules=None):
     if (
         not isinstance(data, dict)
         or data.get("type") != "getbrolls-review"
-        or data.get("templateVersion") != 2
+        or data.get("templateVersion") != REVIEW_TEMPLATE_VERSION
         or data.get("project") != project_id(ledger)
     ):
         raise ValueError(
@@ -213,8 +216,8 @@ def import_review(ledger, file, by, rules=None):
         if (
             not isinstance(comment, str)
             or not isinstance(suggestion, str)
-            or len(comment) > 10000
-            or len(suggestion) > 2000
+            or len(comment) > 10000  # noqa: PLR2004 - teto de caracteres do campo "comentário"
+            or len(suggestion) > 2000  # noqa: PLR2004 - teto de caracteres do campo "sugestão"
         ):
             skip(
                 c["id"],
