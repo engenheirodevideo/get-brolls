@@ -57,6 +57,17 @@ def _save_index(cache, index):
         raise
 
 
+def _ensure_private_cache_dir(cache):
+    """Create/reuse `.getbrolls-sources/` as 0700, same as `social.py`'s cache.
+
+    `mkdir(exist_ok=True)` only applies `mode` to a directory it actually creates;
+    an already-existing (looser) directory from before this fix would stay as-is
+    without the explicit `chmod` below.
+    """
+    cache.mkdir(mode=0o700, exist_ok=True)
+    cache.chmod(0o700)
+
+
 def _covers(entry, start, end):
     entry_start = entry.get("start")
     entry_duration = entry.get("duration")
@@ -105,7 +116,7 @@ def cache_direct_media(ledger, candidate, refresh=True):
     continua somente leitura sobre decisão, intervalo e direitos.
     """
     cache = ledger.root.parent / ".getbrolls-sources"
-    cache.mkdir(exist_ok=True)
+    _ensure_private_cache_dir(cache)
     reused = _reuse_from_index(cache, candidate["id"], 0, 0)
     if reused is not None:
         return Path(reused["path"])
@@ -126,6 +137,7 @@ def cache_direct_media(ledger, candidate, refresh=True):
         final = cache / (id_stem(candidate["id"]) + "-" + sha + ".mp4")
         if not final.exists():
             os.replace(target, final)
+            final.chmod(0o600)
         elif digest(final) != sha:
             raise ValueError("Cache de mídia inconsistente; não foi sobrescrito.")
     index = _load_index(cache)
@@ -164,7 +176,7 @@ def prepare_source(ledger, candidate, start, end, tolerant=False):
         if duration is not None and start >= offset and end <= offset + duration + 0.05:
             return
     cache = ledger.root.parent / ".getbrolls-sources"
-    cache.mkdir(exist_ok=True)
+    _ensure_private_cache_dir(cache)
     reused = _reuse_from_index(cache, c["id"], start, end)
     if reused is not None:
         info = probe(reused["path"])
@@ -202,6 +214,7 @@ def prepare_source(ledger, candidate, start, end, tolerant=False):
         final = cache / (id_stem(c["id"]) + "-" + sha + ".mp4")
         if not final.exists():
             os.replace(target, final)
+            final.chmod(0o600)
         elif digest(final) != sha:
             raise ValueError("Cache de mídia inconsistente; não foi sobrescrito.")
     c.update(

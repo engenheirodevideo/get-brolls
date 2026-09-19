@@ -379,7 +379,16 @@ def hints(query, limit=5):
         return []
     try:
         found = search(query, limit=limit)
-    except (ValueError, OSError):
+    except (ValueError, OSError) as error:
+        # Non-fatal (hints are advisory), but a corrupted index must not look
+        # identical to "nothing found" — surface it on the same warnings channel
+        # every other command uses, naming the file so the person can act on it.
+        from .runtime import record_warning
+
+        record_warning(
+            "LIBRARY_INDEX_UNREADABLE",
+            f"Biblioteca de aprendizados ({index_path()}) não pôde ser lida; pistas ignoradas nesta busca: {error}",
+        )
         return []
     out = []
     for a in found["assets"]:

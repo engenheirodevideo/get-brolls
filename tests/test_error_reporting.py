@@ -534,10 +534,15 @@ class Finding27DrawtextProbeFailureNotCachedTests(unittest.TestCase):
 
 class Finding28DownloadCatchAllTests(unittest.TestCase):
     def test_generic_exception_message_includes_type_and_chains_original(self):
+        # `download()`'s except clause is narrowed to real transport/IO failures
+        # (http.client.HTTPException, OSError, ValueError) so programming bugs
+        # propagate uncaught instead of being misreported as a provider error. This
+        # "weird" failure is itself an OSError subclass (a plausible odd transport
+        # failure), so it still gets wrapped with its type name and chained cause.
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "out.mp4"
 
-            class Weird(Exception):
+            class Weird(OSError):
                 pass
 
             def boom_open(*a, **kw):

@@ -83,17 +83,24 @@ def rules_layers(project):
         project_path = None
     global_path = home_dir() / "RULES.md"
     if global_path.exists():
+        # Uma camada global corrompida some, mas as restrições dela (blocked_domains,
+        # asset_types...) somem junto — a pessoa continua achando que valem. Falha
+        # travada: melhor parar o comando do que deixar de aplicar uma regra de
+        # segurança sem avisar. Só o arquivo FALTANDO é inofensivo (o piso da skill
+        # cobre isso); um arquivo presente e ilegível não pode ser tratado como ausente.
         try:
             data = read_rules_block(global_path)
         except ValueError as e:
-            warnings.append(f"{global_path} foi ignorado: {e}")
-        else:
-            layers.append(
-                (
-                    global_path,
-                    _strip_never_inherited(global_path, data, warnings, "global"),
-                )
+            raise ValueError(
+                f"O RULES.md global ({global_path}) não pôde ser lido: {e} Conserte "
+                "esse arquivo ou apague-o para usar apenas as regras deste projeto."
+            ) from None
+        layers.append(
+            (
+                global_path,
+                _strip_never_inherited(global_path, data, warnings, "global"),
             )
+        )
     middle = os.environ.get("GB_RULES_FILE")
     if middle:
         middle = Path(middle)

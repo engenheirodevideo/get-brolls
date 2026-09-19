@@ -51,6 +51,17 @@ def _release_lock(stream, platform=None, windows=None):
     fcntl.flock(stream, fcntl.LOCK_UN)
 
 
+def _ensure_private_file(path):
+    """Create `path` (empty) if missing, then force 0600 regardless of umask.
+
+    `touch()`'s own `mode=` is still masked by umask, so an explicit `chmod` is the
+    only way to guarantee 0600 both on first creation and on a file left over from
+    before this fix (a plain `diagnostics.jsonl` created 0644 by an older run).
+    """
+    path.touch(exist_ok=True)
+    path.chmod(0o600)
+
+
 def record_warning(code, message):
     current = ACTIVE.get()
     if current is not None:
@@ -63,13 +74,52 @@ def record_commit():
         current["state_committed"] = True
 
 
+SENSITIVE_HEADERS = ("Authorization", "Cookie", "Set-Cookie", "X-Api-Key")
+_HEADER_PATTERN = re.compile(r"(?i)\b(" + "|".join(re.escape(h) for h in SENSITIVE_HEADERS) + r")\s*:\s*[^\r\n]+")
+# `key=`/`token=`/`signature=`/`sig=` outside a full URL (a full URL is already
+# wiped out whole by the `https?://` pass below, before this pattern would see it).
+_QUERY_SECRET_PATTERN = re.compile(r"(?i)\b(key|token|signature|sig)=[^&\s\"'<>]+")
+
+
+def scrub_home(text):
+    """Replace the user's home directory prefix with `~`. Never raises.
+
+    Only for text nobody acts on: the diagnostics file and the `repr`/`traceback`
+    fields, which people paste into bug reports. It is deliberately NOT part of
+    `redact()`: error messages name paths the person (or the agent driving the CLI)
+    must open or pass back as an argument, and `~` inside quotes is not expanded by a
+    shell nor understood by a file reader. Both the raw and the JSON-escaped form of
+    the prefix are replaced, so it also works on an already serialized line on Windows.
+    """
+    value = str(text)
+    try:
+        home = str(Path.home())
+    except RuntimeError:
+        # No HOME/USERPROFILE to resolve: nothing to scrub.
+        return value
+    if home in ("", "/", "\\"):
+        return value
+    escaped = json.dumps(home)[1:-1]
+    for prefix in {home, escaped}:
+        value = value.replace(prefix, "~")
+    return value
+
+
 def redact(text):
+    """Strip provider keys, secret-shaped headers/query values and URLs.
+
+    Idempotent (running it twice yields the same string) and never raises — every
+    step is a plain string replace/regex substitution over `str(text)`. Safe for
+    user-facing messages: paths are left intact (see `scrub_home` for why).
+    """
     value = str(text)
     for key in ("PEXELS_API_KEY", "PIXABAY_API_KEY", "YOUTUBE_API_KEY"):
         secret = os.getenv(key)
         if secret:
             value = value.replace(secret, "[REDACTED]")
+    value = _HEADER_PATTERN.sub(lambda m: f"{m.group(1)}: [REDACTED]", value)
     value = re.sub(r'https?://[^\s"<>]+', "[URL omitida]", value)
+    value = _QUERY_SECRET_PATTERN.sub(lambda m: f"{m.group(1)}=[REDACTED]", value)
     return value[:1200]
 
 
@@ -149,8 +199,8 @@ def audited(args, execute):
         event["recovery_pending"] = bool(log and (log.parent / ".pending-transaction.json").exists())
         # Diagnostics survive regardless of classification, redacted like everything else here.
         event["type"] = type(exc).__name__
-        event["repr"] = redact(repr(exc))
-        event["traceback"] = redact(traceback.format_exc())
+        event["repr"] = scrub_home(redact(repr(exc)))
+        event["traceback"] = scrub_home(redact(traceback.format_exc()))
         if isinstance(exc, (KeyError, TypeError, AttributeError)):
             # These are bug signatures, not user-fixable input problems; the traceback is what
             # a maintainer needs, not a RULES.md pointer.
@@ -197,8 +247,9 @@ def audited(args, execute):
         if log and (not read_only or log.parent.is_dir()):
             try:
                 log.parent.mkdir(parents=True, exist_ok=True)
+                _ensure_private_file(log)
                 with log.open("a", encoding="utf-8") as stream:
-                    stream.write(json.dumps(event, ensure_ascii=False) + "\n")
+                    stream.write(scrub_home(json.dumps(event, ensure_ascii=False)) + "\n")
             except OSError:
                 warning = {
                     "code": "LOG_UNAVAILABLE",
@@ -228,8 +279,9 @@ def write_diagnostics_log(project, event):
     event = {"at": now(), **event}
     try:
         log.parent.mkdir(parents=True, exist_ok=True)
+        _ensure_private_file(log)
         with log.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(event, ensure_ascii=False) + "\n")
+            stream.write(scrub_home(json.dumps(event, ensure_ascii=False)) + "\n")
         return log
     except OSError:
         return None

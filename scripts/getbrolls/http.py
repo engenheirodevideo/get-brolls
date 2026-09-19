@@ -341,7 +341,12 @@ def download(url, target, max_bytes=512 * 1024 * 1024):
     except (urllib.error.URLError, TimeoutError) as error:
         reason = getattr(error, "reason", None) or error
         raise ProviderError(f"Falha de rede ao baixar mídia ({type(error).__name__}: {reason})") from None
-    except Exception as error:
+    except (http.client.HTTPException, OSError, ValueError) as error:
+        # Only real transport/IO/malformed-response failures land here (broken
+        # connections, TLS errors, a non-numeric Content-Length...). Programming
+        # bugs (KeyError/TypeError/AttributeError) are deliberately NOT caught: they
+        # must propagate so runtime.audited() reports them as INTERNAL_ERROR instead
+        # of being misclassified as a provider/network problem.
         raise ProviderError(
             f"Não foi possível obter o arquivo público ({type(error).__name__}: {redact(str(error))})"
         ) from error

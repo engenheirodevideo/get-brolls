@@ -485,7 +485,7 @@ def entrypoint():
     except Exception as exc:
         # Anything audited() didn't already turn into an OperationError (e.g. an argparse-time
         # bug) must still exit as JSON, not a raw traceback breaking the CLI's output contract.
-        from .runtime import redact, write_diagnostics_log
+        from .runtime import redact, scrub_home, write_diagnostics_log
 
         project = _project_from_argv()
         event = {
@@ -493,8 +493,8 @@ def entrypoint():
             "status": "error",
             "error_code": "INTERNAL_ERROR",
             "type": type(exc).__name__,
-            "repr": redact(repr(exc)),
-            "traceback": redact(traceback.format_exc()),
+            "repr": scrub_home(redact(repr(exc))),
+            "traceback": scrub_home(redact(traceback.format_exc())),
         }
         log = write_diagnostics_log(project, event) if project else None
         message = "Erro interno inesperado."
