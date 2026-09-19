@@ -114,7 +114,7 @@ class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
     def https_open(self, request):
         addresses = _safe_network(request.full_url)
 
-        def connect_pinned(address, timeout=30, source_address=None):
+        def connect_pinned(address, timeout=30, source_address=None):  # noqa: ARG001 - matches `_create_connection`'s positional callback signature; `address` is intentionally ignored in favor of the pre-resolved `addresses`
             # Do not call create_connection(): it performs another DNS lookup.
             last_error = None
             for family, kind, protocol, _, sockaddr in addresses:
@@ -150,7 +150,7 @@ def _opener():
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ARG002 - overrides `HTTPRedirectHandler`'s fixed signature
         logs.event(_logger, logging.WARNING, "request_refused", host=_host_of(req.full_url), reason="redirect_refused")
         raise ProviderError("Redirecionamento de API não permitido")
 
@@ -236,7 +236,10 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
     started = time.monotonic()
     for attempt in range(3):
         try:
-            with opener.open(urllib.request.Request(url, headers=request_headers), timeout=30) as response:
+            with opener.open(
+                urllib.request.Request(url, headers=request_headers),  # noqa: S310 - opener guards via `_safe_network` in `https_open`
+                timeout=30,
+            ) as response:
                 raw = response.read(8 * 1024 * 1024 + 1)
                 if len(raw) > 8 * 1024 * 1024:
                     raise ProviderError("Resposta excede limite de 8 MB")
@@ -431,7 +434,9 @@ def download(url, target, max_bytes=512 * 1024 * 1024):
     status_code = None
     received_bytes = 0
     try:
-        request = urllib.request.Request(url, headers={"User-Agent": f"Get-Brolls/{__version__}"})
+        request = urllib.request.Request(  # noqa: S310 - opener guards via `_safe_network` in `https_open`
+            url, headers={"User-Agent": f"Get-Brolls/{__version__}"}
+        )
         with _opener().open(request, timeout=30) as response:
             status_code = getattr(response, "status", None)
             length = response.headers.get("Content-Length")

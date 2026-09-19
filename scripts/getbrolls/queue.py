@@ -90,7 +90,7 @@ def _parse(stamp):
 
 
 def _rng():
-    return random.Random(os.urandom(16))
+    return random.Random(os.urandom(16))  # noqa: S311 - pacing jitter, not security
 
 
 def queue_path(project):

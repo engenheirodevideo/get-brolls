@@ -36,6 +36,9 @@ select = [
     "BLE",
     "PLW",
     "PTH",
+    "S",
+    "T20",
+    "ARG",
 ]
 # `ruff format` já mantém o código em 120 colunas. O que sobra de E501 são
 # literais que não podem ser quebrados sem mudar o que a pessoa lê: mensagens
@@ -46,8 +49,38 @@ ignore = ["E501", "RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.per-file-ignores]
 # Os testes inserem `scripts/` em sys.path antes de importar `getbrolls`;
-# o import depois do código é intencional, não desleixo.
-"tests/*" = ["E402"]
+# o import depois do código é intencional, não desleixo. S101: assert é o
+# próprio mecanismo de checagem dos testes. S105/S311: nomes/valores como
+# "secret"/"SECRET_TITLE" e `random` nos testes são fixtures deliberadas
+# (dado de teste ou pacing), nunca segredo real ou uso criptográfico. S108:
+# caminhos literais "/tmp/..." são placeholders de fixture, nunca escrita
+# real em disco. S310: os testes chamam `urlopen` direto contra o servidor
+# local (127.0.0.1) que eles mesmos sobem, não contra entrada externa. S603/
+# S607: os testes chamam ffmpeg/ffprobe/yt-dlp/gb.py com argv em lista, sem
+# shell=True, para exercitar o mesmo wrapper que a produção usa. ARG: fakes e
+# mocks de teste espelham a assinatura real do que substituem (ex.: `def
+# fake_run(args, **kwargs)`), então parâmetros não usados ali são propositais.
+"tests/*" = ["E402", "S101", "S105", "S108", "S310", "S311", "S603", "S607", "ARG"]
+
+# Estes módulos existem para invocar ffmpeg/ffprobe/yt-dlp/curl/taskkill e o
+# próprio `gb.py`: todo argv é uma lista fixa (nunca shell=True nem string
+# montada), e o executável vem de caminho fixado/descoberto (`tool_path`,
+# `sys.executable`, `shutil.which`). S603/S607 aqui são o ruído esperado de
+# "isso roda um binário externo", não um alerta de comando não confiável.
+"scripts/getbrolls/media.py" = ["S603"]
+"scripts/getbrolls/social.py" = ["S603"]
+"scripts/getbrolls/instagram_pairs.py" = ["S603", "S607", "T201"]
+"scripts/getbrolls/serve.py" = ["S603", "S607", "T201"]
+"scripts/bump_version.py" = ["S603", "T201"]
+
+# `print` é o mecanismo de saída legítimo destes programas: stdout/stderr são
+# a interface deles (CLI entrypoint, script de lote independente, aviso de
+# último recurso). "instagram_pairs.py" e "serve.py" acima já ganharam T201
+# pelo mesmo motivo, junto com os ignores de S603/S607.
+"scripts/getbrolls/cli.py" = ["T201"]
+"scripts/getbrolls/runtime.py" = ["T201"]
+"scripts/gen_skill_mirror.py" = ["T201"]
+"scripts/check_anchors.py" = ["T201"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["getbrolls"]

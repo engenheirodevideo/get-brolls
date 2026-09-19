@@ -74,7 +74,7 @@ def record_warning(code, message):
         # quote what they typed (an approver's name, a reason). The full message is
         # already in the command's JSON output; the log only needs to correlate.
         logs.event(logs.get("runtime"), logging.WARNING, "warning", code=code)
-    except Exception:  # noqa: BLE001 - logging must never break a command
+    except Exception:  # noqa: BLE001, S110 - logging must never break a command
         pass
 
 

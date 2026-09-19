@@ -314,7 +314,7 @@ def import_review(ledger, file, by, rules=None):
             skipped=len(skipped),
             rejected_file=any(review_state == "rejected" for _, review_state in item_log),
         )
-    except Exception:  # noqa: BLE001 - logging must never break a command
+    except Exception:  # noqa: BLE001, S110 - logging must never break a command
         pass
     return {
         "imported": len(changes),

@@ -25,7 +25,7 @@ from typing import cast
 DEFAULT_PORT = 8767
 
 # Cabeçalho do token de sessão: sem ele (ou com o token errado) o POST é recusado.
-TOKEN_HEADER = "X-GetBrolls-Token"
+TOKEN_HEADER = "X-GetBrolls-Token"  # noqa: S105 - header name, not a secret value
 SAVE_PATH = "/__save"
 # Identidade do servidor: quem pergunta descobre se o PID do arquivo ainda é nosso.
 PING_PATH = "/__ping"
@@ -471,7 +471,7 @@ def _ping(port, session, timeout=1.0):
     if not _valid_ping_target(url):
         return False
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
+        with urllib.request.urlopen(url, timeout=timeout) as response:  # noqa: S310 - `_valid_ping_target` above pins scheme+host
             answer = json.loads(response.read().decode("utf-8"))
     except (OSError, ValueError, urllib.error.URLError):
         return False
@@ -687,7 +687,7 @@ def stop(project):
         path.unlink(missing_ok=True)
         return {"stopped": False, "reason": "stale_pid", "pid": pid}
     # `_ours` só responde sim para um PID vivo que se identificou: aqui é inteiro.
-    assert isinstance(pid, int)
+    assert isinstance(pid, int)  # noqa: S101 - type narrowing only; `_ours` already guarantees this at runtime
     if os.name == "nt":
         subprocess.run(
             ["taskkill", "/PID", str(pid), "/T", "/F"],

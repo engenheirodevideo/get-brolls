@@ -670,7 +670,7 @@ def reject_all(ledger, only, reason=None):
                 reason_present=bool(rejection.get("reason")),
                 output_cleared=True,
             )
-    except Exception:  # noqa: BLE001 - logging must never break a command
+    except Exception:  # noqa: BLE001, S110 - logging must never break a command
         pass
     return {
         "rejected": [c["id"] for c in chosen],
@@ -729,7 +729,7 @@ def approve_all(ledger, args, rules, only=None):
                 statement_present=bool((args.statement or "").strip()),
             )
         logs.event(_log, logging.INFO, "approve_all", approved=len(approved), skipped=len(skipped))
-    except Exception:  # noqa: BLE001 - logging must never break a command
+    except Exception:  # noqa: BLE001, S110 - logging must never break a command
         pass
     if wanted is None and approved:
         # `--all` mira o disco, não a conversa: a prévia de um candidato descartado
@@ -825,7 +825,7 @@ def _stage_status(c, field):
 
 # Um predicado por etapa: a mesma leitura serve para contagem, lista e item.
 STAGE_TESTS = {
-    "candidates": lambda c: True,
+    "candidates": lambda _c: True,
     "previews": _has_preview,
     # Decisão pendente é decisão que *pode* ser tomada: sem prévia ninguém decide, e
     # contar o candidato recém-buscado como pendente inflava o número e mandava a
@@ -959,7 +959,7 @@ def _rights_mode(rules):
 
 # Degrau → (item já está nesta etapa?, item precisa estar nesta anterior?).
 _PENDING_STAGES = (
-    (lambda c: not STAGE_TESTS["previews"](c), lambda c: True),
+    (lambda c: not STAGE_TESTS["previews"](c), lambda _c: True),
     (lambda c: not STAGE_TESTS["permitted"](c), STAGE_TESTS["approved"]),
     (lambda c: not STAGE_TESTS["delivered"](c), STAGE_TESTS["permitted"]),
 )
@@ -989,8 +989,8 @@ def _step_candidates(items):
         return next((c["id"] for c in pool if test(c)), None)
 
     return {
-        "inspect": first(_uninspected(items), lambda c: True),
-        "preview": first(_needs_preview(items), lambda c: True),
+        "inspect": first(_uninspected(items), lambda _c: True),
+        "preview": first(_needs_preview(items), lambda _c: True),
         "approve": first(alive, STAGE_TESTS["pending"]),
         "permit": first(alive, lambda c: STAGE_TESTS["approved"](c) and not STAGE_TESTS["permitted"](c)),
         "fetch": first(alive, lambda c: STAGE_TESTS["permitted"](c) and not STAGE_TESTS["delivered"](c)),
@@ -1769,7 +1769,7 @@ def execute(args):
                         else:
                             result = "undecodable"
                         logs.event(_log, logging.WARNING, "verify", candidate=c["id"], result=result)
-                    except Exception:  # noqa: BLE001 - logging must never break a command
+                    except Exception:  # noqa: BLE001, S110 - logging must never break a command
                         pass
                     raise
                 # Probe, hash e decodificação bateram: se uma verificação anterior tinha
@@ -2096,7 +2096,7 @@ def execute(args):
                 sha256_prefix=_sha256_prefix(c["output"].get("sha256")),
                 ms=round((time.monotonic() - _fetch_started_at) * 1000),
             )
-    except Exception:  # noqa: BLE001 - logging must never break a command
+    except Exception:  # noqa: BLE001, S110 - logging must never break a command
         pass
     if cmd == "preview":
         # Absolute paths for the agent to open the exact files the Storyboard shows.

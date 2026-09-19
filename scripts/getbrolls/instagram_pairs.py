@@ -722,7 +722,7 @@ def _skip(results: list[dict], stem: str, reason: str) -> None:
 
 def _pause_before(stem: str, low: int, high: int) -> None:
     """Pausa aleatória para o lote nunca bater na CDN no ritmo de uma máquina."""
-    pause = random.uniform(low, high)
+    pause = random.uniform(low, high)  # noqa: S311 - pacing jitter, not security
     print(f"-- pacing: waiting {pause:.1f}s before {stem}", file=sys.stderr)
     logs.event(_log, logging.DEBUG, "pace", wait_s=round(pause, 1))
     time.sleep(pause)

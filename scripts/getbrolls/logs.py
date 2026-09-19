@@ -136,7 +136,7 @@ def event(logger, level, event_name, **fields):
         if not logger.isEnabledFor(level):
             return
         logger.log(level, render_fields(event_name, fields))
-    except Exception:  # noqa: BLE001 - logging must never break a command
+    except Exception:  # noqa: BLE001, S110 - logging must never break a command
         pass
 
 
