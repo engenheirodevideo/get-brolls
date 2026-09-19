@@ -52,6 +52,11 @@ PING_TIMEOUT_ACT_S = 1.0
 # fria leva segundos para subir o interpretador e um filho morto falha na hora.
 BACKGROUND_TIMEOUT = 60.0
 REVIEWS_DIR = "reviews"
+# O que `review.html` de fato referencia (ver `rendering.safe_preview_url` e
+# `storyboard.render_page`): pôsteres, contact sheets, GIFs e o clipe final. Tudo o
+# mais em `brolls/` — manifest.json, .serve.pid, .serve.log, diagnostics.jsonl,
+# reviews/*.json, listagem de diretório, arquivos ocultos — responde 404.
+ALLOWED_GET_PREFIXES = ("previews/", "clips/")
 
 
 class _ExclusiveServer(ThreadingHTTPServer):
@@ -82,6 +87,43 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _head_error(self, code, message):
+        """Mesmo corpo JSON de `_refuse`, mas devolvido como arquivo para quem chamou
+        `send_head`: GET copia os bytes, HEAD só recebe os cabeçalhos."""
+        import io
+
+        body = json.dumps({"error": message}, ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        return io.BytesIO(body)
+
+    def _allowed_get_path(self, path_only):
+        """Só `previews/…` e `clips/…` (mais `/` e `/review.html`, tratados à parte)."""
+        rel = path_only.lstrip("/")
+        if not rel or any(part.startswith(".") for part in rel.split("/")):
+            return False
+        return rel.startswith(ALLOWED_GET_PREFIXES)
+
+    def _within_served_directory(self, path_only):
+        """Recusa um symlink plantado dentro de previews/ ou clips/ que aponte para
+        fora da pasta servida. `translate_path` (stdlib) já ignora componentes `..`
+        antes deste ponto; o que falta é resolver o link e conferir o destino real."""
+        local = Path(self.translate_path(path_only))
+        base = Path(self.directory).resolve()
+        try:
+            resolved = local.resolve(strict=False)
+        except OSError:
+            return False
+        return resolved == base or base in resolved.parents
+
+    def list_directory(self, path):
+        # Nenhum caminho servido é uma listagem: até dentro de previews/clips, só
+        # arquivos individuais são alcançáveis. `path` vem da assinatura da stdlib.
+        del path
+        return self._head_error(404, "Não encontrado.")
 
     def _local_request(self):
         """Só aceita pedidos endereçados a esta máquina, nesta porta.
@@ -186,10 +228,20 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 return io.BytesIO(body)
+        path_only = self.path.split("?")[0]
+        if not self._allowed_get_path(path_only) or not self._within_served_directory(path_only):
+            return self._head_error(404, "Não encontrado.")
         return super().send_head()
 
     def end_headers(self):
+        # Em toda resposta (página, prévia, JSON de erro ou de __save): o Storyboard
+        # nunca pode ser enquadrado por outra página, nem ter seu Content-Type
+        # reinterpretado, nem vazar de onde veio o clique que trouxe alguém até aqui.
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
         super().end_headers()
 
     def log_message(self, format, *args):  # noqa: A002 - assinatura exigida pela stdlib
@@ -213,6 +265,26 @@ def _inject_token(page, token):
     if "<body" in page:
         return page.replace("<body", script + "<body", 1)
     return script + page
+
+
+def _write_private_text(path, text):
+    """Cria ou substitui `path` com `text`, sempre 0600 (dono lê/escreve, mais ninguém).
+
+    Cobre os dois casos: um arquivo novo nasce com o modo já restrito (o `mode` do
+    `os.open` só vale na criação), e um arquivo que sobrou de uma rodada anterior —
+    talvez com um umask mais frouxo — é apertado de novo pelo `chmod` explícito.
+    `.serve.pid`/`.serve.log` guardam o id de sessão do servidor; nenhum dos dois
+    precisa ficar legível por outra conta na máquina.
+    """
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+    handle = os.open(path, flags, 0o600)
+    try:
+        os.chmod(path, 0o600)
+    except BaseException:
+        os.close(handle)
+        raise
+    with os.fdopen(handle, "w", encoding="utf-8") as stream:
+        stream.write(text)
 
 
 def save_review(directory, data):
@@ -374,23 +446,45 @@ def read_pid(project):
     return data if isinstance(data, dict) else None
 
 
+def _valid_ping_target(url):
+    """O alvo do ping é mesmo `http://` para 127.0.0.1/localhost?
+
+    `_ping` monta a URL de um template fixo com uma porta inteira local — nunca de
+    entrada externa —, mas a checagem de esquema/host fica explícita mesmo assim,
+    para não depender de quem chamou ter montado a URL com cuidado.
+    """
+    import urllib.parse
+
+    parsed = urllib.parse.urlsplit(url)
+    return parsed.scheme == "http" and parsed.hostname in ("127.0.0.1", "localhost")
+
+
 def _ping(port, session, timeout=1.0):
     """O servidor desta porta é o da nossa sessão? Só uma leitura, nada é gravado.
 
     Sem isso, um PID reaproveitado pelo sistema apareceria como "rodando" — e um
     `--stop` mataria um processo inocente.
     """
-    if not port or not session:
+    if not port or not session or not isinstance(session, str):
         return False
     import urllib.error
     import urllib.request
 
+    url = f"http://127.0.0.1:{port}{PING_PATH}"
+    if not _valid_ping_target(url):
+        return False
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}{PING_PATH}", timeout=timeout) as response:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
             answer = json.loads(response.read().decode("utf-8"))
     except (OSError, ValueError, urllib.error.URLError):
         return False
-    return isinstance(answer, dict) and answer.get("session") == session
+    if not isinstance(answer, dict):
+        return False
+    candidate = answer.get("session")
+    # `compare_digest` de tempo constante, igual ao token: o id de sessão não é
+    # segredo (a resposta do ping é pública), mas a checagem segue o mesmo padrão
+    # de comparação do resto do arquivo em vez de um `==` avulso.
+    return isinstance(candidate, str) and hmac.compare_digest(candidate, session)
 
 
 def _rotate_log(log):
@@ -415,6 +509,26 @@ def _rotate_log(log):
             pass
     except OSError:
         return
+
+
+# Sufixos que marcam uma variável como segredo: nenhuma delas tem por que alcançar
+# o filho detached, que nunca fala com um provedor.
+_SECRET_ENV_SUFFIXES = ("_API_KEY", "_TOKEN", "_SECRET")
+
+
+def _child_environment(source_env, scripts):
+    """Ambiente do servidor de fundo: uma cópia de `source_env` sem nenhuma variável
+    com jeito de segredo (`*_API_KEY`, `*_TOKEN`, `*_SECRET` — cobre PEXELS_API_KEY,
+    PIXABAY_API_KEY, YOUTUBE_API_KEY e qualquer outra do mesmo formato).
+
+    `serve` nunca chama um provedor; não há razão para essas chaves chegarem a um
+    processo solto cujo stdout/stderr vão parar num log dentro do projeto.
+    """
+    environment = {key: value for key, value in source_env.items() if not key.endswith(_SECRET_ENV_SUFFIXES)}
+    existing = environment.get("PYTHONPATH")
+    environment["PYTHONPATH"] = str(scripts) + (os.pathsep + existing if existing else "")
+    environment["PYTHONIOENCODING"] = "utf-8"
+    return environment
 
 
 def _ours(data, timeout=PING_TIMEOUT_S):
@@ -492,7 +606,7 @@ def start_background(project, port: int = DEFAULT_PORT):
         return {"background": True, "already_running": True, **current}
     log = directory / LOG_FILE
     _rotate_log(log)
-    log.write_text("", encoding="utf-8")
+    _write_private_text(log, "")
     scripts = Path(__file__).resolve().parents[1]
     command = [
         sys.executable,
@@ -505,10 +619,7 @@ def start_background(project, port: int = DEFAULT_PORT):
     ]
     # O filho precisa achar `getbrolls` e falar UTF-8 mesmo num console legado:
     # nada disso pode depender do diretório de trabalho ou do locale da máquina.
-    environment = dict(os.environ)
-    existing = environment.get("PYTHONPATH")
-    environment["PYTHONPATH"] = str(scripts) + (os.pathsep + existing if existing else "")
-    environment["PYTHONIOENCODING"] = "utf-8"
+    environment = _child_environment(os.environ, scripts)
     extra = {}
     if os.name == "nt":
         # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP: o servidor sobrevive ao console.
@@ -563,7 +674,7 @@ def start_background(project, port: int = DEFAULT_PORT):
         "urls": payload.get("urls") or _urls(payload["port"]),
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
-    (directory / PID_FILE).write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+    _write_private_text(directory / PID_FILE, json.dumps(record, ensure_ascii=False))
     return {"background": True, "already_running": False, "log": str(log), **record}
 
 
