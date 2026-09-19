@@ -241,6 +241,37 @@ class EncodedPathAllowlistTests(unittest.TestCase):
                 # The server must still be alive and answering the next request.
                 self.assertEqual(200, self._status(port, "/previews/poster.jpg"))
 
+    def test_a_nul_byte_is_refused_by_name_even_where_resolve_does_not_raise(self):
+        """Windows with Python 3.13 resolves a path with an embedded NUL without raising;
+        the refusal cannot depend on that exception."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _project_with_review(Path(tmp))
+            previews = root / "brolls" / "previews"
+            previews.mkdir()
+            (previews / "poster.jpg").write_bytes(b"poster")
+
+            def permissive(base, parts, relative):
+                del relative
+                folder = (base / parts[0]).resolve()
+                return folder, folder / "anything"
+
+            with patch.object(serve, "_resolve_allowed_target", side_effect=permissive), _serving(root) as (_s, port):
+                self.assertEqual(404, self._status(port, "/previews/%00x.jpg"))
+                self.assertEqual(404, self._status(port, "/previews/a%1bb.jpg"))
+                self.assertEqual(200, self._status(port, "/previews/poster.jpg"))
+
+    def test_a_value_error_while_opening_the_file_is_a_clean_404(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _project_with_review(Path(tmp))
+            previews = root / "brolls" / "previews"
+            previews.mkdir()
+            (previews / "poster.jpg").write_bytes(b"poster")
+            with (
+                patch.object(serve.SimpleHTTPRequestHandler, "send_head", side_effect=ValueError("embedded null")),
+                _serving(root) as (_s, port),
+            ):
+                self.assertEqual(404, self._status(port, "/previews/poster.jpg"))
+
 
 class SymlinkEscapeTests(unittest.TestCase):
     """Um symlink plantado dentro de previews/ não pode servir arquivo de fora."""

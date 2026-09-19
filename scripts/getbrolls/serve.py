@@ -13,6 +13,7 @@ import contextlib
 import hmac
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -58,6 +59,10 @@ REVIEWS_DIR = "reviews"
 # mais em `brolls/` — manifest.json, .serve.pid, .serve.log, diagnostics.jsonl,
 # reviews/*.json, listagem de diretório, arquivos ocultos — responde 404.
 ALLOWED_GET_FOLDERS = ("previews", "clips")
+# NUL and the other control characters never belong in a served file name. They are
+# refused by name, not by waiting for `Path.resolve()` or `open()` to raise: whether
+# those raise for an embedded NUL depends on the platform and the Python version.
+_CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 
 
 class _ExclusiveServer(ThreadingHTTPServer):
@@ -144,7 +149,7 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         # A folder name alone (`/previews`) is not a file: something must follow it.
         if not parts[1:] or parts[0] not in ALLOWED_GET_FOLDERS:
             return False
-        if any(part.startswith(".") for part in parts):
+        if any(part.startswith(".") or _CONTROL_CHARACTERS.search(part) for part in parts):
             return False
         target = _resolve_allowed_target(base, parts, relative)
         if target is None:
@@ -262,7 +267,13 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         path_only = self.path.split("?")[0]
         if not self._served_file_allowed(path_only):
             return self._head_error(404, "Não encontrado.")
-        return super().send_head()
+        try:
+            return super().send_head()
+        except ValueError:
+            # The stdlib opens the file before sending any header, so a name it cannot
+            # open (embedded NUL on platforms where the check above did not see it)
+            # still gets a clean 404 instead of a dropped connection.
+            return self._head_error(404, "Não encontrado.")
 
     def end_headers(self):
         # Em toda resposta (página, prévia, JSON de erro ou de __save): o Storyboard
