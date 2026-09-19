@@ -313,6 +313,7 @@ class RejectManyTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                check=False,
             )
             self.assertNotEqual(0, done.returncode)
             self.assertIn("--candidate", done.stderr)

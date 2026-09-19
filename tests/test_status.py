@@ -35,6 +35,7 @@ def run_cli(test, *args):
         capture_output=True,
         text=True,
         encoding="utf-8",
+        check=False,
     )
     test.assertEqual(0, done.returncode, done.stderr)
     return json.loads(done.stdout)
@@ -395,6 +396,7 @@ class StatusCommandTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                check=False,
             )
             self.assertEqual(2, done.returncode, done.stdout)
             self.assertIn("Projeto não encontrado", done.stderr)

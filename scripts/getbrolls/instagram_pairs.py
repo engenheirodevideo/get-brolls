@@ -380,7 +380,7 @@ def download_or_reuse(
             _log_pair_stage(stage, started, status="error")
             die(f"mídia vazia para o config {cfg_path}")
         size = pending.stat().st_size
-        os.replace(pending, part_path)
+        pending.replace(part_path)
     _log_pair_stage(stage, started, status="ok", size=size)
     return "downloaded"
 
@@ -808,7 +808,7 @@ def run_batch(pairs, *, output_for, args) -> dict:
             logs.event(_log, logging.INFO, "pair_item_start", shortcode=item_id)
             try:
                 result = _collect_one(stem, video_config, audio_config, output, args)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - one item's failure (network/provider/etc.) must not kill the batch
                 stop_reason, fatal = _record_failure(results, stem, exc, args)
                 if stop_reason == "cooldown":
                     stopped_by = "cooldown"
@@ -876,7 +876,7 @@ def _main(argv: list[str] | None = None) -> int:
     except CollectError as exc:
         print(f"-- lote interrompido: {exc.message}", file=sys.stderr)
         return exc.code
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - summary is already written; batch must end with a clean message, not a raw traceback
         print(f"-- lote interrompido: {type(exc).__name__}: {redact(str(exc))}", file=sys.stderr)
         return 1
 

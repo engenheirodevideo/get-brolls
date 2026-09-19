@@ -148,7 +148,7 @@ class LibraryTests(LibraryBase):
         def write(n):
             try:
                 library.learn_query(f"busca {n}", "youtube", "hit")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - the test wants the real failure to assert none occurred
                 errors.append(e)
 
         threads = [threading.Thread(target=write, args=(n,)) for n in range(8)]

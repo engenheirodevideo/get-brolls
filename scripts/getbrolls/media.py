@@ -292,7 +292,7 @@ def cut(src, dst, start, end):
         if abs(info["duration_s"] - (end - start)) > max(0.25, 2 / (info["fps"] or 10)):
             raise ValueError("Duração do corte não corresponde ao intervalo aprovado.")
         run(["ffmpeg", "-v", "error", "-i", str(tmp), "-f", "null", "-"], op="decode_check")
-        os.replace(tmp, dst)
+        tmp.replace(dst)
     finally:
         tmp.unlink(missing_ok=True)
 
@@ -334,8 +334,8 @@ def review_preview(src, directory, stem, start, end, config, label=None):
     if end - start > config["max_seconds"] + CAP_EPSILON:
         raise ValueError("Trecho excede GB_PREVIEW_MAX_SECONDS; selecione um insert menor ou ajuste a configuração.")
     # Stage every output before replacing any prior preview.
-    with tempfile.TemporaryDirectory(dir=directory) as stage:
-        stage = Path(stage)
+    with tempfile.TemporaryDirectory(dir=directory) as stage_dir:
+        stage = Path(stage_dir)
         poster = stage / "poster.jpg"
         sheet = stage / "sheet.jpg"
         gif = stage / "preview.gif"
@@ -434,7 +434,7 @@ def review_preview(src, directory, stem, start, end, config, label=None):
                     "GIF excedeu o limite de tamanho; entregue estático. Reduza largura/FPS ou aumente GB_GIF_MAX_MB e gere novamente."
                 )
         for source, relative in files:
-            os.replace(source, directory.parent / relative)
+            source.replace(directory.parent / relative)
     return result
 
 
@@ -481,7 +481,7 @@ def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):
         )
         if not sheet.exists():
             raise ValueError("Não foi possível varrer o vídeo.")
-        os.replace(sheet, directory / (stem + "-scan.jpg"))
+        sheet.replace(directory / (stem + "-scan.jpg"))
     return {
         "scan_path": relative,
         "span_s": round(span, 3),
@@ -512,7 +512,7 @@ def image_preview(src, directory, stem):
             ],
             op="poster",
         )
-        os.replace(dest, directory.parent / rel)
+        dest.replace(directory.parent / rel)
     return {
         "poster_path": rel,
         "contact_sheet_path": None,
@@ -534,4 +534,4 @@ def copy_image(src, dst):
 
         if digest(src) != digest(tmp):
             raise ValueError("Cópia da imagem não confere com o original.")
-        os.replace(tmp, dst)
+        tmp.replace(dst)

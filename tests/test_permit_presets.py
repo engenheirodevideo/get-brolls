@@ -20,6 +20,7 @@ def call(*args, ok=True) -> Any:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        check=False,
     )
     if ok:
         assert proc.returncode == 0, proc.stdout + proc.stderr

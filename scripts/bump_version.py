@@ -304,6 +304,7 @@ def _check_skill_mirror(root: Path, _version: str) -> bool:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        check=False,
     )
     return result.returncode == 0
 
@@ -314,6 +315,7 @@ def _write_skill_mirror(root: Path, _version: str, _date_str: str) -> None:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        check=False,
     )
     if result.returncode != 0:
         raise ValueError(f"gen_skill_mirror.py falhou: {result.stderr.strip() or result.stdout.strip()}")

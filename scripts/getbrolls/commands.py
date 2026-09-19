@@ -670,7 +670,7 @@ def reject_all(ledger, only, reason=None):
                 reason_present=bool(rejection.get("reason")),
                 output_cleared=True,
             )
-    except Exception:
+    except Exception:  # noqa: BLE001 - logging must never break a command
         pass
     return {
         "rejected": [c["id"] for c in chosen],
@@ -729,7 +729,7 @@ def approve_all(ledger, args, rules, only=None):
                 statement_present=bool((args.statement or "").strip()),
             )
         logs.event(_log, logging.INFO, "approve_all", approved=len(approved), skipped=len(skipped))
-    except Exception:
+    except Exception:  # noqa: BLE001 - logging must never break a command
         pass
     if wanted is None and approved:
         # `--all` mira o disco, não a conversa: a prévia de um candidato descartado
@@ -1557,9 +1557,9 @@ def execute(args):
                         # `status` é do vídeo, não do que o agente experimentou.
                         items.append(c)
                         continue
-                    c = ledger.add(c)
-                    ledger.save("search", c)
-                    items.append(c)
+                    added = ledger.add(c)
+                    ledger.save("search", added)
+                    items.append(added)
                 logs.event(
                     _log,
                     logging.INFO,
@@ -1769,7 +1769,7 @@ def execute(args):
                         else:
                             result = "undecodable"
                         logs.event(_log, logging.WARNING, "verify", candidate=c["id"], result=result)
-                    except Exception:
+                    except Exception:  # noqa: BLE001 - logging must never break a command
                         pass
                     raise
                 # Probe, hash e decodificação bateram: se uma verificação anterior tinha
@@ -2096,7 +2096,7 @@ def execute(args):
                 sha256_prefix=_sha256_prefix(c["output"].get("sha256")),
                 ms=round((time.monotonic() - _fetch_started_at) * 1000),
             )
-    except Exception:
+    except Exception:  # noqa: BLE001 - logging must never break a command
         pass
     if cmd == "preview":
         # Absolute paths for the agent to open the exact files the Storyboard shows.

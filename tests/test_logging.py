@@ -35,6 +35,7 @@ def _raw_run(*args, project=None, env=None):
         text=True,
         encoding="utf-8",
         env=environment,
+        check=False,
     )
 
 

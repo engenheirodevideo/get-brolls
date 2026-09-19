@@ -238,6 +238,7 @@ class QueueCliTests(unittest.TestCase):
             text=True,
             encoding="utf-8",
             env={**clean_env(), "GB_PACE_MIN_S": "30", "GB_PACE_MAX_S": "30"},
+            check=False,
         )
         self.assertEqual(0 if ok else 2, done.returncode, done.stderr)
         return json.loads(done.stdout if ok else done.stderr)
@@ -248,7 +249,11 @@ class QueueCliTests(unittest.TestCase):
         args = parser.parse_args(["queue", "--project", "p", "--action", "add", "--provider", "instagram", REEL])
         self.assertEqual([REEL], args.urls)
         help_run = subprocess.run(
-            [sys.executable, str(CLI), "queue", "--help"], capture_output=True, text=True, encoding="utf-8"
+            [sys.executable, str(CLI), "queue", "--help"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
         )
         self.assertEqual(0, help_run.returncode)
         self.assertIn("--action", help_run.stdout)

@@ -626,7 +626,7 @@ class Finding23And50RetryAfterCapTests(unittest.TestCase):
         sleep_calls = []
         with (
             patch.object(http, "_opener", return_value=FakeOpener()),
-            patch.object(http.time, "sleep", side_effect=lambda s: sleep_calls.append(s)),
+            patch.object(http.time, "sleep", side_effect=sleep_calls.append),
             self.assertRaises(ProviderError),
         ):
             http.get_json("https://example.org/api")

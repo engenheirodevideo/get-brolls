@@ -386,6 +386,7 @@ class Schema99StatusStaysExit0Tests(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                check=False,
             )
             self.assertEqual(0, done.returncode, done.stderr)
             payload = json.loads(done.stdout)

@@ -106,7 +106,7 @@ class _CompareError(Exception):
 
 def _same_file(a, b):
     try:
-        return os.path.samestat(os.stat(a), os.stat(b))
+        return os.path.samestat(Path(a).stat(), Path(b).stat())
     except OSError as exc:
         raise _CompareError(str(exc)) from exc
 
@@ -114,9 +114,9 @@ def _same_file(a, b):
 def _same_bytes(a, b, block=1024 * 1024):
     """Compara em blocos, nunca carregando um vídeo inteiro na memória."""
     try:
-        if os.path.getsize(a) != os.path.getsize(b):
+        if Path(a).stat().st_size != Path(b).stat().st_size:
             return False
-        with open(a, "rb") as left, open(b, "rb") as right:
+        with Path(a).open("rb") as left, Path(b).open("rb") as right:
             while True:
                 chunk = left.read(block)
                 if chunk != right.read(block):
@@ -151,8 +151,8 @@ def _freeze(path, method):
     if method not in ("hardlink", "symlink"):
         return
     try:
-        mode = os.stat(path).st_mode
-        os.chmod(path, mode & ~0o222)
+        mode = Path(path).stat().st_mode
+        Path(path).chmod(mode & ~0o222)
     except OSError as exc:
         record_warning(
             "DELIVERY_FREEZE_FAILED",
@@ -174,7 +174,7 @@ def _thaw_unlink(path):
         return
     except PermissionError:
         pass
-    os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+    path.chmod(stat.S_IWRITE | stat.S_IREAD)
     path.unlink()
 
 
@@ -192,7 +192,7 @@ def link_or_copy(src, dest, read_only=False):
         if copies_forced()
         else (
             ("hardlink", os.link),
-            ("symlink", lambda s, d: os.symlink(s, d)),
+            ("symlink", os.symlink),
             ("copy", shutil.copy2),
         )
     )

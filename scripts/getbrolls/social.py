@@ -71,7 +71,7 @@ def _log_tool_path(source):
 
 def _log_sleep_settings_once(requests, low, high):
     """`ytdlp_sleep` once per process: every `command()` call would repeat the same line."""
-    global _sleep_logged
+    global _sleep_logged  # noqa: PLW0603 - module-level once-per-process cache, intentional
     if _sleep_logged:
         return
     _sleep_logged = True
@@ -269,7 +269,7 @@ def _write_private(path, text):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.unlink(missing_ok=True)
-    with open(
+    with open(  # noqa: PTH123 - wraps an os.open() fd (explicit O_CREAT|O_EXCL flags/mode), no Path equivalent
         os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600),
         "w",
         encoding="utf-8",

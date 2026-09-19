@@ -72,7 +72,7 @@ def _force_rmtree(path):
     import stat as stat_module
 
     def _on_error(func, target, exc_info):
-        os.chmod(target, stat_module.S_IWRITE | stat_module.S_IREAD)
+        Path(target).chmod(stat_module.S_IWRITE | stat_module.S_IREAD)
         func(target)
 
     shutil.rmtree(path, onerror=_on_error)

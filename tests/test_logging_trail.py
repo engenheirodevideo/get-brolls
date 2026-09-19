@@ -224,6 +224,7 @@ class StdoutStaysOneJsonDocumentTests(unittest.TestCase):
                 text=True,
                 encoding="utf-8",
                 env=environment,
+                check=False,
             )
             self.assertEqual(0, done.returncode, done.stderr)
             decoder = json.JSONDecoder()

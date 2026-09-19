@@ -27,6 +27,7 @@ class CliTest(unittest.TestCase):
             capture_output=True,
             text=True,
             encoding="utf-8",
+            check=False,
         )
         self.assertEqual(p.returncode, 0 if ok else 2, p.stderr)
         return json.loads(p.stdout if ok else p.stderr)
@@ -37,6 +38,7 @@ class CliTest(unittest.TestCase):
             [sys.executable, str(CLI), "doctor"],
             capture_output=True,
             env=environment,
+            check=False,
         )
         self.assertEqual(0, result.returncode, result.stderr)
         output = result.stdout.decode("utf-8")
@@ -222,6 +224,7 @@ class CliTest(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                check=False,
             )
             if resolved.returncode != 0:
                 self.skipTest("resolve recusou o arquivo sintético")

@@ -278,7 +278,7 @@ def _write_private_text(path, text):
     flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
     handle = os.open(path, flags, 0o600)
     try:
-        os.chmod(path, 0o600)
+        Path(path).chmod(0o600)
     except BaseException:
         os.close(handle)
         raise
@@ -494,14 +494,14 @@ def _rotate_log(log):
     try:
         if not log.is_file() or log.stat().st_size == 0:
             return
-        with open(log, "rb") as stream:
+        with log.open("rb") as stream:
             if log.stat().st_size > LOG_KEEP_BYTES:
                 stream.seek(-LOG_KEEP_BYTES, os.SEEK_END)
             kept = stream.read()
         rotated = log.with_name(LOG_ROTATE_FILE)
         rotated.write_bytes(kept)
         with contextlib.suppress(OSError):
-            os.chmod(rotated, 0o600)
+            rotated.chmod(0o600)
     except OSError:
         return
 
@@ -621,7 +621,7 @@ def start_background(project, port: int = DEFAULT_PORT):
         extra["creationflags"] = 0x00000008 | 0x00000200
     else:
         extra["start_new_session"] = True
-    with open(log, "ab") as stream:
+    with log.open("ab") as stream:
         process = subprocess.Popen(
             command,
             stdout=stream,

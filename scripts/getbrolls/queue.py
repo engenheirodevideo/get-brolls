@@ -164,8 +164,8 @@ def save(path, data):
             stream.write(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
             stream.flush()
             os.fsync(stream.fileno())
-        os.chmod(temp, 0o600)
-        os.replace(temp, path)
+        Path(temp).chmod(0o600)
+        Path(temp).replace(path)
     finally:
         Path(temp).unlink(missing_ok=True)
 

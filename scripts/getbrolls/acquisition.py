@@ -55,7 +55,7 @@ def _save_index(cache, index):
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             stream.write(json.dumps(index, ensure_ascii=False))
         temp.chmod(0o600)
-        os.replace(temp, path)
+        temp.replace(path)
     except OSError:
         temp.unlink(missing_ok=True)
         raise
@@ -154,7 +154,7 @@ def cache_direct_media(ledger, candidate, refresh=True):
         sha = digest(target)
         final = cache / (id_stem(candidate["id"]) + "-" + sha + ".mp4")
         if not final.exists():
-            os.replace(target, final)
+            target.replace(final)
             final.chmod(0o600)
         elif digest(final) != sha:
             logs.event(
@@ -259,7 +259,7 @@ def prepare_source(ledger, candidate, start, end, tolerant=False):
         sha = digest(target)
         final = cache / (id_stem(c["id"]) + "-" + sha + ".mp4")
         if not final.exists():
-            os.replace(target, final)
+            target.replace(final)
             final.chmod(0o600)
         elif digest(final) != sha:
             logs.event(

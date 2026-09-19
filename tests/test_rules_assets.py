@@ -126,6 +126,7 @@ class RulesTests(unittest.TestCase):
                     text=True,
                     capture_output=True,
                     encoding="utf-8",
+                    check=False,
                 )
                 self.assertEqual(run.returncode, 0 if ok else 2, run.stderr)
                 return json.loads(run.stdout if ok else run.stderr)
@@ -239,6 +240,7 @@ class FormatChangeGateTests(unittest.TestCase):
                 [sys.executable, str(CLI), "status", "--project", folder],
                 capture_output=True,
                 text=True,
+                check=False,
             )
             self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
             report = json.loads(proc.stdout)
@@ -254,7 +256,7 @@ class FormatChangeGateTests(unittest.TestCase):
             path.write_text("```json\n" + json.dumps(rules) + "\n```", encoding="utf-8")
             for command in (["references"], ["inspect", "--url", "https://example.org/a"]):
                 with self.subTest(command=command[0]):
-                    proc = subprocess.run(
+                    proc = subprocess.run(  # noqa: PLW1510 - only stdout/stderr matter here, exit code is not asserted
                         [sys.executable, str(CLI), *command, "--project", folder],
                         capture_output=True,
                         text=True,
@@ -268,6 +270,7 @@ class FormatChangeGateTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                check=False,
             )
             self.assertNotEqual(0, blocked.returncode)
             self.assertIn("--confirm-format-change", blocked.stdout + blocked.stderr)

@@ -119,7 +119,7 @@ class ExecutableOverrideTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             directory = Path(d).resolve()
             ffmpeg = make_executable(directory, "ffmpeg-pinned")
-            cwd = os.getcwd()
+            cwd = Path.cwd()
             os.chdir(directory)
             try:
                 with clean_env(GB_FFMPEG_PATH="ffmpeg-pinned"):
@@ -236,6 +236,7 @@ class DoctorReportTests(unittest.TestCase):
             encoding="utf-8",
             env=clean_environ(**values),
             timeout=120,
+            check=False,
         )
         self.assertEqual(done.returncode, 0, done.stderr)
         return json.loads(done.stdout)

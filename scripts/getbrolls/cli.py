@@ -544,7 +544,7 @@ def entrypoint():
         with contextlib.suppress(Exception):
             sys.stdout.close()
         return 0
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - last-resort CLI boundary, must exit as JSON not a raw traceback
         # Anything audited() didn't already turn into an OperationError (e.g. an argparse-time
         # bug) must still exit as JSON, not a raw traceback breaking the CLI's output contract.
         from .runtime import redact, scrub_home, write_diagnostics_log

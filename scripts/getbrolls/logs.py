@@ -58,7 +58,7 @@ def get(name):
 def _chmod_private(path):
     if os.name != "nt":
         with contextlib.suppress(OSError):
-            os.chmod(path, 0o600)
+            Path(path).chmod(0o600)
 
 
 class _PrivateRotatingFileHandler(logging.handlers.RotatingFileHandler):
@@ -73,7 +73,7 @@ class _PrivateRotatingFileHandler(logging.handlers.RotatingFileHandler):
         super().doRollover()
         for index in range(1, self.backupCount + 1):
             candidate = f"{self.baseFilename}.{index}"
-            if os.path.exists(candidate):
+            if Path(candidate).exists():
                 _chmod_private(candidate)
 
 
@@ -88,7 +88,7 @@ class RedactingFilter(logging.Filter):
     def filter(self, record):
         try:
             message = record.getMessage()
-        except Exception:
+        except Exception:  # noqa: BLE001 - logging must never break a command
             message = str(record.msg)
         with contextlib.suppress(Exception):
             message = runtime.scrub_home(runtime.redact(message))
@@ -110,14 +110,14 @@ def _format_value(value):
         return "-"
     try:
         text = str(value)
-    except Exception:
+    except Exception:  # noqa: BLE001 - logging must never break a command
         text = "<unrepr>"
     if len(text) > _MAX_VALUE_CHARS:
         text = text[:_MAX_VALUE_CHARS]
     if text == "" or _UNQUOTED_SAFE.search(text):
         try:
             text = json.dumps(text, ensure_ascii=False)
-        except Exception:
+        except Exception:  # noqa: BLE001 - logging must never break a command
             text = '"' + text.replace('"', '\\"') + '"'
     return text
 
@@ -136,7 +136,7 @@ def event(logger, level, event_name, **fields):
         if not logger.isEnabledFor(level):
             return
         logger.log(level, render_fields(event_name, fields))
-    except Exception:
+    except Exception:  # noqa: BLE001 - logging must never break a command
         pass
 
 
@@ -196,7 +196,7 @@ def configure(project, *, read_only):
     logging.raiseExceptions = False
     try:
         _configure(project, read_only=read_only)
-    except Exception:
+    except Exception:  # noqa: BLE001 - logging setup must never break a command; degrade to a NullHandler instead
         _degrade()
 
 

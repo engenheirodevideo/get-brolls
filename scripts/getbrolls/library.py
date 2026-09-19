@@ -86,7 +86,7 @@ def _write_private(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")
     try:
-        with open(
+        with open(  # noqa: PTH123 - wraps an os.open() fd (explicit flags/mode), no Path equivalent
             os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600),
             "w",
             encoding="utf-8",
@@ -94,8 +94,8 @@ def _write_private(path, text):
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
-        os.chmod(temp, 0o600)
-        os.replace(temp, path)
+        temp.chmod(0o600)
+        temp.replace(path)
     finally:
         temp.unlink(missing_ok=True)
 

@@ -184,7 +184,7 @@ class SymlinkEscapeTests(unittest.TestCase):
             try:
                 previews = root / "brolls" / "previews"
                 previews.mkdir(parents=True)
-                os.symlink(outside, previews / "escape.jpg")
+                (previews / "escape.jpg").symlink_to(outside)
                 with _serving(root) as (_server, port):
                     with self.assertRaises(urllib.error.HTTPError) as ctx:
                         urllib.request.urlopen(f"http://127.0.0.1:{port}/previews/escape.jpg", timeout=5)
@@ -217,8 +217,8 @@ class PrivateFileModeTests(unittest.TestCase):
             log_file = root / "brolls" / serve.LOG_FILE
             pid_file.write_text("{}", encoding="utf-8")
             log_file.write_text("log antigo\n", encoding="utf-8")
-            os.chmod(pid_file, 0o644)
-            os.chmod(log_file, 0o644)
+            pid_file.chmod(0o644)
+            log_file.chmod(0o644)
             _start_background(self, root)
             try:
                 self.assertEqual(0, stat.S_IMODE(pid_file.stat().st_mode) & 0o077)

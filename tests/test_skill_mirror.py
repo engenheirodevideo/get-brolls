@@ -71,6 +71,7 @@ class SkillMirrorTests(unittest.TestCase):
             cwd=ROOT,
             capture_output=True,
             text=True,
+            check=False,
         )
         self.assertEqual(
             result.returncode,

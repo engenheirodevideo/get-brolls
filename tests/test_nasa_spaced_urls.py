@@ -108,7 +108,7 @@ class NasaSpacedUrlFlow(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as tmp,
             patch.object(providers, "get_json", side_effect=self._get_json),
-            patch.object(http, "_opener", lambda: _Opener()),
+            patch.object(http, "_opener", _Opener),
         ):
             found = cli.main(
                 ["search", "--project", tmp, "--provider", "nasa", "--query", "Artemis I launch SLS", "--limit", "1"]

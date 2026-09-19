@@ -102,6 +102,7 @@ class ServeMissingStoryboardEnvelopeTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                check=False,
             )
             self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
             payload = json.loads(proc.stdout.strip().splitlines()[-1])
@@ -444,29 +445,25 @@ class RebindingTests(unittest.TestCase):
 
 class SaveWriteHardeningTests(unittest.TestCase):
     def test_a_symlink_planted_at_the_target_name_is_refused(self):
-        import os
-
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             brolls = root / "brolls"
             (brolls / serve.REVIEWS_DIR).mkdir(parents=True)
             target = root / "fora-do-projeto.json"
             name = time.strftime("%Y%m%d-%H%M%S") + ".json"
-            os.symlink(target, brolls / serve.REVIEWS_DIR / name)
+            (brolls / serve.REVIEWS_DIR / name).symlink_to(target)
             with self.assertRaises(ValueError):
                 serve.save_review(brolls, {"items": []})
             self.assertFalse(target.exists())
 
     def test_a_symlinked_reviews_folder_is_refused(self):
-        import os
-
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             brolls = root / "brolls"
             brolls.mkdir(parents=True)
             elsewhere = root / "outro-lugar"
             elsewhere.mkdir()
-            os.symlink(elsewhere, brolls / serve.REVIEWS_DIR)
+            (brolls / serve.REVIEWS_DIR).symlink_to(elsewhere)
             with self.assertRaises(ValueError):
                 serve.save_review(brolls, {"items": []})
             self.assertEqual([], list(elsewhere.iterdir()))

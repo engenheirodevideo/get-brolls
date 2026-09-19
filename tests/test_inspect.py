@@ -452,6 +452,7 @@ def run_cli(args, env=None):
         text=True,
         encoding="utf-8",
         env=environment,
+        check=False,
     )
 
 
@@ -814,7 +815,7 @@ class DirectMediaSourceTests(unittest.TestCase):
 
         return (
             patch("getbrolls.http.download", side_effect=fake_download),
-            patch("getbrolls.providers.refresh", side_effect=lambda item: dict(item)),
+            patch("getbrolls.providers.refresh", side_effect=dict),
             patch("getbrolls.social.probe_remote", side_effect=explode),
             patch("getbrolls.social.download_segment", side_effect=explode),
         )

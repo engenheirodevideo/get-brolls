@@ -33,6 +33,9 @@ select = [
     "DTZ",
     "SIM",
     "RUF",
+    "BLE",
+    "PLW",
+    "PTH",
 ]
 # `ruff format` já mantém o código em 120 colunas. O que sobra de E501 são
 # literais que não podem ser quebrados sem mudar o que a pessoa lê: mensagens
