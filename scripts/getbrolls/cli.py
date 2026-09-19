@@ -487,39 +487,42 @@ def main(argv=None):
         pass
     logs.configure(project, read_only=read_only)
 
-    log = logs.get("cli")
-    logs.event(
-        log,
-        logging.INFO,
-        "command_start",
-        command=args.command,
-        read_only=read_only,
-        options=_given_option_names(sys.argv[1:] if argv is None else argv, args),
-    )
-    started = time.monotonic()
     try:
-        result = audited(args, lambda parsed: with_summary(parsed.command, execute(parsed)))
-    except OperationError as exc:
+        log = logs.get("cli")
+        logs.event(
+            log,
+            logging.INFO,
+            "command_start",
+            command=args.command,
+            read_only=read_only,
+            options=_given_option_names(sys.argv[1:] if argv is None else argv, args),
+        )
+        started = time.monotonic()
+        try:
+            result = audited(args, lambda parsed: with_summary(parsed.command, execute(parsed)))
+        except OperationError as exc:
+            logs.event(
+                log,
+                logging.INFO,
+                "command_end",
+                command=args.command,
+                status="error",
+                error_code=exc.payload.get("error_code"),
+                ms=round((time.monotonic() - started) * 1000),
+            )
+            raise
         logs.event(
             log,
             logging.INFO,
             "command_end",
             command=args.command,
-            status="error",
-            error_code=exc.payload.get("error_code"),
+            status="ok",
+            error_code=None,
             ms=round((time.monotonic() - started) * 1000),
         )
-        raise
-    logs.event(
-        log,
-        logging.INFO,
-        "command_end",
-        command=args.command,
-        status="ok",
-        error_code=None,
-        ms=round((time.monotonic() - started) * 1000),
-    )
-    return result
+        return result
+    finally:
+        logs.shutdown()
 
 
 def entrypoint():

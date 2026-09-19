@@ -181,6 +181,19 @@ def _degrade():
     _state["signature"] = None
 
 
+def shutdown():
+    """Flush and close every handler at the end of a command. Never raises.
+
+    The log file lives inside the project folder: leaving it open would keep a
+    handle on it after the command returned, which on Windows stops the person (or a
+    test) from moving or deleting that folder. The next `configure()` re-attaches.
+    """
+    try:
+        _degrade()
+    except Exception:
+        pass
+
+
 def configure(project, *, read_only):
     """Set up (once) the `getbrolls` logger hierarchy for this process.
 

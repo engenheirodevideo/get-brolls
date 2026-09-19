@@ -1,8 +1,11 @@
 """getbrolls.log: the new logging foundation, on top of the untouched diagnostics.jsonl."""
 
+import contextlib
+import io
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -453,6 +456,46 @@ class ChildLoggerRedactionTests(unittest.TestCase):
         self.assertIn("logger=getbrolls.http", written)
         for secret in ("child-secret-token", "child-sig-value", "child-field-secret", "example.org"):
             self.assertNotIn(secret, written)
+
+
+class HandlersAreReleasedTests(unittest.TestCase):
+    """The log file is not left open after a command: Windows cannot delete an open file."""
+
+    def _file_handlers(self):
+        return [h for h in logging.getLogger("getbrolls").handlers if isinstance(h, logging.FileHandler)]
+
+    def test_an_in_process_command_leaves_no_open_file_handler_and_the_folder_can_be_removed(self):
+        from getbrolls.cli import main
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with contextlib.redirect_stdout(io.StringIO()):
+                main(["init-rules", "--project", tmp])
+            self.assertTrue((Path(tmp) / "brolls" / logs.LOG_FILENAME).is_file())
+            self.assertEqual([], self._file_handlers())
+            shutil.rmtree(Path(tmp) / "brolls")
+
+    def test_a_failing_command_releases_the_file_too(self):
+        from getbrolls.cli import main
+        from getbrolls.runtime import OperationError
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(OperationError):
+                main(["fetch", "--candidate", "nao-existe", "--project", tmp])
+            self.assertEqual([], self._file_handlers())
+
+    def test_the_next_command_logs_again_after_a_shutdown(self):
+        from getbrolls.cli import main
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with contextlib.redirect_stdout(io.StringIO()):
+                main(["init-rules", "--project", tmp])
+                main(["init-rules", "--format", "reels", "--force", "--project", tmp])
+            text = (Path(tmp) / "brolls" / logs.LOG_FILENAME).read_text(encoding="utf-8")
+            self.assertEqual(2, text.count("event=command_start"))
+
+    def test_shutdown_never_raises_and_is_idempotent(self):
+        logs.shutdown()
+        logs.shutdown()
 
 
 if __name__ == "__main__":

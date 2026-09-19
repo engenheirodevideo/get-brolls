@@ -835,7 +835,7 @@ def run_batch(pairs, *, output_for, args) -> dict:
     return summary
 
 
-def main(argv: list[str] | None = None) -> int:
+def _main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.project is not None:
         # Standalone entry point (also the shared entry when driven programmatically as
@@ -888,6 +888,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 1 if summary["failed"] else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the batch and release the log file when it ends, however it ends."""
+    try:
+        return _main(argv)
+    finally:
+        logs.shutdown()
 
 
 if __name__ == "__main__":
