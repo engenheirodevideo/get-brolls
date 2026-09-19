@@ -28,6 +28,7 @@ A prévia pode baixar mídia de trabalho para mostrar o movimento. A entrega fin
 
 ## Atualizações
 
+- **2.4.3** Portão único de release (`scripts/preflight.sh`), versão escrita numa passada (`scripts/bump_version.py`) e espelho do SKILL.md gerado (`scripts/gen_skill_mirror.py`). `GB_CACHE_DIR` passa a valer no `.env`; `GETBROLLS_CACHE_DIR` continua funcionando. Sem mudança no fluxo de coleta.
 - **2.4.2** Frontmatter do SKILL.md válido como YAML (a `description` ganha aspas; o GitHub não renderizava o arquivo).
 - **2.4.1** Correção do workflow de release (FFmpeg no runner) e registro do ensaio ao vivo do Instagram. Sem mudança de comportamento na CLI.
 - **2.4.0** Entrevista de intake e `BRIEF.md` por projeto (`init-brief`/`brief`), aprovação pelo chat (`approve --all --by NOME --channel chat --statement "..."`), biblioteca de aprendizados entre projetos (`learn`/`library`), análise da fonte antes de coletar (`inspect`, `preview --scan`), pasta `entrega/` por beat (`deliver`), Storyboard que salva as decisões dentro do projeto, próximo passo pronto em `status.summary.do`, `search --shot/--dry-run` e `init-rules --format`.
@@ -337,7 +338,7 @@ Execute um comando por projeto de cada vez. Preserve originais, cache e históri
 | [AGENTS.md](AGENTS.md) | Índice para agentes e mantenedores: mapa do repositório, instalação por agente e regras de manutenção. |
 | [docs/GUIDE.md](docs/GUIDE.md) · [SKILL.md](SKILL.md) | Manual completo e instruções de execução para o agente. |
 | [docs/QUALITY.md](docs/QUALITY.md) | Testes, evidências reais e limites conhecidos. |
-| [docs/RULES.md](docs/RULES.md) · [.env.example](.env.example) | Regras editoriais e opções de configuração. |
+| [docs/RULES.md](docs/RULES.md) · [.env.example.pt-BR](.env.example.pt-BR) | Regras editoriais e opções de configuração. |
 | [docs/SECURITY.md](docs/SECURITY.md) | Tratamento de dados privados e relato de vulnerabilidades. |
 | `scripts/getbrolls/` | Núcleo único: CLI, provedores, Storyboard, coletor Instagram e utilitários YouTube. |
 | `assets/` | Logo, estilos e scripts usados pelo Storyboard gerado. |

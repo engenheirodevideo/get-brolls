@@ -116,7 +116,7 @@ Referências de instalação: [yt-dlp/EJS](https://github.com/yt-dlp/yt-dlp/wiki
 
 ### Configuração
 
-Copiar `.env.example` para `.env` é opcional (`cp .env.example .env` no macOS; `Copy-Item .env.example .env` no PowerShell). O `.env` pertence à raiz da skill, independentemente da pasta atual. Ambiente do processo prevalece. `--env-file` é opção da raiz do parser e vem antes do subcomando: `python3 scripts/gb.py --env-file CAMINHO <subcomando> …`. Nunca distribua `.env`, cookies, configs CDN ou perfis do navegador.
+Copiar `.env.example` para `.env` é opcional (`cp .env.example .env` no macOS; `Copy-Item .env.example .env` no PowerShell). O mesmo arquivo existe comentado em português, `.env.example.pt-BR`: as variáveis e os valores são idênticos, só os comentários mudam de língua. O `.env` pertence à raiz da skill, independentemente da pasta atual. Ambiente do processo prevalece. `--env-file` é opção da raiz do parser e vem antes do subcomando: `python3 scripts/gb.py --env-file CAMINHO <subcomando> …`. Nunca distribua `.env`, cookies, configs CDN ou perfis do navegador.
 
 #### Caminhos explícitos de ferramentas
 

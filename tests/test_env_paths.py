@@ -312,6 +312,27 @@ class DeclaredKeys(unittest.TestCase):
         missing = [key for key in sorted(config.KEYS) if key not in example]
         self.assertEqual([], missing)
 
+    SETTING = re.compile(r"^(# )?([A-Z][A-Z0-9_]*=.*)$")
+
+    def _settings(self, name):
+        """Linhas `CHAVE=valor` do exemplo, na ordem, marcando as comentadas."""
+        lines = (ROOT / name).read_text(encoding="utf-8").splitlines()
+        found = [self.SETTING.match(line) for line in lines]
+        return [(bool(m.group(1)), m.group(2)) for m in found if m]
+
+    def test_the_portuguese_example_only_differs_in_the_comments(self):
+        """Os dois exemplos dizem a mesma coisa em línguas diferentes: mesmas chaves,
+        mesma ordem, mesmos valores e o mesmo estado (ativa ou comentada). Variável
+        nova num arquivo só é o erro que este teste existe para pegar."""
+        english = self._settings(".env.example")
+        self.assertTrue(english)
+        self.assertEqual(english, self._settings(".env.example.pt-BR"))
+
+    def test_both_examples_load_as_they_are(self):
+        for name in (".env.example", ".env.example.pt-BR"):
+            with self.subTest(example=name), patch.dict(os.environ, {}, clear=False):
+                config.load_env(ROOT / name)
+
     def test_gb_brief_file_in_a_dot_env_does_not_break_every_command(self):
         with tempfile.TemporaryDirectory() as tmp:
             env_file = Path(tmp) / ".env"
