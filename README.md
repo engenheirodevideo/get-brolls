@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/badge/node-22%2B-green?style=flat-square" alt="Node 22+">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="Licença MIT">
     <img src="https://img.shields.io/github/actions/workflow/status/engenheirodevideo/get-brolls/test.yml?branch=main&style=flat-square&label=tests" alt="Status dos testes">
-    <img src="https://img.shields.io/badge/version-2.4.3-blue?style=flat-square" alt="Versão 2.4.3">
+    <img src="https://img.shields.io/badge/version-2.5.0-blue?style=flat-square" alt="Versão 2.5.0">
   </p>
 </div>
 
@@ -28,6 +28,7 @@ A prévia pode baixar mídia de trabalho para mostrar o movimento. A entrega fin
 
 ## Atualizações
 
+- **2.5.0** Log por projeto em `brolls/getbrolls.log` (`GB_LOG_LEVEL`, `GB_LOG_STDERR`): comandos, trilha de aprovação, subprocessos e rede, sem nomes, frases de aprovação nem URLs. `reject` zera o `output`, `verify` confere todos os clipes e desmarca o que foi alterado, e `deliver` pula clipe rejeitado ou reprovado e lista em `skipped`. Storyboard local endurecido (só `review.html`, `previews/` e `clips/`, cabeçalhos contra embutir a página). `~/.getbrolls/RULES.md` ilegível passa a parar o comando em vez de ser ignorado.
 - **2.4.3** Portão único de release (`scripts/preflight.sh`), versão escrita numa passada (`scripts/bump_version.py`) e espelho do SKILL.md gerado (`scripts/gen_skill_mirror.py`). `GB_CACHE_DIR` passa a valer no `.env`; `GETBROLLS_CACHE_DIR` continua funcionando. Sem mudança no fluxo de coleta.
 - **2.4.2** Frontmatter do SKILL.md válido como YAML (a `description` ganha aspas; o GitHub não renderizava o arquivo).
 - **2.4.1** Correção do workflow de release (FFmpeg no runner) e registro do ensaio ao vivo do Instagram. Sem mudança de comportamento na CLI.

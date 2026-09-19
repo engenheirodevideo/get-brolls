@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/badge/node-22%2B-green?style=flat-square" alt="Node 22+">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
     <img src="https://img.shields.io/github/actions/workflow/status/engenheirodevideo/get-brolls/test.yml?branch=main&style=flat-square&label=tests" alt="Tests status">
-    <img src="https://img.shields.io/badge/version-2.4.3-blue?style=flat-square" alt="Version 2.4.3">
+    <img src="https://img.shields.io/badge/version-2.5.0-blue?style=flat-square" alt="Version 2.5.0">
   </p>
 </div>
 
@@ -28,6 +28,7 @@ A preview may download working media so you can see the motion. Final delivery r
 
 ## Updates
 
+- **2.5.0.** Per-project log at `brolls/getbrolls.log` (`GB_LOG_LEVEL`, `GB_LOG_STDERR`): commands, the approval trail, subprocesses and network, with no names, approval statements or URLs. `reject` clears `output`, `verify` checks every clip and unmarks altered ones, and `deliver` skips rejected or failed clips and lists them under `skipped`. Hardened local Storyboard server (only `review.html`, `previews/` and `clips/`, anti-framing headers). An unreadable `~/.getbrolls/RULES.md` now stops the command instead of being ignored.
 - **2.4.3.** Single release gate (`scripts/preflight.sh`), one-pass version bump (`scripts/bump_version.py`) and a generated SKILL.md mirror (`scripts/gen_skill_mirror.py`). `GB_CACHE_DIR` now works from `.env`; `GETBROLLS_CACHE_DIR` keeps working. No change to the collection flow.
 - **2.4.2.** SKILL.md frontmatter is valid YAML again (quoted `description`; GitHub failed to render the file).
 - **2.4.1.** Release workflow fix (FFmpeg on the runner) and the live Instagram rehearsal on record. No CLI behaviour change.
