@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import ClassVar
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
@@ -34,6 +35,7 @@ def run_cli(test, *args):
         capture_output=True,
         text=True,
         encoding="utf-8",
+        check=False,
     )
     test.assertEqual(0, done.returncode, done.stderr)
     return json.loads(done.stdout)
@@ -394,6 +396,7 @@ class StatusCommandTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                check=False,
             )
             self.assertEqual(2, done.returncode, done.stdout)
             self.assertIn("Projeto não encontrado", done.stderr)
@@ -629,7 +632,7 @@ class ProgressSummaryTests(unittest.TestCase):
 class EverySummaryIsAnObjectWithALine(unittest.TestCase):
     """Uma leitura só serve para todo comando: `summary.line`."""
 
-    SAMPLES = {
+    SAMPLES: ClassVar = {
         "search": {"items": [], "errors": [], "excluded_by_rules": 0},
         "resolve": {"id": "local:a", "state": "registered"},
         "preview": {"id": "local:a", "state": "awaiting_approval", "approval": {"status": "pending"}},

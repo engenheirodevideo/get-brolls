@@ -3,11 +3,19 @@
 import copy
 import hashlib
 import json
+import logging
+import re
 from pathlib import Path
 
-from .models import approve, now, signature
+from . import logs
+from .models import approve, empty_output, now, signature
+
+_log = logs.get(__name__.rsplit(".", 1)[-1])
 
 ASSETS = Path(__file__).resolve().parents[2] / "assets"
+
+# Versão do esquema do JSON de decisões que o Storyboard exporta e que `import_review` aceita.
+REVIEW_TEMPLATE_VERSION = 2
 
 
 # Campos da decisão que definem a época: chaves acrescentadas depois (canal, frase)
@@ -55,7 +63,7 @@ def enhance(page, ledger, records):
         json.dumps(
             {
                 "type": "getbrolls-review",
-                "templateVersion": 2,
+                "templateVersion": REVIEW_TEMPLATE_VERSION,
                 "project": project_id(ledger),
                 "items": records,
             },
@@ -73,11 +81,27 @@ def enhance(page, ledger, records):
     )
 
 
+# Nome que `serve.py::save_review` grava: carimbo do relógio, e um `-N` numérico
+# quando duas decisões caem no mesmo segundo. Sem sufixo == a primeira daquele
+# segundo (equivalente a `-0`), não a mais recente.
+_REVIEW_FILENAME = re.compile(r"(?P<stamp>\d{8}-\d{6})(?:-(?P<suffix>\d+))?\.json")
+
+
+def _review_sort_key(path):
+    match = _REVIEW_FILENAME.fullmatch(path.name)
+    if not match:
+        return (path.stat().st_mtime, path.name, -1)
+    return (path.stat().st_mtime, match.group("stamp"), int(match.group("suffix") or 0))
+
+
 def latest_review_file(root):
     """Decisão mais recente salva pela própria página em `brolls/reviews/`.
 
     O servidor local grava um arquivo por vez que a pessoa clica em “Salvar
-    decisões”; o mais novo é o que ela acabou de decidir.
+    decisões”; o mais novo é o que ela acabou de decidir. Em sistemas de arquivos
+    com mtime grosseiro, duas decisões do mesmo segundo empatam no horário — o
+    desempate usa o sufixo `-N` numérico do nome, não a ordem alfabética bruta
+    (onde `-1.json` viria antes de `.json`, escolhendo a decisão errada).
     """
     folder = Path(root) / "reviews"
     if not folder.is_dir():
@@ -85,12 +109,20 @@ def latest_review_file(root):
     files = [p for p in folder.glob("*.json") if p.is_file()]
     if not files:
         return None
-    return max(files, key=lambda p: (p.stat().st_mtime, p.name))
+    return max(files, key=_review_sort_key)
 
 
-def import_review(ledger, file, by, rules=None):
+def _import_review_result(review_state):
+    """Collapse the five review states into the three audit-trail outcomes."""
+    if review_state in ("approved", "rejected"):
+        return review_state
+    return "pending"
+
+
+def import_review(ledger, file, by, rules=None):  # noqa: C901, PLR0912, PLR0915 - existing size; validates the saved decision file then applies it item by item
     if not by.strip():
         raise ValueError('Diga quem revisou: acrescente --by "seu nome" ao comando.')
+    file_source = "explicit" if file is not None else "latest"
     if file is None:
         found = latest_review_file(ledger.root)
         if found is None:
@@ -102,16 +134,19 @@ def import_review(ledger, file, by, rules=None):
             )
         file = found
     path = Path(file)
-    if path.stat().st_size > 2000000:
+    if path.stat().st_size > 2000000:  # noqa: PLR2004 - 2 MB, matches the message below
         raise ValueError(
             "Esse arquivo de escolhas passa de 2 MB — não parece ser o que a página "
             "salvou. Confira se apontou para o getbrolls-review.json certo."
         )
     data = json.loads(path.read_text(encoding="utf-8"))
+    # `type(...) is not int` keeps `True` (`== 1`) and a float like `2.0` (`== 2`)
+    # from passing as the real int, mirroring `ledger.validate_manifest`'s strictness.
     if (
         not isinstance(data, dict)
         or data.get("type") != "getbrolls-review"
-        or data.get("templateVersion") != 2
+        or type(data.get("templateVersion")) is not int
+        or data.get("templateVersion") != REVIEW_TEMPLATE_VERSION
         or data.get("project") != project_id(ledger)
     ):
         raise ValueError(
@@ -123,9 +158,11 @@ def import_review(ledger, file, by, rules=None):
         raise ValueError(
             "O arquivo de escolhas está vazio. Volte à página, decida os trechos e clique em “Salvar decisões”."
         )
+    logs.event(_log, logging.INFO, "review_file_selected", name=path.name, candidates=len(items))
     changes = []
     skipped = []
     seen = set()
+    item_log = []
 
     def skip(item_id, reason, detail):
         skipped.append({"id": item_id, "reason": reason, "detail": detail})
@@ -182,8 +219,8 @@ def import_review(ledger, file, by, rules=None):
         if (
             not isinstance(comment, str)
             or not isinstance(suggestion, str)
-            or len(comment) > 10000
-            or len(suggestion) > 2000
+            or len(comment) > 10000  # noqa: PLR2004 - character cap of the comment field
+            or len(suggestion) > 2000  # noqa: PLR2004 - character cap of the suggestion field
         ):
             skip(
                 c["id"],
@@ -235,6 +272,9 @@ def import_review(ledger, file, by, rules=None):
             # Same transition as the CLI `reject` command, recorded with the reviewer.
             c["approval"] = {"status": "rejected", "by": by, "at": now(), "revision": None}
             c["state"] = "rejected"
+            # Same reset as `commands.mark_rejected`: an already-fetched candidate must
+            # stop counting as delivered/verified once rejected here too.
+            c["output"] = empty_output()
         else:
             c["approval"] = {
                 "status": "pending",
@@ -243,6 +283,7 @@ def import_review(ledger, file, by, rules=None):
                 "revision": None,
             }
             c["state"] = "awaiting_approval"
+        item_log.append((c["id"], state))
         changes.append(c)
     if not changes:
         # Nada aplicado: o comando falha e diz, item a item, o que impediu cada um.
@@ -251,6 +292,36 @@ def import_review(ledger, file, by, rules=None):
     updates = {c["id"]: c for c in changes}
     ledger.data["items"] = [updates.get(c["id"], c) for c in ledger.data["items"]]
     ledger.save_many("import-review", changes)
+    try:
+        for cid, review_state in item_log:
+            logs.event(
+                _log,
+                logging.INFO,
+                "import_review_item",
+                candidate=cid,
+                result=_import_review_result(review_state),
+                skip_code=None,
+            )
+        for entry in skipped:
+            logs.event(
+                _log,
+                logging.WARNING,
+                "import_review_item",
+                candidate=entry["id"],
+                result="skipped",
+                skip_code=entry["reason"],
+            )
+        logs.event(
+            _log,
+            logging.INFO,
+            "import_review",
+            file_source=file_source,
+            applied=len(changes),
+            skipped=len(skipped),
+            rejected_file=any(review_state == "rejected" for _, review_state in item_log),
+        )
+    except Exception:  # noqa: BLE001, S110 - logging must never break a command
+        pass
     return {
         "imported": len(changes),
         "skipped": skipped,

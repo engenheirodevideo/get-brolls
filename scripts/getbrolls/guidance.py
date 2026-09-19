@@ -142,10 +142,10 @@ def step_candidate(state, step):
     antigo), cai no `candidate` único de antes.
     """
     chosen = (state.get("candidates") or {}).get(step)
-    return chosen if chosen else state.get("candidate")
+    return chosen or state.get("candidate")
 
 
-def _action(step, why, for_human, state, url=None, blocking_human=False, command=None):
+def _action(step, why, for_human, state, url=None, blocking_human=False, command=None):  # noqa: PLR0913 - existing size; one field per key of the returned guidance-step dict
     return {
         "step": step,
         "why": why,
@@ -315,7 +315,7 @@ def _done_action(state, counts):
     )
 
 
-def next_action(state):
+def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one branch/return per project state deciding the single next step
     """Único passo que faz sentido agora, com a frase para repassar sem parafrasear.
 
     `state` = {project, counts, format_pending, brief, review_page, board_url,

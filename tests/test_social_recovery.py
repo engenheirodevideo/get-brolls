@@ -191,6 +191,7 @@ class HelperRuntimeTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                check=False,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("--js-runtimes\nnode\n", result.stdout)
@@ -233,6 +234,7 @@ class HelperRuntimeTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                check=False,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue(output.is_file())
@@ -263,6 +265,7 @@ class InstallerTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                check=False,
             )
             self.assertNotEqual(r.returncode, 0, r.stdout)
             self.assertIn("22", r.stdout + r.stderr)

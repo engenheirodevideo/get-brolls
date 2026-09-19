@@ -1,16 +1,22 @@
 """Private working sources for review; final clips remain approval-gated."""
 
+import contextlib
 import json
+import logging
 import os
 import tempfile
+import time
 from pathlib import Path
 
+from . import logs
 from .ledger import digest
 from .media import probe
 from .models import id_stem
 from .runtime import record_warning
 
 INDEX_NAME = "index.json"
+
+log = logs.get("acquisition")
 
 
 def _load_index(cache):
@@ -32,10 +38,8 @@ def _load_index(cache):
             "SOURCE_INDEX_UNREADABLE",
             "Índice de fontes corrompido (JSON inválido); renomeado para .bad e tratado como vazio.",
         )
-        try:
+        with contextlib.suppress(OSError):
             path.replace(path.with_name(path.name + ".bad"))
-        except OSError:
-            pass
         return {}
     return data if isinstance(data, dict) else {}
 
@@ -51,10 +55,21 @@ def _save_index(cache, index):
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             stream.write(json.dumps(index, ensure_ascii=False))
         temp.chmod(0o600)
-        os.replace(temp, path)
+        temp.replace(path)
     except OSError:
         temp.unlink(missing_ok=True)
         raise
+
+
+def _ensure_private_cache_dir(cache):
+    """Create/reuse `.getbrolls-sources/` as 0700, same as `social.py`'s cache.
+
+    `mkdir(exist_ok=True)` only applies `mode` to a directory it actually creates;
+    an already-existing (looser) directory from before this fix would stay as-is
+    without the explicit `chmod` below.
+    """
+    cache.mkdir(mode=0o700, exist_ok=True)
+    cache.chmod(0o700)
 
 
 def _covers(entry, start, end):
@@ -83,8 +98,11 @@ def _reuse_from_index(cache, candidate_id, start, end):
                 "SOURCE_CACHE_STALE",
                 f"Cache de fonte para {candidate_id} tem sha divergente; ignorado, não reutilizado.",
             )
+            logs.event(log, logging.INFO, "source_cache", candidate=candidate_id, result="stale", reason="sha_mismatch")
             continue
+        logs.event(log, logging.INFO, "source_cache", candidate=candidate_id, result="hit", reason="covers_range")
         return entry
+    logs.event(log, logging.INFO, "source_cache", candidate=candidate_id, result="miss", reason="no_match")
     return None
 
 
@@ -105,10 +123,20 @@ def cache_direct_media(ledger, candidate, refresh=True):
     continua somente leitura sobre decisão, intervalo e direitos.
     """
     cache = ledger.root.parent / ".getbrolls-sources"
-    cache.mkdir(exist_ok=True)
+    _ensure_private_cache_dir(cache)
     reused = _reuse_from_index(cache, candidate["id"], 0, 0)
     if reused is not None:
-        return Path(reused["path"])
+        reused_path = Path(reused["path"])
+        logs.event(
+            log,
+            logging.INFO,
+            "source_materialized",
+            candidate=candidate["id"],
+            bytes=reused_path.stat().st_size if reused_path.is_file() else None,
+            ms=0,
+            kind="local",
+        )
+        return reused_path
     url = candidate.get("media_url")
     if refresh:
         from .providers import refresh as refresh_candidate
@@ -118,6 +146,7 @@ def cache_direct_media(ledger, candidate, refresh=True):
         raise ValueError("Arquivo do provedor não está mais disponível.")
     from .http import download
 
+    started = time.monotonic()
     with tempfile.TemporaryDirectory(dir=cache) as work:
         target = Path(work) / "source.bin"
         download(url, target)
@@ -125,9 +154,27 @@ def cache_direct_media(ledger, candidate, refresh=True):
         sha = digest(target)
         final = cache / (id_stem(candidate["id"]) + "-" + sha + ".mp4")
         if not final.exists():
-            os.replace(target, final)
+            target.replace(final)
+            final.chmod(0o600)
         elif digest(final) != sha:
+            logs.event(
+                log,
+                logging.WARNING,
+                "source_cache",
+                candidate=candidate["id"],
+                result="stale",
+                reason="digest_mismatch",
+            )
             raise ValueError("Cache de mídia inconsistente; não foi sobrescrito.")
+    logs.event(
+        log,
+        logging.INFO,
+        "source_materialized",
+        candidate=candidate["id"],
+        bytes=final.stat().st_size,
+        ms=round((time.monotonic() - started) * 1000),
+        kind="remote",
+    )
     index = _load_index(cache)
     entries = index.setdefault(candidate["id"], [])
     entries[:] = [e for e in entries if e.get("sha") != sha]
@@ -143,7 +190,7 @@ def cache_direct_media(ledger, candidate, refresh=True):
     return final
 
 
-def prepare_source(ledger, candidate, start, end, tolerant=False):
+def prepare_source(ledger, candidate, start, end, tolerant=False):  # noqa: C901, PLR0915 - existing size; walks every source-readiness state (local/remote, cache hit/miss, tolerant)
     """Deixa a mídia de trabalho pronta para [start, end] em tempo da fonte.
 
     `tolerant=True` aceita que o arquivo baixado seja mais curto do que o pedido — é
@@ -164,7 +211,7 @@ def prepare_source(ledger, candidate, start, end, tolerant=False):
         if duration is not None and start >= offset and end <= offset + duration + 0.05:
             return
     cache = ledger.root.parent / ".getbrolls-sources"
-    cache.mkdir(exist_ok=True)
+    _ensure_private_cache_dir(cache)
     reused = _reuse_from_index(cache, c["id"], start, end)
     if reused is not None:
         info = probe(reused["path"])
@@ -175,7 +222,18 @@ def prepare_source(ledger, candidate, start, end, tolerant=False):
             local_duration_s=reused["duration"],
         )
         c["media"].update(width=info["width"], height=info["height"], fps=info["fps"])
+        reused_path = Path(reused["path"])
+        logs.event(
+            log,
+            logging.INFO,
+            "source_materialized",
+            candidate=c["id"],
+            bytes=reused_path.stat().st_size if reused_path.is_file() else None,
+            ms=0,
+            kind="local",
+        )
         return
+    started = time.monotonic()
     with tempfile.TemporaryDirectory(dir=cache) as work:
         target = Path(work) / "source.mp4"
         if c["acquisition"].get("method") == "yt-dlp":
@@ -201,13 +259,26 @@ def prepare_source(ledger, candidate, start, end, tolerant=False):
         sha = digest(target)
         final = cache / (id_stem(c["id"]) + "-" + sha + ".mp4")
         if not final.exists():
-            os.replace(target, final)
+            target.replace(final)
+            final.chmod(0o600)
         elif digest(final) != sha:
+            logs.event(
+                log, logging.WARNING, "source_cache", candidate=c["id"], result="stale", reason="digest_mismatch"
+            )
             raise ValueError("Cache de mídia inconsistente; não foi sobrescrito.")
     c.update(
         local_path=str(final.resolve()), local_sha256=sha, local_start_s=offset, local_duration_s=info["duration_s"]
     )
     c["media"].update(width=info["width"], height=info["height"], fps=info["fps"])
+    logs.event(
+        log,
+        logging.INFO,
+        "source_materialized",
+        candidate=c["id"],
+        bytes=final.stat().st_size,
+        ms=round((time.monotonic() - started) * 1000),
+        kind="remote",
+    )
     index = _load_index(cache)
     entries = index.setdefault(c["id"], [])
     entries[:] = [e for e in entries if e.get("sha") != sha]

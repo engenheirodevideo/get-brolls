@@ -43,9 +43,65 @@ STILL_SOURCES = ("commons", "nasa")
 STILL_WORDS = ("foto", "fotografia", "imagem", "print", "still", "captura de tela", "screenshot", "retrato")
 # Palavras que não estreitam busca nenhuma; sair com elas só gasta espaço do teto.
 QUERY_STOPWORDS = frozenset(
-    """a o as os um uma uns umas de do da dos das em no na nos nas ao aos à às pelo pela
-    pelos pelas com sem por para que e ou mas se como onde quando sobre entre até durante
-    um dos the of and or in on at for with a an to from""".split()
+    [
+        "a",
+        "o",
+        "as",
+        "os",
+        "um",
+        "uma",
+        "uns",
+        "umas",
+        "de",
+        "do",
+        "da",
+        "dos",
+        "das",
+        "em",
+        "no",
+        "na",
+        "nos",
+        "nas",
+        "ao",
+        "aos",
+        "à",
+        "às",
+        "pelo",
+        "pela",
+        "pelos",
+        "pelas",
+        "com",
+        "sem",
+        "por",
+        "para",
+        "que",
+        "e",
+        "ou",
+        "mas",
+        "se",
+        "como",
+        "onde",
+        "quando",
+        "sobre",
+        "entre",
+        "até",
+        "durante",
+        "um",
+        "dos",
+        "the",
+        "of",
+        "and",
+        "or",
+        "in",
+        "on",
+        "at",
+        "for",
+        "with",
+        "a",
+        "an",
+        "to",
+        "from",
+    ]
 )
 
 
@@ -58,7 +114,7 @@ def read_json_block(path, missing, syntax, not_object=None):
     (dict), senão essa mensagem é levantada.
     """
     raw = Path(path).read_text(encoding="utf-8")
-    blocks = re.findall(r"```json\s*\n(.*?)\n```", raw, re.S)
+    blocks = re.findall(r"```json\s*\n(.*?)\n```", raw, re.DOTALL)
     if len(blocks) != 1:
         raise ValueError(missing)
     try:

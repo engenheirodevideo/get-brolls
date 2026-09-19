@@ -4,7 +4,7 @@ para um heading real de `docs/GUIDE.md` (contrato de docs, não de código)."""
 import unittest
 from pathlib import Path
 
-import check_anchors as anchors  # noqa: E402
+import check_anchors as anchors
 
 
 class TestDocAnchors(unittest.TestCase):

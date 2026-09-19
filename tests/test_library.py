@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation
 from _cli import run_cli
 from _paths import ROOT
 
@@ -148,7 +148,7 @@ class LibraryTests(LibraryBase):
         def write(n):
             try:
                 library.learn_query(f"busca {n}", "youtube", "hit")
-            except Exception as e:  # noqa: BLE001 — o teste quer a falha real
+            except Exception as e:  # noqa: BLE001 - the test wants the real failure to assert none occurred
                 errors.append(e)
 
         threads = [threading.Thread(target=write, args=(n,)) for n in range(8)]
@@ -259,9 +259,11 @@ class LibraryCommandTests(LibraryBase):
             ]
         )
         library.learn_query("foguete decolando", "youtube", "hit")
-        with patch("getbrolls.providers.search", side_effect=ValueError("chave ausente")):
-            with self.assertRaises(ValueError):
-                execute(args)
+        with (
+            patch("getbrolls.providers.search", side_effect=ValueError("chave ausente")),
+            self.assertRaises(ValueError),
+        ):
+            execute(args)
         data = json.loads(library.index_path().read_text(encoding="utf-8"))
         automatic = [q for q in data["queries"] if q.get("auto")]
         self.assertEqual(["pexels"], [q["provider"] for q in automatic])

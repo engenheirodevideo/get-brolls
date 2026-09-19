@@ -203,9 +203,9 @@ class NetworkRegressionTests(unittest.TestCase):
             with (
                 self.subTest(url=url),
                 patch.object(socket, "socket", side_effect=AssertionError("Unexpected network")),
+                self.assertRaises(http.ProviderError),
             ):
-                with self.assertRaises(http.ProviderError):
-                    http.get_json(url)
+                http.get_json(url)
 
     def test_mixed_public_private_dns_is_rejected_before_connecting(self):
         answers = [
@@ -215,9 +215,9 @@ class NetworkRegressionTests(unittest.TestCase):
         with (
             patch.object(socket, "getaddrinfo", return_value=answers),
             patch.object(socket, "socket", side_effect=AssertionError("Unexpected network")),
+            self.assertRaisesRegex(http.ProviderError, "Destino de rede"),
         ):
-            with self.assertRaisesRegex(http.ProviderError, "Destino de rede"):
-                http.get_json("https://api.example/data")
+            http.get_json("https://api.example/data")
 
     def test_redirects_are_not_followed(self):
         def request():

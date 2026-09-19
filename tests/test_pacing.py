@@ -240,12 +240,12 @@ class PairsBatchTests(unittest.TestCase):
                 raise subprocess.CalledProcessError(22, cmd, stderr=b"curl: (22) The requested URL returned error: 403")
 
             stderr = io.StringIO()
-            with contextlib.redirect_stderr(stderr):
-                with (
-                    patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                    patch.object(ig.subprocess, "run", side_effect=forbidden),
-                ):
-                    self.assertEqual(1, ig.main(batch_args(root, "--pace", "0", project=False)))
+            with (
+                contextlib.redirect_stderr(stderr),
+                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(ig.subprocess, "run", side_effect=forbidden),
+            ):
+                self.assertEqual(1, ig.main(batch_args(root, "--pace", "0", project=False)))
             self.assertIn("WARNING: cooldown não registrado", stderr.getvalue())
 
     def test_warning_printed_when_project_has_no_queue_json(self):
@@ -257,12 +257,12 @@ class PairsBatchTests(unittest.TestCase):
                 raise subprocess.CalledProcessError(22, cmd, stderr=b"curl: (22) The requested URL returned error: 403")
 
             stderr = io.StringIO()
-            with contextlib.redirect_stderr(stderr):
-                with (
-                    patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                    patch.object(ig.subprocess, "run", side_effect=forbidden),
-                ):
-                    self.assertEqual(1, ig.main(batch_args(root, "--pace", "0")))
+            with (
+                contextlib.redirect_stderr(stderr),
+                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(ig.subprocess, "run", side_effect=forbidden),
+            ):
+                self.assertEqual(1, ig.main(batch_args(root, "--pace", "0")))
             self.assertIn("WARNING: cooldown não registrado", stderr.getvalue())
 
     def test_other_curl_failures_do_not_trigger_cooldown(self):
@@ -277,15 +277,15 @@ class PairsBatchTests(unittest.TestCase):
             with (
                 patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
                 patch.object(ig.subprocess, "run", side_effect=timeout),
+                self.assertRaises(ig.CollectError) as raised,
             ):
-                with self.assertRaises(ig.CollectError) as raised:
-                    ig.download_or_reuse(
-                        cfg_path=conf,
-                        part_path=root / "p.mp4",
-                        config_output_root=root,
-                        force_download=False,
-                        prefer_config_output=False,
-                    )
+                ig.download_or_reuse(
+                    cfg_path=conf,
+                    part_path=root / "p.mp4",
+                    config_output_root=root,
+                    force_download=False,
+                    prefer_config_output=False,
+                )
             self.assertFalse(getattr(raised.exception, "cooldown", False))
 
     def test_unsafe_stem_is_rejected_before_any_path_is_built(self):
@@ -379,9 +379,12 @@ class SocialSleepTests(unittest.TestCase):
                 ):
                     self.assertEqual(value, command[command.index(flag) + 1])
             for bad in ("1,2", "a,b,c", "1,9,5", "-1,2,3"):
-                with patch.dict(os.environ, {**env, "GB_YTDLP_SLEEP": bad}, clear=True), self.subTest(bad=bad):
-                    with self.assertRaises(ValueError):
-                        social.command()
+                with (
+                    patch.dict(os.environ, {**env, "GB_YTDLP_SLEEP": bad}, clear=True),
+                    self.subTest(bad=bad),
+                    self.assertRaises(ValueError),
+                ):
+                    social.command()
 
 
 class RetryAfterTests(unittest.TestCase):

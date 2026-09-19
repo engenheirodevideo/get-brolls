@@ -196,6 +196,7 @@ class RepositoryDocumentationTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                check=False,
             )
             self.assertEqual(0, parsed.returncode, parsed.stderr)
         text = shell.read_text(encoding="utf-8")
@@ -440,6 +441,7 @@ class RepositoryDocumentationTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                check=False,
             )
             self.assertEqual(0, parsed.returncode, parsed.stderr)
 

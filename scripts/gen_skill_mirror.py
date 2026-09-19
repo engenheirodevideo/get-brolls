@@ -27,6 +27,7 @@ produziria.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import difflib
 import re
 import sys
@@ -160,5 +161,14 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _utf8_output() -> None:
+    """Print Portuguese text as UTF-8 even where the console default is a legacy code page."""
+    for stream in (sys.stdout, sys.stderr):
+        # TextIO does not declare `reconfigure`; streams without it fall into the except.
+        with contextlib.suppress(AttributeError, OSError):
+            stream.reconfigure(encoding="utf-8")  # pyright: ignore[reportAttributeAccessIssue]
+
+
 if __name__ == "__main__":
+    _utf8_output()
     sys.exit(main())
