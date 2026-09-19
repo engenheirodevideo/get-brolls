@@ -209,6 +209,7 @@ class SuggestedCommandRuns(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                check=False,
             )
             self.assertEqual(0, resolved.returncode, resolved.stderr)
             candidate = json.loads(resolved.stdout)["id"]
@@ -221,6 +222,7 @@ class SuggestedCommandRuns(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                check=False,
             )
             # TypeError de --start/--end None sairia como INTERNAL_ERROR (saída 3).
             self.assertEqual(0, done.returncode, done.stdout + done.stderr)

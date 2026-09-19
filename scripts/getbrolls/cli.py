@@ -1,13 +1,17 @@
 """Argument contract and structured command output."""
 
 import argparse
+import contextlib
 import json
+import logging
 import sys
+import time
 import traceback
+from pathlib import Path
 
-from . import __version__
+from . import __version__, logs
 from .presets import PERMIT_PRESETS
-from .runtime import OperationError, audited
+from .runtime import READ_ONLY_ACTIONS, READ_ONLY_COMMANDS, OperationError, audited
 
 # Named so a caller (script, test, or someone scripting the CLI) never has to hardcode 2/3.
 EXIT_OPERATION_ERROR = 2
@@ -64,7 +68,7 @@ FORMAT_GATE_SUBCOMMANDS = (
 )
 
 
-def build_parser():
+def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse builder with one branch per subcommand/flag
     parser = argparse.ArgumentParser(
         description="Get B-rolls — pesquisar, revisar e coletar trechos por fonte.",
         epilog="Use `<subcomando> --help` para os argumentos de cada etapa.",
@@ -442,8 +446,25 @@ def parse_args(argv=None):
     return build_parser().parse_args(argv)
 
 
+def _given_option_names(argv, args):
+    """Names of the options passed, never their values (values can be URLs or free text).
+
+    A token only counts when the parsed namespace has that option: a free-text value
+    that happens to start with `--` must not reach the log as if it were a flag name.
+    """
+    names = []
+    for token in argv:
+        if not token.startswith("--"):
+            continue
+        name = token[2:].split("=", 1)[0]
+        if hasattr(args, name.replace("-", "_")) and name not in names:
+            names.append(name)
+    return ",".join(names) if names else None
+
+
 def main(argv=None):
     from .commands import execute, with_summary
+    from .config import load_env
 
     args = parse_args(argv)
     if args.command == "serve" and not (args.background or args.stop):
@@ -455,16 +476,59 @@ def main(argv=None):
         except ValueError as exc:
             print(json.dumps({"error": str(exc), "error_code": "INVALID_DATA"}, ensure_ascii=False))
             raise SystemExit(EXIT_OPERATION_ERROR) from None
-    return audited(args, lambda parsed: with_summary(parsed.command, execute(parsed)))
+
+    project = getattr(args, "project", None)
+    read_only = args.command in READ_ONLY_COMMANDS or (args.command, getattr(args, "action", None)) in READ_ONLY_ACTIONS
+    # GB_LOG_LEVEL/GB_LOG_STDERR may live only in .env; load it before configuring
+    # logging. Harmless to call again inside execute() (setdefault-based); a bad
+    # .env here is silently skipped and raised properly by execute() itself.
+    with contextlib.suppress(ValueError):
+        load_env(args.env_file or Path(__file__).resolve().parents[2] / ".env")
+    logs.configure(project, read_only=read_only)
+
+    try:
+        log = logs.get("cli")
+        logs.event(
+            log,
+            logging.INFO,
+            "command_start",
+            command=args.command,
+            read_only=read_only,
+            options=_given_option_names(sys.argv[1:] if argv is None else argv, args),
+        )
+        started = time.monotonic()
+        try:
+            result = audited(args, lambda parsed: with_summary(parsed.command, execute(parsed)))
+        except OperationError as exc:
+            logs.event(
+                log,
+                logging.INFO,
+                "command_end",
+                command=args.command,
+                status="error",
+                error_code=exc.payload.get("error_code"),
+                ms=round((time.monotonic() - started) * 1000),
+            )
+            raise
+        logs.event(
+            log,
+            logging.INFO,
+            "command_end",
+            command=args.command,
+            status="ok",
+            error_code=None,
+            ms=round((time.monotonic() - started) * 1000),
+        )
+        return result
+    finally:
+        logs.shutdown()
 
 
 def entrypoint():
     for stream in (sys.stdout, sys.stderr):
-        try:
-            # TextIO não declara `reconfigure`; quem não tiver cai no except.
+        # TextIO não declara `reconfigure`; quem não tiver cai no except.
+        with contextlib.suppress(AttributeError, OSError):
             stream.reconfigure(encoding="utf-8")  # pyright: ignore[reportAttributeAccessIssue]
-        except (AttributeError, OSError):
-            pass
     try:
         print(json.dumps(main(), ensure_ascii=False, indent=2))
         return 0
@@ -477,15 +541,13 @@ def entrypoint():
     except BrokenPipeError:
         # The consumer end of a pipe (e.g. `| head`) closed early; this is an ordinary,
         # expected shutdown, not a bug — do not report it as INTERNAL_ERROR.
-        try:
+        with contextlib.suppress(Exception):
             sys.stdout.close()
-        except Exception:
-            pass
         return 0
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - last-resort CLI boundary, must exit as JSON not a raw traceback
         # Anything audited() didn't already turn into an OperationError (e.g. an argparse-time
         # bug) must still exit as JSON, not a raw traceback breaking the CLI's output contract.
-        from .runtime import redact, write_diagnostics_log
+        from .runtime import redact, scrub_home, write_diagnostics_log
 
         project = _project_from_argv()
         event = {
@@ -493,8 +555,8 @@ def entrypoint():
             "status": "error",
             "error_code": "INTERNAL_ERROR",
             "type": type(exc).__name__,
-            "repr": redact(repr(exc)),
-            "traceback": redact(traceback.format_exc()),
+            "repr": scrub_home(redact(repr(exc))),
+            "traceback": scrub_home(redact(traceback.format_exc())),
         }
         log = write_diagnostics_log(project, event) if project else None
         message = "Erro interno inesperado."
@@ -510,6 +572,7 @@ def entrypoint():
                     "type": type(exc).__name__,
                     "message": redact(repr(exc)),
                     "traceback": event["traceback"],
+                    "app_log": str(logs.log_path(project)) if logs.log_path(project) else None,
                 },
                 ensure_ascii=False,
             ),

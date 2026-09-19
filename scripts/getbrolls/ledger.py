@@ -11,7 +11,7 @@ from .models import id_stem, now
 
 def digest(path):
     h = hashlib.sha256()
-    with open(path, "rb") as f:
+    with Path(path).open("rb") as f:
         for block in iter(lambda: f.read(1024 * 1024), b""):
             h.update(block)
     return h.hexdigest()
@@ -25,12 +25,12 @@ def atomic_write(path, text):
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(temp, path)
+        temp.replace(path)
     finally:
         temp.unlink(missing_ok=True)
 
 
-def validate_manifest(data):
+def validate_manifest(data):  # noqa: C901, PLR0912 - existing size; validator with one check per manifest field
     try:
         if (
             not isinstance(data, dict)
@@ -38,15 +38,21 @@ def validate_manifest(data):
             or data["schema_version"] != 1
             or not isinstance(data.get("items"), list)
         ):
-            raise ValueError()
+            raise ValueError
         seen = set()
         for c in data["items"]:
             if not isinstance(c, dict) or not isinstance(c.get("id"), str) or not c["id"] or c["id"] in seen:
-                raise ValueError()
+                raise ValueError
             seen.add(c["id"])
             for field in ("provider", "source_id", "title", "state"):
                 if not isinstance(c.get(field), str):
-                    raise ValueError()
+                    raise ValueError
+            # Older manifests on disk predate this field: only refuse a value that is
+            # present and unrecognized, never its absence. Same strictness as the
+            # top-level check above: `True == 1` and `1.0 == 1` must not pass as the
+            # int `1`.
+            if "schema_version" in c and (type(c["schema_version"]) is not int or c["schema_version"] != 1):
+                raise ValueError
             for field in (
                 "media",
                 "preview",
@@ -59,19 +65,19 @@ def validate_manifest(data):
                 "match",
             ):
                 if not isinstance(c.get(field), dict):
-                    raise ValueError()
+                    raise ValueError
             for field in ("start_s", "end_s", "revision"):
                 if field not in c["segment"]:
-                    raise ValueError()
+                    raise ValueError
             if type(c["segment"]["revision"]) is not int or c["segment"]["revision"] < 0:
-                raise ValueError()
+                raise ValueError
             if not isinstance(c["rights"].get("evidence"), list) or any(
                 not isinstance(v, str) for v in c["rights"]["evidence"]
             ):
-                raise ValueError()
+                raise ValueError
             for field in ("path", "sha256", "verified"):
                 if field not in c["output"]:
-                    raise ValueError()
+                    raise ValueError
             for value in [c["output"]["path"]] + [
                 c["preview"].get(k)
                 for k in (
@@ -87,7 +93,7 @@ def validate_manifest(data):
                     or ".." in Path(value).parts
                     or "\\" in value
                 ):
-                    raise ValueError()
+                    raise ValueError
     except (ValueError, TypeError, KeyError):
         raise ValueError(
             "manifest.json inválido ou incompatível. Preserve o arquivo e restaure uma cópia válida; nenhum dado foi reiniciado."
@@ -187,7 +193,7 @@ class Ledger:
             if not isinstance(events, list) or any(
                 not isinstance(e, dict) or not isinstance(e.get("transaction"), str) for e in events
             ):
-                raise ValueError()
+                raise ValueError
         except (KeyError, ValueError, TypeError):
             raise ValueError(
                 "Journal de recuperação inválido. Preserve .pending-transaction.json e restaure o projeto antes de continuar."

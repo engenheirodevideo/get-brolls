@@ -63,20 +63,20 @@ VALID_RULES = textwrap.dedent(
 
 
 def queue_args(project, action, **extra):
-    base = dict(
-        command="queue",
-        project=str(project),
-        action=action,
-        provider=None,
-        urls=[],
-        url=None,
-        id=None,
-        done=False,
-        failed=False,
-        skipped=False,
-        reason=None,
-        env_file=None,
-    )
+    base = {
+        "command": "queue",
+        "project": str(project),
+        "action": action,
+        "provider": None,
+        "urls": [],
+        "url": None,
+        "id": None,
+        "done": False,
+        "failed": False,
+        "skipped": False,
+        "reason": None,
+        "env_file": None,
+    }
     base.update(extra)
     return SimpleNamespace(**base)
 
@@ -386,6 +386,7 @@ class Schema99StatusStaysExit0Tests(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                check=False,
             )
             self.assertEqual(0, done.returncode, done.stderr)
             payload = json.loads(done.stdout)
@@ -498,11 +499,10 @@ class QueueActionReadOnlyTests(unittest.TestCase):
                 self.assertEqual("status", result["action"])
 
     def test_a_write_action_still_takes_the_lock_and_conflicts(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with project_lock(tmp):
-                args = queue_args(tmp, "add", provider="instagram", urls=[REEL])
-                with self.assertRaisesRegex(getattr(commands, "OperationError", Exception), "."):
-                    audited(args, commands.execute)
+        with tempfile.TemporaryDirectory() as tmp, project_lock(tmp):
+            args = queue_args(tmp, "add", provider="instagram", urls=[REEL])
+            with self.assertRaisesRegex(getattr(commands, "OperationError", Exception), "."):
+                audited(args, commands.execute)
 
 
 class RulesPacingReachesQueueTests(unittest.TestCase):

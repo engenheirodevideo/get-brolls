@@ -278,7 +278,7 @@ class HTTPTests(unittest.TestCase):
     @patch.object(http, "_safe_network")
     @patch.object(http.urllib.request, "build_opener")
     def test_auth_failure_not_retried_and_no_secret_in_error(self, builder, safe):
-        error_response = urllib.error.HTTPError("https://example.org/?key=secret", 403, "secret", cast(Any, {}), None)
+        error_response = urllib.error.HTTPError("https://example.org/?key=secret", 403, "secret", cast("Any", {}), None)
         self.addCleanup(error_response.close)
         builder.return_value.open.side_effect = error_response
         with self.assertRaises(http.ProviderError) as error:
@@ -316,7 +316,7 @@ class HTTPTests(unittest.TestCase):
     @patch.object(http, "_safe_network")
     @patch.object(http.urllib.request, "build_opener")
     def test_server_failure_bounded_to_three_attempts(self, builder, safe, sleep):
-        error_response = urllib.error.HTTPError("https://example.org/", 503, "unavailable", cast(Any, {}), None)
+        error_response = urllib.error.HTTPError("https://example.org/", 503, "unavailable", cast("Any", {}), None)
         self.addCleanup(error_response.close)
         builder.return_value.open.side_effect = error_response
         with self.assertRaises(http.ProviderError):
@@ -390,9 +390,8 @@ class CommonsFilePageTests(unittest.TestCase):
     def test_a_sound_file_is_refused(self, _fetched):
         payload = json.loads(json.dumps(COMMONS_FILE))
         payload["query"]["pages"]["123"]["imageinfo"][0]["mime"] = "audio/ogg"
-        with patch.object(providers, "get_json", return_value=payload):
-            with self.assertRaises(ValueError) as caught:
-                providers.resolve("https://commons.wikimedia.org/wiki/File:Som.ogg")
+        with patch.object(providers, "get_json", return_value=payload), self.assertRaises(ValueError) as caught:
+            providers.resolve("https://commons.wikimedia.org/wiki/File:Som.ogg")
         self.assertIn("não é vídeo nem imagem", str(caught.exception))
 
 

@@ -40,6 +40,7 @@ def run_cli(*args, project=None, expect=0, env=None):
         text=True,
         encoding="utf-8",
         env=environment,
+        check=False,
     )
     assert done.returncode == expect, done.stderr or done.stdout
     return json.loads(done.stdout if expect == 0 else done.stderr)

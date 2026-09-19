@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import math
 import os
 import re
@@ -9,32 +10,88 @@ import tempfile
 import time
 from pathlib import Path
 
+from . import logs
 from .config import CAP_EPSILON, cache_root, tool_path
 from .runtime import record_warning, stderr_tail
 
+_logger = logs.get("media")
 
-def run(args):
+
+def run(args, *, op=None):
     name = args[0]
+    label = op or name
     args = [tool_path(name), *args[1:]]
+    started = time.monotonic()
     try:
-        return subprocess.run(
+        result = subprocess.run(
             args, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180
-        ).stdout
+        )
+        logs.event(
+            _logger,
+            logging.INFO,
+            "subprocess",
+            tool=name,
+            op=label,
+            ms=round((time.monotonic() - started) * 1000),
+            status="ok",
+            exit=result.returncode,
+        )
+        return result.stdout
     except FileNotFoundError as e:
+        logs.event(
+            _logger,
+            logging.WARNING,
+            "subprocess",
+            tool=name,
+            op=label,
+            ms=round((time.monotonic() - started) * 1000),
+            status="error",
+            exit=None,
+        )
         # Executável ausente é outro problema que arquivo ou intervalo inválido.
         raise ValueError(
             f"{name} não encontrado: instale FFmpeg/ffprobe ou aponte GB_FFMPEG_PATH/GB_FFPROBE_PATH; "
             "verifique python3 scripts/gb.py doctor."
         ) from e
     except subprocess.TimeoutExpired as e:
+        logs.event(
+            _logger,
+            logging.WARNING,
+            "subprocess",
+            tool=name,
+            op=label,
+            ms=round((time.monotonic() - started) * 1000),
+            status="error",
+            exit=None,
+        )
         raise ValueError(f"{name} excedeu 180s; confirme arquivo e intervalo ou tente novamente.") from e
     except subprocess.CalledProcessError as e:
+        logs.event(
+            _logger,
+            logging.WARNING,
+            "subprocess",
+            tool=name,
+            op=label,
+            ms=round((time.monotonic() - started) * 1000),
+            status="error",
+            exit=e.returncode,
+        )
         tail = stderr_tail(e.stderr)
         raise ValueError(
             f"{name} falhou (exit {e.returncode}); verifique python3 scripts/gb.py doctor."
             + (f" stderr: {tail}" if tail else "")
         ) from e
     except (subprocess.SubprocessError, OSError) as e:
+        logs.event(
+            _logger,
+            logging.WARNING,
+            "subprocess",
+            tool=name,
+            op=label,
+            ms=round((time.monotonic() - started) * 1000),
+            status="error",
+            exit=None,
+        )
         raise ValueError("Falha de mídia: confirme arquivo e intervalo; verifique python3 scripts/gb.py doctor.") from e
 
 
@@ -86,16 +143,18 @@ def drawtext_available():
         if cache_path.is_file():
             cached = json.loads(cache_path.read_text(encoding="utf-8"))
             _DRAWTEXT[name] = bool(cached.get("available"))
+            logs.event(_logger, logging.DEBUG, "drawtext_probe", available=_DRAWTEXT[name], source="cache")
             return _DRAWTEXT[name]
     except (OSError, ValueError):
         pass
     try:
-        listing = run(["ffmpeg", "-hide_banner", "-filters"])
+        listing = run(["ffmpeg", "-hide_banner", "-filters"], op="drawtext_probe")
     except ValueError:
         # The probe itself failed (missing/broken ffmpeg) — different from a working ffmpeg
         # that simply lacks the filter; the caller should know sondagem failed. This
         # process-level False is NOT persisted to disk: a real determination (probe ran and
-        # found no filter) must not be confused with "we couldn't even ask".
+        # found no filter) must not be confused with "we couldn't even ask". record_warning
+        # already mirrors a WARNING line into getbrolls.log, so no separate event here.
         record_warning(
             "FFMPEG_PROBE_FAILED",
             "Não foi possível sondar os filtros do ffmpeg; drawtext tratado como indisponível.",
@@ -103,6 +162,7 @@ def drawtext_available():
         return False
     available = " drawtext " in listing
     _DRAWTEXT[name] = available
+    logs.event(_logger, logging.INFO, "drawtext_probe", available=available, source="probe")
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         temp = cache_path.with_suffix(".tmp")
@@ -120,10 +180,13 @@ def find_font():
         path = Path(pinned).expanduser()
         if not path.is_file():
             raise ValueError(f"GB_FONT_FILE não aponta para uma fonte existente: {pinned}")
+        logs.event(_logger, logging.DEBUG, "font", found=True, source="env")
         return str(path.resolve())
     for candidate in DEFAULT_FONTS:
         if Path(candidate).is_file():
+            logs.event(_logger, logging.DEBUG, "font", found=True, source="system")
             return str(Path(candidate).resolve())
+    logs.event(_logger, logging.DEBUG, "font", found=False, source="system")
     return None
 
 
@@ -172,7 +235,8 @@ def probe(path):
                 "-of",
                 "json",
                 str(path),
-            ]
+            ],
+            op="probe",
         )
     )
     v = next((s for s in d["streams"] if s["codec_type"] == "video"), None)
@@ -221,13 +285,14 @@ def cut(src, dst, start, end):
                 "-movflags",
                 "+faststart",
                 str(tmp),
-            ]
+            ],
+            op="cut",
         )
         info = probe(tmp)
         if abs(info["duration_s"] - (end - start)) > max(0.25, 2 / (info["fps"] or 10)):
             raise ValueError("Duração do corte não corresponde ao intervalo aprovado.")
-        run(["ffmpeg", "-v", "error", "-i", str(tmp), "-f", "null", "-"])
-        os.replace(tmp, dst)
+        run(["ffmpeg", "-v", "error", "-i", str(tmp), "-f", "null", "-"], op="decode_check")
+        tmp.replace(dst)
     finally:
         tmp.unlink(missing_ok=True)
 
@@ -250,13 +315,14 @@ def preview(src, dst, start, end):
             "-frames:v",
             "1",
             str(dst),
-        ]
+        ],
+        op="preview",
     )
     if not Path(dst).exists():
         raise ValueError("Não foi possível criar a prévia.")
 
 
-def review_preview(src, directory, stem, start, end, config, label=None):
+def review_preview(src, directory, stem, start, end, config, label=None):  # noqa: PLR0913 - existing size; one field per input the preview/contact-sheet/GIF build needs
     """Full selected interval, native aspect, static gallery and bounded GIF.
 
     The contact sheet follows the original gb_contact.sh: evenly sampled frames tiled
@@ -268,8 +334,8 @@ def review_preview(src, directory, stem, start, end, config, label=None):
     if end - start > config["max_seconds"] + CAP_EPSILON:
         raise ValueError("Trecho excede GB_PREVIEW_MAX_SECONDS; selecione um insert menor ou ajuste a configuração.")
     # Stage every output before replacing any prior preview.
-    with tempfile.TemporaryDirectory(dir=directory) as stage:
-        stage = Path(stage)
+    with tempfile.TemporaryDirectory(dir=directory) as stage_dir:
+        stage = Path(stage_dir)
         poster = stage / "poster.jpg"
         sheet = stage / "sheet.jpg"
         gif = stage / "preview.gif"
@@ -286,7 +352,7 @@ def review_preview(src, directory, stem, start, end, config, label=None):
             str(src),
         ]
         scale = "scale='min(360,iw)':-2:flags=lanczos"
-        run(base + ["-vf", scale, "-frames:v", "1", str(poster)])
+        run([*base, "-vf", scale, "-frames:v", "1", str(poster)])
         n = config["frames"]
         cols = min(4, n)
         rows = math.ceil(n / cols)
@@ -294,7 +360,16 @@ def review_preview(src, directory, stem, start, end, config, label=None):
         # Source-time window for labels: the working file may start mid-source.
         offset = float(label.get("offset") or 0)
         src_start, src_end = start + offset, end + offset
-        font = find_font() if drawtext_available() else None
+        drawtext_ok = drawtext_available()
+        font = find_font() if drawtext_ok else None
+        if not font:
+            logs.event(
+                _logger,
+                logging.INFO,
+                "fallback",
+                kind="plain_sheet",
+                reason="no_drawtext" if not drawtext_ok else "no_font",
+            )
         cell = ""
         banner = ""
         if font:
@@ -322,8 +397,8 @@ def review_preview(src, directory, stem, start, end, config, label=None):
             )
         # Sample one frame per bin start across the whole interval, never only its head.
         run(
-            base
-            + [
+            [
+                *base,
                 "-vf",
                 f"fps={n / (end - start)}:start_time=0,scale=480:-2:flags=lanczos,{cell}"
                 f"tile={cols}x{rows}:nb_frames={n}:padding=10:margin=10:color=0x111111{banner}",
@@ -348,7 +423,7 @@ def review_preview(src, directory, stem, start, end, config, label=None):
             fps = config["fps"]
             colors = config["colors"]
             filt = f"fps={fps},scale='min({w},iw)':-2:flags=lanczos,split[a][b];[a]palettegen=max_colors={colors}:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle"
-            run(base + ["-filter_complex", filt, "-loop", "0", str(gif)])
+            run([*base, "-filter_complex", filt, "-loop", "0", str(gif)])
             size = gif.stat().st_size
             result["gif_bytes"] = size
             if size <= config["max_mb"] * 1000000:
@@ -359,11 +434,11 @@ def review_preview(src, directory, stem, start, end, config, label=None):
                     "GIF excedeu o limite de tamanho; entregue estático. Reduza largura/FPS ou aumente GB_GIF_MAX_MB e gere novamente."
                 )
         for source, relative in files:
-            os.replace(source, directory.parent / relative)
+            source.replace(directory.parent / relative)
     return result
 
 
-def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):
+def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):  # noqa: PLR0913 - existing size; one field per input the full-video contact sheet needs
     """Varredura do vídeo inteiro: um quadro a cada span/frames segundos, baixa resolução.
 
     Não é a prévia do trecho (essa é `review_preview`, presa a GB_PREVIEW_MAX_SECONDS):
@@ -401,11 +476,12 @@ def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):
                 "-frames:v",
                 "1",
                 str(sheet),
-            ]
+            ],
+            op="scan",
         )
         if not sheet.exists():
             raise ValueError("Não foi possível varrer o vídeo.")
-        os.replace(sheet, directory / (stem + "-scan.jpg"))
+        sheet.replace(directory / (stem + "-scan.jpg"))
     return {
         "scan_path": relative,
         "span_s": round(span, 3),
@@ -433,9 +509,10 @@ def image_preview(src, directory, stem):
                 "-frames:v",
                 "1",
                 str(dest),
-            ]
+            ],
+            op="poster",
         )
-        os.replace(dest, directory.parent / rel)
+        dest.replace(directory.parent / rel)
     return {
         "poster_path": rel,
         "contact_sheet_path": None,
@@ -452,9 +529,9 @@ def copy_image(src, dst):
         tmp = Path(stage) / dst.name
         shutil.copyfile(src, tmp)
         probe(tmp)
-        run(["ffmpeg", "-v", "error", "-i", str(tmp), "-f", "null", "-"])
+        run(["ffmpeg", "-v", "error", "-i", str(tmp), "-f", "null", "-"], op="decode_check")
         from .ledger import digest
 
         if digest(src) != digest(tmp):
             raise ValueError("Cópia da imagem não confere com o original.")
-        os.replace(tmp, dst)
+        tmp.replace(dst)

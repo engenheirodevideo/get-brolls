@@ -74,6 +74,12 @@ def id_stem(candidate_id):
     return hashlib.sha256(candidate_id.encode()).hexdigest()[:16]
 
 
+def empty_output():
+    """Shape shared by every path that stops a manifest item pointing at a clip:
+    `invalidate_approval` here, and the rejection paths in commands.py/review.py."""
+    return {"path": None, "sha256": None, "verified": False}
+
+
 def invalidate_approval(c, bump_revision=False):
     """Núcleo comum de invalidação: aprovação volta a pendente, review sai,
     output zera e o estado vira awaiting_approval. `bump_revision=True`
@@ -84,7 +90,7 @@ def invalidate_approval(c, bump_revision=False):
     """
     c["approval"] = {"status": "pending", "by": None, "at": None, "revision": None}
     c.pop("review", None)
-    c["output"] = {"path": None, "sha256": None, "verified": False}
+    c["output"] = empty_output()
     c["state"] = "awaiting_approval"
     if bump_revision:
         c["segment"]["revision"] += 1
@@ -130,6 +136,9 @@ def approve(c, by, channel="storyboard", statement=None):
         "signature": signature(c),
     }
     c["state"] = "approved"
+    # A fresh approval supersedes any earlier rejection; keeping the old `rejection`
+    # dict around would make the item look rejected and approved at once.
+    c.pop("rejection", None)
     return c
 
 

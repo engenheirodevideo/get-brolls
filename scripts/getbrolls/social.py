@@ -2,21 +2,29 @@
 
 import hashlib
 import json
+import logging
 import math
 import os
 import re
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
+from . import logs
 from .config import executable_override, venv_override
 from .http import ProviderError
 from .runtime import record_warning, redact, stderr_tail
 
+_log = logs.get("social")
+
 LAYOUTS = ("Scripts/yt-dlp.exe", "Scripts/yt-dlp", "bin/yt-dlp")
 # Pauses between yt-dlp requests: (--sleep-requests, --sleep-interval, --max-sleep-interval).
 DEFAULT_SLEEP = (1, 3, 8)
+# `ytdlp_sleep` is logged once per process, not once per invocation, to avoid drowning
+# the log in an identical DEBUG line for every one of possibly hundreds of yt-dlp calls.
+_sleep_logged = False
 
 
 def sleep_settings():
@@ -29,7 +37,7 @@ def sleep_settings():
         values = tuple(int(part.strip()) for part in parts)
     except ValueError:
         values = ()
-    if len(values) != 3 or any(v < 0 for v in values) or values[1] > values[2]:
+    if len(values) != 3 or any(v < 0 for v in values) or values[1] > values[2]:  # noqa: PLR2004 - "requests,min,max": exatamente 3 campos
         raise ValueError('GB_YTDLP_SLEEP: use "requests,min,max" em segundos inteiros, com min <= max.')
     return values
 
@@ -57,7 +65,23 @@ def local_ytdlp(root=None):
     return None
 
 
+def _log_tool_path(source):
+    logs.event(_log, logging.DEBUG, "tool_path", tool="yt-dlp", source=source)
+
+
+def _log_sleep_settings_once(requests, low, high):
+    """`ytdlp_sleep` once per process: every `command()` call would repeat the same line."""
+    global _sleep_logged  # noqa: PLW0603 - module-level once-per-process cache, intentional
+    if _sleep_logged:
+        return
+    _sleep_logged = True
+    logs.event(_log, logging.DEBUG, "ytdlp_sleep", requests=requests, min=low, max=high)
+
+
 def command():
+    # Same lookup order `local_ytdlp()` uses internally (env pin, then venv, then PATH);
+    # read here too only to classify which one supplied the binary, for `tool_path`.
+    pinned = executable_override("GB_YTDLP_PATH")
     local = local_ytdlp()
     exe = str(local) if local else shutil.which("yt-dlp")
     if not exe:
@@ -65,7 +89,9 @@ def command():
             "yt-dlp ausente: execute bash scripts/install.sh (ou install.ps1) na raiz da skill/plugin; "
             "após /plugin update é preciso reinstalar. Confira com python3 scripts/gb.py doctor."
         )
+    _log_tool_path("env" if pinned else "venv" if local else "path")
     requests, low, high = sleep_settings()
+    _log_sleep_settings_once(requests, low, high)
     # --no-warnings would hide exactly the rate-limit/PO-token/fallback warnings we want to surface.
     args = [
         exe,
@@ -110,22 +136,34 @@ def _classify_ytdlp_error(exc):
     stderr = exc.stderr or ""
     detail = stderr.lower()
     if _RATE_RE.search(detail):
+        category = "rate_limit"
         message = "limite de requisições da fonte (429); aguarde e tente de novo"
     elif "ip address is blocked" in detail:
+        category = "ip_blocked"
         message = "A fonte bloqueou o IP desta rede para esse post; download não concluído."
     elif "not available in your country" in detail:
+        category = "geo_block"
         message = "Vídeo bloqueado geograficamente (geo-block) para esta região."
     elif "requested format is not available" in detail:
+        category = "format_unavailable"
         message = "Formato solicitado não está disponível para esta fonte."
     elif "unsupported url" in detail:
+        category = "unsupported_url"
         message = "URL não suportada por yt-dlp."
     elif _LOGIN_RE.search(detail):
+        category = "login_required"
         message = "A fonte exige uma sessão de acesso. Use o navegador autorizado conforme o guia da plataforma."
     elif _UNAVAILABLE_RE.search(detail):
+        category = "unavailable"
         message = "Vídeo indisponível, privado ou removido."
     else:
+        category = "unknown"
         message = "yt-dlp não concluiu a extração; confira disponibilidade do post e siga o guia da plataforma."
-    return ProviderError(_with_tail(message, stderr))
+    error = ProviderError(_with_tail(message, stderr))
+    # Category returned alongside the error (not attached to it — ProviderError is owned
+    # by http.py) so `run()` can log it as `class=` without re-parsing stderr or changing
+    # the exception's message/type.
+    return error, category
 
 
 def _extract_warnings(stderr):
@@ -141,33 +179,64 @@ def _extract_warnings(stderr):
     return [redact(w) for w in warnings]
 
 
-def run(arguments, timeout=180):
+def _log_subprocess(op, started, *, status, exit_code):
+    logs.event(
+        _log,
+        logging.INFO if status == "ok" else logging.WARNING,
+        "subprocess",
+        tool="yt-dlp",
+        op=op,
+        ms=round((time.monotonic() - started) * 1000),
+        status=status,
+        exit=exit_code,
+    )
+
+
+def run(arguments, timeout=180, *, op=None):
+    """Run one yt-dlp invocation. `op` is an optional short label (e.g. "search",
+    "metadata") used only for the `event=subprocess` log line; omitting it changes
+    nothing about how the command runs."""
     cmd = command() + arguments
+    started = time.monotonic()
     try:
         proc = subprocess.run(
             cmd, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout
         )
     except subprocess.TimeoutExpired as exc:
+        _log_subprocess(op, started, status="error", exit_code=None)
         raise ProviderError(f"yt-dlp excedeu {timeout}s; a fonte pode estar lenta ou bloqueando.") from exc
     except subprocess.CalledProcessError as exc:
-        raise _classify_ytdlp_error(exc) from exc
+        classified, category = _classify_ytdlp_error(exc)
+        logs.event(
+            _log,
+            logging.WARNING,
+            "ytdlp_error",
+            **{"class": category},
+            provider="yt-dlp",
+        )
+        _log_subprocess(op, started, status="error", exit_code=exc.returncode)
+        raise classified from exc
     except FileNotFoundError as exc:
+        _log_subprocess(op, started, status="error", exit_code=None)
         name = exc.filename or (cmd[0] if cmd else "yt-dlp")
         raise ProviderError(
             f"{name} não encontrado: execute bash scripts/install.sh (ou install.ps1) na raiz da skill/plugin."
         ) from exc
     except PermissionError as exc:
+        _log_subprocess(op, started, status="error", exit_code=None)
         name = exc.filename or (cmd[0] if cmd else "yt-dlp")
         raise ProviderError(f"Permissão negada ao executar {name}.") from exc
     except (subprocess.SubprocessError, OSError) as exc:
+        _log_subprocess(op, started, status="error", exit_code=None)
         raise ProviderError(
             "yt-dlp não concluiu: confira dependências, disponibilidade do vídeo e sessão exigida pela fonte. Para Instagram, use o fluxo navegador → pares CDN descrito em docs/GUIDE.md."
         ) from exc
+    _log_subprocess(op, started, status="ok", exit_code=proc.returncode)
     return proc.stdout, _extract_warnings(proc.stderr)
 
 
 def search(query, limit):
-    raw, warnings = run(["--flat-playlist", "--dump-single-json", f"ytsearch{limit}:{query}"], timeout=60)
+    raw, warnings = run(["--flat-playlist", "--dump-single-json", f"ytsearch{limit}:{query}"], timeout=60, op="search")
     for w in warnings:
         record_warning("YTDLP_WARNING", w)
     try:
@@ -183,7 +252,7 @@ SUBTITLE_LANGS = ("pt", "en")
 def _language_from(name):
     """`probe.pt.vtt` → `pt`; `probe.pt-BR.vtt` → `pt-BR`."""
     parts = Path(name).name.split(".")
-    return parts[-2] if len(parts) >= 3 else "und"
+    return parts[-2] if len(parts) >= 3 else "und"  # noqa: PLR2004 - "nome.idioma.vtt": pelo menos 3 partes (ver exemplo acima)
 
 
 # Teto da lista de idiomas na resposta: o YouTube anuncia centenas de traduções
@@ -200,7 +269,7 @@ def _write_private(path, text):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.unlink(missing_ok=True)
-    with open(
+    with open(  # noqa: PTH123 - wraps an os.open() fd (explicit O_CREAT|O_EXCL flags/mode), no Path equivalent
         os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600),
         "w",
         encoding="utf-8",
@@ -252,7 +321,7 @@ def metadata(url):
     # Só páginas reconhecidas, nunca uma URL qualquer vinda do chat.
     resolve(url)
     try:
-        raw, warnings = run(["--dump-single-json", "--skip-download", "--", url], timeout=60)
+        raw, warnings = run(["--dump-single-json", "--skip-download", "--", url], timeout=60, op="metadata")
     except (ProviderError, OSError) as exc:
         record_warning("YTDLP_WARNING", f"metadados não vieram desta página: {exc}")
         return {}
@@ -276,7 +345,7 @@ def metadata(url):
     }
 
 
-def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):
+def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):  # noqa: C901 - existing size; one branch per cache/retry/subtitle-language outcome
     """O que a fonte conta sobre si: duração, capítulos, legendas e descrição.
 
     Um único pedido ao yt-dlp, sem baixar vídeo, com as mesmas pausas de
@@ -321,6 +390,10 @@ def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):
                 url,
             ],
             timeout=60,
+            # No `op=` here: tests/test_inspect.py replaces `social.run` with a spy whose
+            # signature is `(arguments, timeout=180)` — passing any extra keyword would
+            # break that existing test. The `event=subprocess` line still fires for this
+            # call, just with `op=-`.
         )
         for w in warnings:
             record_warning("YTDLP_WARNING", w)
@@ -331,7 +404,7 @@ def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):
             # de metadados (simulado, sem escrever arquivo nenhum), devolve a
             # classificação de sempre — vídeo privado, 429, sessão exigida — em vez de um
             # "metadados inválidos" genérico, e ainda salva título, duração e capítulos.
-            raw, more = run(["--dump-single-json", "--skip-download", "--", url], timeout=60)
+            raw, more = run(["--dump-single-json", "--skip-download", "--", url], timeout=60, op="metadata")
             for w in more:
                 record_warning("YTDLP_WARNING", w)
         try:
@@ -358,6 +431,13 @@ def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):
             if cache is not None:
                 stem = hashlib.sha256(url.encode()).hexdigest()[:16]
                 destination = cache / f"{stem}-{language}.vtt"
+                logs.event(
+                    _log,
+                    logging.DEBUG,
+                    "cache_reuse",
+                    kind="subtitle",
+                    status="hit" if destination.exists() else "miss",
+                )
                 _write_private(destination, text)
             subtitles[language] = {
                 "path": str(destination) if destination else None,
@@ -426,7 +506,8 @@ def download_segment(url, target, start, end):
                 str(output),
                 "--",
                 url,
-            ]
+            ],
+            op="segment",
         )
         for w in warnings:
             record_warning("YTDLP_WARNING", w)

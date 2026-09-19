@@ -29,14 +29,18 @@ Sem dependências externas (stdlib).
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import re
 import subprocess
 import sys
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date as _date
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -300,6 +304,7 @@ def _check_skill_mirror(root: Path, _version: str) -> bool:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        check=False,
     )
     return result.returncode == 0
 
@@ -310,6 +315,7 @@ def _write_skill_mirror(root: Path, _version: str, _date_str: str) -> None:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        check=False,
     )
     if result.returncode != 0:
         raise ValueError(f"gen_skill_mirror.py falhou: {result.stderr.strip() or result.stdout.strip()}")
@@ -365,7 +371,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("version", help="nova versão, no formato X.Y.Z")
     parser.add_argument(
         "--date",
-        default=_date.today().isoformat(),
+        default=_date.today().isoformat(),  # noqa: DTZ011 - local date of the CLI run; timezone-aware would shift the day near midnight
         help="data AAAA-MM-DD usada no CHANGELOG e em SKILL.md (padrão: hoje)",
     )
     parser.add_argument(
@@ -384,5 +390,14 @@ def main(argv: list[str] | None = None) -> int:
     return run(root, args.version, args.date, args.check)
 
 
+def _utf8_output() -> None:
+    """Print Portuguese text as UTF-8 even where the console default is a legacy code page."""
+    for stream in (sys.stdout, sys.stderr):
+        # TextIO does not declare `reconfigure`; streams without it fall into the except.
+        with contextlib.suppress(AttributeError, OSError):
+            stream.reconfigure(encoding="utf-8")  # pyright: ignore[reportAttributeAccessIssue]
+
+
 if __name__ == "__main__":
+    _utf8_output()
     sys.exit(main())

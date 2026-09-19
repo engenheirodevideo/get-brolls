@@ -452,6 +452,7 @@ def run_cli(args, env=None):
         text=True,
         encoding="utf-8",
         env=environment,
+        check=False,
     )
 
 
@@ -726,9 +727,11 @@ class ScanTests(unittest.TestCase):
             )
             from getbrolls.runtime import OperationError
 
-            with patch.dict(os.environ, {"GB_PREVIEW_MAX_SECONDS": "10"}):
-                with self.assertRaises(OperationError) as caught:
-                    audited(args, execute)
+            with (
+                patch.dict(os.environ, {"GB_PREVIEW_MAX_SECONDS": "10"}),
+                self.assertRaises(OperationError) as caught,
+            ):
+                audited(args, execute)
             message = str(caught.exception)
             self.assertIn("GB_PREVIEW_MAX_SECONDS", message)
             self.assertIn("10", message)
@@ -797,7 +800,7 @@ class DirectMediaSourceTests(unittest.TestCase):
         return stored["id"]
 
     def _args(self, **extra):
-        base = dict(env_file=None, confirm_format_change=False, project=None)
+        base = {"env_file": None, "confirm_format_change": False, "project": None}
         base.update(extra)
         return types.SimpleNamespace(**base)
 
@@ -812,7 +815,7 @@ class DirectMediaSourceTests(unittest.TestCase):
 
         return (
             patch("getbrolls.http.download", side_effect=fake_download),
-            patch("getbrolls.providers.refresh", side_effect=lambda item: dict(item)),
+            patch("getbrolls.providers.refresh", side_effect=dict),
             patch("getbrolls.social.probe_remote", side_effect=explode),
             patch("getbrolls.social.download_segment", side_effect=explode),
         )
@@ -953,7 +956,7 @@ def color_at(source_second):
     return list(SCAN_COLORS)[min(int(source_second // SCAN_BAND_S), len(SCAN_COLORS) - 1)]
 
 
-def cell_rgb(sheet, index, cols=4, width=240, height=136, padding=6, margin=6):
+def cell_rgb(sheet, index, cols=4, width=240, height=136, padding=6, margin=6):  # noqa: PLR0913 - existing size; one field per contact-sheet cell-geometry parameter
     """RGB do centro da célula `index` do contact sheet, sem dependência de imagem."""
     col, row = index % cols, index // cols
     x = margin + col * (width + padding) + width // 2

@@ -26,14 +26,28 @@ def live_checks():
                 result["refresh"] = "media_url_available" if fresh.get("media_url") else "no_media_url"
             result["seconds"] = round(time.monotonic() - start, 3)
             results.append(result)
-        except (ValueError, OSError, KeyError, TypeError):
-            # Provider errors can originate from arbitrary upstream response text.
+        except (ValueError, OSError) as error:
+            # Provider/network failures: arbitrary upstream response text, timeouts,
+            # DNS, etc. Never a key, only the exception class name.
             results.append(
                 {
                     "provider": name,
                     "status": "failed",
                     "seconds": round(time.monotonic() - start, 3),
-                    "detail": "Consulte configuração, conectividade e disponibilidade do provedor; nenhuma chave é exibida.",
+                    "detail": f"[{type(error).__name__}] Consulte configuração, conectividade e "
+                    "disponibilidade do provedor; nenhuma chave é exibida.",
+                }
+            )
+        except (KeyError, TypeError, AttributeError) as error:
+            # Bug signatures, not provider/network trouble: keep them visibly distinct
+            # so a maintainer doesn't go looking for a connectivity problem instead.
+            results.append(
+                {
+                    "provider": name,
+                    "status": "failed",
+                    "seconds": round(time.monotonic() - start, 3),
+                    "detail": f"[{type(error).__name__}] Erro interno inesperado (bug), não é problema de "
+                    "configuração/conectividade do provedor.",
                 }
             )
     return {

@@ -13,6 +13,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
+from typing import ClassVar
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
@@ -51,7 +52,7 @@ def with_brief(tmp):
     import re
 
     raw = (ROOT / "docs" / "BRIEF.md").read_text(encoding="utf-8")
-    block = re.findall(r"```json\s*\n(.*?)\n```", raw, re.S)[0]
+    block = re.findall(r"```json\s*\n(.*?)\n```", raw, re.DOTALL)[0]
     data = json.loads(block)
     data["beats"] = [data["beats"][0]]
     Path(tmp, "BRIEF.md").write_text(
@@ -89,9 +90,8 @@ class DirectoryNames(unittest.TestCase):
 
     def test_path_separators_and_parent_refs_are_refused(self):
         for bad in ("../fuga", "..", "a/b", "a\\b"):
-            with self.subTest(bad=bad):
-                with self.assertRaises(ValueError):
-                    delivery.beat_dir_name(1, bad, "alvo")
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                delivery.beat_dir_name(1, bad, "alvo")
         with self.assertRaises(ValueError):
             delivery.beat_dir_name(1, "beat", "../fuga")
 
@@ -424,7 +424,7 @@ class FrozenFiles(unittest.TestCase):
             ledger = project(tmp, [fetched("a", "Palco", shot="abertura")])
             delivery.build_delivery(tmp)
             old = sorted(p.name for p in (Path(tmp) / "entrega").iterdir() if p.is_dir())
-            frozen = [p for p in (Path(tmp) / "entrega").rglob("*.mp4")]
+            frozen = list((Path(tmp) / "entrega").rglob("*.mp4"))
             self.assertTrue(frozen and not os.access(frozen[0], os.W_OK))
             ledger.data["items"][0]["shot"] = "fechamento"
             ledger.save_many("fixture", ledger.data["items"])
@@ -483,7 +483,7 @@ class VerifyHook(unittest.TestCase):
 class MixedDeliveryIndex(unittest.TestCase):
     """Parte link, parte cópia: nenhum aviso global é verdade para os dois."""
 
-    ROWS = [
+    ROWS: ClassVar[list] = [
         {
             "beat": "abertura",
             "narration": "Fala 1",
@@ -533,7 +533,7 @@ class MixedDeliveryIndex(unittest.TestCase):
             # O primeiro arquivo vira link, o segundo cai para cópia — o caso real é
             # o sistema recusar o link de um arquivo só (outro volume, por exemplo).
             calls["n"] += 1
-            if calls["n"] == 2:
+            if calls["n"] == 2:  # noqa: PLR2004 - second file of the pair (see the comment above)
                 import shutil
 
                 dest.parent.mkdir(parents=True, exist_ok=True)

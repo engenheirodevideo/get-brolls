@@ -53,6 +53,7 @@ class HelpContractTests(unittest.TestCase):
             capture_output=True,
             text=True,
             encoding="utf-8",
+            check=False,
         )
         self.assertEqual(0, done.returncode, done.stderr)
         self.assertEqual(f"get-brolls {__version__}", done.stdout.strip())
@@ -66,6 +67,7 @@ class DoctorVerdictTests(unittest.TestCase):
             text=True,
             encoding="utf-8",
             timeout=120,
+            check=False,
         )
         self.assertEqual(0, done.returncode, done.stderr)
         return json.loads(done.stdout)

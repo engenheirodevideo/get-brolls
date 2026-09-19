@@ -16,6 +16,7 @@ import argparse
 import hashlib
 import ipaddress
 import json
+import logging
 import os
 import random
 import re
@@ -32,10 +33,20 @@ from urllib.parse import urlsplit
 URL_RE = re.compile(r'^\s*url\s*=\s*"(.*)"\s*$')
 OUTPUT_RE = re.compile(r'^\s*output\s*=\s*"(.*)"\s*$')
 if __package__:
+    from . import logs
     from .runtime import redact, stderr_tail
 else:  # Executado diretamente como `python3 scripts/getbrolls/instagram_pairs.py`, per docs/GUIDE.md.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from getbrolls import logs
     from getbrolls.runtime import redact, stderr_tail
+
+# Importing `logs` (above) registers a NullHandler on the shared `getbrolls` logger at
+# module import time (see logs.py), which is what keeps Python's own "handler of last
+# resort" from ever printing a bare record to stderr before `logs.configure()` runs (or
+# when it never runs, e.g. this script invoked without --project). Verified in
+# tests/test_logging_social.py: nothing reaches stderr from logging alone when
+# unconfigured, at any level.
+_log = logs.get("instagram_pairs")
 
 HOST_RE = re.compile(
     r"^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*"
@@ -47,6 +58,22 @@ PACE_RE = re.compile(r"^(\d+)(?:-(\d+))?$")
 BLOCKED_RE = re.compile(r"(?:error|returned error|HTTP/[\d.]+)\s*:?\s*(403|429)\b", re.IGNORECASE)
 DEFAULT_PACE = "20-60"
 DEFAULT_MAX_PER_RUN = 25
+# Same shape `infer_output_for_stem` uses to recognize a "student" stem (`<username>_<rank>_<code>`).
+_STUDENT_STEM_RE = re.compile(r"^(.+)_([0-9]{2})_(.+)$")
+
+
+def _safe_item_id(stem: str) -> str:
+    """A loggable per-item id derived from `stem`.
+
+    Never the raw stem verbatim when it embeds a username (the `student` layout's
+    `<username>_<rank>_<code>` shape) — usernames/handles must never reach the log, so
+    only the trailing code survives. Any other stem shape is short and username-free
+    already, so it is logged as-is.
+    """
+    match = _STUDENT_STEM_RE.match(stem)
+    if match and not re.match(r"^[0-9]{2}$", match.group(1)):
+        return match.group(3)
+    return stem
 
 
 class CollectError(Exception):
@@ -57,6 +84,9 @@ class CollectError(Exception):
         self.message = redact(message)
         self.code = code
         self.cooldown = cooldown
+        # Only set (to the HTTP status text) for a CDN-block cooldown error; used solely
+        # by the `blocked` log line, never by control flow.
+        self.http_status: str | None = None
 
 
 def die(message: str, code: int = 1, *, cooldown: bool = False) -> NoReturn:
@@ -103,6 +133,13 @@ def sh_quote(value: str) -> str:
     return "'" + value.replace("'", "'\\''") + "'"
 
 
+def _die_url_refused(reason: str, message: str, code: int = 1) -> NoReturn:
+    """Like `die()`, plus a `media_url_refused` log line carrying only a fixed `reason`
+    code — never the message/path, which can carry a config filename or address."""
+    logs.event(_log, logging.WARNING, "media_url_refused", reason=reason)
+    die(message, code)
+
+
 def _curl_resolution(host: str, source: Path) -> str | None:
     try:
         address = ipaddress.ip_address(host)
@@ -110,18 +147,18 @@ def _curl_resolution(host: str, source: Path) -> str | None:
         try:
             rows = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
         except OSError:
-            die(f"não foi possível resolver o hostname do config curl: {source}")
+            _die_url_refused("dns_resolution_failed", f"não foi possível resolver o hostname do config curl: {source}")
         addresses = sorted({row[4][0] for row in rows})
         if not addresses:
-            die(f"hostname do config curl sem endereço: {source}")
+            _die_url_refused("dns_no_address", f"hostname do config curl sem endereço: {source}")
         parsed = [ipaddress.ip_address(item) for item in addresses]
         if any(not item.is_global for item in parsed):
-            die(f"hostname do config curl resolveu para endereço privado: {source}")
+            _die_url_refused("private_address", f"hostname do config curl resolveu para endereço privado: {source}")
         selected = parsed[0]
-        target = f"[{selected}]" if selected.version == 6 else str(selected)
+        target = f"[{selected}]" if selected.version == 6 else str(selected)  # noqa: PLR2004 - IP version 6
         return f"{host}:443:{target}"
     if not address.is_global:
-        die(f"a URL do config curl não pode apontar para endereço privado: {source}")
+        _die_url_refused("private_address", f"a URL do config curl não pode apontar para endereço privado: {source}")
     return None
 
 
@@ -130,23 +167,23 @@ def validate_media_url(value: str, source: Path) -> tuple[str, str | None]:
         parsed = urlsplit(value)
         port = parsed.port
     except ValueError:
-        die(f"URL inválida no config curl: {source}")
+        _die_url_refused("invalid_url", f"URL inválida no config curl: {source}")
     if parsed.scheme.lower() != "https" or not parsed.hostname:
-        die(f"a URL do config curl deve usar HTTPS público: {source}")
+        _die_url_refused("scheme_or_host_invalid", f"a URL do config curl deve usar HTTPS público: {source}")
     if parsed.username is not None or parsed.password is not None:
-        die(f"a URL do config curl não pode conter credenciais: {source}")
+        _die_url_refused("credentials_in_url", f"a URL do config curl não pode conter credenciais: {source}")
     if port not in (None, 443):
-        die(f"a URL do config curl deve usar a porta HTTPS padrão: {source}")
+        _die_url_refused("nonstandard_port", f"a URL do config curl deve usar a porta HTTPS padrão: {source}")
     host = parsed.hostname.lower()
     if host.endswith("."):
-        die(f"o hostname do config curl não pode terminar com ponto: {source}")
-    if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
-        die(f"a URL do config curl não pode apontar para host local: {source}")
+        _die_url_refused("trailing_dot_host", f"o hostname do config curl não pode terminar com ponto: {source}")
+    if host == "localhost" or host.endswith((".localhost", ".local")):
+        _die_url_refused("local_host", f"a URL do config curl não pode apontar para host local: {source}")
     try:
         ipaddress.ip_address(host)
     except ValueError:
         if not HOST_RE.fullmatch(host):
-            die(f"hostname inválido no config curl: {source}")
+            _die_url_refused("invalid_hostname", f"hostname inválido no config curl: {source}")
     return value, _curl_resolution(host, source)
 
 
@@ -238,14 +275,28 @@ def _reused_part_is_valid(path: Path) -> bool:
         return False
 
 
-def download_or_reuse(
+def _log_pair_stage(stage: str | None, started: float, *, status: str, size: int | None = None) -> None:
+    logs.event(
+        _log,
+        logging.INFO if status == "ok" else logging.WARNING,
+        "pair_stage",
+        stage=stage,
+        ms=round((time.monotonic() - started) * 1000),
+        status=status,
+        bytes=size,
+    )
+
+
+def download_or_reuse(  # noqa: C901, PLR0913, PLR0915 - existing size; one download/reuse/verify branch per source combination
     *,
     cfg_path: Path,
     part_path: Path,
     config_output_root: Path,
     force_download: bool,
     prefer_config_output: bool,
+    stage: str | None = None,
 ) -> str:
+    started = time.monotonic()
     parsed = parse_curl_config(cfg_path)
     config_output = resolve_config_output(parsed["output"], config_output_root)
 
@@ -261,17 +312,19 @@ def download_or_reuse(
         part_path.parent.mkdir(parents=True, exist_ok=True)
         if config_output.resolve() != part_path.resolve():
             shutil.copy2(config_output, part_path)
+        logs.event(_log, logging.INFO, "pair_reuse", stage=stage)
         return "reused-config-output"
 
     if part_path.exists() and part_path.stat().st_size > 0 and not force_download:
         if not _reused_part_is_valid(part_path):
             die(f"parte reutilizada está corrompida; use --force-download: {part_path}")
+        logs.event(_log, logging.INFO, "pair_reuse", stage=stage)
         return "reused-part"
 
     part_path.parent.mkdir(parents=True, exist_ok=True)
     # Preserva partes existentes válidas até a transferência substituta ter sucesso.
-    with tempfile.TemporaryDirectory(dir=part_path.parent) as stage:
-        pending = Path(stage) / "download.part"
+    with tempfile.TemporaryDirectory(dir=part_path.parent) as stage_dir:
+        pending = Path(stage_dir) / "download.part"
         cmd = [
             "curl",
             "--fail",
@@ -298,24 +351,37 @@ def download_or_reuse(
             stderr = exc.stderr or b""
             if isinstance(stderr, bytes):
                 stderr = stderr.decode("utf-8", errors="replace")
-            blocked = BLOCKED_RE.search(stderr) if exc.returncode == 22 else None
+            blocked = BLOCKED_RE.search(stderr) if exc.returncode == 22 else None  # noqa: PLR2004 - curl exit 22 (--fail), see the comment at the top of the file
             if blocked:
-                die(
+                _log_pair_stage(stage, started, status="error")
+                message = (
                     f"CDN recusou o config {cfg_path} com HTTP {blocked.group(1)}; pare o lote, "
-                    "aguarde o cooldown e recapture as URLs antes de tentar de novo",
-                    cooldown=True,
+                    "aguarde o cooldown e recapture as URLs antes de tentar de novo"
                 )
+                # Inlined `die()`: only this branch needs the raised error to carry the
+                # HTTP status separately (`http_status`), for the later `blocked` log line
+                # in `_record_failure`, without changing the printed/raised message.
+                print(f"ERROR: {message}", file=sys.stderr)
+                error = CollectError(message, cooldown=True)
+                error.http_status = blocked.group(1)
+                raise error  # noqa: B904 - implicit context, matching die()'s own raise
             tail = stderr_tail(stderr)
+            _log_pair_stage(stage, started, status="error")
             die(f"curl falhou para o config {cfg_path} (exit {exc.returncode}): {tail}")
         except subprocess.TimeoutExpired as exc:
+            _log_pair_stage(stage, started, status="error")
             die(
                 f"curl timed out after {exc.timeout}s para o config {cfg_path}; recapture URLs expiradas/proibidas e tente de novo"
             )
         except (subprocess.SubprocessError, OSError):
+            _log_pair_stage(stage, started, status="error")
             die(f"curl falhou para o config {cfg_path}; recapture URLs expiradas/proibidas e tente de novo")
         if not pending.is_file() or pending.stat().st_size == 0:
+            _log_pair_stage(stage, started, status="error")
             die(f"mídia vazia para o config {cfg_path}")
-        os.replace(pending, part_path)
+        size = pending.stat().st_size
+        pending.replace(part_path)
+    _log_pair_stage(stage, started, status="ok", size=size)
     return "downloaded"
 
 
@@ -446,7 +512,7 @@ def publish_exclusive(source: Path, destination: Path) -> None:
         raise
 
 
-def process_one(
+def process_one(  # noqa: PLR0913 - existing size; one field per stem/config/output path the pair processor needs
     *,
     stem: str,
     video_config: Path,
@@ -472,6 +538,7 @@ def process_one(
         config_output_root=config_output_root,
         force_download=force_download,
         prefer_config_output=prefer_config_output,
+        stage="video",
     )
     audio_action = download_or_reuse(
         cfg_path=audio_config,
@@ -479,12 +546,25 @@ def process_one(
         config_output_root=config_output_root,
         force_download=force_download,
         prefer_config_output=prefer_config_output,
+        stage="audio",
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=output.parent) as stage:
         pending = Path(stage) / "merged.mp4"
-        merge_parts(video_part, audio_part, pending, copy_streams=copy_streams)
-        verification = verify_output(pending, compute_audio_hash=compute_audio_hash)
+        merge_started = time.monotonic()
+        try:
+            merge_parts(video_part, audio_part, pending, copy_streams=copy_streams)
+        except BaseException:
+            _log_pair_stage("merge", merge_started, status="error")
+            raise
+        _log_pair_stage("merge", merge_started, status="ok", size=pending.stat().st_size if pending.exists() else None)
+        validate_started = time.monotonic()
+        try:
+            verification = verify_output(pending, compute_audio_hash=compute_audio_hash)
+        except BaseException:
+            _log_pair_stage("validation", validate_started, status="error")
+            raise
+        _log_pair_stage("validation", validate_started, status="ok", size=verification.get("size"))
         publish_exclusive(pending, output)
     verification["output"] = str(output)
     verification.update(
@@ -642,8 +722,9 @@ def _skip(results: list[dict], stem: str, reason: str) -> None:
 
 def _pause_before(stem: str, low: int, high: int) -> None:
     """Pausa aleatória para o lote nunca bater na CDN no ritmo de uma máquina."""
-    pause = random.uniform(low, high)
+    pause = random.uniform(low, high)  # noqa: S311 - pacing jitter, not security
     print(f"-- pacing: waiting {pause:.1f}s before {stem}", file=sys.stderr)
+    logs.event(_log, logging.DEBUG, "pace", wait_s=round(pause, 1))
     time.sleep(pause)
 
 
@@ -677,6 +758,13 @@ def _record_failure(
     results.append({"stem": stem, "status": "failed", "reason": reason})
     if cooldown:
         until = record_queue_cooldown(getattr(args, "project", None), reason)
+        logs.event(
+            _log,
+            logging.WARNING,
+            "blocked",
+            http_status=getattr(exc, "http_status", None),
+            cooldown_recorded=bool(until),
+        )
         if until:
             print(f"-- cooldown recorded in queue.json until {until}", file=sys.stderr)
         return "cooldown", None
@@ -685,7 +773,7 @@ def _record_failure(
     return None, None
 
 
-def run_batch(pairs, *, output_for, args) -> dict:
+def run_batch(pairs, *, output_for, args) -> dict:  # noqa: C901 - existing size; pace/cap/summary/block-detection loop over the stems
     """Processa stems em ordem com ritmo, teto por execução, resumo incremental e detecção de bloqueio."""
     low, high = parse_pace(args.pace)
     if args.max_per_run < 1:
@@ -716,25 +804,46 @@ def run_batch(pairs, *, output_for, args) -> dict:
             output = output_for(stem)
             print(f"== {stem} -> {output} ==", file=sys.stderr)
             processed += 1
+            item_id = _safe_item_id(stem)
+            logs.event(_log, logging.INFO, "pair_item_start", shortcode=item_id)
             try:
                 result = _collect_one(stem, video_config, audio_config, output, args)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - one item's failure (network/provider/etc.) must not kill the batch
                 stop_reason, fatal = _record_failure(results, stem, exc, args)
                 if stop_reason == "cooldown":
                     stopped_by = "cooldown"
+                logs.event(_log, logging.INFO, "pair_item_end", shortcode=item_id, status="failed")
             else:
                 results.append({**result, "status": "done"})
+                logs.event(_log, logging.INFO, "pair_item_end", shortcode=item_id, status="done")
             write_summary(args.summary_json, snapshot())
     finally:
         write_summary(args.summary_json, snapshot())
     summary = snapshot()
+    logs.event(
+        _log,
+        logging.INFO,
+        "pair_batch_summary",
+        count=summary["count"],
+        done=summary["done"],
+        failed=summary["failed"],
+        skipped=summary["skipped"],
+        stopped_by=stopped_by,
+    )
     if fatal is not None:
         raise fatal
     return summary
 
 
-def main(argv: list[str] | None = None) -> int:
+def _main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.project is not None:
+        # Standalone entry point (also the shared entry when driven programmatically as
+        # `getbrolls.instagram_pairs.main()`): only configure logging when the project
+        # root is known and this run is never read-only (it always writes media). With
+        # no --project, the logger stays unconfigured — safe per logs.py's own
+        # NullHandler guard (see the module docstring above), no file/stderr side effects.
+        logs.configure(str(args.project), read_only=False)
     ensure_tool("curl")
     ensure_tool("ffmpeg")
     ensure_tool("ffprobe")
@@ -767,7 +876,7 @@ def main(argv: list[str] | None = None) -> int:
     except CollectError as exc:
         print(f"-- lote interrompido: {exc.message}", file=sys.stderr)
         return exc.code
-    except Exception as exc:  # noqa: BLE001 - summary já foi gravado; sem traceback cru
+    except Exception as exc:  # noqa: BLE001 - summary is already written; batch must end with a clean message, not a raw traceback
         print(f"-- lote interrompido: {type(exc).__name__}: {redact(str(exc))}", file=sys.stderr)
         return 1
 
@@ -779,6 +888,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 1 if summary["failed"] else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the batch and release the log file when it ends, however it ends."""
+    try:
+        return _main(argv)
+    finally:
+        logs.shutdown()
 
 
 if __name__ == "__main__":

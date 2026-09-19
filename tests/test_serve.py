@@ -49,11 +49,13 @@ class ServeStartTests(unittest.TestCase):
             server, port = serve.start(root, port=0)
             self.assertGreater(port, 0)
             self.assertEqual("127.0.0.1", server.server_address[0])
-            with self._running(server):
-                with urllib.request.urlopen(f"http://127.0.0.1:{port}/review.html", timeout=5) as response:
-                    self.assertEqual(200, response.status)
-                    self.assertIn(b"storyboard", response.read())
-                    self.assertEqual("no-store", response.headers.get("Cache-Control"))
+            with (
+                self._running(server),
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/review.html", timeout=5) as response,
+            ):
+                self.assertEqual(200, response.status)
+                self.assertIn(b"storyboard", response.read())
+                self.assertEqual("no-store", response.headers.get("Cache-Control"))
 
     def test_get_outside_served_directory_is_404(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -100,6 +102,7 @@ class ServeMissingStoryboardEnvelopeTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                check=False,
             )
             self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
             payload = json.loads(proc.stdout.strip().splitlines()[-1])
@@ -390,7 +393,7 @@ class RebindingTests(unittest.TestCase):
     def test_get_with_a_foreign_host_is_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
-            with self._serving(root) as (server, port):
+            with self._serving(root) as (_server, port):
                 with self.assertRaises(urllib.error.HTTPError) as ctx:
                     self._request(port, {"Host": "storyboard.evil.test"})
                 self.assertEqual(403, ctx.exception.code)
@@ -425,7 +428,7 @@ class RebindingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
-            with self._serving(root) as (server, port):
+            with self._serving(root) as (_server, port):
                 with self.assertRaises(urllib.error.HTTPError) as ctx:
                     self._request(
                         port,
@@ -442,29 +445,25 @@ class RebindingTests(unittest.TestCase):
 
 class SaveWriteHardeningTests(unittest.TestCase):
     def test_a_symlink_planted_at_the_target_name_is_refused(self):
-        import os
-
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             brolls = root / "brolls"
             (brolls / serve.REVIEWS_DIR).mkdir(parents=True)
             target = root / "fora-do-projeto.json"
             name = time.strftime("%Y%m%d-%H%M%S") + ".json"
-            os.symlink(target, brolls / serve.REVIEWS_DIR / name)
+            (brolls / serve.REVIEWS_DIR / name).symlink_to(target)
             with self.assertRaises(ValueError):
                 serve.save_review(brolls, {"items": []})
             self.assertFalse(target.exists())
 
     def test_a_symlinked_reviews_folder_is_refused(self):
-        import os
-
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             brolls = root / "brolls"
             brolls.mkdir(parents=True)
             elsewhere = root / "outro-lugar"
             elsewhere.mkdir()
-            os.symlink(elsewhere, brolls / serve.REVIEWS_DIR)
+            (brolls / serve.REVIEWS_DIR).symlink_to(elsewhere)
             with self.assertRaises(ValueError):
                 serve.save_review(brolls, {"items": []})
             self.assertEqual([], list(elsewhere.iterdir()))

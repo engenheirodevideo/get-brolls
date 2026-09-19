@@ -80,13 +80,13 @@ class InstagramRecoveryTests(unittest.TestCase):
                 Path(cmd[cmd.index("--output") + 1]).write_bytes(b"partial")
                 raise subprocess.CalledProcessError(18, cmd)
 
-            kwargs: dict[str, Any] = dict(
-                cfg_path=conf,
-                part_path=target,
-                config_output_root=root,
-                force_download=False,
-                prefer_config_output=False,
-            )
+            kwargs: dict[str, Any] = {
+                "cfg_path": conf,
+                "part_path": target,
+                "config_output_root": root,
+                "force_download": False,
+                "prefer_config_output": False,
+            }
             public_dns = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))]
             with (
                 patch.object(ig.socket, "getaddrinfo", return_value=public_dns),

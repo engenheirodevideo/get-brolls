@@ -1,7 +1,6 @@
 """Explicit editorial reference history, separate from media permission."""
 
 import json
-import os
 
 from .models import now, signature
 
@@ -31,6 +30,6 @@ def remember(ledger, c, decision, reason, by):
     data["items"].append(entry)
     temp = path.with_suffix(".tmp")
     temp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(temp, path)
+    temp.replace(path)
     ledger.save("remember", c)
     return entry

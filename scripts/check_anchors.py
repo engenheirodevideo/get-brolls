@@ -12,6 +12,7 @@ lista de âncoras quebradas caso contrário.
 
 from __future__ import annotations
 
+import contextlib
 import re
 import sys
 from pathlib import Path
@@ -47,8 +48,7 @@ def slugify(heading: str) -> str:
     text = heading.strip().lower()
     text = text.replace("`", "")
     text = re.sub(r"[^\w\s-]", "", text)
-    text = text.replace(" ", "-")
-    return text
+    return text.replace(" ", "-")
 
 
 def extract_headings(markdown: str) -> set[str]:
@@ -108,9 +108,11 @@ def check() -> list[str]:
         if not path.exists():
             continue
         text = path.read_text(encoding="utf-8")
-        for anchor in find_anchor_refs(text):
-            if anchor not in guide_slugs:
-                problems.append(f"{path.relative_to(ROOT)}: âncora quebrada GUIDE.md#{anchor}")
+        problems.extend(
+            f"{path.relative_to(ROOT)}: âncora quebrada GUIDE.md#{anchor}"
+            for anchor in find_anchor_refs(text)
+            if anchor not in guide_slugs
+        )
         if path.parent.name == "references":
             problems.extend(check_relative_links(path, text))
     return problems
@@ -127,5 +129,14 @@ def main() -> int:
     return 0
 
 
+def _utf8_output() -> None:
+    """Print Portuguese text as UTF-8 even where the console default is a legacy code page."""
+    for stream in (sys.stdout, sys.stderr):
+        # TextIO does not declare `reconfigure`; streams without it fall into the except.
+        with contextlib.suppress(AttributeError, OSError):
+            stream.reconfigure(encoding="utf-8")  # pyright: ignore[reportAttributeAccessIssue]
+
+
 if __name__ == "__main__":
+    _utf8_output()
     sys.exit(main())

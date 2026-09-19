@@ -1,16 +1,20 @@
 """User-editable, local declarative rules. No YAML dependency or code evaluation."""
 
+import logging
 import os
 import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from . import logs
 from .brief import read_json_block
 from .models import invalidate_approval
 from .queue import validate_pacing_block
 
 ROOT = Path(__file__).resolve().parents[2]
 TYPES = {"video", "image", "news_screenshot", "web_screenshot"}
+
+log = logs.get("rules")
 
 
 def read_rules_block(path):
@@ -68,6 +72,7 @@ def _strip_never_inherited(path, data, warnings, label):
                 "responsabilidade e declaração valem só no projeto em que o "
                 "vídeo é feito. Preencha no RULES.md deste projeto."
             )
+            logs.event(log, logging.INFO, "rules_key_not_inherited", rule=key, layer=label)
     return data
 
 
@@ -75,7 +80,8 @@ def rules_layers(project):
     """Camadas na ordem geral → específica, com os avisos do que foi ignorado."""
     layers, warnings = [], []
     project_path = Path(project) / "RULES.md"
-    if not project_path.exists():
+    template_base = not project_path.exists()
+    if template_base:
         # Sem arquivo no projeto, o modelo da skill é só o piso: quem está por cima
         # (global, GB_RULES_FILE) continua valendo mais que ele.
         template = ROOT / "docs" / "RULES.md"
@@ -83,17 +89,24 @@ def rules_layers(project):
         project_path = None
     global_path = home_dir() / "RULES.md"
     if global_path.exists():
+        # Uma camada global corrompida some, mas as restrições dela (blocked_domains,
+        # asset_types...) somem junto — a pessoa continua achando que valem. Falha
+        # travada: melhor parar o comando do que deixar de aplicar uma regra de
+        # segurança sem avisar. Só o arquivo FALTANDO é inofensivo (o piso da skill
+        # cobre isso); um arquivo presente e ilegível não pode ser tratado como ausente.
         try:
             data = read_rules_block(global_path)
         except ValueError as e:
-            warnings.append(f"{global_path} foi ignorado: {e}")
-        else:
-            layers.append(
-                (
-                    global_path,
-                    _strip_never_inherited(global_path, data, warnings, "global"),
-                )
+            raise ValueError(
+                f"O RULES.md global ({global_path}) não pôde ser lido: {e} Conserte "
+                "esse arquivo ou apague-o para usar apenas as regras deste projeto."
+            ) from None
+        layers.append(
+            (
+                global_path,
+                _strip_never_inherited(global_path, data, warnings, "global"),
             )
+        )
     middle = os.environ.get("GB_RULES_FILE")
     if middle:
         middle = Path(middle)
@@ -111,10 +124,19 @@ def rules_layers(project):
         )
     if project_path is not None:
         layers.append((project_path, read_rules_block(project_path)))
+    logs.event(
+        log,
+        logging.DEBUG,
+        "rules_layers",
+        **{"global": global_path.exists()},
+        env_file=bool(middle),
+        project=project_path is not None,
+        template_base=template_base,
+    )
     return layers, warnings
 
 
-def load_rules(project):
+def load_rules(project):  # noqa: C901, PLR0912 - existing size; validator with one check per RULES.md field
     layers, warnings = rules_layers(project)
     r, sources = {}, {}
     for path, data in layers:
@@ -196,7 +218,7 @@ def load_rules(project):
             'Em RULES.md, "browser" precisa de "viewport" ("mobile" ou "desktop") e de "full_page" (true ou false).'
         )
     for key in ("mobile_width", "mobile_height", "desktop_width", "desktop_height"):
-        if type(browser.get(key)) is not int or not 240 <= browser[key] <= 3840:
+        if type(browser.get(key)) is not int or not 240 <= browser[key] <= 3840:  # noqa: PLR2004 - matches the "entre 240 e 3840" message below
             raise ValueError("Em RULES.md, " + key + " tem que ser um número inteiro entre 240 e 3840.")
     # Optional `pacing` block for the social queue; the environment still wins.
     validate_pacing_block(r.get("pacing"))
@@ -217,10 +239,36 @@ def domain_matches(url, domains):
     return any(host == d or host.endswith("." + d) for d in domains)
 
 
+def _host(url):
+    """Host only, never the full URL: safe to log."""
+    hostname = urlsplit(url or "").hostname
+    return hostname.lower() if hostname else None
+
+
 def allowed(c, rules):
-    return c.get("asset_type", "video") in rules["asset_types"] and not domain_matches(
-        c.get("source_url"), rules["blocked_domains"]
-    )
+    if c.get("asset_type", "video") not in rules["asset_types"]:
+        logs.event(
+            log,
+            logging.INFO,
+            "rule_block",
+            candidate=c.get("id"),
+            rule="asset_type",
+            provider=c.get("provider"),
+            host=_host(c.get("source_url")),
+        )
+        return False
+    if domain_matches(c.get("source_url"), rules["blocked_domains"]):
+        logs.event(
+            log,
+            logging.INFO,
+            "rule_block",
+            candidate=c.get("id"),
+            rule="blocked_domain",
+            provider=c.get("provider"),
+            host=_host(c.get("source_url")),
+        )
+        return False
+    return True
 
 
 def format_report(c, rules):
@@ -233,7 +281,7 @@ def format_report(c, rules):
         else "native"
         if target == "native"
         else "matches"
-        if abs(w / h - (9 / 16 if target == "reels" else 16 / 9)) < 0.025
+        if abs(w / h - (9 / 16 if target == "reels" else 16 / 9)) < 0.025  # noqa: PLR2004 - aspect-ratio tolerance
         else "needs_layout_review"
     )
     return {
@@ -269,6 +317,7 @@ def sync_formats(ledger, rules, confirm=False):
             + ". Se for isso mesmo, repita o comando com --confirm-format-change; "
             "senão, volte o video_format no RULES.md antes de continuar."
         )
+    invalidated_ids = set(invalidated)
     changed = []
     for c in ledger.data["items"]:
         new = format_report(c, rules)
@@ -277,6 +326,14 @@ def sync_formats(ledger, rules, confirm=False):
             invalidate_approval(c, bump_revision=True)
             c["format"] = new
             changed.append(c)
+            logs.event(
+                log,
+                logging.INFO,
+                "format_invalidation",
+                candidate=c["id"],
+                **{"from": old, "to": new["target"]},
+                confirmed=c["id"] in invalidated_ids,
+            )
         else:
             c["format"] = new
     if changed:

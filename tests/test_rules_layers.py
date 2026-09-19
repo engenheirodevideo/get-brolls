@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -112,12 +113,22 @@ class RulesLayerTests(unittest.TestCase):
             rules["rules_warnings"],
         )
 
-    def test_a_broken_global_layer_is_ignored_with_a_warning(self):
+    def test_a_broken_global_layer_fails_closed_naming_the_file(self):
+        # A corrupted global layer must not be silently dropped: its restrictions
+        # (blocked_domains, asset_types...) would stop applying without anyone
+        # noticing. load_rules must fail loudly instead of falling back quietly.
         (self.home).mkdir(parents=True, exist_ok=True)
-        (self.home / "RULES.md").write_text("sem bloco json", encoding="utf-8")
+        global_path = self.home / "RULES.md"
+        global_path.write_text("sem bloco json", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, re.escape(str(global_path))):
+            load_rules(self.project)
+
+    def test_a_missing_global_layer_still_behaves_like_before(self):
+        # Only a MISSING global file is fine; the skill's own floor still applies.
+        self.assertFalse((self.home / "RULES.md").exists())
         rules = load_rules(self.project)
         self.assertEqual("per_item_evidence", rules["copyright"]["mode"])
-        self.assertTrue(rules["rules_warnings"])
+        self.assertEqual([], rules["rules_warnings"])
 
     def test_missing_gb_rules_file_still_fails_loudly(self):
         os.environ["GB_RULES_FILE"] = str(Path(self.tmp.name) / "nao-existe.md")
