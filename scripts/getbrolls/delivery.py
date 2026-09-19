@@ -27,6 +27,8 @@ import unicodedata
 from datetime import date
 from pathlib import Path
 
+from .runtime import record_warning
+
 # Pasta derivada, na raiz do projeto — irmã de `brolls/`, nunca dentro dela.
 DELIVERY_DIR = "entrega"
 # Onde ficam os trechos coletados que nenhum beat reivindicou.
@@ -90,11 +92,19 @@ def beat_dir_name(nn, beat_id, target):
     return name
 
 
+class _CompareError(Exception):
+    """Raised when a comparison could not complete because of an OSError.
+
+    Kept distinct from a real content difference: `link_or_copy` must never report
+    "parece edição sua" when it simply failed to read one of the two files.
+    """
+
+
 def _same_file(a, b):
     try:
         return os.path.samestat(os.stat(a), os.stat(b))
-    except OSError:
-        return False
+    except OSError as exc:
+        raise _CompareError(str(exc)) from exc
 
 
 def _same_bytes(a, b, block=1024 * 1024):
@@ -109,8 +119,8 @@ def _same_bytes(a, b, block=1024 * 1024):
                     return False
                 if not chunk:
                     return True
-    except OSError:
-        return False
+    except OSError as exc:
+        raise _CompareError(str(exc)) from exc
 
 
 def copies_forced():
@@ -129,14 +139,22 @@ def _freeze(path, method):
     Hardlink e symlink são o mesmo arquivo com outro nome: editar ali editaria
     `brolls/`. Uma cópia é independente — congelá-la quebraria a promessa de
     `GB_DELIVERY_COPY=1`, que existe justamente para quem quer editar em `entrega/`.
+
+    Uma falha aqui fica não fatal (o resto da entrega continua), mas nunca some: vai
+    para `record_warning`, o mesmo canal de aviso que o resto do projeto usa, para que
+    a promessa de "somente-leitura" não fique silenciosamente falsa.
     """
     if method not in ("hardlink", "symlink"):
         return
     try:
         mode = os.stat(path).st_mode
         os.chmod(path, mode & ~0o222)
-    except OSError:
-        pass
+    except OSError as exc:
+        record_warning(
+            "DELIVERY_FREEZE_FAILED",
+            f"Não consegui deixar {path} somente-leitura ({exc}): o arquivo entregue "
+            "compartilha o inode com o original em brolls/, mas ficou editável.",
+        )
 
 
 def _thaw_unlink(path):
@@ -182,11 +200,25 @@ def link_or_copy(src, dest, read_only=False):
             pass
         _thaw_unlink(dest)
     elif dest.exists():
-        if _same_file(dest, src):
+        try:
+            same_file = _same_file(dest, src)
+        except _CompareError as exc:
+            raise ValueError(
+                f"Não consegui comparar {dest} com o arquivo coletado ({exc}): confira "
+                "permissão ou disponibilidade do arquivo e rode `deliver` de novo."
+            ) from exc
+        if same_file:
             if read_only:
                 _freeze(dest, "hardlink")
             return "hardlink"
-        if _same_bytes(dest, src):
+        try:
+            same_bytes = _same_bytes(dest, src)
+        except _CompareError as exc:
+            raise ValueError(
+                f"Não consegui comparar {dest} com o arquivo coletado ({exc}): confira "
+                "permissão ou disponibilidade do arquivo e rode `deliver` de novo."
+            ) from exc
+        if same_bytes:
             return "copy"
         raise ValueError(
             f"{dest} já existe com conteúdo diferente do arquivo coletado: parece edição "
@@ -373,8 +405,29 @@ def _brief_beats(project):
 
 
 def _plan(project, items):
-    """Um grupo por beat, na ordem do brief; sem brief, na ordem do manifesto."""
-    collected = [c for c in items if (c.get("output") or {}).get("path")]
+    """Um grupo por beat, na ordem do brief; sem brief, na ordem do manifesto.
+
+    Fica de fora quem não tem `output.path`, quem tem `output.verified` explicitamente
+    `False` (verificação de sha256 que falhou) e quem foi rejeitado na aprovação — mesmo
+    que `reject` já limpe `output` nesses casos, a checagem aqui é defesa extra. Um item
+    sem a chave `verified`, ou com ela em `True`, segue endereçado normalmente.
+    """
+    collected, skipped = [], []
+    for c in items:
+        if not (c.get("output") or {}).get("path"):
+            continue
+        if (c.get("output") or {}).get("verified") is False:
+            skipped.append(
+                {
+                    "id": c["id"],
+                    "reason": "verificação (sha256) não bateu: rode `verify` de novo antes de entregar.",
+                }
+            )
+            continue
+        if (c.get("approval") or {}).get("status") == "rejected":
+            skipped.append({"id": c["id"], "reason": "candidato foi rejeitado: não entra na entrega."})
+            continue
+        collected.append(c)
     beats = _brief_beats(project)
     order = [b["id"] for b in beats]
     meta = {b["id"]: b for b in beats}
@@ -409,7 +462,7 @@ def _plan(project, items):
                 "items": orphans,
             }
         )
-    return groups
+    return groups, skipped
 
 
 def _names(group_dir, index, source_suffix, sheet_suffix):
@@ -421,43 +474,81 @@ def _names(group_dir, index, source_suffix, sheet_suffix):
     }
 
 
-def _ours(rel, path, owned):
+def _symlink_targets_brolls(path, brolls_root):
+    """Um symlink só é nosso quando aponta para um clipe dentro do `brolls/` deste projeto.
+
+    Um link que a pessoa criou (para a própria mídia, um atalho, outra pasta) não bate
+    com isso e não pode ser tratado como órfão do gerador.
+    """
+    try:
+        target = path.resolve()
+        brolls_real = Path(brolls_root).resolve()
+    except OSError:
+        return False
+    return target == brolls_real or brolls_real in target.parents
+
+
+def _ours(rel, path, owned, brolls_root):
     """Só é órfão o que este gerador escreveu; o resto é da pessoa e fica.
 
     Reconhecemos três assinaturas: um caminho que o próprio manifesto registra em
-    `c["delivery"]`, o symlink que só nós criamos aqui, e os nomes que o gerador usa
-    (`README.md`, `ORIGEM*.md`, `contact-sheet*.*` e a mídia, que repete o nome da
-    pasta do beat). Um bilhete que a pessoa deixou dentro da pasta não casa com nada
-    disso e é preservado.
+    `c["delivery"]`, os nomes que o gerador usa (`README.md`, `ORIGEM*.md`,
+    `contact-sheet*.*` e a mídia, que repete o nome da pasta do beat) e, só quando o
+    nome já bateu com uma dessas assinaturas, um symlink que resolve para dentro de
+    `brolls/`. Um bilhete — ou um link — que a pessoa deixou dentro da pasta não casa
+    com nada disso e é preservado.
     """
-    if rel in owned or rel == INDEX or path.is_symlink():
+    if rel in owned or rel == INDEX:
         return True
     name = path.name
-    if GENERATED.match(name):
-        return True
     parent = path.parent.name
-    return (
+    name_matches = bool(GENERATED.match(name)) or (
         bool(BEAT_DIR_RE.match(parent)) and re.fullmatch(re.escape(parent) + r"(-\d+)?\.[A-Za-z0-9]+", name) is not None
     )
+    if not name_matches:
+        return False
+    if path.is_symlink():
+        return _symlink_targets_brolls(path, brolls_root)
+    return True
 
 
-def _sweep(root, expected, dry_run, owned=()):
+def _confined(path, real_root):
+    """A exclusão só é segura quando o local real de `path` está dentro de `real_root`.
+
+    `entrega/` em si já foi recusada como symlink em `build_delivery`, mas uma pasta de
+    beat marcada à mão como link ainda poderia levar `rglob` para fora do projeto — esta
+    checagem confirma o caminho físico antes de qualquer `unlink`/`rmdir`.
+    """
+    try:
+        parent_real = path.parent.resolve()
+    except OSError:
+        return False
+    return parent_real == real_root or real_root in parent_real.parents
+
+
+def _sweep(root, expected, dry_run, owned=(), brolls_root=None):
     """Apaga só o que este gerador escreveu e que deixou de existir no plano."""
     removed, kept = [], []
     owned = set(owned)
     if not root.is_dir():
         return removed, kept
+    real_root = root.resolve()
     for path in sorted(root.rglob("*"), reverse=True):
         rel = path.relative_to(root).as_posix()
         if path.is_dir():
-            if BEAT_DIR_RE.match(path.name) and not any(path.iterdir()) and rel not in expected:
+            if (
+                BEAT_DIR_RE.match(path.name)
+                and not any(path.iterdir())
+                and rel not in expected
+                and _confined(path, real_root)
+            ):
                 if not dry_run:
                     path.rmdir()
                 removed.append(rel)
             continue
         if rel in expected:
             continue
-        if _ours(rel, path, owned):
+        if _ours(rel, path, owned, brolls_root) and _confined(path, real_root):
             if not dry_run:
                 _thaw_unlink(path)
             removed.append(rel)
@@ -481,13 +572,23 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
     Um arquivo que a pessoa editou não interrompe o trabalho pela metade: o conflito é
     anotado, os demais itens são materializados, o índice e o manifesto são gravados, a
     varredura roda, e só então o comando falha nomeando todos os arquivos em conflito.
+
+    `entrega/` precisa ser uma pasta real: se o caminho já existe como link simbólico,
+    seguir ele poderia varrer e apagar arquivos de outro lugar (o alvo do link), então o
+    comando recusa antes de tocar em qualquer arquivo, mesmo em `dry_run`.
     """
     from .ledger import Ledger, atomic_write
 
     ledger = ledger or Ledger(project, recover=False)
     items = ledger.data["items"]
     root = Path(project).expanduser().resolve() / DELIVERY_DIR
-    groups = _plan(project, items)
+    if root.is_symlink():
+        raise ValueError(
+            f"{root} é um link simbólico: apague o link antes de rodar `deliver`. A pasta "
+            "de entrega precisa ser uma pasta real dentro do projeto, nunca um atalho para "
+            "outro lugar."
+        )
+    groups, skipped = _plan(project, items)
     expected, listed, rows, changed = set(), [], [], []
     conflicts, conflicted = [], []
     for group in groups:
@@ -582,7 +683,7 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
         for c in items
         if (c.get("delivery") or {}).get("path", "").startswith(DELIVERY_DIR + "/")
     }
-    removed, kept = _sweep(root, expected, dry_run, owned)
+    removed, kept = _sweep(root, expected, dry_run, owned, ledger.root)
     if changed:
         ledger.save_many("deliver", changed)
     if conflicts:
@@ -595,4 +696,5 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
         "rows": rows,
         "removed": removed,
         "kept": kept,
+        "skipped": skipped,
     }
