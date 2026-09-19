@@ -127,6 +127,17 @@ def _same_bytes(a, b, block=1024 * 1024):
         raise _CompareError(str(exc)) from exc
 
 
+def _compared(compare, dest, src):
+    """Run one comparison; an I/O failure is reported as such, never as a user edit."""
+    try:
+        return compare(dest, src)
+    except _CompareError as exc:
+        raise ValueError(
+            f"Não consegui comparar {dest} com o arquivo coletado ({exc}): confira "
+            "permissão ou disponibilidade do arquivo e rode `deliver` de novo."
+        ) from exc
+
+
 def copies_forced():
     """`GB_DELIVERY_COPY=1`: cópias independentes para quem quer editar em `entrega/`."""
     return (os.environ.get("GB_DELIVERY_COPY") or "").strip().lower() in (
@@ -178,7 +189,7 @@ def _thaw_unlink(path):
     path.unlink()
 
 
-def link_or_copy(src, dest, read_only=False):  # noqa: C901, PLR0912 - existing size; hardlink/reflink/copy fallback ladder across OSes
+def link_or_copy(src, dest, read_only=False):  # noqa: C901 - existing size; hardlink/reflink/copy fallback ladder across OSes
     """Liga `dest` a `src` pelo jeito mais barato que o sistema aceitar.
 
     Hardlink primeiro (não ocupa disco e não quebra ao mover a pasta de dentro),
@@ -204,25 +215,11 @@ def link_or_copy(src, dest, read_only=False):  # noqa: C901, PLR0912 - existing 
             pass
         _thaw_unlink(dest)
     elif dest.exists():
-        try:
-            same_file = _same_file(dest, src)
-        except _CompareError as exc:
-            raise ValueError(
-                f"Não consegui comparar {dest} com o arquivo coletado ({exc}): confira "
-                "permissão ou disponibilidade do arquivo e rode `deliver` de novo."
-            ) from exc
-        if same_file:
+        if _compared(_same_file, dest, src):
             if read_only:
                 _freeze(dest, "hardlink")
             return "hardlink"
-        try:
-            same_bytes = _same_bytes(dest, src)
-        except _CompareError as exc:
-            raise ValueError(
-                f"Não consegui comparar {dest} com o arquivo coletado ({exc}): confira "
-                "permissão ou disponibilidade do arquivo e rode `deliver` de novo."
-            ) from exc
-        if same_bytes:
+        if _compared(_same_bytes, dest, src):
             return "copy"
         raise ValueError(
             f"{dest} já existe com conteúdo diferente do arquivo coletado: parece edição "
@@ -245,7 +242,7 @@ def link_or_copy(src, dest, read_only=False):  # noqa: C901, PLR0912 - existing 
 
 
 def _frontmatter(kind, created, tags):
-    today = date.today().isoformat()  # noqa: DTZ011 - data local do frontmatter, sem troca de comportamento
+    today = date.today().isoformat()  # noqa: DTZ011 - local date in the frontmatter; timezone-aware would shift the day near midnight
     return [
         "---",
         f"type: {kind}",
@@ -424,7 +421,10 @@ def _plan(project, items):
             skipped.append(
                 {
                     "id": c["id"],
-                    "reason": "verificação (sha256) não bateu: rode `verify` de novo antes de entregar.",
+                    "reason": (
+                        "o arquivo em brolls/ não confere mais com o que foi coletado: restaure o "
+                        "original, ou apague esse arquivo e rode `fetch` de novo; depois, `verify`."
+                    ),
                 }
             )
             logs.event(log, logging.INFO, "deliver_skipped", candidate=c["id"], reason="unverified")

@@ -160,7 +160,7 @@ def contact_sheet_figure(candidate, sheet, esc):
     times = preview.get("frame_times_s") or []
     grid = preview.get("sheet_grid") or []
     caption = f"Os quadros do trecho ({len(times)})" if times else "Os quadros do trecho"
-    if len(grid) == 2:  # noqa: PLR2004 - `grid` é [colunas, linhas]
+    if len(grid) == 2:  # noqa: PLR2004 - `grid` is [columns, rows]
         caption += f" · grade {grid[0]}×{grid[1]}"
     caption += " · " + cut_label(candidate)
     legend = ""
@@ -181,8 +181,8 @@ def render(ledger):
         "---",
         "type: credits",
         "status: current",
-        "created: " + date.today().isoformat(),  # noqa: DTZ011 - data local do render, sem troca de comportamento
-        "updated: " + date.today().isoformat(),  # noqa: DTZ011 - data local do render, sem troca de comportamento
+        "created: " + date.today().isoformat(),  # noqa: DTZ011 - local date in the rendered page; timezone-aware would shift the day near midnight
+        "updated: " + date.today().isoformat(),  # noqa: DTZ011 - local date in the rendered page; timezone-aware would shift the day near midnight
         "tags: [get-brolls, credits]",
         "---",
         "",

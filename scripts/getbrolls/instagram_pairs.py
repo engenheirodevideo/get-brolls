@@ -155,7 +155,7 @@ def _curl_resolution(host: str, source: Path) -> str | None:
         if any(not item.is_global for item in parsed):
             _die_url_refused("private_address", f"hostname do config curl resolveu para endereço privado: {source}")
         selected = parsed[0]
-        target = f"[{selected}]" if selected.version == 6 else str(selected)  # noqa: PLR2004 - IP versão 6 (IPv6)
+        target = f"[{selected}]" if selected.version == 6 else str(selected)  # noqa: PLR2004 - IP version 6
         return f"{host}:443:{target}"
     if not address.is_global:
         _die_url_refused("private_address", f"a URL do config curl não pode apontar para endereço privado: {source}")
@@ -351,7 +351,7 @@ def download_or_reuse(  # noqa: C901, PLR0913, PLR0915 - existing size; one down
             stderr = exc.stderr or b""
             if isinstance(stderr, bytes):
                 stderr = stderr.decode("utf-8", errors="replace")
-            blocked = BLOCKED_RE.search(stderr) if exc.returncode == 22 else None  # noqa: PLR2004 - curl exit 22 (--fail), ver comentário no topo do arquivo
+            blocked = BLOCKED_RE.search(stderr) if exc.returncode == 22 else None  # noqa: PLR2004 - curl exit 22 (--fail), see the comment at the top of the file
             if blocked:
                 _log_pair_stage(stage, started, status="error")
                 message = (

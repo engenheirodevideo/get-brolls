@@ -371,7 +371,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("version", help="nova versão, no formato X.Y.Z")
     parser.add_argument(
         "--date",
-        default=_date.today().isoformat(),  # noqa: DTZ011 - data local do CLI, sem troca de comportamento
+        default=_date.today().isoformat(),  # noqa: DTZ011 - local date of the CLI run; timezone-aware would shift the day near midnight
         help="data AAAA-MM-DD usada no CHANGELOG e em SKILL.md (padrão: hoje)",
     )
     parser.add_argument(

@@ -38,6 +38,9 @@ _MAX_VALUE_CHARS = 500
 MAX_BYTES = 1_000_000
 BACKUP_COUNT = 3
 LOG_FILENAME = "getbrolls.log"
+# Above every real level: with no handler attached, `isEnabledFor` answers False and
+# `event()` returns before rendering or redacting anything.
+_SILENT = logging.CRITICAL + 1
 
 _state: dict[str, tuple[str | None, str, bool, bool] | None] = {"signature": None}
 
@@ -69,7 +72,7 @@ class _PrivateRotatingFileHandler(logging.handlers.RotatingFileHandler):
         _chmod_private(self.baseFilename)
         return stream
 
-    def doRollover(self):  # noqa: N802 - nome exigido pela API de RotatingFileHandler
+    def doRollover(self):  # noqa: N802 - method name required by RotatingFileHandler
         super().doRollover()
         for index in range(1, self.backupCount + 1):
             candidate = f"{self.baseFilename}.{index}"
@@ -172,6 +175,7 @@ def _degrade():
         _root.removeFilter(existing_filter)
     _root.addHandler(logging.NullHandler())
     _root.propagate = False
+    _root.setLevel(_SILENT)
     _state["signature"] = None
 
 
@@ -258,6 +262,7 @@ def _configure(project, *, read_only):
 
     if not added:
         _root.addHandler(logging.NullHandler())
+        _root.setLevel(_SILENT)
 
     _state["signature"] = signature
 

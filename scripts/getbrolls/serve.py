@@ -57,7 +57,7 @@ REVIEWS_DIR = "reviews"
 # `storyboard.render_page`): pôsteres, contact sheets, GIFs e o clipe final. Tudo o
 # mais em `brolls/` — manifest.json, .serve.pid, .serve.log, diagnostics.jsonl,
 # reviews/*.json, listagem de diretório, arquivos ocultos — responde 404.
-ALLOWED_GET_PREFIXES = ("previews/", "clips/")
+ALLOWED_GET_FOLDERS = ("previews", "clips")
 
 
 class _ExclusiveServer(ThreadingHTTPServer):
@@ -101,24 +101,32 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         return io.BytesIO(body)
 
-    def _allowed_get_path(self, path_only):
-        """Só `previews/…` e `clips/…` (mais `/` e `/review.html`, tratados à parte)."""
-        rel = path_only.lstrip("/")
-        if not rel or any(part.startswith(".") for part in rel.split("/")):
-            return False
-        return rel.startswith(ALLOWED_GET_PREFIXES)
+    def _served_file_allowed(self, path_only):
+        """Only files under `previews/` or `clips/` (`/` and `/review.html` are handled apart).
 
-    def _within_served_directory(self, path_only):
-        """Recusa um symlink plantado dentro de previews/ ou clips/ que aponte para
-        fora da pasta servida. `translate_path` (stdlib) já ignora componentes `..`
-        antes deste ponto; o que falta é resolver o link e conferir o destino real."""
-        local = Path(self.translate_path(path_only))
-        base = Path(self.directory).resolve()
+        The decision is made on the path the stdlib will actually open, never on the
+        raw URL: `translate_path` percent-decodes and normalizes AFTER any check on the
+        request text, so `/previews/%2e%2e/manifest.json` would pass a prefix test on
+        the URL and still land on `manifest.json`. The real target must also stay inside
+        the allowed folder once symlinks are resolved.
+        """
+        base = Path(self.directory)
         try:
-            resolved = local.resolve(strict=False)
+            relative = Path(self.translate_path(path_only)).relative_to(base)
+        except ValueError:
+            return False
+        parts = relative.parts
+        # A folder name alone (`/previews`) is not a file: something must follow it.
+        if not parts[1:] or parts[0] not in ALLOWED_GET_FOLDERS:
+            return False
+        if any(part.startswith(".") for part in parts):
+            return False
+        try:
+            folder = (base / parts[0]).resolve(strict=False)
+            resolved = (base / relative).resolve(strict=False)
         except OSError:
             return False
-        return resolved == base or base in resolved.parents
+        return folder in resolved.parents
 
     def list_directory(self, path):
         # Nenhum caminho servido é uma listagem: até dentro de previews/clips, só
@@ -228,7 +236,7 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 return io.BytesIO(body)
         path_only = self.path.split("?")[0]
-        if not self._allowed_get_path(path_only) or not self._within_served_directory(path_only):
+        if not self._served_file_allowed(path_only):
             return self._head_error(404, "Não encontrado.")
         return super().send_head()
 
@@ -243,7 +251,7 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         super().end_headers()
 
-    def log_message(self, format, *args):  # noqa: A002 - assinatura exigida pela stdlib
+    def log_message(self, format, *args):  # noqa: A002 - signature required by the stdlib
         # Silencioso: o processo comunica estado só via a linha JSON impressa em run().
         pass
 
@@ -324,7 +332,7 @@ def save_review(directory, data):
                     "decisões — o arquivo tem que ficar dentro do projeto."
                 ) from None
             extra += 1
-            if extra > 50:  # noqa: PLR2004 - teto de tentativas de nome alternativo antes de desistir
+            if extra > 50:  # noqa: PLR2004 - cap on alternative-name attempts before giving up
                 raise
             continue
         except OSError as exc:
@@ -412,7 +420,7 @@ def _alive(pid):  # noqa: PLR0911 - existing size; one early return per platform
         code = ctypes.c_ulong()
         ok = kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
         kernel32.CloseHandle(handle)
-        return bool(ok) and code.value == 259  # noqa: PLR2004 - STILL_ACTIVE, constante da API do Windows
+        return bool(ok) and code.value == 259  # noqa: PLR2004 - STILL_ACTIVE, a Windows API constant
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

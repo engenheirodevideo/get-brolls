@@ -319,7 +319,7 @@ class EventRenderingTests(unittest.TestCase):
 
     def test_event_never_raises_on_a_broken_logger(self):
         class BrokenLogger:
-            def isEnabledFor(self, level):  # noqa: N802 - nome exigido pela API de logging.Logger
+            def isEnabledFor(self, level):  # noqa: N802 - method name required by logging.Logger
                 raise RuntimeError("boom")
 
         logs.event(BrokenLogger(), logging.INFO, "e", a=1)  # must not raise

@@ -4,6 +4,7 @@ everything else, including directory listings and dotfiles, answers 404), privat
 `.serve.pid`/`.serve.log` files, a secret-free environment for the detached
 background server, and a validated ping target."""
 
+import http.client
 import json
 import os
 import re
@@ -170,6 +171,59 @@ class AllowlistTests(unittest.TestCase):
                 with self.assertRaises(urllib.error.HTTPError) as ctx:
                     urllib.request.urlopen(f"http://127.0.0.1:{port}/reviews/", timeout=5)
                 self.assertEqual(404, ctx.exception.code)
+
+
+class EncodedPathAllowlistTests(unittest.TestCase):
+    """The allowlist is decided on the file the server would open, not on the raw URL.
+
+    The stdlib percent-decodes and normalizes the request path after any check made on
+    its text, so an encoded `..` must not walk out of `previews/` or `clips/`.
+    """
+
+    def _status(self, port, raw_path):
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            # http.client sends the path untouched, unlike a browser's URL bar.
+            connection.request("GET", raw_path, headers={"Host": f"127.0.0.1:{port}"})
+            response = connection.getresponse()
+            response.read()
+            return response.status
+        finally:
+            connection.close()
+
+    def test_an_encoded_parent_segment_cannot_reach_internal_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _project_with_review(Path(tmp))
+            brolls = root / "brolls"
+            (brolls / "previews").mkdir()
+            (brolls / "clips").mkdir()
+            (brolls / "reviews").mkdir()
+            (brolls / "previews" / "poster.jpg").write_bytes(b"poster")
+            (brolls / "clips" / "clip.mp4").write_bytes(b"clip")
+            (brolls / "manifest.json").write_text("{}", encoding="utf-8")
+            (brolls / "diagnostics.jsonl").write_text("{}\n", encoding="utf-8")
+            (brolls / "reviews" / "decision.json").write_text("{}", encoding="utf-8")
+            with _serving(root) as (_server, port):
+                for allowed in ("/previews/poster.jpg", "/clips/clip.mp4", "/previews/poster.jpg?v=1", "/review.html"):
+                    with self.subTest(allowed=allowed):
+                        self.assertEqual(200, self._status(port, allowed))
+                refused = (
+                    "/previews/%2e%2e/manifest.json",
+                    "/previews/%2E%2E/diagnostics.jsonl",
+                    "/previews/%2e%2e/reviews/decision.json",
+                    "/clips/%2e%2e/%2eserve.pid",
+                    "/clips/%2e%2e/manifest.json",
+                    "/previews/..%2fmanifest.json",
+                    "/previews/%2e%2e%2fmanifest.json",
+                    "/previews/%252e%252e/manifest.json",
+                    "/previews/../manifest.json",
+                    "/previews/",
+                    "/previews",
+                    "/previews/.hidden",
+                )
+                for raw in refused:
+                    with self.subTest(refused=raw):
+                        self.assertEqual(404, self._status(port, raw))
 
 
 class SymlinkEscapeTests(unittest.TestCase):

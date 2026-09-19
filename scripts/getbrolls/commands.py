@@ -217,7 +217,7 @@ def _check_declared_by(name):
             f"--declared-by recusa {parts[0]!r}: isso não identifica ninguém. "
             "Escreva o nome e o sobrenome de quem assume a responsabilidade."
         )
-    if len(parts) < 2:  # noqa: PLR2004 - nome e sobrenome, o mínimo de palavras exigido pela mensagem abaixo
+    if len(parts) < 2:  # noqa: PLR2004 - first name + surname, the minimum the message below asks for
         raise ValueError(
             "--declared-by precisa de pelo menos duas palavras (nome e sobrenome, ou "
             f"nome e inicial). {name!r} tem só uma: quem assina precisa dar para "
@@ -1744,6 +1744,10 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
         return {"review": page}
     if cmd == "verify":
         checked = []
+        # Every collected clip is checked even after one fails: stopping at the first
+        # would leave a second altered clip marked as verified, and `deliver` would
+        # ship it. The first failure is raised once the whole list has been flagged.
+        first_failure = None
         for c in ledger.data["items"]:
             if c["output"]["path"]:
                 path = ledger.root / c["output"]["path"]
@@ -1774,7 +1778,9 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                         logs.event(_log, logging.WARNING, "verify", candidate=c["id"], result=result)
                     except Exception:  # noqa: BLE001, S110 - logging must never break a command
                         pass
-                    raise
+                    if first_failure is None:
+                        first_failure = exc
+                    continue
                 # Probe, hash e decodificação bateram: se uma verificação anterior tinha
                 # derrubado a flag (arquivo trocado e depois restaurado), volta a True.
                 if not c["output"]["verified"]:
@@ -1787,9 +1793,11 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                     {
                         "id": c["id"],
                         "media": info,
-                        "hd": min(info["width"], info["height"]) >= 1080,  # noqa: PLR2004 - 1080p, o piso convencional de "HD"
+                        "hd": min(info["width"], info["height"]) >= 1080,  # noqa: PLR2004 - short side of 1080p, the usual floor for "HD"
                     }
                 )
+        if first_failure is not None:
+            raise first_failure
         # `entrega/` é camada derivada: refazê-la nunca pode reprovar a conferência dos
         # arquivos canônicos. Se o sistema não deixar ligar/copiar, isso vira aviso.
         from getbrolls import delivery as delivery_module

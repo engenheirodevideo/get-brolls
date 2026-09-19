@@ -280,6 +280,49 @@ class VerifyRestoresVerifiedFlagTests(unittest.TestCase):
             self.assertEqual("approved", item["state"])
 
 
+class VerifyChecksEveryClipTests(unittest.TestCase):
+    """One bad clip must not hide another: every collected clip is checked and flagged."""
+
+    @skip_unless_ffmpeg
+    def test_two_altered_clips_are_both_flagged_in_one_run_and_neither_is_delivered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, first_src = _project(tmp)
+            second_src = root / "second.mp4"
+            synth_video(second_src, size="160x90", duration=3, rate=10, pattern="testsrc2")
+            first, _base1, out1 = _collected_candidate(root, first_src)
+            second, _base2, out2 = _collected_candidate(root, second_src)
+            for out in (out1, out2):
+                clip = root / "brolls" / out["output"]["path"]
+                data = bytearray(clip.read_bytes())
+                data[len(data) // 2] ^= 0xFF
+                clip.write_bytes(bytes(data))
+
+            run_cli("verify", project=root, expect=2)
+            self.assertFalse(_item(root, first)["output"]["verified"])
+            self.assertFalse(_item(root, second)["output"]["verified"])
+
+            report = run_cli("deliver", project=root)
+            self.assertEqual({first, second}, {entry["id"] for entry in report["skipped"]})
+
+    @skip_unless_ffmpeg
+    def test_deleting_the_altered_clip_and_fetching_again_is_a_real_way_out(self):
+        """The delivery skip reason promises this recovery path; keep it true."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root, src = _project(tmp)
+            cid, base, out = _collected_candidate(root, src)
+            clip = root / "brolls" / out["output"]["path"]
+            data = bytearray(clip.read_bytes())
+            data[len(data) // 2] ^= 0xFF
+            clip.write_bytes(bytes(data))
+            run_cli("verify", project=root, expect=2)
+
+            clip.unlink()
+            run_cli("fetch", *base)
+            result = run_cli("verify", project=root)
+            self.assertEqual(1, result["count"])
+            self.assertTrue(_item(root, cid)["output"]["verified"])
+
+
 class LatestReviewFileTieBreakTests(unittest.TestCase):
     """Item 4: same-second saves must be ordered by the `-N` suffix
     `serve.save_review` appends, not by raw filename comparison."""

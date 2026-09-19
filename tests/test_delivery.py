@@ -533,7 +533,7 @@ class MixedDeliveryIndex(unittest.TestCase):
             # O primeiro arquivo vira link, o segundo cai para cópia — o caso real é
             # o sistema recusar o link de um arquivo só (outro volume, por exemplo).
             calls["n"] += 1
-            if calls["n"] == 2:  # noqa: PLR2004 - segundo arquivo da dupla (ver comentário acima)
+            if calls["n"] == 2:  # noqa: PLR2004 - second file of the pair (see the comment above)
                 import shutil
 
                 dest.parent.mkdir(parents=True, exist_ok=True)

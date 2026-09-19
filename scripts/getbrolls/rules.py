@@ -281,7 +281,7 @@ def format_report(c, rules):
         else "native"
         if target == "native"
         else "matches"
-        if abs(w / h - (9 / 16 if target == "reels" else 16 / 9)) < 0.025  # noqa: PLR2004 - folga de tolerância na razão de aspecto
+        if abs(w / h - (9 / 16 if target == "reels" else 16 / 9)) < 0.025  # noqa: PLR2004 - aspect-ratio tolerance
         else "needs_layout_review"
     )
     return {

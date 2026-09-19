@@ -303,7 +303,7 @@ def get_json(url, params=None, headers=None, cache_ttl=0):  # noqa: C901, PLR091
                         f"Quota atingida (HTTP 429); o provedor pede {wait} s de espera antes de repetir"
                     ) from None
                 raise ProviderError("Quota atingida (HTTP 429); aguarde o limite do provedor") from None
-            if code < 500 or attempt == LAST_ATTEMPT_INDEX:  # noqa: PLR2004 - 500, início dos erros 5xx do provedor
+            if code < 500 or attempt == LAST_ATTEMPT_INDEX:  # noqa: PLR2004 - 500, first of the provider-side 5xx statuses
                 logs.event(
                     _logger,
                     logging.WARNING,

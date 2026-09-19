@@ -216,8 +216,8 @@ def import_review(ledger, file, by, rules=None):  # noqa: C901, PLR0912, PLR0915
         if (
             not isinstance(comment, str)
             or not isinstance(suggestion, str)
-            or len(comment) > 10000  # noqa: PLR2004 - teto de caracteres do campo "comentário"
-            or len(suggestion) > 2000  # noqa: PLR2004 - teto de caracteres do campo "sugestão"
+            or len(comment) > 10000  # noqa: PLR2004 - character cap of the comment field
+            or len(suggestion) > 2000  # noqa: PLR2004 - character cap of the suggestion field
         ):
             skip(
                 c["id"],
