@@ -12,7 +12,7 @@ from .config import CAP_EPSILON
 from .guidance import blocked_beats_question, next_action
 from .ledger import Ledger, digest
 from .media import cut, probe, run
-from .models import approve, candidate, id_stem, now, require_fetch, set_segment, signature
+from .models import approve, candidate, empty_output, id_stem, now, require_fetch, set_segment, signature
 from .presets import PERMIT_PRESETS
 from .queue import execute as queue_execute
 from .queue import hint as queue_hint
@@ -619,6 +619,10 @@ def mark_rejected(c, reason=None):
     # Só há revisão a invalidar quando o item já tinha uma; num candidato recém-buscado
     # não havia passo nenhum, e anunciar que ele foi desfeito assusta à toa.
     had_review = c.pop("review", None) is not None
+    # Um candidato já coletado não pode continuar contando como entregue/verificado
+    # depois de rejeitado: zera `output` no mesmo formato de `invalidate_approval`,
+    # sem tocar no clipe em brolls/ nem em `segment.revision`.
+    c["output"] = empty_output()
     c["rejection"] = {
         "reason": (reason or "").strip() or None,
         "at": now(),
@@ -1601,10 +1605,30 @@ def execute(args):
         for c in ledger.data["items"]:
             if c["output"]["path"]:
                 path = ledger.root / c["output"]["path"]
-                info = probe(path)
-                if digest(path) != c["output"]["sha256"]:
-                    raise ValueError("Arquivo alterado após coleta: " + c["id"])
-                run(["ffmpeg", "-v", "error", "-i", str(path), "-f", "null", "-"])
+                try:
+                    info = probe(path)
+                    if digest(path) != c["output"]["sha256"]:
+                        raise ValueError("Arquivo alterado após coleta: " + c["id"])
+                    run(["ffmpeg", "-v", "error", "-i", str(path), "-f", "null", "-"])
+                except ValueError:
+                    # Um clipe que não bate mais com o registrado, ou que não decodifica,
+                    # não pode continuar marcado como verificado: quem entrega depois
+                    # confiaria num hash velho. `sha256` fica como está — é a prova do
+                    # que foi coletado — só `verified` cai (e o estado volta a
+                    # `approved`), e uma nova `verify` bem-sucedida volta a marcar.
+                    if c["output"]["verified"]:
+                        c["output"]["verified"] = False
+                        if c["state"] == "verified":
+                            c["state"] = "approved"
+                        ledger.save("verify", c)
+                    raise
+                # Probe, hash e decodificação bateram: se uma verificação anterior tinha
+                # derrubado a flag (arquivo trocado e depois restaurado), volta a True.
+                if not c["output"]["verified"]:
+                    c["output"]["verified"] = True
+                    if c["state"] == "approved":
+                        c["state"] = "verified"
+                    ledger.save("verify", c)
                 checked.append(
                     {
                         "id": c["id"],

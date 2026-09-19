@@ -47,6 +47,10 @@ def validate_manifest(data):
             for field in ("provider", "source_id", "title", "state"):
                 if not isinstance(c.get(field), str):
                     raise ValueError()
+            # Older manifests on disk predate this field: only refuse a value that is
+            # present and unrecognized, never its absence.
+            if "schema_version" in c and c["schema_version"] != 1:
+                raise ValueError()
             for field in (
                 "media",
                 "preview",

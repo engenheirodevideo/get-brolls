@@ -3,9 +3,10 @@
 import copy
 import hashlib
 import json
+import re
 from pathlib import Path
 
-from .models import approve, now, signature
+from .models import approve, empty_output, now, signature
 
 ASSETS = Path(__file__).resolve().parents[2] / "assets"
 
@@ -73,11 +74,27 @@ def enhance(page, ledger, records):
     )
 
 
+# Nome que `serve.py::save_review` grava: carimbo do relógio, e um `-N` numérico
+# quando duas decisões caem no mesmo segundo. Sem sufixo == a primeira daquele
+# segundo (equivalente a `-0`), não a mais recente.
+_REVIEW_FILENAME = re.compile(r"(?P<stamp>\d{8}-\d{6})(?:-(?P<suffix>\d+))?\.json")
+
+
+def _review_sort_key(path):
+    match = _REVIEW_FILENAME.fullmatch(path.name)
+    if not match:
+        return (path.stat().st_mtime, path.name, -1)
+    return (path.stat().st_mtime, match.group("stamp"), int(match.group("suffix") or 0))
+
+
 def latest_review_file(root):
     """Decisão mais recente salva pela própria página em `brolls/reviews/`.
 
     O servidor local grava um arquivo por vez que a pessoa clica em “Salvar
-    decisões”; o mais novo é o que ela acabou de decidir.
+    decisões”; o mais novo é o que ela acabou de decidir. Em sistemas de arquivos
+    com mtime grosseiro, duas decisões do mesmo segundo empatam no horário — o
+    desempate usa o sufixo `-N` numérico do nome, não a ordem alfabética bruta
+    (onde `-1.json` viria antes de `.json`, escolhendo a decisão errada).
     """
     folder = Path(root) / "reviews"
     if not folder.is_dir():
@@ -85,7 +102,7 @@ def latest_review_file(root):
     files = [p for p in folder.glob("*.json") if p.is_file()]
     if not files:
         return None
-    return max(files, key=lambda p: (p.stat().st_mtime, p.name))
+    return max(files, key=_review_sort_key)
 
 
 def import_review(ledger, file, by, rules=None):
@@ -235,6 +252,9 @@ def import_review(ledger, file, by, rules=None):
             # Same transition as the CLI `reject` command, recorded with the reviewer.
             c["approval"] = {"status": "rejected", "by": by, "at": now(), "revision": None}
             c["state"] = "rejected"
+            # Same reset as `commands.mark_rejected`: an already-fetched candidate must
+            # stop counting as delivered/verified once rejected here too.
+            c["output"] = empty_output()
         else:
             c["approval"] = {
                 "status": "pending",

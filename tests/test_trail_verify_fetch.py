@@ -76,7 +76,7 @@ def _item(root, cid):
 class VerifyTamperTests(unittest.TestCase):
     """`verify` re-hashes every collected clip against the sha256 recorded at fetch time."""
 
-    def test_tampered_output_is_refused_and_the_stale_verified_flag_survives(self):
+    def test_tampered_output_is_refused_and_verified_is_cleared(self):
         with tempfile.TemporaryDirectory() as tmp:
             root, src = _project(tmp)
             cid, _base, out = _collected_candidate(root, src)
@@ -93,13 +93,11 @@ class VerifyTamperTests(unittest.TestCase):
             self.assertIn("Arquivo alterado após coleta", error["message"])
             self.assertIn(cid, error["message"])
 
-            # `verify` never writes to the ledger: on a failed re-check it raises before
-            # touching output.verified/sha256, so the stale True/original-sha combination
-            # from fetch time is left exactly as it was. A refactor that starts flipping
-            # verified=false here, or one that swallows the mismatch instead of raising,
-            # must change this assertion on purpose.
+            # A failed re-check clears the stale `verified: True` before raising, so a
+            # later `deliver` cannot ship the tampered clip claiming it is still good.
+            # `sha256` is left as-is — it is the record of what was actually collected.
             item = _item(root, cid)
-            self.assertTrue(item["output"]["verified"])
+            self.assertFalse(item["output"]["verified"])
             self.assertEqual(item["output"]["sha256"], original_sha)
 
     def test_a_deleted_output_file_fails_distinctly_from_a_byte_tamper(self):
@@ -117,10 +115,9 @@ class VerifyTamperTests(unittest.TestCase):
             self.assertIn("ffprobe", error["message"])
             self.assertIn(str(clip), error["message"])
 
-            # No rewrite happened here either: the manifest still claims verified=True for
-            # a file that no longer exists on disk.
+            # Same reset as the byte-tamper case: a missing file cannot stay verified=True.
             item = _item(root, cid)
-            self.assertTrue(item["output"]["verified"])
+            self.assertFalse(item["output"]["verified"])
 
     def test_verify_with_nothing_collected_yet_reports_zero_and_does_not_fail(self):
         with tempfile.TemporaryDirectory() as tmp:

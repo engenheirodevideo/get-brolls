@@ -258,7 +258,7 @@ class ApproveAllMixedBatchTests(unittest.TestCase):
 class RejectThenApproveTests(unittest.TestCase):
     """`reject --candidate X --reason ...` followed by `approve` of the same id by flags."""
 
-    def test_approve_by_flags_does_not_require_a_new_preview_and_leaves_rejection_in_place(self):
+    def test_approve_by_flags_does_not_require_a_new_preview_and_clears_the_earlier_rejection(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Ledger(tmp)
             x = candidate("local", "x", "Reject then approve")
@@ -292,9 +292,10 @@ class RejectThenApproveTests(unittest.TestCase):
             fresh = Ledger(tmp).get("local:x")
             self.assertEqual("approved", fresh["approval"]["status"])
             self.assertEqual("approved", fresh["state"])
-            # `approve()` (models.py) only writes `approval`/`state`: the old
-            # `rejection` block from the earlier reject is not cleared.
-            self.assertEqual("Motivo do descarte.", fresh["rejection"]["reason"])
+            # `approve()` (models.py) removes the earlier `rejection` block: a
+            # successful approval supersedes it, so the item is not left looking
+            # rejected and approved at the same time.
+            self.assertNotIn("rejection", fresh)
 
 
 if __name__ == "__main__":
