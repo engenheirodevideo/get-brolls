@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import math
 import os
 import re
@@ -9,32 +10,88 @@ import tempfile
 import time
 from pathlib import Path
 
+from . import logs
 from .config import CAP_EPSILON, cache_root, tool_path
 from .runtime import record_warning, stderr_tail
 
+_logger = logs.get("media")
 
-def run(args):
+
+def run(args, *, op=None):
     name = args[0]
+    label = op or name
     args = [tool_path(name), *args[1:]]
+    started = time.monotonic()
     try:
-        return subprocess.run(
+        result = subprocess.run(
             args, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180
-        ).stdout
+        )
+        logs.event(
+            _logger,
+            logging.INFO,
+            "subprocess",
+            tool=name,
+            op=label,
+            ms=round((time.monotonic() - started) * 1000),
+            status="ok",
+            exit=result.returncode,
+        )
+        return result.stdout
     except FileNotFoundError as e:
+        logs.event(
+            _logger,
+            logging.WARNING,
+            "subprocess",
+            tool=name,
+            op=label,
+            ms=round((time.monotonic() - started) * 1000),
+            status="error",
+            exit=None,
+        )
         # Executável ausente é outro problema que arquivo ou intervalo inválido.
         raise ValueError(
             f"{name} não encontrado: instale FFmpeg/ffprobe ou aponte GB_FFMPEG_PATH/GB_FFPROBE_PATH; "
             "verifique python3 scripts/gb.py doctor."
         ) from e
     except subprocess.TimeoutExpired as e:
+        logs.event(
+            _logger,
+            logging.WARNING,
+            "subprocess",
+            tool=name,
+            op=label,
+            ms=round((time.monotonic() - started) * 1000),
+            status="error",
+            exit=None,
+        )
         raise ValueError(f"{name} excedeu 180s; confirme arquivo e intervalo ou tente novamente.") from e
     except subprocess.CalledProcessError as e:
+        logs.event(
+            _logger,
+            logging.WARNING,
+            "subprocess",
+            tool=name,
+            op=label,
+            ms=round((time.monotonic() - started) * 1000),
+            status="error",
+            exit=e.returncode,
+        )
         tail = stderr_tail(e.stderr)
         raise ValueError(
             f"{name} falhou (exit {e.returncode}); verifique python3 scripts/gb.py doctor."
             + (f" stderr: {tail}" if tail else "")
         ) from e
     except (subprocess.SubprocessError, OSError) as e:
+        logs.event(
+            _logger,
+            logging.WARNING,
+            "subprocess",
+            tool=name,
+            op=label,
+            ms=round((time.monotonic() - started) * 1000),
+            status="error",
+            exit=None,
+        )
         raise ValueError("Falha de mídia: confirme arquivo e intervalo; verifique python3 scripts/gb.py doctor.") from e
 
 
@@ -86,16 +143,18 @@ def drawtext_available():
         if cache_path.is_file():
             cached = json.loads(cache_path.read_text(encoding="utf-8"))
             _DRAWTEXT[name] = bool(cached.get("available"))
+            logs.event(_logger, logging.DEBUG, "drawtext_probe", available=_DRAWTEXT[name], source="cache")
             return _DRAWTEXT[name]
     except (OSError, ValueError):
         pass
     try:
-        listing = run(["ffmpeg", "-hide_banner", "-filters"])
+        listing = run(["ffmpeg", "-hide_banner", "-filters"], op="drawtext_probe")
     except ValueError:
         # The probe itself failed (missing/broken ffmpeg) — different from a working ffmpeg
         # that simply lacks the filter; the caller should know sondagem failed. This
         # process-level False is NOT persisted to disk: a real determination (probe ran and
-        # found no filter) must not be confused with "we couldn't even ask".
+        # found no filter) must not be confused with "we couldn't even ask". record_warning
+        # already mirrors a WARNING line into getbrolls.log, so no separate event here.
         record_warning(
             "FFMPEG_PROBE_FAILED",
             "Não foi possível sondar os filtros do ffmpeg; drawtext tratado como indisponível.",
@@ -103,6 +162,7 @@ def drawtext_available():
         return False
     available = " drawtext " in listing
     _DRAWTEXT[name] = available
+    logs.event(_logger, logging.INFO, "drawtext_probe", available=available, source="probe")
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         temp = cache_path.with_suffix(".tmp")
@@ -120,10 +180,13 @@ def find_font():
         path = Path(pinned).expanduser()
         if not path.is_file():
             raise ValueError(f"GB_FONT_FILE não aponta para uma fonte existente: {pinned}")
+        logs.event(_logger, logging.DEBUG, "font", found=True, source="env")
         return str(path.resolve())
     for candidate in DEFAULT_FONTS:
         if Path(candidate).is_file():
+            logs.event(_logger, logging.DEBUG, "font", found=True, source="system")
             return str(Path(candidate).resolve())
+    logs.event(_logger, logging.DEBUG, "font", found=False, source="system")
     return None
 
 
@@ -172,7 +235,8 @@ def probe(path):
                 "-of",
                 "json",
                 str(path),
-            ]
+            ],
+            op="probe",
         )
     )
     v = next((s for s in d["streams"] if s["codec_type"] == "video"), None)
@@ -221,12 +285,13 @@ def cut(src, dst, start, end):
                 "-movflags",
                 "+faststart",
                 str(tmp),
-            ]
+            ],
+            op="cut",
         )
         info = probe(tmp)
         if abs(info["duration_s"] - (end - start)) > max(0.25, 2 / (info["fps"] or 10)):
             raise ValueError("Duração do corte não corresponde ao intervalo aprovado.")
-        run(["ffmpeg", "-v", "error", "-i", str(tmp), "-f", "null", "-"])
+        run(["ffmpeg", "-v", "error", "-i", str(tmp), "-f", "null", "-"], op="decode_check")
         os.replace(tmp, dst)
     finally:
         tmp.unlink(missing_ok=True)
@@ -250,7 +315,8 @@ def preview(src, dst, start, end):
             "-frames:v",
             "1",
             str(dst),
-        ]
+        ],
+        op="preview",
     )
     if not Path(dst).exists():
         raise ValueError("Não foi possível criar a prévia.")
@@ -294,7 +360,16 @@ def review_preview(src, directory, stem, start, end, config, label=None):
         # Source-time window for labels: the working file may start mid-source.
         offset = float(label.get("offset") or 0)
         src_start, src_end = start + offset, end + offset
-        font = find_font() if drawtext_available() else None
+        drawtext_ok = drawtext_available()
+        font = find_font() if drawtext_ok else None
+        if not font:
+            logs.event(
+                _logger,
+                logging.INFO,
+                "fallback",
+                kind="plain_sheet",
+                reason="no_drawtext" if not drawtext_ok else "no_font",
+            )
         cell = ""
         banner = ""
         if font:
@@ -401,7 +476,8 @@ def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):
                 "-frames:v",
                 "1",
                 str(sheet),
-            ]
+            ],
+            op="scan",
         )
         if not sheet.exists():
             raise ValueError("Não foi possível varrer o vídeo.")
@@ -433,7 +509,8 @@ def image_preview(src, directory, stem):
                 "-frames:v",
                 "1",
                 str(dest),
-            ]
+            ],
+            op="poster",
         )
         os.replace(dest, directory.parent / rel)
     return {
@@ -452,7 +529,7 @@ def copy_image(src, dst):
         tmp = Path(stage) / dst.name
         shutil.copyfile(src, tmp)
         probe(tmp)
-        run(["ffmpeg", "-v", "error", "-i", str(tmp), "-f", "null", "-"])
+        run(["ffmpeg", "-v", "error", "-i", str(tmp), "-f", "null", "-"], op="decode_check")
         from .ledger import digest
 
         if digest(src) != digest(tmp):

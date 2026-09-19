@@ -6,12 +6,17 @@ looks like a block (403/429/challenge/login/rate limit) opens a doubling cooldow
 """
 
 import json
+import logging
 import os
 import random
 import re
 import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+from . import logs
+
+log = logs.get("queue")
 
 PROVIDERS = ("instagram", "tiktok", "youtube")
 QUEUE_FILE = Path("work") / "queue.json"
@@ -32,6 +37,29 @@ COOLDOWN_RE = re.compile(
     r"|sess[ãa]o\s+de\s+acesso|bloqueou\s+o\s+ip|limite\s+de\s+requisi[çc][õo]es)\b",
     re.IGNORECASE,
 )
+# Category for the `reason_class` log field: a coarse bucket, never the raw free-text
+# reason (which may carry a title, a URL, or other free text passed in by a caller).
+_COOLDOWN_CATEGORIES = (
+    (re.compile(r"\b429\b"), "http_429"),
+    (re.compile(r"\b403\b"), "http_403"),
+    (re.compile(r"\bchallenge\b", re.IGNORECASE), "challenge"),
+    (re.compile(r"\blogin\b|sess[ãa]o\s+de\s+acesso", re.IGNORECASE), "login"),
+    (re.compile(r"bloqueou\s+o\s+ip", re.IGNORECASE), "ip_block"),
+    (
+        re.compile(r"rate[\s-]?limit|too\s+many\s+requests|limite\s+de\s+requisi[çc][õo]es", re.IGNORECASE),
+        "rate_limit",
+    ),
+)
+
+
+def _cooldown_reason_class(reason):
+    text = str(reason or "")
+    for pattern, category in _COOLDOWN_CATEGORIES:
+        if pattern.search(text):
+            return category
+    return "other"
+
+
 LIMITS = (
     ("min_s", "GB_PACE_MIN_S", 0, 24 * 3600),
     ("max_s", "GB_PACE_MAX_S", 0, 24 * 3600),
@@ -165,17 +193,22 @@ def pacing(provider, rules=None, use_env=True):
     low, high = DEFAULT_PACE[provider]
     limits = {"min_s": low, "max_s": high, "max_per_hour": DEFAULT_MAX_PER_HOUR, "max_per_day": DEFAULT_MAX_PER_DAY}
     block = ((rules or {}).get("pacing") or {}).get(provider) or {}
+    overrides = {}
     for key, env_key, lo, hi in LIMITS:
         if key in block:
             limits[key] = _integer(f"RULES.md pacing.{provider}.{key}", block[key], lo, hi)
+            overrides[key] = "rules"
         if use_env:
             env_value = (os.environ.get(env_key) or "").strip()
             if env_value:
                 limits[key] = _integer(env_key, env_value, lo, hi)
+                overrides[key] = "env"
     if limits["min_s"] > limits["max_s"]:
         raise ValueError(
             f"Ritmo de {provider}: min_s não pode ser maior que max_s (GB_PACE_MIN_S/GB_PACE_MAX_S ou o bloco pacing em RULES.md)."
         )
+    if overrides:
+        logs.event(log, logging.DEBUG, "pacing_override", provider=provider, **overrides)
     return limits
 
 
@@ -320,9 +353,21 @@ def claim_next(data, provider=None, at=None, rng=None, rules=None):
         state = _provider_state(data, item["provider"])
         resume_at, reason = _gate(data, item["provider"], moment, limits, state)
         if resume_at is None:
-            return _activate(data, item, moment, limits, rng)
-        blocked.append((resume_at, reason))
-    return _waiting(moment, *min(blocked))
+            result = _activate(data, item, moment, limits, rng)
+            logs.event(log, logging.INFO, "queue_claim", provider=item["provider"], item=item["id"])
+            return result
+        blocked.append((resume_at, reason, item["provider"]))
+    resume_at, reason, provider_blocked = min(blocked, key=lambda b: (b[0], b[1]))
+    result = _waiting(moment, resume_at, reason)
+    logs.event(
+        log,
+        logging.INFO,
+        "queue_wait",
+        provider=provider_blocked,
+        hold=reason,
+        next_allowed_in_s=result["wait_seconds"],
+    )
+    return result
 
 
 # Backward-compatible alias: `claim_next` is the current name, `next_item` is kept for
@@ -334,11 +379,21 @@ def is_cooldown_reason(reason):
     return bool(reason and COOLDOWN_RE.search(str(reason)))
 
 
-def _open_cooldown(state, moment):
-    state["cooldown_strikes"] = int(state.get("cooldown_strikes") or 0) + 1
+def _open_cooldown(provider, state, moment, reason=None):
+    previous_strikes = int(state.get("cooldown_strikes") or 0)
+    state["cooldown_strikes"] = previous_strikes + 1
     seconds = min(COOLDOWN_BASE_S * 2 ** (state["cooldown_strikes"] - 1), COOLDOWN_CAP_S)
     until = moment + timedelta(seconds=seconds)
     state["cooldown_until"] = _stamp(until)
+    logs.event(
+        log,
+        logging.INFO,
+        "cooldown",
+        provider=provider,
+        action="open" if previous_strikes == 0 else "extend",
+        until_s=seconds,
+        reason_class=_cooldown_reason_class(reason),
+    )
     return {"seconds": seconds, "until": _stamp(until), "strikes": state["cooldown_strikes"]}
 
 
@@ -350,6 +405,7 @@ def mark(data, item_id, status, reason=None, at=None):
         raise ValueError(f"Item não está na fila: {item_id}")
     if item["status"] in TERMINAL_STATUSES:
         raise ValueError(f"Item {item_id} já está em estado final ({item['status']}); não é possível marcar novamente.")
+    old_status = item["status"]
     moment = _at(at)
     item["status"] = status
     item["finished_at"] = _stamp(moment)
@@ -357,10 +413,22 @@ def mark(data, item_id, status, reason=None, at=None):
     state = _provider_state(data, item["provider"])
     cooldown = None
     if status == "done":
+        had_cooldown = state.get("cooldown_until") is not None or int(state.get("cooldown_strikes") or 0) > 0
         state["cooldown_strikes"] = 0
         state["cooldown_until"] = None
+        if had_cooldown:
+            logs.event(
+                log,
+                logging.INFO,
+                "cooldown",
+                provider=item["provider"],
+                action="close",
+                until_s=None,
+                reason_class=None,
+            )
     elif is_cooldown_reason(reason):
-        cooldown = _open_cooldown(state, moment)
+        cooldown = _open_cooldown(item["provider"], state, moment, reason)
+    logs.event(log, logging.INFO, "queue_mark", item=item_id, **{"from": old_status, "to": status})
     return {"item": item, "cooldown": cooldown}
 
 
@@ -371,7 +439,7 @@ def record_cooldown(project, provider, reason, at=None):
         return None
     data = load(path)
     moment = _at(at)
-    cooldown = _open_cooldown(_provider_state(data, provider), moment)
+    cooldown = _open_cooldown(provider, _provider_state(data, provider), moment, reason)
     items_failed = []
     for item in data["items"]:
         if item["provider"] == provider and item["status"] == "active":

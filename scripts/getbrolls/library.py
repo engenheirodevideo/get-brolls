@@ -9,13 +9,17 @@ intervalo, e toda resposta daqui repete isso em `rights_not_transferable`.
 import contextlib
 import hashlib
 import json
+import logging
 import os
 import time
 import unicodedata
 import uuid
 
+from . import logs
 from .models import now
 from .rules import home_dir
+
+_log = logs.get(__name__.rsplit(".", 1)[-1])
 
 SCHEMA_VERSION = 1
 EMPTY = {
@@ -111,7 +115,8 @@ def _locked():
     """Serializa ler → mudar → gravar; sem isso duas escritas perdem uma entrada."""
     path = library_dir() / "index.lock"
     path.parent.mkdir(parents=True, exist_ok=True)
-    deadline = time.monotonic() + LOCK_TIMEOUT_S
+    started = time.monotonic()
+    deadline = started + LOCK_TIMEOUT_S
     while True:
         try:
             os.close(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
@@ -127,11 +132,25 @@ def _locked():
                     path.unlink()
                 continue
             if time.monotonic() > deadline:
+                logs.event(
+                    _log,
+                    logging.WARNING,
+                    "library_lock",
+                    waited_ms=round((time.monotonic() - started) * 1000),
+                    timeout=True,
+                )
                 raise ValueError(
                     f"{path} está travado há tempo demais por outro get-brolls. "
                     "Espere a outra execução terminar ou apague esse arquivo."
                 ) from None
             time.sleep(0.02)
+    logs.event(
+        _log,
+        logging.DEBUG,
+        "library_lock",
+        waited_ms=round((time.monotonic() - started) * 1000),
+        timeout=False,
+    )
     try:
         yield
     finally:
@@ -177,7 +196,9 @@ def learn_query(query, provider, outcome, note=None, auto=False):
     if not provider:
         raise ValueError("Informe a fonte em --provider.")
     if not enabled():
-        return _off(entry=None)
+        result = _off(entry=None)
+        logs.event(_log, logging.INFO, "library", action="learn", entries=0, disabled=True)
+        return result
     note_path = _write_note(note) if (note or "").strip() else None
 
     def mutate(data):
@@ -227,7 +248,9 @@ def learn_query(query, provider, outcome, note=None, auto=False):
         counts["last_at"] = at
         return entry
 
-    return answer(entry=_update(mutate))
+    result = answer(entry=_update(mutate))
+    logs.event(_log, logging.INFO, "library", action="learn", entries=1, disabled=False)
+    return result
 
 
 def learn_preference(text, by=None):
@@ -236,14 +259,18 @@ def learn_preference(text, by=None):
     if len(text) < 5:
         raise ValueError("Escreva a preferência como ela foi dita, com pelo menos 5 caracteres.")
     if not enabled():
-        return _off(entry=None)
+        result = _off(entry=None)
+        logs.event(_log, logging.INFO, "library", action="learn", entries=0, disabled=True)
+        return result
     entry = {"text": text, "by": (by or "").strip() or None, "at": now()}
 
     def mutate(data):
         data["preferences"].append(entry)
         return entry
 
-    return answer(entry=_update(mutate))
+    result = answer(entry=_update(mutate))
+    logs.event(_log, logging.INFO, "library", action="learn", entries=1, disabled=False)
+    return result
 
 
 def asset_id(source_url, clip_signature):
@@ -273,7 +300,9 @@ def learn_from_candidate(project, ident, shot=None):
         )
     reference = references[-1]
     if not enabled():
-        return _off(entry=None)
+        result = _off(entry=None)
+        logs.event(_log, logging.INFO, "library", action="learn", entries=0, disabled=True)
+        return result
     from .models import signature
 
     entry = {
@@ -314,7 +343,9 @@ def learn_from_candidate(project, ident, shot=None):
         data["assets"].append(entry)
         return entry
 
-    return answer(entry=_update(mutate))
+    result = answer(entry=_update(mutate))
+    logs.event(_log, logging.INFO, "library", action="learn", entries=1, disabled=False)
+    return result
 
 
 def _score(term_tokens, text):
@@ -328,7 +359,9 @@ def search(term, limit=5):
     if not term:
         raise ValueError("Informe o que procurar em --search.")
     if not enabled():
-        return _off(assets=[], queries=[], providers={}, preferences=[])
+        result = _off(assets=[], queries=[], providers={}, preferences=[])
+        logs.event(_log, logging.INFO, "library", action="search", entries=0, disabled=True)
+        return result
     wanted = _tokens(term)
     data = load_index()
     assets = sorted(
@@ -359,14 +392,24 @@ def search(term, limit=5):
         return [dict(item, score=round(score, 3)) for item, score in pairs if score][:limit]
 
     found_assets, found_queries = keep(assets), keep(queries)
+    found_preferences = keep(preferences)
     named = {item.get("provider") for item in found_assets + found_queries}
-    return answer(
+    result = answer(
         term=term,
         assets=found_assets,
         queries=found_queries,
-        preferences=keep(preferences),
+        preferences=found_preferences,
         providers={name: counts for name, counts in data["providers"].items() if name in named},
     )
+    logs.event(
+        _log,
+        logging.INFO,
+        "library",
+        action="search",
+        entries=len(found_assets) + len(found_queries) + len(found_preferences),
+        disabled=False,
+    )
+    return result
 
 
 def hints(query, limit=5):
@@ -376,6 +419,7 @@ def hints(query, limit=5):
     sobre outro cliente. Quem quiser lê-los pede de propósito, em `library --search`.
     """
     if not enabled():
+        logs.event(_log, logging.INFO, "library", action="hints", entries=0, disabled=True)
         return []
     try:
         found = search(query, limit=limit)
@@ -412,4 +456,6 @@ def hints(query, limit=5):
                 "rights_not_transferable": True,
             }
         )
-    return out[:limit]
+    result = out[:limit]
+    logs.event(_log, logging.INFO, "library", action="hints", entries=len(result), disabled=False)
+    return result

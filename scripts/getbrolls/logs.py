@@ -214,7 +214,12 @@ def _configure(project, *, read_only):
         _root.removeFilter(existing_filter)
     _root.propagate = False
     _root.setLevel(logging.DEBUG)
-    _root.addFilter(RedactingFilter())
+    # A logger-level filter only sees records created on that very logger, not the
+    # ones that propagate up from `getbrolls.<module>` children. Redaction therefore
+    # lives on every HANDLER, which sees all records; the logger-level copy only
+    # covers records logged directly on the package logger.
+    redacting = RedactingFilter()
+    _root.addFilter(redacting)
 
     if raw_level == "OFF":
         level = None
@@ -239,6 +244,7 @@ def _configure(project, *, read_only):
         )
         handler.setLevel(level)
         handler.setFormatter(_LineFormatter())
+        handler.addFilter(redacting)
         _root.addHandler(handler)
         added = True
 
@@ -246,6 +252,7 @@ def _configure(project, *, read_only):
         stream_handler = logging.StreamHandler(sys.stderr)
         stream_handler.setLevel(level)
         stream_handler.setFormatter(_LineFormatter())
+        stream_handler.addFilter(redacting)
         _root.addHandler(stream_handler)
         added = True
 

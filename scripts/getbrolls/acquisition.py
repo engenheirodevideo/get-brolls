@@ -1,16 +1,21 @@
 """Private working sources for review; final clips remain approval-gated."""
 
 import json
+import logging
 import os
 import tempfile
+import time
 from pathlib import Path
 
+from . import logs
 from .ledger import digest
 from .media import probe
 from .models import id_stem
 from .runtime import record_warning
 
 INDEX_NAME = "index.json"
+
+log = logs.get("acquisition")
 
 
 def _load_index(cache):
@@ -94,8 +99,11 @@ def _reuse_from_index(cache, candidate_id, start, end):
                 "SOURCE_CACHE_STALE",
                 f"Cache de fonte para {candidate_id} tem sha divergente; ignorado, não reutilizado.",
             )
+            logs.event(log, logging.INFO, "source_cache", candidate=candidate_id, result="stale", reason="sha_mismatch")
             continue
+        logs.event(log, logging.INFO, "source_cache", candidate=candidate_id, result="hit", reason="covers_range")
         return entry
+    logs.event(log, logging.INFO, "source_cache", candidate=candidate_id, result="miss", reason="no_match")
     return None
 
 
@@ -119,7 +127,17 @@ def cache_direct_media(ledger, candidate, refresh=True):
     _ensure_private_cache_dir(cache)
     reused = _reuse_from_index(cache, candidate["id"], 0, 0)
     if reused is not None:
-        return Path(reused["path"])
+        reused_path = Path(reused["path"])
+        logs.event(
+            log,
+            logging.INFO,
+            "source_materialized",
+            candidate=candidate["id"],
+            bytes=reused_path.stat().st_size if reused_path.is_file() else None,
+            ms=0,
+            kind="local",
+        )
+        return reused_path
     url = candidate.get("media_url")
     if refresh:
         from .providers import refresh as refresh_candidate
@@ -129,6 +147,7 @@ def cache_direct_media(ledger, candidate, refresh=True):
         raise ValueError("Arquivo do provedor não está mais disponível.")
     from .http import download
 
+    started = time.monotonic()
     with tempfile.TemporaryDirectory(dir=cache) as work:
         target = Path(work) / "source.bin"
         download(url, target)
@@ -139,7 +158,24 @@ def cache_direct_media(ledger, candidate, refresh=True):
             os.replace(target, final)
             final.chmod(0o600)
         elif digest(final) != sha:
+            logs.event(
+                log,
+                logging.WARNING,
+                "source_cache",
+                candidate=candidate["id"],
+                result="stale",
+                reason="digest_mismatch",
+            )
             raise ValueError("Cache de mídia inconsistente; não foi sobrescrito.")
+    logs.event(
+        log,
+        logging.INFO,
+        "source_materialized",
+        candidate=candidate["id"],
+        bytes=final.stat().st_size,
+        ms=round((time.monotonic() - started) * 1000),
+        kind="remote",
+    )
     index = _load_index(cache)
     entries = index.setdefault(candidate["id"], [])
     entries[:] = [e for e in entries if e.get("sha") != sha]
@@ -187,7 +223,18 @@ def prepare_source(ledger, candidate, start, end, tolerant=False):
             local_duration_s=reused["duration"],
         )
         c["media"].update(width=info["width"], height=info["height"], fps=info["fps"])
+        reused_path = Path(reused["path"])
+        logs.event(
+            log,
+            logging.INFO,
+            "source_materialized",
+            candidate=c["id"],
+            bytes=reused_path.stat().st_size if reused_path.is_file() else None,
+            ms=0,
+            kind="local",
+        )
         return
+    started = time.monotonic()
     with tempfile.TemporaryDirectory(dir=cache) as work:
         target = Path(work) / "source.mp4"
         if c["acquisition"].get("method") == "yt-dlp":
@@ -216,11 +263,23 @@ def prepare_source(ledger, candidate, start, end, tolerant=False):
             os.replace(target, final)
             final.chmod(0o600)
         elif digest(final) != sha:
+            logs.event(
+                log, logging.WARNING, "source_cache", candidate=c["id"], result="stale", reason="digest_mismatch"
+            )
             raise ValueError("Cache de mídia inconsistente; não foi sobrescrito.")
     c.update(
         local_path=str(final.resolve()), local_sha256=sha, local_start_s=offset, local_duration_s=info["duration_s"]
     )
     c["media"].update(width=info["width"], height=info["height"], fps=info["fps"])
+    logs.event(
+        log,
+        logging.INFO,
+        "source_materialized",
+        candidate=c["id"],
+        bytes=final.stat().st_size,
+        ms=round((time.monotonic() - started) * 1000),
+        kind="remote",
+    )
     index = _load_index(cache)
     entries = index.setdefault(c["id"], [])
     entries[:] = [e for e in entries if e.get("sha") != sha]

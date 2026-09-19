@@ -70,7 +70,10 @@ def record_warning(code, message):
     try:
         from . import logs  # local: avoids a runtime<->logs import cycle
 
-        logs.event(logs.get("runtime"), logging.WARNING, "warning", code=code, message=message)
+        # Only the code: warning messages are prose written for the person and may
+        # quote what they typed (an approver's name, a reason). The full message is
+        # already in the command's JSON output; the log only needs to correlate.
+        logs.event(logs.get("runtime"), logging.WARNING, "warning", code=code)
     except Exception:
         pass
 

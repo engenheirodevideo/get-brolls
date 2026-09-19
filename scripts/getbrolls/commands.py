@@ -1,13 +1,15 @@
 """Existing workflow command handlers; CLI parsing and reporting live separately."""
 
 import json
+import logging
 import os
 import re
 import shutil
 import sys
+import time
 from pathlib import Path
 
-from . import __version__
+from . import __version__, logs
 from .config import CAP_EPSILON
 from .guidance import blocked_beats_question, next_action
 from .ledger import Ledger, digest
@@ -19,6 +21,8 @@ from .queue import hint as queue_hint
 from .queue import summary_line as queue_summary_line
 from .rendering import render
 from .runtime import record_warning
+
+_log = logs.get("commands")
 
 # Raiz real da skill/plugin: o comando sugerido não pode depender da pasta atual.
 SKILL_ROOT = Path(__file__).resolve().parents[2]
@@ -653,6 +657,20 @@ def reject_all(ledger, only, reason=None):
         mark_rejected(c, reason)
     ledger.save_many("reject", chosen)
     render(ledger)
+    try:
+        for c in chosen:
+            rejection = c.get("rejection") or {}
+            logs.event(
+                _log,
+                logging.INFO,
+                "reject",
+                candidate=c["id"],
+                had_review=bool(rejection.get("invalidated_review")),
+                reason_present=bool(rejection.get("reason")),
+                output_cleared=True,
+            )
+    except Exception:
+        pass
     return {
         "rejected": [c["id"] for c in chosen],
         "reason": (reason or "").strip() or None,
@@ -697,6 +715,21 @@ def approve_all(ledger, args, rules, only=None):
     if approved:
         ledger.save_many("approve-chat" if args.channel == "chat" else "approve", approved)
         render(ledger)
+    try:
+        for c in approved:
+            logs.event(
+                _log,
+                logging.INFO,
+                "approve",
+                candidate=c["id"],
+                channel=args.channel,
+                revision=c["segment"]["revision"],
+                by_present=bool((args.by or "").strip()),
+                statement_present=bool((args.statement or "").strip()),
+            )
+        logs.event(_log, logging.INFO, "approve_all", approved=len(approved), skipped=len(skipped))
+    except Exception:
+        pass
     if wanted is None and approved:
         # `--all` mira o disco, não a conversa: a prévia de um candidato descartado
         # continua lá e entra na leva. Dizer em voz alta o que foi aprovado é o que
@@ -1003,6 +1036,17 @@ def deliver_report(ledger, rules, dry_run=False):
         ledger=ledger,
         for_human=lambda: _delivery_next(ledger, rules),
     )
+    # `build_delivery` raises before returning when any file is in conflict, so
+    # reaching here means zero conflicts this run.
+    logs.event(
+        _log,
+        logging.INFO,
+        "deliver",
+        delivered=len(report["items"]),
+        skipped=len(report["skipped"]),
+        conflicts=0,
+        dry_run=bool(dry_run),
+    )
     verb = "Organizaria" if dry_run else "Organizei"
     beats = len({item["beat"] for item in report["items"]})
     line = (
@@ -1216,6 +1260,67 @@ def _local_playwright(root=None):
     return None
 
 
+# --- Audit-trail logging helpers -------------------------------------------
+# Pure, defensive readers used only to build fields for `logs.event()` calls.
+# Each one swallows its own failure and returns a safe default instead of
+# raising, so a logging call site can never change command behavior.
+
+
+def _safe_size(path):
+    """File size in bytes, or None when the file is missing/unreadable."""
+    try:
+        return Path(path).stat().st_size
+    except OSError:
+        return None
+
+
+def _sha256_prefix(value):
+    """First 12 chars of a sha256 hex digest, or None."""
+    return value[:12] if isinstance(value, str) and value else None
+
+
+def _rules_project_present(args):
+    """Whether the target project already has a RULES.md, for the `config` event."""
+    project = getattr(args, "project", None)
+    if not project:
+        return False
+    try:
+        return (Path(project).expanduser() / "RULES.md").is_file()
+    except OSError:
+        return False
+
+
+def _brief_present(args):
+    """Whether the target project already has a BRIEF.md, for the `config` event."""
+    project = getattr(args, "project", None)
+    if not project:
+        return False
+    try:
+        from getbrolls.brief import brief_path
+
+        return brief_path(project).is_file()
+    except (ValueError, OSError):
+        return False
+
+
+def _provider_keys_set():
+    """Comma list of which provider API keys are SET in the environment, never their values."""
+    names = (("pexels", "PEXELS_API_KEY"), ("pixabay", "PIXABAY_API_KEY"), ("youtube", "YOUTUBE_API_KEY"))
+    return ",".join(name for name, key in names if os.environ.get(key))
+
+
+def _inspect_windows_source(windows):
+    """Which kind of source data produced the candidate windows, for the `inspect` event."""
+    sources = {(w or {}).get("source") for w in windows}
+    if "subtitle" in sources:
+        return "subtitles"
+    if "chapter" in sources:
+        return "chapters"
+    if "description_timestamp" in sources:
+        return "description"
+    return "none"
+
+
 def execute(args):
     from getbrolls.config import load_env, settings
 
@@ -1223,6 +1328,18 @@ def execute(args):
         raise ValueError("--env-file não existe. Confira o caminho.")
     load_env(args.env_file or Path(__file__).resolve().parents[2] / ".env")
     config = settings()
+    try:
+        logs.event(
+            _log,
+            logging.DEBUG,
+            "config",
+            env_file_present=bool(getattr(args, "env_file", None)),
+            rules_project=_rules_project_present(args),
+            brief_present=_brief_present(args),
+            provider_keys=_provider_keys_set(),
+        )
+    except Exception:
+        pass
     from getbrolls import providers
 
     if args.command in ("providers", "doctor"):
@@ -1399,12 +1516,13 @@ def execute(args):
                 "Nenhuma fonte configurada: use resolve --file, Commons/NASA ou configure a chave de um banco."
             )
 
-        def sweep(query):
+        def sweep(query, retry=False):
             """Uma varredura pelos provedores escolhidos, com esta query exata."""
             items, errors, excluded = [], [], 0
             for name in names:
                 if len(items) >= args.limit:
                     break
+                before = len(items)
                 try:
                     candidates = providers.search(
                         name, query, args.limit - len(items), media=getattr(args, "media", "any")
@@ -1444,6 +1562,18 @@ def execute(args):
                     c = ledger.add(c)
                     ledger.save("search", c)
                     items.append(c)
+                logs.event(
+                    _log,
+                    logging.INFO,
+                    "search",
+                    provider=name,
+                    media=getattr(args, "media", "any"),
+                    intent=args.intent,
+                    shot=shot,
+                    query_words=len(query.split()),
+                    results=len(items) - before,
+                    retry=retry,
+                )
             return items, errors, excluded
 
         query_used = args.query
@@ -1459,7 +1589,7 @@ def execute(args):
             from getbrolls.brief import search_query
 
             short = search_query({"target": args.query, "queries": []}, SEARCH_QUERY_TOKENS)
-            items, errors, excluded = sweep(short)
+            items, errors, excluded = sweep(short, retry=True)
             retry = {
                 "from": args.query,
                 "to": short,
@@ -1586,6 +1716,14 @@ def execute(args):
         c["format"] = format_report(c, rules)
         c = ledger.add(c)
         ledger.save(cmd, c)
+        logs.event(
+            _log,
+            logging.INFO,
+            "resolve",
+            provider=c["provider"],
+            candidate=c["id"],
+            kind="file" if args.file else "url",
+        )
         # Mesmos atalhos planos que a busca devolve (`channel`, `uploader`,
         # `duration_s`): quem lista o C2 lê os dois comandos do mesmo jeito. São só
         # da resposta — no manifesto continuam em `creator.name` e `media.duration_s`.
@@ -1608,12 +1746,13 @@ def execute(args):
         for c in ledger.data["items"]:
             if c["output"]["path"]:
                 path = ledger.root / c["output"]["path"]
+                existed = path.exists()
                 try:
                     info = probe(path)
                     if digest(path) != c["output"]["sha256"]:
                         raise ValueError("Arquivo alterado após coleta: " + c["id"])
                     run(["ffmpeg", "-v", "error", "-i", str(path), "-f", "null", "-"])
-                except ValueError:
+                except ValueError as exc:
                     # Um clipe que não bate mais com o registrado, ou que não decodifica,
                     # não pode continuar marcado como verificado: quem entrega depois
                     # confiaria num hash velho. `sha256` fica como está — é a prova do
@@ -1624,6 +1763,16 @@ def execute(args):
                         if c["state"] == "verified":
                             c["state"] = "approved"
                         ledger.save("verify", c)
+                    try:
+                        if not existed:
+                            result = "missing"
+                        elif "Arquivo alterado após coleta" in str(exc):
+                            result = "mismatch"
+                        else:
+                            result = "undecodable"
+                        logs.event(_log, logging.WARNING, "verify", candidate=c["id"], result=result)
+                    except Exception:
+                        pass
                     raise
                 # Probe, hash e decodificação bateram: se uma verificação anterior tinha
                 # derrubado a flag (arquivo trocado e depois restaurado), volta a True.
@@ -1632,6 +1781,7 @@ def execute(args):
                     if c["state"] == "approved":
                         c["state"] = "verified"
                     ledger.save("verify", c)
+                logs.event(_log, logging.INFO, "verify", candidate=c["id"], result="ok")
                 checked.append(
                     {
                         "id": c["id"],
@@ -1713,6 +1863,12 @@ def execute(args):
             set_segment(c, args.start, args.end)
         elif args.start is not None or args.end is not None:
             raise ValueError("Imagem estática não precisa de intervalo de origem.")
+    # Defaults for the audit-trail fields the elif branches below fill in;
+    # only used after the shared save at the end of this function, for logging.
+    permit_route = None
+    permit_preset_name = None
+    preview_mode = None
+    approval_invalidated = False
     if cmd == "approve":
         approve(c, args.by, args.channel, args.statement)
     elif cmd == "permit":
@@ -1732,6 +1888,7 @@ def execute(args):
                     raise ValueError("Evidência não pode ser vazia.")
                 evidence += " | Verificado por quem pediu: " + args.evidence.strip()
             c["rights"]["basis"] = "per_item_evidence"
+            permit_route, permit_preset_name = "preset", preset
         elif args.declared_by or args.declaration_text:
             name = (args.declared_by or "").strip()
             text = (args.declaration_text or "").strip()
@@ -1742,6 +1899,7 @@ def execute(args):
             c["rights"]["basis"] = "user_declaration"
             c["rights"]["responsible_person"] = name
             c["rights"]["declaration_channel"] = "chat"
+            permit_route = "declaration"
         elif args.declaration:
             rights = rules["copyright"]
             if rights["mode"] != "user_declaration":
@@ -1749,6 +1907,7 @@ def execute(args):
             evidence = "Declaração do usuário " + rights["responsible_person"] + ": " + rights["declaration"]
             c["rights"]["basis"] = "user_declaration"
             c["rights"]["responsible_person"] = rights["responsible_person"]
+            permit_route = "declaration"
         else:
             if args.evidence is None:
                 raise ValueError(
@@ -1759,6 +1918,7 @@ def execute(args):
                 raise ValueError("Evidência não pode ser vazia.")
             evidence = args.evidence
             c["rights"]["basis"] = "per_item_evidence"
+            permit_route = "evidence"
         c["rights"]["status"] = "permitted"
         c["rights"]["evidence"].append(evidence)
     elif cmd == "reject":
@@ -1785,12 +1945,14 @@ def execute(args):
                 c["state"] = "verified" if c["output"].get("verified") else "approved"
             else:
                 c["state"] = "rejected" if c["approval"]["status"] == "rejected" else "awaiting_approval"
+            preview_mode = "image" if c.get("media", {}).get("kind") == "image" else "cut"
         else:
             c["preview"]["warning"] = "Somente referência estática; o trecho animado requer original local autorizado."
             c["state"] = "reference_only"
             # Sem um arquivo de imagem ninguém decide nada, e `status` nem conta o item
             # como tendo prévia. A miniatura pública da fonte já basta para isso.
             reference_poster(ledger, c)
+            preview_mode = "reference_only"
         if c["preview"].get("warning"):
             record_warning("PREVIEW_LIMITATION", c["preview"]["warning"])
         if args.narration is not None:
@@ -1806,7 +1968,9 @@ def execute(args):
             }
             c.pop("review", None)
             c["state"] = "awaiting_approval" if c.get("local_path") else "reference_only"
+            approval_invalidated = True
     elif cmd == "fetch":
+        _fetch_started_at = time.monotonic()
         require_fetch(c)
         src = c.get("local_path")
         temp = None
@@ -1839,6 +2003,16 @@ def execute(args):
             c["state"] = "verified"
             ledger.save(cmd, c)
             render(ledger)
+            logs.event(
+                _log,
+                logging.INFO,
+                "fetch",
+                candidate=c["id"],
+                kind="remote" if temp else "local",
+                bytes=_safe_size(dest),
+                sha256_prefix=_sha256_prefix(c["output"]["sha256"]),
+                ms=round((time.monotonic() - _fetch_started_at) * 1000),
+            )
             return c
         rel = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}.mp4"
         # O arquivo entregue nasce somente-leitura (delivery._freeze congela o inode
@@ -1868,6 +2042,64 @@ def execute(args):
     # O journal distingue a decisão dita no chat da que veio assinada pelo Storyboard.
     ledger.save("approve-chat" if cmd == "approve" and args.channel == "chat" else cmd, c)
     render(ledger)
+    try:
+        if cmd == "approve":
+            logs.event(
+                _log,
+                logging.INFO,
+                "approve",
+                candidate=c["id"],
+                channel=args.channel,
+                revision=c["segment"]["revision"],
+                by_present=bool((args.by or "").strip()),
+                statement_present=bool((args.statement or "").strip()),
+            )
+        elif cmd == "permit":
+            logs.event(_log, logging.INFO, "permit", candidate=c["id"], route=permit_route, preset=permit_preset_name)
+        elif cmd == "reject":
+            rejection = c.get("rejection") or {}
+            logs.event(
+                _log,
+                logging.INFO,
+                "reject",
+                candidate=c["id"],
+                had_review=bool(rejection.get("invalidated_review")),
+                reason_present=bool(rejection.get("reason")),
+                output_cleared=True,
+            )
+        elif cmd == "preview":
+            if approval_invalidated:
+                logs.event(
+                    _log,
+                    logging.INFO,
+                    "approval_invalidated",
+                    candidate=c["id"],
+                    reason="segment_changed",
+                    revision=c["segment"]["revision"],
+                )
+            logs.event(
+                _log,
+                logging.INFO,
+                "preview",
+                candidate=c["id"],
+                start_s=c["segment"]["start_s"],
+                end_s=c["segment"]["end_s"],
+                revision=c["segment"]["revision"],
+                mode=preview_mode,
+            )
+        elif cmd == "fetch":
+            logs.event(
+                _log,
+                logging.INFO,
+                "fetch",
+                candidate=c["id"],
+                kind="remote" if temp else "local",
+                bytes=_safe_size(ledger.root / c["output"]["path"]) if c["output"].get("path") else None,
+                sha256_prefix=_sha256_prefix(c["output"].get("sha256")),
+                ms=round((time.monotonic() - _fetch_started_at) * 1000),
+            )
+    except Exception:
+        pass
     if cmd == "preview":
         # Absolute paths for the agent to open the exact files the Storyboard shows.
         # They live only in this response, never in the manifest.
@@ -2090,6 +2322,14 @@ def inspect_source(ledger, args, config=None):
         # Único efeito no projeto: agora `set_segment` sabe recusar o que não cabe.
         c["media"]["duration_s"] = probe["duration_s"]
         ledger.save("inspect", c)
+    logs.event(
+        _log,
+        logging.INFO,
+        "inspect",
+        candidate=c["id"] if c is not None else None,
+        windows=len(windows),
+        source=_inspect_windows_source(windows),
+    )
     return {
         # Veredito primeiro, como nos outros comandos: quantas janelas e qual a melhor.
         "summary": inspect_summary(windows, probe, cap, args.query),
@@ -2308,6 +2548,16 @@ def scan_candidate(ledger, c, config):
     }
     ledger.save("preview", c)
     render(ledger)
+    logs.event(
+        _log,
+        logging.INFO,
+        "preview",
+        candidate=c["id"],
+        start_s=c["scan"]["start_s"],
+        end_s=c["scan"]["end_s"],
+        revision=c["segment"]["revision"],
+        mode="scan",
+    )
     return {
         **c,
         # Mesmo contrato das outras rotas de `preview`: caminho absoluto de tudo o que

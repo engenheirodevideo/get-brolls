@@ -19,6 +19,7 @@ lugar: `fetch` grava um `-r<N>` novo e `verify` só lê) e tanto o `README.md` q
 contrário de `c["output"]["path"]`, que é relativo a `brolls/`.
 """
 
+import logging
 import os
 import re
 import shutil
@@ -27,7 +28,10 @@ import unicodedata
 from datetime import date
 from pathlib import Path
 
+from . import logs
 from .runtime import record_warning
+
+log = logs.get("delivery")
 
 # Pasta derivada, na raiz do projeto — irmã de `brolls/`, nunca dentro dela.
 DELIVERY_DIR = "entrega"
@@ -423,9 +427,11 @@ def _plan(project, items):
                     "reason": "verificação (sha256) não bateu: rode `verify` de novo antes de entregar.",
                 }
             )
+            logs.event(log, logging.INFO, "deliver_skipped", candidate=c["id"], reason="unverified")
             continue
         if (c.get("approval") or {}).get("status") == "rejected":
             skipped.append({"id": c["id"], "reason": "candidato foi rejeitado: não entra na entrega."})
+            logs.event(log, logging.INFO, "deliver_skipped", candidate=c["id"], reason="rejected")
             continue
         collected.append(c)
     beats = _brief_beats(project)
@@ -554,6 +560,7 @@ def _sweep(root, expected, dry_run, owned=(), brolls_root=None):
             removed.append(rel)
         else:
             kept.append(rel)
+    logs.event(log, logging.INFO, "sweep", removed=len(removed), kept_foreign=len(kept))
     return removed, kept
 
 
@@ -583,6 +590,7 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
     items = ledger.data["items"]
     root = Path(project).expanduser().resolve() / DELIVERY_DIR
     if root.is_symlink():
+        logs.event(log, logging.WARNING, "deliver_refusal", reason="entrega_is_symlink")
         raise ValueError(
             f"{root} é um link simbólico: apague o link antes de rodar `deliver`. A pasta "
             "de entrega precisa ser uma pasta real dentro do projeto, nunca um atalho para "
@@ -615,6 +623,18 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
                     if source.is_file():
                         # Só hardlink/symlink são congelados: cópia é independente.
                         method = link_or_copy(source, root / media_rel, read_only=True)
+                        logs.event(
+                            log,
+                            logging.INFO,
+                            "deliver_item",
+                            beat=group["beat"] or "no_beat",
+                            mode=method,
+                            # `link_or_copy` doesn't report a per-attempt failure reason
+                            # (its signature is shared with tests that stub it out with a
+                            # 3-arg fake), so only the one fallback cause this call site
+                            # can know for certain — a forced copy — is named here.
+                            reason="env_copy" if copies_forced() else None,
+                        )
                     if sheet and sheet_rel_out and sheet.is_file():
                         # O contact sheet não é congelado: `preview` regrava o arquivo
                         # de origem no mesmo caminho quando a pessoa muda o intervalo.
@@ -623,6 +643,13 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
                     conflict = str(exc)
                     conflicts.append(conflict)
                     conflicted.append(media_rel)
+                    logs.event(
+                        log,
+                        logging.WARNING,
+                        "deliver_conflict",
+                        beat=group["beat"] or "no_beat",
+                        kind="foreign_file" if "parece edição sua" in conflict else "io_error",
+                    )
             origin_rel = f"{group['dir']}/{names['origin']}"
             expected.add(origin_rel)
             if not dry_run and not conflict:

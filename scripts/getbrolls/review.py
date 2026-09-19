@@ -3,10 +3,14 @@
 import copy
 import hashlib
 import json
+import logging
 import re
 from pathlib import Path
 
+from . import logs
 from .models import approve, empty_output, now, signature
+
+_log = logs.get(__name__.rsplit(".", 1)[-1])
 
 ASSETS = Path(__file__).resolve().parents[2] / "assets"
 
@@ -105,9 +109,17 @@ def latest_review_file(root):
     return max(files, key=_review_sort_key)
 
 
+def _import_review_result(review_state):
+    """Collapse the five review states into the three audit-trail outcomes."""
+    if review_state in ("approved", "rejected"):
+        return review_state
+    return "pending"
+
+
 def import_review(ledger, file, by, rules=None):
     if not by.strip():
         raise ValueError('Diga quem revisou: acrescente --by "seu nome" ao comando.')
+    file_source = "explicit" if file is not None else "latest"
     if file is None:
         found = latest_review_file(ledger.root)
         if found is None:
@@ -140,9 +152,11 @@ def import_review(ledger, file, by, rules=None):
         raise ValueError(
             "O arquivo de escolhas está vazio. Volte à página, decida os trechos e clique em “Salvar decisões”."
         )
+    logs.event(_log, logging.INFO, "review_file_selected", name=path.name, candidates=len(items))
     changes = []
     skipped = []
     seen = set()
+    item_log = []
 
     def skip(item_id, reason, detail):
         skipped.append({"id": item_id, "reason": reason, "detail": detail})
@@ -263,6 +277,7 @@ def import_review(ledger, file, by, rules=None):
                 "revision": None,
             }
             c["state"] = "awaiting_approval"
+        item_log.append((c["id"], state))
         changes.append(c)
     if not changes:
         # Nada aplicado: o comando falha e diz, item a item, o que impediu cada um.
@@ -271,6 +286,36 @@ def import_review(ledger, file, by, rules=None):
     updates = {c["id"]: c for c in changes}
     ledger.data["items"] = [updates.get(c["id"], c) for c in ledger.data["items"]]
     ledger.save_many("import-review", changes)
+    try:
+        for cid, review_state in item_log:
+            logs.event(
+                _log,
+                logging.INFO,
+                "import_review_item",
+                candidate=cid,
+                result=_import_review_result(review_state),
+                skip_code=None,
+            )
+        for entry in skipped:
+            logs.event(
+                _log,
+                logging.WARNING,
+                "import_review_item",
+                candidate=entry["id"],
+                result="skipped",
+                skip_code=entry["reason"],
+            )
+        logs.event(
+            _log,
+            logging.INFO,
+            "import_review",
+            file_source=file_source,
+            applied=len(changes),
+            skipped=len(skipped),
+            rejected_file=any(review_state == "rejected" for _, review_state in item_log),
+        )
+    except Exception:
+        pass
     return {
         "imported": len(changes),
         "skipped": skipped,

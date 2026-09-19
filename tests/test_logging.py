@@ -431,5 +431,29 @@ class OptionNamesTests(unittest.TestCase):
         self.assertNotIn("segredo", names or "")
 
 
+class ChildLoggerRedactionTests(unittest.TestCase):
+    """Records from `getbrolls.<module>` children are redacted too, not only the root's."""
+
+    def test_a_secret_logged_by_a_child_logger_never_reaches_the_file(self):
+        import logging as stdlib_logging
+
+        from getbrolls import logs
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"GB_LOG_LEVEL": "DEBUG"}):
+            try:
+                logs.configure(tmp, read_only=False)
+                child = logs.get("http")
+                child.info("Authorization: Bearer child-secret-token https://example.org/x?sig=child-sig-value")
+                logs.event(child, stdlib_logging.INFO, "probe", note="token=child-field-secret")
+                for handler in stdlib_logging.getLogger("getbrolls").handlers:
+                    handler.flush()
+                written = (Path(tmp) / "brolls" / logs.LOG_FILENAME).read_text(encoding="utf-8")
+            finally:
+                logs.configure(None, read_only=True)
+        self.assertIn("logger=getbrolls.http", written)
+        for secret in ("child-secret-token", "child-sig-value", "child-field-secret", "example.org"):
+            self.assertNotIn(secret, written)
+
+
 if __name__ == "__main__":
     unittest.main()
