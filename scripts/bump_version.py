@@ -387,5 +387,16 @@ def main(argv: list[str] | None = None) -> int:
     return run(root, args.version, args.date, args.check)
 
 
+def _utf8_output() -> None:
+    """Print Portuguese text as UTF-8 even where the console default is a legacy code page."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            # TextIO does not declare `reconfigure`; streams without it fall into the except.
+            stream.reconfigure(encoding="utf-8")  # pyright: ignore[reportAttributeAccessIssue]
+        except (AttributeError, OSError):
+            pass
+
+
 if __name__ == "__main__":
+    _utf8_output()
     sys.exit(main())

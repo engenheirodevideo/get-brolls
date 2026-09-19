@@ -113,7 +113,9 @@ class VerifyTamperTests(unittest.TestCase):
             # so the message names the tool and the path, not the tamper wording.
             self.assertNotIn("Arquivo alterado após coleta", error["message"])
             self.assertIn("ffprobe", error["message"])
-            self.assertIn(str(clip), error["message"])
+            # Compare by file name: on Windows `tempfile` may hand out the 8.3 short form of the
+            # folder while the tool reports the long one, so the full path text can differ.
+            self.assertIn(clip.name, error["message"])
 
             # Same reset as the byte-tamper case: a missing file cannot stay verified=True.
             item = _item(root, cid)
