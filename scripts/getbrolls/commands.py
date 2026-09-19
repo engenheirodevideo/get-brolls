@@ -1165,11 +1165,14 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
             }
         ),
     }
+    app_log = ledger.root / "getbrolls.log"
     return {
         "summary": summary,
         "project": str(ledger.root),
         "counts": counts,
         "stages": listing,
+        # Aditivo, ao lado de "review_page": onde o getbrolls.log está, se existir.
+        "log": str(app_log) if app_log.is_file() else None,
         "items": [
             {
                 "id": c["id"],

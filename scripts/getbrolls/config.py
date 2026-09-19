@@ -48,7 +48,13 @@ KEYS = {
     # GETBROLLS_CACHE_DIR (nome antigo) continua funcionando via ambiente real, mas
     # só o nome novo é aceito em `.env`.
     "GB_CACHE_DIR",
+    # Nível do getbrolls.log: DEBUG, INFO, WARNING, ERROR ou off. Padrão INFO.
+    "GB_LOG_LEVEL",
+    # `1` espelha as linhas do getbrolls.log em stderr, antes do envelope JSON.
+    "GB_LOG_STDERR",
 }
+
+LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
 
 # Optional pins: an explicit path always wins over the usual discovery.
 TOOL_PATH_KEYS = {
@@ -147,6 +153,25 @@ def cache_root():
     return Path(value) if value else Path.home() / ".cache" / "getbrolls"
 
 
+def log_level():
+    """Validated GB_LOG_LEVEL: DEBUG/INFO/WARNING/ERROR, or `OFF` to disable getbrolls.log.
+
+    Same validation style as the rest of this module: an unrecognised value is a
+    clear ValueError, not a silent fallback.
+    """
+    value = (os.getenv("GB_LOG_LEVEL") or "INFO").strip().upper()
+    if value == "OFF":
+        return "OFF"
+    if value not in LOG_LEVELS:
+        raise ValueError("GB_LOG_LEVEL: use DEBUG, INFO, WARNING, ERROR ou off.")
+    return value
+
+
+def log_stderr():
+    """Whether GB_LOG_STDERR is set truthy (`1`, `true`, `yes`, `on`); default off."""
+    return (os.getenv("GB_LOG_STDERR") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def settings():
     def integer(key, default, lo, hi):
         try:
@@ -157,6 +182,11 @@ def settings():
             raise ValueError(f"{key}: intervalo permitido {lo}–{hi}.")
         return value
 
+    # Validated here too, like every other setting, so a bad GB_LOG_LEVEL fails
+    # the command fast with the same shape as any other invalid .env value. The
+    # logging setup itself (logs.configure()) re-reads it independently and
+    # never raises — see logs.py for why.
+    log_level()
     mode = os.getenv("GB_PREVIEW_MODE", "gif")
     if mode not in ("gif", "static"):
         raise ValueError("GB_PREVIEW_MODE: use gif ou static.")

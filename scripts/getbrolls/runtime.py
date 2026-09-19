@@ -3,6 +3,7 @@
 import contextlib
 import contextvars
 import json
+import logging
 import os
 import re
 import sys
@@ -66,6 +67,12 @@ def record_warning(code, message):
     current = ACTIVE.get()
     if current is not None:
         current["warnings"].append({"code": code, "message": message})
+    try:
+        from . import logs  # local: avoids a runtime<->logs import cycle
+
+        logs.event(logs.get("runtime"), logging.WARNING, "warning", code=code, message=message)
+    except Exception:
+        pass
 
 
 def record_commit():
@@ -178,6 +185,7 @@ def audited(args, execute):
     project = getattr(args, "project", None)
     read_only = args.command in READ_ONLY_COMMANDS or (args.command, getattr(args, "action", None)) in READ_ONLY_ACTIONS
     log = Path(project).resolve() / "brolls/diagnostics.jsonl" if project else None
+    app_log_path = Path(project).resolve() / "brolls" / "getbrolls.log" if project else None
     result = None
     failure = None
     try:
@@ -227,6 +235,7 @@ def audited(args, execute):
                 **event,
                 "hint": "Se recovery_pending=true, o próximo comando retoma a gravação. Se state_committed=true e não houver pendência, execute review para regenerar a página. Caso contrário, corrija o erro e repita.",
                 "log": str(log) if log else None,
+                "app_log": str(app_log_path) if app_log_path and app_log_path.is_file() else None,
             }
         )
         raise failure from None
@@ -238,6 +247,7 @@ def audited(args, execute):
                 **event,
                 "message": "Operação interrompida. O próximo comando recuperará uma gravação pendente, se houver.",
                 "log": str(log) if log else None,
+                "app_log": str(app_log_path) if app_log_path and app_log_path.is_file() else None,
             }
         )
         raise failure from None

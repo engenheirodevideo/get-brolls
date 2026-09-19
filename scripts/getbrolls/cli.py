@@ -2,12 +2,15 @@
 
 import argparse
 import json
+import logging
 import sys
+import time
 import traceback
+from pathlib import Path
 
-from . import __version__
+from . import __version__, logs
 from .presets import PERMIT_PRESETS
-from .runtime import OperationError, audited
+from .runtime import READ_ONLY_ACTIONS, READ_ONLY_COMMANDS, OperationError, audited
 
 # Named so a caller (script, test, or someone scripting the CLI) never has to hardcode 2/3.
 EXIT_OPERATION_ERROR = 2
@@ -442,8 +445,25 @@ def parse_args(argv=None):
     return build_parser().parse_args(argv)
 
 
+def _given_option_names(argv, args):
+    """Names of the options passed, never their values (values can be URLs or free text).
+
+    A token only counts when the parsed namespace has that option: a free-text value
+    that happens to start with `--` must not reach the log as if it were a flag name.
+    """
+    names = []
+    for token in argv:
+        if not token.startswith("--"):
+            continue
+        name = token[2:].split("=", 1)[0]
+        if hasattr(args, name.replace("-", "_")) and name not in names:
+            names.append(name)
+    return ",".join(names) if names else None
+
+
 def main(argv=None):
     from .commands import execute, with_summary
+    from .config import load_env
 
     args = parse_args(argv)
     if args.command == "serve" and not (args.background or args.stop):
@@ -455,7 +475,51 @@ def main(argv=None):
         except ValueError as exc:
             print(json.dumps({"error": str(exc), "error_code": "INVALID_DATA"}, ensure_ascii=False))
             raise SystemExit(EXIT_OPERATION_ERROR) from None
-    return audited(args, lambda parsed: with_summary(parsed.command, execute(parsed)))
+
+    project = getattr(args, "project", None)
+    read_only = args.command in READ_ONLY_COMMANDS or (args.command, getattr(args, "action", None)) in READ_ONLY_ACTIONS
+    try:
+        # GB_LOG_LEVEL/GB_LOG_STDERR may live only in .env; load it before configuring
+        # logging. Harmless to call again inside execute() (setdefault-based); a bad
+        # .env here is silently skipped and raised properly by execute() itself.
+        load_env(args.env_file or Path(__file__).resolve().parents[2] / ".env")
+    except ValueError:
+        pass
+    logs.configure(project, read_only=read_only)
+
+    log = logs.get("cli")
+    logs.event(
+        log,
+        logging.INFO,
+        "command_start",
+        command=args.command,
+        read_only=read_only,
+        options=_given_option_names(sys.argv[1:] if argv is None else argv, args),
+    )
+    started = time.monotonic()
+    try:
+        result = audited(args, lambda parsed: with_summary(parsed.command, execute(parsed)))
+    except OperationError as exc:
+        logs.event(
+            log,
+            logging.INFO,
+            "command_end",
+            command=args.command,
+            status="error",
+            error_code=exc.payload.get("error_code"),
+            ms=round((time.monotonic() - started) * 1000),
+        )
+        raise
+    logs.event(
+        log,
+        logging.INFO,
+        "command_end",
+        command=args.command,
+        status="ok",
+        error_code=None,
+        ms=round((time.monotonic() - started) * 1000),
+    )
+    return result
 
 
 def entrypoint():
@@ -510,6 +574,7 @@ def entrypoint():
                     "type": type(exc).__name__,
                     "message": redact(repr(exc)),
                     "traceback": event["traceback"],
+                    "app_log": str(logs.log_path(project)) if logs.log_path(project) else None,
                 },
                 ensure_ascii=False,
             ),
