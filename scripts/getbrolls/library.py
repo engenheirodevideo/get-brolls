@@ -434,28 +434,27 @@ def hints(query, limit=5):
             f"Biblioteca de aprendizados ({index_path()}) não pôde ser lida; pistas ignoradas nesta busca: {error}",
         )
         return []
-    out = []
-    for a in found["assets"]:
-        out.append(
-            {
-                "kind": "asset",
-                "source_url": a.get("source_url"),
-                "provider": a.get("provider"),
-                "title": a.get("title"),
-                "decision": a.get("decision"),
-                "rights_not_transferable": True,
-            }
-        )
-    for q in found["queries"]:
-        out.append(
-            {
-                "kind": "query",
-                "query": q.get("query"),
-                "provider": q.get("provider"),
-                "outcome": q.get("outcome"),
-                "rights_not_transferable": True,
-            }
-        )
+    out = [
+        {
+            "kind": "asset",
+            "source_url": a.get("source_url"),
+            "provider": a.get("provider"),
+            "title": a.get("title"),
+            "decision": a.get("decision"),
+            "rights_not_transferable": True,
+        }
+        for a in found["assets"]
+    ]
+    out.extend(
+        {
+            "kind": "query",
+            "query": q.get("query"),
+            "provider": q.get("provider"),
+            "outcome": q.get("outcome"),
+            "rights_not_transferable": True,
+        }
+        for q in found["queries"]
+    )
     result = out[:limit]
     logs.event(_log, logging.INFO, "library", action="hints", entries=len(result), disabled=False)
     return result

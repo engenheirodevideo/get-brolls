@@ -71,7 +71,7 @@ class _PrivateRotatingFileHandler(logging.handlers.RotatingFileHandler):
         _chmod_private(self.baseFilename)
         return stream
 
-    def doRollover(self):
+    def doRollover(self):  # noqa: N802 - nome exigido pela API de RotatingFileHandler
         super().doRollover()
         for index in range(1, self.backupCount + 1):
             candidate = f"{self.baseFilename}.{index}"

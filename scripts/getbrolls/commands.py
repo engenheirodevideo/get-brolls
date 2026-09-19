@@ -397,7 +397,7 @@ def _has_preview(c):
 
 def rules_from_flags(template, mode, responsible, declaration, video_format=None):
     """Reescreve só o bloco ```json do modelo, preservando toda a prosa do arquivo."""
-    blocks = re.findall(r"```json\s*\n(.*?)\n```", template, re.S)
+    blocks = re.findall(r"```json\s*\n(.*?)\n```", template, re.DOTALL)
     if len(blocks) != 1:
         raise ValueError("Modelo de RULES.md precisa de exatamente um bloco JSON.")
     data = json.loads(blocks[0])

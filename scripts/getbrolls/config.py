@@ -193,14 +193,14 @@ def settings():
     scope = os.getenv("GB_GIF_SCOPE", "broll")
     if scope not in ("broll", "full"):
         raise ValueError("GB_GIF_SCOPE: use broll ou full.")
-    return dict(
-        scope=scope,
-        mode=mode,
-        width=integer("GB_GIF_WIDTH", 360, 160, 720),
-        fps=integer("GB_GIF_FPS", 8, 2, 18),
-        colors=integer("GB_GIF_COLORS", 128, 32, 256),
-        max_mb=integer("GB_GIF_MAX_MB", 5, 1, 30),
-        max_seconds=integer("GB_PREVIEW_MAX_SECONDS", 10, 1, 30),
-        frames=integer("GB_STATIC_FRAMES", 12, 1, 30),
-        scan_max_seconds=integer("GB_SCAN_MAX_SECONDS", 900, 30, 7200),
-    )
+    return {
+        "scope": scope,
+        "mode": mode,
+        "width": integer("GB_GIF_WIDTH", 360, 160, 720),
+        "fps": integer("GB_GIF_FPS", 8, 2, 18),
+        "colors": integer("GB_GIF_COLORS", 128, 32, 256),
+        "max_mb": integer("GB_GIF_MAX_MB", 5, 1, 30),
+        "max_seconds": integer("GB_PREVIEW_MAX_SECONDS", 10, 1, 30),
+        "frames": integer("GB_STATIC_FRAMES", 12, 1, 30),
+        "scan_max_seconds": integer("GB_SCAN_MAX_SECONDS", 900, 30, 7200),
+    }

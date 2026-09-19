@@ -74,7 +74,7 @@ def parse_vtt(text):
 
 
 # Cabeçalho opcional do WebVTT: `Language: pt-BR` logo depois do `WEBVTT`.
-_VTT_LANGUAGE_RE = re.compile(r"^\s*Language\s*:\s*([A-Za-z]{2,3}(?:[-_][A-Za-z0-9]+)*)\s*$", re.M)
+_VTT_LANGUAGE_RE = re.compile(r"^\s*Language\s*:\s*([A-Za-z]{2,3}(?:[-_][A-Za-z0-9]+)*)\s*$", re.MULTILINE)
 
 # Palavras curtas que só existem em um dos dois idiomas. Não é detector de idioma:
 # é o suficiente para perceber que a frase da pessoa e a legenda não se falam.
@@ -206,10 +206,9 @@ def candidate_windows(probe, query=None, max_windows=3):
     # Ordem do dicionário = ordem dos idiomas pedidos. Quando dois idiomas repetem
     # os mesmos tempos (legenda automática traduzida), quem chega primeiro fica: a
     # deduplicação por (início, fim, fonte) descarta o segundo.
-    for _language, entry in (probe.get("subtitles") or {}).items():
+    for entry in (probe.get("subtitles") or {}).values():
         cues = (entry or {}).get("cues") or []
-        for window in _subtitle_windows(cues):
-            raw.append({**window, "source": "subtitle"})
+        raw.extend({**window, "source": "subtitle"} for window in _subtitle_windows(cues))
     for chapter in probe.get("chapters") or []:
         start = chapter.get("start_s")
         end = chapter.get("end_s")
@@ -296,16 +295,16 @@ def fallback_windows(probe, max_windows=3):
             cues = (entry or {}).get("cues") or []
             if cues:
                 break
-        for cue in _evenly(cues, limit):
-            out.append(
-                {
-                    "start_s": round(float(cue["start_s"]), 3),
-                    "end_s": round(float(cue["end_s"]), 3),
-                    "text": cue["text"],
-                    "source": "subtitle",
-                    "score": 0.0,
-                }
-            )
+        out.extend(
+            {
+                "start_s": round(float(cue["start_s"]), 3),
+                "end_s": round(float(cue["end_s"]), 3),
+                "text": cue["text"],
+                "source": "subtitle",
+                "score": 0.0,
+            }
+            for cue in _evenly(cues, limit)
+        )
     if not out and duration:
         # Sem capítulo e sem legenda só resta o relógio: pontos igualmente espaçados,
         # para a pessoa ter por onde começar a varredura.

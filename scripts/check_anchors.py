@@ -47,8 +47,7 @@ def slugify(heading: str) -> str:
     text = heading.strip().lower()
     text = text.replace("`", "")
     text = re.sub(r"[^\w\s-]", "", text)
-    text = text.replace(" ", "-")
-    return text
+    return text.replace(" ", "-")
 
 
 def extract_headings(markdown: str) -> set[str]:
@@ -108,9 +107,11 @@ def check() -> list[str]:
         if not path.exists():
             continue
         text = path.read_text(encoding="utf-8")
-        for anchor in find_anchor_refs(text):
-            if anchor not in guide_slugs:
-                problems.append(f"{path.relative_to(ROOT)}: âncora quebrada GUIDE.md#{anchor}")
+        problems.extend(
+            f"{path.relative_to(ROOT)}: âncora quebrada GUIDE.md#{anchor}"
+            for anchor in find_anchor_refs(text)
+            if anchor not in guide_slugs
+        )
         if path.parent.name == "references":
             problems.extend(check_relative_links(path, text))
     return problems

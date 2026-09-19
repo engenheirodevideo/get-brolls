@@ -33,10 +33,13 @@ import json
 import re
 import subprocess
 import sys
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date as _date
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -365,7 +368,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("version", help="nova versão, no formato X.Y.Z")
     parser.add_argument(
         "--date",
-        default=_date.today().isoformat(),
+        default=_date.today().isoformat(),  # noqa: DTZ011 - data local do CLI, sem troca de comportamento
         help="data AAAA-MM-DD usada no CHANGELOG e em SKILL.md (padrão: hoje)",
     )
     parser.add_argument(

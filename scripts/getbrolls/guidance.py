@@ -142,7 +142,7 @@ def step_candidate(state, step):
     antigo), cai no `candidate` único de antes.
     """
     chosen = (state.get("candidates") or {}).get(step)
-    return chosen if chosen else state.get("candidate")
+    return chosen or state.get("candidate")
 
 
 def _action(step, why, for_human, state, url=None, blocking_human=False, command=None):

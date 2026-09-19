@@ -63,20 +63,20 @@ VALID_RULES = textwrap.dedent(
 
 
 def queue_args(project, action, **extra):
-    base = dict(
-        command="queue",
-        project=str(project),
-        action=action,
-        provider=None,
-        urls=[],
-        url=None,
-        id=None,
-        done=False,
-        failed=False,
-        skipped=False,
-        reason=None,
-        env_file=None,
-    )
+    base = {
+        "command": "queue",
+        "project": str(project),
+        "action": action,
+        "provider": None,
+        "urls": [],
+        "url": None,
+        "id": None,
+        "done": False,
+        "failed": False,
+        "skipped": False,
+        "reason": None,
+        "env_file": None,
+    }
     base.update(extra)
     return SimpleNamespace(**base)
 

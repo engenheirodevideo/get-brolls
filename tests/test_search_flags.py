@@ -29,18 +29,18 @@ def found(n=2):
 
 
 def args(project, **extra):
-    base = dict(
-        command="search",
-        project=str(project),
-        env_file=None,
-        confirm_format_change=False,
-        provider="youtube",
-        query="foguete SLS decolando",
-        limit=5,
-        intent="literal",
-        shot=None,
-        dry_run=False,
-    )
+    base = {
+        "command": "search",
+        "project": str(project),
+        "env_file": None,
+        "confirm_format_change": False,
+        "provider": "youtube",
+        "query": "foguete SLS decolando",
+        "limit": 5,
+        "intent": "literal",
+        "shot": None,
+        "dry_run": False,
+    }
     base.update(extra)
     return types.SimpleNamespace(**base)
 

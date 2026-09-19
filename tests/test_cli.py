@@ -51,8 +51,8 @@ class CliTest(unittest.TestCase):
             src = root / "original.mp4"
             synth_video(src, size="640x360", duration=3, rate=10)
             c = self.call("resolve", "--file", src, "--project", root)
-            id = c["id"]
-            base = ["--candidate", id, "--project", root]
+            candidate_id = c["id"]
+            base = ["--candidate", candidate_id, "--project", root]
             # Cada comando do fluxo também diz, em uma linha, o que acabou de fazer.
             self.assertIn("Registrei o candidato", c["summary"]["line"])
             self.call("fetch", *base, ok=False)
@@ -225,8 +225,8 @@ class CliTest(unittest.TestCase):
             )
             if resolved.returncode != 0:
                 self.skipTest("resolve recusou o arquivo sintético")
-            id = json.loads(resolved.stdout)["id"]
-            failed = self.call("preview", "--candidate", id, "--project", root, ok=False)
+            candidate_id = json.loads(resolved.stdout)["id"]
+            failed = self.call("preview", "--candidate", candidate_id, "--project", root, ok=False)
             self.assertIn("--reference-only", json.dumps(failed, ensure_ascii=False))
 
     def test_social_resolve_keeps_acquisition_and_url_validation(self):

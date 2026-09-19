@@ -245,7 +245,7 @@ def link_or_copy(src, dest, read_only=False):
 
 
 def _frontmatter(kind, created, tags):
-    today = date.today().isoformat()
+    today = date.today().isoformat()  # noqa: DTZ011 - data local do frontmatter, sem troca de comportamento
     return [
         "---",
         f"type: {kind}",
@@ -379,7 +379,7 @@ def render_index(rows, for_human=None, created=None, conflicts=(), copies=False)
     if not rows:
         # A linha vazia sai das mesmas colunas do cabeçalho: contar células à mão
         # deixava a tabela torta (5 células para 6 colunas) em todo projeto sem clipe.
-        empty = {key: "—" for key in columns}
+        empty = dict.fromkeys(columns, "—")
         empty["file"] = "nenhum trecho coletado ainda"
         lines.append("| " + " | ".join(empty[key] for key in columns) + " |")
     if conflicts:

@@ -177,7 +177,7 @@ def validate_media_url(value: str, source: Path) -> tuple[str, str | None]:
     host = parsed.hostname.lower()
     if host.endswith("."):
         _die_url_refused("trailing_dot_host", f"o hostname do config curl não pode terminar com ponto: {source}")
-    if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
+    if host == "localhost" or host.endswith((".localhost", ".local")):
         _die_url_refused("local_host", f"a URL do config curl não pode apontar para host local: {source}")
     try:
         ipaddress.ip_address(host)

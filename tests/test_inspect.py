@@ -797,7 +797,7 @@ class DirectMediaSourceTests(unittest.TestCase):
         return stored["id"]
 
     def _args(self, **extra):
-        base = dict(env_file=None, confirm_format_change=False, project=None)
+        base = {"env_file": None, "confirm_format_change": False, "project": None}
         base.update(extra)
         return types.SimpleNamespace(**base)
 

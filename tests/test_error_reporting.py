@@ -542,11 +542,11 @@ class Finding28DownloadCatchAllTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "out.mp4"
 
-            class Weird(OSError):
+            class WeirdError(OSError):
                 pass
 
             def boom_open(*a, **kw):
-                raise Weird("sekret-token-xyz")
+                raise WeirdError("sekret-token-xyz")
 
             with (
                 patch.object(http, "public_url", return_value="https://example.org/v.mp4"),
@@ -556,7 +556,7 @@ class Finding28DownloadCatchAllTests(unittest.TestCase):
                 with self.assertRaises(ProviderError) as ctx:
                     http.download("https://example.org/v.mp4", target)
         self.assertIn("Weird", str(ctx.exception))
-        self.assertIsInstance(ctx.exception.__cause__, Weird)
+        self.assertIsInstance(ctx.exception.__cause__, WeirdError)
 
 
 class Finding23And50RetryAfterCapTests(unittest.TestCase):
@@ -585,7 +585,7 @@ class Finding23And50RetryAfterCapTests(unittest.TestCase):
             "https://example.org/api",
             429,
             "Too Many Requests",
-            cast(Any, FakeHeaders({"Retry-After": future})),
+            cast("Any", FakeHeaders({"Retry-After": future})),
             io.BytesIO(b""),
         )
 
@@ -612,7 +612,7 @@ class Finding55Get429LastAttemptRaisesTests(unittest.TestCase):
             "https://example.org/api",
             429,
             "Too Many Requests",
-            cast(Any, FakeHeaders({"Retry-After": "1"})),
+            cast("Any", FakeHeaders({"Retry-After": "1"})),
             io.BytesIO(b""),
         )
 

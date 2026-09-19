@@ -64,7 +64,7 @@ def source_domain(url):
     from urllib.parse import urlsplit
 
     host = urlsplit(url).hostname or ""
-    return host[4:] if host.startswith("www.") else host
+    return host.removeprefix("www.")
 
 
 def source_card(c, source, sheet, poster, esc):
@@ -177,12 +177,12 @@ def contact_sheet_figure(candidate, sheet, esc):
 def render(ledger):
     records = []
     story_items = []
-    credits = [
+    credits_lines = [
         "---",
         "type: credits",
         "status: current",
-        "created: " + date.today().isoformat(),
-        "updated: " + date.today().isoformat(),
+        "created: " + date.today().isoformat(),  # noqa: DTZ011 - data local do render, sem troca de comportamento
+        "updated: " + date.today().isoformat(),  # noqa: DTZ011 - data local do render, sem troca de comportamento
         "tags: [get-brolls, credits]",
         "---",
         "",
@@ -258,7 +258,7 @@ def render(ledger):
             }
         )
         if out:
-            credits += [
+            credits_lines += [
                 f"## {c['id']}",
                 f"- Arquivo: {out}",
                 f"- Fonte: {c['source_url'] or 'original local'}",
@@ -273,5 +273,5 @@ def render(ledger):
     from .storyboard import render_page
 
     atomic_write(ledger.root / "review.html", enhance(render_page(story_items), ledger, records))
-    atomic_write(ledger.root / "credits.md", "\n".join(credits))
+    atomic_write(ledger.root / "credits.md", "\n".join(credits_lines))
     return str(ledger.root / "review.html")

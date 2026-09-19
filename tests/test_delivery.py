@@ -51,7 +51,7 @@ def with_brief(tmp):
     import re
 
     raw = (ROOT / "docs" / "BRIEF.md").read_text(encoding="utf-8")
-    block = re.findall(r"```json\s*\n(.*?)\n```", raw, re.S)[0]
+    block = re.findall(r"```json\s*\n(.*?)\n```", raw, re.DOTALL)[0]
     data = json.loads(block)
     data["beats"] = [data["beats"][0]]
     Path(tmp, "BRIEF.md").write_text(
@@ -424,7 +424,7 @@ class FrozenFiles(unittest.TestCase):
             ledger = project(tmp, [fetched("a", "Palco", shot="abertura")])
             delivery.build_delivery(tmp)
             old = sorted(p.name for p in (Path(tmp) / "entrega").iterdir() if p.is_dir())
-            frozen = [p for p in (Path(tmp) / "entrega").rglob("*.mp4")]
+            frozen = list((Path(tmp) / "entrega").rglob("*.mp4"))
             self.assertTrue(frozen and not os.access(frozen[0], os.W_OK))
             ledger.data["items"][0]["shot"] = "fechamento"
             ledger.save_many("fixture", ledger.data["items"])

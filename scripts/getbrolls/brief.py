@@ -58,7 +58,7 @@ def read_json_block(path, missing, syntax, not_object=None):
     (dict), senão essa mensagem é levantada.
     """
     raw = Path(path).read_text(encoding="utf-8")
-    blocks = re.findall(r"```json\s*\n(.*?)\n```", raw, re.S)
+    blocks = re.findall(r"```json\s*\n(.*?)\n```", raw, re.DOTALL)
     if len(blocks) != 1:
         raise ValueError(missing)
     try:

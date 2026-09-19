@@ -131,12 +131,12 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         Um nome de domínio que resolve para 127.0.0.1 (DNS rebinding) chega com
         outro `Host`; e um `Origin` de outra página não bate com o `Host` local.
         """
-        port = cast(_ExclusiveServer, self.server).server_address[1]
+        port = cast("_ExclusiveServer", self.server).server_address[1]
         host = (self.headers.get("Host") or "").strip()
         if host not in (f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"):
             return False
         origin = self.headers.get("Origin")
-        if origin and origin not in (f"http://{host}",):
+        if origin and origin != f"http://{host}":
             return False
         return True
 
@@ -148,7 +148,7 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
             self._refuse(404, "Endereço desconhecido.")
             return
         token = self.headers.get(TOKEN_HEADER) or ""
-        expected = cast(_ExclusiveServer, self.server).save_token
+        expected = cast("_ExclusiveServer", self.server).save_token
         # `compare_digest` de texto explode com caracteres fora de ASCII: um
         # cabeçalho qualquer não pode virar 500, é só mais um token errado.
         if not expected or not token.isascii() or not hmac.compare_digest(token, expected):
@@ -205,8 +205,8 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
             # gravado ainda é deste servidor, e não de um processo que reusou o número.
             body = json.dumps(
                 {
-                    "session": cast(_ExclusiveServer, self.server).session_id,
-                    "port": cast(_ExclusiveServer, self.server).server_address[1],
+                    "session": cast("_ExclusiveServer", self.server).session_id,
+                    "port": cast("_ExclusiveServer", self.server).server_address[1],
                 },
                 ensure_ascii=False,
             ).encode("utf-8")
@@ -221,7 +221,7 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
             page = Path(self.directory) / "review.html"
             if page.is_file():
                 body = _inject_token(
-                    page.read_text(encoding="utf-8"), cast(_ExclusiveServer, self.server).save_token or ""
+                    page.read_text(encoding="utf-8"), cast("_ExclusiveServer", self.server).save_token or ""
                 ).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")

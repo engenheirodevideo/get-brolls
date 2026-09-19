@@ -36,23 +36,23 @@ TIKTOK_JSON = {
 
 
 def resolve_args(project, url, **extra):
-    base = dict(
-        command="resolve",
-        project=str(project),
-        env_file=None,
-        confirm_format_change=False,
-        url=url,
-        file=None,
-        context_image=None,
-        full_preview_file=None,
-        asset_type=None,
-        title=None,
-        captured_at=None,
-        source_url=None,
-        creator=None,
-        shot=None,
-        intent="literal",
-    )
+    base = {
+        "command": "resolve",
+        "project": str(project),
+        "env_file": None,
+        "confirm_format_change": False,
+        "url": url,
+        "file": None,
+        "context_image": None,
+        "full_preview_file": None,
+        "asset_type": None,
+        "title": None,
+        "captured_at": None,
+        "source_url": None,
+        "creator": None,
+        "shot": None,
+        "intent": "literal",
+    }
     base.update(extra)
     return types.SimpleNamespace(**base)
 
@@ -339,19 +339,19 @@ class SearchCarriesDuration(unittest.TestCase):
         return [item]
 
     def args(self, project, **extra):
-        base = dict(
-            command="search",
-            project=str(project),
-            env_file=None,
-            confirm_format_change=False,
-            provider="youtube",
-            query="keynote nvidia gtc",
-            limit=5,
-            intent="literal",
-            media="any",
-            shot=None,
-            dry_run=False,
-        )
+        base = {
+            "command": "search",
+            "project": str(project),
+            "env_file": None,
+            "confirm_format_change": False,
+            "provider": "youtube",
+            "query": "keynote nvidia gtc",
+            "limit": 5,
+            "intent": "literal",
+            "media": "any",
+            "shot": None,
+            "dry_run": False,
+        }
         base.update(extra)
         return types.SimpleNamespace(**base)
 
