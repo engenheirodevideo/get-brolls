@@ -2,13 +2,15 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-18
+updated: 2026-09-19
 tags: [get-brolls]
 ---
 
 # Changelog
 
 ## Unreleased
+
+## 2.5.0 — 2026-09-19
 
 - **Logs.** Cada projeto ganha `brolls/getbrolls.log`: uma linha `chave=valor` por evento, com permissão 0600, que gira a cada ~1 MB e guarda 3 cópias. Fica registrado o que antes não deixava rastro: início e fim de cada comando (só o nome das opções, nunca o valor), cada passo da trilha (`search`, `resolve`, `inspect`, `preview`, `approve`, `reject`, `permit`, `fetch`, `verify`, `deliver`, `import-review`), cada chamada de `ffmpeg`, `ffprobe`, `yt-dlp` e `curl` com duração e código de saída, cada pedido de rede (host, status, bytes, cache, tentativas, recusa por endereço privado, teto de tamanho), qual regra do RULES.md bloqueou um candidato, por que a fila está esperando, acerto e erro do cache de fontes e o modo de cada entrega. Nunca entram no log: nome de quem aprovou, frase de aprovação, motivo de rejeição, evidência de direitos, texto de busca, títulos, canais, URLs (só o host) nem linha de comando de subprocesso; todo registro ainda passa pela redação de chaves e a pasta pessoal vira `~`. `GB_LOG_LEVEL` (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `off`; padrão `INFO`) e `GB_LOG_STDERR=1` (espelha em stderr para depurar) entram no `.env`. A saída padrão continua sendo um único JSON, o envelope de erro continua a última linha de stderr, comando de leitura não cria o arquivo e falha de log nunca derruba um comando. `status` ganha `log` e os envelopes de erro ganham `app_log`. `diagnostics.jsonl` segue como está.
 - **Trilha de aprovação.** `reject` (pela CLI e pelo Storyboard) passa a zerar `output`: um candidato rejeitado depois de coletado continuava na `entrega/` e contava como rejeitado e entregue ao mesmo tempo. Nada é apagado de `brolls/`. `approve` remove a `rejection` antiga, para o item não parecer rejeitado e aprovado. `verify` grava `output.verified: false` (e o estado volta a `approved`) quando o arquivo não bate com o sha256 registrado, sumiu ou não decodifica — antes o manifesto seguia dizendo "verificado" e um `deliver` posterior entregava o arquivo alterado com o hash antigo no `ORIGEM.md`; uma `verify` limpa depois de restaurar o arquivo volta a marcar. A conferência passa por todos os clipes antes de falhar, para que um segundo arquivo alterado não continue marcado como verificado. `import-review` sem `--file` desempata decisões salvas no mesmo segundo pelo sufixo numérico do nome, não pela ordem alfabética, que escolhia a mais velha. `manifest.json` com `schema_version` desconhecido num item é recusado; item sem a chave continua valendo. A versão precisa ser um inteiro de verdade: `true` e `1.0` deixam de passar, no item e no `templateVersion` do arquivo de decisões.
