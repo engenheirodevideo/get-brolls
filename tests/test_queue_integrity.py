@@ -498,11 +498,10 @@ class QueueActionReadOnlyTests(unittest.TestCase):
                 self.assertEqual("status", result["action"])
 
     def test_a_write_action_still_takes_the_lock_and_conflicts(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with project_lock(tmp):
-                args = queue_args(tmp, "add", provider="instagram", urls=[REEL])
-                with self.assertRaisesRegex(getattr(commands, "OperationError", Exception), "."):
-                    audited(args, commands.execute)
+        with tempfile.TemporaryDirectory() as tmp, project_lock(tmp):
+            args = queue_args(tmp, "add", provider="instagram", urls=[REEL])
+            with self.assertRaisesRegex(getattr(commands, "OperationError", Exception), "."):
+                audited(args, commands.execute)
 
 
 class RulesPacingReachesQueueTests(unittest.TestCase):

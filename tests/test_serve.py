@@ -49,11 +49,13 @@ class ServeStartTests(unittest.TestCase):
             server, port = serve.start(root, port=0)
             self.assertGreater(port, 0)
             self.assertEqual("127.0.0.1", server.server_address[0])
-            with self._running(server):
-                with urllib.request.urlopen(f"http://127.0.0.1:{port}/review.html", timeout=5) as response:
-                    self.assertEqual(200, response.status)
-                    self.assertIn(b"storyboard", response.read())
-                    self.assertEqual("no-store", response.headers.get("Cache-Control"))
+            with (
+                self._running(server),
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/review.html", timeout=5) as response,
+            ):
+                self.assertEqual(200, response.status)
+                self.assertIn(b"storyboard", response.read())
+                self.assertEqual("no-store", response.headers.get("Cache-Control"))
 
     def test_get_outside_served_directory_is_404(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -390,7 +392,7 @@ class RebindingTests(unittest.TestCase):
     def test_get_with_a_foreign_host_is_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
-            with self._serving(root) as (server, port):
+            with self._serving(root) as (_server, port):
                 with self.assertRaises(urllib.error.HTTPError) as ctx:
                     self._request(port, {"Host": "storyboard.evil.test"})
                 self.assertEqual(403, ctx.exception.code)
@@ -425,7 +427,7 @@ class RebindingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
-            with self._serving(root) as (server, port):
+            with self._serving(root) as (_server, port):
                 with self.assertRaises(urllib.error.HTTPError) as ctx:
                     self._request(
                         port,

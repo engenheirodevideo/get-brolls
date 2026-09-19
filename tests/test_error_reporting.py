@@ -40,10 +40,12 @@ def _cpe(stderr, returncode=1):
 
 class SocialErrorClassificationTests(unittest.TestCase):
     def _run_with_stderr(self, stderr, returncode=1, side_effect=None):
-        with patch.object(social, "command", return_value=["yt-dlp"]):
-            with patch("subprocess.run", side_effect=side_effect or _cpe(stderr, returncode)):
-                with self.assertRaises(ProviderError) as ctx:
-                    social.run(["--dummy"])
+        with (
+            patch.object(social, "command", return_value=["yt-dlp"]),
+            patch("subprocess.run", side_effect=side_effect or _cpe(stderr, returncode)),
+            self.assertRaises(ProviderError) as ctx,
+        ):
+            social.run(["--dummy"])
         return str(ctx.exception)
 
     def test_429_rate_limit_is_detectable_by_queue_cooldown_wording(self):
@@ -88,25 +90,31 @@ class SocialErrorClassificationTests(unittest.TestCase):
         self.assertNotIn("secret.example", msg)
 
     def test_timeout_expired_has_specific_message(self):
-        with patch.object(social, "command", return_value=["yt-dlp"]):
-            with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd=["yt-dlp"], timeout=42)):
-                with self.assertRaises(ProviderError) as ctx:
-                    social.run(["--dummy"], timeout=42)
+        with (
+            patch.object(social, "command", return_value=["yt-dlp"]),
+            patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd=["yt-dlp"], timeout=42)),
+            self.assertRaises(ProviderError) as ctx,
+        ):
+            social.run(["--dummy"], timeout=42)
         self.assertIn("42", str(ctx.exception))
         self.assertIn("excedeu", str(ctx.exception).lower())
 
     def test_file_not_found_names_executable(self):
-        with patch.object(social, "command", return_value=["yt-dlp-missing"]):
-            with patch("subprocess.run", side_effect=FileNotFoundError(2, "No such file", "yt-dlp-missing")):
-                with self.assertRaises(ProviderError) as ctx:
-                    social.run(["--dummy"])
+        with (
+            patch.object(social, "command", return_value=["yt-dlp-missing"]),
+            patch("subprocess.run", side_effect=FileNotFoundError(2, "No such file", "yt-dlp-missing")),
+            self.assertRaises(ProviderError) as ctx,
+        ):
+            social.run(["--dummy"])
         self.assertIn("yt-dlp-missing", str(ctx.exception))
 
     def test_permission_error_names_executable(self):
-        with patch.object(social, "command", return_value=["yt-dlp-locked"]):
-            with patch("subprocess.run", side_effect=PermissionError(13, "Permission denied", "yt-dlp-locked")):
-                with self.assertRaises(ProviderError) as ctx:
-                    social.run(["--dummy"])
+        with (
+            patch.object(social, "command", return_value=["yt-dlp-locked"]),
+            patch("subprocess.run", side_effect=PermissionError(13, "Permission denied", "yt-dlp-locked")),
+            self.assertRaises(ProviderError) as ctx,
+        ):
+            social.run(["--dummy"])
         self.assertIn("yt-dlp-locked", str(ctx.exception))
 
     def test_success_with_warning_lines_is_surfaced_to_search(self):
@@ -116,9 +124,11 @@ class SocialErrorClassificationTests(unittest.TestCase):
         event = {"warnings": [], "state_committed": False}
         token = runtime.ACTIVE.set(event)
         try:
-            with patch.object(social, "command", return_value=["yt-dlp"]):
-                with patch("subprocess.run", return_value=completed):
-                    social.search("foo", 3)
+            with (
+                patch.object(social, "command", return_value=["yt-dlp"]),
+                patch("subprocess.run", return_value=completed),
+            ):
+                social.search("foo", 3)
         finally:
             runtime.ACTIVE.reset(token)
         self.assertTrue(any(w["code"] == "YTDLP_WARNING" for w in event["warnings"]))
@@ -195,9 +205,11 @@ class DownloadErrorSeparationTests(unittest.TestCase):
         builder.return_value.open.return_value.__enter__.return_value = response
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "out.mp4"
-            with patch.object(Path, "open", side_effect=OSError(errno.ENOSPC, "No space left on device")):
-                with self.assertRaises(ProviderError) as ctx:
-                    http.download("https://example.org/video.mp4", target)
+            with (
+                patch.object(Path, "open", side_effect=OSError(errno.ENOSPC, "No space left on device")),
+                self.assertRaises(ProviderError) as ctx,
+            ):
+                http.download("https://example.org/video.mp4", target)
         self.assertIn(str(errno.ENOSPC), str(ctx.exception))
         self.assertNotIn("URLError", str(ctx.exception))
 
@@ -205,44 +217,52 @@ class DownloadErrorSeparationTests(unittest.TestCase):
 class RefreshRaisesInsteadOfNoneTests(unittest.TestCase):
     def test_nasa_refresh_raises_when_no_video_asset_left(self):
         item = {"provider": "nasa", "source_id": "abc123"}
-        with patch.object(providers, "get_json", return_value={"collection": {"items": []}}):
-            with self.assertRaises(ProviderError):
-                providers.refresh(item)
+        with (
+            patch.object(providers, "get_json", return_value={"collection": {"items": []}}),
+            self.assertRaises(ProviderError),
+        ):
+            providers.refresh(item)
 
     def test_commons_refresh_raises_when_file_is_not_video(self):
         item = {"provider": "commons", "source_id": "42"}
-        with patch.object(
-            providers,
-            "get_json",
-            return_value={
-                "query": {
-                    "pages": {
-                        "42": {"imageinfo": [{"mime": "image/jpeg", "url": "https://commons.wikimedia.org/x.jpg"}]}
+        with (
+            patch.object(
+                providers,
+                "get_json",
+                return_value={
+                    "query": {
+                        "pages": {
+                            "42": {"imageinfo": [{"mime": "image/jpeg", "url": "https://commons.wikimedia.org/x.jpg"}]}
+                        }
                     }
-                }
-            },
+                },
+            ),
+            self.assertRaises(ProviderError),
         ):
-            with self.assertRaises(ProviderError):
-                providers.refresh(item)
+            providers.refresh(item)
 
 
 class MediaErrorSeparationTests(unittest.TestCase):
     def test_called_process_error_includes_exit_code_and_stderr_tail(self):
-        with patch.object(
-            media.subprocess,
-            "run",
-            side_effect=subprocess.CalledProcessError(5, ["ffmpeg"], output="", stderr="some detail"),
+        with (
+            patch.object(
+                media.subprocess,
+                "run",
+                side_effect=subprocess.CalledProcessError(5, ["ffmpeg"], output="", stderr="some detail"),
+            ),
+            self.assertRaises(ValueError) as ctx,
         ):
-            with self.assertRaises(ValueError) as ctx:
-                media.run(["ffmpeg", "-x"])
+            media.run(["ffmpeg", "-x"])
         self.assertIn("exit 5", str(ctx.exception))
         self.assertIn("some detail", str(ctx.exception))
         self.assertIn("doctor", str(ctx.exception))
 
     def test_timeout_expired_has_its_own_message(self):
-        with patch.object(media.subprocess, "run", side_effect=subprocess.TimeoutExpired(["ffmpeg"], 180)):
-            with self.assertRaises(ValueError) as ctx:
-                media.run(["ffmpeg", "-x"])
+        with (
+            patch.object(media.subprocess, "run", side_effect=subprocess.TimeoutExpired(["ffmpeg"], 180)),
+            self.assertRaises(ValueError) as ctx,
+        ):
+            media.run(["ffmpeg", "-x"])
         self.assertIn("180", str(ctx.exception))
         self.assertNotIn("exit", str(ctx.exception))
 
@@ -313,14 +333,16 @@ class DrawtextCacheTests(unittest.TestCase):
 
 class RunErrorTests(unittest.TestCase):
     def test_run_dies_with_exit_code_and_stderr_tail(self):
-        with contextlib.redirect_stderr(io.StringIO()):
-            with patch.object(
+        with (
+            contextlib.redirect_stderr(io.StringIO()),
+            patch.object(
                 ig.subprocess,
                 "run",
                 side_effect=subprocess.CalledProcessError(7, ["ffmpeg", "x"], output="", stderr="boom detail"),
-            ):
-                with self.assertRaises(ig.CollectError) as ctx:
-                    ig.run(["ffmpeg", "x"], quiet=True)
+            ),
+            self.assertRaises(ig.CollectError) as ctx,
+        ):
+            ig.run(["ffmpeg", "x"], quiet=True)
         self.assertIn("ffmpeg falhou (exit 7)", exit_message(ctx.exception))
         self.assertIn("boom detail", exit_message(ctx.exception))
 
@@ -333,16 +355,18 @@ class ReuseValidityTests(unittest.TestCase):
             conf.write_text('url = "https://example.org/v"\n', encoding="utf-8")
             part = root / "p.mp4"
             part.write_bytes(b"not-really-media")
-            with contextlib.redirect_stderr(io.StringIO()):
-                with patch.object(ig.subprocess, "run", side_effect=subprocess.CalledProcessError(1, ["ffprobe"])):
-                    with self.assertRaises(ig.CollectError) as ctx:
-                        ig.download_or_reuse(
-                            cfg_path=conf,
-                            part_path=part,
-                            config_output_root=root,
-                            force_download=False,
-                            prefer_config_output=False,
-                        )
+            with (
+                contextlib.redirect_stderr(io.StringIO()),
+                patch.object(ig.subprocess, "run", side_effect=subprocess.CalledProcessError(1, ["ffprobe"])),
+                self.assertRaises(ig.CollectError) as ctx,
+            ):
+                ig.download_or_reuse(
+                    cfg_path=conf,
+                    part_path=part,
+                    config_output_root=root,
+                    force_download=False,
+                    prefer_config_output=False,
+                )
             self.assertIn("corrompida", exit_message(ctx.exception))
             self.assertIn("--force-download", exit_message(ctx.exception))
 
@@ -378,33 +402,35 @@ class TimeoutTests(unittest.TestCase):
                 patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
                 patch.object(ig.subprocess, "run", side_effect=timeout),
                 contextlib.redirect_stderr(io.StringIO()),
+                self.assertRaises(ig.CollectError) as ctx,
             ):
-                with self.assertRaises(ig.CollectError) as ctx:
-                    ig.download_or_reuse(
-                        cfg_path=conf,
-                        part_path=root / "p.mp4",
-                        config_output_root=root,
-                        force_download=False,
-                        prefer_config_output=False,
-                    )
+                ig.download_or_reuse(
+                    cfg_path=conf,
+                    part_path=root / "p.mp4",
+                    config_output_root=root,
+                    force_download=False,
+                    prefer_config_output=False,
+                )
             self.assertIn("timed out", exit_message(ctx.exception))
 
 
 class AudioHashOptionalTests(unittest.TestCase):
     def test_verify_output_hash_is_null_when_not_requested(self):
-        with patch.object(
-            ig,
-            "ffprobe_json",
-            return_value={
-                "format": {"duration": "1.0", "size": "10"},
-                "streams": [
-                    {"codec_type": "video", "codec_name": "h264", "pix_fmt": "yuv420p", "width": 10, "height": 10},
-                    {"codec_type": "audio", "codec_name": "aac"},
-                ],
-            },
+        with (
+            patch.object(
+                ig,
+                "ffprobe_json",
+                return_value={
+                    "format": {"duration": "1.0", "size": "10"},
+                    "streams": [
+                        {"codec_type": "video", "codec_name": "h264", "pix_fmt": "yuv420p", "width": 10, "height": 10},
+                        {"codec_type": "audio", "codec_name": "aac"},
+                    ],
+                },
+            ),
+            patch.object(ig, "audio_hash") as hash_fn,
         ):
-            with patch.object(ig, "audio_hash") as hash_fn:
-                report = ig.verify_output(Path("/dev/null"), compute_audio_hash=False)
+            report = ig.verify_output(Path("/dev/null"), compute_audio_hash=False)
         hash_fn.assert_not_called()
         self.assertIn("audio_hash_sha256", report)
         self.assertIsNone(report["audio_hash_sha256"])
@@ -439,10 +465,12 @@ class Finding13RateAndUnavailableRegexTests(unittest.TestCase):
     """#13: _RATE_RE / _UNAVAILABLE_RE false positives on ffmpeg frame counters and 'removed temporary file'."""
 
     def _run_with_stderr(self, stderr):
-        with patch.object(social, "command", return_value=["yt-dlp"]):
-            with patch("subprocess.run", side_effect=_cpe(stderr)):
-                with self.assertRaises(ProviderError) as ctx:
-                    social.run(["--dummy"])
+        with (
+            patch.object(social, "command", return_value=["yt-dlp"]),
+            patch("subprocess.run", side_effect=_cpe(stderr)),
+            self.assertRaises(ProviderError) as ctx,
+        ):
+            social.run(["--dummy"])
         return str(ctx.exception)
 
     def test_ffmpeg_frame_counter_is_not_a_rate_limit(self):
@@ -464,10 +492,12 @@ class Finding13RateAndUnavailableRegexTests(unittest.TestCase):
 
 class Finding31LoginBeforeUnavailableTests(unittest.TestCase):
     def test_unavailable_plus_sign_in_classifies_as_login(self):
-        with patch.object(social, "command", return_value=["yt-dlp"]):
-            with patch("subprocess.run", side_effect=_cpe("ERROR: Video unavailable. Sign in to confirm your age.")):
-                with self.assertRaises(ProviderError) as ctx:
-                    social.run(["--dummy"])
+        with (
+            patch.object(social, "command", return_value=["yt-dlp"]),
+            patch("subprocess.run", side_effect=_cpe("ERROR: Video unavailable. Sign in to confirm your age.")),
+            self.assertRaises(ProviderError) as ctx,
+        ):
+            social.run(["--dummy"])
         self.assertIn("sessão de acesso", str(ctx.exception))
 
 
@@ -597,9 +627,9 @@ class Finding23And50RetryAfterCapTests(unittest.TestCase):
         with (
             patch.object(http, "_opener", return_value=FakeOpener()),
             patch.object(http.time, "sleep", side_effect=lambda s: sleep_calls.append(s)),
+            self.assertRaises(ProviderError),
         ):
-            with self.assertRaises(ProviderError):
-                http.get_json("https://example.org/api")
+            http.get_json("https://example.org/api")
         self.assertTrue(all(s <= http.RETRY_AFTER_CAP_S for s in sleep_calls))
 
 
@@ -620,18 +650,24 @@ class Finding55Get429LastAttemptRaisesTests(unittest.TestCase):
             def open(self, *a, **kw):
                 raise error
 
-        with patch.object(http, "_opener", return_value=FakeOpener()), patch.object(http.time, "sleep"):
-            with self.assertRaises(ProviderError):
-                http.get_json("https://example.org/api")
+        with (
+            patch.object(http, "_opener", return_value=FakeOpener()),
+            patch.object(http.time, "sleep"),
+            self.assertRaises(ProviderError),
+        ):
+            http.get_json("https://example.org/api")
 
     def test_get_json_never_silently_returns_none(self):
         class FakeOpener:
             def open(self, *a, **kw):
                 raise urllib.error.URLError("boom")
 
-        with patch.object(http, "_opener", return_value=FakeOpener()), patch.object(http.time, "sleep"):
-            with self.assertRaises(ProviderError):
-                http.get_json("https://example.org/api")
+        with (
+            patch.object(http, "_opener", return_value=FakeOpener()),
+            patch.object(http.time, "sleep"),
+            self.assertRaises(ProviderError),
+        ):
+            http.get_json("https://example.org/api")
 
 
 class Finding36CacheAndBodyReadNarrowingTests(unittest.TestCase):
@@ -647,10 +683,8 @@ class Finding36CacheAndBodyReadNarrowingTests(unittest.TestCase):
 
                     with patch.object(http, "_opener") as opener_mock:
                         opener_mock.return_value.open.side_effect = urllib.error.URLError("no network needed")
-                        try:
+                        with contextlib.suppress(ProviderError):
                             http.get_json("https://example.org/api", cache_ttl=3600)
-                        except ProviderError:
-                            pass
             finally:
                 runtime.ACTIVE.reset(token)
             self.assertTrue(any(w["code"] == "CACHE_UNAVAILABLE" for w in event["warnings"]))

@@ -37,9 +37,8 @@ class WorkflowTests(unittest.TestCase):
                 settings()
 
     def test_env_unknown_and_bounds(self):
-        with patch.dict(os.environ, {"GB_GIF_WIDTH": "0"}, clear=True):
-            with self.assertRaises(ValueError):
-                settings()
+        with patch.dict(os.environ, {"GB_GIF_WIDTH": "0"}, clear=True), self.assertRaises(ValueError):
+            settings()
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / ".env"
             p.write_text("UNKNOWN=secret", encoding="utf-8")
@@ -205,7 +204,7 @@ class ContactSheetTests(unittest.TestCase):
                 label={"title": "Foguete", "id": "youtube:abc"},
             )
             self.assertTrue(result["sheet_labels"])
-            sheet_filter = [a for a in calls if "tile=3x1" in " ".join(a)][0]
+            sheet_filter = next(a for a in calls if "tile=3x1" in " ".join(a))
             vf = sheet_filter[sheet_filter.index("-vf") + 1]
             self.assertIn("drawtext=fontfile='/fonts/Arial.ttf'", vf)
             self.assertIn("eif", vf)
@@ -259,9 +258,8 @@ class ContactSheetTests(unittest.TestCase):
     def test_font_pin_must_exist(self):
         from getbrolls.media import find_font
 
-        with patch.dict(os.environ, {"GB_FONT_FILE": "/nao/existe.ttf"}):
-            with self.assertRaises(ValueError):
-                find_font()
+        with patch.dict(os.environ, {"GB_FONT_FILE": "/nao/existe.ttf"}), self.assertRaises(ValueError):
+            find_font()
 
 
 class RejectedDecisionImportTest(unittest.TestCase):

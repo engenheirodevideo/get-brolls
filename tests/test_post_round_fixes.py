@@ -10,6 +10,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
@@ -91,16 +92,20 @@ class ResolveFillsRemoteMetadata(unittest.TestCase):
         """Metadado é bônus; perder o candidato por causa dele seria pior que o vazio."""
         from getbrolls.http import ProviderError
 
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(social, "run", side_effect=ProviderError("vídeo privado")):
-                item = audited(resolve_args(tmp, TIKTOK), execute)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(social, "run", side_effect=ProviderError("vídeo privado")),
+        ):
+            item = audited(resolve_args(tmp, TIKTOK), execute)
         self.assertTrue(item["id"].startswith("tiktok:"))
         self.assertIsNone(item["media"]["duration_s"])
 
     def test_only_one_probe_is_made_and_it_never_downloads(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(social, "run", return_value=(json.dumps(TIKTOK_JSON), [])) as spy:
-                audited(resolve_args(tmp, TIKTOK), execute)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(social, "run", return_value=(json.dumps(TIKTOK_JSON), [])) as spy,
+        ):
+            audited(resolve_args(tmp, TIKTOK), execute)
         self.assertEqual(1, spy.call_count)
         argv = spy.call_args[0][0]
         self.assertIn("--skip-download", argv)
@@ -197,7 +202,7 @@ class DownloadLimitCopy(unittest.TestCase):
         from getbrolls.http import ProviderError, download
 
         class FakeResponse:
-            headers = {"Content-Length": str(700 * 1024 * 1024)}
+            headers: ClassVar = {"Content-Length": str(700 * 1024 * 1024)}
 
             def __enter__(self):
                 return self
@@ -212,10 +217,12 @@ class DownloadLimitCopy(unittest.TestCase):
             def open(self, *_args, **_kw):
                 return FakeResponse()
 
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch("getbrolls.http._opener", return_value=FakeOpener()):
-                with self.assertRaises(ProviderError) as caught:
-                    download("https://exemplo.test/video.mp4", Path(tmp) / "out.mp4", max_bytes=512 * 1024 * 1024)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("getbrolls.http._opener", return_value=FakeOpener()),
+            self.assertRaises(ProviderError) as caught,
+        ):
+            download("https://exemplo.test/video.mp4", Path(tmp) / "out.mp4", max_bytes=512 * 1024 * 1024)
         return str(caught.exception)
 
     def test_the_size_and_the_cap_are_both_in_megabytes(self):
@@ -358,9 +365,8 @@ class SearchCarriesDuration(unittest.TestCase):
     def test_duration_and_channel_reach_the_search_report(self):
         from getbrolls import providers
 
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(providers, "search", return_value=self.rows()):
-                result = audited(self.args(tmp), execute)
+        with tempfile.TemporaryDirectory() as tmp, patch.object(providers, "search", return_value=self.rows()):
+            result = audited(self.args(tmp), execute)
         row = result["items"][0]
         self.assertEqual(5400.0, row["duration_s"])
         self.assertEqual("NVIDIA", row["channel"])
@@ -368,9 +374,8 @@ class SearchCarriesDuration(unittest.TestCase):
     def test_the_shot_path_keeps_them_too(self):
         from getbrolls import providers
 
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(providers, "search", return_value=self.rows()):
-                result = audited(self.args(tmp, shot="abertura"), execute)
+        with tempfile.TemporaryDirectory() as tmp, patch.object(providers, "search", return_value=self.rows()):
+            result = audited(self.args(tmp, shot="abertura"), execute)
         row = result["items"][0]
         self.assertTrue(row["id"].endswith(":shot:abertura"))
         self.assertEqual(5400.0, row["duration_s"])
@@ -592,7 +597,7 @@ class EveryBlockedBeatIsAskedAtOnce(unittest.TestCase):
 class TranslatedTrackNeverDecidesTheSourceLanguage(unittest.TestCase):
     """A faixa `pt` traduzida não é a fala da fonte; o aviso saía invertido por isso."""
 
-    ORIGINAL_EN = {"subtitle_langs": ["pt", "en-orig"], "original_lang": "en-orig"}
+    ORIGINAL_EN: ClassVar = {"subtitle_langs": ["pt", "en-orig"], "original_lang": "en-orig"}
 
     def test_the_source_language_comes_from_the_original_track(self):
         from getbrolls.inspecting import source_language
@@ -654,9 +659,11 @@ class ResolveExposesTheSameFlatFieldsAsSearch(unittest.TestCase):
     """C2 lê os dois comandos do mesmo jeito: título, canal, duração."""
 
     def resolved(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(social, "run", return_value=(json.dumps(TIKTOK_JSON), [])):
-                return audited(resolve_args(tmp, TIKTOK), execute)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(social, "run", return_value=(json.dumps(TIKTOK_JSON), [])),
+        ):
+            return audited(resolve_args(tmp, TIKTOK), execute)
 
     def test_the_flat_shortcuts_are_filled(self):
         item = self.resolved()
@@ -683,9 +690,11 @@ class ResolveExposesTheSameFlatFieldsAsSearch(unittest.TestCase):
     def test_a_source_without_metadata_leaves_the_shortcuts_absent_not_wrong(self):
         from getbrolls.http import ProviderError
 
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(social, "run", side_effect=ProviderError("vídeo privado")):
-                item = audited(resolve_args(tmp, TIKTOK), execute)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(social, "run", side_effect=ProviderError("vídeo privado")),
+        ):
+            item = audited(resolve_args(tmp, TIKTOK), execute)
         self.assertNotIn("duration_s", item)
         self.assertNotIn("channel", item)
 

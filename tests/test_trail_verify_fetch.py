@@ -20,6 +20,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import patch
 
 # The skill's personal folder goes to a temp dir: no test touches ~/.getbrolls.
@@ -226,7 +227,7 @@ class FetchSizeCapTests(unittest.TestCase):
             ledger.save("fixture", c)
 
             class OversizedResponse:
-                headers = {"Content-Length": str(700 * 1024 * 1024)}
+                headers: ClassVar = {"Content-Length": str(700 * 1024 * 1024)}
 
                 def __enter__(self):
                     return self

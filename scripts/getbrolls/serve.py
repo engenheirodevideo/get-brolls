@@ -9,6 +9,7 @@ cedo com uma mensagem clara em vez de servir um diretório vazio.
 
 from __future__ import annotations
 
+import contextlib
 import hmac
 import json
 import os
@@ -136,11 +137,9 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         if host not in (f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"):
             return False
         origin = self.headers.get("Origin")
-        if origin and origin != f"http://{host}":
-            return False
-        return True
+        return not (origin and origin != f"http://{host}")
 
-    def do_POST(self):  # noqa: N802 - assinatura exigida pela stdlib
+    def do_POST(self):
         if not self._local_request():
             self._refuse(403, "Pedido de outra origem; este servidor só atende esta máquina.")
             return
@@ -430,10 +429,8 @@ def _reap(pid):
     """Colhe o filho já encerrado: um zumbi ainda responde a `kill(pid, 0)`."""
     if os.name == "nt":
         return
-    try:
+    with contextlib.suppress(ChildProcessError, OSError):
         os.waitpid(pid, os.WNOHANG)
-    except (ChildProcessError, OSError):
-        pass
 
 
 def read_pid(project):
@@ -503,10 +500,8 @@ def _rotate_log(log):
             kept = stream.read()
         rotated = log.with_name(LOG_ROTATE_FILE)
         rotated.write_bytes(kept)
-        try:
+        with contextlib.suppress(OSError):
             os.chmod(rotated, 0o600)
-        except OSError:
-            pass
     except OSError:
         return
 
@@ -702,10 +697,8 @@ def stop(project):
     else:
         import signal
 
-        try:
+        with contextlib.suppress(OSError):
             os.kill(pid, signal.SIGTERM)
-        except OSError:
-            pass
         _reap(pid)
     deadline = time.monotonic() + 5
     while _alive(pid) and time.monotonic() < deadline:
@@ -714,10 +707,8 @@ def stop(project):
     if _alive(pid) and os.name != "nt":
         import signal
 
-        try:
+        with contextlib.suppress(OSError):
             os.kill(pid, signal.SIGKILL)
-        except OSError:
-            pass
         _reap(pid)
         deadline = time.monotonic() + 2
         while _alive(pid) and time.monotonic() < deadline:

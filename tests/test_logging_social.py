@@ -70,9 +70,9 @@ class SocialSubprocessLoggingTests(unittest.TestCase):
             patch.object(social, "command", return_value=["yt-dlp"]),
             patch("subprocess.run", side_effect=called),
             self.assertLogs("getbrolls.social", "DEBUG") as cm,
+            self.assertRaises(ProviderError),
         ):
-            with self.assertRaises(ProviderError):
-                social.run(["--dummy"], op="metadata")
+            social.run(["--dummy"], op="metadata")
         joined = _joined(cm)
         self.assertIn("event=ytdlp_error", joined)
         self.assertIn("class=rate_limit", joined)
@@ -241,18 +241,16 @@ class InstagramPairsMediaUrlRefusedTests(unittest.TestCase):
     """`event=media_url_refused` from validate_media_url()/_curl_resolution()."""
 
     def test_credentials_in_url_logs_reason_without_the_password(self):
-        with self.assertLogs("getbrolls.instagram_pairs", "WARNING") as cm:
-            with self.assertRaises(ig.CollectError):
-                ig.validate_media_url("https://user:SEGREDO-SENHA@example.org/media", Path("cfg.conf"))
+        with self.assertLogs("getbrolls.instagram_pairs", "WARNING") as cm, self.assertRaises(ig.CollectError):
+            ig.validate_media_url("https://user:SEGREDO-SENHA@example.org/media", Path("cfg.conf"))
         joined = _joined(cm)
         self.assertIn("event=media_url_refused", joined)
         self.assertIn("reason=credentials_in_url", joined)
         self.assertNotIn("SEGREDO-SENHA", joined)
 
     def test_local_host_logs_reason(self):
-        with self.assertLogs("getbrolls.instagram_pairs", "WARNING") as cm:
-            with self.assertRaises(ig.CollectError):
-                ig.validate_media_url("https://camera.local/media", Path("cfg.conf"))
+        with self.assertLogs("getbrolls.instagram_pairs", "WARNING") as cm, self.assertRaises(ig.CollectError):
+            ig.validate_media_url("https://camera.local/media", Path("cfg.conf"))
         joined = _joined(cm)
         self.assertIn("event=media_url_refused", joined)
         self.assertIn("reason=local_host", joined)

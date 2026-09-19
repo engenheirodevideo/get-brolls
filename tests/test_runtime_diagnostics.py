@@ -69,16 +69,14 @@ class InternalErrorClassificationTests(unittest.TestCase):
 
 class CliEntrypointErrorEnvelopeTests(unittest.TestCase):
     def test_uncaught_exception_becomes_json_envelope_exit_3(self):
-        with patch.object(cli, "main", side_effect=RuntimeError("kaboom")):
-            with patch("sys.stdout"):
-                code = cli.entrypoint()
+        with patch.object(cli, "main", side_effect=RuntimeError("kaboom")), patch("sys.stdout"):
+            code = cli.entrypoint()
         self.assertEqual(code, 3)
 
     def test_envelope_is_valid_json_with_internal_error_code(self):
         buf = io.StringIO()
-        with patch.object(cli, "main", side_effect=RuntimeError("kaboom")):
-            with patch("sys.stderr", buf):
-                cli.entrypoint()
+        with patch.object(cli, "main", side_effect=RuntimeError("kaboom")), patch("sys.stderr", buf):
+            cli.entrypoint()
         payload = json.loads(buf.getvalue())
         self.assertEqual(payload["error_code"], "INTERNAL_ERROR")
         self.assertEqual(payload["type"], "RuntimeError")
@@ -86,26 +84,31 @@ class CliEntrypointErrorEnvelopeTests(unittest.TestCase):
     def test_uses_named_exit_code_constants(self):
         self.assertEqual(cli.EXIT_OPERATION_ERROR, 2)
         self.assertEqual(cli.EXIT_INTERNAL_ERROR, 3)
-        with patch.object(cli, "main", side_effect=RuntimeError("kaboom")):
-            with patch("sys.stdout"), patch("sys.stderr"):
-                code = cli.entrypoint()
+        with (
+            patch.object(cli, "main", side_effect=RuntimeError("kaboom")),
+            patch("sys.stdout"),
+            patch("sys.stderr"),
+        ):
+            code = cli.entrypoint()
         self.assertEqual(code, cli.EXIT_INTERNAL_ERROR)
 
     def test_broken_pipe_does_not_become_internal_error(self):
         # #35: a downstream `| head` closing the pipe must not be reported as an
         # unexpected bug (INTERNAL_ERROR); it's an ordinary, expected shutdown.
         buf = io.StringIO()
-        with patch.object(cli, "main", side_effect=BrokenPipeError()):
-            with patch("sys.stdout"), patch("sys.stderr", buf):
-                code = cli.entrypoint()
+        with (
+            patch.object(cli, "main", side_effect=BrokenPipeError()),
+            patch("sys.stdout"),
+            patch("sys.stderr", buf),
+        ):
+            code = cli.entrypoint()
         self.assertNotEqual(code, cli.EXIT_INTERNAL_ERROR)
         self.assertNotIn("INTERNAL_ERROR", buf.getvalue())
 
     def test_generic_fallback_includes_redacted_traceback(self):
         buf = io.StringIO()
-        with patch.object(cli, "main", side_effect=RuntimeError("kaboom")):
-            with patch("sys.stderr", buf):
-                cli.entrypoint()
+        with patch.object(cli, "main", side_effect=RuntimeError("kaboom")), patch("sys.stderr", buf):
+            cli.entrypoint()
         payload = json.loads(buf.getvalue())
         self.assertIn("traceback", payload)
         self.assertIn("RuntimeError", payload["traceback"])
@@ -115,10 +118,12 @@ class CliEntrypointErrorEnvelopeTests(unittest.TestCase):
             project = Path(tmp) / "proj"
             (project / "brolls").mkdir(parents=True)
             buf = io.StringIO()
-            with patch.object(cli, "main", side_effect=RuntimeError("kaboom")):
-                with patch("sys.stderr", buf):
-                    with patch("sys.argv", ["gb", "status", "--project", str(project)]):
-                        cli.entrypoint()
+            with (
+                patch.object(cli, "main", side_effect=RuntimeError("kaboom")),
+                patch("sys.stderr", buf),
+                patch("sys.argv", ["gb", "status", "--project", str(project)]),
+            ):
+                cli.entrypoint()
             payload = json.loads(buf.getvalue())
             self.assertIn("diagnostics.jsonl", payload["error"])
             log = project / "brolls" / "diagnostics.jsonl"
@@ -144,9 +149,11 @@ class SearchAllProvidersFailTests(unittest.TestCase):
     def test_all_providers_failing_raises_human_readable_message_not_json(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "proj"
-            with patch.object(providers, "search", side_effect=ValueError("chave ausente")):
-                with self.assertRaises(ValueError) as ctx:
-                    commands.execute(_search_args(project, provider="pexels"))
+            with (
+                patch.object(providers, "search", side_effect=ValueError("chave ausente")),
+                self.assertRaises(ValueError) as ctx,
+            ):
+                commands.execute(_search_args(project, provider="pexels"))
         message = str(ctx.exception)
         self.assertIn("pexels", message)
         self.assertIn("chave ausente", message)
@@ -160,9 +167,11 @@ class SearchAllProvidersFailTests(unittest.TestCase):
             event = {"warnings": [], "state_committed": False}
             token = runtime.ACTIVE.set(event)
             try:
-                with patch.object(providers, "search", side_effect=ValueError("boom")):
-                    with self.assertRaises(ValueError):
-                        commands.execute(_search_args(project, provider="pexels"))
+                with (
+                    patch.object(providers, "search", side_effect=ValueError("boom")),
+                    self.assertRaises(ValueError),
+                ):
+                    commands.execute(_search_args(project, provider="pexels"))
             finally:
                 runtime.ACTIVE.reset(token)
             self.assertTrue(any(w["code"] == "PROVIDER_FAILED" for w in event["warnings"]))

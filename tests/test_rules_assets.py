@@ -231,7 +231,7 @@ class FormatChangeGateTests(unittest.TestCase):
 
     def test_status_reads_a_project_with_a_pending_format_change_without_the_flag(self):
         with tempfile.TemporaryDirectory() as folder:
-            ledger, rules = self._project_with_approved_item(folder)
+            _ledger, rules = self._project_with_approved_item(folder)
             path = Path(folder) / "RULES.md"
             rules["video_format"] = "reels"
             path.write_text("```json\n" + json.dumps(rules) + "\n```", encoding="utf-8")
@@ -248,7 +248,7 @@ class FormatChangeGateTests(unittest.TestCase):
 
     def test_read_only_consults_are_not_blocked_by_the_format_gate(self):
         with tempfile.TemporaryDirectory() as folder:
-            ledger, rules = self._project_with_approved_item(folder)
+            _ledger, rules = self._project_with_approved_item(folder)
             path = Path(folder) / "RULES.md"
             rules["video_format"] = "reels"
             path.write_text("```json\n" + json.dumps(rules) + "\n```", encoding="utf-8")

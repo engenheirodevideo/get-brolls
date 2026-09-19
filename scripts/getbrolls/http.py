@@ -1,5 +1,6 @@
 """Bounded HTTPS JSON transport. Cache is private and never part of reports."""
 
+import contextlib
 import email.utils
 import hashlib
 import http.client
@@ -247,10 +248,8 @@ def get_json(url, params=None, headers=None, cache_ttl=0):
             code = error.code
             retry_after = (getattr(error, "headers", None) or {}).get("Retry-After")
             body = b""
-            try:
+            with contextlib.suppress(OSError, ValueError):
                 body = error.read(300)
-            except (OSError, ValueError):
-                pass
             error.close()
             detail = stderr_tail(body.decode("utf-8", errors="replace")) if body else ""
             suffix = f": {detail}" if detail else ""
@@ -483,10 +482,8 @@ def download(url, target, max_bytes=512 * 1024 * 1024):
         raise
     except urllib.error.HTTPError as error:
         body = b""
-        try:
+        with contextlib.suppress(OSError, ValueError):
             body = error.read(300)
-        except (OSError, ValueError):
-            pass
         error.close()
         detail = stderr_tail(body.decode("utf-8", errors="replace")) if body else ""
         suffix = f": {detail}" if detail else ""

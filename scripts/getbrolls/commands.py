@@ -1,5 +1,6 @@
 """Existing workflow command handlers; CLI parsing and reporting live separately."""
 
+import contextlib
 import json
 import logging
 import os
@@ -1328,7 +1329,7 @@ def execute(args):
         raise ValueError("--env-file não existe. Confira o caminho.")
     load_env(args.env_file or Path(__file__).resolve().parents[2] / ".env")
     config = settings()
-    try:
+    with contextlib.suppress(Exception):
         logs.event(
             _log,
             logging.DEBUG,
@@ -1338,8 +1339,6 @@ def execute(args):
             brief_present=_brief_present(args),
             provider_keys=_provider_keys_set(),
         )
-    except Exception:
-        pass
     from getbrolls import providers
 
     if args.command in ("providers", "doctor"):
@@ -1504,11 +1503,10 @@ def execute(args):
         if not 1 <= args.limit <= 50:
             raise ValueError("Use --limit entre 1 e 50.")
         shot = (getattr(args, "shot", None) or "").strip() or None
-        if shot:
-            # Mesma regra de `resolve --shot`: o beat vira sufixo do id, e é isso que
-            # liga o candidato ao BRIEF.md sem precisar re-registrar por URL depois.
-            if not re.fullmatch(SHOT_RE, shot):
-                raise ValueError("--shot: use 1–80 letras, números, hífen ou underscore.")
+        # Mesma regra de `resolve --shot`: o beat vira sufixo do id, e é isso que
+        # liga o candidato ao BRIEF.md sem precisar re-registrar por URL depois.
+        if shot and not re.fullmatch(SHOT_RE, shot):
+            raise ValueError("--shot: use 1–80 letras, números, hífen ou underscore.")
         dry_run = bool(getattr(args, "dry_run", False))
         names = rules["preferred_providers"][args.intent] if args.provider == "auto" else [args.provider]
         if not names:
@@ -2256,7 +2254,7 @@ def inspect_warnings(probe, query=None):
         found.append(language)
     duration = probe.get("duration_s")
     if duration and float(duration) > LONG_SOURCE_S:
-        found.append(f"fonte longa: {int(round(float(duration) / 60))} min")
+        found.append(f"fonte longa: {round(float(duration) / 60)} min")
     haystack = " ".join([str(probe.get("title") or ""), *(probe.get("tags") or [])])
     if _THREE_SIXTY.search(haystack):
         found.append("vídeo 360°")
@@ -2376,7 +2374,7 @@ def probe_direct(ledger, source, url=None):
 
 
 def _clock(seconds):
-    total = int(round(float(seconds or 0)))
+    total = round(float(seconds or 0))
     return f"{total // 60}:{total % 60:02d}"
 
 

@@ -390,9 +390,8 @@ class CommonsFilePageTests(unittest.TestCase):
     def test_a_sound_file_is_refused(self, _fetched):
         payload = json.loads(json.dumps(COMMONS_FILE))
         payload["query"]["pages"]["123"]["imageinfo"][0]["mime"] = "audio/ogg"
-        with patch.object(providers, "get_json", return_value=payload):
-            with self.assertRaises(ValueError) as caught:
-                providers.resolve("https://commons.wikimedia.org/wiki/File:Som.ogg")
+        with patch.object(providers, "get_json", return_value=payload), self.assertRaises(ValueError) as caught:
+            providers.resolve("https://commons.wikimedia.org/wiki/File:Som.ogg")
         self.assertIn("não é vídeo nem imagem", str(caught.exception))
 
 

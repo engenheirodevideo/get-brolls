@@ -57,10 +57,8 @@ def get(name):
 
 def _chmod_private(path):
     if os.name != "nt":
-        try:
+        with contextlib.suppress(OSError):
             os.chmod(path, 0o600)
-        except OSError:
-            pass
 
 
 class _PrivateRotatingFileHandler(logging.handlers.RotatingFileHandler):
@@ -92,10 +90,8 @@ class RedactingFilter(logging.Filter):
             message = record.getMessage()
         except Exception:
             message = str(record.msg)
-        try:
+        with contextlib.suppress(Exception):
             message = runtime.scrub_home(runtime.redact(message))
-        except Exception:
-            pass
         record.msg = message
         record.args = ()
         return True
@@ -170,10 +166,8 @@ def _degrade():
     """Best-effort fallback: no handlers beyond a NullHandler, nothing raises past here."""
     for handler in list(_root.handlers):
         _root.removeHandler(handler)
-        try:
+        with contextlib.suppress(Exception):
             handler.close()
-        except Exception:
-            pass
     for existing_filter in list(_root.filters):
         _root.removeFilter(existing_filter)
     _root.addHandler(logging.NullHandler())
@@ -188,10 +182,8 @@ def shutdown():
     handle on it after the command returned, which on Windows stops the person (or a
     test) from moving or deleting that folder. The next `configure()` re-attaches.
     """
-    try:
+    with contextlib.suppress(Exception):
         _degrade()
-    except Exception:
-        pass
 
 
 def configure(project, *, read_only):
@@ -219,10 +211,8 @@ def _configure(project, *, read_only):
 
     for handler in list(_root.handlers):
         _root.removeHandler(handler)
-        try:
+        with contextlib.suppress(Exception):
             handler.close()
-        except Exception:
-            pass
     for existing_filter in list(_root.filters):
         _root.removeFilter(existing_filter)
     _root.propagate = False
@@ -234,15 +224,12 @@ def _configure(project, *, read_only):
     redacting = RedactingFilter()
     _root.addFilter(redacting)
 
-    if raw_level == "OFF":
-        level = None
-    else:
-        # An invalid GB_LOG_LEVEL is a user-input problem, not a logging-setup
-        # failure: `config.settings()` (called right after this, inside the
-        # audited() command) is the one place that turns it into the same
-        # ValueError shape as every other invalid setting. Here we only need to
-        # not crash, so an unrecognised value degrades to "no logging" instead.
-        level = _LEVELS.get(raw_level)
+    # An invalid GB_LOG_LEVEL is a user-input problem, not a logging-setup
+    # failure: `config.settings()` (called right after this, inside the
+    # audited() command) is the one place that turns it into the same
+    # ValueError shape as every other invalid setting. Here we only need to
+    # not crash, so an unrecognised value degrades to "no logging" instead.
+    level = None if raw_level == "OFF" else _LEVELS.get(raw_level)
 
     added = False
     if level is not None and project_path is not None and not read_only:

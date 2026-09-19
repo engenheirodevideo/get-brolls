@@ -876,7 +876,7 @@ def _main(argv: list[str] | None = None) -> int:
     except CollectError as exc:
         print(f"-- lote interrompido: {exc.message}", file=sys.stderr)
         return exc.code
-    except Exception as exc:  # noqa: BLE001 - summary já foi gravado; sem traceback cru
+    except Exception as exc:
         print(f"-- lote interrompido: {type(exc).__name__}: {redact(str(exc))}", file=sys.stderr)
         return 1
 

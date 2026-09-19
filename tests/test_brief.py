@@ -86,9 +86,8 @@ class BriefTemplateTests(unittest.TestCase):
 
 class LoadBriefTests(unittest.TestCase):
     def test_missing_brief_says_how_to_create_one(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaises(ValueError) as raised:
-                brief_module.load_brief(tmp)
+        with tempfile.TemporaryDirectory() as tmp, self.assertRaises(ValueError) as raised:
+            brief_module.load_brief(tmp)
         self.assertIn("init-brief", str(raised.exception))
 
     def test_env_override_points_at_another_file(self):

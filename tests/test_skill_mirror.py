@@ -93,9 +93,11 @@ class SkillMirrorTests(unittest.TestCase):
             )
 
             buffer = io.StringIO()
-            with unittest.mock.patch.object(gen_skill_mirror, "MIRROR_SKILL", tampered):
-                with contextlib.redirect_stdout(buffer):
-                    exit_code = gen_skill_mirror.main(["--check"])
+            with (
+                unittest.mock.patch.object(gen_skill_mirror, "MIRROR_SKILL", tampered),
+                contextlib.redirect_stdout(buffer),
+            ):
+                exit_code = gen_skill_mirror.main(["--check"])
 
         self.assertEqual(exit_code, 1, "edição manual do espelho deveria falhar o --check")
         self.assertIn("perguntas do brief", buffer.getvalue())

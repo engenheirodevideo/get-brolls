@@ -726,9 +726,11 @@ class ScanTests(unittest.TestCase):
             )
             from getbrolls.runtime import OperationError
 
-            with patch.dict(os.environ, {"GB_PREVIEW_MAX_SECONDS": "10"}):
-                with self.assertRaises(OperationError) as caught:
-                    audited(args, execute)
+            with (
+                patch.dict(os.environ, {"GB_PREVIEW_MAX_SECONDS": "10"}),
+                self.assertRaises(OperationError) as caught,
+            ):
+                audited(args, execute)
             message = str(caught.exception)
             self.assertIn("GB_PREVIEW_MAX_SECONDS", message)
             self.assertIn("10", message)

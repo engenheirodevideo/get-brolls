@@ -292,9 +292,11 @@ class SessionComparisonTests(unittest.TestCase):
     def test_ping_treats_a_non_string_session_as_a_mismatch_not_a_crash(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = _project_with_review(Path(tmp))
-            with _serving(root) as (server, port):
-                with patch.object(serve.json, "loads", return_value={"session": 12345, "port": port}):
-                    self.assertFalse(serve._ping(port, server.session_id, timeout=2.0))
+            with (
+                _serving(root) as (server, port),
+                patch.object(serve.json, "loads", return_value={"session": 12345, "port": port}),
+            ):
+                self.assertFalse(serve._ping(port, server.session_id, timeout=2.0))
 
 
 if __name__ == "__main__":

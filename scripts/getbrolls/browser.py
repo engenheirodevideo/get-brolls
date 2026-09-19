@@ -35,9 +35,9 @@ def plan(ledger, url, rules):
         "-s=" + session,
     ]
     commands = [
-        prefix + ["open", url, "--headed"],
-        prefix + ["resize", str(w), str(h)],
-        prefix + ["snapshot"],
+        [*prefix, "open", url, "--headed"],
+        [*prefix, "resize", str(w), str(h)],
+        [*prefix, "snapshot"],
         prefix + ["screenshot", "--filename=" + str(png)] + (["--full-page"] if b["full_page"] else []),
     ]
     return {

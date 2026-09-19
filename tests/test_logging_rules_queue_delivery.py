@@ -309,9 +309,11 @@ class QueuePacingOverrideLoggingTests(unittest.TestCase):
     def test_env_override_logs_at_debug(self):
         for key in ("GB_PACE_MIN_S", "GB_PACE_MAX_S", "GB_MAX_PER_HOUR", "GB_MAX_PER_DAY"):
             os.environ.pop(key, None)
-        with patch.dict(os.environ, {"GB_PACE_MIN_S": "5", "GB_PACE_MAX_S": "10"}):
-            with self.assertLogs("getbrolls.queue", "DEBUG") as cm:
-                queue.pacing("instagram")
+        with (
+            patch.dict(os.environ, {"GB_PACE_MIN_S": "5", "GB_PACE_MAX_S": "10"}),
+            self.assertLogs("getbrolls.queue", "DEBUG") as cm,
+        ):
+            queue.pacing("instagram")
         joined = _joined(cm)
         self.assertIn("event=pacing_override", joined)
         self.assertIn("provider=instagram", joined)
@@ -428,9 +430,10 @@ class AcquisitionMaterializationLoggingTests(unittest.TestCase):
                     "getbrolls.acquisition.probe",
                     return_value={"duration_s": 5.0, "width": 100, "height": 100, "fps": 30},
                 ),
+                self.assertLogs("getbrolls.acquisition", "WARNING") as cm,
+                self.assertRaises(ValueError),
             ):
-                with self.assertLogs("getbrolls.acquisition", "WARNING") as cm, self.assertRaises(ValueError):
-                    acquisition.cache_direct_media(ledger, c, refresh=False)
+                acquisition.cache_direct_media(ledger, c, refresh=False)
             joined = _joined(cm)
             self.assertIn("event=source_cache", joined)
             self.assertIn("result=stale", joined)
@@ -491,9 +494,11 @@ class DeliveryItemLoggingTests(unittest.TestCase):
     def test_env_copy_logs_reason(self):
         with tempfile.TemporaryDirectory() as tmp:
             _project(tmp, [_fetched("a", "T", shot="abertura")])
-            with patch.dict(os.environ, {"GB_DELIVERY_COPY": "1"}):
-                with self.assertLogs("getbrolls.delivery", "INFO") as cm:
-                    delivery.build_delivery(tmp)
+            with (
+                patch.dict(os.environ, {"GB_DELIVERY_COPY": "1"}),
+                self.assertLogs("getbrolls.delivery", "INFO") as cm,
+            ):
+                delivery.build_delivery(tmp)
             joined = _joined(cm)
             self.assertIn("mode=copy", joined)
             self.assertIn("reason=env_copy", joined)
@@ -531,9 +536,8 @@ class DeliveryConflictLoggingTests(unittest.TestCase):
             beat_dir = Path(tmp) / delivery.DELIVERY_DIR / "01-abertura-t"
             beat_dir.mkdir(parents=True)
             (beat_dir / "01-abertura-t.mp4").write_bytes(b"edicao da pessoa, bytes diferentes")
-            with self.assertLogs("getbrolls.delivery", "WARNING") as cm:
-                with self.assertRaises(ValueError):
-                    delivery.build_delivery(tmp)
+            with self.assertLogs("getbrolls.delivery", "WARNING") as cm, self.assertRaises(ValueError):
+                delivery.build_delivery(tmp)
             joined = _joined(cm)
             self.assertIn("event=deliver_conflict", joined)
             self.assertIn("kind=foreign_file", joined)
@@ -546,9 +550,8 @@ class DeliveryConflictLoggingTests(unittest.TestCase):
                 beat_dir = Path(tmp) / delivery.DELIVERY_DIR / "01-abertura-t"
                 beat_dir.mkdir(parents=True)
                 (beat_dir / "01-abertura-t.mp4").write_bytes(b"qualquer coisa")
-                with self.assertLogs("getbrolls.delivery", "WARNING") as cm:
-                    with self.assertRaises(ValueError):
-                        delivery.build_delivery(tmp)
+                with self.assertLogs("getbrolls.delivery", "WARNING") as cm, self.assertRaises(ValueError):
+                    delivery.build_delivery(tmp)
             joined = _joined(cm)
             self.assertIn("event=deliver_conflict", joined)
             self.assertIn("kind=io_error", joined)
@@ -561,9 +564,8 @@ class DeliveryRefusalLoggingTests(unittest.TestCase):
             outside = Path(tmp) / "outside"
             outside.mkdir()
             (Path(tmp) / delivery.DELIVERY_DIR).symlink_to(outside)
-            with self.assertLogs("getbrolls.delivery", "WARNING") as cm:
-                with self.assertRaises(ValueError):
-                    delivery.build_delivery(tmp)
+            with self.assertLogs("getbrolls.delivery", "WARNING") as cm, self.assertRaises(ValueError):
+                delivery.build_delivery(tmp)
             joined = _joined(cm)
             self.assertIn("event=deliver_refusal", joined)
             self.assertIn("reason=entrega_is_symlink", joined)

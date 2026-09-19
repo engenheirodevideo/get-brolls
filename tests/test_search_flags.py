@@ -124,14 +124,12 @@ class DryRun(unittest.TestCase):
             return [q for q in library.load_index()["queries"] if q.get("query") == query]
 
         with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(providers, "search", side_effect=boom):
-                with self.assertRaises(OperationError):
-                    audited(args(tmp, dry_run=True, query=query), execute)
+            with patch.object(providers, "search", side_effect=boom), self.assertRaises(OperationError):
+                audited(args(tmp, dry_run=True, query=query), execute)
             self.assertEqual([], learned())
             # Sem `--dry-run`, a mesma falha continua sendo aprendida.
-            with patch.object(providers, "search", side_effect=boom):
-                with self.assertRaises(OperationError):
-                    audited(args(tmp, query=query), execute)
+            with patch.object(providers, "search", side_effect=boom), self.assertRaises(OperationError):
+                audited(args(tmp, query=query), execute)
             rows = learned()
             self.assertEqual(1, len(rows))
             self.assertTrue(rows[0]["auto"])
@@ -236,9 +234,8 @@ class LongQueryRetry(unittest.TestCase):
             seen.append(query)
             return found(2) if len(query.split()) <= 6 else []
 
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(providers, "search", side_effect=fake):
-                result = audited(args(tmp, query=self.LONG), execute)
+        with tempfile.TemporaryDirectory() as tmp, patch.object(providers, "search", side_effect=fake):
+            result = audited(args(tmp, query=self.LONG), execute)
         self.assertEqual([self.LONG, "print página preços concorrente valor destaque"], seen)
         self.assertEqual(2, len(result["items"]))
         self.assertEqual(self.LONG, result["query"])
@@ -253,16 +250,14 @@ class LongQueryRetry(unittest.TestCase):
             seen.append(query)
             return []
 
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(providers, "search", side_effect=fake):
-                result = audited(args(tmp, query="foguete SLS decolando"), execute)
+        with tempfile.TemporaryDirectory() as tmp, patch.object(providers, "search", side_effect=fake):
+            result = audited(args(tmp, query="foguete SLS decolando"), execute)
         self.assertEqual(["foguete SLS decolando"], seen)
         self.assertNotIn("retry", result)
 
     def test_the_zero_is_never_silent(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(providers, "search", return_value=[]):
-                result = audited(args(tmp, query="foguete SLS decolando"), execute)
+        with tempfile.TemporaryDirectory() as tmp, patch.object(providers, "search", return_value=[]):
+            result = audited(args(tmp, query="foguete SLS decolando"), execute)
         line = result["summary"]["line"]
         self.assertEqual([], result["items"])
         self.assertIn("Nenhum candidato", line)
@@ -270,9 +265,8 @@ class LongQueryRetry(unittest.TestCase):
         self.assertIn("resolve --url", line)
 
     def test_a_retry_that_also_comes_back_empty_still_explains_itself(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(providers, "search", return_value=[]):
-                result = audited(args(tmp, query=self.LONG), execute)
+        with tempfile.TemporaryDirectory() as tmp, patch.object(providers, "search", return_value=[]):
+            result = audited(args(tmp, query=self.LONG), execute)
         self.assertEqual([], result["items"])
         self.assertIn("repeti uma vez", result["summary"]["line"])
         self.assertEqual("print página preços concorrente valor destaque", result["query_used"])

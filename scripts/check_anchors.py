@@ -12,6 +12,7 @@ lista de âncoras quebradas caso contrário.
 
 from __future__ import annotations
 
+import contextlib
 import re
 import sys
 from pathlib import Path
@@ -131,11 +132,9 @@ def main() -> int:
 def _utf8_output() -> None:
     """Print Portuguese text as UTF-8 even where the console default is a legacy code page."""
     for stream in (sys.stdout, sys.stderr):
-        try:
-            # TextIO does not declare `reconfigure`; streams without it fall into the except.
+        # TextIO does not declare `reconfigure`; streams without it fall into the except.
+        with contextlib.suppress(AttributeError, OSError):
             stream.reconfigure(encoding="utf-8")  # pyright: ignore[reportAttributeAccessIssue]
-        except (AttributeError, OSError):
-            pass
 
 
 if __name__ == "__main__":

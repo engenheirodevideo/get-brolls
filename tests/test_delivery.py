@@ -13,6 +13,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
+from typing import ClassVar
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
@@ -89,9 +90,8 @@ class DirectoryNames(unittest.TestCase):
 
     def test_path_separators_and_parent_refs_are_refused(self):
         for bad in ("../fuga", "..", "a/b", "a\\b"):
-            with self.subTest(bad=bad):
-                with self.assertRaises(ValueError):
-                    delivery.beat_dir_name(1, bad, "alvo")
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                delivery.beat_dir_name(1, bad, "alvo")
         with self.assertRaises(ValueError):
             delivery.beat_dir_name(1, "beat", "../fuga")
 
@@ -483,7 +483,7 @@ class VerifyHook(unittest.TestCase):
 class MixedDeliveryIndex(unittest.TestCase):
     """Parte link, parte cópia: nenhum aviso global é verdade para os dois."""
 
-    ROWS = [
+    ROWS: ClassVar[list] = [
         {
             "beat": "abertura",
             "narration": "Fala 1",

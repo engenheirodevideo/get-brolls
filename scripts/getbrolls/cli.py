@@ -1,6 +1,7 @@
 """Argument contract and structured command output."""
 
 import argparse
+import contextlib
 import json
 import logging
 import sys
@@ -478,13 +479,11 @@ def main(argv=None):
 
     project = getattr(args, "project", None)
     read_only = args.command in READ_ONLY_COMMANDS or (args.command, getattr(args, "action", None)) in READ_ONLY_ACTIONS
-    try:
-        # GB_LOG_LEVEL/GB_LOG_STDERR may live only in .env; load it before configuring
-        # logging. Harmless to call again inside execute() (setdefault-based); a bad
-        # .env here is silently skipped and raised properly by execute() itself.
+    # GB_LOG_LEVEL/GB_LOG_STDERR may live only in .env; load it before configuring
+    # logging. Harmless to call again inside execute() (setdefault-based); a bad
+    # .env here is silently skipped and raised properly by execute() itself.
+    with contextlib.suppress(ValueError):
         load_env(args.env_file or Path(__file__).resolve().parents[2] / ".env")
-    except ValueError:
-        pass
     logs.configure(project, read_only=read_only)
 
     try:
@@ -527,11 +526,9 @@ def main(argv=None):
 
 def entrypoint():
     for stream in (sys.stdout, sys.stderr):
-        try:
-            # TextIO não declara `reconfigure`; quem não tiver cai no except.
+        # TextIO não declara `reconfigure`; quem não tiver cai no except.
+        with contextlib.suppress(AttributeError, OSError):
             stream.reconfigure(encoding="utf-8")  # pyright: ignore[reportAttributeAccessIssue]
-        except (AttributeError, OSError):
-            pass
     try:
         print(json.dumps(main(), ensure_ascii=False, indent=2))
         return 0
@@ -544,10 +541,8 @@ def entrypoint():
     except BrokenPipeError:
         # The consumer end of a pipe (e.g. `| head`) closed early; this is an ordinary,
         # expected shutdown, not a bug — do not report it as INTERNAL_ERROR.
-        try:
+        with contextlib.suppress(Exception):
             sys.stdout.close()
-        except Exception:
-            pass
         return 0
     except Exception as exc:
         # Anything audited() didn't already turn into an OperationError (e.g. an argparse-time

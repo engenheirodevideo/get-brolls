@@ -112,12 +112,9 @@ def search(provider, query, limit=8, media="any"):
     }.get(provider)
     if not fn:
         raise ProviderError("Busca indisponível nesta fonte; forneça URL ou arquivo local")
-    if provider in MEDIA_AWARE:
-        items = fn(query.strip(), limit, media)
-    else:
-        # YouTube e os bancos só devolvem vídeo: pedir imagem ali não é erro do usuário,
-        # é fonte errada — e quem escolhe a fonte é o beat, não esta função.
-        items = fn(query.strip(), limit)
+    # YouTube e os bancos só devolvem vídeo: pedir imagem ali não é erro do usuário,
+    # é fonte errada — e quem escolhe a fonte é o beat, não esta função.
+    items = fn(query.strip(), limit, media) if provider in MEDIA_AWARE else fn(query.strip(), limit)
     for item in items:
         item["query"] = query.strip()
         item["match"]["kind"] = "illustrative" if provider in ("pexels", "pixabay") else "literal"

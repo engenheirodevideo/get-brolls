@@ -80,9 +80,11 @@ def _cache_path_for(url, tmp):
 
 class GetJsonRequestLoggingTests(unittest.TestCase):
     def test_success_logs_one_info_request_line(self):
-        with patch.object(http, "_opener", return_value=_SuccessOpener()):
-            with self.assertLogs("getbrolls.http", level="DEBUG") as cm:
-                data = http.get_json("https://api.example.org/v1/search")
+        with (
+            patch.object(http, "_opener", return_value=_SuccessOpener()),
+            self.assertLogs("getbrolls.http", level="DEBUG") as cm,
+        ):
+            data = http.get_json("https://api.example.org/v1/search")
         self.assertEqual(data, {"ok": True})
         lines = [r.getMessage() for r in cm.records]
         request_lines = [line for line in lines if "event=request " in line or line.endswith("event=request")]
@@ -107,9 +109,11 @@ class GetJsonRequestLoggingTests(unittest.TestCase):
                     def open(self, *a, **kw):
                         raise AssertionError("cache hit must not touch the network")
 
-                with patch.object(http, "_opener", return_value=_ExplodingOpener()):
-                    with self.assertLogs("getbrolls.http", level="DEBUG") as cm:
-                        data = http.get_json(url, cache_ttl=3600)
+                with (
+                    patch.object(http, "_opener", return_value=_ExplodingOpener()),
+                    self.assertLogs("getbrolls.http", level="DEBUG") as cm,
+                ):
+                    data = http.get_json(url, cache_ttl=3600)
         self.assertEqual(data, {"cached": True})
         lines = [r.getMessage() for r in cm.records]
         hit_lines = [line for line in lines if "cache=hit" in line]
@@ -125,9 +129,9 @@ class GetJsonRequestLoggingTests(unittest.TestCase):
         with (
             patch.object(http, "_opener", return_value=_FlakyThenSuccessOpener()),
             patch.object(http.time, "sleep"),
+            self.assertLogs("getbrolls.http", level="DEBUG") as cm,
         ):
-            with self.assertLogs("getbrolls.http", level="DEBUG") as cm:
-                data = http.get_json("https://api.example.org/v1/flaky")
+            data = http.get_json("https://api.example.org/v1/flaky")
         self.assertEqual(data, {"ok": True})
         lines = [(r.levelno, r.getMessage()) for r in cm.records]
         retry_lines = [msg for level, msg in lines if msg.startswith("event=retry")]
@@ -142,9 +146,8 @@ class GetJsonRequestLoggingTests(unittest.TestCase):
         self.assertIn("status=200", final_lines[0])
 
     def test_refused_target_logs_request_refused_before_any_network_io(self):
-        with self.assertLogs("getbrolls.http", level="DEBUG") as cm:
-            with self.assertRaises(ProviderError):
-                http.get_json("http://api.example.org/v1/insecure")
+        with self.assertLogs("getbrolls.http", level="DEBUG") as cm, self.assertRaises(ProviderError):
+            http.get_json("http://api.example.org/v1/insecure")
         lines = [r.getMessage() for r in cm.records]
         refused = [line for line in lines if line.startswith("event=request_refused")]
         self.assertEqual(1, len(refused))
@@ -154,14 +157,16 @@ class GetJsonRequestLoggingTests(unittest.TestCase):
     def test_no_record_ever_contains_url_path_query_key_or_auth_header(self):
         secret_key = "FAKE-PROVIDER-KEY-Q7F3X9"
         secret_token = "FAKE-AUTH-TOKEN-Z9K2"
-        with patch.dict(os.environ, {"PEXELS_API_KEY": secret_key}):
-            with patch.object(http, "_opener", return_value=_SuccessOpener()):
-                with self.assertLogs("getbrolls.http", level="DEBUG") as cm:
-                    http.get_json(
-                        "https://api.example.org/v1/search",
-                        params={"key": secret_key, "q": "laboratory"},
-                        headers={"Authorization": f"Bearer {secret_token}"},
-                    )
+        with (
+            patch.dict(os.environ, {"PEXELS_API_KEY": secret_key}),
+            patch.object(http, "_opener", return_value=_SuccessOpener()),
+            self.assertLogs("getbrolls.http", level="DEBUG") as cm,
+        ):
+            http.get_json(
+                "https://api.example.org/v1/search",
+                params={"key": secret_key, "q": "laboratory"},
+                headers={"Authorization": f"Bearer {secret_token}"},
+            )
         text = "\n".join(r.getMessage() for r in cm.records)
         self.assertNotIn(secret_key, text)
         self.assertNotIn(secret_token, text)
@@ -179,9 +184,11 @@ class DownloadRequestLoggingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "clip.mp4"
-            with patch.object(http, "_opener", return_value=_DownloadOpener()):
-                with self.assertLogs("getbrolls.http", level="DEBUG") as cm:
-                    http.download("https://videos.example.org/clip.mp4?v=2", target)
+            with (
+                patch.object(http, "_opener", return_value=_DownloadOpener()),
+                self.assertLogs("getbrolls.http", level="DEBUG") as cm,
+            ):
+                http.download("https://videos.example.org/clip.mp4?v=2", target)
             self.assertEqual(target.read_bytes(), b"0123456789")
         lines = [r.getMessage() for r in cm.records]
         request_lines = [line for line in lines if line.startswith("event=request ")]
@@ -202,10 +209,12 @@ class DownloadRequestLoggingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "big.mp4"
-            with patch.object(http, "_opener", return_value=_OversizedOpener()):
-                with self.assertLogs("getbrolls.http", level="DEBUG") as cm:
-                    with self.assertRaises(ProviderError):
-                        http.download("https://videos.example.org/big.mp4", target, max_bytes=1024 * 1024)
+            with (
+                patch.object(http, "_opener", return_value=_OversizedOpener()),
+                self.assertLogs("getbrolls.http", level="DEBUG") as cm,
+                self.assertRaises(ProviderError),
+            ):
+                http.download("https://videos.example.org/big.mp4", target, max_bytes=1024 * 1024)
         lines = [r.getMessage() for r in cm.records]
         aborted = [line for line in lines if line.startswith("event=download_aborted")]
         self.assertEqual(1, len(aborted))
@@ -217,9 +226,8 @@ class DownloadRequestLoggingTests(unittest.TestCase):
     def test_refused_target_not_public_url_is_logged(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "clip.mp4"
-            with self.assertLogs("getbrolls.http", level="DEBUG") as cm:
-                with self.assertRaises(ProviderError):
-                    http.download("https://user:pass@videos.example.org/clip.mp4", target)
+            with self.assertLogs("getbrolls.http", level="DEBUG") as cm, self.assertRaises(ProviderError):
+                http.download("https://user:pass@videos.example.org/clip.mp4", target)
         lines = [r.getMessage() for r in cm.records]
         refused = [line for line in lines if line.startswith("event=request_refused")]
         self.assertEqual(1, len(refused))
@@ -267,14 +275,16 @@ class MediaSubprocessLoggingTests(unittest.TestCase):
             self.assertIn("status=ok", line)
 
     def test_subprocess_failure_logs_warning_with_error_status(self):
-        with patch.object(
-            media.subprocess,
-            "run",
-            side_effect=__import__("subprocess").CalledProcessError(5, ["ffmpeg"], output="", stderr="boom"),
+        with (
+            patch.object(
+                media.subprocess,
+                "run",
+                side_effect=__import__("subprocess").CalledProcessError(5, ["ffmpeg"], output="", stderr="boom"),
+            ),
+            self.assertLogs("getbrolls.media", level="DEBUG") as cm,
+            self.assertRaises(ValueError),
         ):
-            with self.assertLogs("getbrolls.media", level="DEBUG") as cm:
-                with self.assertRaises(ValueError):
-                    media.run(["ffmpeg", "-x"])
+            media.run(["ffmpeg", "-x"])
         lines = [r.getMessage() for r in cm.records if r.getMessage().startswith("event=subprocess")]
         self.assertEqual(1, len(lines))
         self.assertIn("status=error", lines[0])
@@ -286,10 +296,12 @@ class MediaSubprocessLoggingTests(unittest.TestCase):
 
 class DrawtextFontFallbackLoggingTests(unittest.TestCase):
     def test_font_not_found_logs_debug_event(self):
-        with patch.dict(os.environ, {"GB_FONT_FILE": ""}):
-            with patch.object(media, "DEFAULT_FONTS", ()):
-                with self.assertLogs("getbrolls.media", level="DEBUG") as cm:
-                    found = media.find_font()
+        with (
+            patch.dict(os.environ, {"GB_FONT_FILE": ""}),
+            patch.object(media, "DEFAULT_FONTS", ()),
+            self.assertLogs("getbrolls.media", level="DEBUG") as cm,
+        ):
+            found = media.find_font()
         self.assertIsNone(found)
         lines = [r.getMessage() for r in cm.records]
         font_lines = [line for line in lines if line.startswith("event=font")]
@@ -313,9 +325,11 @@ class DrawtextFontFallbackLoggingTests(unittest.TestCase):
                 "colors": 64,
                 "max_mb": 8,
             }
-            with patch.object(media, "drawtext_available", return_value=False):
-                with self.assertLogs("getbrolls.media", level="DEBUG") as cm:
-                    result = media.review_preview(src, root / "previews", "plain", 0, 1, config)
+            with (
+                patch.object(media, "drawtext_available", return_value=False),
+                self.assertLogs("getbrolls.media", level="DEBUG") as cm,
+            ):
+                result = media.review_preview(src, root / "previews", "plain", 0, 1, config)
         self.assertFalse(result["sheet_labels"])
         lines = [r.getMessage() for r in cm.records]
         fallback_lines = [line for line in lines if line.startswith("event=fallback")]

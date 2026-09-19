@@ -67,12 +67,16 @@ class PacingConfigTests(unittest.TestCase):
             )
 
     def test_invalid_values_are_rejected(self):
-        with patch.dict(os.environ, {**clean_env(), "GB_PACE_MIN_S": "abc"}, clear=True):
-            with self.assertRaises(ValueError):
-                queue.pacing("instagram")
-        with patch.dict(os.environ, {**clean_env(), "GB_PACE_MIN_S": "50", "GB_PACE_MAX_S": "10"}, clear=True):
-            with self.assertRaises(ValueError):
-                queue.pacing("instagram")
+        with (
+            patch.dict(os.environ, {**clean_env(), "GB_PACE_MIN_S": "abc"}, clear=True),
+            self.assertRaises(ValueError),
+        ):
+            queue.pacing("instagram")
+        with (
+            patch.dict(os.environ, {**clean_env(), "GB_PACE_MIN_S": "50", "GB_PACE_MAX_S": "10"}, clear=True),
+            self.assertRaises(ValueError),
+        ):
+            queue.pacing("instagram")
 
 
 class QueueStateTests(unittest.TestCase):

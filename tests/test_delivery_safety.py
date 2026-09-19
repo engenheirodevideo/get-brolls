@@ -151,7 +151,7 @@ class SymlinkedDeliveryRoot(unittest.TestCase):
             try:
                 # `01-abertura-alvo` não está mais no plano (`expected` vazio): sem a
                 # confinação, `_sweep` apagaria `ORIGEM.md` dentro do alvo do link.
-                removed, kept = delivery._sweep(root, expected=set(), dry_run=False, owned=(), brolls_root=None)
+                removed, _kept = delivery._sweep(root, expected=set(), dry_run=False, owned=(), brolls_root=None)
                 self.assertEqual([], removed)
                 self.assertTrue((victim / "ORIGEM.md").is_file())
                 self.assertEqual("nao mexer", (victim / "ORIGEM.md").read_text(encoding="utf-8"))
@@ -214,9 +214,8 @@ class ComparisonIOFailureIsNotAnEditClaim(unittest.TestCase):
             dest.write_bytes(b"mesmo conteudo")
 
             broken = delivery._CompareError(f"[Errno 13] Permission denied: '{dest}'")
-            with patch.object(delivery, "_same_file", side_effect=broken):
-                with self.assertRaises(ValueError) as caught:
-                    delivery.link_or_copy(src, dest)
+            with patch.object(delivery, "_same_file", side_effect=broken), self.assertRaises(ValueError) as caught:
+                delivery.link_or_copy(src, dest)
             message = str(caught.exception)
             self.assertNotIn("parece edição sua", message)
             self.assertIn(str(dest), message)

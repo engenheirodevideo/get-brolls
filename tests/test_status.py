@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import ClassVar
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
@@ -629,7 +630,7 @@ class ProgressSummaryTests(unittest.TestCase):
 class EverySummaryIsAnObjectWithALine(unittest.TestCase):
     """Uma leitura só serve para todo comando: `summary.line`."""
 
-    SAMPLES = {
+    SAMPLES: ClassVar = {
         "search": {"items": [], "errors": [], "excluded_by_rules": 0},
         "resolve": {"id": "local:a", "state": "registered"},
         "preview": {"id": "local:a", "state": "awaiting_approval", "approval": {"status": "pending"}},

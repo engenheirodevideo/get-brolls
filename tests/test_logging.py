@@ -344,9 +344,8 @@ class TimedContextManagerTests(unittest.TestCase):
         logger.addHandler(logging.Handler())
         with patch.object(logging.Handler, "emit", lambda self, record: lines.append(record)):
             logger.setLevel(logging.DEBUG)
-            with self.assertRaises(ValueError):
-                with logs.timed(logger, "probe"):
-                    raise ValueError("boom")
+            with self.assertRaises(ValueError), logs.timed(logger, "probe"):
+                raise ValueError("boom")
         self.assertEqual(1, len(lines))
         self.assertEqual(logging.WARNING, lines[0].levelno)
         self.assertIn("error=ValueError", lines[0].getMessage())

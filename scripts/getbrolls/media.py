@@ -352,7 +352,7 @@ def review_preview(src, directory, stem, start, end, config, label=None):
             str(src),
         ]
         scale = "scale='min(360,iw)':-2:flags=lanczos"
-        run(base + ["-vf", scale, "-frames:v", "1", str(poster)])
+        run([*base, "-vf", scale, "-frames:v", "1", str(poster)])
         n = config["frames"]
         cols = min(4, n)
         rows = math.ceil(n / cols)
@@ -397,8 +397,8 @@ def review_preview(src, directory, stem, start, end, config, label=None):
             )
         # Sample one frame per bin start across the whole interval, never only its head.
         run(
-            base
-            + [
+            [
+                *base,
                 "-vf",
                 f"fps={n / (end - start)}:start_time=0,scale=480:-2:flags=lanczos,{cell}"
                 f"tile={cols}x{rows}:nb_frames={n}:padding=10:margin=10:color=0x111111{banner}",
@@ -423,7 +423,7 @@ def review_preview(src, directory, stem, start, end, config, label=None):
             fps = config["fps"]
             colors = config["colors"]
             filt = f"fps={fps},scale='min({w},iw)':-2:flags=lanczos,split[a][b];[a]palettegen=max_colors={colors}:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle"
-            run(base + ["-filter_complex", filt, "-loop", "0", str(gif)])
+            run([*base, "-filter_complex", filt, "-loop", "0", str(gif)])
             size = gif.stat().st_size
             result["gif_bytes"] = size
             if size <= config["max_mb"] * 1000000:

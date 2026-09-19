@@ -1,5 +1,6 @@
 """Private working sources for review; final clips remain approval-gated."""
 
+import contextlib
 import json
 import logging
 import os
@@ -37,10 +38,8 @@ def _load_index(cache):
             "SOURCE_INDEX_UNREADABLE",
             "Índice de fontes corrompido (JSON inválido); renomeado para .bad e tratado como vazio.",
         )
-        try:
+        with contextlib.suppress(OSError):
             path.replace(path.with_name(path.name + ".bad"))
-        except OSError:
-            pass
         return {}
     return data if isinstance(data, dict) else {}
 

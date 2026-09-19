@@ -79,13 +79,86 @@ _VTT_LANGUAGE_RE = re.compile(r"^\s*Language\s*:\s*([A-Za-z]{2,3}(?:[-_][A-Za-z0
 # Palavras curtas que só existem em um dos dois idiomas. Não é detector de idioma:
 # é o suficiente para perceber que a frase da pessoa e a legenda não se falam.
 _PT_MARKERS = frozenset(
-    "de da do das dos que nao para com uma como quando onde porque isso essa esse pelo pela "
-    "num numa mas ele ela eles elas voce nos entao ja tambem sobre ate sem muito ser esta "
-    "estao foi sao tem".split()
+    [
+        "de",
+        "da",
+        "do",
+        "das",
+        "dos",
+        "que",
+        "nao",
+        "para",
+        "com",
+        "uma",
+        "como",
+        "quando",
+        "onde",
+        "porque",
+        "isso",
+        "essa",
+        "esse",
+        "pelo",
+        "pela",
+        "num",
+        "numa",
+        "mas",
+        "ele",
+        "ela",
+        "eles",
+        "elas",
+        "voce",
+        "nos",
+        "entao",
+        "ja",
+        "tambem",
+        "sobre",
+        "ate",
+        "sem",
+        "muito",
+        "ser",
+        "esta",
+        "estao",
+        "foi",
+        "sao",
+        "tem",
+    ]
 )
 _EN_MARKERS = frozenset(
-    "the of and to in that for with this these those from have has was were are is it its "
-    "you we they there here about when where because but also into over".split()
+    [
+        "the",
+        "of",
+        "and",
+        "to",
+        "in",
+        "that",
+        "for",
+        "with",
+        "this",
+        "these",
+        "those",
+        "from",
+        "have",
+        "has",
+        "was",
+        "were",
+        "are",
+        "is",
+        "it",
+        "its",
+        "you",
+        "we",
+        "they",
+        "there",
+        "here",
+        "about",
+        "when",
+        "where",
+        "because",
+        "but",
+        "also",
+        "into",
+        "over",
+    ]
 )
 
 

@@ -131,9 +131,8 @@ class ExecutableOverrideTests(unittest.TestCase):
 
     def test_directory_pin_says_it_is_not_an_executable_file(self):
         with tempfile.TemporaryDirectory() as d:
-            with clean_env(GB_FFMPEG_PATH=d):
-                with self.assertRaises(ValueError) as caught:
-                    config.tool_path("ffmpeg")
+            with clean_env(GB_FFMPEG_PATH=d), self.assertRaises(ValueError) as caught:
+                config.tool_path("ffmpeg")
             message = str(caught.exception)
             self.assertIn("não é um arquivo executável", message)
             self.assertNotIn("não existe", message)
@@ -162,9 +161,8 @@ class VenvOverrideTests(unittest.TestCase):
             make_executable(root / ".venv/bin", "yt-dlp")
             empty = Path(d).resolve() / "vazia"
             empty.mkdir()
-            with clean_env(GB_VENV_PATH=str(empty)):
-                with self.assertRaises(ValueError) as caught:
-                    social.local_ytdlp(root)
+            with clean_env(GB_VENV_PATH=str(empty)), self.assertRaises(ValueError) as caught:
+                social.local_ytdlp(root)
             message = str(caught.exception)
             self.assertIn("GB_VENV_PATH", message)
             self.assertIn(str(empty), message)
@@ -378,9 +376,8 @@ class BriefAndRulesOutsideTheProjectTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             missing = str(Path(tmp) / "nao" / "existe" / "RULES.md")
-            with patch.dict(os.environ, {"GB_RULES_FILE": missing}):
-                with self.assertRaises(ValueError) as caught:
-                    load_rules(tmp)
+            with patch.dict(os.environ, {"GB_RULES_FILE": missing}), self.assertRaises(ValueError) as caught:
+                load_rules(tmp)
             self.assertIn("GB_RULES_FILE", str(caught.exception))
 
     def test_a_missing_gb_brief_file_fails_naming_the_variable(self):

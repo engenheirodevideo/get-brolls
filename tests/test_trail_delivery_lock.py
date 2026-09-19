@@ -193,17 +193,16 @@ class ManifestSchemaVersionTests(unittest.TestCase):
 
     def test_an_unknown_top_level_schema_version_is_refused_and_the_file_is_untouched(self):
         for schema_version in (0, 2, 99):
-            with self.subTest(schema_version=schema_version):
-                with tempfile.TemporaryDirectory() as tmp:
-                    path = self._manifest_path(tmp)
-                    raw = json.dumps({"schema_version": schema_version, "items": []})
-                    path.write_text(raw, encoding="utf-8")
+            with self.subTest(schema_version=schema_version), tempfile.TemporaryDirectory() as tmp:
+                path = self._manifest_path(tmp)
+                raw = json.dumps({"schema_version": schema_version, "items": []})
+                path.write_text(raw, encoding="utf-8")
 
-                    error = run_cli("status", project=tmp, expect=2)
+                error = run_cli("status", project=tmp, expect=2)
 
-                    self.assertEqual("INVALID_DATA", error["error_code"])
-                    self.assertEqual("ValueError", error["type"])
-                    self.assertEqual(raw, path.read_text(encoding="utf-8"))
+                self.assertEqual("INVALID_DATA", error["error_code"])
+                self.assertEqual("ValueError", error["type"])
+                self.assertEqual(raw, path.read_text(encoding="utf-8"))
 
     def test_a_structurally_invalid_item_is_refused_and_the_file_is_untouched(self):
         with tempfile.TemporaryDirectory() as tmp:

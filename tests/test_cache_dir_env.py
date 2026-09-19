@@ -27,14 +27,15 @@ class CacheRootPrecedenceTests(unittest.TestCase):
             self.assertEqual(config.cache_root(), Path.home() / ".cache" / "getbrolls")
 
     def test_new_name_alone_is_honoured(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch.dict(os.environ, clean_environ(GB_CACHE_DIR=tmp), clear=True):
-                self.assertEqual(config.cache_root(), Path(tmp))
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, clean_environ(GB_CACHE_DIR=tmp), clear=True):
+            self.assertEqual(config.cache_root(), Path(tmp))
 
     def test_old_name_alone_still_works(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch.dict(os.environ, clean_environ(GETBROLLS_CACHE_DIR=tmp), clear=True):
-                self.assertEqual(config.cache_root(), Path(tmp))
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.dict(os.environ, clean_environ(GETBROLLS_CACHE_DIR=tmp), clear=True),
+        ):
+            self.assertEqual(config.cache_root(), Path(tmp))
 
     def test_new_name_wins_over_old_when_both_are_set(self):
         with tempfile.TemporaryDirectory() as new_dir, tempfile.TemporaryDirectory() as old_dir:
@@ -58,16 +59,14 @@ class CacheRootConsumersTests(unittest.TestCase):
     """media.py e http.py precisam ler o mesmo cache_root() em vez de duplicar a leitura."""
 
     def test_media_cache_dir_honours_new_name(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch.dict(os.environ, clean_environ(GB_CACHE_DIR=tmp), clear=True):
-                self.assertEqual(media._cache_dir(), Path(tmp))
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, clean_environ(GB_CACHE_DIR=tmp), clear=True):
+            self.assertEqual(media._cache_dir(), Path(tmp))
 
     def test_http_get_json_writes_under_new_name(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with patch.dict(os.environ, clean_environ(GB_CACHE_DIR=tmp), clear=True):
-                cache_path = http.get_json.__globals__["Path"]  # sanity: Path importado no módulo
-                self.assertTrue(cache_path is Path)
-                self.assertEqual(config.cache_root(), Path(tmp))
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, clean_environ(GB_CACHE_DIR=tmp), clear=True):
+            cache_path = http.get_json.__globals__["Path"]  # sanity: Path importado no módulo
+            self.assertTrue(cache_path is Path)
+            self.assertEqual(config.cache_root(), Path(tmp))
 
 
 class EnvFileAcceptsNewKeyTests(unittest.TestCase):
@@ -85,9 +84,8 @@ class EnvFileAcceptsNewKeyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env_path = Path(tmp) / ".env"
             env_path.write_text("GETBROLLS_CACHE_DIR=/tmp/whatever\n", encoding="utf-8")
-            with patch.dict(os.environ, clean_environ(), clear=True):
-                with self.assertRaises(ValueError):
-                    config.load_env(env_path)
+            with patch.dict(os.environ, clean_environ(), clear=True), self.assertRaises(ValueError):
+                config.load_env(env_path)
 
 
 if __name__ == "__main__":
