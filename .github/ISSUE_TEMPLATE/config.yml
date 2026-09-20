@@ -1,1 +1,8 @@
 blank_issues_enabled: true
+contact_links:
+  - name: Guia de uso
+    url: https://github.com/engenheirodevideo/get-brolls/blob/main/docs/GUIDE.md
+    about: Instalação, fluxo completo e solução de problemas. Vale conferir antes de abrir uma issue.
+  - name: Relatar uma vulnerabilidade
+    url: https://github.com/engenheirodevideo/get-brolls/security/advisories/new
+    about: Relato privado. Não descreva falhas de segurança em issues públicas.

@@ -310,7 +310,13 @@ class RepositoryDocumentationTests(unittest.TestCase):
         report = bug.read_text(encoding="utf-8")
         for marker in ("Sistema operacional", "python3 --version", "gb.py doctor"):
             self.assertIn(marker, report, marker)
-        self.assertIn("blank_issues_enabled: true", config.read_text(encoding="utf-8"))
+        self.assertIn("brolls/getbrolls.log", report)
+        settings = config.read_text(encoding="utf-8")
+        self.assertIn("blank_issues_enabled: true", settings)
+        self.assertIn("/security/advisories/new", settings)
+        for name, label in (("feature_request.md", "labels: enhancement"), ("question.md", "labels: question")):
+            text = (ROOT / ".github/ISSUE_TEMPLATE" / name).read_text(encoding="utf-8")
+            self.assertIn(label, text, name)
         template = pull_request.read_text(encoding="utf-8")
         for command in (
             "bash scripts/install.sh --check",
