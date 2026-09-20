@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 823 1428" width="823" height="1428" role="img" aria-label="Format graph: find the insert, branch into video, image and page capture, preview, you approve, receive the final files and the organized project folder">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 823 1565" width="823" height="1565" role="img" aria-label="Format graph: find the insert, branch into video, image and page capture, preview, you approve, receive the final files and the organized project folder">
   <defs>
     <pattern id="dots2" width="28" height="28" patternUnits="userSpaceOnUse">
       <circle cx="4" cy="4" r="1.2" fill="#ffffff" fill-opacity="0.06"/>
@@ -18,11 +18,11 @@
     .chipt{font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-size:11px;font-weight:700;fill:#faf6ee;text-anchor:middle;letter-spacing:.05em}
   </style>
 
-  <rect x="0" y="0" width="823" height="1428" fill="#141210"/>
+  <rect x="0" y="0" width="823" height="1565" fill="#141210"/>
   <rect x="0" y="0" width="823" height="58" fill="#1c1917"/>
   <text class="mono2" x="36" y="35" font-size="12" fill="#ffffff">GET B-ROLLS / FORMATS</text>
   <text class="mono2" x="787" y="35" font-size="12" fill="#ffffff" text-anchor="end">Find → review → deliver ↓</text>
-  <rect x="18" y="76" width="787" height="1312" fill="url(#dots2)"/>
+  <rect x="18" y="76" width="787" height="1449" fill="url(#dots2)"/>
 
   <!-- Encontra o insert -->
   <rect x="301" y="94" width="220" height="80" rx="14" fill="#f4511e" stroke="#c2410c"/>
@@ -117,31 +117,41 @@
   <path class="ln2" d="M158 852 V884 H664 V852"/>
   <path class="ln2" d="M411 884 V916" marker-end="url(#arr2)"/>
   <!-- coleta organizada: code block dentro do grafo -->
-  <rect x="48" y="922" width="726" height="470" rx="16" fill="#f4511e" stroke="#c2410c" stroke-width="2"/>
+  <rect x="48" y="922" width="726" height="625" rx="16" fill="#f4511e" stroke="#c2410c" stroke-width="2"/>
   <text class="t2 tw2" x="411" y="958" font-size="20">Organized collection — what goes where</text>
-  <rect x="66" y="976" width="690" height="398" rx="10" fill="#1c1917"/>
+  <rect x="66" y="976" width="690" height="553" rx="10" fill="#1c1917"/>
   <text x="94" y="1014" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#fb8a4d">video-01/</tspan></text>
   <text x="372" y="1014" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#fb8a4d">your project folder</tspan></text>
-  <text x="94" y="1045" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">├── RULES.md</tspan></text>
-  <text x="372" y="1045" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">the project's editorial rules</tspan></text>
-  <text x="94" y="1076" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">├── output/playwright/</tspan></text>
-  <text x="372" y="1076" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">working screenshots</tspan></text>
-  <text x="94" y="1107" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#fb8a4d">└── brolls/</tspan></text>
-  <text x="372" y="1107" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#fb8a4d">everything the skill creates</tspan></text>
-  <text x="94" y="1138" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── manifest.json</tspan></text>
-  <text x="372" y="1138" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">type, format and provenance</tspan></text>
-  <text x="94" y="1169" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── references.json</tspan></text>
-  <text x="372" y="1169" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">references and their reasons</tspan></text>
-  <text x="94" y="1200" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── events.jsonl</tspan></text>
-  <text x="372" y="1200" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">the collection's event trail</tspan></text>
-  <text x="94" y="1231" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── candidates/</tspan></text>
-  <text x="372" y="1231" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">options found during search</tspan></text>
-  <text x="94" y="1262" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── previews/</tspan></text>
-  <text x="372" y="1262" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">poster, contact sheet and GIF</tspan></text>
-  <text x="94" y="1293" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#fb8a4d">    ├── clips/</tspan></text>
-  <text x="372" y="1293" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#fb8a4d">final files: MP4, PNG, JPG</tspan></text>
-  <text x="94" y="1324" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── credits.md</tspan></text>
-  <text x="372" y="1324" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">authors and usage conditions</tspan></text>
-  <text x="94" y="1355" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    └── review.html</tspan></text>
-  <text x="372" y="1355" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">the storyboard for your review</tspan></text>
+  <text x="94" y="1045" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">├── BRIEF.md</tspan></text>
+  <text x="372" y="1045" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">brief: beats, format and limits</tspan></text>
+  <text x="94" y="1076" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">├── RULES.md</tspan></text>
+  <text x="372" y="1076" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">the project's editorial rules</tspan></text>
+  <text x="94" y="1107" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">├── output/playwright/</tspan></text>
+  <text x="372" y="1107" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">working screenshots</tspan></text>
+  <text x="94" y="1138" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#fb8a4d">├── entrega/</tspan></text>
+  <text x="372" y="1138" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#fb8a4d">finals per beat: grab them here</tspan></text>
+  <text x="94" y="1169" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">│   └── 01-beat/</tspan></text>
+  <text x="372" y="1169" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">cut, contact sheet, ORIGEM.md</tspan></text>
+  <text x="94" y="1200" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#fb8a4d">└── brolls/</tspan></text>
+  <text x="372" y="1200" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#fb8a4d">everything the skill creates</tspan></text>
+  <text x="94" y="1231" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── manifest.json</tspan></text>
+  <text x="372" y="1231" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">type, format and provenance</tspan></text>
+  <text x="94" y="1262" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── references.json</tspan></text>
+  <text x="372" y="1262" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">references and their reasons</tspan></text>
+  <text x="94" y="1293" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── events.jsonl</tspan></text>
+  <text x="372" y="1293" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">event trail of the collection</tspan></text>
+  <text x="94" y="1324" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── getbrolls.log</tspan></text>
+  <text x="372" y="1324" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">log of every command</tspan></text>
+  <text x="94" y="1355" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── candidates/</tspan></text>
+  <text x="372" y="1355" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">options found in the search</tspan></text>
+  <text x="94" y="1386" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── previews/</tspan></text>
+  <text x="372" y="1386" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">poster, contact sheet and GIF</tspan></text>
+  <text x="94" y="1417" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── clips/</tspan></text>
+  <text x="372" y="1417" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">collected and verified files</tspan></text>
+  <text x="94" y="1448" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── reviews/</tspan></text>
+  <text x="372" y="1448" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">saved Storyboard decisions</tspan></text>
+  <text x="94" y="1479" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    ├── credits.md</tspan></text>
+  <text x="372" y="1479" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">authors and terms of use</tspan></text>
+  <text x="94" y="1510" font-size="18" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;font-weight:700" xml:space="preserve"><tspan fill="#d6d0c4">    └── review.html</tspan></text>
+  <text x="372" y="1510" font-size="15" style="font-family:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace" xml:space="preserve"><tspan fill="#6f6a5e">&lt;------ </tspan><tspan fill="#a8a29e">the storyboard you review</tspan></text>
 </svg>

@@ -45,7 +45,7 @@ Histórico completo no [CHANGELOG.md](CHANGELOG.md).
 
 ## Como funciona
 
-<p align="center"><img src="assets/flow.svg" alt="Mapa da skill: do pedido à coleta organizada" width="700"></p>
+<p align="center"><img src="assets/flow.svg" alt="Mapa da skill: do pedido e do brief à aprovação, aos direitos, à coleta verificada e à entrega por beat" width="700"></p>
 
 ### O que ela coleta
 

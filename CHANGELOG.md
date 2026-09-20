@@ -10,6 +10,7 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- READMEs: os diagramas `assets/flow*.svg` e `assets/formats*.svg` passam a mostrar o fluxo atual — brief, análise da fonte, direitos como segundo portão, verificação e `entrega/` por beat — e a árvore de pastas ganha `BRIEF.md`, `entrega/`, `getbrolls.log` e `reviews/`. Eram da 2.3.x e apontavam `clips/` como lugar dos arquivos finais.
 - READMEs: badges de FFmpeg, yt-dlp e Playwright no topo, ao lado de Python e Node, para mostrar o que a instalação coloca na máquina.
 - Issues: modelos novos para sugerir melhoria e tirar dúvida de uso; o modelo de bug pede as linhas do `brolls/getbrolls.log`; a tela de nova issue aponta para o guia e para o relato privado de vulnerabilidade. Sem mudança na skill.
 
