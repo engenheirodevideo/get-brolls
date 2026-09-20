@@ -10,6 +10,9 @@
     <img src="https://img.shields.io/badge/agents-Codex%20%7C%20Claude%20Code-orange?style=flat-square" alt="Codex and Claude Code">
     <img src="https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square" alt="Python 3.11+">
     <img src="https://img.shields.io/badge/node-22%2B-green?style=flat-square" alt="Node 22+">
+    <img src="https://img.shields.io/badge/FFmpeg-required-007808?style=flat-square" alt="FFmpeg required">
+    <img src="https://img.shields.io/badge/yt--dlp-downloader-red?style=flat-square" alt="yt-dlp">
+    <img src="https://img.shields.io/badge/Playwright-browser-2EAD33?style=flat-square" alt="Playwright for sources that need a browser">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
     <img src="https://img.shields.io/github/actions/workflow/status/engenheirodevideo/get-brolls/test.yml?branch=main&style=flat-square&label=tests" alt="Tests status">
     <img src="https://img.shields.io/badge/version-2.5.0-blue?style=flat-square" alt="Version 2.5.0">
