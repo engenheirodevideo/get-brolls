@@ -45,7 +45,7 @@ Full history in [CHANGELOG.md](CHANGELOG.md).
 
 ## How it works
 
-<p align="center"><img src="assets/flow.en.svg" alt="Skill map: from request to organized collection" width="700"></p>
+<p align="center"><img src="assets/flow.en.svg" alt="Skill map: from the request and the brief to approval, rights, verified collection and delivery per beat" width="700"></p>
 
 ### What it collects
 

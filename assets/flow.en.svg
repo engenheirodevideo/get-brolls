@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 823 985" width="823" height="985" role="img" aria-label="Skill map: your request, Get B-rolls, sources, candidates, your approval, organized collection">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 823 1452" width="823" height="1452" role="img" aria-label="Skill map: your request, brief, Get B-rolls, sources, candidates, your approval, rights, collection and verification, delivery">
   <defs>
     <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse">
       <circle cx="4" cy="4" r="1.2" fill="#ffffff" fill-opacity="0.06"/>
@@ -20,63 +20,70 @@
     .red{stroke:#c2410c;stroke-width:1.6;fill:none;stroke-dasharray:6 5}
   </style>
 
-  <rect x="0" y="0" width="823" height="985" fill="#141210"/>
+  <!-- frame -->
+  <rect x="0" y="0" width="823" height="1452" fill="#141210"/>
   <rect x="0" y="0" width="823" height="58" fill="#1c1917"/>
   <text class="mono" x="36" y="35" font-size="12" fill="#ffffff">GET B-ROLLS / SKILL MAP</text>
-  <text class="mono" x="787" y="35" font-size="12" fill="#ffffff" text-anchor="end">From request to collection ↓</text>
-  <rect x="18" y="76" width="787" height="873" fill="url(#dots)"/>
-
+  <text class="mono" x="787" y="35" font-size="12" fill="#ffffff" text-anchor="end">From request to delivery ↓</text>
+  <rect x="18" y="76" width="787" height="1340" fill="url(#dots)"/>
   <rect x="301" y="90" width="220" height="80" rx="14" fill="#f4511e" stroke="#c2410c"/>
   <text class="t tw" x="411" y="124">Your request</text>
   <text class="s sw" x="411" y="148">Script, topic, link or file</text>
   <path class="ln" d="M411 170 V222" marker-end="url(#arr)"/>
-
-  <rect x="301" y="228" width="220" height="96" rx="14" fill="#f0a175" stroke="#d97d4a"/>
-  <text class="t" x="411" y="264">Get B-rolls</text>
-  <text class="s" x="411" y="288">Picks the source and the</text>
-  <text class="s" x="411" y="306">collection method</text>
-
-  <path class="ln" d="M411 324 V352"/>
-  <path class="ln" d="M158 352 H664"/>
-  <path class="ln" d="M158 352 V378" marker-end="url(#arr)"/>
-  <path class="ln" d="M411 352 V378" marker-end="url(#arr)"/>
-  <path class="ln" d="M664 352 V378" marker-end="url(#arr)"/>
-
-  <rect x="48" y="384" width="220" height="88" rx="14" fill="#fdf1e3" stroke="#d8cdb8"/>
-  <text class="t" x="158" y="420">Stock libraries</text>
-  <text class="s" x="158" y="444">Pexels · Pixabay</text>
-
-  <rect x="301" y="384" width="220" height="88" rx="14" fill="#fdf1e3" stroke="#d8cdb8"/>
-  <text class="t" x="411" y="420">Social platforms</text>
-  <text class="s" x="411" y="444">YouTube · Instagram · TikTok</text>
-
-  <rect x="554" y="384" width="220" height="88" rx="14" fill="#fdf1e3" stroke="#d8cdb8"/>
-  <text class="t" x="664" y="420">Archives and files</text>
-  <text class="s" x="664" y="440">Commons · NASA · local</text>
-  <text class="s" x="664" y="458">files</text>
-
-  <path class="ln" d="M158 472 V512 H664 V472"/>
-  <path class="ln" d="M411 512 V546" marker-end="url(#arr)"/>
-
-  <rect x="301" y="552" width="220" height="96" rx="14" fill="#f0a175" stroke="#d97d4a"/>
-  <text class="t" x="411" y="588">Review candidates</text>
-  <text class="s" x="411" y="612">Stills, player and the selected</text>
-  <text class="s" x="411" y="630">segment</text>
-  <path class="ln" d="M411 648 V696" marker-end="url(#arr)"/>
-
-  <rect x="301" y="702" width="220" height="100" rx="28" fill="#ffffff" stroke="#c2410c" stroke-width="2"/>
-  <text class="t" x="411" y="740">Do you approve?</text>
-  <text class="s" x="411" y="764">Check the image and pick</text>
-  <text class="s" x="411" y="782">the segment</text>
-
-  <path class="red" d="M521 752 H560"/>
-  <text class="mono" x="572" y="757" font-size="12" fill="#c2410c">NO → SEARCH AGAIN</text>
-  <path class="red" d="M715 752 H778 V276 H529" marker-end="url(#arrR)"/>
-
-  <path class="ln" d="M411 802 V852" marker-end="url(#arr)"/>
-  <text class="mono" x="425" y="833" font-size="12" fill="#faf6ee">YES</text>
-
-  <rect x="246" y="858" width="330" height="80" rx="14" fill="#f4511e" stroke="#c2410c"/>
-  <text class="t tw" x="411" y="892">Organized collection</text>
-  <text class="s sw" x="411" y="916">File delivered → trim and verification</text>
+  <rect x="271" y="228" width="280" height="96" rx="14" fill="#fdf1e3" stroke="#d8cdb8"/>
+  <text class="t" x="411" y="264">Project brief</text>
+  <text class="s" x="411" y="288">A short interview becomes BRIEF.md:</text>
+  <text class="s" x="411" y="306">beats, format and what to avoid</text>
+  <path class="ln" d="M411 324 V376" marker-end="url(#arr)"/>
+  <rect x="271" y="382" width="280" height="96" rx="14" fill="#f0a175" stroke="#d97d4a"/>
+  <text class="t" x="411" y="418">Get B-rolls</text>
+  <text class="s" x="411" y="442">Searches per beat and identifies</text>
+  <text class="s" x="411" y="460">the source and how to collect</text>
+  <path class="ln" d="M411 478 V506"/>
+  <path class="ln" d="M158 506 H664"/>
+  <path class="ln" d="M158 506 V532" marker-end="url(#arr)"/>
+  <path class="ln" d="M411 506 V532" marker-end="url(#arr)"/>
+  <path class="ln" d="M664 506 V532" marker-end="url(#arr)"/>
+  <rect x="48" y="538" width="220" height="88" rx="14" fill="#fdf1e3" stroke="#d8cdb8"/>
+  <text class="t" x="158" y="572">Stock video</text>
+  <text class="s" x="158" y="596">Pexels · Pixabay</text>
+  <rect x="301" y="538" width="220" height="88" rx="14" fill="#fdf1e3" stroke="#d8cdb8"/>
+  <text class="t" x="411" y="572">Social media</text>
+  <text class="s" x="411" y="596">YouTube · Instagram · TikTok</text>
+  <rect x="554" y="538" width="220" height="88" rx="14" fill="#fdf1e3" stroke="#d8cdb8"/>
+  <text class="t" x="664" y="574">Archives and files</text>
+  <text class="s" x="664" y="598">Commons · NASA · local</text>
+  <text class="s" x="664" y="616">files</text>
+  <path class="ln" d="M158 626 V666 H664 V626"/>
+  <path class="ln" d="M411 666 V700" marker-end="url(#arr)"/>
+  <rect x="271" y="706" width="280" height="96" rx="14" fill="#f0a175" stroke="#d97d4a"/>
+  <text class="t" x="411" y="742">See the candidates</text>
+  <text class="s" x="411" y="766">Source analysis, moving preview</text>
+  <text class="s" x="411" y="784">and suggested range</text>
+  <path class="ln" d="M411 802 V850" marker-end="url(#arr)"/>
+  <rect x="301" y="856" width="220" height="100" rx="28" fill="#ffffff" stroke="#c2410c" stroke-width="2"/>
+  <text class="t" x="411" y="892">Do you approve?</text>
+  <text class="s" x="411" y="916">Check the image and pick</text>
+  <text class="s" x="411" y="934">the range</text>
+  <path class="red" d="M521 906 H560"/>
+  <text class="mono" x="572" y="911" font-size="12" fill="#c2410c">NO → SEARCH AGAIN</text>
+  <path class="red" d="M735 906 H788 V430 H559" marker-end="url(#arrR)"/>
+  <path class="ln" d="M411 956 V1006" marker-end="url(#arr)"/>
+  <text class="mono" x="425" y="987" font-size="12" fill="#faf6ee">YES</text>
+  <rect x="291" y="1012" width="240" height="100" rx="28" fill="#ffffff" stroke="#c2410c" stroke-width="2"/>
+  <text class="t" x="411" y="1048">Rights on record?</text>
+  <text class="s" x="411" y="1072">The source's terms of use,</text>
+  <text class="s" x="411" y="1090">with real evidence</text>
+  <path class="red" d="M531 1062 H570"/>
+  <text class="mono" x="582" y="1067" font-size="12" fill="#c2410c">NO → LEFT OUT</text>
+  <path class="ln" d="M411 1112 V1162" marker-end="url(#arr)"/>
+  <text class="mono" x="425" y="1143" font-size="12" fill="#faf6ee">YES</text>
+  <rect x="221" y="1168" width="380" height="80" rx="14" fill="#f0a175" stroke="#d97d4a"/>
+  <text class="t" x="411" y="1202">Collection and verification</text>
+  <text class="s" x="411" y="1226">Only the approved range: cut, hash and decode check</text>
+  <path class="ln" d="M411 1248 V1298" marker-end="url(#arr)"/>
+  <rect x="221" y="1304" width="380" height="80" rx="14" fill="#f4511e" stroke="#c2410c"/>
+  <text class="t tw" x="411" y="1338">Organized delivery</text>
+  <text class="s sw" x="411" y="1362">entrega/ per beat, source and hash in ORIGEM.md</text>
+  <text class="mono" x="411" y="1420" font-size="11" fill="#8a8477" text-anchor="middle">EVERY STEP IS RECORDED IN brolls/getbrolls.log</text>
 </svg>
