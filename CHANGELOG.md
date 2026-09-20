@@ -10,6 +10,8 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- Issues: modelos novos para sugerir melhoria e tirar dúvida de uso; o modelo de bug pede as linhas do `brolls/getbrolls.log`; a tela de nova issue aponta para o guia e para o relato privado de vulnerabilidade. Sem mudança na skill.
+
 ## 2.5.0 — 2026-09-19
 
 - **Logs.** Cada projeto ganha `brolls/getbrolls.log`: uma linha `chave=valor` por evento, com permissão 0600, que gira a cada ~1 MB e guarda 3 cópias. Fica registrado o que antes não deixava rastro: início e fim de cada comando (só o nome das opções, nunca o valor), cada passo da trilha (`search`, `resolve`, `inspect`, `preview`, `approve`, `reject`, `permit`, `fetch`, `verify`, `deliver`, `import-review`), cada chamada de `ffmpeg`, `ffprobe`, `yt-dlp` e `curl` com duração e código de saída, cada pedido de rede (host, status, bytes, cache, tentativas, recusa por endereço privado, teto de tamanho), qual regra do RULES.md bloqueou um candidato, por que a fila está esperando, acerto e erro do cache de fontes e o modo de cada entrega. Nunca entram no log: nome de quem aprovou, frase de aprovação, motivo de rejeição, evidência de direitos, texto de busca, títulos, canais, URLs (só o host) nem linha de comando de subprocesso; todo registro ainda passa pela redação de chaves e a pasta pessoal vira `~`. `GB_LOG_LEVEL` (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `off`; padrão `INFO`) e `GB_LOG_STDERR=1` (espelha em stderr para depurar) entram no `.env`. A saída padrão continua sendo um único JSON, o envelope de erro continua a última linha de stderr, comando de leitura não cria o arquivo e falha de log nunca derruba um comando. `status` ganha `log` e os envelopes de erro ganham `app_log`. `diagnostics.jsonl` segue como está.

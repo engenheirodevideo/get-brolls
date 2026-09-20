@@ -20,6 +20,14 @@ Cole a saída **completa** de `python3 scripts/gb.py doctor` (no Windows, `pytho
 
 ```
 
+## Log do projeto
+
+A partir da 2.5.0 cada projeto grava `brolls/getbrolls.log`. Cole as linhas do comando que falhou (o envelope de erro traz o caminho em `app_log`). O log não registra nomes, frases de aprovação, texto de busca nem URLs, só o host; mesmo assim, releia antes de colar. Para mais detalhe, repita o comando com `GB_LOG_LEVEL=DEBUG`.
+
+```text
+
+```
+
 ## Passos para reproduzir
 
 1.
