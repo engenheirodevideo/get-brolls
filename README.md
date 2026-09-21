@@ -29,6 +29,16 @@ O agente procura a fonte literal do que você cita: o fato, a pessoa, o produto,
 
 A prévia pode baixar mídia de trabalho para mostrar o movimento. A entrega final depende da decisão humana e do registro das condições de uso da fonte. Se o intervalo ou o contexto mudar, o trecho volta para revisão.
 
+
+
+## Como funciona
+
+<p align="center"><img src="assets/flow.svg" alt="Mapa da skill: do pedido e do brief à aprovação, aos direitos, à coleta verificada e à entrega por beat" width="700"></p>
+
+### O que ela coleta
+
+<p align="center"><img src="assets/formats.svg" alt="Formatos: video vira MP4 1080p do intervalo aprovado; imagens locais são copiadas sem alteração; capturas de página saem em PNG/JPG com procedência" width="700"></p>
+
 ## Atualizações
 
 - **2.5.0** Log por projeto em `brolls/getbrolls.log` (`GB_LOG_LEVEL`, `GB_LOG_STDERR`): comandos, trilha de aprovação, subprocessos e rede, sem nomes, frases de aprovação nem URLs. `reject` zera o `output`, `verify` confere todos os clipes e desmarca o que foi alterado, e `deliver` pula clipe rejeitado ou reprovado e lista em `skipped`. Storyboard local endurecido (só `review.html`, `previews/` e `clips/`, cabeçalhos contra embutir a página). `~/.getbrolls/RULES.md` ilegível passa a parar o comando em vez de ser ignorado.
@@ -42,16 +52,6 @@ A prévia pode baixar mídia de trabalho para mostrar o movimento. A entrega fin
 - **2.3.5.** Primeira release oficial no GitHub, endurecimento de rede (HTTPS/DNS) e dependências fixadas.
 
 Histórico completo no [CHANGELOG.md](CHANGELOG.md).
-
-## Como funciona
-
-<p align="center"><img src="assets/flow.svg" alt="Mapa da skill: do pedido e do brief à aprovação, aos direitos, à coleta verificada e à entrega por beat" width="700"></p>
-
-### O que ela coleta
-
-<p align="center"><img src="assets/formats.svg" alt="Formatos: video vira MP4 1080p do intervalo aprovado; imagens locais são copiadas sem alteração; capturas de página saem em PNG/JPG com procedência" width="700"></p>
-
-
 ## Comece aqui
 
 ### 0. Instale a stack inteira
