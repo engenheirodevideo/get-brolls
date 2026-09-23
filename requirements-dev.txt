@@ -1,4 +1,4 @@
 # Dependências só de desenvolvimento (lint e type check). O runtime da CLI
 # continua sem dependência: nada aqui é importado pelo código de produção.
-ruff==0.15.12
-pyright==1.1.412
+ruff==0.16.8
+pyright==1.1.414
