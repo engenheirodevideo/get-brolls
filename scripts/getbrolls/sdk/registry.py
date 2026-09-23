@@ -90,7 +90,11 @@ _STATE: dict[str, Registry | None] = {"registry": None}
 def get_registry() -> Registry:
     """Registro do processo; montado na primeira consulta (start-up da CLI continua rápido)."""
     if _STATE["registry"] is None:
-        _STATE["registry"] = Registry()
+        from .. import providers
+
+        registry = Registry()
+        providers.register_builtins(registry)
+        _STATE["registry"] = registry
     return _STATE["registry"]
 
 

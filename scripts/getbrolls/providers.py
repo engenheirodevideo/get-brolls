@@ -7,43 +7,12 @@ from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from .http import ProviderError, encoded_url, get_json, public_url
 from .models import candidate
+from .sdk.contracts import CORE, ProviderCapabilities
 
 KEYS = {
     "pexels": "PEXELS_API_KEY",
     "pixabay": "PIXABAY_API_KEY",
 }
-
-
-def capabilities():
-    result = {}
-    for name in (
-        "youtube",
-        "instagram",
-        "tiktok",
-        "pexels",
-        "pixabay",
-        "commons",
-        "nasa",
-        "local",
-    ):
-        search_ok = name in ("youtube", "pexels", "pixabay", "commons", "nasa")
-        key = KEYS.get(name)
-        result[name] = {
-            "search": search_ok,
-            "resolve_url": name in ("youtube", "instagram", "tiktok"),
-            "account_library": False,
-            "embed": False,
-            "seek": "local" if name == "local" else "unsupported",
-            "download": True,
-            "transport": "browser-cdn-pairs / yt-dlp"
-            if name == "instagram"
-            else "yt-dlp"
-            if name in ("youtube", "tiktok")
-            else name,
-            "configured": not key or bool(os.environ.get(key)),
-            "env_key": key,
-        }
-    return result
 
 
 def _key(provider):
@@ -95,6 +64,102 @@ MEDIA_CHOICES = ("image", "video", "any")
 # Fontes que publicam foto e vídeo no mesmo acervo; nas outras `--media` não muda nada.
 MEDIA_AWARE = ("nasa", "commons")
 
+BUILTIN_CAPABILITIES = {
+    "youtube": ProviderCapabilities(
+        search=True,
+        resolve_url=True,
+        transport="yt-dlp",
+        url_hosts=("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"),
+    ),
+    "instagram": ProviderCapabilities(
+        resolve_url=True,
+        transport="browser-cdn-pairs / yt-dlp",
+        url_hosts=("instagram.com", "www.instagram.com"),
+    ),
+    "tiktok": ProviderCapabilities(
+        resolve_url=True,
+        transport="yt-dlp",
+        url_hosts=("tiktok.com", "www.tiktok.com", "m.tiktok.com"),
+    ),
+    "pexels": ProviderCapabilities(search=True, match_kind="illustrative", env_key=KEYS["pexels"], transport="pexels"),
+    "pixabay": ProviderCapabilities(
+        search=True, match_kind="illustrative", env_key=KEYS["pixabay"], transport="pixabay"
+    ),
+    "commons": ProviderCapabilities(
+        search=True,
+        media_kinds=("video", "image"),
+        transport="commons",
+        url_hosts=("commons.wikimedia.org", "commons.m.wikimedia.org"),
+    ),
+    "nasa": ProviderCapabilities(
+        search=True,
+        media_kinds=("video", "image"),
+        transport="nasa",
+        url_hosts=("images.nasa.gov", "www.images.nasa.gov"),
+    ),
+    "local": ProviderCapabilities(seek="local", transport="local"),
+}
+BUILTIN_SEARCH = {
+    "youtube": "_youtube",
+    "pexels": "_pexels",
+    "pixabay": "_pixabay",
+    "commons": "_commons",
+    "nasa": "_nasa",
+}
+
+
+class _Builtin:
+    """Fonte embutida no registro. A função de busca é resolvida pelo nome na hora
+    da chamada: `patch.object(providers, "_youtube")` continua valendo nos testes."""
+
+    def __init__(self, name):
+        self.name = name
+        self.capabilities = BUILTIN_CAPABILITIES[name]
+
+    def search(self, query, limit, media):
+        fn = globals()[BUILTIN_SEARCH[self.name]]
+        return fn(query, limit, media) if self.name in MEDIA_AWARE else fn(query, limit)
+
+    def resolve(self, url):
+        return _resolve_builtin(url)
+
+    def refresh(self, item):
+        return _refresh_builtin(item)
+
+
+def register_builtins(registry):
+    for name in BUILTIN_CAPABILITIES:
+        registry.add_provider(_Builtin(name), owner=CORE)
+
+
+def _registry():
+    from .sdk.registry import get_registry
+
+    return get_registry()
+
+
+def capabilities():
+    reg = _registry()
+    result = {}
+    for name in reg.provider_names():
+        caps = reg.provider(name).capabilities  # type: ignore[union-attr] - name veio de provider_names()
+        row = {
+            "search": caps.search,
+            "resolve_url": caps.resolve_url,
+            "account_library": False,
+            "embed": False,
+            "seek": caps.seek,
+            "download": caps.download,
+            "transport": caps.transport,
+            "configured": not caps.env_key or bool(os.environ.get(caps.env_key)),
+            "env_key": caps.env_key,
+        }
+        owner = reg.owner("provider", name)
+        if owner != CORE:
+            row["plugin"] = owner
+        result[name] = row
+    return result
+
 
 def search(provider, query, limit=8, media="any"):
     if not isinstance(limit, int) or not 1 <= limit <= 50:  # noqa: PLR2004 - matches the "entre 1 e 50" message below
@@ -103,21 +168,15 @@ def search(provider, query, limit=8, media="any"):
         raise ProviderError("Consulta deve ter entre 1 e 500 caracteres")
     if media not in MEDIA_CHOICES:
         raise ProviderError("--media aceita image, video ou any")
-    fn = {
-        "pexels": _pexels,
-        "pixabay": _pixabay,
-        "youtube": _youtube,
-        "commons": _commons,
-        "nasa": _nasa,
-    }.get(provider)
-    if not fn:
+    source = _registry().provider(provider)
+    if source is None or not source.capabilities.search:
         raise ProviderError("Busca indisponível nesta fonte; forneça URL ou arquivo local")
     # YouTube e os bancos só devolvem vídeo: pedir imagem ali não é erro do usuário,
     # é fonte errada — e quem escolhe a fonte é o beat, não esta função.
-    items = fn(query.strip(), limit, media) if provider in MEDIA_AWARE else fn(query.strip(), limit)
+    items = source.search(query.strip(), limit, media)
     for item in items:
         item["query"] = query.strip()
-        item["match"]["kind"] = "illustrative" if provider in ("pexels", "pixabay") else "literal"
+        item["match"]["kind"] = source.capabilities.match_kind
     return items[:limit]
 
 
@@ -204,7 +263,7 @@ def _youtube(query, limit):
         ident = row.get("id")
         if not isinstance(ident, str) or not re.fullmatch(r"[A-Za-z0-9_-]{11}", ident):
             continue
-        item = resolve("https://www.youtube.com/watch?v=" + ident)
+        item = _resolve_builtin("https://www.youtube.com/watch?v=" + ident)
         item["title"] = row.get("title") or item["title"]
         item["creator"]["name"] = row.get("channel") or row.get("uploader")
         item["media"]["duration_s"] = row.get("duration")
@@ -397,7 +456,7 @@ def _nasa_details(ident):
     return item
 
 
-def resolve(url):  # noqa: C901 - existing size; one branch per recognized source host/URL shape
+def _resolve_builtin(url):  # noqa: C901 - existing size; one branch per recognized source host/URL shape
     if not public_url(url):
         raise ProviderError("Forneça URL pública HTTPS sem credenciais")
     p = urlsplit(url)
@@ -461,7 +520,11 @@ def resolve(url):  # noqa: C901 - existing size; one branch per recognized sourc
     return item
 
 
-def refresh(item):
+def resolve(url):
+    return _resolve_builtin(url)
+
+
+def _refresh_builtin(item):
     """Refresh public stock file URLs without changing selection or approval."""
     import copy
 
@@ -517,3 +580,8 @@ def refresh(item):
         raise ProviderError("Arquivo do provedor não está mais disponível")
     current["media_url"] = match["media_url"]
     return current
+
+
+def refresh(item):
+    """Refresh public stock file URLs without changing selection or approval."""
+    return _refresh_builtin(item)

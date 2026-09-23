@@ -90,5 +90,55 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual((), reg.preset_names())
 
 
+class BuiltinProvidersTests(unittest.TestCase):
+    def setUp(self):
+        from getbrolls.sdk.registry import reset_registry
+
+        reset_registry()
+        self.addCleanup(reset_registry)
+
+    def test_builtins_are_registered_in_canonical_order_owned_by_core(self):
+        from getbrolls.sdk.registry import get_registry
+
+        reg = get_registry()
+        expected = ("youtube", "instagram", "tiktok", "pexels", "pixabay", "commons", "nasa", "local")
+        self.assertEqual(expected, reg.provider_names())
+        self.assertTrue(all(reg.owner("provider", n) == CORE for n in expected))
+        self.assertEqual("youtube", reg.provider_for_host("youtu.be").name)  # type: ignore[union-attr]
+
+    def test_capabilities_output_is_unchanged(self):
+        from getbrolls import providers
+
+        caps = providers.capabilities()
+        self.assertEqual(
+            {
+                "search": True,
+                "resolve_url": True,
+                "account_library": False,
+                "embed": False,
+                "seek": "unsupported",
+                "download": True,
+                "transport": "yt-dlp",
+                "configured": True,
+                "env_key": None,
+            },
+            caps["youtube"],
+        )
+        self.assertEqual("browser-cdn-pairs / yt-dlp", caps["instagram"]["transport"])
+        self.assertEqual("local", caps["local"]["seek"])
+        self.assertFalse(caps["commons"]["resolve_url"])
+        self.assertEqual("PEXELS_API_KEY", caps["pexels"]["env_key"])
+        self.assertNotIn("plugin", caps["pexels"])
+
+    def test_search_still_honours_patched_module_functions(self):
+        from unittest.mock import patch
+
+        from getbrolls import providers
+
+        with patch.object(providers, "_youtube", return_value=[]) as fake:
+            self.assertEqual([], providers.search("youtube", "earth", 2))
+        fake.assert_called_once_with("earth", 2)
+
+
 if __name__ == "__main__":
     unittest.main()
