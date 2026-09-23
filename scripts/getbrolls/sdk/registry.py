@@ -95,6 +95,10 @@ def get_registry() -> Registry:
         registry = Registry()
         providers.register_builtins(registry)
         presets.register_builtins(registry)
+
+        from . import loader
+
+        loader.load_enabled(registry)
         _STATE["registry"] = registry
     return _STATE["registry"]
 
