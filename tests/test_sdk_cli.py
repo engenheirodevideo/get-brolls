@@ -36,6 +36,15 @@ class PluginsCommandTests(LoaderTestCase):
         self.assertTrue(out["ok"])
         self.assertFalse((self.home / "plugins.json").exists())
 
+    def test_check_surfaces_the_plugins_own_error_instead_of_internal_error(self):
+        """Finding 6: `register()` estourando RuntimeError não pode virar INTERNAL_ERROR
+        (exit 3, bug interno) — é erro do plugin, exit 2, com tipo e mensagem visíveis."""
+        folder = self.install(code="def register(api):\n    raise RuntimeError('boom')\n")
+        err = run_cli("plugins", "--action", "check", "--path", folder, expect=2, env=self.env())
+        self.assertNotEqual("INTERNAL_ERROR", err.get("error_code"))
+        self.assertIn("RuntimeError", err["error"])
+        self.assertIn("boom", err["error"])
+
     def test_missing_id_is_a_clear_error(self):
         err = run_cli("plugins", "--action", "enable", expect=2, env=self.env())
         self.assertIn("--id", json.dumps(err, ensure_ascii=False))

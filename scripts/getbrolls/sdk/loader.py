@@ -350,5 +350,11 @@ def trial_load(folder):
     registry = Registry()
     providers.register_builtins(registry)
     presets.register_builtins(registry)
-    _register(folder, manifest, registry)
+    try:
+        _register(folder, manifest, registry)
+    except (
+        Exception,
+        SystemExit,
+    ) as exc:  # código de plugin é de terceiro: sem isto, um bug do plugin (RuntimeError, KeyError...) chegava cru em `runtime.audited()` e virava INTERNAL_ERROR/exit 3 — "erro interno" nosso, escondendo o motivo real. Reembrulhado em ValueError, vira exit 2 com o tipo e a mensagem visíveis; KeyboardInterrupt continua propagando.
+        raise ValueError(f"Plugin {manifest['id']}: {type(exc).__name__}: {exc}") from exc
     return {"ok": True, **_preview(manifest, folder), "manifest_file": MANIFEST_NAME}
