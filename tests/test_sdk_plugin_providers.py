@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from test_sdk_loader import MANIFEST, PLUGIN_CODE, LoaderTestCase  # noqa: F401  (MANIFEST reexportado)
 
 from getbrolls import presets, providers
