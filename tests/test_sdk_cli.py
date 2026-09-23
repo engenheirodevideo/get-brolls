@@ -57,6 +57,17 @@ class PluginsCommandTests(LoaderTestCase):
         self.assertIn("note", out)
         self.assertIn("doctor", out["note"])
 
+    def test_provider_import_sys_exit_does_not_crash_the_cli(self):
+        """Finding 2: `sys.exit(0)` no import do plugin não pode sair do processo com
+        stdout vazio — `providers`/`doctor` continuam respondendo com os built-ins."""
+        self.install(code="import sys\n\nsys.exit(0)\n")
+        env = {**self.env(), "GB_PLUGINS": "demo"}
+        out = run_cli("providers", env=env)
+        self.assertIn("youtube", out)
+        doctor = run_cli("doctor", env=env)
+        self.assertEqual("failed", doctor["plugins"][0]["status"])
+        self.assertIn("SystemExit", doctor["plugins"][0]["reason"])
+
     def test_doctor_overlays_failed_status_and_reason_over_the_preload_inventory(self):
         """Finding 1: `plugins.json` marca o plugin habilitado (pré-carga: "enabled"), mas o
         register() dele estoura — o doctor tem que mostrar o resultado real do carregamento."""

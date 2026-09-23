@@ -152,6 +152,17 @@ class FailureIsolationTests(LoaderTestCase):
         self.assertEqual("failed", reg.plugins["demo"]["status"])
         self.assertEqual("core", reg.owner("provider", "youtube"))
 
+    def test_system_exit_at_import_is_isolated_like_any_other_exception(self):
+        """Finding 2: `sys.exit(0)` no import do plugin é `SystemExit`, não `Exception` —
+        sem captura explícita ele atravessa o loader e derruba o processo com exit 0."""
+        self.install(code="import sys\n\nsys.exit(0)\n")
+        with patch.dict(os.environ, {"GB_PLUGINS": "demo"}):
+            reg = get_registry()
+        self.assertEqual("failed", reg.plugins["demo"]["status"])
+        self.assertIn("SystemExit", reg.plugins["demo"]["reason"])
+        self.assertNotIn("demo", reg.provider_names())
+        self.assertIn("youtube", reg.provider_names())
+
 
 class LoaderLoggingTests(LoaderTestCase):
     def test_load_and_failure_are_logged_without_secrets(self):

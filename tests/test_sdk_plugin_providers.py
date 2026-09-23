@@ -60,6 +60,14 @@ NON_LIST_SEARCH = PLUGIN_CODE.replace(
     "    def search(self, query, limit, media):\n        return 5\n",
 )
 
+# Fix final / Finding 2: search() chama sys.exit em vez de estourar uma Exception comum.
+SEARCH_SYS_EXIT = PLUGIN_CODE.replace(
+    "    def search(self, query, limit, media):\n"
+    '        return [self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")]\n',
+    "    def search(self, query, limit, media):\n        import sys\n        sys.exit(0)\n",
+)
+assert SEARCH_SYS_EXIT != PLUGIN_CODE
+
 
 class PluginTestCase(LoaderTestCase):
     def enable(self, code=PLUGIN_CODE):
@@ -207,6 +215,15 @@ class PluginProviderTests(PluginTestCase):
         joined = "\n".join(cm.output)
         self.assertIn("event=plugin_call_failed", joined)
         self.assertIn("error=KeyError", joined)
+
+    def test_search_sys_exit_becomes_provider_error(self):
+        """Finding 2: `sys.exit` dentro de `search()` (não no import) tem que passar pelo
+        mesmo isolamento de `guard.rows` que qualquer outra exceção de plugin."""
+        self.enable(SEARCH_SYS_EXIT)
+        with self.assertRaises(ProviderError) as caught, self.assertLogs("getbrolls.sdk", level="WARNING") as cm:
+            providers.search("demo", "mar", 1)
+        self.assertIn("Plugin demo", str(caught.exception))
+        self.assertIn("error=SystemExit", "\n".join(cm.output))
 
     def test_search_returning_a_non_list_becomes_provider_error(self):
         """Finding 1: `search` devolvendo um int (não lista/tupla/gerador)."""

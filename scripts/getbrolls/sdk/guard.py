@@ -67,7 +67,10 @@ def call(owner, provider, fn, *args):
     except ProviderError as exc:
         logs.event(_log, logging.WARNING, "plugin_call_failed", plugin=owner, provider=provider, error="ProviderError")
         raise ProviderError(f"Plugin {owner}: {exc}") from exc
-    except Exception as exc:  # código de plugin é de terceiro: a falha vira erro de fonte, não queda da CLI
+    except (
+        Exception,
+        SystemExit,
+    ) as exc:  # código de plugin é de terceiro: a falha (incl. SystemExit) vira erro de fonte, não queda da CLI; KeyboardInterrupt continua propagando
         logs.event(
             _log, logging.WARNING, "plugin_call_failed", plugin=owner, provider=provider, error=type(exc).__name__
         )
@@ -87,7 +90,10 @@ def rows(owner, provider, fn, *args):
     except ProviderError as exc:
         logs.event(_log, logging.WARNING, "plugin_call_failed", plugin=owner, provider=provider, error="ProviderError")
         raise ProviderError(f"Plugin {owner}: {exc}") from exc
-    except Exception as exc:  # código de plugin é de terceiro: a falha vira erro de fonte, não queda da CLI
+    except (
+        Exception,
+        SystemExit,
+    ) as exc:  # código de plugin é de terceiro: a falha (incl. SystemExit) vira erro de fonte, não queda da CLI; KeyboardInterrupt continua propagando
         logs.event(
             _log, logging.WARNING, "plugin_call_failed", plugin=owner, provider=provider, error=type(exc).__name__
         )

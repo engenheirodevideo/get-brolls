@@ -206,7 +206,7 @@ def _load_one(row, folder, manifest, pinned, registry):
 
     try:
         _register(folder, manifest, registry)
-    except Exception as exc:  # noqa: BLE001 - código de plugin é de terceiro: qualquer falha desliga só aquele plugin
+    except (Exception, SystemExit) as exc:  # noqa: BLE001 - código de plugin é de terceiro: qualquer falha (incl. SystemExit de um sys.exit() no import) desliga só aquele plugin, nunca o processo; KeyboardInterrupt continua propagando
         registry.remove_owner(manifest["id"])
         logs.event(_log, logging.WARNING, "plugin_failed", plugin=row["id"], error=type(exc).__name__)
         return {**row, "status": "failed", "reason": f"{type(exc).__name__}: {exc}"}
