@@ -67,7 +67,7 @@ def names():
 
     try:
         extra = loader.declared("presets")
-    except ValueError:
+    except (ValueError, OSError):
         extra = []
     return sorted(set(PERMIT_PRESETS) | set(extra))
 

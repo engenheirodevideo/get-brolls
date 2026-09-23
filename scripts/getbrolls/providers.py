@@ -178,8 +178,8 @@ def search(provider, query, limit=8, media="any"):
     if owner == CORE:
         items = source.search(query.strip(), limit, media)
     else:
-        rows = guard.call(owner, provider, source.search, query.strip(), limit, media)
-        items = [guard.plugin_candidate(row, provider, owner) for row in (rows or [])]
+        materialized = guard.rows(owner, provider, source.search, query.strip(), limit, media)
+        items = [guard.plugin_candidate(row, provider, owner) for row in materialized]
     for item in items:
         item["query"] = query.strip()
         item["match"]["kind"] = source.capabilities.match_kind

@@ -8,6 +8,7 @@ from test_sdk_loader import MANIFEST, PLUGIN_CODE, LoaderTestCase  # noqa: F401 
 
 from getbrolls import presets, providers
 from getbrolls.http import ProviderError
+from getbrolls.presets import PERMIT_PRESETS
 
 GREEDY = PLUGIN_CODE.replace(
     '        return [self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")]',
@@ -18,6 +19,37 @@ GREEDY = PLUGIN_CODE.replace(
     '        item["campo_solto"] = 1\n'
     '        item["media_url"] = "http://inseguro.example/v.mp4"\n'
     "        return [item]",
+)
+
+# Fix round 1 / Finding 2: tenta pré-preencher estado de revisão/local que só o
+# core pode gravar (contact_sheet_path, local_path/sha256, review, segment).
+GREEDY_STATE = PLUGIN_CODE.replace(
+    '        return [self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")]',
+    '        item = self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")\n'
+    '        item["preview"]["contact_sheet_path"] = "/etc/passwd"\n'
+    '        item["local_path"] = "/etc/passwd"\n'
+    '        item["local_sha256"] = "a" * 64\n'
+    '        item["review"] = {"ok": True}\n'
+    '        item["segment"] = {"start_s": 1, "end_s": 2, "revision": 5}\n'
+    "        return [item]",
+)
+
+# Fix round 1 / Finding 1: search() devolve um gerador que quebra no meio.
+GENERATOR_THAT_RAISES = PLUGIN_CODE.replace(
+    "    def search(self, query, limit, media):\n"
+    '        return [self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")]\n',
+    "    def search(self, query, limit, media):\n"
+    "        def gen():\n"
+    '            yield self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")\n'
+    "            raise KeyError('x')\n"
+    "        return gen()\n",
+)
+
+# Fix round 1 / Finding 1: search() não devolve lista/tupla/gerador nenhum.
+NON_LIST_SEARCH = PLUGIN_CODE.replace(
+    "    def search(self, query, limit, media):\n"
+    '        return [self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")]\n',
+    "    def search(self, query, limit, media):\n        return 5\n",
 )
 
 
@@ -100,6 +132,55 @@ class PluginProviderTests(PluginTestCase):
 
         args = build_parser().parse_args(["permit", "--project", ".", "--candidate", "x", "--preset", "demo"])
         self.assertEqual("demo", args.preset)
+
+    # --- Fix round 1 -----------------------------------------------------
+
+    def test_plugin_cannot_preset_review_state_or_local_paths(self):
+        """Finding 2: a allowlist restringe também dentro de `preview`, e
+        `local_path`/`local_sha256`/`review`/`segment` nunca vêm do plugin."""
+        self.enable(GREEDY_STATE)
+        with self.assertLogs("getbrolls.sdk", level="WARNING") as cm:
+            item = providers.search("demo", "mar", 1)[0]
+        joined = "\n".join(cm.output)
+        self.assertIn("event=plugin_candidate_sanitized", joined)
+        for field in ("preview.contact_sheet_path", "local_path", "local_sha256", "review", "segment"):
+            self.assertIn(field, joined)
+        self.assertIsNone(item["preview"]["contact_sheet_path"])
+        self.assertNotIn("local_path", item)
+        self.assertNotIn("local_sha256", item)
+        self.assertNotIn("review", item)
+        self.assertEqual({"start_s": None, "end_s": None, "revision": 0}, item["segment"])
+
+    def test_clean_plugin_candidate_still_passes_the_core_schema(self):
+        from getbrolls.sdk.jsonschema import errors as schema_errors
+        from getbrolls.sdk.schemas import load as load_schema
+
+        self.enable()
+        item = providers.search("demo", "mar", 1)[0]
+        self.assertEqual([], schema_errors(item, load_schema("candidate")))
+
+    def test_generator_search_that_raises_midway_becomes_provider_error(self):
+        """Finding 1: um gerador quebrando no meio nunca deve chegar cru na CLI."""
+        self.enable(GENERATOR_THAT_RAISES)
+        with self.assertRaises(ProviderError) as caught, self.assertLogs("getbrolls.sdk", level="WARNING") as cm:
+            providers.search("demo", "mar", 2)
+        self.assertIn("Plugin demo", str(caught.exception))
+        joined = "\n".join(cm.output)
+        self.assertIn("event=plugin_call_failed", joined)
+        self.assertIn("error=KeyError", joined)
+
+    def test_search_returning_a_non_list_becomes_provider_error(self):
+        """Finding 1: `search` devolvendo um int (não lista/tupla/gerador)."""
+        self.enable(NON_LIST_SEARCH)
+        with self.assertRaises(ProviderError) as caught:
+            providers.search("demo", "mar", 1)
+        self.assertIn("Plugin demo", str(caught.exception))
+        self.assertIn("tem que devolver uma lista de candidatos", str(caught.exception))
+
+    def test_names_falls_back_to_builtins_when_plugin_dir_is_unreadable(self):
+        """Finding 3: OSError (ex.: PermissionError) não pode derrubar o parser da CLI."""
+        with patch("getbrolls.sdk.loader.declared", side_effect=PermissionError("sem permissão")):
+            self.assertEqual(sorted(PERMIT_PRESETS), presets.names())
 
 
 if __name__ == "__main__":
