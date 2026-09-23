@@ -322,7 +322,7 @@ def preview(src, dst, start, end):
         raise ValueError("Não foi possível criar a prévia.")
 
 
-def review_preview(src, directory, stem, start, end, config, label=None):  # noqa: PLR0913 - existing size; one field per input the preview/contact-sheet/GIF build needs
+def review_preview(src, directory, stem, start, end, config, label=None):  # noqa: PLR0913, PLR0917 - existing size; one field per input the preview/contact-sheet/GIF build needs
     """Full selected interval, native aspect, static gallery and bounded GIF.
 
     The contact sheet follows the original gb_contact.sh: evenly sampled frames tiled
@@ -400,8 +400,10 @@ def review_preview(src, directory, stem, start, end, config, label=None):  # noq
             [
                 *base,
                 "-vf",
-                f"fps={n / (end - start)}:start_time=0,scale=480:-2:flags=lanczos,{cell}"
-                f"tile={cols}x{rows}:nb_frames={n}:padding=10:margin=10:color=0x111111{banner}",
+                (
+                    f"fps={n / (end - start)}:start_time=0,scale=480:-2:flags=lanczos,{cell}"
+                    f"tile={cols}x{rows}:nb_frames={n}:padding=10:margin=10:color=0x111111{banner}"
+                ),
                 "-frames:v",
                 "1",
                 str(sheet),
@@ -438,7 +440,7 @@ def review_preview(src, directory, stem, start, end, config, label=None):  # noq
     return result
 
 
-def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):  # noqa: PLR0913 - existing size; one field per input the full-video contact sheet needs
+def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):  # noqa: PLR0913, PLR0917 - existing size; one field per input the full-video contact sheet needs
     """Varredura do vídeo inteiro: um quadro a cada span/frames segundos, baixa resolução.
 
     Não é a prévia do trecho (essa é `review_preview`, presa a GB_PREVIEW_MAX_SECONDS):
@@ -471,8 +473,10 @@ def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):  
                 "-i",
                 str(src),
                 "-vf",
-                f"fps={n / span}:start_time=0,scale=240:-2:flags=lanczos,"
-                f"tile={cols}x{rows}:nb_frames={n}:padding=6:margin=6:color=0x111111",
+                (
+                    f"fps={n / span}:start_time=0,scale=240:-2:flags=lanczos,"
+                    f"tile={cols}x{rows}:nb_frames={n}:padding=6:margin=6:color=0x111111"
+                ),
                 "-frames:v",
                 "1",
                 str(sheet),

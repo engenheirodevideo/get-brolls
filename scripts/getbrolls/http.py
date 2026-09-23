@@ -150,7 +150,7 @@ def _opener():
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ARG002, PLR0913 - overrides `HTTPRedirectHandler`'s fixed signature
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ARG002, PLR0913, PLR0917 - overrides `HTTPRedirectHandler`'s fixed signature
         logs.event(_logger, logging.WARNING, "request_refused", host=_host_of(req.full_url), reason="redirect_refused")
         raise ProviderError("Redirecionamento de API não permitido")
 

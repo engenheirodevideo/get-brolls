@@ -333,9 +333,11 @@ STATUS_LADDER = (
     ),
     (
         lambda c: not c["approved"],
-        "Peça a decisão humana: pelo Storyboard (review + import-review) ou pela fala "
-        "no chat (approve --candidate ID --by NOME --channel chat --statement "
-        '"frase"), com os IDs que você mostrou.',
+        (
+            "Peça a decisão humana: pelo Storyboard (review + import-review) ou pela fala "
+            "no chat (approve --candidate ID --by NOME --channel chat --statement "
+            '"frase"), com os IDs que você mostrou.'
+        ),
     ),
     (
         lambda c: c["permitted"] < c["approved"],
@@ -778,7 +780,7 @@ def _search_row(c):
     return row
 
 
-def search_summary_line(rows, excluded, errors, dry_run, query_used=None, retry=None):  # noqa: PLR0913 - existing size; one field per fact the spoken summary line reports
+def search_summary_line(rows, excluded, errors, dry_run, query_used=None, retry=None):  # noqa: PLR0913, PLR0917 - existing size; one field per fact the spoken summary line reports
     """Quantos vieram e quais são os três primeiros — o resumo que cabe numa fala.
 
     Zero candidatos nunca sai calado: a linha diz qual query a fonte recebeu e, se

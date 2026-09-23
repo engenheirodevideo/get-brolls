@@ -227,8 +227,10 @@ class SkillBudgetTests(unittest.TestCase):
         # A rota do chat aprova pelos IDs que o agente mostrou; `--all` é a exceção
         # anunciada, não o caminho padrão.
         for form in (
-            'approve --candidate ID1 --candidate ID2 … --by NOME --channel chat --statement "frase exata" '
-            "--project <projeto>",
+            (
+                'approve --candidate ID1 --candidate ID2 … --by NOME --channel chat --statement "frase exata" '
+                "--project <projeto>"
+            ),
             "use `--all` só quando todos os candidatos com prévia foram mostrados",
         ):
             self.assertIn(form, text, f"forma incompleta de approve: {form}")

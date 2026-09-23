@@ -514,7 +514,7 @@ def _ping(port, session, timeout=1.0):
     if not _valid_ping_target(url):
         return False
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:  # noqa: S310 - `_valid_ping_target` above pins scheme+host
+        with urllib.request.urlopen(url, timeout=timeout) as response:  # `_valid_ping_target` above pins scheme+host
             answer = json.loads(response.read().decode("utf-8"))
     except (OSError, ValueError, urllib.error.URLError):
         return False
