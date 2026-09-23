@@ -13,6 +13,8 @@ tags: [get-brolls]
 - READMEs: os diagramas `assets/flow*.svg` e `assets/formats*.svg` passam a mostrar o fluxo atual — brief, análise da fonte, direitos como segundo portão, verificação e `entrega/` por beat — e a árvore de pastas ganha `BRIEF.md`, `entrega/`, `getbrolls.log` e `reviews/`. Eram da 2.3.x e apontavam `clips/` como lugar dos arquivos finais.
 - READMEs: badges de FFmpeg, yt-dlp e Playwright no topo, ao lado de Python e Node, para mostrar o que a instalação coloca na máquina.
 - Issues: modelos novos para sugerir melhoria e tirar dúvida de uso; o modelo de bug pede as linhas do `brolls/getbrolls.log`; a tela de nova issue aponta para o guia e para o relato privado de vulnerabilidade. Sem mudança na skill.
+- Dependências: `@playwright/cli` 0.1.20 → 0.1.21 (`package.json`, `package-lock.json` e a versão de referência no `docs/GUIDE.md`) e `idna` 3.19 → 3.20 no `requirements.txt`; substitui os PRs #78 e #79 do Dependabot.
+- Qualidade: `ruff` 0.15.12 → 0.16.8 e `pyright` 1.1.412 → 1.1.414. Para a checagem nova passar: strings concatenadas implícitas dentro de listas e tuplas ganham parênteses (ISC004), as funções que já tinham `noqa: PLR0913` passam a declarar também `PLR0917`, e sai o `noqa: S310` que a regra não usa mais em `serve.py`. Sem mudança de comportamento.
 
 ## 2.5.0 — 2026-09-19
 

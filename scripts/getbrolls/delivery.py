@@ -318,8 +318,10 @@ def render_origin(c, media_name, created=None, method="hardlink"):
         "",
         EDIT_WARNING if method in ("hardlink", "symlink") else COPY_NOTE,
         "",
-        "Este arquivo é gerado por `deliver`. A pasta `entrega/` inteira pode ser apagada "
-        "e refeita: o que vale é `brolls/`.",
+        (
+            "Este arquivo é gerado por `deliver`. A pasta `entrega/` inteira pode ser apagada "
+            "e refeita: o que vale é `brolls/`."
+        ),
         "",
     ]
     return "\n".join(lines)
@@ -358,9 +360,11 @@ def render_index(rows, for_human=None, created=None, conflicts=(), copies=False)
     lines += [
         "# Seus trechos",
         "",
-        "Cada pasta é um trecho do vídeo, na ordem do BRIEF.md. É só arrastar o `.mp4` "
-        "para o seu editor; o `ORIGEM.md` ao lado diz de onde ele veio e o que você me "
-        "disse sobre poder usar.",
+        (
+            "Cada pasta é um trecho do vídeo, na ordem do BRIEF.md. É só arrastar o `.mp4` "
+            "para o seu editor; o `ORIGEM.md` ao lado diz de onde ele veio e o que você me "
+            "disse sobre poder usar."
+        ),
         "",
         MIXED_NOTE if mixed else (COPY_NOTE if copies else EDIT_WARNING),
         "",
@@ -385,9 +389,11 @@ def render_index(rows, for_human=None, created=None, conflicts=(), copies=False)
             "",
             "## Conflitos",
             "",
-            "Estes trechos não foram refeitos porque o arquivo em `entrega/` tem conteúdo "
-            "diferente do que está em `brolls/` — parece edição sua e eu não sobrescrevo. "
-            "Renomeie ou apague o arquivo e rode `deliver` de novo:",
+            (
+                "Estes trechos não foram refeitos porque o arquivo em `entrega/` tem conteúdo "
+                "diferente do que está em `brolls/` — parece edição sua e eu não sobrescrevo. "
+                "Renomeie ou apague o arquivo e rode `deliver` de novo:"
+            ),
             "",
         ]
         lines += [f"- `{item}`" for item in conflicts]

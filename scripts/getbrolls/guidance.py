@@ -145,7 +145,7 @@ def step_candidate(state, step):
     return chosen or state.get("candidate")
 
 
-def _action(step, why, for_human, state, url=None, blocking_human=False, command=None):  # noqa: PLR0913 - existing size; one field per key of the returned guidance-step dict
+def _action(step, why, for_human, state, url=None, blocking_human=False, command=None):  # noqa: PLR0913, PLR0917 - existing size; one field per key of the returned guidance-step dict
     return {
         "step": step,
         "why": why,
