@@ -8,8 +8,17 @@ from . import providers
 
 def live_checks():
     results = []
-    for name in ("commons", "nasa", "pexels", "pixabay", "youtube"):
-        key = providers.KEYS.get(name)
+    from .sdk.registry import get_registry
+
+    reg = get_registry()
+    builtin = ("commons", "nasa", "pexels", "pixabay", "youtube")
+    extra = tuple(
+        n
+        for n in reg.provider_names()
+        if n not in builtin and reg.provider(n).capabilities.search  # type: ignore[union-attr] - name veio de provider_names()
+    )
+    for name in builtin + extra:
+        key = reg.provider(name).capabilities.env_key  # type: ignore[union-attr] - name veio de builtin/provider_names()
         if key and not os.getenv(key):
             results.append({"provider": name, "status": "not_tested_missing_key", "env_key": key})
             continue

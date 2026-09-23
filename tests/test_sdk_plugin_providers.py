@@ -183,5 +183,29 @@ class PluginProviderTests(PluginTestCase):
             self.assertEqual(sorted(PERMIT_PRESETS), presets.names())
 
 
+class RegistryDrivenValidationTests(PluginTestCase):
+    def test_brief_accepts_enabled_plugin_source_and_refuses_unknown(self):
+        from getbrolls import brief
+
+        self.enable()
+        self.assertIn("demo", brief.sources())
+        self.assertIn("demo", brief.searchable())
+        self.assertNotIn("inexistente", brief.sources())
+        self.assertEqual(("pexels", "pixabay"), brief.stock_sources())
+        self.assertEqual(("commons", "nasa"), brief.still_sources())
+
+    def test_builtin_lists_are_unchanged_without_plugins(self):
+        from getbrolls import brief
+
+        self.assertEqual(brief.SOURCES, brief.sources())
+        self.assertEqual(brief.SEARCHABLE, brief.searchable())
+
+    def test_rules_accept_plugin_source_in_preferred_providers(self):
+        from getbrolls import rules
+
+        self.enable()
+        self.assertIn("demo", rules.searchable_providers())
+
+
 if __name__ == "__main__":
     unittest.main()

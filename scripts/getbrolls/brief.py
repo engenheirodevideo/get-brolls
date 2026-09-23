@@ -39,6 +39,42 @@ MAX_HINT_S = 120
 QUERY_MAX_TOKENS = 6
 # Fontes que publicam foto, na ordem em que valem a tentativa para um beat de imagem.
 STILL_SOURCES = ("commons", "nasa")
+
+
+def _registry():
+    from .sdk.registry import get_registry
+
+    return get_registry()
+
+
+def sources():
+    """Fontes aceitas em allowed_sources: built-ins e plugins habilitados, na ordem do registro."""
+    return _registry().provider_names()
+
+
+def searchable():
+    reg = _registry()
+    return tuple(n for n in reg.provider_names() if reg.provider(n).capabilities.search)  # type: ignore[union-attr] - name veio de provider_names()
+
+
+def stock_sources():
+    reg = _registry()
+    return tuple(
+        n
+        for n in searchable()
+        if reg.provider(n).capabilities.match_kind == "illustrative"  # type: ignore[union-attr] - name veio de searchable()
+    )
+
+
+def still_sources():
+    reg = _registry()
+    return tuple(
+        n
+        for n in searchable()
+        if "image" in reg.provider(n).capabilities.media_kinds  # type: ignore[union-attr] - name veio de searchable()
+    )
+
+
 # O `target` fala de um quadro parado, não de um vídeo: a busca tem que pedir imagem.
 STILL_WORDS = ("foto", "fotografia", "imagem", "print", "still", "captura de tela", "screenshot", "retrato")
 # Palavras que não estreitam busca nenhuma; sair com elas só gasta espaço do teto.
@@ -197,11 +233,11 @@ def _sources(value, field):
     if (
         not isinstance(value, list)
         or not value
-        or any(not isinstance(v, str) or v not in SOURCES for v in value)
+        or any(not isinstance(v, str) or v not in sources() for v in value)
         or len(set(value)) != len(value)
     ):
         raise ValueError(
-            f'Em BRIEF.md, "{field}" só aceita, sem repetir, uma lista destas fontes: ' + ", ".join(SOURCES) + "."
+            f'Em BRIEF.md, "{field}" só aceita, sem repetir, uma lista destas fontes: ' + ", ".join(sources()) + "."
         )
     return list(value)
 
@@ -239,7 +275,7 @@ def resolve_beat(defaults, beat, position):
         else list(defaults["allowed_sources"])
     )
     stock = _flag(beat["stock"], f"{where}.stock") if beat.get("stock") is not None else defaults["stock"]
-    banks = [s for s in sources if s in STOCK_SOURCES]
+    banks = [s for s in sources if s in stock_sources()]
     if stock and not banks:
         raise ValueError(
             f'O beat "{identifier}" está com "stock": true, mas nenhuma fonte de banco '
@@ -384,18 +420,19 @@ def missing_provider_keys(beat):
     estar mal descrito — é o ambiente, e a pergunta certa é pela chave, não pela
     empresa ou pela data.
     """
-    from .providers import KEYS
-
-    return [
-        {"provider": name, "env_key": KEYS[name]}
-        for name in beat["allowed_sources"]
-        if name in KEYS and not os.environ.get(KEYS[name])
-    ]
+    reg = _registry()
+    result = []
+    for name in beat["allowed_sources"]:
+        source = reg.provider(name)
+        key = source.capabilities.env_key if source else None
+        if key and not os.environ.get(key):
+            result.append({"provider": name, "env_key": key})
+    return result
 
 
 def stock_only(beat):
     """Beat que só pode ser atendido por banco (pexels/pixabay), e por mais nada."""
-    return bool(beat["allowed_sources"]) and set(beat["allowed_sources"]) <= set(STOCK_SOURCES)
+    return bool(beat["allowed_sources"]) and set(beat["allowed_sources"]) <= set(stock_sources())
 
 
 def provider_unavailable(beat):
@@ -444,15 +481,15 @@ def beat_commands(project, beat):
     still = wants_a_still(beat)
     # Um beat de foto no YouTube devolve vídeo, sempre: a fonte de imagem vem antes,
     # e a busca sai com `--media image` para o acervo não responder só com vídeo.
-    provider = next((s for s in beat["allowed_sources"] if still and s in STILL_SOURCES), None) or next(
-        (s for s in beat["allowed_sources"] if s in SEARCHABLE), None
+    provider = next((s for s in beat["allowed_sources"] if still and s in still_sources()), None) or next(
+        (s for s in beat["allowed_sources"] if s in searchable()), None
     )
     query = search_query(beat)
     origin = "--file ARQUIVO" if beat["allowed_sources"] == ["local"] else "--url URL_PUBLICA"
     narration = f" --narration {shlex.quote(beat['narration'])}" if beat.get("narration") else ""
     commands = {}
     if provider:
-        media = " --media image" if still and provider in STILL_SOURCES else ""
+        media = " --media image" if still and provider in still_sources() else ""
         commands["search"] = (
             prefix
             + f"search --project {project} --provider {provider} "

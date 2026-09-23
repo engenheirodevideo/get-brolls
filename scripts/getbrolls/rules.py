@@ -136,6 +136,17 @@ def rules_layers(project):
     return layers, warnings
 
 
+def searchable_providers():
+    from .sdk.registry import get_registry
+
+    reg = get_registry()
+    return {
+        n
+        for n in reg.provider_names()
+        if reg.provider(n).capabilities.search  # type: ignore[union-attr] - name veio de provider_names()
+    }
+
+
 def load_rules(project):  # noqa: C901, PLR0912 - existing size; validator with one check per RULES.md field
     layers, warnings = rules_layers(project)
     r, sources = {}, {}
@@ -157,7 +168,7 @@ def load_rules(project):  # noqa: C901, PLR0912 - existing size; validator with 
         )
     if r.get("video_format") not in ("native", "reels", "horizontal"):
         raise ValueError('Em RULES.md, "video_format" tem que ser "native", "reels" ou "horizontal".')
-    providers = {"youtube", "pexels", "pixabay", "commons", "nasa"}
+    providers = searchable_providers()
     if not isinstance(r.get("preferred_providers"), dict):
         raise ValueError(
             'Em RULES.md, "preferred_providers" tem que ter as chaves "literal" e '
