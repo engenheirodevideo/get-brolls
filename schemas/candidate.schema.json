@@ -1,6 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Get B-rolls Candidate v1",
+  "$id": "https://github.com/engenheirodevideo/get-brolls/schemas/candidate.schema.json",
+  "additionalProperties": false,
   "type": "object",
   "required": [
     "schema_version",
@@ -25,16 +27,9 @@
       "type": "string"
     },
     "provider": {
-      "enum": [
-        "local",
-        "youtube",
-        "instagram",
-        "tiktok",
-        "pexels",
-        "pixabay",
-        "commons",
-        "nasa"
-      ]
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{1,31}$",
+      "description": "Nome da fonte no registro (built-in ou plugin habilitado)."
     },
     "source_id": {
       "type": "string"
@@ -176,6 +171,71 @@
           ]
         }
       }
+    },
+    "title": { "type": "string" },
+    "query": { "type": ["string", "null"] },
+    "collected_at": { "type": "string" },
+    "media_url": { "type": ["string", "null"] },
+    "errors": { "type": "array" },
+    "warnings": { "type": "array" },
+    "creator": {
+      "type": "object",
+      "properties": {
+        "name": { "type": ["string", "null"] },
+        "url": { "type": ["string", "null"] },
+        "handle": { "type": ["string", "null"] }
+      }
+    },
+    "match": {
+      "type": "object",
+      "properties": {
+        "kind": { "enum": ["literal", "illustrative"] },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
+    "media": {
+      "type": "object",
+      "properties": {
+        "duration_s": { "type": ["number", "null"] },
+        "width": { "type": ["integer", "null"] },
+        "height": { "type": ["integer", "null"] },
+        "fps": { "type": ["number", "null"] },
+        "kind": { "enum": ["video", "image"] }
+      }
+    },
+    "preview": { "type": "object" },
+    "acquisition": {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" },
+        "method": { "type": ["string", "null"] },
+        "evidence": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "local_path": { "type": "string" },
+    "local_sha256": { "type": "string" },
+    "local_start_s": { "type": "number", "minimum": 0 },
+    "local_duration_s": { "type": ["number", "null"] },
+    "asset_type": { "enum": ["video", "image"] },
+    "shot": { "type": "string" },
+    "format": { "type": "object" },
+    "preview_scope": { "type": "string" },
+    "narration": { "type": ["string", "null"] },
+    "output_media": { "type": "object" },
+    "rejection": { "type": "object" },
+    "review": { "type": "object" },
+    "scan": { "type": "object" },
+    "captured_at": { "type": ["string", "null"] },
+    "context_image_path": { "type": "string" },
+    "context_image_sha256": { "type": "string" },
+    "context_image_media": { "type": "object" },
+    "full_preview_path": { "type": "string" },
+    "full_preview_sha256": { "type": "string" },
+    "full_preview_media": { "type": "object" },
+    "ext": {
+      "type": "object",
+      "description": "Dados de plugins: uma chave por id de plugin, cada valor validado pelo schema daquele plugin.",
+      "additionalProperties": { "type": "object" }
     }
   }
 }
