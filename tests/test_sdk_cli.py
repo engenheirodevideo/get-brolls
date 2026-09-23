@@ -1,7 +1,9 @@
 """`gb plugins`: inventário sem executar código, enable em dois passos, check de pasta."""
 
 import json
+import tempfile
 import unittest
+from pathlib import Path
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _cli import run_cli
@@ -75,6 +77,36 @@ class PluginsCommandTests(LoaderTestCase):
         doctor = run_cli("doctor", env={**self.env(), "GB_PLUGINS": "demo"})
         self.assertEqual("failed", doctor["plugins"][0]["status"])
         self.assertIn("RuntimeError", doctor["plugins"][0]["reason"])
+
+    def test_preset_enabled_only_via_env_file_is_accepted(self):
+        """Finding 4: `--preset` não pode travar em `choices=` calculado ANTES do `.env`
+        ser lido — um preset só habilitado por `GB_PLUGINS` num `--env-file` tem que
+        passar pelo argparse e ser validado depois, por `presets.get()`."""
+        self.install()
+        project = Path(tempfile.mkdtemp(prefix="gb-project-"))
+        self.addCleanup(__import__("shutil").rmtree, project, ignore_errors=True)
+        env_file = project / "plugins.env"
+        env_file.write_text("GB_PLUGINS=demo\n", encoding="utf-8")
+
+        candidate = run_cli(
+            "resolve",
+            "--url",
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            project=project,
+            env=self.env(),
+        )
+        result = run_cli(
+            "--env-file",
+            str(env_file),
+            "permit",
+            "--candidate",
+            candidate["id"],
+            "--preset",
+            "demo",
+            project=project,
+            env=self.env(),
+        )
+        self.assertEqual("permitted", result["rights"]["status"])
 
 
 if __name__ == "__main__":

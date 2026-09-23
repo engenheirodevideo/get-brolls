@@ -967,16 +967,10 @@
         },
         {
           "action": "_StoreAction",
-          "choices": [
-            "commons",
-            "nasa",
-            "pexels",
-            "pixabay",
-            "youtube"
-          ],
+          "choices": null,
           "default": null,
           "dest": "preset",
-          "help": "Condições genéricas da fonte, sempre com o pedido de conferir a página original",
+          "help": "Condições genéricas da fonte, sempre com o pedido de conferir a página original. Nomes embutidos: commons, nasa, pexels, pixabay, youtube; ou o nome de um preset de plugin habilitado.",
           "nargs": null,
           "option_strings": [
             "--preset"

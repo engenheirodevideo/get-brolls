@@ -299,8 +299,16 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
         if name == "permit":
             p.add_argument(
                 "--preset",
-                choices=presets.names(),
-                help="Condições genéricas da fonte, sempre com o pedido de conferir a página original",
+                # Sem `choices=`: isso exigiria hashear a pasta de todo plugin instalado
+                # (`presets.names()` -> `loader.declared`) a cada comando, `--help`
+                # incluso, e travaria de cara um preset só habilitado por `GB_PLUGINS`
+                # num `--env-file` (lido depois do parser, em `execute()`). `execute()`
+                # valida com `presets.get(name)`, que lista os nomes válidos na mensagem.
+                help=(
+                    "Condições genéricas da fonte, sempre com o pedido de conferir a "
+                    "página original. Nomes embutidos: " + ", ".join(sorted(presets.PERMIT_PRESETS)) + "; "
+                    "ou o nome de um preset de plugin habilitado."
+                ),
             )
             g = p.add_mutually_exclusive_group()
             g.add_argument("--evidence", help="Evidência real fornecida ou verificada")
