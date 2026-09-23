@@ -16,7 +16,7 @@ from .guidance import blocked_beats_question, next_action
 from .ledger import Ledger, digest
 from .media import cut, probe, run
 from .models import approve, candidate, empty_output, id_stem, now, require_fetch, set_segment, signature
-from .presets import PERMIT_PRESETS
+from .presets import PERMIT_PRESETS  # noqa: F401  (mantido: tests/test_permit_presets.py importa daqui)
 from .queue import execute as queue_execute
 from .queue import hint as queue_hint
 from .queue import summary_line as queue_summary_line
@@ -1893,7 +1893,9 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
             # O preset nunca vira licença: ele diz o que a fonte costuma exigir e manda
             # conferir a página do item. Quem assina continua responsável, e `fetch`
             # continua exigindo a aprovação humana.
-            evidence = PERMIT_PRESETS[preset]["text"]
+            from getbrolls import presets
+
+            evidence = presets.get(preset)["text"]
             if args.evidence is not None:
                 if not args.evidence.strip():
                     raise ValueError("Evidência não pode ser vazia.")

@@ -140,5 +140,29 @@ class BuiltinProvidersTests(unittest.TestCase):
         fake.assert_called_once_with("earth", 2)
 
 
+class BuiltinPresetsTests(unittest.TestCase):
+    def setUp(self):
+        from getbrolls.sdk.registry import reset_registry
+
+        reset_registry()
+        self.addCleanup(reset_registry)
+
+    def test_every_builtin_preset_is_in_the_registry(self):
+        from getbrolls import presets
+        from getbrolls.sdk.registry import get_registry
+
+        reg = get_registry()
+        self.assertEqual(sorted(presets.PERMIT_PRESETS), sorted(reg.preset_names()))
+        self.assertEqual(sorted(presets.PERMIT_PRESETS), presets.names())
+        self.assertEqual(presets.PERMIT_PRESETS["nasa"]["text"], presets.get("nasa")["text"])
+
+    def test_unknown_preset_is_a_clear_error(self):
+        from getbrolls import presets
+
+        with self.assertRaises(ValueError) as caught:
+            presets.get("inexistente")
+        self.assertIn("inexistente", str(caught.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

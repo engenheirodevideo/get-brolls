@@ -53,3 +53,22 @@ PERMIT_PRESETS = {
         ),
     },
 }
+
+
+def register_builtins(registry):
+    for name, row in PERMIT_PRESETS.items():
+        registry.add_preset(name, row["url"], row["text"])
+
+
+def names():
+    """Nomes aceitos por `permit --preset`. Lido pela CLI na montagem do parser."""
+    return sorted(PERMIT_PRESETS)
+
+
+def get(name):
+    from .sdk.registry import get_registry
+
+    preset = get_registry().preset(name)
+    if preset is None:
+        raise ValueError(f"Preset desconhecido: {name}. Use um de: {', '.join(names())}.")
+    return {"url": preset.url, "text": preset.text}
