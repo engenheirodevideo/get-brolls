@@ -61,8 +61,15 @@ def register_builtins(registry):
 
 
 def names():
-    """Nomes aceitos por `permit --preset`. Lido pela CLI na montagem do parser."""
-    return sorted(PERMIT_PRESETS)
+    """Nomes aceitos por `permit --preset`. Lê os manifestos dos plugins habilitados,
+    sem executar código deles: a CLI monta o parser antes de qualquer comando."""
+    from .sdk import loader
+
+    try:
+        extra = loader.declared("presets")
+    except ValueError:
+        extra = []
+    return sorted(set(PERMIT_PRESETS) | set(extra))
 
 
 def get(name):

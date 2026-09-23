@@ -9,8 +9,7 @@ import time
 import traceback
 from pathlib import Path
 
-from . import __version__, logs
-from .presets import PERMIT_PRESETS
+from . import __version__, logs, presets
 from .runtime import READ_ONLY_ACTIONS, READ_ONLY_COMMANDS, OperationError, audited
 
 # Named so a caller (script, test, or someone scripting the CLI) never has to hardcode 2/3.
@@ -285,7 +284,7 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
         if name == "permit":
             p.add_argument(
                 "--preset",
-                choices=sorted(PERMIT_PRESETS),
+                choices=presets.names(),
                 help="Condições genéricas da fonte, sempre com o pedido de conferir a página original",
             )
             g = p.add_mutually_exclusive_group()

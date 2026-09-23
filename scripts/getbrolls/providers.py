@@ -7,6 +7,7 @@ from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from .http import ProviderError, encoded_url, get_json, public_url
 from .models import candidate
+from .sdk import guard
 from .sdk.contracts import CORE, ProviderCapabilities
 
 KEYS = {
@@ -173,7 +174,12 @@ def search(provider, query, limit=8, media="any"):
         raise ProviderError("Busca indisponível nesta fonte; forneça URL ou arquivo local")
     # YouTube e os bancos só devolvem vídeo: pedir imagem ali não é erro do usuário,
     # é fonte errada — e quem escolhe a fonte é o beat, não esta função.
-    items = source.search(query.strip(), limit, media)
+    owner = _registry().owner("provider", provider)
+    if owner == CORE:
+        items = source.search(query.strip(), limit, media)
+    else:
+        rows = guard.call(owner, provider, source.search, query.strip(), limit, media)
+        items = [guard.plugin_candidate(row, provider, owner) for row in (rows or [])]
     for item in items:
         item["query"] = query.strip()
         item["match"]["kind"] = source.capabilities.match_kind
@@ -521,6 +527,16 @@ def _resolve_builtin(url):  # noqa: C901 - existing size; one branch per recogni
 
 
 def resolve(url):
+    if public_url(url):
+        host = (urlsplit(url).hostname or "").lower()
+        reg = _registry()
+        source = reg.provider_for_host(host)
+        owner = reg.owner("provider", source.name) if source else None
+        if source is not None and owner != CORE:
+            item = guard.call(owner, source.name, source.resolve, url)
+            if item is None:
+                raise ProviderError(f"Plugin {owner}: URL de {host} não reconhecida por {source.name}.")
+            return guard.plugin_candidate(item, source.name, owner)
     return _resolve_builtin(url)
 
 
@@ -584,4 +600,14 @@ def _refresh_builtin(item):
 
 def refresh(item):
     """Refresh public stock file URLs without changing selection or approval."""
-    return _refresh_builtin(item)
+    import copy
+
+    reg = _registry()
+    owner = reg.owner("provider", item.get("provider"))
+    if owner is None or owner == CORE:
+        return _refresh_builtin(item)
+    source = reg.provider(item["provider"])
+    if source is None:
+        return _refresh_builtin(item)
+    fresh = guard.call(owner, item["provider"], source.refresh, copy.deepcopy(item))
+    return guard.refreshed(copy.deepcopy(item), fresh, owner)
