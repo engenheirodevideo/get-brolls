@@ -44,16 +44,9 @@
           "minItems": 1,
           "uniqueItems": true,
           "items": {
-            "enum": [
-              "youtube",
-              "instagram",
-              "tiktok",
-              "pexels",
-              "pixabay",
-              "commons",
-              "nasa",
-              "local"
-            ]
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{1,31}$",
+            "description": "Nome de fonte do registro: built-in ou de plugin habilitado; o runtime confere contra o registro."
           }
         },
         "intent": { "enum": ["literal", "illustrative"] },

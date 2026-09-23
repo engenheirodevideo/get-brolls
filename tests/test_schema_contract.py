@@ -123,10 +123,14 @@ class BriefSchemaContractTests(unittest.TestCase):
         self.assertEqual([], errors(data, schemas.load("brief")))
 
     def test_sources_are_names_not_a_closed_list(self):
-        beat = schemas.load("brief")["properties"]["beats"]["items"]
-        sources = beat["properties"]["allowed_sources"]["items"]
-        self.assertNotIn("enum", sources)
-        self.assertEqual("^[a-z][a-z0-9_]{1,31}$", sources["pattern"])
+        schema = schemas.load("brief")
+        beat = schema["properties"]["beats"]["items"]
+        for sources in (
+            schema["properties"]["defaults"]["properties"]["allowed_sources"]["items"],
+            beat["properties"]["allowed_sources"]["items"],
+        ):
+            self.assertNotIn("enum", sources)
+            self.assertEqual("^[a-z][a-z0-9_]{1,31}$", sources["pattern"])
 
     def test_ext_is_accepted_at_top_and_beat_and_unknown_keys_are_not(self):
         schema = schemas.load("brief")
