@@ -103,10 +103,12 @@ def rows(owner, provider, fn, *args):
 
 def _normalize(value, owner):
     """Só dict/list/str/number/bool/None sobrevivem a isto; qualquer outra
-    coisa (objeto de terceiro, dict subclass hostil, referência circular)
-    vira `ProviderError` aqui, antes de qualquer `.get`/comparação abaixo."""
+    coisa (objeto de terceiro, dict subclass hostil, referência circular,
+    NaN/Infinity/-Infinity — que um `json.dumps` padrão deixaria passar como
+    token não-JSON) vira `ProviderError` aqui, antes de qualquer
+    `.get`/comparação abaixo."""
     try:
-        return json.loads(json.dumps(value))
+        return json.loads(json.dumps(value, allow_nan=False))
     except (TypeError, ValueError, RecursionError) as exc:
         raise ProviderError(
             f"Plugin {owner}: devolveu algo que não é serializável em JSON ({type(exc).__name__})."

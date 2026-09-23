@@ -72,6 +72,15 @@ SEARCH_SYS_EXIT = PLUGIN_CODE.replace(
 )
 assert SEARCH_SYS_EXIT != PLUGIN_CODE
 
+# Fix final / Finding 5: media.duration_s vem NaN — `json.dumps` padrão deixa passar.
+NAN_MEDIA = PLUGIN_CODE.replace(
+    '        return [self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")]',
+    '        item = self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")\n'
+    '        item["media"]["duration_s"] = float("nan")\n'
+    "        return [item]",
+)
+assert NAN_MEDIA != PLUGIN_CODE
+
 
 class PluginTestCase(LoaderTestCase):
     def enable(self, code=PLUGIN_CODE):
@@ -236,6 +245,14 @@ class PluginProviderTests(PluginTestCase):
             providers.search("demo", "mar", 1)
         self.assertIn("Plugin demo", str(caught.exception))
         self.assertIn("tem que devolver uma lista de candidatos", str(caught.exception))
+
+    def test_nan_media_duration_becomes_provider_error(self):
+        """Finding 5: NaN/Infinity sobrevivem a um `json.dumps` padrão (não é JSON
+        estrito) — o guard tem que recusar antes que isso vaze no candidato."""
+        self.enable(NAN_MEDIA)
+        with self.assertRaises(ProviderError) as caught:
+            providers.search("demo", "mar", 1)
+        self.assertIn("Plugin demo", str(caught.exception))
 
     def test_names_falls_back_to_builtins_when_plugin_dir_is_unreadable(self):
         """Finding 3: OSError (ex.: PermissionError) não pode derrubar o parser da CLI."""
