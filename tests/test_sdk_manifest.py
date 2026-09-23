@@ -48,6 +48,7 @@ class ManifestTests(unittest.TestCase):
             "contributes": {**BASE, "contributes": {"providers": ["Nome Ruim"]}},
             "network": {**BASE, "permissions": {"network": ["https://api.acme.example"]}},
             "env": {**BASE, "permissions": {"env": ["acme_token"]}},
+            "description": {**BASE, "description": 123},
             "desconhecido": {**BASE, "desconhecido": 1},
             "core": {**BASE, "id": "core"},
         }

@@ -112,6 +112,15 @@ def _entry_field(folder, ident, raw):
     return entry
 
 
+def _description(ident, raw):
+    value = raw.get("description")
+    if value is None:
+        return None
+    if not isinstance(value, str) or len(value.strip()) > 500:  # noqa: PLR2004 - "até 500 caracteres" na mensagem
+        _fail(ident, "description tem que ser texto, com até 500 caracteres.")
+    return value
+
+
 def read_manifest(folder: Path, require_folder_match: bool = True) -> dict:
     path = folder / MANIFEST_NAME
     if not path.is_file():
@@ -136,7 +145,7 @@ def read_manifest(folder: Path, require_folder_match: bool = True) -> dict:
     return {
         "id": ident,
         "name": raw["name"].strip(),
-        "description": raw.get("description") if isinstance(raw.get("description"), str) else None,
+        "description": _description(ident, raw),
         "version": raw["version"],
         "sdk_api": raw["sdk_api"],
         "requires_getbrolls": raw["requires_getbrolls"],
