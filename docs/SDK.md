@@ -185,6 +185,13 @@ python3 scripts/gb.py plugins --action check --path <pasta-do-plugin>
 Depois de instalado em `$GB_HOME/plugins/<id>/`, use
 `plugins --action list` para ver o status (`disabled`, `enabled`, `suspended`,
 `incompatible`) e `plugins --action disable --id <id>` para desligar.
+`list` nunca executa código do plugin — o status ali é só manifesto + pin de
+hash (pré-carga), e o comando devolve uma `note` dizendo isso. Se o
+`register()` do plugin estourar uma exceção, `list` continua mostrando
+`enabled`; rode `doctor` para o resultado real do carregamento (`failed` com o
+motivo). Pedir busca numa fonte de um plugin instalado mas não carregado
+(`search --provider <nome>`) nomeia o plugin e o status atual na mensagem de
+erro, em vez de dizer só "fonte desconhecida".
 
 ## Evolução do schema
 

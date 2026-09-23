@@ -162,6 +162,42 @@ def capabilities():
     return result
 
 
+def _declared_by_plugin(name, kind="providers"):
+    """A linha de status do plugin instalado que declara `name` em
+    `contributes.<kind>`, ou None.
+
+    Prefere `get_registry().plugins`: reflete o carregamento de verdade (já rodou —
+    quem chama isto já tocou `_registry()` antes), então um plugin com pin batendo
+    mas `register()` que estourou aparece como "failed", não "enabled". Sem essa
+    linha (registro nunca tentou, ex.: `plugins.json` corrompido) cai para o
+    inventário pré-carga (`loader.entries()`, só manifesto/pin, nunca executa
+    código) — melhor um status desatualizado do que nenhum motivo."""
+    from .sdk.registry import get_registry
+
+    for row in get_registry().plugins.values():
+        if name in (row.get("contributes") or {}).get(kind, []):
+            return row
+    from .sdk import loader
+
+    try:
+        rows = loader.entries()
+    except (ValueError, OSError):
+        return None
+    return next((row for row, _, manifest in rows if manifest and name in manifest["contributes"][kind]), None)
+
+
+def _source_unavailable_error(name):
+    """Fonte não registrada: se for de um plugin instalado (só não carregado agora),
+    a mensagem nomeia o plugin e o status; senão, mantém o "fonte desconhecida" de hoje."""
+    row = _declared_by_plugin(name)
+    if row is None:
+        return ProviderError("Busca indisponível nesta fonte; forneça URL ou arquivo local")
+    detail = f": {row['reason']}" if row["reason"] else ""
+    return ProviderError(
+        f"Fonte {name} é do plugin {row['id']}, que está {row['status']}{detail}. Rode plugins --action list / doctor."
+    )
+
+
 def search(provider, query, limit=8, media="any"):
     if not isinstance(limit, int) or not 1 <= limit <= 50:  # noqa: PLR2004 - matches the "entre 1 e 50" message below
         raise ProviderError("Limite deve estar entre 1 e 50")
@@ -170,7 +206,9 @@ def search(provider, query, limit=8, media="any"):
     if media not in MEDIA_CHOICES:
         raise ProviderError("--media aceita image, video ou any")
     source = _registry().provider(provider)
-    if source is None or not source.capabilities.search:
+    if source is None:
+        raise _source_unavailable_error(provider)
+    if not source.capabilities.search:
         raise ProviderError("Busca indisponível nesta fonte; forneça URL ou arquivo local")
     # YouTube e os bancos só devolvem vídeo: pedir imagem ali não é erro do usuário,
     # é fonte errada — e quem escolhe a fonte é o beat, não esta função.

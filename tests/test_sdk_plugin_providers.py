@@ -9,6 +9,14 @@ from test_sdk_loader import MANIFEST, PLUGIN_CODE, LoaderTestCase  # noqa: F401 
 from getbrolls import presets, providers
 from getbrolls.http import ProviderError
 from getbrolls.presets import PERMIT_PRESETS
+from getbrolls.sdk.registry import reset_registry
+
+# Fix final: `demo` some do contributes.providers efetivo porque register() nunca chega
+# a chamar `api.provider(...)` — o plugin continua declarando a fonte no manifesto.
+REGISTER_RAISES = PLUGIN_CODE.replace(
+    "def register(api):\n    api.provider(Fonte(api))\n",
+    "def register(api):\n    raise RuntimeError('boom')\n",
+)
 
 GREEDY = PLUGIN_CODE.replace(
     '        return [self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")]',
@@ -101,6 +109,37 @@ class PluginProviderTests(PluginTestCase):
         with self.assertRaises(ProviderError) as caught:
             providers.resolve("https://desconhecido.example/v/1")
         self.assertIn("Fonte de URL não suportada", str(caught.exception))
+
+    def test_search_on_a_failed_plugin_source_names_plugin_and_status(self):
+        """Finding 1: register() estourou, então "demo" nunca entrou no registro — a
+        mensagem tem que apontar o plugin e o status real, não "fonte desconhecida"."""
+        self.enable(REGISTER_RAISES)
+        with self.assertRaises(ProviderError) as caught:
+            providers.search("demo", "mar", 1)
+        message = str(caught.exception)
+        self.assertIn("demo", message)
+        self.assertIn("failed", message)
+        self.assertIn("plugins --action list", message)
+
+    def test_search_on_a_suspended_plugin_source_names_plugin_and_status(self):
+        """Finding 1: pin quebrado suspende o plugin; a busca por esse nome de fonte tem
+        que dizer isso, não "fonte desconhecida"."""
+        folder = self.install()
+        from getbrolls.sdk import loader
+
+        loader.enable("demo", confirm=True)
+        (folder / "plugin.py").write_text(PLUGIN_CODE + "\n# mudou\n", encoding="utf-8")
+        reset_registry()
+        self.addCleanup(reset_registry)
+        with self.assertRaises(ProviderError) as caught:
+            providers.search("demo", "mar", 1)
+        self.assertIn("suspended", str(caught.exception))
+
+    def test_search_on_a_truly_unknown_source_keeps_the_original_message(self):
+        self.enable()
+        with self.assertRaises(ProviderError) as caught:
+            providers.search("inexistente", "mar", 1)
+        self.assertIn("Busca indisponível nesta fonte", str(caught.exception))
 
     def test_refresh_only_takes_media_url_from_plugin(self):
         self.enable()

@@ -49,6 +49,22 @@ class PluginsCommandTests(LoaderTestCase):
         self.assertNotIn("plugins", doctor)
         self.assertIn("plugins.json", doctor["plugins_error"])
 
+    def test_list_note_says_status_is_pre_load(self):
+        """Finding 1: `plugins --action list` nunca roda código; a nota deixa claro que o
+        status ali é pré-carga e manda para `doctor` o resultado real do carregamento."""
+        self.install()
+        out = run_cli("plugins", "--action", "list", env=self.env())
+        self.assertIn("note", out)
+        self.assertIn("doctor", out["note"])
+
+    def test_doctor_overlays_failed_status_and_reason_over_the_preload_inventory(self):
+        """Finding 1: `plugins.json` marca o plugin habilitado (pré-carga: "enabled"), mas o
+        register() dele estoura — o doctor tem que mostrar o resultado real do carregamento."""
+        self.install(code="def register(api):\n    raise RuntimeError('boom')\n")
+        doctor = run_cli("doctor", env={**self.env(), "GB_PLUGINS": "demo"})
+        self.assertEqual("failed", doctor["plugins"][0]["status"])
+        self.assertIn("RuntimeError", doctor["plugins"][0]["reason"])
+
 
 if __name__ == "__main__":
     unittest.main()

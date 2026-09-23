@@ -1388,6 +1388,7 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                 "social": social,
             }
             from getbrolls.sdk import loader as sdk_loader
+            from getbrolls.sdk.registry import get_registry
 
             try:
                 installed = sdk_loader.inventory()
@@ -1395,7 +1396,18 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                 result["plugins_error"] = str(exc)
             else:
                 if installed:
-                    result["plugins"] = installed
+                    # `loader.inventory()` só lê manifesto e pin (pré-carga: nunca roda
+                    # código). `get_registry().plugins` reflete o carregamento de verdade
+                    # (já rodou, porque `providers.capabilities()` acima monta o registro
+                    # antes) — sobrepomos status/reason por id, sem perder nenhuma pasta
+                    # que o inventário viu.
+                    loaded = get_registry().plugins
+                    result["plugins"] = [
+                        {**row, "status": loaded[row["id"]]["status"], "reason": loaded[row["id"]]["reason"]}
+                        if row["id"] in loaded
+                        else row
+                        for row in installed
+                    ]
             if args.live:
                 from getbrolls.health import live_checks
 
