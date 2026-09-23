@@ -194,8 +194,10 @@ def search(provider, query, limit=8, media="any"):
     if owner == CORE:
         items = source.search(query.strip(), limit, media)
     else:
-        materialized = guard.rows(owner, provider, source.search, query.strip(), limit, media)
-        items = [guard.plugin_candidate(row, provider, owner) for row in materialized]
+        materialized = guard.rows(owner, provider, source.search, query.strip(), limit, media, limit=limit)
+        items = [
+            guard.plugin_candidate(row, provider, owner, download=source.capabilities.download) for row in materialized
+        ]
     for item in items:
         item["query"] = query.strip()
         item["match"]["kind"] = source.capabilities.match_kind
@@ -552,7 +554,7 @@ def resolve(url):
             item = guard.call(owner, source.name, source.resolve, url)
             if item is None:
                 raise ProviderError(f"Plugin {owner}: URL de {host} não reconhecida por {source.name}.")
-            return guard.plugin_candidate(item, source.name, owner)
+            return guard.plugin_candidate(item, source.name, owner, download=source.capabilities.download)
     return _resolve_builtin(url)
 
 

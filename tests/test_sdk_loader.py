@@ -129,6 +129,7 @@ class DiscoveryTests(LoaderTestCase):
 class FailureIsolationTests(LoaderTestCase):
     def test_exception_in_register_marks_failed_and_rolls_back(self):
         code = PLUGIN_CODE.replace("    api.preset(", "    raise RuntimeError('boom')\n    api.preset(")
+        assert code != PLUGIN_CODE  # replace() sem alvo encontrado devolveria o original e esvaziaria o teste
         self.install(code=code)
         with patch.dict(os.environ, {"GB_PLUGINS": "demo"}):
             reg = get_registry()
@@ -146,6 +147,7 @@ class FailureIsolationTests(LoaderTestCase):
 
     def test_plugin_cannot_take_a_builtin_name(self):
         code = PLUGIN_CODE.replace('name = "demo"', 'name = "youtube"')
+        assert code != PLUGIN_CODE  # replace() sem alvo encontrado devolveria o original e esvaziaria o teste
         self.install({**MANIFEST, "contributes": {"providers": ["youtube"], "presets": ["demo"]}}, code=code)
         with patch.dict(os.environ, {"GB_PLUGINS": "demo"}):
             reg = get_registry()
@@ -208,11 +210,39 @@ class PluginApiTests(LoaderTestCase):
             with self.assertRaises(ValueError):
                 api.env("OUTRA")
         with self.assertRaises(ProviderError), self.assertLogs("getbrolls.sdk", level="WARNING") as cm:
-            api.get_json("https://outro.example/api")
+            api.get_json("https://outro.example/api?token=segredo123")
         self.assertIn("event=plugin_request_refused", "\n".join(cm.output))
         with patch("getbrolls.sdk.api.get_json", return_value={"ok": True}) as fake:
             self.assertEqual({"ok": True}, api.get_json("https://demo.example/api", {"q": "a"}))
         fake.assert_called_once()
+
+    def test_refused_host_message_never_echoes_the_url(self):
+        """Cheap minor: quando `urlsplit` não acha host nenhum (URL sem esquema/netloc),
+        a mensagem tem que dizer "-", nunca ecoar a URL crua (poderia carregar
+        token/query sensível — `urlsplit` não valida isso, só não achou host)."""
+        from getbrolls.http import ProviderError
+        from getbrolls.sdk.api import PluginApi
+        from getbrolls.sdk.manifest import read_manifest
+        from getbrolls.sdk.registry import Registry
+
+        api = PluginApi(read_manifest(self.install()), Registry())
+        url = "sem-host-nenhum?token=segredo123"
+        with self.assertRaises(ProviderError) as caught:
+            api.get_json(url)
+        self.assertNotIn(url, str(caught.exception))
+        self.assertNotIn("segredo123", str(caught.exception))
+
+    def test_malformed_url_becomes_provider_error_not_a_raw_valueerror(self):
+        """Cheap minor: `urlsplit` pode levantar ValueError pra URL malformada (ex.:
+        IPv6 inválido) — isso tem que virar ProviderError, não vazar cru."""
+        from getbrolls.http import ProviderError
+        from getbrolls.sdk.api import PluginApi
+        from getbrolls.sdk.manifest import read_manifest
+        from getbrolls.sdk.registry import Registry
+
+        api = PluginApi(read_manifest(self.install()), Registry())
+        with self.assertRaises(ProviderError):
+            api.get_json("https://[::1/x")
 
 
 class HashPinTamperTests(LoaderTestCase):

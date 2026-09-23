@@ -20,4 +20,9 @@ if not os.environ.get("GB_HOME"):
     os.environ["GB_HOME"] = _home
     atexit.register(shutil.rmtree, _home, ignore_errors=True)
 
+# Um GB_PLUGINS vazado do ambiente de quem roda os testes (ou deixado por um teste
+# anterior que esqueceu de limpar) selecionaria plugins por fora do plugins.json do
+# GB_HOME de mentira acima — mudando quais plugins um teste vê sem ele pedir isso.
+os.environ.pop("GB_PLUGINS", None)
+
 GB_HOME = Path(os.environ["GB_HOME"])

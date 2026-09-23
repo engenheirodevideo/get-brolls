@@ -48,10 +48,19 @@ class PluginApi:
         return os.environ.get(key)
 
     def get_json(self, url, params=None, headers=None, cache_ttl=0):
-        host = (urlsplit(url).hostname or "").lower()
+        try:
+            host = (urlsplit(url).hostname or "").lower()
+        except ValueError as exc:
+            # `urlsplit` pode levantar em cima de uma URL malformada (ex.: IPv6 sem
+            # fechar colchete) em vez de só devolver host vazio; mesmo assim nunca
+            # ecoa a URL crua — pode carregar token/query sensível.
+            logs.event(_log, logging.WARNING, "plugin_request_refused", plugin=self.plugin_id, host="-")
+            raise ProviderError(f"Plugin {self.plugin_id}: URL inválida ({type(exc).__name__}).") from exc
         if host not in self._manifest["permissions"]["network"]:
             logs.event(_log, logging.WARNING, "plugin_request_refused", plugin=self.plugin_id, host=host or "-")
-            raise ProviderError(f"Plugin {self.plugin_id}: host {host or url!r} não está em permissions.network.")
+            # `host or "-"` nos dois lugares: nunca a URL crua (pode carregar
+            # token/query sensível), só o host — ou "-" quando nem host tem.
+            raise ProviderError(f"Plugin {self.plugin_id}: host {host or '-'} não está em permissions.network.")
         return get_json(url, params, headers, cache_ttl=cache_ttl)
 
     def finish(self):

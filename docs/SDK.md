@@ -129,7 +129,7 @@ sobrevive:
 - `media`: `duration_s`, `width`, `height`, `fps`, `kind`.
 - `preview`: só `poster_url`, `embed_url` e `seek_mode` — `poster_path` e `contact_sheet_path` são sempre `None` na saída do plugin; só o core grava caminho local.
 - `rights`: `license_name`, `license_url`, `evidence`, `attribution` — `status` sempre volta para `"unknown"`; a decisão de direitos é humana.
-- `acquisition`: `status` e `method`, restritos a valores conhecidos (`available`/`unavailable`, `https`/`yt-dlp`/`None`); `evidence`.
+- `acquisition`: `status` e `method`, restritos a valores conhecidos (`available`/`unavailable`, `https`/`yt-dlp`/`None`); `evidence`. Com `capabilities.download=False` (fonte só-metadados, como o exemplo `pasta_local`), o core força `{"status": "unavailable", "method": None, "evidence": []}` mesmo que o plugin tente devolver "available" — o core nunca vai baixar por essa fonte, então essa promessa não pode chegar ao candidato.
 
 Qualquer campo de topo ou subcampo fora dessas listas é descartado em
 silêncio (do ponto de vista do retorno da CLI) e registrado no log estruturado

@@ -21,6 +21,7 @@ REGISTER_RAISES = PLUGIN_CODE.replace(
     "def register(api):\n    api.provider(Fonte(api))\n",
     "def register(api):\n    raise RuntimeError('boom')\n",
 )
+assert REGISTER_RAISES != PLUGIN_CODE  # replace() sem alvo encontrado devolveria o original e esvaziaria os testes
 
 GREEDY = PLUGIN_CODE.replace(
     '        return [self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")]',
@@ -32,6 +33,7 @@ GREEDY = PLUGIN_CODE.replace(
     '        item["media_url"] = "http://inseguro.example/v.mp4"\n'
     "        return [item]",
 )
+assert GREEDY != PLUGIN_CODE
 
 # Fix round 1 / Finding 2: tenta pré-preencher estado de revisão/local que só o
 # core pode gravar (contact_sheet_path, local_path/sha256, review, segment).
@@ -45,6 +47,7 @@ GREEDY_STATE = PLUGIN_CODE.replace(
     '        item["segment"] = {"start_s": 1, "end_s": 2, "revision": 5}\n'
     "        return [item]",
 )
+assert GREEDY_STATE != PLUGIN_CODE
 
 # Fix round 1 / Finding 1: search() devolve um gerador que quebra no meio.
 GENERATOR_THAT_RAISES = PLUGIN_CODE.replace(
@@ -56,6 +59,7 @@ GENERATOR_THAT_RAISES = PLUGIN_CODE.replace(
     "            raise KeyError('x')\n"
     "        return gen()\n",
 )
+assert GENERATOR_THAT_RAISES != PLUGIN_CODE
 
 # Fix round 1 / Finding 1: search() não devolve lista/tupla/gerador nenhum.
 NON_LIST_SEARCH = PLUGIN_CODE.replace(
@@ -63,6 +67,7 @@ NON_LIST_SEARCH = PLUGIN_CODE.replace(
     '        return [self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")]\n',
     "    def search(self, query, limit, media):\n        return 5\n",
 )
+assert NON_LIST_SEARCH != PLUGIN_CODE
 
 # Fix final / Finding 2: search() chama sys.exit em vez de estourar uma Exception comum.
 SEARCH_SYS_EXIT = PLUGIN_CODE.replace(
@@ -80,6 +85,39 @@ NAN_MEDIA = PLUGIN_CODE.replace(
     "        return [item]",
 )
 assert NAN_MEDIA != PLUGIN_CODE
+
+# Cheap minor: search() de um gerador infinito. `CALLS` conta quantos itens o gerador
+# de fato produziu — a prova de que `guard.rows` parou em `limit`, não drenou tudo.
+INFINITE_SEARCH = "CALLS = 0\n\n" + PLUGIN_CODE.replace(
+    "    def search(self, query, limit, media):\n"
+    '        return [self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")]\n',
+    "    def search(self, query, limit, media):\n"
+    "        def gen():\n"
+    "            global CALLS\n"
+    "            i = 0\n"
+    "            while True:\n"
+    "                CALLS += 1\n"
+    "                yield self.api.candidate(\n"
+    '                    "demo", str(i), "Demo " + str(i), "https://demo.example/v/" + str(i)\n'
+    "                )\n"
+    "                i += 1\n"
+    "        return gen()\n",
+)
+assert INFINITE_SEARCH != PLUGIN_CODE
+
+# Cheap minor: fonte com capabilities.download=False (só metadados, como o exemplo
+# pasta_local) tenta fingir um acquisition "available" — o guard tem que ignorar isso.
+NO_DOWNLOAD_FAKES_ACQUISITION = PLUGIN_CODE.replace(
+    '    capabilities = ProviderCapabilities(search=True, url_hosts=("demo.example",))',
+    '    capabilities = ProviderCapabilities(search=True, url_hosts=("demo.example",), download=False)',
+).replace(
+    '        return [self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")]',
+    '        item = self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")\n'
+    '        item["media_url"] = "https://demo.example/v/1.mp4"\n'
+    '        item["acquisition"] = {"status": "available", "method": "https", "evidence": ["x"]}\n'
+    "        return [item]",
+)
+assert NO_DOWNLOAD_FAKES_ACQUISITION != PLUGIN_CODE
 
 
 class PluginTestCase(LoaderTestCase):
@@ -253,6 +291,25 @@ class PluginProviderTests(PluginTestCase):
         with self.assertRaises(ProviderError) as caught:
             providers.search("demo", "mar", 1)
         self.assertIn("Plugin demo", str(caught.exception))
+
+    def test_infinite_generator_search_is_bounded_by_limit(self):
+        """Cheap minor: `guard.rows` materializa só até `limit` (`itertools.islice`) —
+        um gerador infinito de um plugin mal-comportado não pode travar a busca nem
+        gastar tempo sanitizando candidato que `search` ia descartar de qualquer jeito."""
+        import sys
+
+        self.enable(INFINITE_SEARCH)
+        items = providers.search("demo", "mar", 3)
+        self.assertEqual(3, len(items))
+        self.assertEqual(3, sys.modules["getbrolls_plugins.demo"].CALLS)
+
+    def test_no_download_capability_forces_acquisition_unavailable(self):
+        """Cheap minor: `capabilities.download=False` (fonte só-metadados, como o
+        exemplo pasta_local) tem que forçar acquisition indisponível mesmo quando o
+        plugin tenta fingir "available" — docs/SDK.md promete isso para essas fontes."""
+        self.enable(NO_DOWNLOAD_FAKES_ACQUISITION)
+        item = providers.search("demo", "mar", 1)[0]
+        self.assertEqual({"status": "unavailable", "method": None, "evidence": []}, item["acquisition"])
 
     def test_names_falls_back_to_builtins_when_plugin_dir_is_unreadable(self):
         """Finding 3: OSError (ex.: PermissionError) não pode derrubar o parser da CLI."""

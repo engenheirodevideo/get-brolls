@@ -9,6 +9,7 @@ plugin passa primeiro por um round-trip de JSON: um objeto de terceiro com
 """
 
 import copy
+import itertools
 import json
 import logging
 import types
@@ -77,16 +78,22 @@ def call(owner, provider, fn, *args):
         raise ProviderError(f"Plugin {owner}: falha em {provider} ({type(exc).__name__}).") from exc
 
 
-def rows(owner, provider, fn, *args):
+def rows(owner, provider, fn, *args, limit=None):
     """Como `call`, mas também materializa a lista dentro do mesmo `try`: um
     gerador que levanta no meio da iteração, ou um retorno que não é lista,
     tupla nem gerador, vira `ProviderError` aqui — nunca uma exceção crua
-    (ou um `TypeError` de `list(int)`) até quem chamou `search`."""
+    (ou um `TypeError` de `list(int)`) até quem chamou `search`.
+
+    Com `limit`, materializa no máximo essa quantidade via `itertools.islice`:
+    um gerador infinito de um plugin mal-comportado não trava `search` a
+    consumir o resto que ninguém vai ler — e só as linhas de fato materializadas
+    passam por `plugin_candidate` depois, então o corte também evita o custo de
+    sanitizar candidato que seria descartado pelo `[:limit]` no final de `search`."""
     try:
         result = fn(*args)
         if not isinstance(result, (list, tuple)) and not isinstance(result, types.GeneratorType):
             raise ProviderError(f"{provider} tem que devolver uma lista de candidatos.")
-        materialized = list(result)
+        materialized = list(result) if limit is None else list(itertools.islice(result, limit))
     except ProviderError as exc:
         logs.event(_log, logging.WARNING, "plugin_call_failed", plugin=owner, provider=provider, error="ProviderError")
         raise ProviderError(f"Plugin {owner}: {exc}") from exc
@@ -127,7 +134,7 @@ def _kept(raw, allowed):
     return kept, dropped
 
 
-def plugin_candidate(item, provider, owner):  # noqa: C901, PLR0912, PLR0915 - um campo guardado por seção do candidato (Finding 2 do fix round 1)
+def plugin_candidate(item, provider, owner, download=True):  # noqa: C901, PLR0912, PLR0915 - um campo guardado por seção do candidato (Finding 2 do fix round 1)
     item = _normalize(item, owner)
     if not isinstance(item, dict):
         raise ProviderError(f"Plugin {owner}: {provider} devolveu um candidato que não é objeto.")
@@ -185,6 +192,12 @@ def plugin_candidate(item, provider, owner):  # noqa: C901, PLR0912, PLR0915 - u
         "method": acq_method,
         "evidence": [v for v in raw_acq_evidence if isinstance(v, str)] if isinstance(raw_acq_evidence, list) else [],
     }
+    if not download and acquisition != {"status": "unavailable", "method": None, "evidence": []}:
+        # Fonte só-metadados (capabilities.download=False, ex.: o exemplo pasta_local):
+        # o core nunca vai baixar por ela, então "available" aqui seria promessa que
+        # ninguém cumpre. Vence a capability, não o que o plugin tentou escrever.
+        tampered.append("acquisition.download")
+        acquisition = {"status": "unavailable", "method": None, "evidence": []}
 
     if item.get("segment") not in (None, PENDING_SEGMENT):
         tampered.append("segment")
