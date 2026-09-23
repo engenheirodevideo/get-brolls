@@ -20,6 +20,7 @@ Este arquivo é o índice central para agentes e mantenedores: tudo que um agent
 | Instalar no Claude Code como plugin | `/plugin marketplace add engenheirodevideo/get-brolls`, acione com `/get-brolls:get-brolls` e prepare o ambiente com [`/get-brolls-setup`](commands/get-brolls-setup.md). |
 | Instalar no Gemini CLI | [GEMINI.md](GEMINI.md) — o snippet de importação `@` que o usuário acrescenta ao próprio `GEMINI.md`. |
 | Guia operacional (instalação, provedores, navegador, Storyboard, `status`) | [GUIDE.md](docs/GUIDE.md) |
+| Manual + tutorial para quem está chegando (comandos explicados, JSON de saída, automação) | [MANUAL.md](docs/MANUAL.md) |
 | Qualidade, evidências reais e limites conhecidos | [QUALITY.md](docs/QUALITY.md) |
 | Medir qualidade editorial (blind tests) | [eval/README.md](eval/README.md) — processo, rubrica, corpus e rodadas; execute um caso com [`/get-brolls-eval`](commands/get-brolls-eval.md). |
 | Contribuir (fluxo de mudança, revisão, PR) | [CONTRIBUTING.md](CONTRIBUTING.md) |

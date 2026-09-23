@@ -4,7 +4,7 @@
   <h1>GET B-ROLLS</h1>
   <p><strong>Da ideia ao trecho certo para a sua edição.</strong></p>
   <p>Encontre imagens de apoio, veja o movimento e revise cada escolha<br>antes de receber os cortes finais com suas fontes.</p>
-  <p><a href="#comece-aqui">Comece aqui</a> · <a href="#destaques">Destaques</a> · <a href="#documentação">Documentação</a> · <a href="docs/GUIDE.md#instalação">Guia completo</a></p>
+  <p><a href="#comece-aqui">Comece aqui</a> · <a href="#destaques">Destaques</a> · <a href="#documentação">Documentação</a> · <a href="docs/MANUAL.md">Manual e tutorial</a> · <a href="docs/GUIDE.md#instalação">Guia completo</a></p>
   <p align="center">
     <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey?style=flat-square" alt="macOS e Windows">
     <img src="https://img.shields.io/badge/agents-Codex%20%7C%20Claude%20Code-orange?style=flat-square" alt="Codex e Claude Code">
@@ -133,6 +133,8 @@ python scripts/gb.py doctor
 O instalador cria os ambientes locais e obtém as versões registradas de yt-dlp/EJS e Playwright CLI. `--check` só valida pré-requisitos (Python, FFmpeg/ffprobe, Node, curl, Git) e não instala nada; rode-o antes do instalador completo para saber o que falta. `doctor` confere a disponibilidade das ferramentas depois de instaladas; o acesso a cada fonte depende da URL e, quando necessário, da sua sessão de navegador.
 
 ### Primeiro B-roll em 5 minutos
+
+Quer cada comando explicado, passo a passo? Veja o [manual + tutorial](docs/MANUAL.md).
 
 A sequência mais curta pelo terminal, usando uma fonte sem chave (NASA). Troque `/caminho/meu-video` pelo seu projeto e `<ID>` pelo identificador devolvido pela busca — mantenha as aspas, porque identificadores podem conter espaços.
 
@@ -340,6 +342,7 @@ Execute um comando por projeto de cada vez. Preserve originais, cache e históri
 | **[README.md](README.md)** | Visão do produto e primeiro uso (este arquivo). |
 | [README.en.md](README.en.md) | Product overview and first use in English. |
 | [AGENTS.md](AGENTS.md) | Índice para agentes e mantenedores: mapa do repositório, instalação por agente e regras de manutenção. |
+| [docs/MANUAL.md](docs/MANUAL.md) | Manual + tutorial: cada comando explicado, formato da resposta, BRIEF/RULES/.env e automação. Comece por aqui se está chegando agora. |
 | [docs/GUIDE.md](docs/GUIDE.md) · [SKILL.md](SKILL.md) | Manual completo e instruções de execução para o agente. |
 | [docs/QUALITY.md](docs/QUALITY.md) | Testes, evidências reais e limites conhecidos. |
 | [docs/RULES.md](docs/RULES.md) · [.env.example.pt-BR](.env.example.pt-BR) | Regras editoriais e opções de configuração. |

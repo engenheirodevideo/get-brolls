@@ -361,6 +361,7 @@ Run one command per project at a time. Preserve originals, cache, and event hist
 | [README.md](README.md) | Product overview and first use in Portuguese. |
 | **[README.en.md](README.en.md)** | Product overview and first use in English (this file). |
 | [AGENTS.md](AGENTS.md) | Index for agents and maintainers: repository map, per-agent installation, and maintenance rules. |
+| [docs/MANUAL.md](docs/MANUAL.md) | Manual + tutorial in Portuguese: every command explained, output format, BRIEF/RULES/.env, and automation. |
 | [docs/GUIDE.md](docs/GUIDE.md) · [SKILL.md](SKILL.md) | Complete operating guide and agent execution instructions. |
 | [docs/QUALITY.md](docs/QUALITY.md) | Tests, real-world evidence, and known limitations. |
 | [docs/RULES.md](docs/RULES.md) · [.env.example](.env.example) | Editorial rules and configuration options. |
