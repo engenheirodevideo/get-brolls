@@ -1344,6 +1344,11 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
             brief_present=_brief_present(args),
             provider_keys=_provider_keys_set(),
         )
+    if args.command == "plugins":
+        from getbrolls.sdk import cli as sdk_cli
+
+        return sdk_cli.run(args)
+
     from getbrolls import providers
 
     if args.command in ("providers", "doctor"):
@@ -1382,6 +1387,15 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                 "providers": result,
                 "social": social,
             }
+            from getbrolls.sdk import loader as sdk_loader
+
+            try:
+                installed = sdk_loader.inventory()
+            except ValueError as exc:
+                result["plugins_error"] = str(exc)
+            else:
+                if installed:
+                    result["plugins"] = installed
             if args.live:
                 from getbrolls.health import live_checks
 

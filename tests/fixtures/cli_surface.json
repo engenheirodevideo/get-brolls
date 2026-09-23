@@ -1033,6 +1033,77 @@
         }
       ]
     },
+    "plugins": {
+      "help": "Listar, habilitar, desabilitar ou validar plugins do SDK (pasta ~/.getbrolls/plugins)",
+      "options": [
+        {
+          "action": "_HelpAction",
+          "choices": null,
+          "default": "==SUPPRESS==",
+          "dest": "help",
+          "help": "show this help message and exit",
+          "nargs": 0,
+          "option_strings": [
+            "--help",
+            "-h"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "check",
+            "disable",
+            "enable",
+            "list"
+          ],
+          "default": null,
+          "dest": "action",
+          "help": "list: inventário sem executar código; enable/disable: liga/desliga por id; check: valida uma pasta",
+          "nargs": null,
+          "option_strings": [
+            "--action"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "id",
+          "help": "Id do plugin (enable/disable)",
+          "nargs": null,
+          "option_strings": [
+            "--id"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "path",
+          "help": "Pasta do plugin a validar (check); executa o register() do plugin",
+          "nargs": null,
+          "option_strings": [
+            "--path"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreTrueAction",
+          "choices": null,
+          "default": false,
+          "dest": "yes",
+          "help": "Confirma o enable depois de mostrar manifesto e permissões à pessoa",
+          "nargs": 0,
+          "option_strings": [
+            "--yes"
+          ],
+          "required": false
+        }
+      ]
+    },
     "preview": {
       "help": "Gerar prévia (GIF/contact sheet) do intervalo escolhido",
       "options": [

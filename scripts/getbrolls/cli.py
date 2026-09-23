@@ -20,6 +20,7 @@ EXIT_INTERNAL_ERROR = 3
 SUMMARIES = {
     "providers": "Listar fontes disponíveis, transporte e chaves configuradas",
     "doctor": "Diagnosticar dependências, caminhos fixados e fontes utilizáveis",
+    "plugins": "Listar, habilitar, desabilitar ou validar plugins do SDK (pasta ~/.getbrolls/plugins)",
     "status": "Resumir onde o projeto está por etapa, sem alterar arquivos",
     "search": "Pesquisar candidatos numa fonte e registrá-los no projeto (--shot liga ao beat; --dry-run não grava)",
     "resolve": "Registrar um candidato a partir de URL pública ou arquivo local",
@@ -80,7 +81,7 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
         help="Mostrar a versão instalada da skill e sair",
     )
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("providers", "doctor"):
+    for name in ("providers", "doctor", "plugins"):
         p = sub.add_parser(name, help=SUMMARIES[name], description=SUMMARIES[name])
         if name == "doctor":
             # O SKILL.md diz que `--project` vai em todo comando, e a primeira chamada
@@ -94,6 +95,20 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
                 "--live",
                 action="store_true",
                 help="Testar buscas reais/refresh; pode consumir quota de API",
+            )
+        if name == "plugins":
+            p.add_argument(
+                "--action",
+                required=True,
+                choices=["list", "enable", "disable", "check"],
+                help="list: inventário sem executar código; enable/disable: liga/desliga por id; check: valida uma pasta",
+            )
+            p.add_argument("--id", help="Id do plugin (enable/disable)")
+            p.add_argument("--path", help="Pasta do plugin a validar (check); executa o register() do plugin")
+            p.add_argument(
+                "--yes",
+                action="store_true",
+                help="Confirma o enable depois de mostrar manifesto e permissões à pessoa",
             )
     for name in (
         "status",
