@@ -204,5 +204,50 @@ class PluginApiTests(LoaderTestCase):
         fake.assert_called_once()
 
 
+class HashPinTamperTests(LoaderTestCase):
+    """Fix round 1 / Finding 1: `.pyc` plantado não pode driblar o pin de hash."""
+
+    def test_planted_pycache_bytecode_suspends_instead_of_running(self):
+        folder = self.install()
+        self.assertTrue(loader.enable("demo", confirm=True)["enabled"])
+        self.assertIn("demo", get_registry().provider_names())
+
+        pycache = folder / "__pycache__"
+        pycache.mkdir()
+        (pycache / "plugin.cpython-311.pyc").write_bytes(b"not real bytecode")
+
+        reset_registry()
+        self.assertEqual("suspended", loader.inventory()[0]["status"])
+        self.assertNotIn("demo", get_registry().provider_names())
+        self.assertIn("youtube", get_registry().provider_names())
+
+
+class CorruptStateTests(LoaderTestCase):
+    """Fix round 1 / Finding 2: `plugins.json` corrompido não pode derrubar os built-ins."""
+
+    def _corrupt(self, raw_bytes):
+        self.install()
+        loader.state_path().write_bytes(raw_bytes)
+
+    def _assert_isolated(self, raw_bytes):
+        self._corrupt(raw_bytes)
+        with self.assertLogs("getbrolls.sdk", level="WARNING") as cm:
+            reg = get_registry()
+        self.assertIn("youtube", reg.provider_names())
+        self.assertIn("event=plugin_failed", "\n".join(cm.output))
+        with self.assertRaises(ValueError) as ctx:
+            loader.inventory()
+        self.assertIn("plugins.json", str(ctx.exception))
+
+    def test_bad_shaped_entry_does_not_take_down_builtins(self):
+        self._assert_isolated(json.dumps({"enabled": {"demo": "x"}}).encode("utf-8"))
+
+    def test_invalid_json_does_not_take_down_builtins(self):
+        self._assert_isolated(b"{")
+
+    def test_non_utf8_bytes_do_not_take_down_builtins(self):
+        self._assert_isolated(b"\xff\xfe\x00\x01")
+
+
 if __name__ == "__main__":
     unittest.main()

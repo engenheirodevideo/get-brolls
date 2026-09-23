@@ -7,11 +7,11 @@ que uma aprovação cai quando o trecho muda.
 """
 
 import hashlib
-import importlib.util
 import json
 import logging
 import os
 import sys
+import types
 
 from .. import logs
 from ..ledger import atomic_write
@@ -36,13 +36,18 @@ def state_path():
 
 
 def folder_digest(folder):
+    """Hash de TODO arquivo da pasta, sem exceção para `__pycache__`/`.pyc`: um
+    `.pyc` plantado ali muda o hash igual a qualquer outro arquivo — e nunca é
+    lido para rodar o plugin (`_import` sempre compila a fonte na hora)."""
     digest = hashlib.sha256()
     for path in sorted(p for p in folder.rglob("*") if p.is_file()):
         rel = path.relative_to(folder)
-        if "__pycache__" in rel.parts or path.suffix == ".pyc":
-            continue
         digest.update(rel.as_posix().encode() + b"\0" + path.read_bytes() + b"\0")
     return digest.hexdigest()
+
+
+def _valid_pin(entry):
+    return isinstance(entry, dict) and isinstance(entry.get("sha256"), str) and isinstance(entry.get("version"), str)
 
 
 def read_state():
@@ -50,12 +55,14 @@ def read_state():
     if not path.exists():
         return {"enabled": {}}
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+        data = json.loads(path.read_bytes().decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
         data = None
-    if not isinstance(data, dict) or not isinstance(data.get("enabled"), dict):
-        raise ValueError(f"plugins.json inválido em {path}. Corrija ou apague o arquivo para recomeçar sem plugins.")
-    return data
+    if isinstance(data, dict):
+        enabled = data.get("enabled")
+        if isinstance(enabled, dict) and all(_valid_pin(entry) for entry in enabled.values()):
+            return data
+    raise ValueError(f"plugins.json inválido em {path}. Corrija ou apague o arquivo para recomeçar sem plugins.")
 
 
 def _write_state(data):
@@ -86,6 +93,10 @@ def _status(manifest, folder, selection, state):
     return "enabled", None
 
 
+def _invalid_row(ident, reason):
+    return {"id": ident, "folder": ident, "version": None, "status": "invalid", "reason": reason, "contributes": {}}
+
+
 def entries():
     root = plugins_root()
     if not root.is_dir():
@@ -97,17 +108,18 @@ def entries():
         try:
             manifest = read_manifest(folder)
         except ManifestError as exc:
-            row = {
-                "id": folder.name,
-                "folder": folder.name,
-                "version": None,
-                "status": "invalid",
-                "reason": str(exc),
-                "contributes": {},
-            }
-            result.append((row, folder, None))
+            result.append((_invalid_row(folder.name, str(exc)), folder, None))
             continue
-        status, reason = _status(manifest, folder, selection, state)
+        except OSError as exc:
+            reason = f"Não consegui ler o plugin {folder.name}: {type(exc).__name__}."
+            result.append((_invalid_row(folder.name, reason), folder, None))
+            continue
+        try:
+            status, reason = _status(manifest, folder, selection, state)
+        except OSError as exc:
+            reason = f"Não consegui conferir o conteúdo do plugin {manifest['id']}: {type(exc).__name__}."
+            result.append((_invalid_row(manifest["id"], reason), folder, None))
+            continue
         row = {
             "id": manifest["id"],
             "folder": folder.name,
@@ -134,14 +146,23 @@ def declared(kind):
 
 
 def _import(folder, manifest):
+    """Compila e roda a fonte do plugin na hora — nunca via `importlib`/`exec_module`.
+
+    O loader de `import` normal lê (e pode escrever) um `.pyc` em `__pycache__`
+    ao lado da fonte; um `.pyc` plantado ali rodaria sem que o `sha256` do pin
+    tivesse motivo pra mudar (bytecode não é a fonte). Compilar `source_bytes`
+    direto e rodar com `exec()` nunca lê nem escreve bytecode: só a fonte —
+    já coberta pelo `folder_digest` — decide o que roda.
+    """
+    entry_path = folder / manifest["entry"]
+    source = entry_path.read_bytes()
     name = f"getbrolls_plugins.{manifest['id']}"
-    spec = importlib.util.spec_from_file_location(name, folder / manifest["entry"])
-    if spec is None or spec.loader is None:
-        raise ManifestError(f"Plugin {manifest['id']}: não consegui carregar {manifest['entry']}.")
-    module = importlib.util.module_from_spec(spec)
+    module = types.ModuleType(name)
+    module.__file__ = str(entry_path)
     sys.modules[name] = module
     try:
-        spec.loader.exec_module(module)
+        code = compile(source, str(entry_path), "exec", dont_inherit=True)
+        exec(code, module.__dict__)  # noqa: S102 - rodar o plugin é o propósito do loader; só chega aqui com status "enabled" (opt-in explícito) e hash conferido na hora
     except BaseException:
         sys.modules.pop(name, None)
         raise
@@ -158,28 +179,71 @@ def _register(folder, manifest, registry):
     api.finish()
 
 
+def _pin_mismatch_reason(row, folder, pinned):
+    """Reconfere o hash da pasta agora, na borda do `exec` — não reaproveita o
+    hash que `entries()` calculou mais cedo — para fechar a janela entre listar
+    e carregar (TOCTOU): conteúdo trocado nesse meio-tempo vira suspenso, não roda."""
+    try:
+        current = folder_digest(folder)
+    except OSError as exc:
+        return f"Não consegui reconferir o conteúdo do plugin antes de carregar: {type(exc).__name__}."
+    pin = pinned.get(row["id"]) or {}
+    if pin.get("sha256") != current:
+        return "O conteúdo do plugin mudou desde o enable; revise e habilite de novo."
+    return None
+
+
+def _load_one(row, folder, manifest, pinned, registry):
+    if manifest is None or row["status"] != "enabled":
+        logs.event(_log, logging.DEBUG, "plugin_skipped", plugin=row["id"], status=row["status"])
+        return row
+
+    if pinned is not None:
+        reason = _pin_mismatch_reason(row, folder, pinned)
+        if reason is not None:
+            logs.event(_log, logging.DEBUG, "plugin_skipped", plugin=row["id"], status="suspended")
+            return {**row, "status": "suspended", "reason": reason}
+
+    try:
+        _register(folder, manifest, registry)
+    except Exception as exc:  # noqa: BLE001 - código de plugin é de terceiro: qualquer falha desliga só aquele plugin
+        registry.remove_owner(manifest["id"])
+        logs.event(_log, logging.WARNING, "plugin_failed", plugin=row["id"], error=type(exc).__name__)
+        return {**row, "status": "failed", "reason": f"{type(exc).__name__}: {exc}"}
+
+    logs.event(
+        _log,
+        logging.INFO,
+        "plugin_loaded",
+        plugin=row["id"],
+        version=row["version"],
+        providers=",".join(manifest["contributes"]["providers"]) or "-",
+        presets=",".join(manifest["contributes"]["presets"]) or "-",
+    )
+    return row
+
+
 def load_enabled(registry):
-    for row, folder, manifest in entries():
-        stored_row = row
-        if manifest is not None and row["status"] == "enabled":
-            try:
-                _register(folder, manifest, registry)
-            except Exception as exc:  # noqa: BLE001 - código de plugin é de terceiro: qualquer falha desliga só aquele plugin
-                registry.remove_owner(manifest["id"])
-                stored_row = {**row, "status": "failed", "reason": f"{type(exc).__name__}: {exc}"}
-                logs.event(_log, logging.WARNING, "plugin_failed", plugin=row["id"], error=type(exc).__name__)
-            else:
-                logs.event(
-                    _log,
-                    logging.INFO,
-                    "plugin_loaded",
-                    plugin=row["id"],
-                    version=row["version"],
-                    providers=",".join(manifest["contributes"]["providers"]) or "-",
-                    presets=",".join(manifest["contributes"]["presets"]) or "-",
-                )
-        else:
-            logs.event(_log, logging.DEBUG, "plugin_skipped", plugin=row["id"], status=row["status"])
+    """Monta o registro de plugins habilitados; nunca deixa um `plugins.json`
+    corrompido ou uma pasta ilegível derrubar os built-ins — o pior caso é
+    carregar nenhum plugin, registrado como `plugin_failed` com `plugin="-"`."""
+    try:
+        rows = entries()
+    except (ValueError, OSError) as exc:
+        logs.event(_log, logging.WARNING, "plugin_failed", plugin="-", error=type(exc).__name__)
+        return
+
+    selection = env_selection()
+    pinned = None
+    if selection is None:
+        try:
+            pinned = read_state()["enabled"]
+        except (ValueError, OSError) as exc:
+            logs.event(_log, logging.WARNING, "plugin_failed", plugin="-", error=type(exc).__name__)
+            return
+
+    for row, folder, manifest in rows:
+        stored_row = _load_one(row, folder, manifest, pinned, registry)
         registry.plugins[stored_row["id"]] = stored_row
 
 
