@@ -1,8 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Get B-rolls Brief v1",
+  "$id": "https://github.com/engenheirodevideo/get-brolls/schemas/brief.schema.json",
   "description": "Documental: a validação real é manual, em scripts/getbrolls/brief.py.",
   "type": "object",
+  "additionalProperties": false,
   "required": ["version", "video", "rights", "defaults", "beats"],
   "properties": {
     "version": { "const": 1 },
@@ -59,11 +61,17 @@
         "stock": { "type": "boolean" }
       }
     },
+    "ext": {
+      "type": "object",
+      "description": "Dados de plugins: uma chave por id de plugin, cada valor validado pelo schema daquele plugin.",
+      "additionalProperties": { "type": "object" }
+    },
     "beats": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["id", "target"],
         "properties": {
           "id": { "type": "string", "pattern": "^[a-z0-9-]{1,40}$" },
@@ -75,23 +83,21 @@
             "minItems": 1,
             "uniqueItems": true,
             "items": {
-              "enum": [
-                "youtube",
-                "instagram",
-                "tiktok",
-                "pexels",
-                "pixabay",
-                "commons",
-                "nasa",
-                "local"
-              ]
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{1,31}$",
+              "description": "Nome de fonte do registro: built-in ou de plugin habilitado; o runtime confere contra o registro."
             }
           },
           "stock": { "type": "boolean" },
           "duration_hint_s": { "type": ["number", "null"], "minimum": 0.5, "maximum": 120 },
           "queries": { "type": "array", "items": { "type": "string" } },
           "notes": { "type": ["string", "null"] },
-          "blocked_reason": { "type": ["string", "null"] }
+          "blocked_reason": { "type": ["string", "null"] },
+          "ext": {
+            "type": "object",
+            "description": "Dados de plugins: uma chave por id de plugin, cada valor validado pelo schema daquele plugin.",
+            "additionalProperties": { "type": "object" }
+          }
         }
       }
     }

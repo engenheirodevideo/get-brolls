@@ -8,7 +8,7 @@ from pathlib import Path
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_video
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT
 
 from getbrolls import providers
 from getbrolls.sdk import schemas
@@ -110,6 +110,31 @@ class CandidateSchemaContractTests(unittest.TestCase):
         self.assertEqual(2, len(manifest["items"]))
         for item in manifest["items"]:
             assert_matches(self, item)
+
+
+class BriefSchemaContractTests(unittest.TestCase):
+    def test_template_brief_matches(self):
+        from getbrolls import brief as brief_module
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = (ROOT / "docs" / "BRIEF.md").read_text(encoding="utf-8")
+            (Path(tmp) / "BRIEF.md").write_text(raw, encoding="utf-8")
+            data = brief_module.load_brief(tmp)
+        self.assertEqual([], errors(data, schemas.load("brief")))
+
+    def test_sources_are_names_not_a_closed_list(self):
+        beat = schemas.load("brief")["properties"]["beats"]["items"]
+        sources = beat["properties"]["allowed_sources"]["items"]
+        self.assertNotIn("enum", sources)
+        self.assertEqual("^[a-z][a-z0-9_]{1,31}$", sources["pattern"])
+
+    def test_ext_is_accepted_at_top_and_beat_and_unknown_keys_are_not(self):
+        schema = schemas.load("brief")
+        self.assertIs(False, schema["additionalProperties"])
+        beat = schema["properties"]["beats"]["items"]
+        self.assertIs(False, beat["additionalProperties"])
+        self.assertEqual("object", schema["properties"]["ext"]["type"])
+        self.assertEqual("object", beat["properties"]["ext"]["type"])
 
 
 if __name__ == "__main__":
