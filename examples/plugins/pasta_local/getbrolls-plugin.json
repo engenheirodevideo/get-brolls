@@ -1,0 +1,11 @@
+{
+  "id": "pasta_local",
+  "name": "Pasta local de B-rolls",
+  "description": "Exemplo do SDK: busca vídeos por nome de arquivo numa pasta do seu computador.",
+  "version": "0.1.0",
+  "sdk_api": 1,
+  "requires_getbrolls": ">=2.5,<3",
+  "entry": "plugin.py",
+  "contributes": {"providers": ["pasta_local"]},
+  "permissions": {"network": [], "env": ["PASTA_LOCAL_DIR"]}
+}

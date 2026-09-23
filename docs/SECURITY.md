@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-16
+updated: 2026-09-23
 tags: [get-brolls]
 ---
 
@@ -23,5 +23,17 @@ A revisão não autentica quem clicou: importação exige atribuição humana co
 | Nunca sai | Projetos, originais importados, JSON de revisão, chaves, `.env`, sessões e pares CDN assinados | Permanecem no disco local; nenhuma dessas informações é enviada a terceiros pela skill. |
 
 Sem telemetria: a skill não envia dados a nenhum serviço próprio. Não há endpoint do autor, coleta de uso ou relatório automático de erro; todo tráfego sai para a fonte que você escolheu ou para os registros oficiais de dependências.
+
+## Plugins
+
+Plugins do SDK (`docs/SDK.md`) são opt-in por id: nada em `$GB_HOME/plugins/`
+roda sem um `plugins --action enable --id <id> --yes` explícito, e habilitar
+grava um pin de hash sobre toda a pasta — qualquer mudança de conteúdo
+suspende o plugin até nova revisão. As permissões declaradas no manifesto
+(`permissions.network` e `permissions.env`) são conferidas nos próprios canais
+do SDK (`api.get_json`, `api.env`), não numa camada de isolamento do processo.
+**O SDK não é uma caixa de areia**: um plugin habilitado roda com as mesmas
+permissões de quem executa a CLI, e não tem egress próprio além do que o
+código dele fizer — só habilite plugins cujo código você leu e em que confia.
 
 Para reportar vulnerabilidades, use o relatório privado do GitHub em **Security → Report a vulnerability**, habilitado neste repositório. Não publique segredos ou dados de clientes em issues públicas. Nenhum endereço de contato é presumido neste pacote.

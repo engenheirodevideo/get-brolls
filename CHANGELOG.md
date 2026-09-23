@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-19
+updated: 2026-09-23
 tags: [get-brolls]
 ---
 
@@ -10,6 +10,7 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- SDK de extensões (experimental): fontes e presets de licença por plugin em `~/.getbrolls/plugins`, com opt-in, pin de hash e guarda-corpos; comando `plugins`; schemas do candidato e do brief descrevem o formato real e aceitam `ext`. Sem mudança para quem não instala plugin.
 - Docs: `docs/MANUAL.md`, manual + tutorial em português para quem está chegando — tutorial do zero à `entrega/`, todos os subcomandos agrupados nos 8 passos do fluxo com explicação dentro de cada bloco, as três rotas do `permit`, como ler `summary.line`/`summary.do`/erros/códigos de saída, `BRIEF.md`, `RULES.md` e `.env` campo a campo, e receitas de automação com `jq`. Ligado no README, no README.en e no AGENTS. Fecha #80.
 - READMEs: os diagramas `assets/flow*.svg` e `assets/formats*.svg` passam a mostrar o fluxo atual — brief, análise da fonte, direitos como segundo portão, verificação e `entrega/` por beat — e a árvore de pastas ganha `BRIEF.md`, `entrega/`, `getbrolls.log` e `reviews/`. Eram da 2.3.x e apontavam `clips/` como lugar dos arquivos finais.
 - READMEs: badges de FFmpeg, yt-dlp e Playwright no topo, ao lado de Python e Node, para mostrar o que a instalação coloca na máquina.

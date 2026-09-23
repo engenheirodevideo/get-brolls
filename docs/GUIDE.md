@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-17
+updated: 2026-09-23
 tags: [get-brolls, guide, installation, providers, storyboard]
 ---
 
@@ -17,6 +17,7 @@ Este é o manual operacional único do **GET B-ROLLS — ENGENHEIRO DE VÍDEO**:
 - [Fluxo editorial](#fluxo-editorial)
 - [Estado do projeto e progresso](#estado-do-projeto-e-progresso)
 - [Fontes e transportes](#fontes-e-transportes)
+- [Plugins](#plugins)
 - [Tipos de assets](#tipos-de-assets-e-formatos)
 - [Captura pelo navegador](#captura-de-notícias-e-páginas-pelo-navegador)
 - [Instagram](#instagram--navegadorplaywright-dois-streams-e-mp4)
@@ -357,6 +358,23 @@ Bancos são rota opcional, acionada **somente quando o usuário pedir stock expl
 `preview --candidate ID --start 0 --end 5 --project /projeto` atualiza a URL de mídia, obtém o original em `.getbrolls-sources/` e gera GIF/contact sheet. Preserva o ID remoto, fonte e autoria; não precisa aprovar um poster antes de ver o movimento. Aprovação fica pendente. Depois de review/decisão/condições, fetch usa a fonte revisada.
 
 Também pode obter o original pela página oficial e usar resolve --file --source-url --creator. Nesse caso o ID local é novo. API indisponível não autoriza inventar candidato ou afirmar teste bem-sucedido.
+
+## Plugins
+
+Além dos provedores nativos, o Get B-rolls aceita fontes e presets de licença
+via plugins locais, instalados em `$GB_HOME/plugins/<id>/` (por padrão,
+`~/.getbrolls/plugins/`) com opt-in explícito. O comando `plugins` gerencia
+esse ciclo:
+
+- `plugins --action list` — inventário dos plugins instalados, com status (`disabled`, `enabled`, `suspended`, `incompatible`) e o que cada um contribui.
+- `plugins --action enable --id <id>` — mostra o manifesto e as permissões declaradas, sem habilitar; rode de novo com `--yes` para confirmar e gravar o pin de hash da pasta.
+- `plugins --action disable --id <id>` — desliga um plugin habilitado.
+- `plugins --action check --path <pasta>` — valida o manifesto e roda `register()` contra um registro descartável, sem instalar nada; use antes de copiar um plugin novo para `$GB_HOME/plugins/`.
+
+Escrever ou revisar um plugin é assunto do [SDK.md](SDK.md) — manifesto,
+contrato de `Provider`, `PluginApi`, o que o core reescreve nos candidatos e o
+modelo de confiança (não é uma caixa de areia). O exemplo funcional está em
+[`examples/plugins/pasta_local`](../examples/plugins/pasta_local/README.md).
 
 ## Tipos de assets e formatos
 
