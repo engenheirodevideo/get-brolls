@@ -229,15 +229,39 @@ def _choice(value, field, options):
     return value
 
 
+def _plugin_source_hint(name):
+    """Quando `name` é de um plugin instalado mas não carregado agora (falhou, está
+    suspenso etc.), uma frase extra que nomeia o plugin, o status e o que fazer;
+    senão, string vazia — a fonte é mesmo desconhecida, mensagem de hoje sem troco."""
+    from .sdk import loader
+
+    row = loader.declared_by(name)
+    if row is None:
+        return ""
+    detail = f": {row['reason']}" if row["reason"] else ""
+    return (
+        f' A fonte "{name}" é do plugin {row["id"]}, que está {row["status"]}{detail}. '
+        "Rode plugins --action list / doctor para reabilitar ou consertar o plugin."
+    )
+
+
 def _sources(value, field):
     if (
         not isinstance(value, list)
         or not value
-        or any(not isinstance(v, str) or v not in sources() for v in value)
+        or any(not isinstance(v, str) for v in value)
         or len(set(value)) != len(value)
     ):
         raise ValueError(
             f'Em BRIEF.md, "{field}" só aceita, sem repetir, uma lista destas fontes: ' + ", ".join(sources()) + "."
+        )
+    unknown = [v for v in value if v not in sources()]
+    if unknown:
+        raise ValueError(
+            f'Em BRIEF.md, "{field}" só aceita, sem repetir, uma lista destas fontes: '
+            + ", ".join(sources())
+            + "."
+            + _plugin_source_hint(unknown[0])
         )
     return list(value)
 

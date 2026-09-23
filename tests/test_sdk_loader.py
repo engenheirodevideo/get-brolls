@@ -233,6 +233,34 @@ class HashPinTamperTests(LoaderTestCase):
         self.assertIn("youtube", get_registry().provider_names())
 
 
+class JunkFileDigestTests(LoaderTestCase):
+    """Fix final / Finding 3: `.DS_Store`/`git pull` num plugin não pode suspendê-lo."""
+
+    def test_os_junk_and_vcs_dir_do_not_change_the_pinned_hash(self):
+        folder = self.install()
+        self.assertTrue(loader.enable("demo", confirm=True)["enabled"])
+
+        (folder / ".DS_Store").write_bytes(b"lixo do Finder")
+        (folder / "Thumbs.db").write_bytes(b"lixo do Explorer")
+        (folder / "desktop.ini").write_text("[.ShellClassInfo]\n", encoding="utf-8")
+        git = folder / ".git"
+        git.mkdir()
+        (git / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+        (git / "config").write_text("[core]\n", encoding="utf-8")
+
+        reset_registry()
+        self.assertEqual("enabled", loader.inventory()[0]["status"])
+        self.assertIn("demo", get_registry().provider_names())
+
+    def test_a_real_source_change_still_suspends(self):
+        """Junk/VCS exclusion não pode virar uma brecha geral no pin de hash."""
+        folder = self.install()
+        loader.enable("demo", confirm=True)
+        (folder / "extra.py").write_text("# arquivo novo de verdade\n", encoding="utf-8")
+        reset_registry()
+        self.assertEqual("suspended", loader.inventory()[0]["status"])
+
+
 class CorruptStateTests(LoaderTestCase):
     """Fix round 1 / Finding 2: `plugins.json` corrompido não pode derrubar os built-ins."""
 

@@ -162,34 +162,12 @@ def capabilities():
     return result
 
 
-def _declared_by_plugin(name, kind="providers"):
-    """A linha de status do plugin instalado que declara `name` em
-    `contributes.<kind>`, ou None.
-
-    Prefere `get_registry().plugins`: reflete o carregamento de verdade (já rodou —
-    quem chama isto já tocou `_registry()` antes), então um plugin com pin batendo
-    mas `register()` que estourou aparece como "failed", não "enabled". Sem essa
-    linha (registro nunca tentou, ex.: `plugins.json` corrompido) cai para o
-    inventário pré-carga (`loader.entries()`, só manifesto/pin, nunca executa
-    código) — melhor um status desatualizado do que nenhum motivo."""
-    from .sdk.registry import get_registry
-
-    for row in get_registry().plugins.values():
-        if name in (row.get("contributes") or {}).get(kind, []):
-            return row
-    from .sdk import loader
-
-    try:
-        rows = loader.entries()
-    except (ValueError, OSError):
-        return None
-    return next((row for row, _, manifest in rows if manifest and name in manifest["contributes"][kind]), None)
-
-
 def _source_unavailable_error(name):
     """Fonte não registrada: se for de um plugin instalado (só não carregado agora),
     a mensagem nomeia o plugin e o status; senão, mantém o "fonte desconhecida" de hoje."""
-    row = _declared_by_plugin(name)
+    from .sdk import loader
+
+    row = loader.declared_by(name)
     if row is None:
         return ProviderError("Busca indisponível nesta fonte; forneça URL ou arquivo local")
     detail = f": {row['reason']}" if row["reason"] else ""

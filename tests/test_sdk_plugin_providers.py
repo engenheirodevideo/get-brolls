@@ -1,7 +1,11 @@
 """Plugin entra no fluxo comum, mas nunca decide o que é humano."""
 
+import json
 import os
+import shutil
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from test_sdk_loader import MANIFEST, PLUGIN_CODE, LoaderTestCase  # noqa: F401  (MANIFEST reexportado)
@@ -261,6 +265,78 @@ class RegistryDrivenValidationTests(PluginTestCase):
 
         self.enable()
         self.assertIn("demo", rules.searchable_providers())
+
+    def _rules_project(self, preferred_literal):
+        project = Path(tempfile.mkdtemp(prefix="gb-project-"))
+        self.addCleanup(shutil.rmtree, project, ignore_errors=True)
+        data = {
+            "version": 1,
+            "asset_types": ["video", "image", "news_screenshot", "web_screenshot"],
+            "video_format": "native",
+            "preferred_providers": {"literal": preferred_literal, "illustrative": ["pexels", "pixabay"]},
+            "preferred_domains": [],
+            "blocked_domains": [],
+            "editorial_rules": [],
+            "copyright": {"mode": "per_item_evidence", "responsible_person": None, "declaration": None},
+            "browser": {
+                "viewport": "mobile",
+                "mobile_width": 390,
+                "mobile_height": 844,
+                "desktop_width": 1440,
+                "desktop_height": 900,
+                "full_page": False,
+            },
+        }
+        (project / "RULES.md").write_text(
+            "# Regras\n\n```json\n" + json.dumps(data, ensure_ascii=False, indent=2) + "\n```\n",
+            encoding="utf-8",
+        )
+        return project
+
+    def test_preferred_providers_drops_a_suspended_plugin_source_with_a_warning(self):
+        """Finding 3: um plugin suspenso citado em preferred_providers não pode quebrar
+        `load_rules` (e por tabela, toda busca do projeto) — só sai da lista com aviso."""
+        from getbrolls import rules
+        from getbrolls.sdk import loader
+
+        folder = self.install()
+        loader.enable("demo", confirm=True)
+        (folder / "plugin.py").write_text(PLUGIN_CODE + "\n# mudou\n", encoding="utf-8")
+        reset_registry()
+        self.addCleanup(reset_registry)
+
+        project = self._rules_project(["youtube", "demo"])
+        with self.assertLogs("getbrolls.rules", level="INFO") as cm:
+            loaded = rules.load_rules(project)
+        self.assertEqual(["youtube"], loaded["preferred_providers"]["literal"])
+        self.assertTrue(any("demo" in w and "suspended" in w for w in loaded["rules_warnings"]))
+        self.assertIn("event=rule_source_skipped", "\n".join(cm.output))
+
+    def test_preferred_providers_still_refuses_a_truly_unknown_name(self):
+        from getbrolls import rules
+
+        project = self._rules_project(["youtube", "inexistente"])
+        with self.assertRaises(ValueError) as caught:
+            rules.load_rules(project)
+        self.assertIn("preferred_providers.literal", str(caught.exception))
+
+    def test_brief_allowed_sources_names_the_plugin_for_a_suspended_source(self):
+        """Finding 3: BRIEF.md continua recusando a fonte suspensa, mas a mensagem
+        nomeia o plugin e o status em vez de só listar as fontes válidas."""
+        from getbrolls.brief import _sources
+        from getbrolls.sdk import loader
+
+        folder = self.install()
+        loader.enable("demo", confirm=True)
+        (folder / "plugin.py").write_text(PLUGIN_CODE + "\n# mudou\n", encoding="utf-8")
+        reset_registry()
+        self.addCleanup(reset_registry)
+
+        with self.assertRaises(ValueError) as caught:
+            _sources(["youtube", "demo"], "defaults.allowed_sources")
+        message = str(caught.exception)
+        self.assertIn("demo", message)
+        self.assertIn("suspended", message)
 
 
 if __name__ == "__main__":

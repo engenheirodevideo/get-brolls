@@ -33,8 +33,9 @@ python3 scripts/gb.py plugins --action enable --id pasta_local
 ```
 
 Depois de revisar, confirme com `--yes` para de fato habilitar (isso grava um
-pin de hash da pasta inteira; qualquer mudança no conteúdo suspende o plugin
-até um novo `enable`):
+pin de hash da pasta inteira, exceto lixo de SO como `.DS_Store` e o
+conteúdo de uma pasta de VCS como `.git`; qualquer outra mudança no conteúdo
+suspende o plugin até um novo `enable`):
 
 ```sh
 python3 scripts/gb.py plugins --action enable --id pasta_local --yes

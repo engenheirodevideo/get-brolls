@@ -147,7 +147,17 @@ def searchable_providers():
     }
 
 
-def load_rules(project):  # noqa: C901, PLR0912 - existing size; validator with one check per RULES.md field
+def _declared_by_plugin(name):
+    """Linha de status do plugin instalado que declara `name` em
+    `contributes.providers`, ou `None`. `searchable_providers()` já tocou
+    `get_registry()` logo acima, então este lookup só lê o que já foi montado —
+    nunca executa código de plugin por conta própria."""
+    from .sdk import loader
+
+    return loader.declared_by(name)
+
+
+def load_rules(project):  # noqa: C901, PLR0912, PLR0915 - existing size; validator with one check per RULES.md field
     layers, warnings = rules_layers(project)
     r, sources = {}, {}
     for path, data in layers:
@@ -176,15 +186,33 @@ def load_rules(project):  # noqa: C901, PLR0912 - existing size; validator with 
         )
     for intent in ("literal", "illustrative"):
         v = r["preferred_providers"].get(intent)
-        if (
-            not isinstance(v, list)
-            or any(not isinstance(x, str) or x not in providers for x in v)
-            or len(set(v)) != len(v)
-        ):
-            raise ValueError(
-                'Em RULES.md, a lista de "preferred_providers.' + intent + '" só aceita, '
-                "sem repetir: " + ", ".join(sorted(providers)) + "."
+        base_error = ValueError(
+            'Em RULES.md, a lista de "preferred_providers.' + intent + '" só aceita, '
+            "sem repetir: " + ", ".join(sorted(providers)) + "."
+        )
+        if not isinstance(v, list) or any(not isinstance(x, str) for x in v) or len(set(v)) != len(v):
+            raise base_error
+        effective = []
+        for name in v:
+            if name in providers:
+                effective.append(name)
+                continue
+            # Fonte de um plugin instalado, só não carregada agora (falhou, está
+            # suspensa etc.): tirar da lista efetiva com aviso, não quebrar toda busca
+            # do projeto por causa de um plugin que vai voltar a carregar. Nome que
+            # nenhum plugin instalado declara continua sendo erro de verdade.
+            row = _declared_by_plugin(name)
+            if row is None:
+                raise base_error
+            detail = f": {row['reason']}" if row["reason"] else ""
+            message = (
+                f'Em RULES.md, "preferred_providers.{intent}" listava "{name}", fonte do '
+                f"plugin {row['id']}, que está {row['status']}{detail}; removida da lista "
+                "efetiva até o plugin voltar a carregar. Rode plugins --action list / doctor."
             )
+            warnings.append(message)
+            logs.event(log, logging.INFO, "rule_source_skipped", provider=name, plugin=row["id"], status=row["status"])
+        r["preferred_providers"][intent] = effective
     for key in ("preferred_domains", "blocked_domains"):
         if not isinstance(r.get(key), list) or any(
             not isinstance(v, str) or not re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", v)

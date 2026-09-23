@@ -106,3 +106,11 @@ def get_registry() -> Registry:
 def reset_registry() -> None:
     """Descarta o registro montado: `plugins enable/disable` e testes recomeçam do zero."""
     _STATE["registry"] = None
+
+
+def built_registry() -> Registry | None:
+    """O registro do processo se ele já foi montado, sem montá-lo como efeito
+    colateral (`get_registry()` monta e roda plugins habilitados na primeira
+    consulta). Usado por quem só quer aproveitar um registro que outra parte do
+    comando já construiu, sem forçar carregamento de código de plugin."""
+    return _STATE["registry"]

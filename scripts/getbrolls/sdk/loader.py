@@ -35,13 +35,26 @@ def state_path():
     return home_dir() / "plugins.json"
 
 
+# Arquivo de lixo de SO que aparece sozinho (Finder/Explorer abriram a pasta) e nunca
+# é lido para rodar o plugin: contá-lo no hash suspende o plugin por um arquivo que
+# ninguém escreveu de propósito. `__pycache__`/`.pyc`, ao contrário, continuam
+# contando — são o vetor do Finding 1 (round 1): um bytecode plantado tem que mudar
+# o hash, mesmo nunca sendo lido, porque `_import` sempre compila a fonte na hora.
+JUNK_FILENAMES = frozenset({".DS_Store", "Thumbs.db", "desktop.ini"})
+# Pasta de VCS que sobra de um `git pull`/clone dentro da pasta do plugin: metadado
+# do controle de versão, não conteúdo que `_import` executa.
+VCS_DIRNAMES = frozenset({".git", ".hg", ".svn"})
+
+
 def folder_digest(folder):
-    """Hash de TODO arquivo da pasta, sem exceção para `__pycache__`/`.pyc`: um
-    `.pyc` plantado ali muda o hash igual a qualquer outro arquivo — e nunca é
-    lido para rodar o plugin (`_import` sempre compila a fonte na hora)."""
+    """Hash de todo arquivo da pasta, exceto lixo de SO (`JUNK_FILENAMES`) e o
+    metadado de dentro de uma pasta de VCS (`VCS_DIRNAMES`) — o resto, incluindo
+    `__pycache__`/`.pyc`, conta sem exceção (ver comentário de `JUNK_FILENAMES`)."""
     digest = hashlib.sha256()
     for path in sorted(p for p in folder.rglob("*") if p.is_file()):
         rel = path.relative_to(folder)
+        if rel.name in JUNK_FILENAMES or VCS_DIRNAMES & set(rel.parts[:-1]):
+            continue
         digest.update(rel.as_posix().encode() + b"\0" + path.read_bytes() + b"\0")
     return digest.hexdigest()
 
@@ -252,6 +265,33 @@ def find(plugin_id):
         if entry[0]["id"] == plugin_id:
             return entry
     raise ValueError(f"Plugin {plugin_id} não encontrado em {plugins_root()}. Confira o nome da pasta.")
+
+
+def declared_by(name, kind="providers"):
+    """Linha de status do plugin instalado que declara `name` em
+    `contributes.<kind>` (providers ou presets), ou `None` se nenhum declarar.
+
+    Prefere `registry.built_registry().plugins`, quando o registro já foi
+    montado por quem chamou isto: reflete o carregamento de verdade (um plugin
+    cujo pin bate mas cujo `register()` estourou aparece como "failed", não
+    "enabled"). Só olha esse registro se ele já existe — nunca monta um do
+    zero aqui, o que executaria código de plugin como efeito colateral de uma
+    simples pergunta "quem declara esse nome?". Sem registro montado (ou sem
+    a linha nele), cai para o inventário pré-carga (`entries()`, só
+    manifesto/pin); um `plugins.json` corrompido nesse fallback vira "não sei
+    dizer o motivo" (`None`), não uma queda de quem chamou."""
+    from .registry import built_registry
+
+    registry = built_registry()
+    if registry is not None:
+        for row in registry.plugins.values():
+            if name in (row.get("contributes") or {}).get(kind, []):
+                return row
+    try:
+        rows = entries()
+    except (ValueError, OSError):
+        return None
+    return next((row for row, _, manifest in rows if manifest and name in manifest["contributes"][kind]), None)
 
 
 def _preview(manifest, folder):

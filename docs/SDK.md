@@ -154,12 +154,15 @@ Eventos do log estruturado relacionados a plugins:
   `--yes` só mostra o manifesto e as permissões declaradas, para revisão
   humana; `--yes` de fato habilita.
 - `--yes` grava um **pin de hash**: um sha256 sobre todo arquivo da pasta do
-  plugin (inclusive `.DS_Store`, `__pycache__` ou `.git`, se existirem ali
-  dentro). Qualquer mudança no conteúdo da pasta — mesmo um arquivo que não é
-  código — deixa o plugin `suspended` até um novo `enable`.
+  plugin, exceto lixo de SO (`.DS_Store`, `Thumbs.db`, `desktop.ini`) e o
+  conteúdo de uma pasta de VCS (`.git`, `.hg`, `.svn`) — esses nunca entram na
+  conta. Qualquer outra mudança no conteúdo da pasta — mesmo um arquivo que
+  não é código, `__pycache__` incluso — deixa o plugin `suspended` até um novo
+  `enable`.
 - O arquivo de entrada é sempre executado a partir da fonte (`.py`); bytecode
-  (`.pyc`/`__pycache__`) nunca é lido para rodar o plugin, só entra na conta
-  do hash como qualquer outro arquivo.
+  (`.pyc`/`__pycache__`) nunca é lido para rodar o plugin, mas continua
+  contando no hash como qualquer outro arquivo (só o lixo de SO e o VCS
+  acima ficam de fora).
 - `GB_PLUGINS=id1,id2` seleciona plugins habilitados sem depender do pin de
   hash — pensado para CI/testes, não para uso diário. `GB_PLUGINS=off`
   desliga todos os plugins, mesmo os habilitados em `plugins.json`.
