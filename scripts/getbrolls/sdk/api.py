@@ -20,6 +20,33 @@ _log = logs.get("sdk")
 # sem `..`, sem começar por ponto (nada de arquivo escondido nem caminho).
 FILE_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 
+# Nomes reservados do Windows (case-insensitive): mesmo num projeto rodando em
+# Linux/macOS, o arquivo pode acabar sincronizado ou aberto numa máquina Windows,
+# onde "CON.mp4"/"con"/"LPT1.txt" não são arquivos normais. `stem` = parte antes
+# do primeiro ponto.
+_RESERVED_STEMS = frozenset(
+    {"CON", "PRN", "AUX", "NUL"} | {f"COM{n}" for n in range(1, 10)} | {f"LPT{n}" for n in range(1, 10)}
+)
+
+# Nome de header HTTP (RFC 7230 token): letras, dígitos e os símbolos abaixo, sem
+# espaço nem dois-pontos — o que `http.client.putheader` aceita como nome.
+HEADER_NAME_RE = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
+
+# Nomes de transporte que um plugin nunca escolhe: deixar passar Host abriria domain
+# fronting por fora de permissions.network (a conexão TLS vai para o host validado,
+# mas o servidor de origem roteia pelo Host que quiser); os outros mexem em como o
+# corpo/keep-alive da conexão é interpretado, o que também não é do plugin decidir.
+_FORBIDDEN_HEADER_NAMES = frozenset({"host", "content-length", "transfer-encoding", "connection"})
+
+
+def _bad_file_name(name):
+    """`True` quando `name` não serve como nome de arquivo dentro do workdir da rota."""
+    if not isinstance(name, str) or not FILE_NAME_RE.fullmatch(name) or ".." in name or name.endswith("."):
+        return True
+    stem = name.split(".", 1)[0]
+    return stem.upper() in _RESERVED_STEMS
+
+
 # (id do plugin, pasta de trabalho) da rota em execução. Só o core liga isto, em
 # volta de `Route.prepare`; fora dali `api.download`/`api.local_file` recusam.
 _ACTIVE_ROUTE: contextvars.ContextVar[tuple[str, Path] | None] = contextvars.ContextVar(
@@ -101,8 +128,42 @@ class PluginApi:
             # token/query sensível), só o host — ou "-" quando nem host tem.
             raise ProviderError(f"Plugin {self.plugin_id}: host {host or '-'} não está em permissions.network.")
 
+    def _validate_headers(self, headers):
+        """Nomes/valores de header de um plugin, antes de repassar ao transporte.
+
+        Usado por `get_json` e `download`: a mensagem de erro nunca ecoa o valor do
+        header (só o nome, que não é segredo, e o tipo do problema).
+        """
+        if headers is None:
+            return {}
+        if not isinstance(headers, dict):
+            raise ProviderError(f"Plugin {self.plugin_id}: headers tem que ser um dict de texto para texto.")
+        cleaned = {}
+        for name, value in headers.items():
+            if not isinstance(name, str) or not isinstance(value, str):
+                raise ProviderError(f"Plugin {self.plugin_id}: headers tem que ser um dict de texto para texto.")
+            if not HEADER_NAME_RE.fullmatch(name):
+                raise ProviderError(f"Plugin {self.plugin_id}: nome de header inválido {name!r}.")
+            if name.lower() in _FORBIDDEN_HEADER_NAMES:
+                raise ProviderError(
+                    f"Plugin {self.plugin_id}: header {name!r} é reservado ao transporte e não pode ser definido."
+                )
+            if any(char in value for char in ("\r", "\n", "\x00")):
+                raise ProviderError(
+                    f"Plugin {self.plugin_id}: valor do header {name!r} contém caractere de controle inválido."
+                )
+            try:
+                value.encode("latin-1")
+            except UnicodeEncodeError:
+                raise ProviderError(
+                    f"Plugin {self.plugin_id}: valor do header {name!r} tem caractere fora de latin-1."
+                ) from None
+            cleaned[name] = value
+        return cleaned
+
     def get_json(self, url, params=None, headers=None, cache_ttl=0, keep_signed=False):
         self._check_host(url)
+        headers = self._validate_headers(headers)
         if keep_signed:
             cache_ttl = 0
         return get_json(url, params, headers, cache_ttl=cache_ttl, keep_signed=keep_signed)
@@ -120,18 +181,15 @@ class PluginApi:
         log ou mensagem de erro. O teto é o mesmo do core (`http.DOWNLOAD_MAX_BYTES`).
         """
         workdir = self._workdir("download")
-        if not isinstance(name, str) or not FILE_NAME_RE.fullmatch(name) or ".." in name:
+        if _bad_file_name(name):
             raise ProviderError(
-                f"Plugin {self.plugin_id}: nome de arquivo inválido; use letras, números, '.', '_' ou '-', sem pasta."
+                f"Plugin {self.plugin_id}: nome de arquivo inválido; use letras, números, '.', '_' ou '-', sem pasta, "
+                "sem terminar em '.' e sem ser um nome reservado do Windows (CON, PRN, AUX, NUL, COM1-9, LPT1-9)."
             )
-        if headers is not None and (
-            not isinstance(headers, dict)
-            or not all(isinstance(k, str) and isinstance(v, str) for k, v in headers.items())
-        ):
-            raise ProviderError(f"Plugin {self.plugin_id}: headers tem que ser um dict de texto para texto.")
+        headers = self._validate_headers(headers)
         self._check_host(url)
         target = workdir / name
-        core_http.download(url, target, headers=dict(headers or {}), allow_signed=True)
+        core_http.download(url, target, headers=headers, allow_signed=True)
         return target
 
     def finish(self):

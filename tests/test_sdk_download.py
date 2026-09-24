@@ -1,7 +1,10 @@
 """Download autenticado: `http.download(headers, allow_signed)` e `api.download` presa ao workdir."""
 
+import email.message
+import io
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,6 +19,14 @@ from getbrolls.sdk.registry import Registry
 
 TOKEN = "Bearer segredo-do-teste"
 SIGNED = "https://cdn.demo.example/v.mp4?X-Amz-Signature=abc123&X-Amz-Credential=chave"
+
+
+def _assert_secret_absent_everywhere(case, exc, secret):
+    """`secret` não pode aparecer em `str`/`repr` da exceção nem na cadeia `__cause__`/`__context__`."""
+    case.assertNotIn(secret, str(exc))
+    case.assertNotIn(secret, repr(exc))
+    case.assertNotIn(secret, repr(exc.__cause__))
+    case.assertNotIn(secret, repr(exc.__context__))
 
 
 class _Response:
@@ -85,6 +96,86 @@ class HttpDownloadTests(unittest.TestCase):
         self.assertIsNone(http.public_url(SIGNED))
         self.assertEqual(SIGNED, http.public_url(SIGNED, allow_signed=True))
 
+    def test_header_injection_reaching_http_client_never_leaks_the_value(self):
+        """Segunda camada (defesa em profundidade): mesmo se algo chamar `http.download`
+        direto, pulando o validador do SDK, e o transporte recusar o header (como
+        `http.client.putheader` faz para CR/LF), a exceção nunca ecoa o valor — nem em
+        `str`/`repr`, nem em `__cause__`/`__context__` (`from None` sozinho não some com
+        `__context__`; ver o comentário em `download()`)."""
+
+        class _RejectingOpener:
+            def open(self, request, timeout=None):
+                for _name, value in request.header_items():
+                    if any(ch in value for ch in ("\r", "\n", "\x00")):
+                        raise ValueError(f"Invalid header value b{value.encode('utf-8', 'backslashreplace')!r}")
+                return _Response(b"0123456789")
+
+        for bad_headers in ({"Authorization": "Token segredo\n"}, {"X-Api-Key": "segredo\n"}):
+            with (
+                self.subTest(bad_headers=bad_headers),
+                tempfile.TemporaryDirectory() as tmp,
+                patch.object(http, "_opener", return_value=_RejectingOpener()),
+                self.assertRaises(ProviderError) as caught,
+            ):
+                http.download("https://videos.demo.example/v.mp4", Path(tmp) / "v.mp4", headers=bad_headers)
+            _assert_secret_absent_everywhere(self, caught.exception, "segredo")
+
+    def test_http_error_body_is_not_echoed_when_headers_are_present(self):
+        body = b'{"Code":"AccessDenied","AWSAccessKeyId":"AKIAFAKESEGREDOCHAVE"}'
+
+        class _ErrorOpener:
+            def open(self, request, timeout=None):
+                raise urllib.error.HTTPError(
+                    request.full_url, 403, "Forbidden", email.message.Message(), io.BytesIO(body)
+                )
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(http, "_opener", return_value=_ErrorOpener()),
+            self.assertRaises(ProviderError) as caught,
+        ):
+            http.download("https://videos.demo.example/v.mp4", Path(tmp) / "v.mp4", headers={"Authorization": TOKEN})
+        self.assertEqual("Provedor retornou HTTP 403 ao baixar mídia", str(caught.exception))
+        self.assertNotIn("AKIAFAKESEGREDOCHAVE", str(caught.exception))
+
+    def test_http_error_body_is_not_echoed_when_allow_signed(self):
+        body = b'{"Code":"AccessDenied","AWSAccessKeyId":"AKIAFAKESEGREDOCHAVE"}'
+
+        class _ErrorOpener:
+            def open(self, request, timeout=None):
+                raise urllib.error.HTTPError(
+                    request.full_url, 403, "Forbidden", email.message.Message(), io.BytesIO(body)
+                )
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(http, "_opener", return_value=_ErrorOpener()),
+            self.assertRaises(ProviderError) as caught,
+        ):
+            http.download(SIGNED, Path(tmp) / "v.mp4", allow_signed=True)
+        self.assertEqual("Provedor retornou HTTP 403 ao baixar mídia", str(caught.exception))
+        self.assertNotIn("AKIAFAKESEGREDOCHAVE", str(caught.exception))
+
+    def test_http_error_body_is_still_echoed_without_headers_or_allow_signed(self):
+        """Comportamento anterior preservado: sem header nem URL assinada, o corpo do
+        erro (truncado por `stderr_tail`) ainda ajuda a diagnosticar — não há segredo
+        de plugin em jogo nesse caminho."""
+        body = b"quota exceeded for this key"
+
+        class _ErrorOpener:
+            def open(self, request, timeout=None):
+                raise urllib.error.HTTPError(
+                    request.full_url, 403, "Forbidden", email.message.Message(), io.BytesIO(body)
+                )
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(http, "_opener", return_value=_ErrorOpener()),
+            self.assertRaises(ProviderError) as caught,
+        ):
+            http.download("https://videos.demo.example/v.mp4", Path(tmp) / "v.mp4")
+        self.assertIn("quota exceeded for this key", str(caught.exception))
+
 
 class PluginDownloadTests(LoaderTestCase):
     def api(self):
@@ -133,7 +224,23 @@ class PluginDownloadTests(LoaderTestCase):
     def test_file_name_cannot_escape_the_workdir(self):
         api = self.api()
         with tempfile.TemporaryDirectory() as work, route_scope("demo", Path(work)):
-            for bad in ("../fora.mp4", "sub/pasta.mp4", ".escondido", "a..b", "", "x" * 200):
+            for bad in (
+                "../fora.mp4",
+                "sub/pasta.mp4",
+                ".escondido",
+                "a..b",
+                "",
+                "x" * 200,
+                # Nomes reservados do Windows (case-insensitive, stem = antes do 1º ponto)
+                # e nome terminando em ".": mesmo fora do Windows, o arquivo pode acabar
+                # sincronizado ou aberto lá.
+                "CON.mp4",
+                "con",
+                "NUL",
+                "lpt1.txt",
+                "COM1.mov",
+                "video.",
+            ):
                 with self.subTest(bad=bad), self.assertRaises(ProviderError):
                     api.download("https://demo.example/files/1", bad)
 
@@ -141,6 +248,41 @@ class PluginDownloadTests(LoaderTestCase):
         api = self.api()
         with tempfile.TemporaryDirectory() as work, route_scope("demo", Path(work)), self.assertRaises(ProviderError):
             api.download("https://demo.example/files/1", "a.mp4", {"Authorization": 123})
+
+    def test_header_control_characters_are_rejected_and_never_echoed(self):
+        """Camada 1 (validador do SDK, `PluginApi._validate_headers`, usada por
+        `download` e `get_json`): CR/LF/NUL no valor de um header nunca chega perto do
+        transporte, e a mensagem de erro nunca ecoa o valor — só o nome do header."""
+        api = self.api()
+        for bad_headers in ({"Authorization": "Token segredo\n"}, {"X-Api-Key": "segredo\n"}):
+            with (
+                self.subTest(bad_headers=bad_headers),
+                tempfile.TemporaryDirectory() as work,
+                route_scope("demo", Path(work)),
+                self.assertRaises(ProviderError) as caught,
+            ):
+                api.download("https://demo.example/files/1", "a.mp4", bad_headers)
+            _assert_secret_absent_everywhere(self, caught.exception, "segredo")
+
+    def test_get_json_header_control_characters_are_rejected_and_never_echoed(self):
+        api = self.api()
+        with self.assertRaises(ProviderError) as caught:
+            api.get_json("https://demo.example/files/1", headers={"Authorization": "Token segredo\n"})
+        _assert_secret_absent_everywhere(self, caught.exception, "segredo")
+
+    def test_forbidden_transport_header_names_are_rejected(self):
+        """Sem isso um plugin poderia fazer domain fronting: a conexão TLS vai para o
+        host validado em permissions.network, mas um `Host` escolhido pelo plugin
+        rotearia a requisição de origem para outro destino."""
+        api = self.api()
+        for name in ("Host", "host", "Content-Length", "Transfer-Encoding", "Connection"):
+            with (
+                self.subTest(name=name),
+                tempfile.TemporaryDirectory() as work,
+                route_scope("demo", Path(work)),
+                self.assertRaises(ProviderError),
+            ):
+                api.download("https://demo.example/files/1", "a.mp4", {name: "evil.example"})
 
 
 class SignedJsonTests(unittest.TestCase):
@@ -181,6 +323,25 @@ class SignedJsonTests(unittest.TestCase):
 
         with self.assertRaises(http.ProviderError):
             http.get_json("https://api.example.com/dl", cache_ttl=60, keep_signed=True)
+
+    def test_keep_signed_success_leaves_no_cache_file(self):
+        import hashlib
+        import os
+        from unittest.mock import MagicMock, patch
+
+        from getbrolls import http
+
+        url = "https://api.example.com/dl-keep-signed-no-cache"
+        signed = "https://cdn.example.com/f.mp4?X-Amz-Signature=abc&X-Amz-Expires=60"
+        opener = MagicMock()
+        opener.open.side_effect = lambda *a, **k: self.fake_response({"download_url": signed})
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"GB_CACHE_DIR": tmp}):
+            with patch.object(http, "_opener", return_value=opener), patch.object(http, "_network_url"):
+                data = http.get_json(url, keep_signed=True)
+            self.assertEqual(signed, data["download_url"])
+            cache_path = Path(tmp) / (hashlib.sha256(url.encode()).hexdigest() + ".json")
+            self.assertFalse(cache_path.exists())
+            self.assertEqual([], list(Path(tmp).glob("*.json")))
 
     def test_plugin_api_forwards_keep_signed(self):
         from unittest.mock import patch

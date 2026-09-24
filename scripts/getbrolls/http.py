@@ -451,6 +451,7 @@ def download(url, target, max_bytes=DOWNLOAD_MAX_BYTES, headers=None, allow_sign
     started = time.monotonic()
     status_code = None
     received_bytes = 0
+    header_error = None
     try:
         request_headers = {"User-Agent": f"Get-Brolls/{__version__}"}
         request_headers.update(headers or {})
@@ -502,7 +503,6 @@ def download(url, target, max_bytes=DOWNLOAD_MAX_BYTES, headers=None, allow_sign
             cache="off",
             attempt=1,
         )
-        return target
     except ProviderError:
         raise
     except urllib.error.HTTPError as error:
@@ -510,7 +510,13 @@ def download(url, target, max_bytes=DOWNLOAD_MAX_BYTES, headers=None, allow_sign
         with contextlib.suppress(OSError, ValueError):
             body = error.read(300)
         error.close()
-        detail = stderr_tail(body.decode("utf-8", errors="replace")) if body else ""
+        detail = ""
+        if body and not headers and not allow_signed:
+            # Only when the request carried no plugin header and was not a signed URL:
+            # an authenticated/presigned request's error body can otherwise echo back
+            # part of the credential (e.g. a fake AWSAccessKeyId in a bucket's 403), so
+            # it never reaches the message in that case.
+            detail = stderr_tail(body.decode("utf-8", errors="replace"))
         suffix = f": {detail}" if detail else ""
         logs.event(
             _logger,
@@ -540,12 +546,37 @@ def download(url, target, max_bytes=DOWNLOAD_MAX_BYTES, headers=None, allow_sign
             attempt=1,
         )
         raise ProviderError(f"Falha de rede ao baixar mídia ({type(error).__name__}: {reason})") from None
-    except (http.client.HTTPException, OSError, ValueError) as error:
-        # Only real transport/IO/malformed-response failures land here (broken
-        # connections, TLS errors, a non-numeric Content-Length...). Programming
-        # bugs (KeyError/TypeError/AttributeError) are deliberately NOT caught: they
-        # must propagate so runtime.audited() reports them as INTERNAL_ERROR instead
-        # of being misclassified as a provider/network problem.
+    except ValueError as error:
+        logs.event(
+            _logger,
+            logging.WARNING,
+            "request",
+            host=host,
+            op="download",
+            status=None,
+            bytes=None,
+            ms=round((time.monotonic() - started) * 1000),
+            cache="off",
+            attempt=1,
+        )
+        if headers:
+            # A header name/value that reached `http.client` was rejected (e.g. CR/LF
+            # injection past a caller who skipped the SDK's own validator); `str(error)`
+            # from the stdlib echoes the raw value, so only the exception type name
+            # crosses this boundary. Recorded here and raised only after the whole
+            # try/except/finally below (`header_error`), not with `raise ... from
+            # None` right here: that alone still leaves `__context__` set to `error`,
+            # so `repr(exc.__context__)` would still carry the header value.
+            header_error = type(error).__name__
+        else:
+            raise ProviderError(
+                f"Não foi possível obter o arquivo público ({type(error).__name__}: {redact(str(error))})"
+            ) from error
+    except (http.client.HTTPException, OSError) as error:
+        # Only real transport/IO failures land here (broken connections, TLS errors...).
+        # Programming bugs (KeyError/TypeError/AttributeError) are deliberately NOT
+        # caught: they must propagate so runtime.audited() reports them as
+        # INTERNAL_ERROR instead of being misclassified as a provider/network problem.
         logs.event(
             _logger,
             logging.WARNING,
@@ -566,3 +597,9 @@ def download(url, target, max_bytes=DOWNLOAD_MAX_BYTES, headers=None, allow_sign
         # except clauses above deliberately do not catch.
         if created and not success:
             target.unlink(missing_ok=True)
+    if header_error is not None:
+        # Raised only here, after the try/except/finally above has fully exited: no
+        # exception is "in flight" at this point, so `__context__` is None too, not
+        # just `__cause__` — see the comment on the `except ValueError` branch.
+        raise ProviderError(f"Falha ao enviar cabeçalhos ao provedor ({header_error})") from None
+    return target
