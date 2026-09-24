@@ -272,8 +272,20 @@ class PluginApi:
     @property
     def data_dir(self):
         """`$GB_HOME/plugin-data/<id>/` (0700): estado e cache do plugin, fora da pasta
-        do plugin — escrever ali não muda o hash do enable."""
-        folder = home_dir() / "plugin-data" / self.plugin_id
+        do plugin — escrever ali não muda o hash do enable.
+
+        Recusa um link simbólico plantado em `plugin-data/<id>` (ou na própria pasta
+        `plugin-data`, que o `<id>` fica dentro dela): seguir o link no `mkdir`/`chmod`
+        aplicaria 0700 numa pasta de fora escolhida por quem plantou o link, não pela
+        pessoa — mesma lógica de `serve.save_review`.
+        """
+        where = f"plugin-data/{self.plugin_id}"
+        root = home_dir() / "plugin-data"
+        folder = root / self.plugin_id
+        if root.is_symlink() or folder.is_symlink():
+            raise ValueError(
+                f"Plugin {self.plugin_id}: {where} é um link simbólico; apague esse link antes de usar o plugin."
+            )
         folder.mkdir(mode=0o700, parents=True, exist_ok=True)
         folder.chmod(0o700)
         return folder
@@ -281,12 +293,20 @@ class PluginApi:
     def config(self):
         """`settings.json` de `data_dir` como dict; sem arquivo, `{}`."""
         path = self.data_dir / "settings.json"
-        if not path.is_file():
-            return {}
         where = f"plugin-data/{self.plugin_id}/settings.json"
+        if not path.exists():
+            return {}
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raw = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"Plugin {self.plugin_id}: {where} não é JSON válido em UTF-8.") from exc
+        except OSError as exc:
+            # Ex.: `settings.json` é uma pasta, ou o arquivo não pode ser lido
+            # (permissão) — nunca ecoa o caminho absoluto, só o tipo do erro.
+            raise ValueError(f"Plugin {self.plugin_id}: {where} não pôde ser lido ({type(exc).__name__}).") from exc
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
             raise ValueError(f"Plugin {self.plugin_id}: {where} não é JSON válido em UTF-8.") from exc
         if not isinstance(data, dict):
             raise ValueError(f"Plugin {self.plugin_id}: {where} tem que ser um objeto JSON.")
