@@ -192,7 +192,8 @@ def project_lock(project):
 # `brief` entra aqui porque só lê BRIEF.md, RULES.md e o manifesto já existente.
 # `doctor` aceita `--project` por uniformidade com o resto da CLI, mas diagnostica a
 # instalação: não pode criar `brolls/` numa pasta que talvez nem seja um projeto.
-READ_ONLY_COMMANDS = ("status", "serve", "brief", "doctor")
+# `x` roda comando de plugin, que só lê o projeto por cópias (CommandContext).
+READ_ONLY_COMMANDS = ("status", "serve", "brief", "doctor", "x")
 # (comando, ação) somente leitura, além dos comandos inteiros acima: `queue --action status`
 # só consulta queue.json (mesmo contrato de `status`), nunca deve tomar a trava exclusiva.
 READ_ONLY_ACTIONS = {("queue", "status")}

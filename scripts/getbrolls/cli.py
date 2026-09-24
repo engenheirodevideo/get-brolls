@@ -21,6 +21,7 @@ SUMMARIES = {
     "providers": "Listar fontes disponíveis, transporte e chaves configuradas",
     "doctor": "Diagnosticar dependências, caminhos fixados e fontes utilizáveis",
     "plugins": "Listar, habilitar, desabilitar ou validar plugins do SDK (pasta ~/.getbrolls/plugins)",
+    "x": "Rodar um comando de plugin habilitado (x --list mostra quais existem); só lê o projeto",
     "status": "Resumir onde o projeto está por etapa, sem alterar arquivos",
     "search": "Pesquisar candidatos numa fonte e registrá-los no projeto (--shot liga ao beat; --dry-run não grava)",
     "resolve": "Registrar um candidato a partir de URL pública ou arquivo local",
@@ -81,7 +82,7 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
         help="Mostrar a versão instalada da skill e sair",
     )
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("providers", "doctor", "plugins"):
+    for name in ("providers", "doctor", "plugins", "x"):
         p = sub.add_parser(name, help=SUMMARIES[name], description=SUMMARIES[name])
         if name == "doctor":
             # O SKILL.md diz que `--project` vai em todo comando, e a primeira chamada
@@ -109,6 +110,17 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
                 "--yes",
                 action="store_true",
                 help="Confirma o enable depois de mostrar manifesto e permissões à pessoa",
+            )
+        if name == "x":
+            p.add_argument("plugin_id", nargs="?", metavar="plugin", help="Id do plugin dono do comando")
+            p.add_argument("plugin_command", nargs="?", metavar="comando", help="Nome do comando do plugin")
+            p.add_argument("--list", action="store_true", help="Listar os comandos dos plugins habilitados, sem rodar")
+            p.add_argument("--project", help="Pasta do projeto que o comando pode ler (somente leitura)")
+            p.add_argument(
+                "--arg",
+                action="append",
+                metavar="CHAVE=VALOR",
+                help="Argumento do comando; repita a flag para passar vários",
             )
     for name in (
         "status",

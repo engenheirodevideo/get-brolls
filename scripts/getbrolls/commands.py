@@ -1349,6 +1349,11 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
 
         return sdk_cli.run(args)
 
+    if args.command == "x":
+        from getbrolls.sdk import plugin_commands
+
+        return plugin_commands.run(args)
+
     from getbrolls import providers
 
     if args.command in ("providers", "doctor"):

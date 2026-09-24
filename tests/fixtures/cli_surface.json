@@ -2148,6 +2148,80 @@
           "required": false
         }
       ]
+    },
+    "x": {
+      "help": "Rodar um comando de plugin habilitado (x --list mostra quais existem); só lê o projeto",
+      "options": [
+        {
+          "action": "_HelpAction",
+          "choices": null,
+          "default": "==SUPPRESS==",
+          "dest": "help",
+          "help": "show this help message and exit",
+          "nargs": 0,
+          "option_strings": [
+            "--help",
+            "-h"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "plugin_id",
+          "help": "Id do plugin dono do comando",
+          "nargs": "?",
+          "option_strings": [],
+          "required": null
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "plugin_command",
+          "help": "Nome do comando do plugin",
+          "nargs": "?",
+          "option_strings": [],
+          "required": null
+        },
+        {
+          "action": "_StoreTrueAction",
+          "choices": null,
+          "default": false,
+          "dest": "list",
+          "help": "Listar os comandos dos plugins habilitados, sem rodar",
+          "nargs": 0,
+          "option_strings": [
+            "--list"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "project",
+          "help": "Pasta do projeto que o comando pode ler (somente leitura)",
+          "nargs": null,
+          "option_strings": [
+            "--project"
+          ],
+          "required": false
+        },
+        {
+          "action": "_AppendAction",
+          "choices": null,
+          "default": null,
+          "dest": "arg",
+          "help": "Argumento do comando; repita a flag para passar vários",
+          "nargs": null,
+          "option_strings": [
+            "--arg"
+          ],
+          "required": false
+        }
+      ]
     }
   },
   "top_level": [
