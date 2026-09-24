@@ -5,6 +5,7 @@ import contextvars
 import logging
 import os
 import re
+import shutil
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -19,6 +20,10 @@ _log = logs.get("sdk")
 # Nome de arquivo que a rota pode pedir dentro da pasta de trabalho: sem barra,
 # sem `..`, sem começar por ponto (nada de arquivo escondido nem caminho).
 FILE_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+
+# Extensão simples (ponto + 1-8 letras/dígitos minúsculos) usada para nomear o arquivo
+# copiado por `api.local_file` como `local<sufixo>`; qualquer outra coisa vira `.bin`.
+SUFFIX_RE = re.compile(r"\.[a-z0-9]{1,8}")
 
 # Nomes reservados do Windows (case-insensitive): mesmo num projeto rodando em
 # Linux/macOS, o arquivo pode acabar sincronizado ou aberto numa máquina Windows,
@@ -219,6 +224,47 @@ class PluginApi:
         self._check_host(url)
         target = workdir / name
         core_http.download(url, target, headers=headers, allow_signed=True)
+        return target
+
+    def _roots(self):
+        return [Path(raw).expanduser().resolve() for raw in self._manifest["permissions"]["paths"]]
+
+    def local_file(self, path):
+        """Copia um arquivo de dentro de `permissions.paths` para a pasta de trabalho.
+
+        O caminho é resolvido (links simbólicos seguidos) antes de conferir a raiz:
+        um link dentro da pasta apontando para fora é recusado. Sempre cópia, nunca
+        hardlink — o core ajusta permissão e move o arquivo de trabalho, e isso não
+        pode respingar no original da pessoa.
+        """
+        workdir = self._workdir("local_file")
+        roots = self._roots()
+        if not roots:
+            raise ProviderError(
+                f"Plugin {self.plugin_id}: permissions.paths está vazio; declare a pasta no manifesto "
+                "para usar api.local_file."
+            )
+        try:
+            source = Path(path).expanduser().resolve(strict=True)
+        except (OSError, RuntimeError, TypeError) as exc:
+            raise ProviderError(
+                f"Plugin {self.plugin_id}: arquivo local não encontrado ({type(exc).__name__})."
+            ) from exc
+        if not any(source.is_relative_to(root) for root in roots):
+            logs.event(_log, logging.WARNING, "plugin_path_refused", plugin=self.plugin_id)
+            raise ProviderError(f"Plugin {self.plugin_id}: {source.name} está fora de permissions.paths.")
+        if not source.is_file():
+            raise ProviderError(f"Plugin {self.plugin_id}: {source.name} não é um arquivo.")
+        if source.stat().st_size > core_http.DOWNLOAD_MAX_BYTES:
+            raise ProviderError(
+                f"Plugin {self.plugin_id}: {source.name} passa do teto de "
+                f"{core_http.DOWNLOAD_MAX_BYTES // (1024 * 1024)} MB para arquivo de trabalho."
+            )
+        suffix = source.suffix.lower()
+        target = workdir / ("local" + (suffix if SUFFIX_RE.fullmatch(suffix) else ".bin"))
+        if target.exists():
+            raise ProviderError(f"Plugin {self.plugin_id}: api.local_file já trouxe um arquivo nesta rota.")
+        shutil.copyfile(source, target)
         return target
 
     def finish(self):
