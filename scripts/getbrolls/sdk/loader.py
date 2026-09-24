@@ -352,15 +352,20 @@ def enable(plugin_id, confirm):
     return {"enabled": True, "plugin": preview, "note": SANDBOX_NOTE}
 
 
-def pin(manifest, folder, origin=None):
-    """Habilita `folder` como o plugin `manifest["id"]`: grava o pin de hash e, vindo do
-    `install`/`update`, a origem (`{"source", "commit"}`) em `plugins.json`."""
+def pin(manifest, folder, origin=None, enable=True):
+    """Grava o pin de hash de `folder` como o plugin `manifest["id"]` e, vindo do
+    `install`/`update`, a origem (`{"source", "commit"}`) em `plugins.json`.
+
+    `enable=False` (usado pelo `update` de um plugin que já estava desabilitado)
+    só atualiza `sources`, sem criar/mudar a entrada em `enabled` — atualizar o
+    conteúdo não liga de volta um plugin que a pessoa desligou de propósito."""
     from .registry import reset_registry
 
     plugin_id = manifest["id"]
     sha = folder_digest(folder)
     state = read_state()
-    state["enabled"][plugin_id] = {"version": manifest["version"], "sha256": sha}
+    if enable:
+        state["enabled"][plugin_id] = {"version": manifest["version"], "sha256": sha}
     if origin is not None:
         state.setdefault("sources", {})[plugin_id] = origin
     _write_state(state)

@@ -115,6 +115,13 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
                 action="store_true",
                 help="Confirma enable/install/update depois de mostrar manifesto, permissões e origem à pessoa",
             )
+            p.add_argument(
+                "--expect",
+                help=(
+                    "sha256 mostrado na prévia (sem --yes) de install/update; obrigatório junto com --yes, "
+                    "para confirmar que o conteúdo não mudou desde a prévia"
+                ),
+            )
         if name == "x":
             p.add_argument("plugin_id", nargs="?", metavar="plugin", help="Id do plugin dono do comando")
             p.add_argument("plugin_command", nargs="?", metavar="comando", help="Nome do comando do plugin")

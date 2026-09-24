@@ -27,10 +27,10 @@ def run(args):
         from . import install
 
         if action == "update":
-            return install.update(args.id, confirm=bool(args.yes))
+            return install.update(args.id, confirm=bool(args.yes), expect=args.expect)
         if not args.source:
             raise ValueError("--source é obrigatório em plugins --action install (pasta local ou URL git).")
-        return install.install(args.source, confirm=bool(args.yes))
+        return install.install(args.source, confirm=bool(args.yes), expect=args.expect)
     if not args.path:
         raise ValueError("--path é obrigatório em plugins --action check.")
     folder = Path(args.path).expanduser().resolve()
