@@ -19,9 +19,18 @@ from .registry import get_registry
 _log = logs.get("sdk")
 
 ARG_KEY_RE = re.compile(r"[a-z][a-z0-9_]{0,31}")
-# Teto do JSON serializado do resultado: um handler que devolve um payload
-# gigante não pode fazer a CLI escrever GBs de saída/diagnostics.
-MAX_RESULT_BYTES = 1_000_000
+# Teto do JSON do resultado — medido na MESMA forma que a CLI de fato escreve
+# (`cli.py` imprime com `indent=2, ensure_ascii=False`), não no compacto: um
+# aninhamento estreito e profundo cabe em poucos KB compacto e explode para GBs
+# quando indentado (cada nível de profundidade multiplica a indentação de toda
+# linha abaixo dele — Ø(profundidade × nós), não linear). Só depois que o
+# aninhamento já está limitado por MAX_RESULT_DEPTH essa medida fica barata.
+MAX_RESULT_BYTES = 1024 * 1024
+# Teto de aninhamento dict/list do resultado (níveis). Some com o teto de
+# tamanho acima: sem ele, uma lista de listas de 1 elemento cada, 100_000 níveis
+# funda, cabe em ~200 KB compacto (sob o teto de tamanho) mas vira ~20 GB
+# indentado — já confirmado enchendo o disco antes desta correção.
+MAX_RESULT_DEPTH = 64
 
 
 def listing():
@@ -63,23 +72,85 @@ def _isolate(action, plugin_id, name, build_message):
 
     Qualquer `BaseException` de código de terceiro — não só `Exception`/
     `SystemExit`, mas também uma classe custom que herde `BaseException`
-    direto — vira `ValueError` com só o TIPO da exceção (via
+    direto, e também `GeneratorExit` (um handler não é chamado como gerador
+    aqui; deixá-lo propagar cru não protege nada e ainda vaza o texto do
+    plugin) — vira `ValueError` com só o TIPO da exceção (via
     `guard.safe_type_name`, que nunca chama `__str__`/`__repr__`/`__name__`
-    de metaclasse hostil do plugin). `KeyboardInterrupt`/`GeneratorExit`
-    continuam propagando — não são falha de plugin, são o processo sendo
-    interrompido/coletado. `from None` corta a cadeia: sem isso,
-    `traceback.format_exc()` (chamado depois em `runtime.audited()`)
-    alcançaria a exceção original via `__cause__` e poderia rodar de novo o
-    `__str__` hostil dela ao formatar o traceback.
+    de metaclasse hostil do plugin). Só `KeyboardInterrupt` continua
+    propagando — não é falha de plugin, é o processo sendo interrompido.
+    `from None` corta a cadeia: sem isso, `traceback.format_exc()` (chamado
+    depois em `runtime.audited()`) alcançaria a exceção original via
+    `__cause__` e poderia rodar de novo o `__str__` hostil dela ao formatar
+    o traceback.
     """
     try:
         return action()
-    except (KeyboardInterrupt, GeneratorExit):
+    except KeyboardInterrupt:
         raise
     except BaseException as exc:  # noqa: BLE001 - isolamento deliberado de código de plugin de terceiro; ver docstring
         type_name = guard.safe_type_name(exc)
         logs.event(_log, logging.WARNING, "plugin_call_failed", plugin=plugin_id, command=name, error=type_name)
         raise ValueError(build_message(type_name)) from None
+
+
+def _depth_within_limit(value, limit):
+    """`True` se o aninhamento dict/list de `value` não passa de `limit` níveis.
+
+    Iterativo, com pilha explícita — nunca uma função recursiva Python: o
+    próprio ponto desta checagem é recusar uma estrutura funda demais antes de
+    fazer qualquer trabalho proporcional à profundidade dela (indentar, por
+    exemplo); percorrê-la com recursão de novo derrotaria o propósito. `value`
+    já é o resultado normalizado por um round-trip de JSON (só dict/list/str/
+    int/float/bool/None), nunca o objeto original do plugin — a pilha só lê
+    `.values()`/iteração de tipos embutidos, nunca um método de terceiro.
+    """
+    stack = [(value, 1)]
+    while stack:
+        current, depth = stack.pop()
+        if depth > limit:
+            return False
+        if isinstance(current, dict):
+            stack.extend((v, depth + 1) for v in current.values())
+        elif isinstance(current, list):
+            stack.extend((v, depth + 1) for v in current)
+    return True
+
+
+def _within_result_limits(serialized, plugin_id, name):
+    """`json.loads(serialized)` mais os tetos de tamanho/profundidade do
+    resultado. Extraído de `run()` só para manter a complexidade dela sob
+    controle — nenhuma lógica além da já descrita nos comentários de `run()`.
+    """
+    # Checagem barata pelo tamanho compacto primeiro: descarta um resultado já
+    # grande de cara (muita largura) sem gastar em `json.loads`/indentação.
+    if len(serialized.encode("utf-8")) > MAX_RESULT_BYTES:
+        raise ValueError(
+            f"Plugin {plugin_id}: o comando {name} devolveu um resultado grande demais "
+            f"(> {MAX_RESULT_BYTES // (1024 * 1024)} MB de JSON)."
+        )
+    payload = json.loads(serialized)
+    # Teto de aninhamento ANTES de qualquer coisa proporcional à profundidade:
+    # indentar (abaixo, e depois de novo quando a CLI de fato imprime o
+    # resultado com `indent=2`) custa Ø(profundidade × nós) — um aninhamento
+    # estreito e profundo passa fácil pelo teto de tamanho compacto acima e só
+    # explode quando indentado.
+    if not _depth_within_limit(payload, MAX_RESULT_DEPTH):
+        raise ValueError(
+            f"Plugin {plugin_id}: o comando {name} devolveu um resultado com aninhamento "
+            f"profundo demais (> {MAX_RESULT_DEPTH} níveis)."
+        )
+    if not isinstance(payload, dict):
+        raise ValueError(f"Plugin {plugin_id}: o comando {name} tem que devolver um objeto JSON.")
+    # Mede no formato que a CLI de fato escreve (`cli.py` imprime com
+    # `indent=2, ensure_ascii=False`) — só chega aqui com aninhamento já
+    # limitado acima, então o custo desta indentação é seguro de pagar.
+    rendered = json.dumps(payload, indent=2, ensure_ascii=False)
+    if len(rendered.encode("utf-8")) > MAX_RESULT_BYTES:
+        raise ValueError(
+            f"Plugin {plugin_id}: o comando {name} devolveu um resultado grande demais "
+            f"(> {MAX_RESULT_BYTES // (1024 * 1024)} MB de JSON)."
+        )
+    return payload
 
 
 def _missing(registry, plugin_id, name):
@@ -134,14 +205,7 @@ def run(args):
         name,
         lambda type_name: f"Plugin {plugin_id}: o comando {name} tem que devolver um objeto JSON ({type_name}).",
     )
-    if len(serialized.encode("utf-8")) > MAX_RESULT_BYTES:
-        raise ValueError(
-            f"Plugin {plugin_id}: o comando {name} devolveu um resultado grande demais "
-            f"(> {MAX_RESULT_BYTES // (1024 * 1024)} MB de JSON)."
-        )
-    payload = json.loads(serialized)
-    if not isinstance(payload, dict):
-        raise ValueError(f"Plugin {plugin_id}: o comando {name} tem que devolver um objeto JSON.")
+    payload = _within_result_limits(serialized, plugin_id, name)
     logs.event(
         _log,
         logging.INFO,

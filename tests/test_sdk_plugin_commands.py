@@ -192,6 +192,10 @@ ISOLATION_MANIFEST = {
             "meta_leak",
             "escapa_base",
             "grande",
+            "weird_name_exit",
+            "weird_name_leak",
+            "genexit",
+            "fundo",
         ]
     },
 }
@@ -276,6 +280,41 @@ def grande(args, ctx):
     return {"itens": ["x" * 1000 for _ in range(2000)]}
 
 
+class _WeirdNameStr(str):
+    def __format__(self, spec):
+        raise SystemExit(0)
+
+
+ExcWeirdNameExit = type(_WeirdNameStr("BoomExit"), (Exception,), {})
+
+
+def weird_name_exit(args, ctx):
+    raise ExcWeirdNameExit("nao-deveria-aparecer-weird-name-exit")
+
+
+class _WeirdNameLeakStr(str):
+    def __format__(self, spec):
+        return "SEGREDO7"
+
+
+ExcWeirdNameLeak = type(_WeirdNameLeakStr("BoomLeak"), (Exception,), {})
+
+
+def weird_name_leak(args, ctx):
+    raise ExcWeirdNameLeak("nao-deveria-aparecer-weird-name-leak")
+
+
+def genexit(args, ctx):
+    raise GeneratorExit("nao-deveria-propagar-cru")
+
+
+def fundo(args, ctx):
+    value = "fim"
+    for _ in range(200):
+        value = [value]
+    return {"aninhado": value}
+
+
 def register(api):
     api.command("hostil", hostil, "Levanta exceção com __str__ hostil")
     api.command("estoura", estoura, "Sai via SystemExit")
@@ -287,6 +326,10 @@ def register(api):
     api.command("meta_leak", meta_leak, "Levanta exceção cuja metaclasse __name__ devolve texto arbitrário")
     api.command("escapa_base", escapa_base, "Levanta BaseException direto (não Exception, não SystemExit)")
     api.command("grande", grande, "Devolve um resultado maior que o teto de JSON")
+    api.command("weird_name_exit", weird_name_exit, "Nome de classe é subclasse de str cujo __format__ sai via SystemExit")
+    api.command("weird_name_leak", weird_name_leak, "Nome de classe é subclasse de str cujo __format__ devolve texto arbitrário")
+    api.command("genexit", genexit, "Levanta GeneratorExit direto")
+    api.command("fundo", fundo, "Devolve resultado com aninhamento além do teto de profundidade")
 """
 
 
@@ -398,11 +441,77 @@ class PluginFailureIsolationTests(LoaderTestCase):
         self.assertIn("error=Fugitiva", joined)
 
     def test_oversized_result_is_refused(self):
-        # Fix round 2, item D: um resultado maior que o teto de JSON é recusado,
-        # não escrito por inteiro em stdout/diagnostics.
+        # Fix round 2, item D + fix round 3, item D2: um resultado maior que o
+        # teto de JSON é recusado, não escrito por inteiro em stdout/diagnostics
+        # — e a mensagem é a exata (a conta antiga `1_000_000 // (1024*1024)`
+        # dava "> 0 MB"; o teto agora é um múltiplo exato de 1024*1024).
         with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
             plugin_commands.run(self.args("grande"))
-        self.assertIn("grande demais", str(ctx.exception))
+        self.assertEqual(
+            "Plugin isola: o comando grande devolveu um resultado grande demais (> 1 MB de JSON).",
+            str(ctx.exception),
+        )
+
+    def test_deeply_nested_result_is_refused_by_depth_not_size(self):
+        # Fix round 3, item D1: aninhamento estreito e profundo (200 níveis)
+        # cabe fácil sob o teto de tamanho compacto, mas explodiria ao ser
+        # indentado (o que a CLI de fato escreve) — o teto de profundidade
+        # recusa isso rápido, sem nunca montar a saída grande.
+        with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
+            plugin_commands.run(self.args("fundo"))
+        self.assertEqual(
+            "Plugin isola: o comando fundo devolveu um resultado com aninhamento profundo demais (> 64 níveis).",
+            str(ctx.exception),
+        )
+
+    def test_class_name_that_is_a_str_subclass_raising_system_exit_falls_back(self):
+        # Fix round 3, item B: `isinstance(name, str)` aceita uma SUBCLASSE de
+        # str — CPython guarda essa instância como o nome real da classe. Uma
+        # subclasse hostil sobrescrevendo __format__ não pode disparar (exit 0
+        # silencioso) nem ser repetida: `type(name) is not str` cai no fallback
+        # ANTES de qualquer formatação tocar no objeto hostil.
+        with (
+            patch.dict(os.environ, {"GB_PLUGINS": "isola"}),
+            self.assertLogs("getbrolls.sdk", level="WARNING") as cm,
+            self.assertRaises(ValueError) as ctx,
+        ):
+            plugin_commands.run(self.args("weird_name_exit"))
+        message = str(ctx.exception)
+        self.assertIn("Plugin isola", message)
+        self.assertIn("Exception", message)
+        self.assertNotIn("nao-deveria-aparecer", message)
+        joined = "\n".join(cm.output)
+        self.assertIn("event=plugin_call_failed", joined)
+        self.assertIn("error=Exception", joined)
+        self.assertNotIn("nao-deveria-aparecer", joined)
+
+    def test_class_name_that_is_a_str_subclass_returning_arbitrary_text_is_not_trusted(self):
+        # Fix round 3, item B: mesma proteção quando o __format__ hostil não
+        # levanta, só devolve texto diferente ("SEGREDO7") — também nunca chega
+        # à mensagem/log; o fallback seguro aparece em vez dele.
+        with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
+            plugin_commands.run(self.args("weird_name_leak"))
+        message = str(ctx.exception)
+        self.assertNotIn("SEGREDO7", message)
+        self.assertIn("Exception", message)
+
+    def test_generator_exit_from_handler_is_converted_not_propagated(self):
+        # Fix round 3, item E: só KeyboardInterrupt continua propagando;
+        # GeneratorExit de um handler (que não é chamado como gerador aqui)
+        # também vira ValueError, não um traceback cru.
+        with (
+            patch.dict(os.environ, {"GB_PLUGINS": "isola"}),
+            self.assertLogs("getbrolls.sdk", level="WARNING") as cm,
+            self.assertRaises(ValueError) as ctx,
+        ):
+            plugin_commands.run(self.args("genexit"))
+        message = str(ctx.exception)
+        self.assertIn("Plugin isola", message)
+        self.assertIn("GeneratorExit", message)
+        self.assertNotIn("nao-deveria-propagar-cru", message)
+        joined = "\n".join(cm.output)
+        self.assertIn("event=plugin_call_failed", joined)
+        self.assertIn("error=GeneratorExit", joined)
 
 
 if __name__ == "__main__":

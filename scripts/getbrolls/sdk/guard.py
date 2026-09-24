@@ -40,14 +40,25 @@ def safe_type_name(exc):
     aponta direto para o slot interno do tipo (`tp_name`) e nunca passa pela
     metaclasse de quem chamou. Qualquer falha nessa leitura, ou um resultado
     que não pareça um identificador Python simples, cai em `"Exception"` — o
-    chamador sempre recebe um texto seguro de repetir em mensagem/log."""
+    chamador sempre recebe um texto seguro de repetir em mensagem/log.
+
+    `isinstance(name, str)` não bastaria: CPython aceita uma SUBCLASSE de str
+    como nome de classe e guarda essa instância como veio (sem normalizar para
+    `str` puro) — `type.__dict__["__name__"].__get__(...)` pode devolver
+    exatamente essa subclasse. Uma subclasse hostil pode sobrescrever
+    `__format__`/`__str__`/`__eq__` para levantar (inclusive `SystemExit`) ou
+    devolver texto diferente na hora de formatar/logar. `type(name) is not str`
+    (nunca `isinstance`) barra qualquer subclasse ANTES de fazer qualquer outra
+    coisa com ela — inclusive antes do regex abaixo, que só roda depois desse
+    curto-circuito (`or`), então nunca toca num objeto de tipo não confiável.
+    """
     try:
         name = type.__dict__["__name__"].__get__(type(exc))
     except BaseException:  # noqa: BLE001 - a própria leitura do nome não pode falhar por conta do plugin; isolamento deliberado, sem propósito de continuar processando nada além do fallback abaixo
         return "Exception"
-    if not isinstance(name, str) or not _TYPE_NAME_RE.fullmatch(name):
+    if type(name) is not str or not _TYPE_NAME_RE.fullmatch(name):
         return "Exception"
-    return name
+    return str(name)
 
 
 # Campos de topo que um plugin pode preencher; o resto cai em silêncio (mas
