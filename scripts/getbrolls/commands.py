@@ -2021,10 +2021,18 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
         elif route_name(c) is not None:
             # Rota de plugin: roda só aqui, depois de aprovação + permit (require_fetch
             # acima). O plugin traz o arquivo; corte, hash e ledger seguem com o core.
-            planned = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}.mp4"
-            if c.get("media", {}).get("kind") != "image" and (ledger.root / planned).exists():
-                # Recusa antes de gastar licença/cota numa revisão já coletada.
-                raise ValueError(_already_collected(planned))
+            stem = id_stem(c["id"]) + f"-r{c['segment']['revision']}"
+            if c.get("media", {}).get("kind") == "image":
+                existing = sorted((ledger.root / "clips").glob(stem + ".*"))
+                if existing:
+                    # Recusa antes de gastar licença/cota numa revisão já coletada, seja
+                    # qual for a extensão que a imagem coletada usou.
+                    raise ValueError(_already_collected("clips/" + existing[0].name))
+            else:
+                planned = "clips/" + stem + ".mp4"
+                if (ledger.root / planned).exists():
+                    # Recusa antes de gastar licença/cota numa revisão já coletada.
+                    raise ValueError(_already_collected(planned))
             with plugin_source(ledger, c, "fetch") as routed:
                 temp = (
                     ledger.root / "previews" / ("download-" + id_stem(c["id"]) + ".part" + routed.path.suffix.lower())
@@ -2052,28 +2060,32 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
             download(url, temp)
             src = temp
         if c.get("media", {}).get("kind") == "image":
-            rel = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}" + Path(src).suffix.lower()
-            dest = ledger.root / rel
-            if dest.exists():
-                raise ValueError(_already_collected(rel))
-            from .media import copy_image
+            try:
+                rel = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}" + Path(src).suffix.lower()
+                dest = ledger.root / rel
+                if dest.exists():
+                    raise ValueError(_already_collected(rel))
+                from .media import copy_image
 
-            copy_image(src, dest)
-            c["output"] = {"path": rel, "sha256": digest(dest), "verified": True}
-            c["state"] = "verified"
-            ledger.save(cmd, c)
-            render(ledger)
-            logs.event(
-                _log,
-                logging.INFO,
-                "fetch",
-                candidate=c["id"],
-                kind="remote" if temp else "local",
-                bytes=_safe_size(dest),
-                sha256_prefix=_sha256_prefix(c["output"]["sha256"]),
-                ms=round((time.monotonic() - _fetch_started_at) * 1000),
-            )
-            return c
+                copy_image(src, dest)
+                c["output"] = {"path": rel, "sha256": digest(dest), "verified": True}
+                c["state"] = "verified"
+                ledger.save(cmd, c)
+                render(ledger)
+                logs.event(
+                    _log,
+                    logging.INFO,
+                    "fetch",
+                    candidate=c["id"],
+                    kind="remote" if temp else "local",
+                    bytes=_safe_size(dest),
+                    sha256_prefix=_sha256_prefix(c["output"]["sha256"]),
+                    ms=round((time.monotonic() - _fetch_started_at) * 1000),
+                )
+                return c
+            finally:
+                if temp:
+                    temp.unlink(missing_ok=True)
         rel = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}.mp4"
         # O arquivo entregue nasce somente-leitura (delivery._freeze congela o inode
         # compartilhado): sem esta checagem o ffmpeg falharia por permissão, sem dizer

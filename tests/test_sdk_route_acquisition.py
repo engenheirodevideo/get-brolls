@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _media import skip_unless_ffmpeg, synth_video
+from _media import skip_unless_ffmpeg, synth_image, synth_video
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
 from getbrolls import acquisition, cli, providers
@@ -86,8 +86,22 @@ NOT_MEDIA = ROUTE_PLUGIN.replace(
     RETURN_LINE,
     '        (workdir / "nota.mp4").write_text("não sou vídeo")\n        return RouteResult(workdir / "nota.mp4")',
 )
-for variant in (FETCH_PLUGIN, OUTSIDE, SYMLINK, EMPTY, NOT_MEDIA):
+HARDLINK = ROUTE_PLUGIN.replace(
+    RETURN_LINE,
+    '        link = workdir / "link.mp4"\n'
+    '        os.link(os.environ["DEMO_SOURCE"], link)\n'
+    "        return RouteResult(link)",
+)
+IMAGE_FETCH_PLUGIN = (
+    FETCH_PLUGIN.replace(
+        'item["media"]["duration_s"] = 6\n        item["media"]["kind"] = "video"', 'item["media"]["kind"] = "image"'
+    )
+    .replace('target = workdir / "v.mp4"', 'target = workdir / "v.png"')
+    .replace('os.environ["DEMO_SOURCE"]', 'os.environ["DEMO_IMAGE_SOURCE"]')
+)
+for variant in (FETCH_PLUGIN, OUTSIDE, SYMLINK, EMPTY, NOT_MEDIA, HARDLINK, IMAGE_FETCH_PLUGIN):
     assert variant != ROUTE_PLUGIN  # replace() sem alvo encontrado devolveria o original
+assert IMAGE_FETCH_PLUGIN != FETCH_PLUGIN
 
 
 @skip_unless_ffmpeg
@@ -97,6 +111,8 @@ class RouteAcquisitionTests(LoaderTestCase):
         cls._media = tempfile.TemporaryDirectory()
         cls.source = Path(cls._media.name) / "fonte.mp4"
         synth_video(cls.source, duration=6)
+        cls.image_source = Path(cls._media.name) / "foto.png"
+        synth_image(cls.image_source)
 
     @classmethod
     def tearDownClass(cls):
@@ -111,7 +127,12 @@ class RouteAcquisitionTests(LoaderTestCase):
 
     def enable(self, code=ROUTE_PLUGIN):
         self.install(ROUTE_MANIFEST, code=code)
-        env = {"GB_PLUGINS": "demo", "DEMO_SOURCE": str(self.source), "DEMO_CALLS": str(self.calls)}
+        env = {
+            "GB_PLUGINS": "demo",
+            "DEMO_SOURCE": str(self.source),
+            "DEMO_IMAGE_SOURCE": str(self.image_source),
+            "DEMO_CALLS": str(self.calls),
+        }
         patcher = patch.dict(os.environ, env)
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -171,6 +192,8 @@ class RouteAcquisitionTests(LoaderTestCase):
         cases = {"fora": OUTSIDE, "vazio": EMPTY, "não é mídia": NOT_MEDIA}
         if os.name != "nt":
             cases["link"] = SYMLINK
+        if os.name != "nt" and hasattr(os, "link"):
+            cases["hardlink"] = HARDLINK
         self.enable()
         for label, code in cases.items():
             with self.subTest(label):
@@ -186,6 +209,18 @@ class RouteAcquisitionTests(LoaderTestCase):
                 self.assertIn("event=plugin_call_failed", "\n".join(cm.output))
                 self.assertEqual([], self.leftovers())
         self.assertTrue(self.source.is_file())
+
+    def test_hardlink_is_refused_and_leaves_the_original_untouched(self):
+        if os.name == "nt" or not hasattr(os, "link"):
+            self.skipTest("hardlink requer os.link (POSIX)")
+        self.enable(HARDLINK)
+        before_mode = self.source.stat().st_mode
+        ledger = Ledger(self.project)
+        with self.assertRaises(ProviderError) as caught:
+            acquisition.prepare_source(ledger, self.candidate(), 0, 2)
+        self.assertIn("hardlink", str(caught.exception))
+        self.assertEqual(before_mode, self.source.stat().st_mode)
+        self.assertEqual([], self.leftovers())
 
     def test_size_cap_applies_to_routes(self):
         self.enable()
@@ -228,6 +263,29 @@ class RouteAcquisitionTests(LoaderTestCase):
         self.assertEqual(["demo:1"], self.calls_made())
         self.assertEqual([], self.leftovers())
         self.assertEqual([], sorted((self.project / "brolls" / "previews").glob("download-*")))
+
+    def test_full_flow_fetches_an_image_once_and_leaves_nothing_in_previews(self):
+        self.enable(IMAGE_FETCH_PLUGIN)
+        project = str(self.project)
+        found = cli.main(["search", "--project", project, "--provider", "demo", "--query", "mar", "--limit", "1"])
+        ident = found["items"][0]["id"]
+        cli.main(["preview", "--project", project, "--candidate", ident, "--reference-only"])
+        cli.main(
+            ["approve", "--project", project, "--candidate", ident, "--by", "Bruno", "--statement", "pode usar essa"]
+        )
+        cli.main(["permit", "--project", project, "--candidate", ident, "--evidence", "Plano anual da conta Demo"])
+        self.assertEqual([], self.calls_made())
+        done = cli.main(["fetch", "--project", project, "--candidate", ident])
+        self.assertTrue(done["output"]["verified"])
+        self.assertTrue((self.project / "brolls" / done["output"]["path"]).is_file())
+        self.assertEqual(["demo:1"], self.calls_made())
+        self.assertEqual([], self.leftovers())
+        self.assertEqual([], sorted((self.project / "brolls" / "previews").glob("download-*")))
+        with self.assertRaises(OperationError) as caught:
+            cli.main(["fetch", "--project", project, "--candidate", ident])
+        self.assertIn("já está coletada", str(caught.exception))
+        # A recusa acontece antes de rodar a rota de novo: nenhuma chamada extra ao plugin.
+        self.assertEqual(["demo:1"], self.calls_made())
 
 
 class BuiltinUntouchedTests(unittest.TestCase):

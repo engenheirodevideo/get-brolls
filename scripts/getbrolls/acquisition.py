@@ -176,7 +176,12 @@ def verified_route_file(raw_path, workdir, owner, route):
     real = path.resolve()
     if not real.is_relative_to(root) or not real.is_file():
         raise ProviderError(f"Plugin {owner}: a rota {route} devolveu um arquivo fora da pasta de trabalho.")
-    size = real.stat().st_size
+    stat = real.stat()
+    if stat.st_nlink != 1:
+        raise ProviderError(
+            f"Plugin {owner}: a rota {route} devolveu um hardlink; copie o arquivo para a pasta de trabalho."
+        )
+    size = stat.st_size
     if not size:
         raise ProviderError(f"Plugin {owner}: a rota {route} devolveu um arquivo vazio.")
     if size > ROUTE_MAX_BYTES:
