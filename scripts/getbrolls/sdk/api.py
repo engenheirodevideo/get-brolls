@@ -2,6 +2,7 @@
 
 import contextlib
 import contextvars
+import json
 import logging
 import os
 import re
@@ -13,6 +14,7 @@ from .. import http as core_http
 from .. import logs
 from ..http import ProviderError, get_json, public_url
 from ..models import candidate as core_candidate
+from ..rules import home_dir
 from .contracts import CommandSpec
 
 _log = logs.get("sdk")
@@ -266,6 +268,29 @@ class PluginApi:
             raise ProviderError(f"Plugin {self.plugin_id}: api.local_file já trouxe um arquivo nesta rota.")
         shutil.copyfile(source, target)
         return target
+
+    @property
+    def data_dir(self):
+        """`$GB_HOME/plugin-data/<id>/` (0700): estado e cache do plugin, fora da pasta
+        do plugin — escrever ali não muda o hash do enable."""
+        folder = home_dir() / "plugin-data" / self.plugin_id
+        folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+        folder.chmod(0o700)
+        return folder
+
+    def config(self):
+        """`settings.json` de `data_dir` como dict; sem arquivo, `{}`."""
+        path = self.data_dir / "settings.json"
+        if not path.is_file():
+            return {}
+        where = f"plugin-data/{self.plugin_id}/settings.json"
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise ValueError(f"Plugin {self.plugin_id}: {where} não é JSON válido em UTF-8.") from exc
+        if not isinstance(data, dict):
+            raise ValueError(f"Plugin {self.plugin_id}: {where} tem que ser um objeto JSON.")
+        return data
 
     def finish(self):
         for kind, names in self._registered.items():
