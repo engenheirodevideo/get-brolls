@@ -46,21 +46,40 @@ JUNK_FILENAMES = frozenset({".DS_Store", "Thumbs.db", "desktop.ini"})
 VCS_DIRNAMES = frozenset({".git", ".hg", ".svn"})
 
 
+def _counted_files(folder):
+    """(caminho relativo, caminho) de cada arquivo que entra no hash, em ordem estável."""
+    for path in sorted(p for p in folder.rglob("*") if p.is_file()):
+        rel = path.relative_to(folder)
+        if rel.name in JUNK_FILENAMES or VCS_DIRNAMES & set(rel.parts[:-1]):
+            continue
+        yield rel, path
+
+
 def folder_digest(folder):
     """Hash de todo arquivo da pasta, exceto lixo de SO (`JUNK_FILENAMES`) e o
     metadado de dentro de uma pasta de VCS (`VCS_DIRNAMES`) — o resto, incluindo
     `__pycache__`/`.pyc`, conta sem exceção (ver comentário de `JUNK_FILENAMES`)."""
     digest = hashlib.sha256()
-    for path in sorted(p for p in folder.rglob("*") if p.is_file()):
-        rel = path.relative_to(folder)
-        if rel.name in JUNK_FILENAMES or VCS_DIRNAMES & set(rel.parts[:-1]):
-            continue
+    for rel, path in _counted_files(folder):
         digest.update(rel.as_posix().encode() + b"\0" + path.read_bytes() + b"\0")
     return digest.hexdigest()
 
 
+def file_digests(folder):
+    """sha256 por arquivo, com o mesmo recorte de `folder_digest` — base do diff do `update`."""
+    return {rel.as_posix(): hashlib.sha256(path.read_bytes()).hexdigest() for rel, path in _counted_files(folder)}
+
+
 def _valid_pin(entry):
     return isinstance(entry, dict) and isinstance(entry.get("sha256"), str) and isinstance(entry.get("version"), str)
+
+
+def _valid_origin(entry):
+    return (
+        isinstance(entry, dict)
+        and isinstance(entry.get("source"), str)
+        and (entry.get("commit") is None or isinstance(entry.get("commit"), str))
+    )
 
 
 def read_state():
@@ -73,7 +92,15 @@ def read_state():
         data = None
     if isinstance(data, dict):
         enabled = data.get("enabled")
-        if isinstance(enabled, dict) and all(_valid_pin(entry) for entry in enabled.values()):
+        # `sources` (origem/commit gravados pelo `plugins install`) é opcional: um
+        # plugins.json de antes desta versão continua válido sem ela.
+        sources = data.get("sources", {})
+        if (
+            isinstance(enabled, dict)
+            and all(_valid_pin(entry) for entry in enabled.values())
+            and isinstance(sources, dict)
+            and all(_valid_origin(entry) for entry in sources.values())
+        ):
             return data
     raise ValueError(f"plugins.json inválido em {path}. Corrija ou apague o arquivo para recomeçar sem plugins.")
 
@@ -323,6 +350,22 @@ def enable(plugin_id, confirm):
     reset_registry()
     logs.event(_log, logging.INFO, "plugin_enabled", plugin=plugin_id, version=manifest["version"])
     return {"enabled": True, "plugin": preview, "note": SANDBOX_NOTE}
+
+
+def pin(manifest, folder, origin=None):
+    """Habilita `folder` como o plugin `manifest["id"]`: grava o pin de hash e, vindo do
+    `install`/`update`, a origem (`{"source", "commit"}`) em `plugins.json`."""
+    from .registry import reset_registry
+
+    plugin_id = manifest["id"]
+    sha = folder_digest(folder)
+    state = read_state()
+    state["enabled"][plugin_id] = {"version": manifest["version"], "sha256": sha}
+    if origin is not None:
+        state.setdefault("sources", {})[plugin_id] = origin
+    _write_state(state)
+    reset_registry()
+    return sha
 
 
 def disable(plugin_id):

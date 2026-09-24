@@ -17,12 +17,20 @@ def run(args):
                 "rode `doctor` para o resultado real do carregamento (register() executado)."
             ),
         }
-    if action in ("enable", "disable") and not args.id:
+    if action in ("enable", "disable", "update") and not args.id:
         raise ValueError(f"--id é obrigatório em plugins --action {action}.")
     if action == "enable":
         return loader.enable(args.id, confirm=bool(args.yes))
     if action == "disable":
         return loader.disable(args.id)
+    if action in ("install", "update"):
+        from . import install
+
+        if action == "update":
+            return install.update(args.id, confirm=bool(args.yes))
+        if not args.source:
+            raise ValueError("--source é obrigatório em plugins --action install (pasta local ou URL git).")
+        return install.install(args.source, confirm=bool(args.yes))
     if not args.path:
         raise ValueError("--path é obrigatório em plugins --action check.")
     folder = Path(args.path).expanduser().resolve()

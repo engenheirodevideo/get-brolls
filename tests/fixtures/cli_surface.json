@@ -1028,7 +1028,7 @@
       ]
     },
     "plugins": {
-      "help": "Listar, habilitar, desabilitar ou validar plugins do SDK (pasta ~/.getbrolls/plugins)",
+      "help": "Listar, instalar, atualizar, habilitar, desabilitar ou validar plugins do SDK (~/.getbrolls/plugins)",
       "options": [
         {
           "action": "_HelpAction",
@@ -1049,11 +1049,13 @@
             "check",
             "disable",
             "enable",
-            "list"
+            "install",
+            "list",
+            "update"
           ],
           "default": null,
           "dest": "action",
-          "help": "list: inventário sem executar código; enable/disable: liga/desliga por id; check: valida uma pasta",
+          "help": "list: inventário sem executar código; enable/disable: liga/desliga por id; check: valida uma pasta; install/update: traz de pasta ou git, em dois passos",
           "nargs": null,
           "option_strings": [
             "--action"
@@ -1065,10 +1067,22 @@
           "choices": null,
           "default": null,
           "dest": "id",
-          "help": "Id do plugin (enable/disable)",
+          "help": "Id do plugin (enable/disable/update)",
           "nargs": null,
           "option_strings": [
             "--id"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "source",
+          "help": "Pasta local ou URL git (https:// ou git@) do plugin a instalar (install)",
+          "nargs": null,
+          "option_strings": [
+            "--source"
           ],
           "required": false
         },
@@ -1089,7 +1103,7 @@
           "choices": null,
           "default": false,
           "dest": "yes",
-          "help": "Confirma o enable depois de mostrar manifesto e permissões à pessoa",
+          "help": "Confirma enable/install/update depois de mostrar manifesto, permissões e origem à pessoa",
           "nargs": 0,
           "option_strings": [
             "--yes"
