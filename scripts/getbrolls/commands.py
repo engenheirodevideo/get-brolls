@@ -2009,6 +2009,8 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
             c["state"] = "awaiting_approval" if c.get("local_path") else "reference_only"
             approval_invalidated = True
     elif cmd == "fetch":
+        from .acquisition import license_evidence, plugin_source, route_name
+
         _fetch_started_at = time.monotonic()
         require_fetch(c)
         src = c.get("local_path")
@@ -2016,6 +2018,25 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
         if src:
             if digest(src) != c["local_sha256"]:
                 raise ValueError("Original local mudou: importe novamente e aprove a nova versão.")
+        elif route_name(c) is not None:
+            # Rota de plugin: roda só aqui, depois de aprovação + permit (require_fetch
+            # acima). O plugin traz o arquivo; corte, hash e ledger seguem com o core.
+            planned = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}.mp4"
+            if c.get("media", {}).get("kind") != "image" and (ledger.root / planned).exists():
+                # Recusa antes de gastar licença/cota numa revisão já coletada.
+                raise ValueError(_already_collected(planned))
+            with plugin_source(ledger, c, "fetch") as routed:
+                temp = (
+                    ledger.root / "previews" / ("download-" + id_stem(c["id"]) + ".part" + routed.path.suffix.lower())
+                )
+                temp.unlink(missing_ok=True)
+                shutil.move(routed.path, temp)
+            src = temp
+            if routed.license:
+                # Evidência a mais, gravada depois do permit humano — nunca no lugar dele.
+                evidence = license_evidence(routed.plugin, routed.license)
+                if evidence not in c["rights"]["evidence"]:
+                    c["rights"]["evidence"].append(evidence)
         else:
             # Re-resolve from the provider to refresh temporary variant URLs.
             fresh = providers.refresh(c)
@@ -2387,7 +2408,7 @@ def inspect_source(ledger, args, config=None):
     }
 
 
-def probe_direct(ledger, source, url=None):
+def probe_direct(ledger, source, url=None, stage="inspect"):
     """O mesmo contrato de `social.probe_remote`, lido do arquivo direto da fonte.
 
     Sem capítulo e sem legenda: um mp4 servido por URL não traz nenhum dos dois. O
@@ -2395,7 +2416,7 @@ def probe_direct(ledger, source, url=None):
     """
     from .acquisition import cache_direct_media
 
-    path = cache_direct_media(ledger, source)
+    path = cache_direct_media(ledger, source, stage=stage)
     info = probe(path)
     duration = info.get("duration_s")
     try:
@@ -2520,7 +2541,7 @@ def scan_candidate(ledger, c, config):  # noqa: C901 - existing size; contact-sh
         if direct_media(c):
             # Fonte de arquivo direto: o yt-dlp não lê a página dela, mas o ffprobe lê
             # o arquivo — e é o mesmo arquivo que a varredura vai usar logo em seguida.
-            probe_data = probe_direct(ledger, c)
+            probe_data = probe_direct(ledger, c, stage="scan")
         else:
             from .social import probe_remote
 
@@ -2539,7 +2560,7 @@ def scan_candidate(ledger, c, config):  # noqa: C901 - existing size; contact-sh
 
         # `tolerant`: varrer o vídeo inteiro não pode falhar porque a fonte entregou
         # alguns segundos a menos do que anunciou.
-        prepare_source(ledger, c, 0, span, tolerant=True)
+        prepare_source(ledger, c, 0, span, tolerant=True, stage="scan")
     source = c.get("local_path")
     if not source:
         raise ValueError("A varredura precisa da mídia de trabalho; esta fonte só permite referência estática.")

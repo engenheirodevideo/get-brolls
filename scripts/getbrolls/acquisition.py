@@ -1,12 +1,16 @@
 """Private working sources for review; final clips remain approval-gated."""
 
 import contextlib
+import copy
 import json
 import logging
 import os
+import shutil
 import tempfile
 import time
+import uuid
 from pathlib import Path
+from typing import NamedTuple
 
 from . import logs
 from .ledger import digest
@@ -15,6 +19,9 @@ from .models import id_stem
 from .runtime import record_warning
 
 INDEX_NAME = "index.json"
+ROUTE_PREFIX = "plugin:"
+# Mesmo teto do download do core: rota de plugin não traz arquivo maior do que o core baixaria.
+ROUTE_MAX_BYTES = 512 * 1024 * 1024
 
 log = logs.get("acquisition")
 
@@ -106,17 +113,137 @@ def _reuse_from_index(cache, candidate_id, start, end):
     return None
 
 
+class RoutedFile(NamedTuple):
+    """Arquivo que uma rota de plugin trouxe, já verificado pelo core."""
+
+    path: Path
+    license: str | None
+    plugin: str
+
+
+def route_name(candidate):
+    """Nome da rota de plugin que entrega o arquivo deste candidato; None nas fontes do core.
+
+    Só lê o candidato: fontes do core nunca montam o registro (nem rodam plugin) aqui.
+    """
+    method = (candidate.get("acquisition") or {}).get("method")
+    if isinstance(method, str) and method.startswith(ROUTE_PREFIX) and len(method) > len(ROUTE_PREFIX):
+        return method[len(ROUTE_PREFIX) :]
+    return None
+
+
+def fetch_stage_message(candidate):
+    return (
+        f"A fonte {candidate.get('provider')} só entrega o arquivo no `fetch`, depois da aprovação e do "
+        "permit (baixar consome licença ou cota). Para revisar agora, use "
+        f"`preview --candidate {candidate.get('id')} --start <INICIO> --end <FIM> --reference-only`; "
+        "depois approve, permit e fetch."
+    )
+
+
+def license_evidence(plugin, text):
+    return f"Licença registrada pelo plugin {plugin}: {text}"
+
+
+def _route_for(candidate):
+    from .sdk.registry import get_registry
+
+    name = route_name(candidate) or ""
+    registry = get_registry()
+    route = registry.route(name)
+    owner = registry.owner("route", name)
+    if route is None or owner is None:
+        raise ValueError(
+            f"A rota {name} não está carregada: o plugin dela está desligado, suspenso ou falhou. "
+            "Rode plugins --action list / doctor."
+        )
+    if registry.owner("provider", candidate.get("provider")) != owner:
+        raise ValueError(f"A rota {name} não pertence à fonte {candidate.get('provider')}; refaça a busca.")
+    return owner, name, route, registry.route_stage(name)
+
+
+def verified_route_file(raw_path, workdir, owner, route):
+    """O core confere o que a rota devolveu: arquivo real, dentro do workdir, com
+    tamanho no teto e que o ffprobe lê como vídeo ou imagem."""
+    from .http import ProviderError
+
+    root = Path(workdir).resolve()
+    path = Path(raw_path)
+    if not path.is_absolute():
+        path = root / path
+    if path.is_symlink():
+        raise ProviderError(f"Plugin {owner}: a rota {route} devolveu um link simbólico, não o arquivo.")
+    real = path.resolve()
+    if not real.is_relative_to(root) or not real.is_file():
+        raise ProviderError(f"Plugin {owner}: a rota {route} devolveu um arquivo fora da pasta de trabalho.")
+    size = real.stat().st_size
+    if not size:
+        raise ProviderError(f"Plugin {owner}: a rota {route} devolveu um arquivo vazio.")
+    if size > ROUTE_MAX_BYTES:
+        raise ProviderError(
+            f"Plugin {owner}: a rota {route} devolveu {size / (1024 * 1024):.1f} MB; "
+            f"o teto é {ROUTE_MAX_BYTES // (1024 * 1024)} MB."
+        )
+    try:
+        probe(real)
+    except ValueError as exc:
+        raise ProviderError(f"Plugin {owner}: a rota {route} devolveu algo que não é vídeo nem imagem.") from exc
+    return real
+
+
+@contextlib.contextmanager
+def plugin_source(ledger, candidate, stage):
+    """Roda a rota do plugin numa pasta própria em `.getbrolls-sources/` e entrega o
+    arquivo verificado; a pasta some ao sair, com ou sem erro.
+
+    Rota `stage="fetch"` consome licença ou cota: fora do `fetch` ela nem é chamada.
+    """
+    from .sdk import guard
+
+    owner, name, route, route_stage = _route_for(candidate)
+    if route_stage == "fetch" and stage != "fetch":
+        raise ValueError(fetch_stage_message(candidate))
+    cache = ledger.root.parent / ".getbrolls-sources"
+    _ensure_private_cache_dir(cache)
+    workdir = cache / f"plugin-{owner}-{uuid.uuid4().hex}"
+    workdir.mkdir(mode=0o700)
+    started = time.monotonic()
+    try:
+        raw_path, license_text = guard.route_call(owner, name, route, copy.deepcopy(candidate), workdir)
+        try:
+            path = verified_route_file(raw_path, workdir, owner, name)
+        except ValueError as exc:
+            logs.event(log, logging.WARNING, "plugin_call_failed", plugin=owner, route=name, error=type(exc).__name__)
+            raise
+        logs.event(
+            log,
+            logging.INFO,
+            "plugin_route",
+            plugin=owner,
+            route=name,
+            stage=stage,
+            bytes=path.stat().st_size,
+            ms=round((time.monotonic() - started) * 1000),
+        )
+        yield RoutedFile(path, license_text, owner)
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
 def direct_media(candidate):
     """A fonte publica o arquivo direto (mp4/jpg) em vez de uma página para o yt-dlp?
 
     É o caso do acervo da NASA e dos bancos de imagem: `source_url` é a página do
     item, e mandá-la ao yt-dlp devolve "Unsupported URL". Quem tem `media_url` e não
-    é rota de yt-dlp se lê pelo próprio arquivo.
+    é rota de yt-dlp se lê pelo próprio arquivo — e quem tem rota de plugin também:
+    o arquivo vem pela rota, nunca pelo yt-dlp.
     """
+    if route_name(candidate) is not None:
+        return True
     return bool(candidate.get("media_url")) and (candidate.get("acquisition") or {}).get("method") != "yt-dlp"
 
 
-def cache_direct_media(ledger, candidate, refresh=True):
+def cache_direct_media(ledger, candidate, refresh=True, stage="inspect"):
     """Baixa uma vez o arquivo direto no cache privado e devolve o caminho local.
 
     Só mexe no cache: nada é gravado no candidato nem em `brolls/`, então `inspect`
@@ -137,19 +264,23 @@ def cache_direct_media(ledger, candidate, refresh=True):
             kind="local",
         )
         return reused_path
+    routed = route_name(candidate) is not None
     url = candidate.get("media_url")
-    if refresh:
+    if refresh and not routed:
         from .providers import refresh as refresh_candidate
 
         url = (refresh_candidate(candidate) or {}).get("media_url") or url
-    if not url:
+    if not url and not routed:
         raise ValueError("Arquivo do provedor não está mais disponível.")
     from .http import download
 
     started = time.monotonic()
-    with tempfile.TemporaryDirectory(dir=cache) as work:
-        target = Path(work) / "source.bin"
-        download(url, target)
+    with tempfile.TemporaryDirectory(dir=cache) as work, contextlib.ExitStack() as route_stack:
+        if routed:
+            target = route_stack.enter_context(plugin_source(ledger, candidate, stage)).path
+        else:
+            target = Path(work) / "source.bin"
+            download(url, target)
         info = probe(target)
         sha = digest(target)
         final = cache / (id_stem(candidate["id"]) + "-" + sha + ".mp4")
@@ -190,7 +321,7 @@ def cache_direct_media(ledger, candidate, refresh=True):
     return final
 
 
-def prepare_source(ledger, candidate, start, end, tolerant=False):  # noqa: C901, PLR0915 - existing size; walks every source-readiness state (local/remote, cache hit/miss, tolerant)
+def prepare_source(ledger, candidate, start, end, tolerant=False, *, stage="preview"):  # noqa: C901, PLR0912, PLR0913, PLR0915 - existing size; walks every source-readiness state (local/remote, cache hit/miss, tolerant, plugin route)
     """Deixa a mídia de trabalho pronta para [start, end] em tempo da fonte.
 
     `tolerant=True` aceita que o arquivo baixado seja mais curto do que o pedido — é
@@ -234,7 +365,7 @@ def prepare_source(ledger, candidate, start, end, tolerant=False):  # noqa: C901
         )
         return
     started = time.monotonic()
-    with tempfile.TemporaryDirectory(dir=cache) as work:
+    with tempfile.TemporaryDirectory(dir=cache) as work, contextlib.ExitStack() as route_stack:
         target = Path(work) / "source.mp4"
         if c["acquisition"].get("method") == "yt-dlp":
             from .social import download_segment
@@ -249,6 +380,11 @@ def prepare_source(ledger, candidate, start, end, tolerant=False):  # noqa: C901
             if not fresh.get("media_url"):
                 raise ValueError("Arquivo do provedor não está mais disponível.")
             download(fresh["media_url"], target)
+            offset = 0
+        elif route_name(c) is not None:
+            # Rota de plugin traz o arquivo inteiro (preview) para a pasta de trabalho;
+            # o resto — ffprobe, sha256, cache, índice — segue igual às outras fontes.
+            target = route_stack.enter_context(plugin_source(ledger, c, stage)).path
             offset = 0
         else:
             method = c["acquisition"].get("method")
