@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 from .. import logs
 from ..http import ProviderError, get_json, public_url
 from ..models import candidate as core_candidate
+from .contracts import CommandSpec
 
 _log = logs.get("sdk")
 
@@ -16,7 +17,7 @@ class PluginApi:
         self.plugin_id = manifest["id"]
         self._manifest = manifest
         self._registry = registry
-        self._registered = {"providers": set(), "presets": set()}
+        self._registered = {"providers": set(), "presets": set(), "routes": set(), "commands": set()}
 
     def _own(self, kind, name):
         if name not in self._manifest["contributes"][kind]:
@@ -36,6 +37,19 @@ class PluginApi:
         self._own("presets", name)
         self._registry.add_preset(name, url, text, owner=self.plugin_id)
         self._registered["presets"].add(name)
+
+    def route(self, route):
+        name = getattr(route, "name", None)
+        self._own("routes", name)
+        self._registry.add_route(route, owner=self.plugin_id)
+        self._registered["routes"].add(name)
+
+    def command(self, name, handler, help):  # noqa: A002 - `help` é o nome do campo no contrato público (CommandSpec)
+        # Comando não segue a regra de prefixo: `gb x <plugin> <comando>` já dá o espaço de nomes.
+        if name not in self._manifest["contributes"]["commands"]:
+            raise ValueError(f"Plugin {self.plugin_id}: comando {name!r} não está declarado em contributes.commands.")
+        self._registry.add_command(CommandSpec(name, help, handler), owner=self.plugin_id)
+        self._registered["commands"].add(name)
 
     def candidate(self, provider, source_id, title, source_url=None):
         if provider not in self._manifest["contributes"]["providers"]:
@@ -69,4 +83,11 @@ class PluginApi:
             if missing:
                 raise ValueError(
                     f"Plugin {self.plugin_id}: declarado em contributes.{kind} e não registrado: {', '.join(sorted(missing))}."
+                )
+        for name in sorted(self._registered["providers"]):
+            route = self._registry.provider(name).capabilities.route
+            if route is not None and route not in self._registered["routes"]:
+                raise ValueError(
+                    f"Plugin {self.plugin_id}: {name} aponta capabilities.route={route!r}, "
+                    "que não é uma rota registrada por este plugin."
                 )

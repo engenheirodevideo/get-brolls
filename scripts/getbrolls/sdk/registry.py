@@ -2,9 +2,21 @@
 
 from typing import cast
 
-from .contracts import CORE, MATCH_KINDS, MEDIA_KINDS, NAME_RE, Preset, Provider, ProviderCapabilities
+from .contracts import (
+    CORE,
+    MATCH_KINDS,
+    MEDIA_KINDS,
+    NAME_RE,
+    ROUTE_STAGES,
+    CommandSpec,
+    Preset,
+    Provider,
+    ProviderCapabilities,
+    Route,
+)
 
-KINDS = ("provider", "preset")
+KINDS = ("provider", "preset", "route", "command")
+HELP_MAX_CHARS = 200
 
 
 class RegistryError(ValueError):
@@ -23,6 +35,9 @@ class Registry:
         self._items: dict[str, dict[str, object]] = {kind: {} for kind in KINDS}
         self._owners: dict[str, dict[str, str]] = {kind: {} for kind in KINDS}
         self._hosts: dict[str, str] = {}
+        # Estágio lido uma vez no registro: o core decide pelo que foi registrado,
+        # sem voltar a ler atributo de objeto de plugin fora do guarda-corpo.
+        self._stages: dict[str, str] = {}
         # id do plugin → linha de inventário (status, motivo); preenchido pelo loader.
         self.plugins: dict[str, dict] = {}
 
@@ -73,6 +88,54 @@ class Registry:
     def preset_names(self) -> tuple[str, ...]:
         return tuple(self._items["preset"])
 
+    def add_route(self, route: Route, owner: str = CORE) -> None:
+        name = getattr(route, "name", None)
+        _check_name("rota", name)
+        name = cast("str", name)
+        stage = getattr(route, "stage", None)
+        if stage not in ROUTE_STAGES:
+            raise RegistryError(f'Rota {name!r}: stage tem que ser "preview" ou "fetch".')
+        if not callable(getattr(route, "prepare", None)):
+            raise RegistryError(f"Rota {name!r}: falta o método prepare(item, workdir).")
+        self._claim("route", name, owner)
+        self._items["route"][name] = route
+        self._owners["route"][name] = owner
+        self._stages[name] = cast("str", stage)
+
+    def route(self, name: str) -> Route | None:
+        return self._items["route"].get(name)  # type: ignore[return-value]
+
+    def route_stage(self, name: str) -> str | None:
+        return self._stages.get(name)
+
+    def route_names(self) -> tuple[str, ...]:
+        return tuple(self._items["route"])
+
+    def add_command(self, spec: CommandSpec, owner: str) -> None:
+        if not isinstance(spec, CommandSpec):
+            raise RegistryError("Comando tem que ser CommandSpec.")
+        _check_name("comando", spec.name)
+        if not isinstance(spec.help, str) or not 0 < len(spec.help.strip()) <= HELP_MAX_CHARS:
+            raise RegistryError(f"Comando {spec.name!r}: help é obrigatório, com até {HELP_MAX_CHARS} caracteres.")
+        if not callable(spec.handler):
+            raise RegistryError(f"Comando {spec.name!r}: handler tem que ser chamável.")
+        # Comandos vivem no espaço do plugin (`gb x <plugin> <comando>`): a chave
+        # carrega o dono, então dois plugins podem ter um comando "sync" cada.
+        key = f"{owner}:{spec.name}"
+        self._claim("command", key, owner)
+        self._items["command"][key] = spec
+        self._owners["command"][key] = owner
+
+    def command(self, plugin_id: str, name: str) -> CommandSpec | None:
+        return self._items["command"].get(f"{plugin_id}:{name}")  # type: ignore[return-value]
+
+    def command_keys(self) -> tuple[tuple[str, str], ...]:
+        return tuple(tuple(key.split(":", 1)) for key in self._items["command"])  # type: ignore[return-value]
+
+    def owned_by(self, owner: str) -> dict[str, list[str]]:
+        """Nomes (chaves, no caso de comando) registrados por `owner`, por tipo."""
+        return {kind: [name for name, who in self._owners[kind].items() if who == owner] for kind in KINDS}
+
     def owner(self, kind: str, name: str) -> str | None:
         return self._owners[kind].get(name)
 
@@ -82,6 +145,7 @@ class Registry:
                 del self._owners[kind][name]
                 del self._items[kind][name]
         self._hosts = {host: name for host, name in self._hosts.items() if name in self._items["provider"]}
+        self._stages = {name: stage for name, stage in self._stages.items() if name in self._items["route"]}
 
 
 _STATE: dict[str, Registry | None] = {"registry": None}

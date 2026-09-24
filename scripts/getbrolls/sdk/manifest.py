@@ -16,6 +16,8 @@ MANIFEST_NAME = "getbrolls-plugin.json"
 CONTRIBUTION_KINDS = (
     "providers",
     "presets",
+    "routes",
+    "commands",
     "exporters",
     "rules",
     "hooks",
@@ -24,7 +26,7 @@ CONTRIBUTION_KINDS = (
     "eval_rubrics",
 )
 # Tipos que esta versão do SDK sabe carregar; os outros chegam nas próximas ondas.
-SUPPORTED_KINDS = ("providers", "presets")
+SUPPORTED_KINDS = ("providers", "presets", "routes", "commands")
 TOP_LEVEL = frozenset(
     {
         "id",
@@ -44,6 +46,7 @@ VERSION_RE = re.compile(r"\d+\.\d+\.\d+")
 ENTRY_RE = re.compile(r"[A-Za-z0-9_]{1,64}\.py")
 HOST_RE = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+")
 ENV_RE = re.compile(r"[A-Z][A-Z0-9_]{1,63}")
+PATH_MAX_CHARS = 4096
 CLAUSE_RE = re.compile(r"\s*(>=|<=|==|>|<)\s*(\d+(?:\.\d+){0,2})\s*")
 
 
@@ -74,16 +77,29 @@ def _contributes(folder_name, raw):
     return result
 
 
+def _root_ok(raw):
+    """Raiz de `permissions.paths`: absoluta, ou `~`/`~/...`; nunca com `..`."""
+    if not isinstance(raw, str) or not raw.strip() or "\0" in raw or len(raw) > PATH_MAX_CHARS:
+        return False
+    if raw.startswith("~") and raw != "~" and not raw.startswith(("~/", "~\\")):
+        return False
+    path = Path(raw).expanduser()
+    return path.is_absolute() and ".." not in path.parts
+
+
 def _permissions(folder_name, raw):
-    if not isinstance(raw, dict) or set(raw) - {"network", "env"}:
-        _fail(folder_name, "permissions só aceita network e env.")
+    if not isinstance(raw, dict) or set(raw) - {"network", "env", "paths"}:
+        _fail(folder_name, "permissions só aceita network, env e paths.")
     network = raw.get("network", [])
     env = raw.get("env", [])
+    paths = raw.get("paths", [])
     if not isinstance(network, list) or any(not isinstance(h, str) or not HOST_RE.fullmatch(h) for h in network):
         _fail(folder_name, "permissions.network aceita só nomes de host (api.exemplo.com), sem esquema nem caminho.")
     if not isinstance(env, list) or any(not isinstance(k, str) or not ENV_RE.fullmatch(k) for k in env):
         _fail(folder_name, "permissions.env aceita só nomes de variável em MAIÚSCULAS.")
-    return {"network": list(network), "env": list(env)}
+    if not isinstance(paths, list) or not all(_root_ok(p) for p in paths):
+        _fail(folder_name, "permissions.paths aceita só pastas absolutas ou começando por ~/, sem '..'.")
+    return {"network": list(network), "env": list(env), "paths": list(paths)}
 
 
 def _identity(folder, raw):
