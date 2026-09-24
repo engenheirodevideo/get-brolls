@@ -47,8 +47,12 @@ SECRET_NAMES = {
 }
 
 
-def public_url(url):
-    """Accept credential-free HTTPS references; drop signed URLs rather than break them."""
+def public_url(url, allow_signed=False):
+    """Accept credential-free HTTPS references; drop signed URLs rather than break them.
+
+    `allow_signed=True` skips only the signed-query filter (a plugin route downloading
+    a presigned file); scheme, userinfo and private/loopback hosts are still refused.
+    """
     if not isinstance(url, str):
         return None
     p = urllib.parse.urlsplit(url)
@@ -60,10 +64,11 @@ def public_url(url):
     except ValueError:
         if p.hostname.lower() == "localhost" or p.hostname.lower().endswith(".local"):
             return None
-    for key, _ in urllib.parse.parse_qsl(p.query):
-        if key.lower() in SECRET_NAMES or key.lower().startswith(("x-amz-", "x-goog-")):
-            return None
-    return url
+    signed = not allow_signed and any(
+        key.lower() in SECRET_NAMES or key.lower().startswith(("x-amz-", "x-goog-"))
+        for key, _ in urllib.parse.parse_qsl(p.query)
+    )
+    return None if signed else url
 
 
 # Characters RFC 3986 lets a URL path carry unescaped. "%" joins them so a path that
@@ -155,16 +160,16 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         raise ProviderError("Redirecionamento de API não permitido")
 
 
-def _scrub(value):
+def _scrub(value, keep_signed=False):
     if isinstance(value, dict):
-        return {k: _scrub(v) for k, v in value.items() if k.lower() not in SECRET_NAMES}
+        return {k: _scrub(v, keep_signed) for k, v in value.items() if k.lower() not in SECRET_NAMES}
     if isinstance(value, list):
-        return [_scrub(v) for v in value]
+        return [_scrub(v, keep_signed) for v in value]
     if isinstance(value, str) and value.startswith(("http://", "https://")):
         parsed = urllib.parse.urlsplit(value)
         if parsed.scheme == "http" and parsed.netloc == "images-assets.nasa.gov":
             value = urllib.parse.urlunsplit(parsed._replace(scheme="https"))
-        return public_url(value)
+        return public_url(value, allow_signed=keep_signed)
     return value
 
 
@@ -197,7 +202,9 @@ def _retry_after_seconds(value, cap: int | None = RETRY_AFTER_CAP_S):
     return limit(max(0, int(delta + 0.999)))
 
 
-def get_json(url, params=None, headers=None, cache_ttl=0):  # noqa: C901, PLR0912, PLR0915 - existing size; request/cache/retry/error handling for one endpoint call
+def get_json(url, params=None, headers=None, cache_ttl=0, keep_signed=False):  # noqa: C901, PLR0912, PLR0915 - existing size; request/cache/retry/error handling for one endpoint call
+    if keep_signed and cache_ttl:
+        raise ProviderError("keep_signed exige cache desligado (cache_ttl=0): URL assinada não vai para o disco.")
     _network_url(url)
     if params:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
@@ -249,7 +256,7 @@ def get_json(url, params=None, headers=None, cache_ttl=0):  # noqa: C901, PLR091
                     raise ProviderError("Resposta excede limite de 8 MB")
                 status_code = getattr(response, "status", None)
                 raw_len = len(raw)
-                data = _scrub(json.loads(raw))
+                data = _scrub(json.loads(raw), keep_signed)
                 break
         except urllib.error.HTTPError as error:
             code = error.code
@@ -403,9 +410,16 @@ def get_json(url, params=None, headers=None, cache_ttl=0):  # noqa: C901, PLR091
     return data
 
 
-def download(url, target, max_bytes=512 * 1024 * 1024):  # noqa: C901, PLR0912, PLR0915 - existing size; streaming download with cleanup on every failure path
-    """Stream only public HTTPS to an exclusive file; remove partials on failure."""
-    if not public_url(url):
+DOWNLOAD_MAX_BYTES = 512 * 1024 * 1024
+
+
+def download(url, target, max_bytes=DOWNLOAD_MAX_BYTES, headers=None, allow_signed=False):  # noqa: C901, PLR0912, PLR0915 - existing size; streaming download with cleanup on every failure path
+    """Stream only public HTTPS to an exclusive file; remove partials on failure.
+
+    `headers` (e.g. a plugin's Authorization) go only into the request: never into a
+    log line or an error message. `allow_signed` is forwarded to `public_url`.
+    """
+    if not public_url(url, allow_signed=allow_signed):
         logs.event(_logger, logging.WARNING, "request_refused", host=_host_of(url), reason="not_public_url")
         raise ProviderError("URL de mídia pública sem credenciais obrigatória")
     host = _host_of(url)
@@ -438,8 +452,10 @@ def download(url, target, max_bytes=512 * 1024 * 1024):  # noqa: C901, PLR0912, 
     status_code = None
     received_bytes = 0
     try:
+        request_headers = {"User-Agent": f"Get-Brolls/{__version__}"}
+        request_headers.update(headers or {})
         request = urllib.request.Request(  # noqa: S310 - opener guards via `_safe_network` in `https_open`
-            url, headers={"User-Agent": f"Get-Brolls/{__version__}"}
+            url, headers=request_headers
         )
         with _opener().open(request, timeout=30) as response:
             status_code = getattr(response, "status", None)

@@ -1,15 +1,40 @@
 """Objeto entregue ao `register(api)` do plugin: o único caminho de entrada no registro."""
 
+import contextlib
+import contextvars
 import logging
 import os
+import re
+from pathlib import Path
 from urllib.parse import urlsplit
 
+from .. import http as core_http
 from .. import logs
 from ..http import ProviderError, get_json, public_url
 from ..models import candidate as core_candidate
 from .contracts import CommandSpec
 
 _log = logs.get("sdk")
+
+# Nome de arquivo que a rota pode pedir dentro da pasta de trabalho: sem barra,
+# sem `..`, sem começar por ponto (nada de arquivo escondido nem caminho).
+FILE_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+
+# (id do plugin, pasta de trabalho) da rota em execução. Só o core liga isto, em
+# volta de `Route.prepare`; fora dali `api.download`/`api.local_file` recusam.
+_ACTIVE_ROUTE: contextvars.ContextVar[tuple[str, Path] | None] = contextvars.ContextVar(
+    "getbrolls_active_route", default=None
+)
+
+
+@contextlib.contextmanager
+def route_scope(plugin_id, workdir):
+    """Liga `api.download`/`api.local_file` do plugin `plugin_id` à pasta `workdir`."""
+    token = _ACTIVE_ROUTE.set((plugin_id, Path(workdir).resolve()))
+    try:
+        yield
+    finally:
+        _ACTIVE_ROUTE.reset(token)
 
 
 class PluginApi:
@@ -61,7 +86,7 @@ class PluginApi:
             raise ValueError(f"Plugin {self.plugin_id}: variável {key} não está em permissions.env.")
         return os.environ.get(key)
 
-    def get_json(self, url, params=None, headers=None, cache_ttl=0):
+    def _check_host(self, url):
         try:
             host = (urlsplit(url).hostname or "").lower()
         except ValueError as exc:
@@ -75,7 +100,39 @@ class PluginApi:
             # `host or "-"` nos dois lugares: nunca a URL crua (pode carregar
             # token/query sensível), só o host — ou "-" quando nem host tem.
             raise ProviderError(f"Plugin {self.plugin_id}: host {host or '-'} não está em permissions.network.")
-        return get_json(url, params, headers, cache_ttl=cache_ttl)
+
+    def get_json(self, url, params=None, headers=None, cache_ttl=0, keep_signed=False):
+        self._check_host(url)
+        if keep_signed:
+            cache_ttl = 0
+        return get_json(url, params, headers, cache_ttl=cache_ttl, keep_signed=keep_signed)
+
+    def _workdir(self, operation):
+        active = _ACTIVE_ROUTE.get()
+        if active is None or active[0] != self.plugin_id:
+            raise ProviderError(f"Plugin {self.plugin_id}: api.{operation} só funciona dentro de Route.prepare.")
+        return active[1]
+
+    def download(self, url, name, headers=None):
+        """Baixa `url` (https, host em permissions.network) para `workdir/name`.
+
+        Aceita URL assinada e headers (ex.: Authorization); nenhum dos dois vai para
+        log ou mensagem de erro. O teto é o mesmo do core (`http.DOWNLOAD_MAX_BYTES`).
+        """
+        workdir = self._workdir("download")
+        if not isinstance(name, str) or not FILE_NAME_RE.fullmatch(name) or ".." in name:
+            raise ProviderError(
+                f"Plugin {self.plugin_id}: nome de arquivo inválido; use letras, números, '.', '_' ou '-', sem pasta."
+            )
+        if headers is not None and (
+            not isinstance(headers, dict)
+            or not all(isinstance(k, str) and isinstance(v, str) for k, v in headers.items())
+        ):
+            raise ProviderError(f"Plugin {self.plugin_id}: headers tem que ser um dict de texto para texto.")
+        self._check_host(url)
+        target = workdir / name
+        core_http.download(url, target, headers=dict(headers or {}), allow_signed=True)
+        return target
 
     def finish(self):
         for kind, names in self._registered.items():
