@@ -192,7 +192,10 @@ class PluginApi:
         headers = self._validate_headers(headers)
         if keep_signed:
             cache_ttl = 0
-        return get_json(url, params, headers, cache_ttl=cache_ttl, keep_signed=keep_signed)
+        # `quiet_errors=True` always: a plugin's error body is never assumed safe to
+        # echo, unlike a built-in provider's (which never sets this and keeps its
+        # exact previous message — "sem plugins, saída idêntica").
+        return get_json(url, params, headers, cache_ttl=cache_ttl, keep_signed=keep_signed, quiet_errors=True)
 
     def _workdir(self, operation):
         active = _ACTIVE_ROUTE.get()

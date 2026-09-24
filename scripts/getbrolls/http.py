@@ -202,9 +202,16 @@ def _retry_after_seconds(value, cap: int | None = RETRY_AFTER_CAP_S):
     return limit(max(0, int(delta + 0.999)))
 
 
-def get_json(url, params=None, headers=None, cache_ttl=0, keep_signed=False):  # noqa: C901, PLR0912, PLR0915 - existing size; request/cache/retry/error handling for one endpoint call
+def get_json(url, params=None, headers=None, cache_ttl=0, keep_signed=False, quiet_errors=False):  # noqa: C901, PLR0912, PLR0913, PLR0915, PLR0917 - existing size; request/cache/retry/error handling for one endpoint call; quiet_errors is a 6th caller-facing knob, not incidental complexity
+    """`quiet_errors=True` drops the HTTPError response body from the message (the
+    SDK sets this on every plugin call; built-in providers never set it, so their
+    error messages are unchanged even when they pass `headers`, e.g. Pexels'
+    Authorization). `keep_signed=True` implies it: a signed URL kept in the
+    response is exactly the kind of call whose error body might reflect it back.
+    """
     if keep_signed and cache_ttl:
         raise ProviderError("keep_signed exige cache desligado (cache_ttl=0): URL assinada não vai para o disco.")
+    quiet_errors = quiet_errors or keep_signed
     _network_url(url)
     if params:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
@@ -266,11 +273,13 @@ def get_json(url, params=None, headers=None, cache_ttl=0, keep_signed=False):  #
                 body = error.read(300)
             error.close()
             detail = ""
-            if body and not headers and not keep_signed:
-                # Only when the caller sent no header and isn't asking to keep a signed
-                # URL: an authenticated/presigned request's error body can otherwise
+            if body and not quiet_errors:
+                # `quiet_errors` (set only by the SDK, never by a built-in provider):
+                # an authenticated/presigned plugin request's error body can otherwise
                 # echo back part of the credential (e.g. a fake key in a 403 body), so
-                # it never reaches the message in that case. Mirrors `download()`.
+                # it never reaches the message in that case. Built-in providers keep
+                # their exact previous message, even the ones that pass `headers`
+                # (e.g. Pexels' Authorization) — "sem plugins, saída idêntica".
                 detail = stderr_tail(body.decode("utf-8", errors="replace"))
             suffix = f": {detail}" if detail else ""
             if code in (401, 403):

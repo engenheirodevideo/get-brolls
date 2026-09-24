@@ -176,10 +176,12 @@ class HttpDownloadTests(unittest.TestCase):
             http.download("https://videos.demo.example/v.mp4", Path(tmp) / "v.mp4")
         self.assertIn("quota exceeded for this key", str(caught.exception))
 
-    def test_get_json_403_body_is_not_echoed_when_caller_sent_headers(self):
-        """Rodada 2 (C): espelha o `download()` — `get_json` também não pode ecoar o
-        corpo de um 403 quando o chamador passou headers (ex.: uma rota de plugin com
-        `Authorization`, ou um provider built-in como o Pexels)."""
+    def test_get_json_403_body_is_still_echoed_for_a_builtin_style_call_with_headers(self):
+        """Rodada 3 (controller ruling): o gate depende só de `quiet_errors` — um
+        parâmetro explícito que só o SDK seta — nunca de `headers` estar presente.
+        `sem plugins, saída idêntica` é uma restrição vinculante: um provider
+        built-in que manda header (ex.: Pexels com `Authorization`) e não passa
+        `quiet_errors` mantém a mensagem de sempre, corpo incluído."""
         body = b'{"error":"forbidden","fake_key":"AKIAFAKESEGREDOCHAVE"}'
 
         class _ErrorOpener:
@@ -194,10 +196,32 @@ class HttpDownloadTests(unittest.TestCase):
             self.assertRaises(ProviderError) as caught,
         ):
             http.get_json("https://api.example.com/v1/videos/1", headers={"Authorization": TOKEN})
+        self.assertIn("AKIAFAKESEGREDOCHAVE", str(caught.exception))
+
+    def test_get_json_403_body_is_dropped_with_quiet_errors(self):
+        """Mesma chamada da anterior, agora com `quiet_errors=True` explícito (o que o
+        SDK sempre faz) — o corpo some da mensagem."""
+        body = b'{"error":"forbidden","fake_key":"AKIAFAKESEGREDOCHAVE"}'
+
+        class _ErrorOpener:
+            def open(self, request, timeout=None):
+                raise urllib.error.HTTPError(
+                    request.full_url, 403, "Forbidden", email.message.Message(), io.BytesIO(body)
+                )
+
+        with (
+            patch.object(http, "_opener", return_value=_ErrorOpener()),
+            patch.object(http, "_network_url"),
+            self.assertRaises(ProviderError) as caught,
+        ):
+            http.get_json("https://api.example.com/v1/videos/1", headers={"Authorization": TOKEN}, quiet_errors=True)
         self.assertEqual("Autenticação/permissão ou quota recusada pelo provedor (HTTP 403)", str(caught.exception))
         self.assertNotIn("AKIAFAKESEGREDOCHAVE", str(caught.exception))
 
     def test_get_json_403_body_is_not_echoed_when_keep_signed(self):
+        """`keep_signed=True` implies `quiet_errors`, even without passing it explicitly
+        (a signed URL kept in the response is exactly the kind of call whose error
+        body might reflect it back)."""
         body = b'{"error":"forbidden","fake_key":"AKIAFAKESEGREDOCHAVE"}'
 
         class _ErrorOpener:
@@ -214,9 +238,10 @@ class HttpDownloadTests(unittest.TestCase):
             http.get_json("https://api.example.com/v1/videos/1", keep_signed=True)
         self.assertNotIn("AKIAFAKESEGREDOCHAVE", str(caught.exception))
 
-    def test_get_json_403_body_is_still_echoed_without_headers_or_keep_signed(self):
-        """Comportamento anterior preservado (providers built-in sem header, ex. NASA/
-        Commons/Pixabay via query string): o corpo de erro ainda ajuda a diagnosticar."""
+    def test_get_json_403_body_is_still_echoed_by_default(self):
+        """Comportamento anterior preservado (providers built-in sem `quiet_errors`,
+        ex. NASA/Commons/Pixabay via query string): o corpo de erro ainda ajuda a
+        diagnosticar quando ninguém pediu silêncio."""
         body = b"quota exceeded for this key"
 
         class _ErrorOpener:
@@ -382,6 +407,24 @@ class PluginDownloadTests(LoaderTestCase):
                 self.assertRaises(ProviderError),
             ):
                 api.download("https://demo.example/files/1", "a.mp4", {"X-Api-Key": f"segredo{bad_char}fim"})
+
+    def test_get_json_through_the_plugin_path_always_drops_the_error_body(self):
+        """Rodada 3: `PluginApi.get_json` sempre passa `quiet_errors=True` para o core
+        — diferente de um provider built-in, que nunca seta esse parâmetro e mantém a
+        mensagem de sempre (ver `HttpDownloadTests` para o lado built-in)."""
+        api = self.api()
+        body = b'{"error":"forbidden","fake_key":"AKIAFAKESEGREDOCHAVE"}'
+
+        class _ErrorOpener:
+            def open(self, request, timeout=None):
+                raise urllib.error.HTTPError(
+                    request.full_url, 403, "Forbidden", email.message.Message(), io.BytesIO(body)
+                )
+
+        with patch.object(http, "_opener", return_value=_ErrorOpener()), self.assertRaises(ProviderError) as caught:
+            api.get_json("https://demo.example/v1/videos/1")
+        self.assertEqual("Autenticação/permissão ou quota recusada pelo provedor (HTTP 403)", str(caught.exception))
+        self.assertNotIn("AKIAFAKESEGREDOCHAVE", str(caught.exception))
 
 
 class SignedJsonTests(unittest.TestCase):
