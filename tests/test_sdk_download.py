@@ -176,6 +176,63 @@ class HttpDownloadTests(unittest.TestCase):
             http.download("https://videos.demo.example/v.mp4", Path(tmp) / "v.mp4")
         self.assertIn("quota exceeded for this key", str(caught.exception))
 
+    def test_get_json_403_body_is_not_echoed_when_caller_sent_headers(self):
+        """Rodada 2 (C): espelha o `download()` — `get_json` também não pode ecoar o
+        corpo de um 403 quando o chamador passou headers (ex.: uma rota de plugin com
+        `Authorization`, ou um provider built-in como o Pexels)."""
+        body = b'{"error":"forbidden","fake_key":"AKIAFAKESEGREDOCHAVE"}'
+
+        class _ErrorOpener:
+            def open(self, request, timeout=None):
+                raise urllib.error.HTTPError(
+                    request.full_url, 403, "Forbidden", email.message.Message(), io.BytesIO(body)
+                )
+
+        with (
+            patch.object(http, "_opener", return_value=_ErrorOpener()),
+            patch.object(http, "_network_url"),
+            self.assertRaises(ProviderError) as caught,
+        ):
+            http.get_json("https://api.example.com/v1/videos/1", headers={"Authorization": TOKEN})
+        self.assertEqual("Autenticação/permissão ou quota recusada pelo provedor (HTTP 403)", str(caught.exception))
+        self.assertNotIn("AKIAFAKESEGREDOCHAVE", str(caught.exception))
+
+    def test_get_json_403_body_is_not_echoed_when_keep_signed(self):
+        body = b'{"error":"forbidden","fake_key":"AKIAFAKESEGREDOCHAVE"}'
+
+        class _ErrorOpener:
+            def open(self, request, timeout=None):
+                raise urllib.error.HTTPError(
+                    request.full_url, 403, "Forbidden", email.message.Message(), io.BytesIO(body)
+                )
+
+        with (
+            patch.object(http, "_opener", return_value=_ErrorOpener()),
+            patch.object(http, "_network_url"),
+            self.assertRaises(ProviderError) as caught,
+        ):
+            http.get_json("https://api.example.com/v1/videos/1", keep_signed=True)
+        self.assertNotIn("AKIAFAKESEGREDOCHAVE", str(caught.exception))
+
+    def test_get_json_403_body_is_still_echoed_without_headers_or_keep_signed(self):
+        """Comportamento anterior preservado (providers built-in sem header, ex. NASA/
+        Commons/Pixabay via query string): o corpo de erro ainda ajuda a diagnosticar."""
+        body = b"quota exceeded for this key"
+
+        class _ErrorOpener:
+            def open(self, request, timeout=None):
+                raise urllib.error.HTTPError(
+                    request.full_url, 403, "Forbidden", email.message.Message(), io.BytesIO(body)
+                )
+
+        with (
+            patch.object(http, "_opener", return_value=_ErrorOpener()),
+            patch.object(http, "_network_url"),
+            self.assertRaises(ProviderError) as caught,
+        ):
+            http.get_json("https://api.example.com/v1/videos/1")
+        self.assertIn("quota exceeded for this key", str(caught.exception))
+
 
 class PluginDownloadTests(LoaderTestCase):
     def api(self):
@@ -283,6 +340,48 @@ class PluginDownloadTests(LoaderTestCase):
                 self.assertRaises(ProviderError),
             ):
                 api.download("https://demo.example/files/1", "a.mp4", {name: "evil.example"})
+
+    def test_invalid_header_name_never_echoes_the_name(self):
+        """Rodada 2 (A): um nome de header inválido pode carregar o cabeçalho inteiro
+        contrabandeado ali dentro (`{"Authorization: Bearer <segredo>": ""}` tem nome
+        com ':' e espaço, então falha no regex de token) — a mensagem não pode ecoar
+        esse `name`, nem em posição de causa/contexto."""
+        api = self.api()
+        bad_headers = {"Authorization: Bearer segredo-vazado": ""}
+        with (
+            tempfile.TemporaryDirectory() as work,
+            route_scope("demo", Path(work)),
+            self.assertRaises(ProviderError) as caught,
+        ):
+            api.download("https://demo.example/files/1", "a.mp4", bad_headers)
+        _assert_secret_absent_everywhere(self, caught.exception, "segredo-vazado")
+
+    def test_header_value_out_of_latin1_never_leaks_via_context(self):
+        """Rodada 2 (B): a checagem de latin-1 não pode usar
+        `try/except UnicodeEncodeError` — o `UnicodeEncodeError` do stdlib inclui o
+        valor no próprio `repr`, e isso sobrevive em `exc.__context__` mesmo com
+        `raise ... from None` (só `__cause__`/`__suppress_context__` são limpos)."""
+        api = self.api()
+        bad_headers = {"X-Api-Key": "segredo-éĀ"}  # Ā está fora de latin-1
+        with (
+            tempfile.TemporaryDirectory() as work,
+            route_scope("demo", Path(work)),
+            self.assertRaises(ProviderError) as caught,
+        ):
+            api.download("https://demo.example/files/1", "a.mp4", bad_headers)
+        _assert_secret_absent_everywhere(self, caught.exception, "segredo-")
+
+    def test_other_control_characters_in_header_value_are_rejected(self):
+        """Rodada 2 (B): não só `\\r`/`\\n`/NUL — todo `0x01`-`0x1f` e `0x7f` (DEL)."""
+        api = self.api()
+        for bad_char in ("\x01", "\x1f", "\x7f"):
+            with (
+                self.subTest(bad_char=repr(bad_char)),
+                tempfile.TemporaryDirectory() as work,
+                route_scope("demo", Path(work)),
+                self.assertRaises(ProviderError),
+            ):
+                api.download("https://demo.example/files/1", "a.mp4", {"X-Api-Key": f"segredo{bad_char}fim"})
 
 
 class SignedJsonTests(unittest.TestCase):

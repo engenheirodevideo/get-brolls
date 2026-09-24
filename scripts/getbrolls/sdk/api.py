@@ -38,6 +38,27 @@ HEADER_NAME_RE = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
 # corpo/keep-alive da conexão é interpretado, o que também não é do plugin decidir.
 _FORBIDDEN_HEADER_NAMES = frozenset({"host", "content-length", "transfer-encoding", "connection"})
 
+# Faixas de caractere proibidas num valor de header HTTP: control chars (inclui
+# `\r`/`\n`/NUL) e DEL, mais tudo fora de latin-1.
+_HEADER_CONTROL_MAX = 0x1F
+_HEADER_DEL = 0x7F
+_HEADER_LATIN1_MAX = 0xFF
+
+
+def _bad_header_value_char(value):
+    """`True` quando `value` tem um caractere que não pode ir num header HTTP.
+
+    Control chars (`0x00`-`0x1f`, incluindo `\\r`/`\\n`/NUL, e `0x7f`) ou fora de
+    latin-1 (`>0xff`) — checado caractere a caractere, nunca por
+    `value.encode("latin-1")` dentro de um `try/except UnicodeEncodeError`: o
+    `UnicodeEncodeError` do stdlib inclui o próprio valor no seu `repr`, e um
+    `except` que o captura deixa isso em `exc.__context__` mesmo quando a exceção
+    nova é levantada com `from None` (que só limpa `__cause__`/`__suppress_context__`).
+    """
+    return any(
+        ord(char) <= _HEADER_CONTROL_MAX or ord(char) == _HEADER_DEL or ord(char) > _HEADER_LATIN1_MAX for char in value
+    )
+
 
 def _bad_file_name(name):
     """`True` quando `name` não serve como nome de arquivo dentro do workdir da rota."""
@@ -132,32 +153,37 @@ class PluginApi:
         """Nomes/valores de header de um plugin, antes de repassar ao transporte.
 
         Usado por `get_json` e `download`: a mensagem de erro nunca ecoa o valor do
-        header (só o nome, que não é segredo, e o tipo do problema).
+        header (só o nome, quando o nome em si já foi validado como token — ver abaixo
+        — e o tipo do problema).
         """
         if headers is None:
             return {}
         if not isinstance(headers, dict):
             raise ProviderError(f"Plugin {self.plugin_id}: headers tem que ser um dict de texto para texto.")
         cleaned = {}
-        for name, value in headers.items():
+        for position, (name, value) in enumerate(headers.items(), start=1):
             if not isinstance(name, str) or not isinstance(value, str):
                 raise ProviderError(f"Plugin {self.plugin_id}: headers tem que ser um dict de texto para texto.")
             if not HEADER_NAME_RE.fullmatch(name):
-                raise ProviderError(f"Plugin {self.plugin_id}: nome de header inválido {name!r}.")
+                # `name` nunca aparece na mensagem: antes desta checagem ele pode
+                # carregar o cabeçalho inteiro contrabandeado ali dentro — ex.:
+                # {"Authorization: Bearer <segredo>": ""} tem nome inválido (tem ":" e
+                # espaço), mas ecoar `name!r}` vazaria o segredo na mensagem/traceback.
+                # Só a posição no dict é segura de dizer.
+                raise ProviderError(f"Plugin {self.plugin_id}: nome de cabeçalho inválido (posição {position}).")
             if name.lower() in _FORBIDDEN_HEADER_NAMES:
+                # `name` já passou no `fullmatch` acima (só charset de token, sem
+                # espaço/":"/CR/LF), então ecoá-lo aqui é seguro.
                 raise ProviderError(
                     f"Plugin {self.plugin_id}: header {name!r} é reservado ao transporte e não pode ser definido."
                 )
-            if any(char in value for char in ("\r", "\n", "\x00")):
-                raise ProviderError(
-                    f"Plugin {self.plugin_id}: valor do header {name!r} contém caractere de controle inválido."
-                )
-            try:
-                value.encode("latin-1")
-            except UnicodeEncodeError:
-                raise ProviderError(
-                    f"Plugin {self.plugin_id}: valor do header {name!r} tem caractere fora de latin-1."
-                ) from None
+            if _bad_header_value_char(value):
+                # Mesma garantia: `name` é seguro (token já validado); `value` nunca
+                # entra na mensagem. Checagem por caractere, sem try/except: um
+                # `UnicodeEncodeError` capturado deixaria o valor cru no `repr` de
+                # `exc.__context__` mesmo com `from None` (`from None` só limpa
+                # `__cause__`/`__suppress_context__`, não `__context__`).
+                raise ProviderError(f"Plugin {self.plugin_id}: valor do header {name!r} contém caractere inválido.")
             cleaned[name] = value
         return cleaned
 

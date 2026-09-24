@@ -265,7 +265,13 @@ def get_json(url, params=None, headers=None, cache_ttl=0, keep_signed=False):  #
             with contextlib.suppress(OSError, ValueError):
                 body = error.read(300)
             error.close()
-            detail = stderr_tail(body.decode("utf-8", errors="replace")) if body else ""
+            detail = ""
+            if body and not headers and not keep_signed:
+                # Only when the caller sent no header and isn't asking to keep a signed
+                # URL: an authenticated/presigned request's error body can otherwise
+                # echo back part of the credential (e.g. a fake key in a 403 body), so
+                # it never reaches the message in that case. Mirrors `download()`.
+                detail = stderr_tail(body.decode("utf-8", errors="replace"))
             suffix = f": {detail}" if detail else ""
             if code in (401, 403):
                 logs.event(
