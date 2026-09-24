@@ -12,13 +12,16 @@ import time
 from pathlib import Path
 
 from .. import logs
-from . import loader
+from . import guard, loader
 from .contracts import NAME_RE, CommandContext
 from .registry import get_registry
 
 _log = logs.get("sdk")
 
 ARG_KEY_RE = re.compile(r"[a-z][a-z0-9_]{0,31}")
+# Teto do JSON serializado do resultado: um handler que devolve um payload
+# gigante não pode fazer a CLI escrever GBs de saída/diagnostics.
+MAX_RESULT_BYTES = 1_000_000
 
 
 def listing():
@@ -55,6 +58,30 @@ def parse_pairs(pairs):
     return values
 
 
+def _isolate(action, plugin_id, name, build_message):
+    """Roda `action()` isolado do resto do processo.
+
+    Qualquer `BaseException` de código de terceiro — não só `Exception`/
+    `SystemExit`, mas também uma classe custom que herde `BaseException`
+    direto — vira `ValueError` com só o TIPO da exceção (via
+    `guard.safe_type_name`, que nunca chama `__str__`/`__repr__`/`__name__`
+    de metaclasse hostil do plugin). `KeyboardInterrupt`/`GeneratorExit`
+    continuam propagando — não são falha de plugin, são o processo sendo
+    interrompido/coletado. `from None` corta a cadeia: sem isso,
+    `traceback.format_exc()` (chamado depois em `runtime.audited()`)
+    alcançaria a exceção original via `__cause__` e poderia rodar de novo o
+    `__str__` hostil dela ao formatar o traceback.
+    """
+    try:
+        return action()
+    except (KeyboardInterrupt, GeneratorExit):
+        raise
+    except BaseException as exc:  # noqa: BLE001 - isolamento deliberado de código de plugin de terceiro; ver docstring
+        type_name = guard.safe_type_name(exc)
+        logs.event(_log, logging.WARNING, "plugin_call_failed", plugin=plugin_id, command=name, error=type_name)
+        raise ValueError(build_message(type_name)) from None
+
+
 def _missing(registry, plugin_id, name):
     row = registry.plugins.get(plugin_id)
     if row is None:
@@ -89,20 +116,30 @@ def run(args):
     project = Path(args.project).expanduser().resolve() if args.project else None
     started = time.monotonic()
     ctx = CommandContext(plugin_id, project)
-    try:
-        raw = spec.handler(dict(values), ctx)
-    except (Exception, SystemExit) as exc:  # noqa: BLE001 - código de plugin é de terceiro: a falha (incl. SystemExit) vira erro do comando, não queda da CLI; KeyboardInterrupt continua propagando. Nunca chama str(exc)/repr(exc): um `__str__` hostil (ex.: levanta SystemExit(0) dentro do __str__) não pode escapar por uma f-string nem por traceback.format_exc() se este virar `__cause__` — por isso `from None` corta a cadeia (nunca `from exc`), e só o TIPO da exceção é seguro de repetir.
-        logs.event(
-            _log, logging.WARNING, "plugin_call_failed", plugin=plugin_id, command=name, error=type(exc).__name__
+    raw = _isolate(
+        lambda: spec.handler(dict(values), ctx),
+        plugin_id,
+        name,
+        lambda type_name: f"Plugin {plugin_id}: o comando {name} falhou ({type_name}).",
+    )
+    # Round-trip de JSON separado da chamada do handler: aqui só se valida se o
+    # retorno é serializável — gerador/set/NaN reprovam (`TypeError`/`ValueError`),
+    # e um dict de terceiro com `.items()` hostil pode levantar qualquer coisa
+    # (inclusive `SystemExit`/um `BaseException` custom) durante a própria
+    # serialização, daqui mesmo isolamento de `_isolate` — nunca misturado com a
+    # falha do handler acima (mesma ideia de `guard._normalize`).
+    serialized = _isolate(
+        lambda: json.dumps(raw, allow_nan=False),
+        plugin_id,
+        name,
+        lambda type_name: f"Plugin {plugin_id}: o comando {name} tem que devolver um objeto JSON ({type_name}).",
+    )
+    if len(serialized.encode("utf-8")) > MAX_RESULT_BYTES:
+        raise ValueError(
+            f"Plugin {plugin_id}: o comando {name} devolveu um resultado grande demais "
+            f"(> {MAX_RESULT_BYTES // (1024 * 1024)} MB de JSON)."
         )
-        raise ValueError(f"Plugin {plugin_id}: o comando {name} falhou ({type(exc).__name__}).") from None
-    try:
-        # Round-trip de JSON separado da chamada do handler: aqui só se valida se o
-        # retorno é serializável (gerador, set, NaN reprovam), sem misturar com a
-        # falha do handler acima — mesma ideia de guard._normalize.
-        payload = json.loads(json.dumps(raw, allow_nan=False))
-    except (TypeError, ValueError, RecursionError):
-        raise ValueError(f"Plugin {plugin_id}: o comando {name} tem que devolver um objeto JSON.") from None
+    payload = json.loads(serialized)
     if not isinstance(payload, dict):
         raise ValueError(f"Plugin {plugin_id}: o comando {name} tem que devolver um objeto JSON.")
     logs.event(

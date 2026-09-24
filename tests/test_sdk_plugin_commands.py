@@ -177,7 +177,24 @@ class PluginNameValidationTests(unittest.TestCase):
         self.assertNotIn("passwd", message)
 
 
-ISOLATION_MANIFEST = {**MANIFEST, "id": "isola", "contributes": {"commands": ["hostil", "estoura", "gerador", "nan"]}}
+ISOLATION_MANIFEST = {
+    **MANIFEST,
+    "id": "isola",
+    "contributes": {
+        "commands": [
+            "hostil",
+            "estoura",
+            "gerador",
+            "nan",
+            "dict_exit",
+            "dict_runtime",
+            "meta_boom",
+            "meta_leak",
+            "escapa_base",
+            "grande",
+        ]
+    },
+}
 
 ISOLATION_CODE = """
 class Hostil(Exception):
@@ -201,11 +218,75 @@ def nan(args, ctx):
     return {"valor": float("nan")}
 
 
+class DictExitDuringDump(dict):
+    def items(self):
+        raise SystemExit(0)
+
+
+def dict_exit(args, ctx):
+    return DictExitDuringDump({"a": 1})
+
+
+class DictRuntimeDuringDump(dict):
+    def items(self):
+        raise RuntimeError("SEGREDO2")
+
+
+def dict_runtime(args, ctx):
+    return DictRuntimeDuringDump({"a": 1})
+
+
+class _MetaBoom(type):
+    @property
+    def __name__(cls):
+        raise SystemExit(0)
+
+
+class ExcMetaBoom(Exception, metaclass=_MetaBoom):
+    pass
+
+
+def meta_boom(args, ctx):
+    raise ExcMetaBoom("nao-deveria-aparecer-meta-boom")
+
+
+class _MetaLeak(type):
+    @property
+    def __name__(cls):
+        return "SEGREDO3"
+
+
+class ExcMetaLeak(Exception, metaclass=_MetaLeak):
+    pass
+
+
+def meta_leak(args, ctx):
+    raise ExcMetaLeak("nao-deveria-aparecer-meta-leak")
+
+
+class Fugitiva(BaseException):
+    pass
+
+
+def escapa_base(args, ctx):
+    raise Fugitiva("nao-deveria-aparecer-escapa-base")
+
+
+def grande(args, ctx):
+    return {"itens": ["x" * 1000 for _ in range(2000)]}
+
+
 def register(api):
     api.command("hostil", hostil, "Levanta exceção com __str__ hostil")
     api.command("estoura", estoura, "Sai via SystemExit")
     api.command("gerador", gerador, "Devolve gerador, não serializável")
     api.command("nan", nan, "Devolve NaN, não permitido em JSON")
+    api.command("dict_exit", dict_exit, "Devolve dict cujo items() sai via SystemExit")
+    api.command("dict_runtime", dict_runtime, "Devolve dict cujo items() levanta RuntimeError")
+    api.command("meta_boom", meta_boom, "Levanta exceção cuja metaclasse __name__ sai via SystemExit")
+    api.command("meta_leak", meta_leak, "Levanta exceção cuja metaclasse __name__ devolve texto arbitrário")
+    api.command("escapa_base", escapa_base, "Levanta BaseException direto (não Exception, não SystemExit)")
+    api.command("grande", grande, "Devolve um resultado maior que o teto de JSON")
 """
 
 
@@ -251,6 +332,77 @@ class PluginFailureIsolationTests(LoaderTestCase):
         with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
             plugin_commands.run(self.args("nan"))
         self.assertIn("objeto JSON", str(ctx.exception))
+
+    def test_dict_result_raising_system_exit_during_serialization_is_isolated(self):
+        # Fix round 2, item A: o round-trip de JSON (não só a chamada do handler)
+        # também precisa isolar BaseException de código de terceiro — aqui, o
+        # `.items()` de um dict de terceiro rodando durante `json.dumps`.
+        with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
+            plugin_commands.run(self.args("dict_exit"))
+        self.assertIn("objeto JSON", str(ctx.exception))
+
+    def test_dict_result_raising_runtime_error_during_serialization_hides_the_message(self):
+        # Fix round 2, item A: a mensagem nunca ecoa o texto da exceção de terceiro.
+        with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
+            plugin_commands.run(self.args("dict_runtime"))
+        message = str(ctx.exception)
+        self.assertIn("objeto JSON", message)
+        self.assertNotIn("SEGREDO2", message)
+
+    def test_metaclass_name_raising_system_exit_never_runs_the_hostile_property(self):
+        # Fix round 2, item B: `type(exc).__name__` pode rodar código do plugin
+        # (metaclasse com `__name__` como property); a leitura segura lê o
+        # descritor cru de `type` — nunca invoca a property hostil, então o
+        # `SystemExit` dela nunca dispara, e o nome verdadeiro (não a mensagem
+        # do plugin) ainda é seguro de mostrar.
+        with (
+            patch.dict(os.environ, {"GB_PLUGINS": "isola"}),
+            self.assertLogs("getbrolls.sdk", level="WARNING") as cm,
+            self.assertRaises(ValueError) as ctx,
+        ):
+            plugin_commands.run(self.args("meta_boom"))
+        message = str(ctx.exception)
+        self.assertIn("Plugin isola", message)
+        self.assertIn("ExcMetaBoom", message)
+        self.assertNotIn("nao-deveria-aparecer", message)
+        joined = "\n".join(cm.output)
+        self.assertIn("event=plugin_call_failed", joined)
+        self.assertIn("error=ExcMetaBoom", joined)
+        self.assertNotIn("nao-deveria-aparecer", joined)
+
+    def test_metaclass_name_returning_arbitrary_text_is_not_trusted(self):
+        # Fix round 2, item B: a leitura segura nunca invoca a property da
+        # metaclasse — o texto arbitrário que ela devolveria ("SEGREDO3") nunca
+        # chega à mensagem; o nome verdadeiro do tipo aparece em vez dele.
+        with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
+            plugin_commands.run(self.args("meta_leak"))
+        message = str(ctx.exception)
+        self.assertNotIn("SEGREDO3", message)
+        self.assertIn("ExcMetaLeak", message)
+
+    def test_base_exception_subclass_never_escapes_raw(self):
+        # Fix round 2, item C: uma classe que herda BaseException direto (não
+        # Exception, não SystemExit) não pode escapar como traceback cru.
+        with (
+            patch.dict(os.environ, {"GB_PLUGINS": "isola"}),
+            self.assertLogs("getbrolls.sdk", level="WARNING") as cm,
+            self.assertRaises(ValueError) as ctx,
+        ):
+            plugin_commands.run(self.args("escapa_base"))
+        message = str(ctx.exception)
+        self.assertIn("Plugin isola", message)
+        self.assertIn("Fugitiva", message)
+        self.assertNotIn("nao-deveria-aparecer", message)
+        joined = "\n".join(cm.output)
+        self.assertIn("event=plugin_call_failed", joined)
+        self.assertIn("error=Fugitiva", joined)
+
+    def test_oversized_result_is_refused(self):
+        # Fix round 2, item D: um resultado maior que o teto de JSON é recusado,
+        # não escrito por inteiro em stdout/diagnostics.
+        with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
+            plugin_commands.run(self.args("grande"))
+        self.assertIn("grande demais", str(ctx.exception))
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ import itertools
 import json
 import logging
 import os
+import re
 import types
 
 from .. import logs
@@ -23,6 +24,31 @@ from .jsonschema import errors
 from .schemas import load
 
 _log = logs.get("sdk")
+
+# Identificador Python simples (usado só para validar o que `safe_type_name`
+# devolve — nunca para nomear nada em si).
+_TYPE_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+
+
+def safe_type_name(exc):
+    """Nome da classe de `exc`, sem rodar código do plugin para obtê-lo.
+
+    `type(exc).__name__` parece inofensivo, mas uma metaclasse de terceiro pode
+    declarar `__name__` como property — que roda na hora do acesso e pode
+    levantar (inclusive `SystemExit`) ou devolver qualquer texto (inclusive um
+    segredo). Por isso lê o descritor cru guardado em `type.__dict__`, que
+    aponta direto para o slot interno do tipo (`tp_name`) e nunca passa pela
+    metaclasse de quem chamou. Qualquer falha nessa leitura, ou um resultado
+    que não pareça um identificador Python simples, cai em `"Exception"` — o
+    chamador sempre recebe um texto seguro de repetir em mensagem/log."""
+    try:
+        name = type.__dict__["__name__"].__get__(type(exc))
+    except BaseException:  # noqa: BLE001 - a própria leitura do nome não pode falhar por conta do plugin; isolamento deliberado, sem propósito de continuar processando nada além do fallback abaixo
+        return "Exception"
+    if not isinstance(name, str) or not _TYPE_NAME_RE.fullmatch(name):
+        return "Exception"
+    return name
+
 
 # Campos de topo que um plugin pode preencher; o resto cai em silêncio (mas
 # aparece no log `plugin_candidate_sanitized`). approval/output/state/segment/
