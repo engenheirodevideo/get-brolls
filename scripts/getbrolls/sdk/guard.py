@@ -12,11 +12,13 @@ import copy
 import itertools
 import json
 import logging
+import os
 import types
 
 from .. import logs
 from ..http import ProviderError, public_url
 from ..models import empty_output
+from .contracts import RouteResult
 from .jsonschema import errors
 from .schemas import load
 
@@ -58,6 +60,8 @@ RIGHTS_KEYS = ("status", "license_name", "license_url", "evidence", "attribution
 ACQUISITION_KEYS = ("status", "method", "evidence")
 ACQUISITION_STATUSES = ("available", "unavailable")
 ACQUISITION_METHODS = (None, "https", "yt-dlp")
+UNAVAILABLE_ACQUISITION = {"status": "unavailable", "method": None, "evidence": []}
+LICENSE_MAX_CHARS = 500
 PENDING_SEGMENT = {"start_s": None, "end_s": None, "revision": 0}
 PENDING_APPROVAL = {"status": "pending", "by": None, "at": None, "revision": None}
 
@@ -134,7 +138,7 @@ def _kept(raw, allowed):
     return kept, dropped
 
 
-def plugin_candidate(item, provider, owner, download=True):  # noqa: C901, PLR0912, PLR0915 - um campo guardado por seção do candidato (Finding 2 do fix round 1)
+def plugin_candidate(item, provider, owner, download=True, route=None):  # noqa: C901, PLR0912, PLR0915 - um campo guardado por seção do candidato (Finding 2 do fix round 1)
     item = _normalize(item, owner)
     if not isinstance(item, dict):
         raise ProviderError(f"Plugin {owner}: {provider} devolveu um candidato que não é objeto.")
@@ -177,27 +181,36 @@ def plugin_candidate(item, provider, owner, download=True):  # noqa: C901, PLR09
 
     raw_acq, dropped = _kept(item.get("acquisition"), ACQUISITION_KEYS)
     tampered += [f"acquisition.{k}" for k in dropped]
-    raw_status = raw_acq.get("status")
-    raw_method = raw_acq.get("method")
-    acq_status = raw_status if raw_status in ACQUISITION_STATUSES else "unavailable"
-    acq_method = raw_method if raw_method in ACQUISITION_METHODS else None
-    if acq_method != raw_method:
-        tampered.append("acquisition.method")
-        acq_status = "unavailable"
-    if acq_status != raw_status:
-        tampered.append("acquisition.status")
-    raw_acq_evidence = raw_acq.get("evidence")
-    acquisition = {
-        "status": acq_status,
-        "method": acq_method,
-        "evidence": [v for v in raw_acq_evidence if isinstance(v, str)] if isinstance(raw_acq_evidence, list) else [],
-    }
-    if not download and acquisition != {"status": "unavailable", "method": None, "evidence": []}:
-        # Fonte só-metadados (capabilities.download=False, ex.: o exemplo pasta_local):
-        # o core nunca vai baixar por ela, então "available" aqui seria promessa que
-        # ninguém cumpre. Vence a capability, não o que o plugin tentou escrever.
-        tampered.append("acquisition.download")
-        acquisition = {"status": "unavailable", "method": None, "evidence": []}
+    if route is not None:
+        # capabilities.route: quem escreve a rota é o core, a partir da capability
+        # (conferida no `api.finish()` como rota do mesmo plugin) — nunca o candidato.
+        acquisition = {"status": "available", "method": f"plugin:{route}", "evidence": []}
+        if raw_acq not in ({}, UNAVAILABLE_ACQUISITION, acquisition):
+            tampered.append("acquisition.route")
+    else:
+        raw_status = raw_acq.get("status")
+        raw_method = raw_acq.get("method")
+        acq_status = raw_status if raw_status in ACQUISITION_STATUSES else "unavailable"
+        acq_method = raw_method if raw_method in ACQUISITION_METHODS else None
+        if acq_method != raw_method:
+            tampered.append("acquisition.method")
+            acq_status = "unavailable"
+        if acq_status != raw_status:
+            tampered.append("acquisition.status")
+        raw_acq_evidence = raw_acq.get("evidence")
+        acquisition = {
+            "status": acq_status,
+            "method": acq_method,
+            "evidence": [v for v in raw_acq_evidence if isinstance(v, str)]
+            if isinstance(raw_acq_evidence, list)
+            else [],
+        }
+        if not download and acquisition != UNAVAILABLE_ACQUISITION:
+            # Fonte só-metadados (capabilities.download=False, sem rota): o core nunca
+            # vai baixar por ela, então "available" aqui seria promessa que ninguém
+            # cumpre. Vence a capability, não o que o plugin tentou escrever.
+            tampered.append("acquisition.download")
+            acquisition = copy.deepcopy(UNAVAILABLE_ACQUISITION)
 
     if item.get("segment") not in (None, PENDING_SEGMENT):
         tampered.append("segment")
@@ -258,3 +271,40 @@ def refreshed(current, fresh, owner):
     if not media_url:
         raise ProviderError("Arquivo do provedor não está mais disponível")
     return {**current, "media_url": media_url}
+
+
+def _route_result(result):
+    """Extrai (caminho, licença) como `str` puros de dentro do `try` do chamador:
+    nada de objeto do plugin (subclasse, `__fspath__` hostil) sai daqui."""
+    if not isinstance(result, RouteResult):
+        raise ProviderError("a rota tem que devolver RouteResult(path, license).")
+    raw_path = os.fspath(result.path)
+    if type(raw_path) is not str or not raw_path:
+        raise ProviderError("RouteResult.path tem que ser um caminho de arquivo.")
+    license_text = result.license
+    if license_text is not None:
+        if type(license_text) is not str or not license_text.strip() or len(license_text) > LICENSE_MAX_CHARS:
+            raise ProviderError(f"RouteResult.license tem que ser texto de até {LICENSE_MAX_CHARS} caracteres.")
+        license_text = license_text.strip()
+    return str(raw_path), license_text
+
+
+def route_call(owner, name, route, item, workdir):
+    """Roda `route.prepare(item, workdir)` com `api.download`/`api.local_file` presos
+    ao `workdir`; qualquer falha (incl. SystemExit) vira `ProviderError` com o id do plugin."""
+    from .api import route_scope
+
+    try:
+        with route_scope(owner, workdir):
+            return _route_result(route.prepare(item, workdir))
+    except ProviderError as exc:
+        logs.event(_log, logging.WARNING, "plugin_call_failed", plugin=owner, route=name, error="ProviderError")
+        message = str(exc)
+        prefix = f"Plugin {owner}:"
+        raise ProviderError(message if message.startswith(prefix) else f"{prefix} {message}") from exc
+    except (
+        Exception,
+        SystemExit,
+    ) as exc:  # código de plugin é de terceiro: a falha (incl. SystemExit) vira erro de fonte, não queda da CLI; KeyboardInterrupt continua propagando
+        logs.event(_log, logging.WARNING, "plugin_call_failed", plugin=owner, route=name, error=type(exc).__name__)
+        raise ProviderError(f"Plugin {owner}: falha na rota {name} ({type(exc).__name__}).") from exc
