@@ -127,5 +127,131 @@ class PluginCommandLoggingTests(LoaderTestCase):
         self.assertEqual({}, plugin_commands.parse_pairs(None))
 
 
+class ArgParsingNeverEchoesTheValueTests(unittest.TestCase):
+    """Fix round 1, item 2: `--arg` inválido nunca ecoa o par bruto nem o valor —
+    um `--arg` digitado errado (sem `--arg`, ou como `=valor`) pode carregar um
+    segredo colado onde a chave deveria estar."""
+
+    def test_missing_equals_sign_does_not_echo_the_pair(self):
+        with self.assertRaises(ValueError) as ctx:
+            plugin_commands.parse_pairs(["s3cr3t"])
+        message = str(ctx.exception)
+        self.assertNotIn("s3cr3t", message)
+        self.assertIn("faltou", message)
+
+    def test_empty_key_does_not_echo_the_value(self):
+        with self.assertRaises(ValueError) as ctx:
+            plugin_commands.parse_pairs(["=s3cr3t"])
+        message = str(ctx.exception)
+        self.assertNotIn("s3cr3t", message)
+        self.assertIn("chave vazia", message)
+
+    def test_invalid_key_charset_does_not_echo_the_value(self):
+        with self.assertRaises(ValueError) as ctx:
+            plugin_commands.parse_pairs(["Chave=s3cr3t"])
+        self.assertNotIn("s3cr3t", str(ctx.exception))
+
+
+class PluginNameValidationTests(unittest.TestCase):
+    """Fix round 1, item 3: id/nome fora do charset `^[a-z][a-z0-9_]{1,31}$` são
+    recusados ANTES de `get_registry()` — que monta o registro de plugins
+    habilitados e roda `register()` de verdade na primeira consulta do processo."""
+
+    def args(self, plugin_id, command):
+        return SimpleNamespace(list=False, plugin_id=plugin_id, plugin_command=command, project=None, arg=None)
+
+    def test_invalid_plugin_id_never_touches_the_registry(self):
+        with patch("getbrolls.sdk.plugin_commands.get_registry") as mocked, self.assertRaises(ValueError) as ctx:
+            plugin_commands.run(self.args("../../etc", "foo"))
+        mocked.assert_not_called()
+        message = str(ctx.exception)
+        self.assertIn("id inválido", message)
+        self.assertNotIn("../../etc", message)
+
+    def test_invalid_command_name_never_touches_the_registry(self):
+        with patch("getbrolls.sdk.plugin_commands.get_registry") as mocked, self.assertRaises(ValueError) as ctx:
+            plugin_commands.run(self.args("demo", "../../../etc/passwd"))
+        mocked.assert_not_called()
+        message = str(ctx.exception)
+        self.assertIn("Nome de comando inválido", message)
+        self.assertNotIn("passwd", message)
+
+
+ISOLATION_MANIFEST = {**MANIFEST, "id": "isola", "contributes": {"commands": ["hostil", "estoura", "gerador", "nan"]}}
+
+ISOLATION_CODE = """
+class Hostil(Exception):
+    def __str__(self):
+        raise SystemExit(0)
+
+
+def hostil(args, ctx):
+    raise Hostil("segredo-que-nao-deveria-aparecer")
+
+
+def estoura(args, ctx):
+    raise SystemExit("saiu-do-plugin")
+
+
+def gerador(args, ctx):
+    return (x for x in [1, 2])
+
+
+def nan(args, ctx):
+    return {"valor": float("nan")}
+
+
+def register(api):
+    api.command("hostil", hostil, "Levanta exceção com __str__ hostil")
+    api.command("estoura", estoura, "Sai via SystemExit")
+    api.command("gerador", gerador, "Devolve gerador, não serializável")
+    api.command("nan", nan, "Devolve NaN, não permitido em JSON")
+"""
+
+
+class PluginFailureIsolationTests(LoaderTestCase):
+    """Fix round 1, items 1/4/5: `__str__` hostil, SystemExit e retorno não
+    serializável (gerador, NaN) nunca escapam cru — isolados num plugin próprio
+    (`isola`) para não mexer nas asserções já existentes de `COMMAND_MANIFEST`."""
+
+    def setUp(self):
+        super().setUp()
+        self.install(ISOLATION_MANIFEST, code=ISOLATION_CODE)
+
+    def args(self, name):
+        return SimpleNamespace(list=False, plugin_id="isola", plugin_command=name, project=None, arg=None)
+
+    def test_hostile_str_never_runs_and_message_carries_only_the_type(self):
+        with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
+            plugin_commands.run(self.args("hostil"))
+        message = str(ctx.exception)
+        self.assertIn("Plugin isola", message)
+        self.assertIn("Hostil", message)
+        self.assertNotIn("segredo-que-nao-deveria-aparecer", message)
+
+    def test_system_exit_from_handler_is_isolated_and_logged(self):
+        with (
+            patch.dict(os.environ, {"GB_PLUGINS": "isola"}),
+            self.assertLogs("getbrolls.sdk", level="WARNING") as cm,
+            self.assertRaises(ValueError) as ctx,
+        ):
+            plugin_commands.run(self.args("estoura"))
+        self.assertIn("SystemExit", str(ctx.exception))
+        joined = "\n".join(cm.output)
+        self.assertIn("event=plugin_call_failed", joined)
+        self.assertIn("error=SystemExit", joined)
+        self.assertNotIn("saiu-do-plugin", joined)
+
+    def test_generator_result_is_refused_as_not_json(self):
+        with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
+            plugin_commands.run(self.args("gerador"))
+        self.assertIn("objeto JSON", str(ctx.exception))
+
+    def test_nan_result_is_refused_as_not_json(self):
+        with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
+            plugin_commands.run(self.args("nan"))
+        self.assertIn("objeto JSON", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()
