@@ -16,6 +16,7 @@ import types
 from .. import logs
 from ..ledger import atomic_write
 from ..rules import home_dir
+from . import guard
 from .api import PluginApi
 from .manifest import MANIFEST_NAME, ManifestError, compatibility_problem, read_manifest
 
@@ -238,19 +239,30 @@ def _load_one(row, folder, manifest, pinned, registry):
         logs.event(_log, logging.DEBUG, "plugin_skipped", plugin=row["id"], status=row["status"])
         return row
 
-    if pinned is not None:
-        reason = _pin_mismatch_reason(row, folder, pinned)
-        if reason is not None:
-            logs.event(_log, logging.DEBUG, "plugin_skipped", plugin=row["id"], status="suspended")
-            return {**row, "status": "suspended", "reason": reason}
-
-    try:
+    def load():
+        if pinned is not None:
+            reason = _pin_mismatch_reason(row, folder, pinned)
+            if reason is not None:
+                return reason
         _register(folder, manifest, registry)
-    except (Exception, SystemExit) as exc:  # noqa: BLE001 - código de plugin é de terceiro: qualquer falha (incl. SystemExit de um sys.exit() no import) desliga só aquele plugin, nunca o processo; KeyboardInterrupt continua propagando
-        registry.remove_owner(manifest["id"])
-        logs.event(_log, logging.WARNING, "plugin_failed", plugin=row["id"], error=type(exc).__name__)
-        return {**row, "status": "failed", "reason": f"{type(exc).__name__}: {exc}"}
+        return None
 
+    # Código de plugin é de terceiro: qualquer falha (incl. SystemExit de um sys.exit()
+    # no import, uma BaseException custom, um `__str__` hostil) desliga só aquele
+    # plugin, nunca o processo. A razão guarda só o tipo — ou o texto de uma recusa do
+    # core/`PluginError`, já saneado —, nunca `str(exc)` do plugin (RT-01/RT-10).
+    outcome = guard.attempt(manifest["id"], load)
+    failure = outcome.failure
+    if failure is not None:
+        registry.remove_owner(manifest["id"])
+        logs.event(_log, logging.WARNING, "plugin_failed", plugin=row["id"], error=failure.type_name)
+        reason = failure.text or f"O register() do plugin falhou ({failure.type_name})."
+        return {**row, "status": "failed", "reason": reason}
+    if outcome.value is not None:
+        logs.event(_log, logging.DEBUG, "plugin_skipped", plugin=row["id"], status="suspended")
+        return {**row, "status": "suspended", "reason": outcome.value}
+
+    owned = registry.owned_by(manifest["id"])
     logs.event(
         _log,
         logging.INFO,
@@ -259,6 +271,8 @@ def _load_one(row, folder, manifest, pinned, registry):
         version=row["version"],
         providers=",".join(manifest["contributes"]["providers"]) or "-",
         presets=",".join(manifest["contributes"]["presets"]) or "-",
+        routes=len(owned["route"]),
+        commands=len(owned["command"]),
     )
     return row
 
@@ -399,15 +413,16 @@ def trial_load(folder):
     registry = Registry()
     providers.register_builtins(registry)
     presets.register_builtins(registry)
-    try:
-        _register(folder, manifest, registry)
-    except (
-        Exception,
-        SystemExit,
-    ) as exc:  # código de plugin é de terceiro: sem isto, um bug do plugin (RuntimeError, KeyError...) chegava cru em `runtime.audited()` e virava INTERNAL_ERROR/exit 3 — "erro interno" nosso, escondendo o motivo real. Reembrulhado em ValueError, vira exit 2 com o tipo e a mensagem visíveis; KeyboardInterrupt continua propagando.
-        raise ValueError(f"Plugin {manifest['id']}: {type(exc).__name__}: {exc}") from exc
-    try:
-        contracts = check_registry(registry, manifest["id"])
-    except AssertionError as exc:
-        raise ValueError(f"Plugin {manifest['id']}: contrato: {exc}") from exc
-    return {"ok": True, **_preview(manifest, folder), "manifest_file": MANIFEST_NAME, "contracts": contracts}
+    plugin_id = manifest["id"]
+    # Mesmo isolamento do carregamento (BaseException, tipo seguro, sem cadeia). Aqui,
+    # e só aqui, o texto de um tipo embutido exato (RuntimeError('boom')) também aparece:
+    # `check` é a ferramenta de quem escreve o plugin, rodando a pasta que ele apontou.
+    failure = guard.attempt(plugin_id, _register, folder, manifest, registry, builtin_text=True).failure
+    if failure is not None:
+        detail = f": {guard.without_prefix(plugin_id, failure.text)}" if failure.text else "."
+        raise ValueError(f"Plugin {plugin_id}: {failure.type_name}{detail}") from None
+    checked = guard.attempt(plugin_id, check_registry, registry, plugin_id, builtin_text=True)
+    if checked.failure is not None:
+        detail = checked.failure.text or f"a checagem falhou ({checked.failure.type_name})."
+        raise ValueError(f"Plugin {plugin_id}: contrato: {guard.without_prefix(plugin_id, detail)}") from None
+    return {"ok": True, **_preview(manifest, folder), "manifest_file": MANIFEST_NAME, "contracts": checked.value}

@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from ..http import ProviderError
+
 # Muda só em major do get-brolls. Plugin declara o mesmo número em `sdk_api`.
 SDK_API = 1
 # Dono dos built-ins no registro; nenhum plugin pode usar este id.
@@ -17,6 +19,16 @@ MEDIA_KINDS = ("video", "image")
 # "preview": a rota pode trazer mídia de trabalho para revisão. "fetch": trazer o
 # arquivo consome licença ou cota, então só roda no `fetch`, depois de aprovação e permit.
 ROUTE_STAGES = ("preview", "fetch")
+
+
+class PluginError(ProviderError):
+    """A única exceção de plugin cujo texto chega à pessoa: `raise PluginError("Configure X...")`.
+
+    O core mostra `Plugin <id>: <mensagem>` — em uma linha, sem caractere de controle,
+    com `redact()` aplicado, o valor de cada variável de `permissions.env` trocado por
+    `[REDACTED]` e no máximo 300 caracteres. Use a própria classe (subclasse não
+    conta) com um único argumento de texto. Qualquer outra exceção aparece só pelo tipo.
+    """
 
 
 @dataclass(frozen=True)

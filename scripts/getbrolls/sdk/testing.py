@@ -36,8 +36,12 @@ def check_provider(provider):
     name = _named("Provider", provider)
     if not isinstance(getattr(provider, "capabilities", None), ProviderCapabilities):
         _fail(f"Provider {name}: capabilities tem que ser ProviderCapabilities.")
+    from .registry import PluginProvider
+
     for method, count in (("search", 3), ("resolve", 1), ("refresh", 1)):
-        fn = getattr(provider, method, None)
+        # No registro, o provider de plugin vira um `PluginProvider` (snapshot): o que
+        # se confere é o método do plugin capturado ali, não o repasse do snapshot.
+        fn = provider.bound(method) if isinstance(provider, PluginProvider) else getattr(provider, method, None)
         if not callable(fn) or not _accepts(fn, count):
             _fail(f"Provider {name}: falta {method}() com {count} argumento(s) além de self.")
 

@@ -15,9 +15,16 @@ from .. import logs
 from ..http import ProviderError, get_json, public_url
 from ..models import candidate as core_candidate
 from ..rules import home_dir
+from . import guard
 from .contracts import CommandSpec
 
 _log = logs.get("sdk")
+
+
+class ApiError(ValueError):
+    """Recusa escrita pelo próprio `PluginApi` (uso errado da API): o texto é do core,
+    então chega à pessoa mesmo quando o plugin deixa a exceção subir."""
+
 
 # Nome de arquivo que a rota pode pedir dentro da pasta de trabalho: sem barra,
 # sem `..`, sem começar por ponto (nada de arquivo escondido nem caminho).
@@ -98,12 +105,13 @@ class PluginApi:
         self._manifest = manifest
         self._registry = registry
         self._registered = {"providers": set(), "presets": set(), "routes": set(), "commands": set()}
+        guard.remember_env(self.plugin_id, manifest["permissions"]["env"])
 
     def _own(self, kind, name):
         if name not in self._manifest["contributes"][kind]:
-            raise ValueError(f"Plugin {self.plugin_id}: {kind[:-1]} {name!r} não está declarado em contributes.{kind}.")
+            raise ApiError(f"Plugin {self.plugin_id}: {kind[:-1]} {name!r} não está declarado em contributes.{kind}.")
         if name != self.plugin_id and not str(name).startswith(self.plugin_id + "_"):
-            raise ValueError(
+            raise ApiError(
                 f"Plugin {self.plugin_id}: nomes têm que ser {self.plugin_id} ou começar por {self.plugin_id}_."
             )
 
@@ -127,18 +135,18 @@ class PluginApi:
     def command(self, name, handler, help):  # noqa: A002 - `help` é o nome do campo no contrato público (CommandSpec)
         # Comando não segue a regra de prefixo: `gb x <plugin> <comando>` já dá o espaço de nomes.
         if name not in self._manifest["contributes"]["commands"]:
-            raise ValueError(f"Plugin {self.plugin_id}: comando {name!r} não está declarado em contributes.commands.")
+            raise ApiError(f"Plugin {self.plugin_id}: comando {name!r} não está declarado em contributes.commands.")
         self._registry.add_command(CommandSpec(name, help, handler), owner=self.plugin_id)
         self._registered["commands"].add(name)
 
     def candidate(self, provider, source_id, title, source_url=None):
         if provider not in self._manifest["contributes"]["providers"]:
-            raise ValueError(f"Plugin {self.plugin_id}: candidato de fonte não declarada {provider!r}.")
+            raise ApiError(f"Plugin {self.plugin_id}: candidato de fonte não declarada {provider!r}.")
         return core_candidate(provider, str(source_id), title, public_url(source_url))
 
     def env(self, key):
         if key not in self._manifest["permissions"]["env"]:
-            raise ValueError(f"Plugin {self.plugin_id}: variável {key} não está em permissions.env.")
+            raise ApiError(f"Plugin {self.plugin_id}: variável {key} não está em permissions.env.")
         return os.environ.get(key)
 
     def _check_host(self, url):
@@ -283,7 +291,7 @@ class PluginApi:
         root = home_dir() / "plugin-data"
         folder = root / self.plugin_id
         if root.is_symlink() or folder.is_symlink():
-            raise ValueError(
+            raise ApiError(
                 f"Plugin {self.plugin_id}: {where} é um link simbólico; apague esse link antes de usar o plugin."
             )
         folder.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -299,30 +307,30 @@ class PluginApi:
         try:
             raw = path.read_text(encoding="utf-8")
         except UnicodeDecodeError as exc:
-            raise ValueError(f"Plugin {self.plugin_id}: {where} não é JSON válido em UTF-8.") from exc
+            raise ApiError(f"Plugin {self.plugin_id}: {where} não é JSON válido em UTF-8.") from exc
         except OSError as exc:
             # Ex.: `settings.json` é uma pasta, ou o arquivo não pode ser lido
             # (permissão) — nunca ecoa o caminho absoluto, só o tipo do erro.
-            raise ValueError(f"Plugin {self.plugin_id}: {where} não pôde ser lido ({type(exc).__name__}).") from exc
+            raise ApiError(f"Plugin {self.plugin_id}: {where} não pôde ser lido ({type(exc).__name__}).") from exc
         try:
             data = json.loads(raw)
         except json.JSONDecodeError as exc:
-            raise ValueError(f"Plugin {self.plugin_id}: {where} não é JSON válido em UTF-8.") from exc
+            raise ApiError(f"Plugin {self.plugin_id}: {where} não é JSON válido em UTF-8.") from exc
         if not isinstance(data, dict):
-            raise ValueError(f"Plugin {self.plugin_id}: {where} tem que ser um objeto JSON.")
+            raise ApiError(f"Plugin {self.plugin_id}: {where} tem que ser um objeto JSON.")
         return data
 
     def finish(self):
         for kind, names in self._registered.items():
             missing = set(self._manifest["contributes"][kind]) - names
             if missing:
-                raise ValueError(
+                raise ApiError(
                     f"Plugin {self.plugin_id}: declarado em contributes.{kind} e não registrado: {', '.join(sorted(missing))}."
                 )
         for name in sorted(self._registered["providers"]):
             route = self._registry.provider(name).capabilities.route
             if route is not None and route not in self._registered["routes"]:
-                raise ValueError(
+                raise ApiError(
                     f"Plugin {self.plugin_id}: {name} aponta capabilities.route={route!r}, "
                     "que não é uma rota registrada por este plugin."
                 )

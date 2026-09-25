@@ -67,30 +67,28 @@ def parse_pairs(pairs):
     return values
 
 
-def _isolate(action, plugin_id, name, build_message):
-    """Roda `action()` isolado do resto do processo.
+def _isolate(action, plugin_id, name, build_message, keep_text=True):
+    """Roda `action()` isolado do resto do processo, pelo mesmo `guard.isolated` de
+    toda porta de entrada de plugin.
 
     Qualquer `BaseException` de código de terceiro — não só `Exception`/
     `SystemExit`, mas também uma classe custom que herde `BaseException`
-    direto, e também `GeneratorExit` (um handler não é chamado como gerador
-    aqui; deixá-lo propagar cru não protege nada e ainda vaza o texto do
-    plugin) — vira `ValueError` com só o TIPO da exceção (via
-    `guard.safe_type_name`, que nunca chama `__str__`/`__repr__`/`__name__`
-    de metaclasse hostil do plugin). Só `KeyboardInterrupt` continua
-    propagando — não é falha de plugin, é o processo sendo interrompido.
-    `from None` corta a cadeia: sem isso, `traceback.format_exc()` (chamado
-    depois em `runtime.audited()`) alcançaria a exceção original via
-    `__cause__` e poderia rodar de novo o `__str__` hostil dela ao formatar
-    o traceback.
+    direto, e também `GeneratorExit` — vira `ValueError` com só o TIPO da exceção
+    (via `guard.safe_type_name`, que nunca chama `__str__`/`__repr__`/`__name__`
+    de metaclasse hostil do plugin). A exceção é `PluginError` (ou uma recusa do
+    próprio core): aí o texto, já saneado por `guard.sanitize_text`, vai junto
+    (`keep_text=False` desliga isso onde quem falha é uma operação do core, como o
+    `json.dumps` do resultado). Só `KeyboardInterrupt` continua propagando. A
+    exceção nova sai sem cadeia até a original: `traceback.format_exc()` (chamado
+    depois em `runtime.audited()`) nunca alcança o `__str__` hostil dela.
     """
-    try:
-        return action()
-    except KeyboardInterrupt:
-        raise
-    except BaseException as exc:  # noqa: BLE001 - isolamento deliberado de código de plugin de terceiro; ver docstring
-        type_name = guard.safe_type_name(exc)
-        logs.event(_log, logging.WARNING, "plugin_call_failed", plugin=plugin_id, command=name, error=type_name)
-        raise ValueError(build_message(type_name)) from None
+
+    def failed(failure):
+        if keep_text and failure.text:
+            return ValueError(guard.prefixed(plugin_id, failure.text))
+        return ValueError(build_message(failure.type_name))
+
+    return guard.isolated(plugin_id, action, log_fields={"command": name}, on_failure=failed)
 
 
 def _depth_within_limit(value, limit):
@@ -204,6 +202,7 @@ def run(args):
         plugin_id,
         name,
         lambda type_name: f"Plugin {plugin_id}: o comando {name} tem que devolver um objeto JSON ({type_name}).",
+        keep_text=False,
     )
     payload = _within_result_limits(serialized, plugin_id, name)
     logs.event(
