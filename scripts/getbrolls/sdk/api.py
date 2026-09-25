@@ -192,9 +192,14 @@ class PluginApi:
         return core_candidate(provider, str(source_id), title, public_url(source_url, strict=True))
 
     def env(self, key):
+        """Valor de `key` (tem que estar em `permissions.env`): primeiro o que o `.env`
+        guardou para ESTE plugin (nunca exportado ao ambiente), senão o ambiente real."""
         if key not in self._manifest["permissions"]["env"]:
             raise ApiError(f"Plugin {self.plugin_id}: variável {key} não está em permissions.env.")
-        return os.environ.get(key)
+        from .. import config
+
+        value = config.plugin_env_value(self.plugin_id, key)
+        return value if value is not None else os.environ.get(key)
 
     def _check_host(self, url):
         try:

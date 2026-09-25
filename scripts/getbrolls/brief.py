@@ -11,6 +11,8 @@ import re
 import shlex
 from pathlib import Path
 
+from .config import env_is_set
+
 ROOT = Path(__file__).resolve().parents[2]
 CLI = ROOT / "scripts" / "gb.py"
 
@@ -496,7 +498,7 @@ def missing_provider_keys(beat):
     for name in beat["allowed_sources"]:
         source = reg.provider(name)
         key = source.capabilities.env_key if source else None
-        if key and not os.environ.get(key):
+        if key and not env_is_set(key):
             result.append({"provider": name, "env_key": key})
     return result
 

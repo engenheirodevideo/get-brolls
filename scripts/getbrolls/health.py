@@ -1,9 +1,9 @@
 """Opt-in real provider smoke checks; never prints credentials or downloads video."""
 
-import os
 import time
 
 from . import providers
+from .config import env_is_set
 from .http import ProviderError
 from .runtime import redact
 from .sdk.contracts import CORE
@@ -49,7 +49,7 @@ def live_checks():
     )
     for name in builtin + extra:
         key = reg.provider(name).capabilities.env_key  # type: ignore[union-attr] - name veio de builtin/provider_names()
-        if key and not os.getenv(key):
+        if key and not env_is_set(key):
             results.append({"provider": name, "status": "not_tested_missing_key", "env_key": key})
             continue
         start = time.monotonic()

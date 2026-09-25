@@ -69,11 +69,16 @@ PATH_KEYS = (*TOOL_PATH_KEYS.values(), "GB_VENV_PATH")
 
 
 # Um plugin só pode receber do `.env` variáveis do próprio espaço de nomes,
-# `<ID_EM_MAIÚSCULAS>_...` (ex.: `BANCO_HTTP_TOKEN` do plugin `banco_http`). Variável do
-# core (`KEYS`, `GB_*`) nunca. E nenhuma variável que ferramentas do sistema leem
-# (loader, git, ssh, proxy, certificados, shells, interpretadores) passa, seja qual for o
-# id do plugin: `GIT_SSH_COMMAND` num `.env` vira execução de comando no próximo
-# `plugins install --source git@...`, `DYLD_INSERT_LIBRARIES` injeta código em processo.
+# `<ID_EM_MAIÚSCULAS>_...` (ex.: `BANCO_HTTP_TOKEN` do plugin `banco_http`), nunca uma do
+# core (`KEYS`, `GB_*`). E essas variáveis NUNCA vão para `os.environ`: ficam num mapa do
+# core (`plugin_env()`) que só `api.env` do plugin dono lê. Subprocessos (ffmpeg, yt-dlp,
+# git, playwright), OpenSSL e o `ssl` do Python não enxergam valor de `.env` de plugin —
+# o que tira do caminho toda a classe `GIT_SSH_COMMAND`/`XDG_CONFIG_HOME`/`OPENSSL_CONF`,
+# não só uma lista de nomes.
+_PLUGIN_ENV: dict[str, tuple[str, str]] = {}
+
+# Variáveis que ferramentas do sistema leem. Não são mais recusadas (o valor nunca chega
+# ao ambiente); só geram aviso na prévia de enable/install/check e ao ler o `.env`.
 TOOLCHAIN_ENV_PREFIXES = (
     "LD_",
     "DYLD_",
@@ -103,6 +108,11 @@ TOOLCHAIN_ENV_PREFIXES = (
     "FFMPEG_",
     "YTDLP_",
     "YT_DLP_",
+    "OPENSSL_",
+    "XDG_",
+    "PLAYWRIGHT_",
+    "DENO_",
+    "FONTCONFIG_",
 )
 TOOLCHAIN_ENV_KEYS = frozenset(
     {
@@ -134,9 +144,27 @@ def core_env_key(key):
 
 
 def toolchain_env_key(key):
-    """Variável que uma ferramenta do sistema lê (`GIT_SSH_COMMAND`, `LD_PRELOAD`,
-    `SSL_CERT_FILE`, `HTTPS_PROXY`...): nunca entregue a um plugin pelo `.env`."""
+    """Variável que uma ferramenta do sistema lê (`GIT_SSH_COMMAND`, `XDG_CONFIG_HOME`,
+    `OPENSSL_CONF`, `HTTPS_PROXY`...). Só gera aviso: vinda do `.env` de um plugin ela
+    nunca chega ao ambiente, então não muda o comportamento de ferramenta nenhuma."""
     return key in TOOLCHAIN_ENV_KEYS or key.startswith(TOOLCHAIN_ENV_PREFIXES)
+
+
+def plugin_env():
+    """`{variável: (id do plugin dono, valor)}` lidas do `.env` para plugins — nunca exportadas."""
+    return dict(_PLUGIN_ENV)
+
+
+def plugin_env_value(plugin_id, key):
+    """Valor que o `.env` guardou para `key`, só se `plugin_id` for o dono; senão `None`."""
+    owner, value = _PLUGIN_ENV.get(key, (None, None))
+    return value if owner == plugin_id else None
+
+
+def env_is_set(key):
+    """A variável tem valor no ambiente do processo ou no `.env` de um plugin? Para
+    `doctor`/`providers`/BRIEF dizerem se uma fonte está configurada."""
+    return bool(os.environ.get(key)) or bool(_PLUGIN_ENV.get(key, (None, ""))[1])
 
 
 def env_namespace_owner(key, plugin_ids):
@@ -167,17 +195,21 @@ def installed_env():
     return installed
 
 
-def plugin_env_keys():
-    """Nomes de `permissions.env` dos plugins instalados que o `.env` aceita: só os do
-    espaço de nomes do próprio plugin, nunca uma variável do core nem uma que uma
-    ferramenta do sistema lê."""
+def plugin_env_owners():
+    """`{variável: id do plugin}` que o `.env` aceita para plugins instalados: só as do
+    espaço de nomes do próprio plugin, nunca uma variável do core."""
     installed = installed_env()
-    return frozenset(
-        key
+    return {
+        key: plugin_id
         for plugin_id, keys in installed.items()
         for key in keys
-        if not core_env_key(key) and not toolchain_env_key(key) and env_namespace_owner(key, installed) == plugin_id
-    )
+        if not core_env_key(key) and env_namespace_owner(key, installed) == plugin_id
+    }
+
+
+def plugin_env_keys():
+    """Nomes de `permissions.env` dos plugins instalados que o `.env` aceita."""
+    return frozenset(plugin_env_owners())
 
 
 def _refused_plugin_key(number, key, installed):
@@ -187,8 +219,8 @@ def _refused_plugin_key(number, key, installed):
         prefix = declared_by[0].upper() + "_"
         return (
             f".env: a variável {key} (linha {number}) é pedida pelo plugin {declared_by[0]}, mas o .env só "
-            f"entrega a um plugin variáveis do espaço de nomes dele ({prefix}...), nunca uma do core ou do "
-            "sistema. Tire a linha do .env; se o plugin precisa dela, defina-a no ambiente do processo."
+            f"entrega a um plugin variáveis do espaço de nomes dele ({prefix}...), nunca uma do core ou de "
+            "outro plugin. Tire a linha do .env; se o plugin precisa dela, defina-a no ambiente do processo."
         )
     from .sdk import loader
 
@@ -224,9 +256,12 @@ def _parse_env(path):
 
 
 def load_env(path):
-    """Lê o `.env`: chaves do core (`KEYS`) e as de `permissions.env` de plugins
-    instalados. As do core entram primeiro — `GB_HOME` no próprio `.env` decide em
-    qual `plugins/` procurar os manifestos. Chave que ninguém declara é erro."""
+    """Lê o `.env`: chaves do core (`KEYS`) vão para o ambiente do processo, como
+    sempre; as de `permissions.env` de plugins instalados ficam só em `plugin_env()`,
+    lidas por `api.env` do plugin dono, nunca exportadas. As do core entram primeiro —
+    `GB_HOME` no próprio `.env` decide em qual `plugins/` procurar os manifestos.
+    Chave que ninguém declara é erro."""
+    _PLUGIN_ENV.clear()
     path = Path(path)
     if not path.is_file():
         return
@@ -237,14 +272,22 @@ def load_env(path):
     unknown = [entry for entry in entries if entry[1] not in KEYS]
     if not unknown:
         return
-    declared = plugin_env_keys()
+    owners = plugin_env_owners()
     for number, key, value in unknown:
-        if key not in declared:
+        if key not in owners:
             raise ValueError(
                 _refused_plugin_key(number, key, installed_env())
                 or f".env: variável desconhecida na linha {number}: {key}. Aceitas: " + ", ".join(sorted(KEYS)) + "."
             )
-        os.environ.setdefault(key, value)
+        _PLUGIN_ENV.setdefault(key, (owners[key], value))
+        if toolchain_env_key(key):
+            from .runtime import record_warning
+
+            record_warning(
+                "PLUGIN_ENV_TOOLCHAIN",
+                f".env: {key} (linha {number}) é do plugin {owners[key]} e tem nome de variável que ferramentas "
+                "do sistema leem; ela chega só ao plugin, por api.env, nunca ao ambiente dos subprocessos.",
+            )
 
 
 def _pinned(key):

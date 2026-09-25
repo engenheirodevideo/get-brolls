@@ -183,10 +183,12 @@ def plugin_evidence(label, owner, text):
 
 def sanitize_text(owner, text):
     """Uma linha, sem caractere de controle/formatação, sem segredo, até 300 caracteres."""
+    from .. import config
+
     for key in _ENV_KEYS.get(owner, ()):
-        value = os.environ.get(key)
-        if value:
-            text = text.replace(value, "[REDACTED]")
+        for value in (config.plugin_env_value(owner, key), os.environ.get(key)):
+            if value:
+                text = text.replace(value, "[REDACTED]")
     for value in sorted(_CONFIG_VALUES.get(owner, ()), key=len, reverse=True):
         text = text.replace(value, "[REDACTED]")
     return plain_line(redact(plain_line(text, limit=len(text) + 1)))

@@ -32,6 +32,9 @@ grava um pin de hash sobre toda a pasta — qualquer mudança de conteúdo
 suspende o plugin até nova revisão. As permissões declaradas no manifesto
 (`permissions.network` e `permissions.env`) são conferidas nos próprios canais
 do SDK (`api.get_json`, `api.env`), não numa camada de isolamento do processo.
+Uma variável de plugin lida do `.env` nunca é exportada: só `api.env` do plugin
+dono a lê, e subprocessos (git, ffmpeg, yt-dlp, playwright), OpenSSL e o `ssl`
+do Python não a enxergam.
 **O SDK não é uma caixa de areia**: um plugin habilitado roda com as mesmas
 permissões de quem executa a CLI, e não tem egress próprio além do que o
 código dele fizer — só habilite plugins cujo código você leu e em que confia.
