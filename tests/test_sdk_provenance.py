@@ -339,5 +339,56 @@ class PluginGetJsonTests(unittest.TestCase):
         self.assertEqual(payload, data)
 
 
+PAGINATION_PAYLOAD = {
+    "items": [],
+    "next_page_token": "np_1",
+    "page_token": "pt_1",
+    "continuation_token": "ct_1",
+    "sort_key": "created_at",
+    "cursor_key": "ck_1",
+    "cursor": "cu_1",
+    "refresh_token": "rt_SECRET",
+    "client_secret": "cs_SECRET",
+    "api_key": "ak_SECRET",
+    "password": "pw_SECRET",
+}
+
+
+class PluginGetJsonPaginationKeysTests(unittest.TestCase):
+    """M1: o scrub estrito de `api.get_json` só derruba chave de credencial de
+    verdade — chave de paginação/id que só TERMINA com uma palavra parecida
+    (`*_key`, `*_token`) não pode mais sumir do JSON do plugin."""
+
+    def api(self):
+        manifest = {
+            "id": "demo",
+            "contributes": {"providers": [], "presets": [], "routes": [], "commands": []},
+            "permissions": {"network": ["api.example.com"], "env": [], "paths": []},
+        }
+        return PluginApi(manifest, Registry())
+
+    def opener(self, payload):
+        opener = MagicMock()
+        opener.open.side_effect = lambda *a, **k: _Resp(json.dumps(payload).encode())
+        return opener
+
+    def test_pagination_keys_survive_while_credential_keys_still_drop(self):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.dict(os.environ, {"GB_CACHE_DIR": tmp}),
+            patch.object(http, "_opener", return_value=self.opener(PAGINATION_PAYLOAD)),
+            patch.object(http, "_network_url"),
+        ):
+            data = self.api().get_json("https://api.example.com/v1/list", cache_ttl=3600)
+        self.assertEqual("np_1", data["next_page_token"])
+        self.assertEqual("pt_1", data["page_token"])
+        self.assertEqual("ct_1", data["continuation_token"])
+        self.assertEqual("created_at", data["sort_key"])
+        self.assertEqual("ck_1", data["cursor_key"])
+        self.assertEqual("cu_1", data["cursor"])
+        for dropped in ("refresh_token", "client_secret", "api_key", "password"):
+            self.assertNotIn(dropped, data)
+
+
 if __name__ == "__main__":
     unittest.main()

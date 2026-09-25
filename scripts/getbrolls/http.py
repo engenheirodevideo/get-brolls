@@ -46,6 +46,33 @@ SECRET_NAMES = {
     "sig",
 }
 
+# M1: nomes de CHAVE de JSON descartados só no scrub estrito (`_scrub(strict=True)`,
+# só o caminho de plugin), além de `SECRET_NAMES` acima (que já vale para todo
+# mundo). Uma lista explícita, não `runtime.SECRET_NAME_RE` (o regex amplo usado
+# para nome de QUERY de URL, em `_secret_query_name`): o regex casa qualquer nome
+# que só TERMINE em "key"/"token"/"policy", o que derrubava chave de paginação ou
+# id de plugin sem ser credencial nenhuma (`next_page_token`, `page_token`,
+# `continuation_token`, `sort_key`, `cursor_key`...). Comparação por nome inteiro,
+# sem diferenciar maiúsculas de minúsculas.
+STRICT_JSON_SECRET_KEYS = frozenset(
+    {
+        "access_token",
+        "refresh_token",
+        "id_token",
+        "auth_token",
+        "session_token",
+        "bearer_token",
+        "api_key",
+        "apikey",
+        "api_secret",
+        "client_secret",
+        "secret",
+        "private_key",
+        "password",
+        "passwd",
+    }
+)
+
 
 def public_url(url, allow_signed=False):
     """Accept credential-free HTTPS references; drop signed URLs rather than break them.
@@ -177,13 +204,15 @@ def _scrub(value, keep_signed=False, strict=False):
     `strict=True` (só o caminho de plugin, `PluginApi.get_json`) vai além, sem mudar
     nada para os built-ins: casa o esquema sem diferenciar maiúsculas (`HTTPS://`),
     troca por "[URL omitida]" uma URL assinada que venha no meio de um texto e
-    descarta toda chave cujo nome parece segredo (`runtime.SECRET_NAME_RE`:
-    `refresh_token`, `client_secret`, `password`...), não só os nomes exatos."""
+    descarta toda chave de JSON da lista explícita `STRICT_JSON_SECRET_KEYS`
+    (`refresh_token`, `client_secret`, `password`...), não só os nomes exatos de
+    `SECRET_NAMES`. Chave de paginação/id (`next_page_token`, `sort_key`,
+    `cursor_key`...) não é credencial e sobrevive (M1)."""
     if isinstance(value, dict):
         return {
             k: _scrub(v, keep_signed, strict)
             for k, v in value.items()
-            if k.lower() not in SECRET_NAMES and not (strict and secret_name(k))
+            if k.lower() not in SECRET_NAMES and not (strict and k.lower() in STRICT_JSON_SECRET_KEYS)
         }
     if isinstance(value, list):
         return [_scrub(v, keep_signed, strict) for v in value]
