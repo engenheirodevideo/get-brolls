@@ -512,7 +512,8 @@ class PluginProvenanceTests(LoaderTestCase):
         loader.enable("demo", confirm=True)
         lines = delivery.render_origin(_plugin_fetched(), "00-sem-beat.mp4").splitlines()
         self.assertIn("- Fonte: plugin demo (arquivo local)", lines)
-        self.assertIn("- Título na fonte: praia_por_do_sol", lines)
+        # Texto de plugin sai com Markdown escapado (o `_` vira `\_`, e renderiza igual).
+        self.assertIn("- Título na fonte: praia\\_por\\_do\\_sol", lines)
 
     def test_origin_with_a_public_url_keeps_it_next_to_the_plugin(self):
         from getbrolls import delivery
@@ -537,7 +538,8 @@ class PluginProvenanceTests(LoaderTestCase):
             render(ledger)
             lines = (ledger.root / "credits.md").read_text(encoding="utf-8").splitlines()
         self.assertIn("- Fonte: plugin demo (arquivo local)", lines)
-        self.assertIn("- Título na fonte: praia_por_do_sol", lines)
+        # Texto de plugin sai com Markdown escapado (o `_` vira `\_`, e renderiza igual).
+        self.assertIn("- Título na fonte: praia\\_por\\_do\\_sol", lines)
 
     def test_builtin_lines_are_unchanged(self):
         import tempfile
