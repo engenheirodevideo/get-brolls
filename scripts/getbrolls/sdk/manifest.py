@@ -5,8 +5,9 @@ executar código do plugin: tudo o que ele contribui precisa estar declarado aqu
 """
 
 import json
+import os
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import NoReturn
 
 from .. import __version__
@@ -77,14 +78,45 @@ def _contributes(folder_name, raw):
     return result
 
 
-def _root_ok(raw):
-    """Raiz de `permissions.paths`: absoluta, ou `~`/`~/...`; nunca com `..`."""
+_SEPARATORS_RE = re.compile(r"[\\/]+")
+
+
+def _is_home(raw):
+    try:
+        home = Path.home()
+    except RuntimeError:
+        return False
+    return os.path.normcase(os.path.normpath(raw)) == os.path.normcase(os.path.normpath(str(home)))
+
+
+def _root_ok(raw):  # noqa: PLR0911 - uma saída por forma de raiz recusada
+    """Raiz de `permissions.paths`: uma PASTA específica — absoluta (POSIX `/...` ou
+    Windows `C:\\...`, conferida sem depender do sistema em que o manifesto é lido)
+    ou `~/...`; nunca com `..`.
+
+    Recusa raiz ampla demais, que tornaria a declaração sem sentido: a raiz do
+    sistema (`/`, `\\`), uma raiz de unidade (`C:\\`, `C:/`, `C:`), `~` sozinho
+    (`~`, `~/`, `~/.`) e a própria pasta pessoal escrita por extenso — `~` inteiro
+    cobre `~/.ssh` e `~/.getbrolls/plugin-data/<outro plugin>`.
+    """
     if not isinstance(raw, str) or not raw.strip() or "\0" in raw or len(raw) > PATH_MAX_CHARS:
         return False
-    if raw.startswith("~") and raw != "~" and not raw.startswith(("~/", "~\\")):
+    if raw.startswith("~"):
+        if not raw.startswith(("~/", "~\\")):
+            return False  # `~` sozinho ou `~outro`
+        parts = [part for part in _SEPARATORS_RE.split(raw[2:]) if part not in ("", ".")]
+        return bool(parts) and ".." not in parts
+    posix, windows = PurePosixPath(raw), PureWindowsPath(raw)
+    if windows.drive and not windows.root:
+        return False  # `C:` / `C:pasta`: relativo à pasta corrente da unidade
+    if not (posix.is_absolute() or windows.is_absolute()):
         return False
-    path = Path(raw).expanduser()
-    return path.is_absolute() and ".." not in path.parts
+    if ".." in posix.parts or ".." in windows.parts:
+        return False
+    # Raiz do sistema ou da unidade: só a âncora, nenhuma pasta dentro dela.
+    if not [part for part in _SEPARATORS_RE.split(raw[len(windows.anchor) :]) if part not in ("", ".")]:
+        return False
+    return not _is_home(raw)
 
 
 def _permissions(folder_name, raw):
@@ -98,7 +130,11 @@ def _permissions(folder_name, raw):
     if not isinstance(env, list) or any(not isinstance(k, str) or not ENV_RE.fullmatch(k) for k in env):
         _fail(folder_name, "permissions.env aceita só nomes de variável em MAIÚSCULAS.")
     if not isinstance(paths, list) or not all(_root_ok(p) for p in paths):
-        _fail(folder_name, "permissions.paths aceita só pastas absolutas ou começando por ~/, sem '..'.")
+        _fail(
+            folder_name,
+            "permissions.paths aceita só pastas específicas, absolutas ou começando por ~/, sem '..' "
+            "(nunca /, a raiz de uma unidade como C:\\, ~ nem a pasta pessoal inteira).",
+        )
     return {"network": list(network), "env": list(env), "paths": list(paths)}
 
 

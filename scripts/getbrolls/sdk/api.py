@@ -6,8 +6,8 @@ import json
 import logging
 import os
 import re
-import shutil
-from pathlib import Path
+import stat
+from pathlib import Path, PurePath
 from urllib.parse import urlsplit
 
 from .. import http as core_http
@@ -241,44 +241,105 @@ class PluginApi:
         return target
 
     def _roots(self):
-        return [Path(raw).expanduser().resolve() for raw in self._manifest["permissions"]["paths"]]
+        """Raízes de `permissions.paths` que valem NESTE sistema, resolvidas.
+
+        O manifesto aceita raiz POSIX (`/Volumes/...`) e Windows (`C:\\...`) em qualquer
+        plataforma — ele viaja entre máquinas —; aqui só entra a que é absoluta no
+        sistema atual (uma `C:\\acervo` lida no macOS seria um caminho relativo à pasta
+        corrente, então é ignorada)."""
+        roots = []
+        for raw in self._manifest["permissions"]["paths"]:
+            path = Path(raw).expanduser()
+            if path.is_absolute():
+                roots.append(path.resolve())
+        return roots
+
+    def _refuse(self, text):
+        return ProviderError(f"Plugin {self.plugin_id}: {text}")
+
+    def _local_source(self, path):
+        """(caminho resolvido, nome mostrável) de `path` dentro de uma raiz; tudo que
+        pode falhar aqui (NUL, tipo errado, raiz que não resolve) vira `ProviderError`."""
+        try:
+            roots = self._roots()
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise self._refuse(f"permissions.paths não pôde ser resolvido ({type(exc).__name__}).") from None
+        if not roots:
+            raise self._refuse("permissions.paths está vazio; declare a pasta no manifesto para usar api.local_file.")
+        try:
+            raw = os.fspath(path)
+            if type(raw) is not str:
+                raise TypeError
+            shown = PurePath(raw).name or "arquivo"
+            source = Path(raw).expanduser().resolve(strict=True)
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            raise self._refuse(f"arquivo local não encontrado ({type(exc).__name__}).") from None
+        shown = guard.plain_line(shown, limit=120)
+        if not any(source.is_relative_to(root) for root in roots):
+            logs.event(_log, logging.WARNING, "plugin_path_refused", plugin=self.plugin_id)
+            raise self._refuse(f"{shown} está fora de permissions.paths.")
+        return source, shown
+
+    def _copy_bounded(self, source_fd, target, too_big, cap):
+        """Copia do descritor já conferido para `target` (criado exclusivo, sem seguir
+        link), com teto nos bytes de fato lidos; apaga o destino parcial se falhar."""
+        out_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+        try:
+            target_fd = os.open(target, out_flags, 0o600)
+        except FileExistsError:
+            raise self._refuse("api.local_file já trouxe um arquivo nesta rota.") from None
+        except OSError as exc:
+            raise self._refuse(f"não consegui criar o arquivo de trabalho ({type(exc).__name__}).") from None
+        copied = 0
+        try:
+            with os.fdopen(target_fd, "wb") as out:
+                while chunk := os.read(source_fd, 1024 * 1024):
+                    copied += len(chunk)
+                    if copied > cap:
+                        raise too_big
+                    out.write(chunk)
+        except BaseException:
+            target.unlink(missing_ok=True)
+            raise
 
     def local_file(self, path):
         """Copia um arquivo de dentro de `permissions.paths` para a pasta de trabalho.
 
         O caminho é resolvido (links simbólicos seguidos) antes de conferir a raiz:
-        um link dentro da pasta apontando para fora é recusado. Sempre cópia, nunca
-        hardlink — o core ajusta permissão e move o arquivo de trabalho, e isso não
-        pode respingar no original da pessoa.
+        um link dentro da pasta apontando para fora é recusado. Depois, o arquivo é
+        aberto com `O_NOFOLLOW` (um link trocado ali entre a conferência e a abertura
+        não é seguido) e `O_NONBLOCK` (uma FIFO não trava), conferido pelo próprio
+        descritor (`fstat`: arquivo regular, dentro do teto) e copiado dele com teto
+        nos bytes de fato lidos — o arquivo crescer durante a cópia não fura o teto.
+        O destino é criado com `O_CREAT|O_EXCL|O_NOFOLLOW`: nunca segue um link
+        plantado no workdir. Sempre cópia, nunca hardlink — o core ajusta permissão e
+        move o arquivo de trabalho, e isso não pode respingar no original da pessoa.
+        Mensagens de recusa nomeiam o arquivo que o plugin pediu, nunca o alvo resolvido.
+
+        No Windows, onde `os.O_NOFOLLOW` não existe, vale a resolução + conferência de
+        raiz feitas antes (link simbólico lá exige privilégio de administrador);
+        `O_BINARY` garante cópia byte a byte.
         """
         workdir = self._workdir("local_file")
-        roots = self._roots()
-        if not roots:
-            raise ProviderError(
-                f"Plugin {self.plugin_id}: permissions.paths está vazio; declare a pasta no manifesto "
-                "para usar api.local_file."
-            )
+        cap = core_http.DOWNLOAD_MAX_BYTES
+        source, shown = self._local_source(path)
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
         try:
-            source = Path(path).expanduser().resolve(strict=True)
-        except (OSError, RuntimeError, TypeError) as exc:
-            raise ProviderError(
-                f"Plugin {self.plugin_id}: arquivo local não encontrado ({type(exc).__name__})."
-            ) from exc
-        if not any(source.is_relative_to(root) for root in roots):
-            logs.event(_log, logging.WARNING, "plugin_path_refused", plugin=self.plugin_id)
-            raise ProviderError(f"Plugin {self.plugin_id}: {source.name} está fora de permissions.paths.")
-        if not source.is_file():
-            raise ProviderError(f"Plugin {self.plugin_id}: {source.name} não é um arquivo.")
-        if source.stat().st_size > core_http.DOWNLOAD_MAX_BYTES:
-            raise ProviderError(
-                f"Plugin {self.plugin_id}: {source.name} passa do teto de "
-                f"{core_http.DOWNLOAD_MAX_BYTES // (1024 * 1024)} MB para arquivo de trabalho."
-            )
-        suffix = source.suffix.lower()
-        target = workdir / ("local" + (suffix if SUFFIX_RE.fullmatch(suffix) else ".bin"))
-        if target.exists():
-            raise ProviderError(f"Plugin {self.plugin_id}: api.local_file já trouxe um arquivo nesta rota.")
-        shutil.copyfile(source, target)
+            source_fd = os.open(source, flags)
+        except OSError as exc:
+            raise self._refuse(f"{shown} não pôde ser aberto ({type(exc).__name__}).") from None
+        try:
+            info = os.fstat(source_fd)
+            if not stat.S_ISREG(info.st_mode):
+                raise self._refuse(f"{shown} não é um arquivo.")
+            too_big = self._refuse(f"{shown} passa do teto de {cap // (1024 * 1024)} MB para arquivo de trabalho.")
+            if info.st_size > cap:
+                raise too_big
+            suffix = source.suffix.lower()
+            target = workdir / ("local" + (suffix if SUFFIX_RE.fullmatch(suffix) else ".bin"))
+            self._copy_bounded(source_fd, target, too_big, cap)
+        finally:
+            os.close(source_fd)
         return target
 
     @property

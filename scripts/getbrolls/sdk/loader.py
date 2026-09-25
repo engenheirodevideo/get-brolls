@@ -56,19 +56,71 @@ def _counted_files(folder):
         yield rel, path
 
 
+# Tetos do hash da pasta (RT-11): o `folder_digest` roda a cada comando, para cada
+# plugin habilitado. Um arquivo enorme largado na pasta (um plugin que faz cache ao
+# lado do `__file__`) não pode custar a memória/tempo dele a cada comando: passou do
+# teto, o plugin fica suspenso com o motivo — nunca um MemoryError derrubando a CLI.
+# O `install` já recusa mais de 200 MB; o total aqui dá folga para o que cresce depois.
+DIGEST_MAX_FILE_BYTES = 200 * 1024 * 1024
+DIGEST_MAX_TOTAL_BYTES = 400 * 1024 * 1024
+_DIGEST_CHUNK = 1024 * 1024
+
+
+class DigestLimitError(ValueError):
+    """A pasta do plugin passou de um teto do hash; a mensagem diz qual."""
+
+
+def _size_label(limit):
+    return f"{limit // (1024 * 1024)} MB" if limit >= 1024 * 1024 else f"{limit} bytes"
+
+
+def _hash_file(path, into, budget):
+    """Soma `path` em `into` (e devolve os bytes lidos), em pedaços de 1 MB, sem
+    passar de `DIGEST_MAX_FILE_BYTES` nem do `budget` que resta do total."""
+    limit = DIGEST_MAX_FILE_BYTES
+    total = 0
+    with path.open("rb") as stream:
+        while chunk := stream.read(_DIGEST_CHUNK):
+            total += len(chunk)
+            if total > limit:
+                raise DigestLimitError(
+                    f"O plugin tem um arquivo acima do teto de {_size_label(limit)} para conferir o conteúdo "
+                    f"({path.name}); tire-o da pasta do plugin (use api.data_dir) e habilite de novo."
+                )
+            if total > budget:
+                raise DigestLimitError(
+                    f"A pasta do plugin passa do teto de {_size_label(DIGEST_MAX_TOTAL_BYTES)} para conferir o "
+                    "conteúdo; tire os arquivos grandes dela (use api.data_dir) e habilite de novo."
+                )
+            into.update(chunk)
+    return total
+
+
 def folder_digest(folder):
     """Hash de todo arquivo da pasta, exceto lixo de SO (`JUNK_FILENAMES`) e o
     metadado de dentro de uma pasta de VCS (`VCS_DIRNAMES`) — o resto, incluindo
-    `__pycache__`/`.pyc`, conta sem exceção (ver comentário de `JUNK_FILENAMES`)."""
+    `__pycache__`/`.pyc`, conta sem exceção (ver comentário de `JUNK_FILENAMES`).
+
+    Lê em pedaços, com teto por arquivo e total (`DigestLimitError`, um
+    `ValueError`, quando passa): nunca carrega um arquivo inteiro na memória."""
     digest = hashlib.sha256()
+    budget = DIGEST_MAX_TOTAL_BYTES
     for rel, path in _counted_files(folder):
-        digest.update(rel.as_posix().encode() + b"\0" + path.read_bytes() + b"\0")
+        digest.update(rel.as_posix().encode() + b"\0")
+        budget -= _hash_file(path, digest, budget)
+        digest.update(b"\0")
     return digest.hexdigest()
 
 
 def file_digests(folder):
-    """sha256 por arquivo, com o mesmo recorte de `folder_digest` — base do diff do `update`."""
-    return {rel.as_posix(): hashlib.sha256(path.read_bytes()).hexdigest() for rel, path in _counted_files(folder)}
+    """sha256 por arquivo, com o mesmo recorte e os mesmos tetos de `folder_digest` — base do diff do `update`."""
+    result = {}
+    budget = DIGEST_MAX_TOTAL_BYTES
+    for rel, path in _counted_files(folder):
+        one = hashlib.sha256()
+        budget -= _hash_file(path, one, budget)
+        result[rel.as_posix()] = one.hexdigest()
+    return result
 
 
 def _valid_pin(entry):
@@ -157,6 +209,8 @@ def entries():
             continue
         try:
             status, reason = _status(manifest, folder, selection, state)
+        except DigestLimitError as exc:
+            status, reason = "suspended", str(exc)
         except OSError as exc:
             reason = f"Não consegui conferir o conteúdo do plugin {manifest['id']}: {type(exc).__name__}."
             result.append((_invalid_row(manifest["id"], reason), folder, None))
@@ -226,6 +280,8 @@ def _pin_mismatch_reason(row, folder, pinned):
     e carregar (TOCTOU): conteúdo trocado nesse meio-tempo vira suspenso, não roda."""
     try:
         current = folder_digest(folder)
+    except DigestLimitError as exc:
+        return str(exc)
     except OSError as exc:
         return f"Não consegui reconferir o conteúdo do plugin antes de carregar: {type(exc).__name__}."
     pin = pinned.get(row["id"]) or {}
