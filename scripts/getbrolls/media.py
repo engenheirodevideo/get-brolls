@@ -495,6 +495,61 @@ def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):  
     }
 
 
+# Extensões que já dizem que o arquivo é uma imagem estática.
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff", ".gif")
+
+# Assinaturas dos formatos que as fontes publicam, lidas do começo do arquivo. O
+# arquivo baixado chega sem extensão útil (`source.bin`, `download-….part`), e a
+# URL nem sempre diz o que o servidor entregou.
+_SIGNATURES = (
+    (0, b"\xff\xd8\xff", ".jpg"),
+    (0, b"\x89PNG\r\n\x1a\n", ".png"),
+    (0, b"GIF87a", ".gif"),
+    (0, b"GIF89a", ".gif"),
+    (0, b"II*\x00", ".tif"),
+    (0, b"MM\x00*", ".tif"),
+    (0, b"BM", ".bmp"),
+    (0, b"\x1a\x45\xdf\xa3", ".webm"),
+    (0, b"OggS", ".ogv"),
+    (4, b"ftyp", ".mp4"),
+)
+
+
+def sniff_suffix(path, default):
+    """Extensão pelo conteúdo real do arquivo; `default` quando nenhuma assinatura bate."""
+    try:
+        with Path(path).open("rb") as stream:
+            head = stream.read(16)
+    except OSError:
+        return default
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return ".webp"
+    for offset, magic, suffix in _SIGNATURES:
+        if head[offset : offset + len(magic)] == magic:
+            return suffix
+    return default
+
+
+# Fotos que eu reconheço pela assinatura: só estas ganham extensão em `clips/`.
+SNIFFED_IMAGE_SUFFIXES = (".jpg", ".png", ".webp", ".gif", ".tif", ".bmp")
+
+
+def image_suffix(path):
+    """Extensão da foto pelo conteúdo, só de formato conhecido; o resto é recusado.
+
+    A extensão da URL não entra: um PPM servido como `.jpg`, ou um AVIF/HEIC (que
+    começa com `ftyp`, como o MP4), sairia com um nome que mente sobre o arquivo.
+    """
+    found = sniff_suffix(path, None)
+    if found not in SNIFFED_IMAGE_SUFFIXES:
+        raise ValueError(
+            "Formato de imagem não reconhecido: o arquivo que a fonte entregou não é "
+            "JPG, PNG, WebP, GIF, TIFF nem BMP, e eu não gravo foto com extensão "
+            "inventada. Escolha outro arquivo ou outro candidato da fonte."
+        )
+    return found
+
+
 def image_preview(src, directory, stem):
     directory = Path(directory)
     rel = "previews/" + stem + "-poster.jpg"

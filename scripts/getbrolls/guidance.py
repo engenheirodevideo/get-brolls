@@ -40,6 +40,8 @@ TEMPLATES = {
     # Fonte de plugin que só entrega o arquivo no `fetch` (rota `stage="fetch"`):
     # a prévia é só referência; o arquivo vem depois de approve e permit.
     "preview-reference": ("preview --project {project} --candidate {candidate} --start 0 --end 5 --reference-only"),
+    # Foto não tem trecho: a prévia estática sai sem intervalo nenhum.
+    "preview-image": "preview --project {project} --candidate {candidate}",
     # IDs explícitos, nunca `--all`: "aprovei todos" quer dizer "os que você me
     # mostrou", e só quem mostrou sabe quais foram. Repita `--candidate` por item.
     "approve": (
@@ -433,6 +435,18 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
                 "decidir; depois é approve, permit e fetch.",
                 state,
                 command=command_for("preview-reference", state["project"], preview_candidate),
+            )
+        if state.get("preview_image"):
+            # Foto não tem duração nem trecho: nem `inspect` nem `--start/--end`
+            # valem aqui, e mandar para eles deixava o fluxo andando em círculo.
+            return _action(
+                "preview",
+                "Há foto sem prévia gerada; sem prévia ninguém decide. Imagem estática "
+                "não tem trecho: a prévia sai sem --start/--end e é o cartaz da própria foto.",
+                "Vou gerar a prévia da foto que ainda não tem quadro — é a própria "
+                "imagem, parada — para você ver antes de decidir.",
+                state,
+                command=command_for("preview-image", state["project"], step_candidate(state, "preview")),
             )
         return _action(
             "preview",

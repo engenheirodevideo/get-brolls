@@ -27,9 +27,6 @@ ROUTE_MAX_BYTES = DOWNLOAD_MAX_BYTES
 # separada da chave do candidato, então `inspect`/`preview` nunca reaproveitam por
 # engano o arquivo licenciado como mídia de trabalho — só o `fetch` o lê.
 FETCH_INDEX_SUFFIX = "#fetch"
-# Extensões aceitas para uma imagem entregue por rota (o nome do arquivo final em
-# `clips/` herda a extensão): qualquer outra (`.bin`, `.part`...) é recusada.
-ROUTED_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp", ".gif")
 _CACHE_SUFFIX_CHARS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789")
 
 log = logs.get("acquisition")
@@ -381,9 +378,11 @@ def cache_direct_media(ledger, candidate, refresh=True, stage="inspect"):
         else:
             target = Path(work) / "source.bin"
             download(url, target)
+        # Antes do ffprobe: foto de formato desconhecido é recusada com a razão certa.
+        suffix = _cached_suffix(candidate, target)
         info = probe(target)
         sha = digest(target)
-        final = cache / (id_stem(candidate["id"]) + "-" + sha + ".mp4")
+        final = cache / (id_stem(candidate["id"]) + "-" + sha + suffix)
         if not final.exists():
             target.replace(final)
             final.chmod(0o600)
@@ -419,6 +418,41 @@ def cache_direct_media(ledger, candidate, refresh=True, stage="inspect"):
     )
     _save_index(cache, index)
     return final
+
+
+# Contêineres de vídeo que as fontes de arquivo direto publicam (o Commons serve webm/ogv).
+_VIDEO_SUFFIXES = (".mp4", ".webm", ".ogv")
+
+
+def _cached_suffix(candidate, path):
+    """Extensão da cópia no cache, pelo conteúdo: a foto guarda a dela, que `fetch`
+    leva até `clips/`, e formato de foto desconhecido é recusado; o vídeo só deixa
+    de chamar webm de `.mp4` (o corte final continua saindo em `.mp4` pelo FFmpeg)."""
+    from .media import image_suffix, sniff_suffix
+
+    if (candidate.get("media") or {}).get("kind") != "image":
+        found = sniff_suffix(path, ".mp4")
+        return found if found in _VIDEO_SUFFIXES else ".mp4"
+    return image_suffix(path)
+
+
+def prepare_image_source(ledger, candidate, *, stage="preview"):
+    """Traz a foto remota inteira para o cache privado: é ela a mídia de trabalho.
+
+    Imagem estática não tem intervalo; a prévia é o cartaz da própria foto, e o
+    `fetch` depois copia exatamente os bytes que a pessoa viu e aprovou (o hash entra
+    na assinatura da aprovação por `local_sha256`).
+    """
+    c = candidate
+    path = c.get("local_path")
+    if path and Path(path).is_file():
+        if digest(path) != c["local_sha256"]:
+            raise ValueError("Fonte de trabalho alterada; importe novamente antes de revisar.")
+        return
+    final = cache_direct_media(ledger, c, stage=stage)
+    info = probe(final)
+    c.update(local_path=str(Path(final).resolve()), local_sha256=digest(final))
+    c["media"].update(width=info["width"], height=info["height"])
 
 
 def prepare_source(ledger, candidate, start, end, tolerant=False, *, stage="preview"):  # noqa: C901, PLR0912, PLR0913, PLR0915 - existing size; walks every source-readiness state (local/remote, cache hit/miss, tolerant, plugin route)
@@ -467,6 +501,7 @@ def prepare_source(ledger, candidate, start, end, tolerant=False, *, stage="prev
     started = time.monotonic()
     with tempfile.TemporaryDirectory(dir=cache) as work, contextlib.ExitStack() as route_stack:
         target = Path(work) / "source.mp4"
+        suffix = ".mp4"
         if c["acquisition"].get("method") == "yt-dlp":
             from .social import download_segment
 
@@ -480,6 +515,7 @@ def prepare_source(ledger, candidate, start, end, tolerant=False, *, stage="prev
             if not fresh.get("media_url"):
                 raise ValueError("Arquivo do provedor não está mais disponível.")
             download(fresh["media_url"], target)
+            suffix = _cached_suffix(c, target)
             offset = 0
         elif route_name(c) is not None:
             # Rota de plugin traz o arquivo inteiro (preview) para a pasta de trabalho;
@@ -493,7 +529,7 @@ def prepare_source(ledger, candidate, start, end, tolerant=False, *, stage="prev
         if end - offset > info["duration_s"] + 0.1 and not tolerant:
             raise ValueError("Original não contém o intervalo solicitado.")
         sha = digest(target)
-        final = cache / (id_stem(c["id"]) + "-" + sha + ".mp4")
+        final = cache / (id_stem(c["id"]) + "-" + sha + suffix)
         if not final.exists():
             target.replace(final)
             final.chmod(0o600)

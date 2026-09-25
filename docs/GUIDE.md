@@ -335,13 +335,13 @@ Diagnóstico: `python3 scripts/gb.py providers`. Falha de credencial não ativa 
 
 ## Provedor — Wikimedia Commons
 
-Action API pública filtra vídeos, preserva autor e licença por arquivo. Licença desconhecida nunca vira domínio público. https://commons.wikimedia.org/wiki/Commons:API/MediaWiki
+Action API pública filtra vídeos ou fotos (`--media video|image|any`), preserva autor e licença por arquivo. Foto tem prévia estática sem intervalo: `preview --candidate ID` baixa a imagem para o cache privado e gera o cartaz; o `fetch` copia esses mesmos bytes, com a extensão real do arquivo. Licença desconhecida nunca vira domínio público. https://commons.wikimedia.org/wiki/Commons:API/MediaWiki
 
 Diagnóstico: `python3 scripts/gb.py providers`. Falha de credencial não ativa scraping ou outra conta.
 
 ## Provedor — NASA
 
-Images API pública consulta vídeos e assets MP4. Autoria de terceiros e condições precisam de verificação antes de permit. https://images.nasa.gov/docs/images.nasa.gov_api_docs.pdf
+Images API pública consulta vídeos (assets MP4) e fotos (JPG/PNG/TIFF); foto segue a mesma prévia estática sem intervalo do Commons. Autoria de terceiros e condições precisam de verificação antes de permit. https://images.nasa.gov/docs/images.nasa.gov_api_docs.pdf
 
 Diagnóstico: `python3 scripts/gb.py providers`. Falha de credencial não ativa scraping ou outra conta.
 
@@ -402,11 +402,11 @@ funcionais estão em
 | Tipo | Origem implementada | Prévia | Entrega final |
 |---|---|---|---|
 | `video` | Arquivo local; busca de vídeos nos provedores configurados | GIF ou poster/sheet; remoto pode ser só referência | MP4 do intervalo aprovado |
-| `image` | PNG/JPG/JPEG/WebP/BMP/TIFF local | Imagem estática | Original estático copiado após aprovação |
+| `image` | PNG/JPG/JPEG/WebP/BMP/TIFF local; foto da NASA e do Commons (`search --media image`, `resolve --url`) | Imagem estática, sem `--start/--end` | Original estático copiado após aprovação |
 | `news_screenshot` | Captura Playwright importada localmente com URL | Imagem estática | PNG/JPG original com procedência no ledger |
 | `web_screenshot` | Captura de página importada localmente com URL | Imagem estática | Original estático com procedência |
 
-Busca de imagens via API, áudio isolado como asset final e SVG não estão implementados. Download social usa os transportes do ROUTER. Não anuncie a capacidade só porque existe um nome de tipo. GIF animado é a prévia de um vídeo; não substitui o arquivo final de edição.
+Busca de imagens fora da NASA e do Commons, áudio isolado como asset final e SVG não estão implementados. Download social usa os transportes do ROUTER. Não anuncie a capacidade só porque existe um nome de tipo. GIF animado é a prévia de um vídeo; não substitui o arquivo final de edição.
 
 ### Formato editorial
 

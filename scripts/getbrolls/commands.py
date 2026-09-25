@@ -593,6 +593,7 @@ def brief_report(args):
                     "duration_unknown": len(_uninspected(items)),
                     "inspect_candidate": next((c["id"] for c in _uninspected(items)), None),
                     "reference_only": _reference_only(items),
+                    "preview_image": _preview_is_image(items),
                 }
             )["for_human"],
         },
@@ -1031,7 +1032,8 @@ def _uninspected(items):
 
     É o que separa o degrau `inspect` do degrau `preview`: sem duração, qualquer
     `--start/--end` é palpite, e o palpite custa um pedido à fonte. Item rejeitado
-    fica de fora: ninguém gasta pedido à fonte por um trecho já descartado.
+    fica de fora: ninguém gasta pedido à fonte por um trecho já descartado. Foto
+    também: não tem duração nem trecho a descobrir, e vai direto à prévia estática.
     """
     from .acquisition import fetch_only
 
@@ -1039,6 +1041,7 @@ def _uninspected(items):
         c
         for c in items
         if not (c.get("media") or {}).get("duration_s")
+        and (c.get("media") or {}).get("kind") != "image"
         and c.get("source_url")
         and not _has_preview(c)
         and _stage_status(c, "approval") != "rejected"
@@ -1123,6 +1126,12 @@ def _delivery_next(ledger, rules):
     return _flow_next(ledger, rules)
 
 
+def _preview_is_image(items):
+    """O item que o degrau `preview` nomeia é uma foto? Então o comando vai sem intervalo."""
+    chosen = _step_candidates(items)["preview"]
+    return any(c["id"] == chosen and (c.get("media") or {}).get("kind") == "image" for c in items)
+
+
 def _needs_preview(items):
     """Itens ainda em jogo e sem nenhum quadro: um item rejeitado não trava o fluxo."""
     return [c for c in items if not _has_preview(c) and _stage_status(c, "approval") != "rejected"]
@@ -1185,6 +1194,7 @@ def _flow_state(ledger, rules, counts=None, format_pending=0, brief=_UNSET):
         "reference_only": _reference_only(items),
         "undelivered": len(_undelivered(items)),
         "pending_preview": len(_needs_preview(items)),
+        "preview_image": _preview_is_image(items),
     }
 
 
@@ -2026,7 +2036,13 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
         mark_rejected(c, getattr(args, "reason", None))
     elif cmd == "preview":
         context_before = signature(c)
-        if not args.reference_only and c["provider"] != "local":
+        if not args.reference_only and c["provider"] != "local" and c.get("media", {}).get("kind") == "image":
+            # Foto remota (NASA, Commons): sem intervalo nem teto de segundos. A prévia
+            # é o cartaz da própria foto, baixada uma vez para o cache privado.
+            from .acquisition import prepare_image_source
+
+            prepare_image_source(ledger, c)
+        elif not args.reference_only and c["provider"] != "local":
             # Vídeo sem --start/--end já parou antes, no guard de `preview`/`approve`.
             asked = args.end - args.start  # pyright: ignore[reportOptionalOperand]
             if asked > float(config["max_seconds"]) + CAP_EPSILON:
@@ -2071,7 +2087,7 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
             c["state"] = "awaiting_approval" if c.get("local_path") else "reference_only"
             approval_invalidated = True
     elif cmd == "fetch":
-        from .acquisition import ROUTED_IMAGE_SUFFIXES, fetch_routed_source, license_evidence, route_name
+        from .acquisition import fetch_routed_source, license_evidence, route_name
 
         _fetch_started_at = time.monotonic()
         require_fetch(c)
@@ -2120,12 +2136,15 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
             # Minor 9: a extensão só é conferida DEPOIS que cache e licença já estão
             # gravados (acima) — uma imagem com extensão fora da lista é recusada sem
             # custar a rota (e a licença) de novo a cada retry; o cache já existe.
-            if c.get("media", {}).get("kind") == "image" and routed.path.suffix.lower() not in ROUTED_IMAGE_SUFFIXES:
+            # A lista é a mesma da coleta de foto das fontes embutidas (`media.IMAGE_SUFFIXES`).
+            from .media import IMAGE_SUFFIXES
+
+            if c.get("media", {}).get("kind") == "image" and routed.path.suffix.lower() not in IMAGE_SUFFIXES:
                 from .http import ProviderError
 
                 raise ProviderError(
                     f"Plugin {routed.plugin}: a rota devolveu uma imagem com extensão não aceita; "
-                    f"use {', '.join(ROUTED_IMAGE_SUFFIXES)}."
+                    f"use {', '.join(IMAGE_SUFFIXES)}."
                 )
             if (
                 c.get("media", {}).get("kind") != "image"
@@ -2153,32 +2172,39 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
             download(url, temp)
             src = temp
         if c.get("media", {}).get("kind") == "image":
+            from .media import IMAGE_SUFFIXES, copy_image, image_suffix
+
+            # O download chega como `.part` (e cópia antiga do cache como `.mp4`): a
+            # extensão de `clips/` — e, dela, a de `entrega/` — sai do conteúdo real,
+            # só de formato conhecido; o resto é recusado, nunca herda a da URL.
+            # Arquivo com extensão de imagem conhecida fica como está nomeado.
+            suffix = Path(src).suffix.lower()
             try:
-                rel = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}" + Path(src).suffix.lower()
+                if suffix not in IMAGE_SUFFIXES:
+                    suffix = image_suffix(src)
+                rel = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}" + suffix
                 dest = ledger.root / rel
                 if dest.exists():
                     raise ValueError(_already_collected(rel))
-                from .media import copy_image
-
                 copy_image(src, dest)
-                c["output"] = {"path": rel, "sha256": digest(dest), "verified": True}
-                c["state"] = "verified"
-                ledger.save(cmd, c)
-                render(ledger)
-                logs.event(
-                    _log,
-                    logging.INFO,
-                    "fetch",
-                    candidate=c["id"],
-                    kind="remote" if temp or routed_remote else "local",
-                    bytes=_safe_size(dest),
-                    sha256_prefix=_sha256_prefix(c["output"]["sha256"]),
-                    ms=round((time.monotonic() - _fetch_started_at) * 1000),
-                )
-                return c
             finally:
                 if temp:
                     temp.unlink(missing_ok=True)
+            c["output"] = {"path": rel, "sha256": digest(dest), "verified": True}
+            c["state"] = "verified"
+            ledger.save(cmd, c)
+            render(ledger)
+            logs.event(
+                _log,
+                logging.INFO,
+                "fetch",
+                candidate=c["id"],
+                kind="remote" if temp or routed_remote else "local",
+                bytes=_safe_size(dest),
+                sha256_prefix=_sha256_prefix(c["output"]["sha256"]),
+                ms=round((time.monotonic() - _fetch_started_at) * 1000),
+            )
+            return c
         rel = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}.mp4"
         # O arquivo entregue nasce somente-leitura (delivery._freeze congela o inode
         # compartilhado): sem esta checagem o ffmpeg falharia por permissão, sem dizer
@@ -2474,6 +2500,11 @@ def inspect_source(ledger, args, config=None):
     c = None
     if args.candidate:
         c = ledger.get(args.candidate)
+        if (c.get("media") or {}).get("kind") == "image":
+            raise ValueError(
+                "Imagem estática não tem duração nem trecho para analisar: gere a prévia "
+                f"dela direto com `preview --candidate {c['id']}`, sem `--start/--end`."
+            )
         url = c.get("source_url")
         if not url and not direct_media(c):
             raise ValueError(
@@ -2490,6 +2521,11 @@ def inspect_source(ledger, args, config=None):
         from getbrolls import providers
 
         source = providers.resolve(url)
+        if (source.get("media") or {}).get("kind") == "image":
+            raise ValueError(
+                "Esta URL é uma imagem estática, sem trecho para analisar: registre com "
+                "`resolve --url` e gere a prévia com `preview --candidate ID`, sem `--start/--end`."
+            )
     if direct_media(source):
         # NASA, Commons e os bancos publicam o arquivo; `source_url` é a página do
         # item, e o yt-dlp responde "Unsupported URL" para ela. A duração sai do
@@ -2653,7 +2689,10 @@ def scan_candidate(ledger, c, config):  # noqa: C901 - existing size; contact-sh
     from .media import scan_sheet
 
     if c.get("media", {}).get("kind") == "image":
-        raise ValueError("Imagem estática não tem o que varrer; gere a prévia normal.")
+        raise ValueError(
+            "Imagem estática não tem o que varrer: gere a prévia dela com "
+            f"`preview --candidate {c['id']}`, sem `--start/--end`."
+        )
     duration = c["media"].get("duration_s")
     if not duration and c["provider"] != "local":
         from .acquisition import direct_media

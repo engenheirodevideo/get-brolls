@@ -618,7 +618,10 @@ def _refresh_builtin(item):
         )
         pages = data.get("query", {}).get("pages", {})
         info = (pages.get(ident, {}).get("imageinfo") or [{}])[0]
-        media_url = public_url(info.get("url")) if info.get("mime", "").startswith("video/") else None
+        # A busca devolve foto e vídeo; o arquivo renovado precisa ser do mesmo tipo
+        # que a pessoa viu e aprovou. Só `video/*` deixava toda foto incoletável.
+        wanted = "image/" if (item.get("media") or {}).get("kind") == "image" else "video/"
+        media_url = public_url(info.get("url")) if info.get("mime", "").startswith(wanted) else None
         if not media_url:
             raise ProviderError("Arquivo do provedor não está mais disponível")
         current["media_url"] = media_url
