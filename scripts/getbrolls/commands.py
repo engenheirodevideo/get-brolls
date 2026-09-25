@@ -358,6 +358,13 @@ STATUS_LADDER = (
 )
 
 
+def provider_error_text(name, error):
+    """`<fonte>: <erro>`, sem repetir o nome quando o erro de plugin já vem como
+    "Plugin <fonte>: …" (dava "pasta_local: Plugin pasta_local: …", BUG-10)."""
+    text = str(error)
+    return text if text.startswith(f"Plugin {name}:") else f"{name}: {text}"
+
+
 def status_next(counts, format_pending=0, pending_preview=None, undelivered=0):
     """Próximo passo real do fluxo, derivado das contagens por etapa.
 
@@ -1577,7 +1584,7 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                     )
                 except ValueError as e:
                     errors.append({"provider": name, "error": str(e)})
-                    record_warning("PROVIDER_FAILED", f"{name}: {e}")
+                    record_warning("PROVIDER_FAILED", provider_error_text(name, e))
                     # Fonte que falhou é aprendizado barato e honesto; fica marcado
                     # como `auto` porque ninguém digitou esse registro. Em `--dry-run`,
                     # não: a busca de diagnóstico não escreve em lugar nenhum, e uma
@@ -1649,7 +1656,7 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
             }
             query_used = short
         if not items and errors:
-            raise ValueError("; ".join(f"{e['provider']}: {e['error']}" for e in errors))
+            raise ValueError("; ".join(provider_error_text(e["provider"], e["error"]) for e in errors))
         items.sort(key=lambda c: not domain_matches(c.get("source_url"), rules["preferred_domains"]))
         shown = [_search_row(c) for c in items]
         result = {

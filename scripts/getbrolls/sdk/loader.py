@@ -19,14 +19,24 @@ from ..ledger import atomic_write
 from ..rules import home_dir
 from . import guard
 from .api import PluginApi
+from .guard import without_prefix
 from .manifest import MANIFEST_NAME, ManifestError, compatibility_problem, read_manifest
 
 _log = logs.get("sdk")
 
-SANDBOX_NOTE = (
-    "Mostre o manifesto e as permissões à pessoa; com o ok dela, rode de novo com --yes. "
-    "O plugin roda código Python com as permissões dela: não é sandbox."
+NOT_SANDBOX = "O plugin roda código Python com as permissões dela: não é sandbox."
+# Prévia de `enable` de plugin nunca pinado: `--yes` basta (o conteúdo não tem pin
+# anterior com que comparar).
+SANDBOX_NOTE = "Mostre o manifesto e as permissões à pessoa; com o ok dela, rode de novo com --yes. " + NOT_SANDBOX
+# Prévia de `install`/`update` e de `enable` de um plugin cujo conteúdo mudou desde o
+# pin: `--yes` sozinho é recusado; o sha256 desta prévia tem que voltar em `--expect`.
+EXPECT_NOTE = (
+    "Mostre o manifesto, as permissões e o que mudou à pessoa; com o ok dela, rode de novo com "
+    "--yes --expect <sha256> (o sha256 desta prévia). " + NOT_SANDBOX
 )
+# Respostas de sucesso: nada para rodar de novo.
+DONE_NOTE = "Pronto. " + NOT_SANDBOX
+GB_PLUGINS_REASON = "desligado por GB_PLUGINS (a variável escolhe os plugins desta sessão, sem mexer no plugins.json)"
 
 
 def plugins_root():
@@ -108,9 +118,9 @@ def _size_label(limit):
     return f"{limit // (1024 * 1024)} MB" if limit >= 1024 * 1024 else f"{limit} bytes"
 
 
-def _hash_file(path, into, budget):
-    """Soma `path` em `into` (e devolve os bytes lidos), em pedaços de 1 MB, sem
-    passar de `DIGEST_MAX_FILE_BYTES` nem do `budget` que resta do total."""
+def _hash_file(path, budget, *into):
+    """Soma `path` em cada hash de `into` (e devolve os bytes lidos), em pedaços de
+    1 MB, sem passar de `DIGEST_MAX_FILE_BYTES` nem do `budget` que resta do total."""
     limit = DIGEST_MAX_FILE_BYTES
     total = 0
     with path.open("rb") as stream:
@@ -126,7 +136,8 @@ def _hash_file(path, into, budget):
                     f"A pasta do plugin passa do teto de {_size_label(DIGEST_MAX_TOTAL_BYTES)} para conferir o "
                     "conteúdo; tire os arquivos grandes dela (use api.data_dir) e habilite de novo."
                 )
-            into.update(chunk)
+            for hasher in into:
+                hasher.update(chunk)
     return total
 
 
@@ -141,7 +152,7 @@ def folder_digest(folder):
     budget = DIGEST_MAX_TOTAL_BYTES
     for rel, path in _counted_files(folder):
         digest.update(rel.as_posix().encode() + b"\0")
-        budget -= _hash_file(path, digest, budget)
+        budget -= _hash_file(path, budget, digest)
         digest.update(b"\0")
     return digest.hexdigest()
 
@@ -152,9 +163,57 @@ def file_digests(folder):
     budget = DIGEST_MAX_TOTAL_BYTES
     for rel, path in _counted_files(folder):
         one = hashlib.sha256()
-        budget -= _hash_file(path, one, budget)
+        budget -= _hash_file(path, budget, one)
         result[rel.as_posix()] = one.hexdigest()
     return result
+
+
+def pin_digests(folder):
+    """`(folder_digest, file_digests)` numa leitura só — o que o pin grava.
+
+    O mapa por arquivo (caminho relativo POSIX → sha256) fica ao lado do pin em
+    plugins.json: é o que deixa o `enable` de um plugin suspenso mostrar o que
+    mudou (BUG-06). Mesmo recorte e mesmos tetos das duas funções acima."""
+    whole = hashlib.sha256()
+    files = {}
+    budget = DIGEST_MAX_TOTAL_BYTES
+    for rel, path in _counted_files(folder):
+        one = hashlib.sha256()
+        whole.update(rel.as_posix().encode() + b"\0")
+        budget -= _hash_file(path, budget, whole, one)
+        whole.update(b"\0")
+        files[rel.as_posix()] = one.hexdigest()
+    return whole.hexdigest(), files
+
+
+def _pinned_files(pin):
+    """Mapa por arquivo guardado no pin, ou `None` num pin antigo (ou malformado)."""
+    files = pin.get("files")
+    if isinstance(files, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in files.items()):
+        return files
+    return None
+
+
+def files_diff(before, after):
+    """`{added, removed, changed}` entre dois mapas caminho → sha256."""
+    return {
+        "added": sorted(set(after) - set(before)),
+        "removed": sorted(set(before) - set(after)),
+        "changed": sorted(name for name in set(before) & set(after) if before[name] != after[name]),
+    }
+
+
+def check_expect(expect, sha):
+    """I3: `--yes` sozinho não basta — o sha256 mostrado na prévia (do conteúdo
+    já materializado, não de um manifesto solto) tem que ser reapresentado, ou
+    a pessoa pode estar confirmando um conteúdo diferente do que viu."""
+    if not expect:
+        raise ValueError("--yes precisa de --expect <sha256>; rode a prévia (sem --yes) de novo e confira o valor.")
+    if expect != sha:
+        raise ValueError(
+            "O sha256 não bate com o conteúdo agora (a origem mudou desde a prévia); "
+            "rode a prévia de novo (sem --yes) e confirme com o --expect atualizado."
+        )
 
 
 def _valid_pin(entry):
@@ -211,7 +270,7 @@ def _status(manifest, folder, selection, state):
     if problem:
         return "incompatible", problem
     if selection is not None:
-        return ("enabled", None) if manifest["id"] in selection else ("disabled", None)
+        return ("enabled", None) if manifest["id"] in selection else ("disabled", GB_PLUGINS_REASON)
     pinned = state.get(manifest["id"])
     if not pinned:
         return "disabled", None
@@ -453,18 +512,47 @@ def declared_by(name, kind="providers"):
     return next((row for row, _, manifest in rows if manifest and name in manifest["contributes"][kind]), None)
 
 
-def _preview(manifest, folder):
+def status_phrase(row):
+    """`que está <status>[: <motivo>]` para frases do tipo "a fonte X é do plugin Y, …".
+
+    Sem ponto final (quem chama fecha a frase) e sem repetir o `Plugin <id>:` que o
+    motivo às vezes já traz — um `reason` termina em "." e colá-lo antes de ". Rode…"
+    ou "; removida…" dava "..", ".;" e "Plugin X: Plugin X:" (BUG-10)."""
+    reason = (row.get("reason") or "").strip()
+    reason = without_prefix(row["id"], reason).rstrip(" .")
+    return f"que está {row['status']}" + (f": {reason}" if reason else "")
+
+
+def status_hint(row, default):
+    """O que fazer com um plugin indisponível: fora de `GB_PLUGINS`, a saída é a
+    variável — `enable` não resolve (BUG-09); nos outros casos, `default`."""
+    if row.get("status") == "disabled" and row.get("reason") == GB_PLUGINS_REASON:
+        return (
+            f"Inclua {row['id']} em GB_PLUGINS (ou tire GB_PLUGINS do ambiente) para usá-lo nesta sessão; "
+            "habilitar de novo não muda essa seleção."
+        )
+    return default
+
+
+def _preview(manifest, folder, sha=None):
     return {
         "id": manifest["id"],
         "name": manifest["name"],
         "version": manifest["version"],
         "contributes": {k: v for k, v in manifest["contributes"].items() if v},
         "permissions": manifest["permissions"],
-        "sha256": folder_digest(folder),
+        "sha256": sha if sha is not None else folder_digest(folder),
     }
 
 
-def enable(plugin_id, confirm):
+def enable(plugin_id, confirm, expect=None):
+    """Prévia (sem `confirm`) ou pin do conteúdo atual como habilitado.
+
+    Plugin nunca pinado (ou pinado com o mesmo conteúdo): `--yes` basta, como
+    sempre. Plugin com pin cujo conteúdo mudou (o `suspended` de "mudou desde o
+    enable"): a prévia traz o `diff` dos arquivos contra o mapa guardado no pin, e
+    confirmar exige `--expect <sha256>` desta prévia — paridade com install/update,
+    sem re-pinar às cegas o que estiver no disco (BUG-06)."""
     from .registry import reset_registry
 
     row, folder, manifest = find(plugin_id)
@@ -473,15 +561,32 @@ def enable(plugin_id, confirm):
     problem = compatibility_problem(manifest)
     if problem:
         raise ValueError(f"Plugin {plugin_id}: {problem}")
-    preview = _preview(manifest, folder)
-    if not confirm:
-        return {"enabled": False, "plugin": preview, "note": SANDBOX_NOTE}
+    sha, files = pin_digests(folder)
+    preview = _preview(manifest, folder, sha)
     state = read_state()
-    state["enabled"][plugin_id] = {"version": manifest["version"], "sha256": preview["sha256"]}
+    pinned = state["enabled"].get(plugin_id)
+    changed = pinned is not None and pinned.get("sha256") != sha
+    extra = {}
+    if pinned is not None and changed:
+        before = _pinned_files(pinned)
+        extra["diff"] = {
+            "version": {"from": pinned.get("version"), "to": manifest["version"]},
+            "files": files_diff(before, files) if before is not None else None,
+        }
+        if before is None:
+            extra["diff"]["note"] = (
+                "O pin anterior não guardou a lista de arquivos (versão antiga); confira a pasta do plugin "
+                "antes de confirmar."
+            )
+    if not confirm:
+        return {"enabled": False, "plugin": preview, **extra, "note": EXPECT_NOTE if changed else SANDBOX_NOTE}
+    if changed or expect:
+        check_expect(expect, sha)
+    state["enabled"][plugin_id] = {"version": manifest["version"], "sha256": sha, "files": files}
     _write_state(state)
     reset_registry()
     logs.event(_log, logging.INFO, "plugin_enabled", plugin=plugin_id, version=manifest["version"])
-    return {"enabled": True, "plugin": preview, "note": SANDBOX_NOTE}
+    return {"enabled": True, "plugin": preview, **extra, "note": DONE_NOTE}
 
 
 def pin(manifest, folder, origin=None, enable=True):
@@ -494,10 +599,10 @@ def pin(manifest, folder, origin=None, enable=True):
     from .registry import reset_registry
 
     plugin_id = manifest["id"]
-    sha = folder_digest(folder)
+    sha, files = pin_digests(folder)
     state = read_state()
     if enable:
-        state["enabled"][plugin_id] = {"version": manifest["version"], "sha256": sha}
+        state["enabled"][plugin_id] = {"version": manifest["version"], "sha256": sha, "files": files}
     if origin is not None:
         state.setdefault("sources", {})[plugin_id] = origin
     _write_state(state)

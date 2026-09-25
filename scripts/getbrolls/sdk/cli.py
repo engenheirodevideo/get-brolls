@@ -24,7 +24,7 @@ def _require_id(args):
 
 
 def _enable(args):
-    return loader.enable(_require_id(args), confirm=bool(args.yes))
+    return loader.enable(_require_id(args), confirm=bool(args.yes), expect=args.expect)
 
 
 def _disable(args):

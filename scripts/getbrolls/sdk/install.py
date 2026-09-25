@@ -590,16 +590,8 @@ def _summary(manifest, origin, commit, sha256, files):
 
 
 def _check_expect(expect, sha):
-    """I3: `--yes` sozinho não basta — o sha256 mostrado na prévia (do conteúdo
-    já materializado, não de um manifesto solto) tem que ser reapresentado, ou
-    a pessoa pode estar confirmando um `install`/`update` diferente do que viu."""
-    if not expect:
-        raise ValueError("--yes precisa de --expect <sha256>; rode a prévia (sem --yes) de novo e confira o valor.")
-    if expect != sha:
-        raise ValueError(
-            "O sha256 não bate com o conteúdo agora (a origem mudou desde a prévia); "
-            "rode a prévia de novo (sem --yes) e confirme com o --expect atualizado."
-        )
+    """I3: ver `loader.check_expect` (compartilhado com o `enable` de plugin suspenso)."""
+    loader.check_expect(expect, sha)
 
 
 def install(source, confirm, expect=None):
@@ -617,14 +609,14 @@ def install(source, confirm, expect=None):
         sha = loader.folder_digest(staging)
         preview = _summary(manifest, origin, commit, sha, _file_list(staging))
         if not confirm:
-            return {"installed": False, "plugin": preview, "note": loader.SANDBOX_NOTE}
+            return {"installed": False, "plugin": preview, "note": loader.EXPECT_NOTE}
         _check_expect(expect, sha)
         staging.replace(target)
     finally:
         force_rmtree(staging)
     pinned_sha = loader.pin(manifest, target, {"source": origin, "commit": commit})
     logs.event(_log, logging.INFO, "plugin_installed", plugin=manifest["id"], version=manifest["version"])
-    return {"installed": True, "plugin": {**preview, "sha256": pinned_sha}, "note": loader.SANDBOX_NOTE}
+    return {"installed": True, "plugin": {**preview, "sha256": pinned_sha}, "note": loader.DONE_NOTE}
 
 
 def _diff(old_folder, old_manifest, new_folder, new_manifest):
@@ -636,11 +628,7 @@ def _diff(old_folder, old_manifest, new_folder, new_manifest):
             "from": old_manifest["permissions"] if old_manifest else None,
             "to": new_manifest["permissions"],
         },
-        "files": {
-            "added": sorted(set(after) - set(before)),
-            "removed": sorted(set(before) - set(after)),
-            "changed": sorted(name for name in set(before) & set(after) if before[name] != after[name]),
-        },
+        "files": loader.files_diff(before, after),
     }
 
 
@@ -664,7 +652,7 @@ def update(plugin_id, confirm, expect=None):
         preview = _summary(manifest, source, commit, sha, _file_list(staging))
         diff = _diff(folder, current, staging, manifest)
         if not confirm:
-            return {"updated": False, "plugin": preview, "diff": diff, "note": loader.SANDBOX_NOTE}
+            return {"updated": False, "plugin": preview, "diff": diff, "note": loader.EXPECT_NOTE}
         _check_expect(expect, sha)
         retired = folder.with_name(_new_old_staging_name(plugin_id))
         os.replace(folder, retired)
@@ -701,7 +689,7 @@ def update(plugin_id, confirm, expect=None):
         "plugin": {**preview, "sha256": sha_after},
         "diff": diff,
         "enabled": was_enabled,
-        "note": loader.SANDBOX_NOTE,
+        "note": loader.DONE_NOTE,
     }
     if not was_enabled:
         result["note"] = (

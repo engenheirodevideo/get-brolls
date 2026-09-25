@@ -204,11 +204,13 @@ def load_rules(project):  # noqa: C901, PLR0912, PLR0915 - existing size; valida
             row = _declared_by_plugin(name)
             if row is None:
                 raise base_error
-            detail = f": {row['reason']}" if row["reason"] else ""
+            from .sdk.loader import status_hint, status_phrase
+
+            hint = status_hint(row, "Rode plugins --action list / doctor.")
             message = (
                 f'Em RULES.md, "preferred_providers.{intent}" listava "{name}", fonte do '
-                f"plugin {row['id']}, que está {row['status']}{detail}; removida da lista "
-                "efetiva até o plugin voltar a carregar. Rode plugins --action list / doctor."
+                f"plugin {row['id']}, {status_phrase(row)}; removida da lista "
+                f"efetiva até o plugin voltar a carregar. {hint}"
             )
             warnings.append(message)
             logs.event(log, logging.INFO, "rule_source_skipped", provider=name, plugin=row["id"], status=row["status"])

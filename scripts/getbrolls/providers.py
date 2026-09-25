@@ -171,10 +171,8 @@ def _source_unavailable_error(name):
     row = loader.declared_by(name)
     if row is None:
         return ProviderError("Busca indisponível nesta fonte; forneça URL ou arquivo local")
-    detail = f": {row['reason']}" if row["reason"] else ""
-    return ProviderError(
-        f"Fonte {name} é do plugin {row['id']}, que está {row['status']}{detail}. Rode plugins --action list / doctor."
-    )
+    hint = loader.status_hint(row, "Rode plugins --action list / doctor.")
+    return ProviderError(f"Fonte {name} é do plugin {row['id']}, {loader.status_phrase(row)}. {hint}")
 
 
 def search(provider, query, limit=8, media="any"):

@@ -238,11 +238,8 @@ def _plugin_source_hint(name):
     row = loader.declared_by(name)
     if row is None:
         return ""
-    detail = f": {row['reason']}" if row["reason"] else ""
-    return (
-        f' A fonte "{name}" é do plugin {row["id"]}, que está {row["status"]}{detail}. '
-        "Rode plugins --action list / doctor para reabilitar ou consertar o plugin."
-    )
+    hint = loader.status_hint(row, "Rode plugins --action list / doctor para reabilitar ou consertar o plugin.")
+    return f' A fonte "{name}" é do plugin {row["id"]}, {loader.status_phrase(row)}. {hint}'
 
 
 def _sources(value, field):
