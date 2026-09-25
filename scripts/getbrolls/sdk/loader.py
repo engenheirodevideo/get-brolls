@@ -252,9 +252,17 @@ MAP_OMITTED_NOTE = (
 )
 
 
+def permissions_diff(before, after):
+    """Bloco `{from, to}` das permissões (network, env, paths) — o mesmo do diff do
+    `update` e do `enable` de conteúdo mudado. `before` é `None` quando não se sabe."""
+    return {"from": before, "to": after}
+
+
 def pin_entry(manifest, sha, files):
-    """Entrada de `enabled`/`last_pins`: versão, sha256 e o mapa por arquivo (se cabe no teto)."""
-    entry = {"version": manifest["version"], "sha256": sha}
+    """Entrada de `enabled`/`last_pins`: versão, sha256, permissões aprovadas e o mapa
+    por arquivo (se cabe no teto). As permissões guardadas deixam o `enable` de um
+    conteúdo mudado mostrar o que elas eram antes."""
+    entry = {"version": manifest["version"], "sha256": sha, "permissions": manifest["permissions"]}
     if len(files) > PIN_MAP_MAX_FILES:
         entry["files_omitted"] = True
     else:
@@ -693,8 +701,10 @@ def enable(plugin_id, confirm, expect=None):
     if pinned is not None and changed:
         before = _pinned_files(pinned)
         too_many = pinned.get("files_omitted") is True or len(files) > PIN_MAP_MAX_FILES
+        previous = pinned.get("permissions")
         extra["diff"] = {
             "version": {"from": pinned.get("version"), "to": manifest["version"]},
+            "permissions": permissions_diff(previous if isinstance(previous, dict) else None, manifest["permissions"]),
             "files": files_diff(before, files) if before is not None and not too_many else None,
         }
         if too_many:
@@ -702,6 +712,11 @@ def enable(plugin_id, confirm, expect=None):
         elif before is None:
             extra["diff"]["note"] = (
                 "O pin anterior não guardou a lista de arquivos (versão antiga); confira a pasta do plugin "
+                "antes de confirmar."
+            )
+        elif not isinstance(previous, dict):
+            extra["diff"]["note"] = (
+                "O pin anterior não guardou as permissões (versão antiga); confira permissions nesta prévia "
                 "antes de confirmar."
             )
     if not confirm:

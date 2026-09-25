@@ -424,9 +424,10 @@ python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
   plugin copiado à mão para `plugins/` e para religar um plugin que você
   desligou com `disable`.
 - **Re-enable de plugin `suspended`.** Quando o conteúdo mudou desde o pin, a
-  prévia do `enable` (sem `--yes`) traz o `diff`: versão e arquivos
-  adicionados, removidos e alterados, comparados com o sha256 por arquivo que
-  o pin guarda em `plugins.json` (`enabled.<id>.files`). Confirmar exige
+  prévia do `enable` (sem `--yes`) traz o `diff`: versão, permissões
+  (`permissions.from`/`to`, com `network`, `env` e `paths`, como no `update`) e
+  arquivos adicionados, removidos e alterados, comparados com o que o pin
+  guarda em `plugins.json` (`enabled.<id>.permissions` e `.files`). Confirmar exige
   `--yes --expect <sha256>`, o mesmo valor da prévia — `--yes` sozinho é
   recusado, como no install/update. Um `plugins.json` de antes desta versão
   (pin sem `files`) continua válido; a prévia só avisa que o diff é

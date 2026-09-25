@@ -123,3 +123,21 @@ class ResolvedRootBreadthTests(unittest.TestCase):
         ):
             roots = self.api([str(base / "casa"), str(home), *links, str(home / "Filmes")])._roots()
         self.assertEqual([home / "Filmes"], roots)
+
+
+class EnablePermissionsDiffTests(LoaderTestCase):
+    """O `enable` de um plugin cujo conteúdo mudou mostra de/para das permissões."""
+
+    def test_changed_permissions_show_from_and_to(self):
+        folder = self.install()
+        loader.enable("demo", confirm=True)
+        widened = {
+            **MANIFEST,
+            "permissions": {"network": ["demo.example", "outro.example"], "env": ["DEMO_TOKEN"], "paths": ["~/Movies"]},
+        }
+        (folder / "getbrolls-plugin.json").write_text(json.dumps(widened), encoding="utf-8")
+        diff = loader.enable("demo", confirm=False)["diff"]
+        self.assertEqual(MANIFEST["permissions"]["network"], diff["permissions"]["from"]["network"])
+        self.assertEqual(["demo.example", "outro.example"], diff["permissions"]["to"]["network"])
+        self.assertEqual(["~/Movies"], diff["permissions"]["to"]["paths"])
+        self.assertEqual(["DEMO_TOKEN"], diff["permissions"]["to"]["env"])

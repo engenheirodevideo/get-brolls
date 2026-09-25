@@ -10,6 +10,7 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- SDK: o `enable` de um plugin cujo conteúdo mudou mostra também as permissões de/para (`network`, `env`, `paths`), como o `update`; o pin passa a guardar as permissões aprovadas.
 - SDK (segurança): o `.env` entrega a um plugin só variáveis do espaço de nomes dele (`<ID>_...`), nunca do core, de outro plugin ou do sistema (`HTTPS_PROXY`, `NODE_OPTIONS`...); a prévia de enable/install avisa quando `permissions.env` pede uma variável assim, e a linha que sobrou de um plugin removido diz como consertar.
 - SDK: o arquivo trazido pela rota de `fetch` é procurado no cache do projeto atual — projeto movido reaproveita o arquivo sem consumir licença de novo, e uma cópia nunca lê o cache do original.
 - SDK (segurança): em ORIGEM.md, credits.md e na tabela de `entrega/README.md`, texto de candidato de plugin (título, autor, licença, URLs, licença/preset do plugin) sai com os caracteres de Markdown/HTML escapados — sem imagem remota, link ou ênfase forjados; fontes embutidas não mudam.

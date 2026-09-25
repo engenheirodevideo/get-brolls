@@ -656,10 +656,9 @@ def _diff(old_folder, old_manifest, new_folder, new_manifest):
     after = loader.file_digests(new_folder)
     return {
         "version": {"from": old_manifest["version"] if old_manifest else None, "to": new_manifest["version"]},
-        "permissions": {
-            "from": old_manifest["permissions"] if old_manifest else None,
-            "to": new_manifest["permissions"],
-        },
+        "permissions": loader.permissions_diff(
+            old_manifest["permissions"] if old_manifest else None, new_manifest["permissions"]
+        ),
         "files": loader.files_diff(before, after),
     }
 
