@@ -133,7 +133,7 @@ motivo), não os comandos do core.
 | `resolve_url` | `False` | A fonte implementa `resolve()` para URLs próprias. |
 | `media_kinds` | `("video",)` | Tipos de mídia que a fonte devolve: `video`, `image`, ou os dois. |
 | `match_kind` | `"literal"` | Como o core rotula a correspondência: `literal` (entidade nomeada) ou `illustrative` (ideia genérica). |
-| `env_key` | `None` | Nome da variável de ambiente cuja presença indica "fonte configurada" (informativo; a leitura real passa por `api.env`). |
+| `env_key` | `None` | Nome da variável cuja presença indica "fonte configurada" em `providers`, `doctor` e no BRIEF (informativo; a leitura real passa por `api.env`). Conta o ambiente do processo e, do `.env`, só o valor do espaço de nomes deste plugin — declarar a variável de outro plugin nunca mostra a fonte como configurada. |
 | `transport` | `"https"` | Rótulo do transporte usado, para exibição (`https`, `local`, etc.). |
 | `url_hosts` | `()` | Hosts que só esta fonte pode reivindicar em `resolve`; colisão com outra fonte (built-in ou plugin) é recusada no registro. |
 | `seek` | `"unsupported"` | Rótulo de que tipo de busca por tempo a fonte oferece. |

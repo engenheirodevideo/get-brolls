@@ -71,7 +71,7 @@ PATH_KEYS = (*TOOL_PATH_KEYS.values(), "GB_VENV_PATH")
 # Um plugin só pode receber do `.env` variáveis do próprio espaço de nomes,
 # `<ID_EM_MAIÚSCULAS>_...` (ex.: `BANCO_HTTP_TOKEN` do plugin `banco_http`), nunca uma do
 # core (`KEYS`, `GB_*`). E essas variáveis NUNCA vão para `os.environ`: ficam num mapa do
-# core (`plugin_env()`) que só `api.env` do plugin dono lê. Subprocessos (ffmpeg, yt-dlp,
+# core (`_PLUGIN_ENV`) que só `api.env` do plugin dono lê, por `plugin_env_value`. Subprocessos (ffmpeg, yt-dlp,
 # git, playwright), OpenSSL e o `ssl` do Python não enxergam valor de `.env` de plugin —
 # o que tira do caminho toda a classe `GIT_SSH_COMMAND`/`XDG_CONFIG_HOME`/`OPENSSL_CONF`,
 # não só uma lista de nomes.
@@ -150,21 +150,19 @@ def toolchain_env_key(key):
     return key in TOOLCHAIN_ENV_KEYS or key.startswith(TOOLCHAIN_ENV_PREFIXES)
 
 
-def plugin_env():
-    """`{variável: (id do plugin dono, valor)}` lidas do `.env` para plugins — nunca exportadas."""
-    return dict(_PLUGIN_ENV)
-
-
 def plugin_env_value(plugin_id, key):
     """Valor que o `.env` guardou para `key`, só se `plugin_id` for o dono; senão `None`."""
     owner, value = _PLUGIN_ENV.get(key, (None, None))
     return value if owner == plugin_id else None
 
 
-def env_is_set(key):
-    """A variável tem valor no ambiente do processo ou no `.env` de um plugin? Para
-    `doctor`/`providers`/BRIEF dizerem se uma fonte está configurada."""
-    return bool(os.environ.get(key)) or bool(_PLUGIN_ENV.get(key, (None, ""))[1])
+def env_is_set(key, owner=None):
+    """A variável da fonte tem valor? Para `doctor`/`providers`/BRIEF dizerem se uma
+    fonte está configurada. Vale o ambiente do processo; o `.env` de plugin só conta
+    quando `owner` (o dono da fonte que declara `key`) é o mesmo plugin dono do valor
+    — um plugin que declara como `env_key` uma variável do espaço de nomes de outro
+    não aparece "configurado" com o segredo alheio."""
+    return bool(os.environ.get(key)) or (owner is not None and bool(plugin_env_value(owner, key)))
 
 
 def env_namespace_owner(key, plugin_ids):
@@ -257,7 +255,7 @@ def _parse_env(path):
 
 def load_env(path):
     """Lê o `.env`: chaves do core (`KEYS`) vão para o ambiente do processo, como
-    sempre; as de `permissions.env` de plugins instalados ficam só em `plugin_env()`,
+    sempre; as de `permissions.env` de plugins instalados ficam só em `_PLUGIN_ENV`,
     lidas por `api.env` do plugin dono, nunca exportadas. As do core entram primeiro —
     `GB_HOME` no próprio `.env` decide em qual `plugins/` procurar os manifestos.
     Chave que ninguém declara é erro."""

@@ -498,7 +498,7 @@ def missing_provider_keys(beat):
     for name in beat["allowed_sources"]:
         source = reg.provider(name)
         key = source.capabilities.env_key if source else None
-        if key and not env_is_set(key):
+        if key and not env_is_set(key, reg.owner("provider", name)):
             result.append({"provider": name, "env_key": key})
     return result
 

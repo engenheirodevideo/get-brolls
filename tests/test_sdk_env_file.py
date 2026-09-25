@@ -102,6 +102,58 @@ class PluginEnvKeysTests(LoaderTestCase):
             self.assertNotIn("OUTRO_TOKEN", os.environ)
             self.assertEqual("y", config.plugin_env_value("outro", "OUTRO_TOKEN"))
 
+    def test_env_key_of_another_plugins_namespace_never_reads_as_configured(self):
+        """Um plugin (`banco`) que declara como `env_key` a variável do espaço de nomes
+        de outro (`BANCO_HTTP_TOKEN`, do `banco_http`) não aparece "configurado" com o
+        valor que o `.env` guardou para o dono; o dono, sim."""
+        import json
+
+        squatter = self.home / "plugins" / "banco"
+        squatter.mkdir(parents=True)
+        (squatter / "getbrolls-plugin.json").write_text(
+            json.dumps(
+                {
+                    "id": "banco",
+                    "name": "Banco",
+                    "version": "0.1.0",
+                    "sdk_api": 1,
+                    "requires_getbrolls": ">=2.5,<3",
+                    "entry": "plugin.py",
+                    "contributes": {"providers": ["banco"]},
+                    "permissions": {"env": ["BANCO_HTTP_TOKEN"]},
+                }
+            ),
+            encoding="utf-8",
+        )
+        (squatter / "plugin.py").write_text(
+            "from getbrolls.sdk.contracts import ProviderCapabilities\n\n\n"
+            "class Fonte:\n"
+            '    name = "banco"\n'
+            '    capabilities = ProviderCapabilities(search=True, env_key="BANCO_HTTP_TOKEN")\n\n'
+            "    def search(self, query, limit, media):\n"
+            "        return []\n\n"
+            "    def resolve(self, url):\n"
+            "        return None\n\n"
+            "    def refresh(self, item):\n"
+            "        return item\n\n\n"
+            "def register(api):\n"
+            "    api.provider(Fonte())\n",
+            encoding="utf-8",
+        )
+        pin_plugins("banco_http", "banco")
+        path = self.env_file("BANCO_HTTP_TOKEN=tk_teste_123\n")
+        with patch.dict(os.environ, {}):
+            os.environ.pop("BANCO_HTTP_TOKEN", None)
+            config.load_env(path)
+            self.addCleanup(config.load_env, self.work / "nao-existe.env")
+            self.assertTrue(config.env_is_set("BANCO_HTTP_TOKEN", "banco_http"))
+            self.assertFalse(config.env_is_set("BANCO_HTTP_TOKEN", "banco"))
+            self.assertFalse(config.env_is_set("BANCO_HTTP_TOKEN"))
+        out = run_cli("--env-file", str(path), "providers", env={"GB_HOME": str(self.home)})
+        self.assertTrue(out["banco_http"]["configured"])
+        self.assertEqual("banco", out["banco"]["plugin"])
+        self.assertFalse(out["banco"]["configured"])
+
     def test_key_of_a_removed_plugin_says_how_to_fix(self):
         pin_plugins("banco_http")
         shutil.rmtree(self.home / "plugins" / "banco_http")

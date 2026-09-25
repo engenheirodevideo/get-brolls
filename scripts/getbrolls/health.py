@@ -49,7 +49,7 @@ def live_checks():
     )
     for name in builtin + extra:
         key = reg.provider(name).capabilities.env_key  # type: ignore[union-attr] - name veio de builtin/provider_names()
-        if key and not env_is_set(key):
+        if key and not env_is_set(key, reg.owner("provider", name)):
             results.append({"provider": name, "status": "not_tested_missing_key", "env_key": key})
             continue
         start = time.monotonic()

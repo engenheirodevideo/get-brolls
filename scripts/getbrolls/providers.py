@@ -153,7 +153,7 @@ def capabilities():
             "seek": caps.seek,
             "download": caps.download,
             "transport": caps.transport,
-            "configured": not caps.env_key or env_is_set(caps.env_key),
+            "configured": not caps.env_key or env_is_set(caps.env_key, reg.owner("provider", name)),
             "env_key": caps.env_key,
         }
         owner = reg.owner("provider", name)
