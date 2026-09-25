@@ -344,17 +344,34 @@ def _nasa(query, limit, media="any"):
 
 # Arquivos de imagem que o acervo da NASA publica para um mesmo item.
 NASA_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
+# Versões de uma foto no acervo, da maior para a menor.
+NASA_IMAGE_RENDITIONS = ("~orig", "~large", "~medium", "~small", "~thumb")
+
+
+def _nasa_image_rank(url):
+    """Foto: a original primeiro, depois a maior versão; TIFF só perde para JPG/PNG do mesmo tamanho."""
+    path = urlsplit(url).path.lower()
+    rank = next((i for i, tag in enumerate(NASA_IMAGE_RENDITIONS) if tag in path), len(NASA_IMAGE_RENDITIONS))
+    return (rank, path.endswith((".tif", ".tiff")), len(url))
 
 
 def _nasa_asset_urls(ident, suffixes):
-    """Arquivos públicos deste item, do mais completo para o mais leve."""
+    """Arquivos públicos deste item na ordem de uso.
+
+    Foto sai na versão original (a `~medium` tem 1280 px e era entregue mesmo com a
+    `~orig` publicada). Vídeo segue com a `~medium.mp4` primeiro: é o arquivo de
+    trabalho leve da fonte, e a `~orig` fica por último.
+    """
     data = get_json("https://images-api.nasa.gov/asset/" + quote(ident, safe=""), cache_ttl=86400)
     urls = [
         encoded_url(v["href"])
         for v in data.get("collection", {}).get("items", [])
         if public_url(v.get("href")) and urlsplit(v["href"]).path.lower().endswith(suffixes)
     ]
-    urls.sort(key=lambda u: ("~orig" in u, "~medium" not in u, len(u)))
+    if suffixes == NASA_IMAGE_SUFFIXES:
+        urls.sort(key=_nasa_image_rank)
+    else:
+        urls.sort(key=lambda u: ("~orig" in u, "~medium" not in u, len(u)))
     return urls
 
 
