@@ -10,6 +10,7 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- SDK (segurança): texto de plugin que vira evidência (texto de preset e `RouteResult.license`) sai numa linha, sem caracteres de controle/bidi, até 300 caracteres, prefixado ("Condições informadas pelo plugin <id>:" / "Licença registrada pelo plugin <id>:") e sem `;`/`|` — não forja outro item nem uma declaração em ORIGEM/credits.
 - SDK: o `.env` (e `--env-file`) aceita as variáveis de `permissions.env` dos plugins instalados, como o README do `banco_http` e o `brief` já mandavam; nome que nenhum plugin declara continua sendo erro.
 - SDK (segurança): `GB_PLUGINS` só filtra — escolhe, entre os plugins já habilitados com pin válido, os da sessão (`off` desliga todos); nunca carrega plugin sem pin, nunca habilitado ou com conteúdo mudado.
 - SDK (segurança): um `getbrolls-plugin.json` acima de 64 KB ou aninhado demais deixa só aquela linha `invalid`; `plugins list`, `doctor` e `x --list` não caem mais com INTERNAL_ERROR.

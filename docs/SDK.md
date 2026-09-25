@@ -172,6 +172,11 @@ fluxo é o de sempre: sha256, cache privado, prévia, corte e ledger.
 `RouteResult.license` (até 500 caracteres) vira evidência extra em
 `rights.evidence` — `"Licença registrada pelo plugin <id>: <texto>"` — quando a
 rota roda no `fetch`, **depois** do permit humano; nunca substitui o permit.
+O texto entra numa linha só, sem caractere de controle nem de direção (bidi),
+com até 300 caracteres e com `;`/`|` trocados por `,`/`/` — assim ele nunca
+vira outro item de evidência nem uma "Declaração do usuário" em ORIGEM.md ou
+credits.md. O texto de um preset de plugin passa pelo mesmo saneamento e é
+gravado como `"Condições informadas pelo plugin <id>: <texto>"`.
 Uma rota `stage="preview"` que já deixou a mídia de trabalho pronta não roda de
 novo no `fetch`, então a licença dela não é registrada.
 

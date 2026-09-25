@@ -150,7 +150,9 @@ def fetch_stage_message(candidate):
 
 
 def license_evidence(plugin, text):
-    return f"Licença registrada pelo plugin {plugin}: {text}"
+    from .sdk.guard import LICENSE_EVIDENCE_LABEL, plugin_evidence
+
+    return plugin_evidence(LICENSE_EVIDENCE_LABEL, plugin, text)
 
 
 def fetch_only(candidate):

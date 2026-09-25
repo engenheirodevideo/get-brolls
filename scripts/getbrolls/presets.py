@@ -73,9 +73,19 @@ def names():
 
 
 def get(name):
+    """`{"url", "text"}` do preset. Preset de plugin: o texto sai saneado e marcado como
+    informado pelo plugin (B-04) — nunca uma declaração ou outra evidência forjada."""
+    from .sdk.contracts import CORE
     from .sdk.registry import get_registry
 
-    preset = get_registry().preset(name)
+    registry = get_registry()
+    preset = registry.preset(name)
     if preset is None:
         raise ValueError(f"Preset desconhecido: {name}. Use um de: {', '.join(names())}.")
-    return {"url": preset.url, "text": preset.text}
+    owner = registry.owner("preset", name)
+    if owner in (None, CORE):
+        return {"url": preset.url, "text": preset.text}
+    from .http import public_url
+    from .sdk.guard import PRESET_EVIDENCE_LABEL, plugin_evidence
+
+    return {"url": public_url(preset.url), "text": plugin_evidence(PRESET_EVIDENCE_LABEL, owner, preset.text)}

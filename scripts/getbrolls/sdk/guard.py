@@ -119,6 +119,9 @@ def _trusted_types():
 def plain_line(text, limit=MESSAGE_MAX_CHARS):
     """Uma linha só, sem caractere de controle/formatação (categoria Unicode `C*`,
     separadores de linha/parágrafo), espaços colapsados, até `limit` caracteres."""
+    # Corta antes de classificar caractere por caractere (B-12): um título de 50 MB
+    # não custa a classificação inteira para sobrar 300 caracteres.
+    text = text[: max(limit, 1) * 4]
     text = "".join(
         " " if unicodedata.category(char)[0] == "C" or unicodedata.category(char) in ("Zl", "Zp") else char
         for char in text
@@ -127,6 +130,25 @@ def plain_line(text, limit=MESSAGE_MAX_CHARS):
     if len(text) > limit:
         text = text[: limit - 1].rstrip() + "…"
     return text
+
+
+EVIDENCE_MAX_CHARS = 300
+PRESET_EVIDENCE_LABEL = "Condições informadas pelo plugin"
+LICENSE_EVIDENCE_LABEL = "Licença registrada pelo plugin"
+
+
+def plugin_evidence(label, owner, text):
+    """Texto de plugin que vira evidência (texto de preset, `RouteResult.license`), B-04.
+
+    Uma linha, sem caractere de controle nem de formatação (bidi U+200E/F,
+    U+202A–202E, U+2066–2069, U+FEFF), até 300 caracteres, e sempre com o prefixo
+    que diz que veio do plugin. `;` e `|` viram `,`/`/`: as evidências saem juntas
+    por `"; "` em ORIGEM.md/credits.md e o preset usa `" | Verificado por quem
+    pediu"`, então o texto do plugin nunca vira outro item nem uma "Declaração do
+    usuário" à parte. Texto normal de preset/licença passa igual, só prefixado."""
+    clean = plain_line(str(text)[: EVIDENCE_MAX_CHARS * 4], limit=EVIDENCE_MAX_CHARS)
+    clean = clean.replace(";", ",").replace("|", "/")
+    return f"{label} {owner}: {clean}"
 
 
 def sanitize_text(owner, text):
