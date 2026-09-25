@@ -260,6 +260,7 @@ class AspectMissingTests(unittest.TestCase):
 class PlanContractTests(unittest.TestCase):
     """Forma do plano que os exporters leem: versão, meta, take explícito, aspas das extensões e hash versionado."""
 
+    project: Path
     setUp = ScenePlanTests.setUp
     put = ScenePlanTests.put
     doc = ScenePlanTests.doc
