@@ -434,7 +434,10 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
             p.add_argument(
                 "--provider",
                 default="auto",
-                help="Fonte: youtube, pexels, pixabay, commons, nasa ou auto (padrão)",
+                help=(
+                    "Fonte: youtube, pexels, pixabay, commons, nasa, uma fonte de plugin habilitado ou auto "
+                    "(padrão); rode `providers` para listar as disponíveis, inclusive as de plugin"
+                ),
             )
             p.add_argument("--query", required=True, help="Termos da busca na fonte")
             p.add_argument("--limit", type=int, default=8, help="Máximo de candidatos, 1–50 (padrão 8)")

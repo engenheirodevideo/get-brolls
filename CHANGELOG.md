@@ -10,6 +10,10 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- SDK: `inspect` num candidato cujo arquivo veio por rota de plugin diz que a análise usou a cópia local trazida pela rota (com o tamanho em KB abaixo de 0,1 MB), em vez de "exigiu baixar o arquivo inteiro (0.0 MB)". Fontes embutidas iguais.
+- SDK: `ORIGEM.md` e `credits.md` de candidato de plugin dizem "Fonte: plugin <id> (<URL> ou arquivo local)", e `credits.md` ganha o título na fonte (ex.: nome do arquivo da pasta local); para fontes embutidas as linhas não mudam.
+- CLI: o `--help` de `search --provider` cita fontes de plugin habilitado e manda rodar `providers` para listá-las.
+- `status`: quando `summary.do` manda a prévia de referência (fonte de plugin que só entrega o arquivo no `fetch`), `summary.next` diz o mesmo em vez do genérico "Gere prévias com preview…".
 - SDK: `doctor --live` não marca mais como `failed` uma fonte de plugin só-metadados (`refresh: "no_media_url (fonte só-metadados)"`) ou com rota (`refresh: "route"`, sem chamar refresh); a mensagem de um `PluginError` (ex.: "Configure PASTA_LOCAL_DIR…"), já saneada, aparece no `detail` em vez da frase genérica. Fontes embutidas iguais.
 - `doctor`: com plugin `failed`/`suspended`/`invalid`/`incompatible`, o `summary` ganha a linha `plugins` com a contagem e os ids; sem plugin (ou com todos carregados) o `summary` não muda.
 - SDK: erro de fonte/rota de plugin ("Plugin <id>: …") não leva mais o sufixo genérico " Confira docs/RULES.md.": a frase é fechada com ponto e ganha "Veja plugins --action list / doctor e docs/SDK.md."; a mensagem de fonte de plugin fora do ar mantém só a dica dela. Mensagens das fontes embutidas não mudam.

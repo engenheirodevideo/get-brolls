@@ -1,12 +1,15 @@
 """Onda de UX do SDK: achados do QA funcional (BUG-05..14, G2..G11) e nomes de segredo residuais."""
 
+import argparse
 import json
 import os
 from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _cli import run_cli
+from _media import skip_unless_ffmpeg
 from test_sdk_loader import MANIFEST, PLUGIN_CODE, LoaderTestCase
+from test_sdk_route_fetch import FetchRouteCase
 
 from getbrolls.sdk import loader
 from getbrolls.sdk.registry import reset_registry
@@ -439,3 +442,144 @@ class DoctorSummaryPluginsTests(LoaderTestCase):
         self.install()
         loader.enable("demo", confirm=True)
         self.assertNotIn("plugins", run_cli("doctor", env=self.env())["summary"])
+
+
+class InspectLocalCopyTests(LoaderTestCase):
+    """BUG-11: `inspect` de fonte que veio por rota não diz "baixar o arquivo inteiro (0.0 MB)"."""
+
+    def test_route_copy_is_named_and_small_sizes_use_kb(self):
+        from getbrolls.commands import inspect_warnings
+
+        found = inspect_warnings({"duration_s": 3.0, "downloaded_bytes": 51 * 1024, "local_copy": "pasta_local"})
+        self.assertEqual(1, len(found))
+        self.assertIn("cópia local", found[0])
+        self.assertIn("pasta_local", found[0])
+        self.assertIn("51 KB", found[0])
+        self.assertNotIn("baixar", found[0])
+        self.assertNotIn("0.0 MB", found[0])
+
+    def test_route_copy_of_a_big_file_keeps_mb(self):
+        from getbrolls.commands import inspect_warnings
+
+        found = inspect_warnings({"downloaded_bytes": 3 * 1024 * 1024, "local_copy": "pasta_local"})
+        self.assertIn("3.0 MB", found[0])
+
+    def test_probe_direct_marks_the_route_copy(self):
+        from getbrolls import commands
+        from getbrolls.models import candidate
+
+        item = candidate("demo", "1", "Praia")
+        item["acquisition"] = {"status": "available", "method": "plugin:pasta_local", "evidence": []}
+        target = self.home / "v.mp4"
+        target.write_bytes(b"x" * 2048)
+        ledger = type("L", (), {})()
+        with (
+            patch("getbrolls.acquisition.cache_direct_media", return_value=str(target)),
+            patch.object(commands, "probe", return_value={"duration_s": 3.0}),
+        ):
+            probe = commands.probe_direct(ledger, item)
+        self.assertEqual("pasta_local", probe["local_copy"])
+
+    def test_builtin_direct_source_is_unchanged(self):
+        from getbrolls.commands import inspect_warnings
+
+        found = inspect_warnings({"downloaded_bytes": 51 * 1024})
+        self.assertIn("baixar o arquivo inteiro (0.0 MB)", found[0])
+
+
+def _plugin_fetched():
+    from test_delivery import fetched
+
+    c = fetched("a", "praia_por_do_sol")
+    c["provider"] = "demo"
+    c["id"] = "demo:a"
+    c["source_url"] = None
+    c["creator"]["name"] = None
+    c["acquisition"] = {"status": "available", "method": "plugin:demo", "evidence": []}
+    return c
+
+
+class PluginProvenanceTests(LoaderTestCase):
+    """BUG-12: ORIGEM.md/credits.md de candidato de plugin nomeiam o plugin e o arquivo."""
+
+    def test_origin_names_the_plugin_and_local_file(self):
+        from getbrolls import delivery
+
+        self.install()
+        loader.enable("demo", confirm=True)
+        lines = delivery.render_origin(_plugin_fetched(), "00-sem-beat.mp4").splitlines()
+        self.assertIn("- Fonte: plugin demo (arquivo local)", lines)
+        self.assertIn("- Título na fonte: praia_por_do_sol", lines)
+
+    def test_origin_with_a_public_url_keeps_it_next_to_the_plugin(self):
+        from getbrolls import delivery
+
+        self.install()
+        c = _plugin_fetched()
+        c["source_url"] = "https://demo.example/v/1"
+        self.assertIn(
+            "- Fonte: plugin demo (https://demo.example/v/1)", delivery.render_origin(c, "a.mp4").splitlines()
+        )
+
+    def test_credits_name_the_plugin_and_title(self):
+        import tempfile
+
+        from test_delivery import project
+
+        from getbrolls.rendering import render
+
+        self.install()
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = project(tmp, [_plugin_fetched()])
+            render(ledger)
+            lines = (ledger.root / "credits.md").read_text(encoding="utf-8").splitlines()
+        self.assertIn("- Fonte: plugin demo (arquivo local)", lines)
+        self.assertIn("- Título na fonte: praia_por_do_sol", lines)
+
+    def test_builtin_lines_are_unchanged(self):
+        import tempfile
+
+        from test_delivery import fetched, project
+
+        from getbrolls import delivery
+        from getbrolls.rendering import render
+
+        c = fetched("a", "Palco")
+        c["source_url"] = None
+        self.assertIn("- Fonte: original local", delivery.render_origin(c, "a.mp4").splitlines())
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = project(tmp, [c])
+            render(ledger)
+            text = (ledger.root / "credits.md").read_text(encoding="utf-8")
+        self.assertIn("- Fonte: original local", text.splitlines())
+        self.assertNotIn("Título na fonte", text)
+
+
+class SearchHelpTests(LoaderTestCase):
+    """BUG-13: `search --help` cita fontes de plugin e manda rodar `providers`."""
+
+    def test_provider_help_mentions_plugins_and_providers(self):
+        from getbrolls.cli import build_parser
+
+        subparsers = next(a for a in build_parser()._actions if isinstance(a, argparse._SubParsersAction))
+        search = subparsers.choices["search"]
+        provider = next(action for action in search._actions if "--provider" in action.option_strings)
+        self.assertIn("plugin", provider.help or "")
+        self.assertIn("providers", provider.help or "")
+
+
+@skip_unless_ffmpeg
+class StatusNextAgreesWithDoTests(FetchRouteCase):
+    """G11: com candidato de rota `fetch`, `summary.next` não contradiz `summary.do`."""
+
+    def test_next_says_reference_only_when_do_does(self):
+        from test_delivery import with_brief
+
+        self.enable(duration="0")
+        with_brief(str(self.project))
+        self.gb("search", "--provider", "demo", "--query", "mar", "--shot", "abertura")
+        summary = run_cli("status", project=self.project, env=self.env)["summary"]
+        self.assertEqual("preview", summary["do"]["step"])
+        self.assertIn("--reference-only", summary["do"]["command"])
+        self.assertIn("--reference-only", summary["next"])
+        self.assertNotIn("Gere prévias com preview para os candidatos ainda sem quadro", summary["next"])

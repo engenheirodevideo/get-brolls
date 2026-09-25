@@ -260,10 +260,16 @@ def render(ledger):
         )
         if out:
             # `one_line`: nenhum valor do candidato quebra a linha e forja outro campo.
+            from .delivery import plugin_label, source_label
+
+            plugin = plugin_label(c)
             credits_lines += [
                 f"## {one_line(c['id'])}",
                 f"- Arquivo: {one_line(out)}",
-                f"- Fonte: {one_line(c['source_url'] or 'original local')}",
+                # Fonte de plugin: o título do arquivo na fonte (ex.: nome do arquivo da
+                # pasta local) entra também — built-in segue sem esta linha (BUG-12).
+                *([f"- Título na fonte: {one_line(c.get('title') or 'não informado')}"] if plugin else []),
+                f"- Fonte: {one_line(source_label(c, plugin))}",
                 f"- Autor: {one_line(c['creator'].get('name') or 'não informado')}",
                 f"- Licença: {one_line(c['rights'].get('license_name') or 'ver evidência')}",
                 f"- Licença URL: {one_line(c['rights'].get('license_url') or 'não informada')}",

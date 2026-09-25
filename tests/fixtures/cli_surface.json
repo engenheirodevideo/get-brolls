@@ -1954,7 +1954,7 @@
           "choices": null,
           "default": "auto",
           "dest": "provider",
-          "help": "Fonte: youtube, pexels, pixabay, commons, nasa ou auto (padrão)",
+          "help": "Fonte: youtube, pexels, pixabay, commons, nasa, uma fonte de plugin habilitado ou auto (padrão); rode `providers` para listar as disponíveis, inclusive as de plugin",
           "nargs": null,
           "option_strings": [
             "--provider"

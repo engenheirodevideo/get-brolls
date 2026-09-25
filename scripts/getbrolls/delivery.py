@@ -293,6 +293,33 @@ def _author(c):
     return "não informado"
 
 
+def plugin_label(c):
+    """Id do plugin dono da fonte do candidato, ou `None` para as fontes embutidas.
+
+    Só lê manifesto/pin (`loader.declared_by`, nunca roda código de plugin); plugin
+    que saiu da pasta desde a busca cai no nome da fonte gravado no candidato."""
+    from .providers import BUILTIN_CAPABILITIES
+
+    provider = c.get("provider")
+    if not isinstance(provider, str) or provider in BUILTIN_CAPABILITIES:
+        return None
+    from .sdk import loader
+
+    row = loader.declared_by(provider)
+    return row["id"] if row else provider
+
+
+def source_label(c, plugin):
+    """Linha "Fonte:" de ORIGEM.md/credits.md. Fonte embutida: a URL ou "original
+    local", como sempre; fonte de plugin: o plugin e a URL (ou "arquivo local") —
+    antes saía "original local" sem dizer de onde o arquivo veio (BUG-12).
+    `plugin` é o `plugin_label(c)` que quem chama já calculou."""
+    url = c.get("source_url")
+    if plugin is None:
+        return url or "original local"
+    return f"plugin {plugin} ({url or 'arquivo local'})"
+
+
 def render_origin(c, media_name, created=None, method="hardlink"):
     """`ORIGEM.md` do trecho: fonte, autor, intervalo, direitos e sha256 do arquivo."""
     rights = c.get("rights") or {}
@@ -307,7 +334,7 @@ def render_origin(c, media_name, created=None, method="hardlink"):
         f"- Arquivo: `{one_line(media_name)}`",
         f"- Candidato: `{one_line(c['id'])}`",
         f"- Título na fonte: {one_line(c.get('title') or 'não informado')}",
-        f"- Fonte: {one_line(c.get('source_url') or 'original local')}",
+        f"- Fonte: {one_line(source_label(c, plugin_label(c)))}",
         f"- Autor: {one_line(_author(c))}",
         f"- Trecho usado: {_segment_label(c)}",
         f"- Direitos: {one_line(rights.get('status') or 'unknown')}",

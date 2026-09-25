@@ -1195,6 +1195,19 @@ def _flow_next(ledger, rules):
         return None
 
 
+# `summary.next` quando `summary.do` manda a prévia de referência (fonte de plugin
+# que só entrega o arquivo no `fetch`): o texto genérico "Gere prévias com preview…"
+# contradizia o comando pronto ao lado (G11). Fontes embutidas nunca chegam aqui.
+REFERENCE_ONLY_NEXT = (
+    "Registre a prévia de referência (preview --reference-only) do candidato cuja fonte só entrega "
+    "o arquivo no fetch; depois approve, permit e fetch."
+)
+
+
+def _reference_only_step(do):
+    return do.get("step") == "preview" and "--reference-only" in (do.get("command") or "")
+
+
 def status_report(ledger, rules=None, rules_error=None, queue=None):
     """Onde o projeto está, por etapa. Somente leitura: não grava nada."""
     items = ledger.data["items"]
@@ -1214,27 +1227,32 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
     elif queue and queue.get("line"):
         # Uma linha da fila social, lida sem gravar: contagens e próximo horário permitido.
         line += " " + queue["line"]
+    do = next_action(
+        _flow_state(
+            ledger,
+            rules,
+            counts=counts,
+            format_pending=format_pending,
+            brief=brief,
+        )
+    )
     # Veredito primeiro, como no doctor: o JSON completo continua logo abaixo.
     summary = {
         "line": line,
         "stages": [{"stage": plural, "count": counts[key], "items": listing[key]} for key, _, plural in STATUS_STAGES],
-        "next": status_next(
-            counts,
-            format_pending,
-            pending_preview=len(_needs_preview(items)),
-            undelivered=len(_undelivered(items)),
+        "next": (
+            REFERENCE_ONLY_NEXT
+            if _reference_only_step(do)
+            else status_next(
+                counts,
+                format_pending,
+                pending_preview=len(_needs_preview(items)),
+                undelivered=len(_undelivered(items)),
+            )
         ),
         # Aditivo: `line/stages/next` seguem iguais; `do` traz o mesmo passo já em
         # comando pronto e `brief` diz quantos beats ainda estão sem material.
-        "do": next_action(
-            _flow_state(
-                ledger,
-                rules,
-                counts=counts,
-                format_pending=format_pending,
-                brief=brief,
-            )
-        ),
+        "do": do,
         # Mesmo aviso de `review`: a página existe mas não tem o que revisar.
         "warnings": ([EMPTY_STORYBOARD] if review_page.is_file() and not counts["previews"] else []),
         # `None` enquanto não houver um brief válido para contar (ausente ou inválido).
@@ -2397,6 +2415,12 @@ def language_warning(probe, query):
     )
 
 
+def _byte_size(size):
+    """MB com uma casa; abaixo de 0,1 MB, KB inteiro — "0.0 MB" não diz nada."""
+    megabytes = size / (1024 * 1024)
+    return f"{megabytes:.1f} MB" if megabytes >= 0.1 else f"{max(1, round(size / 1024))} KB"  # noqa: PLR2004 - 0,1 MB: abaixo disso "0.0 MB"
+
+
 def inspect_warnings(probe, query=None):
     """Avisos sobre a fonte em si — o que costuma virar retrabalho depois da prévia."""
     found = []
@@ -2410,7 +2434,14 @@ def inspect_warnings(probe, query=None):
     if _THREE_SIXTY.search(haystack):
         found.append("vídeo 360°")
     downloaded = probe.get("downloaded_bytes")
-    if downloaded:
+    if downloaded and probe.get("local_copy"):
+        # Rota de plugin: o arquivo chegou pela rota (cópia local ou download do próprio
+        # plugin), não por um download do core — "baixar ... (0.0 MB)" confundia (BUG-11).
+        found.append(
+            f"esta fonte não tem metadados públicos, então a análise usou a cópia local do arquivo "
+            f"({_byte_size(downloaded)}), trazida pela rota {probe['local_copy']} para o cache privado"
+        )
+    elif downloaded:
         # Esta fonte não tem página de metadados: a análise só existe porque o arquivo
         # veio inteiro. Dizer o preço evita repetir a conta sem perceber.
         found.append(
@@ -2500,7 +2531,7 @@ def probe_direct(ledger, source, url=None, stage="inspect"):
     Sem capítulo e sem legenda: um mp4 servido por URL não traz nenhum dos dois. O
     que ele traz é a duração real, que é o que separa a janela do palpite.
     """
-    from .acquisition import cache_direct_media
+    from .acquisition import cache_direct_media, route_name
 
     path = cache_direct_media(ledger, source, stage=stage)
     info = probe(path)
@@ -2512,6 +2543,8 @@ def probe_direct(ledger, source, url=None, stage="inspect"):
     return {
         # Analisar esta fonte custou o arquivo inteiro; quem lê o resumo precisa saber.
         "downloaded_bytes": downloaded,
+        # Rota de plugin: nome da rota que trouxe a cópia local (o aviso muda de frase).
+        "local_copy": route_name(source),
         "url": url or source.get("source_url") or source.get("media_url"),
         "title": source.get("title"),
         "duration_s": float(duration) if duration else None,
