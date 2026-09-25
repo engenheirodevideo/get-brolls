@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import re
-import stat
 from pathlib import Path, PurePath
 from urllib.parse import urlsplit
 
@@ -15,7 +14,7 @@ from .. import logs
 from ..http import ProviderError, get_json, public_url
 from ..models import candidate as core_candidate
 from ..rules import home_dir
-from . import guard
+from . import guard, safe_copy
 from .contracts import CommandSpec, ExporterSpec, ResolverSpec
 
 _log = logs.get("sdk")
@@ -362,28 +361,6 @@ class PluginApi:
             raise self._refuse(f"{shown} está fora de permissions.paths.")
         return source, shown
 
-    def _copy_bounded(self, source_fd, target, too_big, cap):
-        """Copia do descritor já conferido para `target` (criado exclusivo, sem seguir
-        link), com teto nos bytes de fato lidos; apaga o destino parcial se falhar."""
-        out_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
-        try:
-            target_fd = os.open(target, out_flags, 0o600)
-        except FileExistsError:
-            raise self._refuse("api.local_file já trouxe um arquivo nesta rota.") from None
-        except OSError as exc:
-            raise self._refuse(f"não consegui criar o arquivo de trabalho ({type(exc).__name__}).") from None
-        copied = 0
-        try:
-            with os.fdopen(target_fd, "wb") as out:
-                while chunk := os.read(source_fd, 1024 * 1024):
-                    copied += len(chunk)
-                    if copied > cap:
-                        raise too_big
-                    out.write(chunk)
-        except BaseException:
-            target.unlink(missing_ok=True)
-            raise
-
     def local_file(self, path):
         """Copia um arquivo de dentro de `permissions.paths` para a pasta de trabalho.
 
@@ -399,27 +376,36 @@ class PluginApi:
         Mensagens de recusa nomeiam o arquivo que o plugin pediu, nunca o alvo resolvido.
 
         No Windows, onde `os.O_NOFOLLOW` não existe, vale a resolução + conferência de
-        raiz feitas antes (link simbólico lá exige privilégio de administrador);
-        `O_BINARY` garante cópia byte a byte.
+        raiz feitas antes (link simbólico lá exige privilégio de administrador), e um
+        link ou junction no caminho resolvido é recusado antes de abrir; `O_BINARY`
+        garante cópia byte a byte. A abertura e a cópia são as de `sdk.safe_copy`.
         """
         workdir = self._workdir("local_file")
         cap = core_http.DOWNLOAD_MAX_BYTES
         source, shown = self._local_source(path)
-        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+        too_big = f"{shown} passa do teto de {cap // (1024 * 1024)} MB para arquivo de trabalho."
+        refusals = {
+            safe_copy.NOT_REGULAR: f"{shown} não é um arquivo.",
+            safe_copy.TOO_BIG: too_big,
+            safe_copy.TARGET_EXISTS: "api.local_file já trouxe um arquivo nesta rota.",
+        }
         try:
-            source_fd = os.open(source, flags)
-        except OSError as exc:
-            raise self._refuse(f"{shown} não pôde ser aberto ({type(exc).__name__}).") from None
+            # Sem exigir um nome só no disco (`single_link=False`): a rota sempre aceitou
+            # hardlink dentro da raiz, e a cópia nunca mexe no original.
+            source_fd, info = safe_copy.open_regular(source, single_link=False)
+        except safe_copy.UnsafeFileError as exc:
+            text = refusals.get(exc.reason) or f"{shown} não pôde ser aberto ({exc.type_name})."
+            raise self._refuse(text) from None
         try:
-            info = os.fstat(source_fd)
-            if not stat.S_ISREG(info.st_mode):
-                raise self._refuse(f"{shown} não é um arquivo.")
-            too_big = self._refuse(f"{shown} passa do teto de {cap // (1024 * 1024)} MB para arquivo de trabalho.")
             if info.st_size > cap:
-                raise too_big
+                raise self._refuse(too_big)
             suffix = source.suffix.lower()
             target = workdir / ("local" + (suffix if SUFFIX_RE.fullmatch(suffix) else ".bin"))
-            self._copy_bounded(source_fd, target, too_big, cap)
+            try:
+                safe_copy.copy_from_fd(source_fd, target, cap)
+            except safe_copy.UnsafeFileError as exc:
+                text = refusals.get(exc.reason) or f"não consegui criar o arquivo de trabalho ({exc.type_name})."
+                raise self._refuse(text) from None
         finally:
             os.close(source_fd)
         return target
