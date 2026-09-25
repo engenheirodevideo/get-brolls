@@ -183,8 +183,10 @@ class WriteTests(SyncCase):
         brief_text = self.text("BRIEF.md")
         self.assertTrue(brief_text.startswith("# Brief\n\nTexto da pessoa.\n\n```json\n"))
         self.assertTrue(brief_text.endswith("\n```\n\nFim da prosa.\n"))
-        self.assertTrue((self.project / "BRIEF.md.bak").is_file())
-        self.assertEqual((self.project / "ROTEIRO.md.bak").read_text(encoding="utf-8"), ROTEIRO)
+        self.assertTrue((self.project / "BRIEF.md.sync.bak").is_file())
+        self.assertEqual((self.project / "ROTEIRO.md.sync.bak").read_text(encoding="utf-8"), ROTEIRO)
+        self.assertFalse((self.project / "BRIEF.md.bak").exists())
+        self.assertFalse((self.project / "ROTEIRO.md.bak").exists())
         self.assertTrue(roteiro_review.review_state(self.project, self.doc())["reviewed"])
         self.assertEqual(roteiro_ids.read_state(self.project)["next_id"], 4)
         self.assertEqual(set(roteiro_ids.read_state(self.project)["scenes"]), {"c01", "c02", "c03"})
@@ -383,6 +385,115 @@ class CarriedRequirementTests(SyncCase):
             self.sync()
         self.assertIn("link para fora do projeto", str(ctx.exception))
         self.assertEqual(before, (other / "BRIEF.md").read_bytes())
+
+    @unittest.skipIf(os.name == "nt", "symlink exige privilégio no Windows")
+    def test_brief_symlinked_inside_the_project_is_refused_as_a_link(self):
+        (self.project / "sub").mkdir()
+        shutil.move(self.project / "BRIEF.md", self.project / "sub" / "brief.md")
+        (self.project / "BRIEF.md").symlink_to(self.project / "sub" / "brief.md")
+        self.review()
+        before = tree(self.project)
+        with self.assertRaises(ValueError) as ctx:
+            self.sync()
+        message = str(ctx.exception)
+        self.assertIn("BRIEF.md do projeto é um link", message)
+        self.assertIn("arquivo de verdade", message)
+        self.assertNotIn("fora do projeto", message)
+        self.assertEqual(before, tree(self.project))
+        self.assertTrue((self.project / "BRIEF.md").is_symlink())
+
+    @unittest.skipIf(os.name == "nt", "symlink exige privilégio no Windows")
+    def test_roteiro_symlink_is_written_through_and_stays_a_link(self):
+        vault = Path(tempfile.mkdtemp(prefix="gb-vault-"))
+        self.addCleanup(shutil.rmtree, vault, ignore_errors=True)
+        shutil.move(self.project / "ROTEIRO.md", vault / "nota.md")
+        (self.project / "ROTEIRO.md").symlink_to(vault / "nota.md")
+        self.review()
+        report = self.sync()
+        self.assertTrue((self.project / "ROTEIRO.md").is_symlink())
+        self.assertEqual((self.project / "ROTEIRO.md").resolve(), (vault / "nota.md").resolve())
+        self.assertIn("## Gancho <!-- c01 -->", (vault / "nota.md").read_text(encoding="utf-8"))
+        self.assertEqual((self.project / "ROTEIRO.md.sync.bak").read_text(encoding="utf-8"), ROTEIRO)
+        self.assertFalse((vault / "nota.md.tmp").exists())
+        self.assertIn("ROTEIRO.md", report["written"])
+
+    def test_sync_never_touches_the_backups_of_new_force(self):
+        (self.project / "ROTEIRO.md.bak").write_bytes(b"roteiro antigo\r\n")
+        (self.project / "BRIEF.md.bak").write_bytes(b"brief antigo\n")
+        self.review()
+        self.sync()
+        self.edit("[BROLL: timeline cheia]", "[BROLL: mesa de edição]")
+        self.write(self.text("ROTEIRO.md") + "\n## Nova\n[BROLL: x]\nNova.\n")
+        self.review()
+        self.sync()
+        self.assertEqual((self.project / "ROTEIRO.md.bak").read_bytes(), b"roteiro antigo\r\n")
+        self.assertEqual((self.project / "BRIEF.md.bak").read_bytes(), b"brief antigo\n")
+
+    def test_manifest_is_saved_before_the_roteiro_is_written(self):
+        from getbrolls import ledger as ledger_module
+
+        self.review()
+        self.sync()
+        self.approved("c02")
+        self.edit("[BROLL: timeline cheia]", "[BROLL: mesa de edição]")
+        self.write(self.text("ROTEIRO.md") + "\n## Nova\n[BROLL: x]\nNova.\n")
+        self.review()
+        order = []
+        real_ledger, real_sync = ledger_module.atomic_write, roteiro_sync.atomic_write
+
+        def spy(real):
+            def write(path, text):
+                order.append(Path(path).name)
+                real(path, text)
+
+            return write
+
+        with (
+            mock.patch.object(ledger_module, "atomic_write", side_effect=spy(real_ledger)),
+            mock.patch.object(roteiro_sync, "atomic_write", side_effect=spy(real_sync)),
+        ):
+            self.sync(confirm=True)
+        self.assertLess(order.index(roteiro_sync.PENDING), order.index("manifest.json"))
+        self.assertLess(order.index("manifest.json"), order.index("ROTEIRO.md"))
+        self.assertLess(order.index("ROTEIRO.md"), order.index("BRIEF.md"))
+
+    def test_crash_after_the_manifest_converges_without_a_second_confirmation(self):
+        self.review()
+        self.sync()
+        candidate = self.approved("c02")
+        self.edit("[BROLL: timeline cheia]", "[BROLL: mesa de edição]")
+        self.write(self.text("ROTEIRO.md") + "\n## Nova\n[BROLL: x]\nNova.\n")
+        self.review()
+        real = roteiro_sync.atomic_write
+
+        def crash_on_roteiro(path, text):
+            if Path(path).name == "ROTEIRO.md":
+                raise OSError("queda")
+            real(path, text)
+
+        with mock.patch.object(roteiro_sync, "atomic_write", side_effect=crash_on_roteiro), self.assertRaises(OSError):
+            self.sync(confirm=True)
+        self.assertEqual(self.approval(candidate), "pending")
+        self.assertNotIn("<!-- c04 -->", self.text("ROTEIRO.md"))
+        report = self.sync()
+        self.assertEqual((report["invalidated"], report["affected_approvals"]), ([], []))
+        self.assertIn("## Nova <!-- c04 -->", self.text("ROTEIRO.md"))
+        self.assertEqual(self.beats()[0]["target"], "mesa de edição")
+        self.assertEqual(self.approval(candidate), "pending")
+        before = tree(self.project)
+        self.assertEqual(self.sync()["written"], [])
+        self.assertEqual(before, tree(self.project))
+
+    def test_refused_plan_does_not_report_zero_beats(self):
+        self.review()
+        self.sync()
+        self.approved("c03-a", source_id="prova")
+        self.edit("## Prova <!-- c03 -->\n[SPLIT: tela | mapa]", "## Prova\n[SPLIT: tela | mapa novo]")
+        self.review()
+        planned = self.plan()
+        self.assertIsNotNone(planned["refusal"])
+        self.assertIsNone(planned["beats"])
+        self.assertIsNone(planned["total_s"])
 
     def test_refused_ids_write_nothing_and_plan_does_not_raise(self):
         self.review()

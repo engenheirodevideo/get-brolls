@@ -5,11 +5,11 @@ se houver gravação interrompida) e nunca levanta por causa de aprovação atin
 ela vem em `affected_approvals`. `run(project, write=True)` é o `sync`: exige revisão
 válida, para diante de alvo mudado em beat aprovado e, com `confirm`, invalida
 primeiro no manifesto (journal) e só depois grava ROTEIRO.md e BRIEF.md atômicos,
-com `.bak` antes. Só mudar a fala nunca invalida nada: vira aviso.
+com cópia `.sync.bak` antes (`.bak` é do `roteiro new --force`: o sync nunca toca).
+Só mudar a fala nunca invalida nada: vira aviso.
 """
 
 import json
-import os
 import re
 import shutil
 from pathlib import Path
@@ -24,6 +24,8 @@ from .rules import load_rules
 
 OWNED = ("target", "narration", "duration_hint_s")
 PENDING = ".pending-transaction.json"
+# Cópia do sync; `ROTEIRO.md.bak`/`BRIEF.md.bak` são de `roteiro new --force` e nunca mudam aqui.
+SYNC_BAK = ".sync.bak"
 _JSON_BLOCK = re.compile(r"```json\s*\n(.*?)\n```", re.DOTALL)
 REVIEW_MISSING = (
     "O roteiro atual não tem revisão humana registrada (ou mudou depois dela). Mostre o texto à pessoa e "
@@ -109,17 +111,22 @@ def _gated(report, items):
 
 
 def _brief(project, rules):
+    home = _project_dir(project)
+    local = home / "BRIEF.md"
     path = brief_path(project)
-    if path != _project_dir(project) / "BRIEF.md":
-        if os.environ.get("GB_BRIEF_FILE"):
-            raise ValueError(
-                "GB_BRIEF_FILE aponta para fora do projeto: o sync do roteiro só grava no BRIEF.md da pasta do "
-                "projeto. Para seguir, apague a variável GB_BRIEF_FILE ou mova o BRIEF.md para dentro do projeto "
-                "e repita."
-            )
+    if local.is_symlink():
+        real = local.resolve()
+        where = f"para {real.relative_to(home)}" if real.is_relative_to(home) else "para fora do projeto"
         raise ValueError(
-            "O BRIEF.md do projeto é um link para fora do projeto: o sync do roteiro só grava no BRIEF.md da "
-            "pasta do projeto. Troque o link pelo arquivo de verdade e repita."
+            f"O BRIEF.md do projeto é um link {where}: o sync do roteiro só grava num arquivo de verdade. "
+            "Troque o link pelo arquivo de verdade (copie o conteúdo para BRIEF.md) e repita."
+        )
+    if path != local:
+        where = f"para {path.relative_to(home)}" if path.is_relative_to(home) else "para fora do projeto"
+        raise ValueError(
+            f"GB_BRIEF_FILE aponta {where}: o sync do roteiro só grava no BRIEF.md da pasta do "
+            "projeto. Para seguir, apague a variável GB_BRIEF_FILE ou mova o BRIEF.md para dentro do projeto "
+            "e repita."
         )
     if not path.is_file():
         raise ValueError(
@@ -140,7 +147,7 @@ def _replace_block(raw, data):
     """Troca só o miolo do bloco ```json; a prosa em volta fica byte a byte."""
     match = _JSON_BLOCK.search(raw)
     if match is None:
-        raise ValueError("O BRIEF.md perdeu o bloco ```json durante o sync; restaure o BRIEF.md.bak.")
+        raise ValueError("O BRIEF.md não tem o bloco ```json que o sync troca: conserte e repita.")
     return raw[: match.start(1)] + json.dumps(data, ensure_ascii=False, indent=2) + raw[match.end(1) :]
 
 
@@ -207,13 +214,14 @@ def _commit(project, ctx, hits, new_text, new_data):
         written.append("brolls/manifest.json")
     path = roteiro.roteiro_path(project)
     if new_text != ctx["text"]:
-        shutil.copyfile(path, path.with_name(path.name + ".bak"))
-        atomic_write(path, new_text)
+        # ROTEIRO.md pode ser link (nota do Obsidian): grava no arquivo de verdade e o link continua link.
+        shutil.copyfile(path, path.with_name(path.name + SYNC_BAK))
+        atomic_write(path.resolve(), new_text)
         written.append(path.name)
     new_raw = _replace_block(ctx["raw_brief"], new_data)
     if new_raw != ctx["raw_brief"]:
         brief_file = ctx["brief_file"]
-        shutil.copyfile(brief_file, brief_file.with_name(brief_file.name + ".bak"))
+        shutil.copyfile(brief_file, brief_file.with_name(brief_file.name + SYNC_BAK))
         atomic_write(brief_file, new_raw)
         written.append(brief_file.name)
     return written
@@ -232,7 +240,8 @@ def run(project, write=False, confirm=False, plugins=None):
     if ids["refusal"]:
         if write:
             raise ValueError(ids["refusal"])
-        return base
+        # Recusado, o plano não comparou beats: None, nunca "zero beats" / "0 s".
+        return {**base, "beats": None, "total_s": None}
     # `apply_ids` recebe o texto de `load_text` (sem BOM, `\n`); o doc reparseado já tem os ids novos.
     new_text = roteiro_ids.apply_ids(ctx["text"], ids["assign"])
     doc = roteiro.parse(new_text, plugins)
