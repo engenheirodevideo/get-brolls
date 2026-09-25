@@ -72,9 +72,9 @@ Campos de `getbrolls-plugin.json`:
 `eval_rubrics`, mas **só `providers`, `presets`, `routes`, `commands`,
 `exporters` e `resolvers` são suportados nesta versão do SDK** — declarar
 qualquer nome nas outras chaves faz o manifesto ser recusado. `exporters` e
-`resolvers` são experimentais e, por enquanto, só existem como tipos: o plugin
-os registra (veja [PluginApi](#pluginapi)), mas nenhum comando do Get B-rolls os
-chama ainda; as seções completas chegam na próxima etapa do SDK. Nomes de
+`resolvers` são experimentais (veja [Exportadores](#exportadores) e
+[Resolvedores](#resolvedores)): o plugin os registra e o `plugins --action check`
+os confere, mas o comando que os usa, `gb export`, chega numa versão futura. Nomes de
 provider, preset, rota, exportador e resolvedor têm que ser iguais ao `id` do
 plugin ou começar por `<id>_`; nomes de comando só seguem a regra de nome
 (`a-z0-9_`), porque `gb x <plugin> <comando>` já dá o espaço de nomes. Tudo o
@@ -248,8 +248,8 @@ Rota `stage="fetch"` consome licença ou cota **uma vez só**:
   Chave de JSON com nome de credencial some. O nome é normalizado antes de comparar — minúsculo, sem `-`/`_`/espaço, então `access_token`, `accessToken` e `X-Api-Key` contam como o mesmo nome — e é comparado por igualdade ou por **terminar** num destes marcadores fortes: `access_token`, `refresh_token`, `id_token`, `auth_token`, `session_token`, `security_token`, `bearer_token`, `api_key`, `api_token`, `api_secret`, `client_secret`, `secret_key`, `secret_access_key`, `private_key`, `signing_key`, `encryption_key`, `password`, `passwd`, `credentials`, `jwt`, `secret` — mais `pwd` e `hmac`, só como nome inteiro (curtos demais para valer como sufixo) — mais `key`, `token`, `authorization`, `signature` e `sig` (esses cinco já saem para todo mundo, plugin ou não, e são nome exato, não normalizado). Isso cobre chave composta de verdade (`aws_secret_access_key`, `x-api-key`, `x-amz-security-token`) sem depender de snake_case exato. **Chave de paginação/id sobrevive**: `next_page_token`, `nextPageToken`, `page_token`, `continuation_token`, `sort_key`, `cursor_key`, `cursor`... nenhuma delas termina nos marcadores acima — de propósito: uma versão mais ampla dessa checagem (o mesmo regex usado para nome de parâmetro de URL) derrubava qualquer chave só por terminar em `key`/`token`/`policy` sozinho, o que sumia com paginação de API real. Se o seu plugin usa um nome de credencial fora dessa lista, a resposta da API não é reescrita antes do scrub — a chave sai como veio; ou trate a URL assinada com `keep_signed`.
 - `api.route(route)` — registra uma `Route`; o `name` tem que estar em `contributes.routes`.
 - `api.command(name, handler, help)` — registra um comando; `name` tem que estar em `contributes.commands`, `help` é a frase que `x --list` mostra.
-- `api.exporter(name, export, description)` — experimental: registra um exportador; `name` tem que estar em `contributes.exporters`, `export(plan, options)` devolve um `ExportResult(files, media=[], notes=[])` e `description` tem de 1 a 200 caracteres. Ainda não há comando que rode exportadores.
-- `api.resolver(name, resolve, kinds)` — experimental: registra um resolvedor; `name` tem que estar em `contributes.resolvers`, `resolve(kind, name)` devolve um `ResolverHit(path, license=None)` ou `None`, e `kinds` é uma lista não vazia, sem repetição, com `"sfx"` e/ou `"musica"` (`RESOLVER_KINDS`). As pastas em que ele pode achar arquivo são as de `permissions.paths`, conferidas como em `api.local_file`. Ainda não há comando que rode resolvedores.
+- `api.exporter(name, export, description)` — experimental: registra um exportador; `name` tem que estar em `contributes.exporters`, `export(plan, options)` devolve um `ExportResult(files, media=[], notes=[])` e `description` tem de 1 a 200 caracteres. Veja [Exportadores](#exportadores).
+- `api.resolver(name, resolve, kinds)` — experimental: registra um resolvedor; `name` tem que estar em `contributes.resolvers`, `resolve(kind, name)` devolve um `ResolverHit(path, license=None)` ou `None`, e `kinds` é uma lista não vazia, sem repetição, com `"sfx"` e/ou `"musica"` (`RESOLVER_KINDS`). As pastas em que ele pode achar arquivo são as de `permissions.paths`, conferidas como em `api.local_file`. Veja [Resolvedores](#resolvedores).
 - `api.download(url, name, headers=None)` — só dentro de `Route.prepare`: baixa `url` (https, host em `permissions.network`, IP público, sem redirect, teto de 512 MB) para `workdir/name` e devolve o caminho. Aceita URL assinada (ex.: um link S3 que o próprio plugin assinou) e headers como `Authorization`; nenhum dos dois vai para log ou mensagem de erro. `name` é só nome de arquivo (`[A-Za-z0-9._-]`, sem `/` nem `..`).
 - `api.local_file(path)` — só dentro de `Route.prepare`: copia um arquivo que esteja dentro de `permissions.paths` (resolvido, com link simbólico seguido) para o `workdir`. Sempre cópia, nunca hardlink — o original da pessoa não muda. O arquivo é aberto sem seguir link (`O_NOFOLLOW`) nem travar numa FIFO (`O_NONBLOCK`), conferido pelo próprio descritor (arquivo regular, até 512 MB) e copiado dele com o teto contado nos bytes lidos; o destino é criado exclusivo, sem seguir link plantado. A recusa nomeia o arquivo que o plugin pediu, nunca o alvo resolvido. No Windows, onde `O_NOFOLLOW` não existe, vale a resolução + conferência de raiz (link simbólico lá exige privilégio de administrador).
 - `api.data_dir` — `$GB_HOME/plugin-data/<id>/` (0700), criado na primeira leitura: estado e cache do plugin. Fica fora da pasta do plugin, então escrever ali não muda o pin de hash.
@@ -382,6 +382,115 @@ api.command("recentes", recentes, "Lista os vídeos mais recentes da pasta")
   `Plugin <id>: o comando <nome> falhou (<tipo>)`, exit 2; com `PluginError`,
   a mensagem é `Plugin <id>: <texto>` (veja
   [Mensagens de erro](#mensagens-de-erro-pluginerror)).
+
+## Exportadores
+
+> **Experimental.** O formato do plano e as regras abaixo podem mudar em versão
+> minor. O comando que roda exportadores, `gb export`, chega numa versão futura
+> do Get B-rolls; nesta versão o SDK já registra o exportador, confere o contrato
+> no `plugins --action check` e sabe rodá-lo.
+
+```python
+from html import escape
+
+from getbrolls.sdk import ExportResult, MediaRequest
+
+
+def exporta(plan: dict, options: dict) -> ExportResult:
+    html = "<h1>" + escape(plan["title"]) + "</h1>"
+    return ExportResult(
+        files={"index.html": html},
+        media=[MediaRequest("m1", "assets/porta.wav")],
+        notes=["Abra index.html no navegador."],
+    )
+
+
+api.exporter("meu_banco_html", exporta, "Exporta o plano como página HTML")
+```
+
+- **Função pura.** O exportador recebe cópias do plano e das opções (`options`
+  é `{"args": {}}` por enquanto) e devolve texto e pedidos de mídia. Ele nunca
+  toca no disco: quem grava os `files` e coloca cada mídia no `dest` pedido é o
+  core. Mudar o plano recebido não muda nada fora do exportador.
+- **Texto do plano não é confiável.** Títulos, falas, autores e créditos vêm de
+  fontes, inclusive de outros plugins. O exportador escapa esse texto para o
+  formato de saída: HTML com `html.escape`, JSON com `json.dumps`, JavaScript
+  só dentro de um JSON (nunca concatenado no código), Markdown com as marcações
+  escapadas. O core confere a estrutura de `files`, mas **não** saneia o
+  conteúdo dos arquivos.
+- **Nada de caminho absoluto.** O plano traz ids lógicos de mídia e caminhos
+  relativos ao projeto (`exports/meu_banco_html/003`), nunca um caminho do disco.
+  Um export costuma ser compartilhado, e caminho local vaza nome de usuário e
+  pastas: não escreva um em `files`. A mídia entra só por `media`.
+- **Falha.** Exceção no exportador vira erro `Plugin <id>: …` (exit 2): o texto
+  de um `PluginError`, ou só o tipo de qualquer outra exceção. Um resultado fora
+  das regras abaixo também vira erro, que diz qual regra quebrou.
+- **Plugin indisponível.** Só plugin `enabled` exporta. Com o plugin
+  `suspended`, `failed` ou fora de `GB_PLUGINS`, o erro nomeia o plugin, o
+  status e o que fazer.
+
+O que o core confere no `ExportResult` (tipos exatos; subclasse é recusada):
+
+| Regra | Valor |
+|---|---|
+| Tipos | `files` é um `dict` de texto para texto; `media`, uma `list` de `MediaRequest(media_id, dest)`; `notes`, uma `list` de texto. |
+| Caminhos | Relativos, com `/` (nunca `\`), até 240 caracteres e 6 níveis. Cada parte usa letras, números, `.`, `_` ou `-`, não começa por `.`, não é `..`, não termina em `.` e não é nome reservado do Windows (`CON`, `NUL`, `COM1`…). |
+| Colisões | Nenhum caminho repetido ignorando maiúsculas, em `files`, em `media` e entre os dois; nenhum arquivo pode ser a pasta de outro (`a.html` e `a.html/b.css`). |
+| `assets/` | Reservado à mídia: nenhum arquivo de `files` fica ali, e todo `media[].dest` fica dentro dela (`assets/<arquivo>`). |
+| Extensões | `files` só em `.html`, `.json`, `.css`, `.js`, `.md` ou `.txt`, em minúsculas. |
+| Texto | Sem o caractere NUL e em UTF-8 válido. |
+| Tetos | Até 200 arquivos, 2 MB por arquivo e 8 MB no total; até 500 pedidos de mídia, com `media_id` de até 200 caracteres; até 50 notas, cada uma saneada para uma linha de até 300 caracteres. |
+
+O `plugins --action check` (e `sdk.testing.check_exporter`) roda o exportador
+com o plano mínimo de `getbrolls.sdk.exporters.MINIMAL_PLAN` e passa o resultado
+pelo mesmo validador: a regra quebrada aparece antes de qualquer export.
+
+## Resolvedores
+
+> **Experimental.** Resolvedores rodam só dentro do `gb export`, que chega numa
+> versão futura. `assets --action list/where` não os consultam.
+
+```python
+from pathlib import Path
+
+from getbrolls.sdk import ResolverHit
+
+pasta = Path("~/Sons").expanduser()  # dentro de permissions.paths
+
+
+def acha(kind: str, name: str) -> ResolverHit | None:
+    path = pasta / f"{name}.wav"
+    return ResolverHit(path, license="CC BY 4.0 — Acervo Sonoro") if path.is_file() else None
+
+
+api.resolver("meu_banco", acha, ["sfx", "musica"])
+```
+
+Um resolvedor acha um arquivo de som (`"sfx"`) ou de música (`"musica"`) pelo
+nome, dentro das pastas de `permissions.paths`. Nunca vale para a gravação
+(`aroll`) nem para marca. O core só pergunta aos resolvedores depois de as pastas
+do projeto e da pessoa não acharem nada.
+
+- **Ordem.** Pelo id do plugin dono e, dentro dele, pela ordem de registro. O
+  primeiro acerto válido vence; um resolvedor que falha ou devolve algo inválido
+  vira um aviso `Plugin <id>: …` e o próximo é consultado.
+- **Raízes.** As mesmas de `api.local_file`: as pastas de `permissions.paths`
+  que valem no sistema atual, conferidas quando o plugin carrega; uma raiz ampla
+  demais fica ignorada.
+- **O que o core confere.** `ResolverHit` exato, com caminho absoluto; o caminho
+  não é link simbólico nem junction; resolvido, fica dentro de uma raiz; é um
+  arquivo regular com um só nome no disco (hardlink é recusado); é aberto sem
+  seguir link e sem travar numa FIFO; tem uma extensão aceita para o tipo; e tem
+  até 512 MB.
+- **Sempre cópia.** O arquivo é da pessoa: o core nunca faz hardlink nem muda a
+  permissão dele. Na hora de copiar, o core abre de novo, confere que dispositivo,
+  inode e tamanho são os mesmos do acerto e copia desse descritor.
+- **Loja.** O acerto fica registrado com `store` igual ao id do plugin; o plugin
+  não escolhe esse valor.
+- **Licença informativa.** `license` é texto de até 500 caracteres, mostrado
+  numa linha só, com a marcação Markdown/HTML escapada e o prefixo "Licença
+  informada pelo plugin <id>:". Ela nunca vale como `permit` e nunca entra em
+  `rights.evidence`.
 
 ## Instalar e atualizar
 
@@ -552,8 +661,9 @@ python -m unittest discover -s <pasta>\meu_banco\tests
 muda o hash do plugin — o pin cobre todo arquivo da pasta.
 
 `getbrolls.sdk.testing` traz as checagens de contrato: `check_provider`,
-`check_route`, `check_command` (cada uma levanta `AssertionError` com o que
-corrigir) e `check_plugin(pasta)`, que roda tudo. Antes de instalar de
+`check_route`, `check_command`, `check_exporter`, `check_resolver` (cada uma
+levanta `AssertionError` com o que corrigir) e `check_plugin(pasta)`, que roda
+tudo. Antes de instalar de
 verdade, valide o manifesto e rode `register()` contra um registro descartável
 (com os built-ins, para pegar colisão de nome), sem habilitar nada — o `check`
 roda as mesmas checagens de contrato e lista o que conferiu em `contracts`:
