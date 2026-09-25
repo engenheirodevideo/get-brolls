@@ -615,8 +615,38 @@ def status_hint(row, default):
     return default
 
 
+def env_warnings(manifest):
+    """Avisos (não recusas) sobre `permissions.env` para a prévia de enable/install:
+    variável do core, variável do espaço de nomes de outro plugin instalado, ou nome
+    fora do espaço de nomes do próprio plugin (o `.env` não a entrega)."""
+    from .. import config
+
+    plugin_id = manifest["id"]
+    others = [other for other in config.installed_env() if other != plugin_id]
+    own = plugin_id.upper() + "_"
+    warnings = []
+    for key in manifest["permissions"]["env"]:
+        owner = config.env_namespace_owner(key, [*others, plugin_id])
+        if config.core_env_key(key):
+            warnings.append(
+                f"permissions.env pede {key}, uma variável do core do Get B-rolls: o plugin leria a "
+                "configuração do core. Confira se isso faz sentido antes de confirmar."
+            )
+        elif owner is not None and owner != plugin_id:
+            warnings.append(
+                f"permissions.env pede {key}, do espaço de nomes do plugin {owner} ({owner.upper()}_...): "
+                "o plugin leria uma variável de outro plugin. Confira antes de confirmar."
+            )
+        elif not key.startswith(own):
+            warnings.append(
+                f"permissions.env pede {key}, fora do espaço de nomes {own}...: o .env não entrega essa "
+                "variável ao plugin, só o ambiente do processo."
+            )
+    return warnings
+
+
 def _preview(manifest, folder, sha=None):
-    return {
+    preview = {
         "id": manifest["id"],
         "name": manifest["name"],
         "version": manifest["version"],
@@ -624,6 +654,10 @@ def _preview(manifest, folder, sha=None):
         "permissions": manifest["permissions"],
         "sha256": sha if sha is not None else folder_digest(folder),
     }
+    warnings = env_warnings(manifest)
+    if warnings:
+        preview["warnings"] = warnings
+    return preview
 
 
 def enable(plugin_id, confirm, expect=None):

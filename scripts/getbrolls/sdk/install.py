@@ -604,7 +604,8 @@ def _checked_manifest(folder):
 
 
 def _summary(manifest, origin, commit, sha256, files):
-    return {
+    warnings = loader.env_warnings(manifest)
+    summary = {
         "id": manifest["id"],
         "name": manifest["name"],
         "version": manifest["version"],
@@ -615,6 +616,9 @@ def _summary(manifest, origin, commit, sha256, files):
         "sha256": sha256,
         "files": files,
     }
+    if warnings:
+        summary["warnings"] = warnings
+    return summary
 
 
 def _check_expect(expect, sha):

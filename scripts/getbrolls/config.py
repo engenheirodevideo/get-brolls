@@ -68,31 +68,83 @@ TOOL_PATH_KEYS = {
 PATH_KEYS = (*TOOL_PATH_KEYS.values(), "GB_VENV_PATH")
 
 
-# Nomes que um plugin pode declarar em `permissions.env` mas que o `.env` nunca
-# aceita em nome dele: mexeriam no core, no git ou no carregamento de processos.
-_PLUGIN_ENV_REFUSED_PREFIXES = ("GB_", "GETBROLLS_", "GIT_", "PYTHON", "LD_", "DYLD_")
-_PLUGIN_ENV_REFUSED = frozenset({"PATH", "HOME", "SHELL", "TMPDIR", "TEMP", "TMP", "USER", "LANG"})
+# Um plugin só pode receber do `.env` variáveis do próprio espaço de nomes,
+# `<ID_EM_MAIÚSCULAS>_...` (ex.: `BANCO_HTTP_TOKEN` do plugin `banco_http`). Variável do
+# core (`KEYS`, `GB_*`) nunca. E um id que coincide com o prefixo de uma ferramenta do
+# sistema (`LD_`, `GIT_`, `NODE_`, `HTTPS_`...) não ganha espaço de nomes no `.env`.
+_TOOLCHAIN_NAMESPACES = frozenset(
+    {"LD", "DYLD", "GIT", "PYTHON", "NODE", "NPM", "PIP", "HTTP", "HTTPS", "SSL", "SSH", "GPG", "JAVA"}
+)
 
 
-def plugin_env_keys():
-    """Nomes de `permissions.env` dos plugins INSTALADOS em `plugins/` — lidos só do
-    manifesto, sem rodar código de plugin —, que o `.env` passa a aceitar (C H-1)."""
+def core_env_key(key):
+    return key in KEYS or key.startswith("GB_")
+
+
+def env_namespace_owner(key, plugin_ids):
+    """Id do plugin cujo prefixo `<ID>_` contém `key` (o mais longo vence), ou `None`."""
+    owner = None
+    for plugin_id in plugin_ids:
+        if key.startswith(plugin_id.upper() + "_") and (owner is None or len(plugin_id) > len(owner)):
+            owner = plugin_id
+    return owner
+
+
+def installed_env():
+    """`{id: [nomes de permissions.env]}` dos plugins em `plugins/`, só pelo manifesto."""
     from .sdk import loader
     from .sdk.manifest import read_manifest
 
-    root = loader.plugins_root()
     try:
-        folders = [p for p in root.iterdir() if p.is_dir() and not p.name.startswith((".", "_"))]
+        folders = [p for p in loader.plugins_root().iterdir() if p.is_dir() and not p.name.startswith((".", "_"))]
     except OSError:
-        return frozenset()
-    keys = set()
+        return {}
+    installed = {}
     for folder in folders:
         try:
-            keys.update(read_manifest(folder)["permissions"]["env"])
+            manifest = read_manifest(folder)
         except (ValueError, OSError):
             continue
+        installed[manifest["id"]] = list(manifest["permissions"]["env"])
+    return installed
+
+
+def plugin_env_keys():
+    """Nomes de `permissions.env` dos plugins instalados que o `.env` aceita: só os do
+    espaço de nomes do próprio plugin, nunca uma variável do core."""
+    installed = installed_env()
     return frozenset(
-        key for key in keys if key not in _PLUGIN_ENV_REFUSED and not key.startswith(_PLUGIN_ENV_REFUSED_PREFIXES)
+        key
+        for plugin_id, keys in installed.items()
+        if plugin_id.upper() not in _TOOLCHAIN_NAMESPACES
+        for key in keys
+        if not core_env_key(key) and env_namespace_owner(key, installed) == plugin_id
+    )
+
+
+def _refused_plugin_key(number, key, installed):
+    """Mensagem para uma chave do `.env` que nenhum plugin pode receber, ou `None`."""
+    declared_by = sorted(plugin_id for plugin_id, keys in installed.items() if key in keys)
+    if declared_by:
+        prefix = declared_by[0].upper() + "_"
+        return (
+            f".env: a variável {key} (linha {number}) é pedida pelo plugin {declared_by[0]}, mas o .env só "
+            f"entrega a um plugin variáveis do espaço de nomes dele ({prefix}...), nunca uma do core ou do "
+            "sistema. Tire a linha do .env; se o plugin precisa dela, defina-a no ambiente do processo."
+        )
+    from .sdk import loader
+
+    try:
+        state = loader.read_state()
+    except (ValueError, OSError):
+        return None
+    known = set(state.get("enabled", {})) | set(state.get("last_pins", {})) | set(state.get("sources", {}))
+    owner = env_namespace_owner(key, known - set(installed))
+    if owner is None:
+        return None
+    return (
+        f".env: a variável {key} (linha {number}) é do plugin {owner}, que não está mais em plugins/. "
+        f"Tire a linha do .env, ou reinstale o plugin {owner}."
     )
 
 
@@ -131,7 +183,8 @@ def load_env(path):
     for number, key, value in unknown:
         if key not in declared:
             raise ValueError(
-                f".env: variável desconhecida na linha {number}: {key}. Aceitas: " + ", ".join(sorted(KEYS)) + "."
+                _refused_plugin_key(number, key, installed_env())
+                or f".env: variável desconhecida na linha {number}: {key}. Aceitas: " + ", ".join(sorted(KEYS)) + "."
             )
         os.environ.setdefault(key, value)
 

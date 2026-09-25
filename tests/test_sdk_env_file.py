@@ -58,17 +58,64 @@ class PluginEnvKeysTests(LoaderTestCase):
         err = run_cli("--env-file", str(path), "providers", expect=2, env={"GB_HOME": str(self.home)})
         self.assertIn("NAO_DECLARADA", err["error"])
 
-    def test_plugin_cannot_open_core_or_process_keys(self):
+    def declare(self, *keys):
         folder = self.home / "plugins" / "banco_http"
         manifest = (folder / "getbrolls-plugin.json").read_text(encoding="utf-8")
+        extra = "".join(f', "{key}"' for key in keys)
         (folder / "getbrolls-plugin.json").write_text(
-            manifest.replace('"env": ["BANCO_HTTP_TOKEN"]', '"env": ["BANCO_HTTP_TOKEN", "PYTHONPATH", "LD_PRELOAD"]'),
+            manifest.replace('"env": ["BANCO_HTTP_TOKEN"]', '"env": ["BANCO_HTTP_TOKEN"' + extra + "]"),
             encoding="utf-8",
         )
-        self.assertEqual(frozenset({"BANCO_HTTP_TOKEN"}), config.plugin_env_keys())
-        path = self.env_file("PYTHONPATH=/nao/existe\n")
-        with patch.dict(os.environ, {}), self.assertRaises(ValueError):
+
+    def test_only_the_plugins_own_namespace_is_accepted(self):
+        """Mesmo declaradas no manifesto, variáveis fora de BANCO_HTTP_ não entram pelo .env."""
+        outro = self.home / "plugins" / "outro"
+        shutil.copytree(self.home / "plugins" / "banco_http", outro)
+        manifest = (outro / "getbrolls-plugin.json").read_text(encoding="utf-8")
+        (outro / "getbrolls-plugin.json").write_text(
+            manifest.replace('"id": "banco_http"', '"id": "outro"').replace("BANCO_HTTP_TOKEN", "OUTRO_TOKEN"),
+            encoding="utf-8",
+        )
+        refused = ("HTTPS_PROXY", "SSLKEYLOGFILE", "NODE_OPTIONS", "OUTRO_TOKEN", "PYTHONPATH", "GB_LIBRARY_X")
+        self.declare(*refused)
+        self.assertEqual(frozenset({"BANCO_HTTP_TOKEN", "OUTRO_TOKEN"}), config.plugin_env_keys())
+        for key in refused:
+            if key == "OUTRO_TOKEN":
+                continue
+            with self.subTest(key=key):
+                path = self.env_file(f"BANCO_HTTP_TOKEN=ok\n{key}=x\n")
+                with patch.dict(os.environ, {}), self.assertRaises(ValueError) as caught:
+                    config.load_env(path)
+                self.assertIn(key, str(caught.exception))
+                self.assertIn("espaço de nomes", str(caught.exception))
+        path = self.env_file("BANCO_HTTP_TOKEN=ok\nOUTRO_TOKEN=y\n")
+        with patch.dict(os.environ, {}):
             config.load_env(path)
+            self.assertEqual("y", os.environ["OUTRO_TOKEN"])
+
+    def test_key_of_a_removed_plugin_says_how_to_fix(self):
+        pin_plugins("banco_http")
+        shutil.rmtree(self.home / "plugins" / "banco_http")
+        path = self.env_file("BANCO_HTTP_TOKEN=tk\n")
+        with patch.dict(os.environ, {}), self.assertRaises(ValueError) as caught:
+            config.load_env(path)
+        message = str(caught.exception)
+        self.assertIn("banco_http", message)
+        self.assertIn("Tire a linha do .env", message)
+        self.assertIn("reinstale", message)
+
+    def test_enable_preview_warns_about_core_and_foreign_keys(self):
+        from getbrolls.sdk import loader
+
+        pasta = self.home / "plugins" / "pasta_local"
+        shutil.copytree(EXAMPLES / "pasta_local", pasta)
+        self.declare("GB_HOME", "PASTA_LOCAL_DIR", "HTTPS_PROXY")
+        warnings = loader.enable("banco_http", confirm=False)["plugin"]["warnings"]
+        joined = "\n".join(warnings)
+        self.assertIn("GB_HOME, uma variável do core", joined)
+        self.assertIn("PASTA_LOCAL_DIR, do espaço de nomes do plugin pasta_local", joined)
+        self.assertIn("HTTPS_PROXY, fora do espaço de nomes BANCO_HTTP_", joined)
+        self.assertNotIn("warnings", loader.enable("pasta_local", confirm=False)["plugin"])
 
 
 if __name__ == "__main__":
