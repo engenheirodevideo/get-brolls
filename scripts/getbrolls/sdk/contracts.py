@@ -97,13 +97,26 @@ class CommandContext:
         return copy.deepcopy(Ledger(self.project, recover=False).data["items"])
 
     def brief(self) -> dict | None:
+        """O JSON do BRIEF.md sem os beats aposentados pelo roteiro: os mesmos beats do `status`."""
         if self.project is None:
             return None
         from ..brief import brief_path, load_brief
 
         if not brief_path(self.project).is_file():
             return None
-        return copy.deepcopy(load_brief(self.project))
+        data = copy.deepcopy(load_brief(self.project))
+        beats = data.get("beats") if isinstance(data, dict) else None
+        if isinstance(beats, list):
+            data["beats"] = [b for b in beats if not (isinstance(b, dict) and b.get("retired") is True)]
+        return data
+
+    def retired_beat_ids(self) -> list[str]:
+        """Ids dos beats aposentados (`"retired": true`), em ordem, para o plugin que precisa do histórico."""
+        if self.project is None:
+            return []
+        from ..brief import retired_beat_ids
+
+        return sorted(retired_beat_ids(self.project))
 
 
 @dataclass(frozen=True)
