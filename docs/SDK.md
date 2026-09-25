@@ -534,7 +534,7 @@ python3 scripts/gb.py plugins --action new --id meu_banco --kind route --path <p
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=<pasta da skill>/scripts python3 -m unittest discover -s <pasta>/meu_banco/tests
 ```
 
-No PowerShell, as variáveis vêm antes, uma por linha:
+No PowerShell, defina as variáveis antes do comando (as duas cabem numa linha, separadas por `;`). Um valor em `$env:` vale até fechar aquela sessão do PowerShell:
 
 ```powershell
 $env:PYTHONDONTWRITEBYTECODE = "1"; $env:PYTHONPATH = "<pasta da skill>\scripts"

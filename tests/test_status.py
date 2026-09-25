@@ -150,6 +150,8 @@ class StatusCommandTests(unittest.TestCase):
             # `next`: a decisão humana pendente ganha (o brief só lidera antes da
             # primeira prévia), e `summary["brief"]` fica None.
             self.assertEqual("approve", summary["do"]["step"])
+            self.assertIn("approve", summary["do"]["command"])
+            self.assertTrue(summary["do"]["for_human"])
             self.assertTrue(summary["do"]["blocking_human"])
             self.assertIsNone(summary["do"]["url"])
             self.assertIsNone(summary["brief"])
