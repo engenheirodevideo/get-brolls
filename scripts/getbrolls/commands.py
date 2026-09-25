@@ -516,7 +516,7 @@ def brief_report(args):
         rules = load_rules(args.project)
     except (ValueError, OSError) as exc:
         rules_error = str(exc)
-    data, conflicts = validate_brief(load_brief(args.project), rules)
+    data, conflicts = validate_brief(load_brief(args.project), rules, project=args.project)
     problems = list(conflicts)
     if rules_error:
         problems.append(f"RULES.md não pôde ser lido, então não conferi o formato: {rules_error}")
@@ -527,6 +527,12 @@ def brief_report(args):
     problems += [f'O beat "{entry["id"]}" está travado esperando você: {entry["reason"]}' for entry in stalled]
     # Modelo intocado passa na validação de formato, mas não é um brief pronto.
     problems += template_leftovers(data)
+    if not data["beats"]:
+        # Só chega aqui com ROTEIRO.md no projeto: os beats nascem do sync do roteiro.
+        problems.append(
+            "O BRIEF.md ainda não tem beats: eles vêm do ROTEIRO.md. Revise o roteiro com a pessoa e "
+            "rode `roteiro --action sync --project <projeto>`."
+        )
     if getattr(args, "validate", False):
         beat_count = _count(len(data["beats"]), "beat", "beats")
         return {
@@ -1094,7 +1100,7 @@ def brief_state(project, rules, items, data=None):
 
     manifest = data
     try:
-        data, conflicts = validate_brief(load_brief(project), rules)
+        data, conflicts = validate_brief(load_brief(project), rules, project=project)
     except (ValueError, OSError) as exc:
         # Nada do brief quebra o `status`. Arquivo ausente é "faça o brief"; arquivo
         # presente e errado é "corrija o brief" — degraus e comandos diferentes.

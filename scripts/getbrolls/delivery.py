@@ -476,7 +476,7 @@ def _brief_beats(project):
     try:
         from .brief import load_brief, validate_brief
 
-        data, _ = validate_brief(load_brief(project))
+        data, _ = validate_brief(load_brief(project), project=project)
         return [b["resolved"] for b in data["beats"]]
     except (ValueError, OSError):
         return []

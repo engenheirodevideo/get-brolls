@@ -338,8 +338,41 @@ def resolve_beat(defaults, beat, position):
     }
 
 
-def validate_brief(data, rules=None):
-    """Devolve (brief normalizado, conflitos). Erro = brief inutilizável; conflito = aviso."""
+def _active_beats(defaults, raw_beats, roteiro_owned):
+    """Beats validados, na ordem, sem os aposentados (`"retired": true`, gravado pelo sync do roteiro).
+
+    Todo beat é validado (o id aposentado continua reservado); só os ativos voltam.
+    Lista vazia só vale quando o projeto tem ROTEIRO.md: aí quem gera os beats é o roteiro.
+    """
+    empty = 'Em BRIEF.md, "beats" tem que ser uma lista com pelo menos um beat; cada beat precisa de "id" e "target".'
+    if (
+        not isinstance(raw_beats, list)
+        or (not raw_beats and not roteiro_owned)
+        or any(not isinstance(b, dict) for b in raw_beats)
+    ):
+        raise ValueError(empty)
+    beats, seen = [], set()
+    for position, raw in enumerate(raw_beats):
+        resolved = resolve_beat(defaults, raw, position)
+        if resolved["id"] in seen:
+            raise ValueError(
+                f'O id de beat "{resolved["id"]}" aparece repetido em BRIEF.md. Cada beat '
+                "precisa de um id único, porque ele vira o --shot do candidato."
+            )
+        seen.add(resolved["id"])
+        if _flag(raw.get("retired", False), f"beats[{position}].retired"):
+            continue
+        beats.append({"id": resolved["id"], "resolved": resolved})
+    if not beats and not roteiro_owned:
+        raise ValueError(empty)
+    return beats
+
+
+def validate_brief(data, rules=None, project=None):
+    """Devolve (brief normalizado, conflitos). Erro = brief inutilizável; conflito = aviso.
+
+    `project`: com ROTEIRO.md nessa pasta, `"beats": []` é válido (o roteiro gera os beats).
+    """
     if not isinstance(data, dict) or type(data.get("version")) is not int or data["version"] != 1:
         raise ValueError('Em BRIEF.md, "version" tem que ser o número 1. Ajuste essa linha.')
     video = _dictionary(data, "video")
@@ -367,21 +400,12 @@ def validate_brief(data, rules=None):
         "duration_hint_s": _number(defaults.get("duration_hint_s"), "defaults.duration_hint_s", MIN_HINT_S, MAX_HINT_S),
         "stock": _flag(defaults.get("stock"), "defaults.stock"),
     }
-    raw_beats = data.get("beats")
-    if not isinstance(raw_beats, list) or not raw_beats or any(not isinstance(b, dict) for b in raw_beats):
-        raise ValueError(
-            'Em BRIEF.md, "beats" tem que ser uma lista com pelo menos um beat; cada beat precisa de "id" e "target".'
-        )
-    beats, seen = [], set()
-    for position, raw in enumerate(raw_beats):
-        resolved = resolve_beat(defaults, raw, position)
-        if resolved["id"] in seen:
-            raise ValueError(
-                f'O id de beat "{resolved["id"]}" aparece repetido em BRIEF.md. Cada beat '
-                "precisa de um id único, porque ele vira o --shot do candidato."
-            )
-        seen.add(resolved["id"])
-        beats.append({"id": resolved["id"], "resolved": resolved})
+    roteiro_owned = False
+    if project is not None:
+        from .roteiro import roteiro_path
+
+        roteiro_owned = roteiro_path(project).is_file()
+    beats = _active_beats(defaults, data.get("beats"), roteiro_owned)
     conflicts = []
     if not rights["stock_allowed"] and any(b["resolved"]["stock"] for b in beats):
         conflicts.append(

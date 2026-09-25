@@ -7,6 +7,8 @@ description: Entrevista o usuário em até 7 perguntas, escreve o BRIEF.md do v�
 
 Use quando alguém pedir b-roll e o projeto ainda não tiver `BRIEF.md`. Leia `${CLAUDE_PLUGIN_ROOT}/references/interview.md` antes de perguntar qualquer coisa: as sete perguntas, a ordem, os critérios de parada e os defaults estão lá, e não são para improvisar.
 
+**Se o projeto já tiver `ROTEIRO.md`**, o roteiro é dono dos beats: pergunte só vídeo, fontes e direitos (perguntas 1, 2, 5, 6 e 7), escreva `"beats": []` e valide. Os beats nascem de `roteiro --action sync` depois que a pessoa revisar o roteiro; não copie cena para beat à mão.
+
 1. Descubra a pasta do projeto com o usuário (a que guarda ou vai guardar `brolls/`). Se não houver `RULES.md`, crie com `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" init-rules --project <projeto>`.
 
 2. Conduza a entrevista: **uma pergunta por mensagem**, teto de sete, parando quando 1, 3 e 7 estiverem respondidas. Dois "tanto faz" seguidos encerram a entrevista — aplique os defaults e siga.
