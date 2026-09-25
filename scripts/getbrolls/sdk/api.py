@@ -294,7 +294,7 @@ class PluginApi:
         plataforma — ele viaja entre máquinas —; aqui só entra a que é absoluta no
         sistema atual (uma `C:\\acervo` lida no macOS seria um caminho relativo à pasta
         corrente, então é ignorada)."""
-        # B-09: o manifesto passou na checagem de texto, mas a pasta de verdade é a raiz
+        # O manifesto passou na checagem de texto, mas a pasta de verdade pode ser a raiz
         # do disco, um ponto de montagem, a pasta pessoal ou uma pasta acima dela (link,
         # `/Volumes/Macintosh HD`, `/Users`, outra caixa do mesmo nome): ignorada.
         roots, ignored = _checked_roots(self._manifest["permissions"]["paths"])
