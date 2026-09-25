@@ -278,6 +278,12 @@ O registro de proveniência que a pessoa lê para decidir (`ORIGEM.md`,
   caracteres — um título com quebra de linha não forja uma linha
   "Direitos:"/"Aprovado por:" no `ORIGEM.md`. O próprio `ORIGEM.md`/`credits.md`
   também escreve cada valor numa linha só (texto normal sai idêntico).
+- Num candidato de plugin, `ORIGEM.md`, `credits.md` e a tabela de
+  `entrega/README.md` escapam com barra invertida todo caractere que Markdown ou
+  HTML interpreta (`` \ ` * _ [ ] ( ) < > ! | ``) no título, autor, licença, URL
+  da licença, URL da fonte e no texto da licença/preset registrado pelo plugin:
+  um `<img>`, um `[link](url)` ou um `**negrito**` sai como texto, nunca como
+  imagem remota, link ou ênfase. Fonte embutida sai como sempre.
 
 Uma exceção levantada dentro de `search`, `resolve`, `refresh` ou `Route.prepare` nunca derruba
 a CLI: ela vira `ProviderError` com a mensagem `Plugin <id>: ...`, e a busca

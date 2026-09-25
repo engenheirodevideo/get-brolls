@@ -260,7 +260,7 @@ def render(ledger):
         )
         if out:
             # `one_line`: nenhum valor do candidato quebra a linha e forja outro campo.
-            from .delivery import plugin_label, source_label
+            from .delivery import evidence_line, inert, plugin_label, source_label
 
             plugin = plugin_label(c)
             credits_lines += [
@@ -268,12 +268,12 @@ def render(ledger):
                 f"- Arquivo: {one_line(out)}",
                 # Fonte de plugin: o título do arquivo na fonte (ex.: nome do arquivo da
                 # pasta local) entra também — built-in segue sem esta linha (BUG-12).
-                *([f"- Título na fonte: {one_line(c.get('title') or 'não informado')}"] if plugin else []),
+                *([f"- Título na fonte: {inert(c.get('title') or 'não informado', plugin)}"] if plugin else []),
                 f"- Fonte: {one_line(source_label(c, plugin))}",
-                f"- Autor: {one_line(c['creator'].get('name') or 'não informado')}",
-                f"- Licença: {one_line(c['rights'].get('license_name') or 'ver evidência')}",
-                f"- Licença URL: {one_line(c['rights'].get('license_url') or 'não informada')}",
-                f"- Evidência: {one_line('; '.join(c['rights']['evidence']))}",
+                f"- Autor: {inert(c['creator'].get('name') or 'não informado', plugin)}",
+                f"- Licença: {inert(c['rights'].get('license_name') or 'ver evidência', plugin)}",
+                f"- Licença URL: {inert(c['rights'].get('license_url') or 'não informada', plugin)}",
+                f"- Evidência: {evidence_line(c['rights']['evidence'], plugin)}",
                 "",
             ]
     from .ledger import atomic_write

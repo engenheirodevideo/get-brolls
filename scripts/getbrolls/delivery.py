@@ -309,6 +309,34 @@ def plugin_label(c):
     return row["id"] if row else provider
 
 
+_MARKDOWN_SIGNIFICANT = re.compile(r"([\\`*_\[\]()<>!|])")
+# Prefixos que o core escreve na frente de um texto de plugin guardado como evidência.
+_PLUGIN_EVIDENCE_PREFIXES = ("Licença registrada pelo plugin ", "Condições informadas pelo plugin ")
+
+
+def inert(value, plugin):
+    """`value` numa linha só e, se veio de um plugin (`plugin` não é `None`), com todo
+    caractere que Markdown/HTML interpreta escapado por barra invertida: um título com
+    `<img>`, `[link](url)` ou `**negrito**` sai como texto em ORIGEM.md/credits.md, nunca
+    como imagem remota, link ou ênfase. Fonte embutida: só `one_line`, texto idêntico."""
+    text = one_line(value)
+    return text if plugin is None else _MARKDOWN_SIGNIFICANT.sub(r"\\\1", text)
+
+
+def evidence_line(evidence, plugin):
+    """Itens de evidência juntos por `"; "`. Num candidato de plugin, o texto depois do
+    prefixo que o core pôs num registro do plugin (licença, condições do preset) sai
+    inerte; o que a pessoa disse sai como ela disse."""
+    items = []
+    for item in evidence or []:
+        text = one_line(item)
+        if plugin is not None and text.startswith(_PLUGIN_EVIDENCE_PREFIXES):
+            head, sep, tail = text.partition(": ")
+            text = head + sep + inert(tail, plugin) if sep else inert(text, plugin)
+        items.append(text)
+    return "; ".join(items)
+
+
 def source_label(c, plugin):
     """Linha "Fonte:" de ORIGEM.md/credits.md. Fonte embutida: a URL ou "original
     local", como sempre; fonte de plugin: o plugin e a URL (ou "arquivo local") —
@@ -317,13 +345,14 @@ def source_label(c, plugin):
     url = c.get("source_url")
     if plugin is None:
         return url or "original local"
-    return f"plugin {plugin} ({url or 'arquivo local'})"
+    return f"plugin {plugin} ({inert(url, plugin) if url else 'arquivo local'})"
 
 
 def render_origin(c, media_name, created=None, method="hardlink"):
     """`ORIGEM.md` do trecho: fonte, autor, intervalo, direitos e sha256 do arquivo."""
     rights = c.get("rights") or {}
     approval = c.get("approval") or {}
+    plugin = plugin_label(c)
     lines = _frontmatter("delivery-origin", created, ["get-brolls", "entrega"])
     # Todo valor vindo do candidato passa por `one_line`: um título/licença/evidência
     # com quebra de linha (plugin ou ledger editado à mão) nunca forja outra linha
@@ -333,14 +362,14 @@ def render_origin(c, media_name, created=None, method="hardlink"):
         "",
         f"- Arquivo: `{one_line(media_name)}`",
         f"- Candidato: `{one_line(c['id'])}`",
-        f"- Título na fonte: {one_line(c.get('title') or 'não informado')}",
-        f"- Fonte: {one_line(source_label(c, plugin_label(c)))}",
-        f"- Autor: {one_line(_author(c))}",
+        f"- Título na fonte: {inert(c.get('title') or 'não informado', plugin)}",
+        f"- Fonte: {one_line(source_label(c, plugin))}",
+        f"- Autor: {inert(_author(c), plugin)}",
         f"- Trecho usado: {_segment_label(c)}",
         f"- Direitos: {one_line(rights.get('status') or 'unknown')}",
-        f"- Licença: {one_line(rights.get('license_name') or 'ver evidência')}",
-        f"- Licença URL: {one_line(rights.get('license_url') or 'não informada')}",
-        "- Evidência: " + one_line("; ".join(rights.get("evidence") or []) or "não registrada"),
+        f"- Licença: {inert(rights.get('license_name') or 'ver evidência', plugin)}",
+        f"- Licença URL: {inert(rights.get('license_url') or 'não informada', plugin)}",
+        "- Evidência: " + (evidence_line(rights.get("evidence"), plugin) or "não registrada"),
         f"- Aprovado por: {one_line(approval.get('by') or 'não registrado')}"
         + (f" ({one_line(approval.get('channel'))})" if approval.get("channel") else ""),
         f"- sha256 do arquivo coletado: `{one_line((c.get('output') or {}).get('sha256') or 'não calculado')}`",
@@ -488,11 +517,16 @@ def _plan(project, items):
         if not members:
             continue
         target = beat.get("target") or members[0].get("title") or beat_id
+        # Alvo que veio do título na fonte de um plugin: sai inerte na tabela do README
+        # (a pasta continua saindo do texto original, por `slug`).
+        from_title = not beat.get("target") and members[0].get("title")
+        title_plugin = plugin_label(members[0]) if from_title else None
         groups.append(
             {
                 "beat": beat_id,
                 "narration": beat.get("narration"),
                 "target": target,
+                "target_label": inert(target, title_plugin) if title_plugin else target,
                 "dir": beat_dir_name(position, beat_id, target),
                 "items": members,
             }
@@ -755,7 +789,7 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):  # noqa
                 {
                     "beat": group["beat"] or "sem beat",
                     "narration": group["narration"],
-                    "target": group["target"],
+                    "target": group.get("target_label", group["target"]),
                     "file": f"{group['dir']}/{names['media']}",
                     "state": c.get("state"),
                     "rights": (c.get("rights") or {}).get("status"),
