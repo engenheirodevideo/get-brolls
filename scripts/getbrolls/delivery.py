@@ -538,7 +538,10 @@ def _plan(project, items):
                 "narration": beat.get("narration"),
                 "target": target,
                 "target_label": inert(target, title_plugin) if title_plugin else target,
-                "dir": beat_dir_name(position, beat_id, target),
+                # O alvo é texto humano (do brief, ou o título do candidato quando o beat
+                # não tem alvo): "AC/DC ao vivo" tem barra e não é caminho. A pasta sai do
+                # slug; o texto de verdade segue em `target` e no ORIGEM.md.
+                "dir": beat_dir_name(position, beat_id, slug(target)),
                 "items": members,
             }
         )
