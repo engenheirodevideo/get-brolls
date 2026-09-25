@@ -15,6 +15,7 @@ from .roteiro import SCENE_BEAT_RE
 
 STATE_FILE = "roteiro-state.json"
 MAX_SCENE = 999
+_CEILING = f"O roteiro passou de c{MAX_SCENE}: divida o vídeo em dois projetos."
 _BAD_STATE = (
     f"brolls/{STATE_FILE} ilegível: restaure a cópia ou apague o arquivo "
     "(os ids em uso são recalculados do roteiro, do BRIEF.md e do manifesto)."
@@ -74,15 +75,19 @@ def highest_seen(doc, beats, items, state):
     return max((int(_base(i)[1:]) for i in seen), default=0)
 
 
-def _readopt(at_risk, idless, state):
-    """{linha: id} das cenas sem id que casam, sem ambiguidade, com uma cena que sumiu."""
+def _readopt(missing, idless, state):
+    """{linha: id} das cenas sem id que casam, sem ambiguidade, com uma cena que sumiu.
+
+    `missing` são todos os ids do estado ausentes do roteiro, tenham ou não candidatos:
+    readota só quando a assinatura é única nos dois sentidos (um id ↔ uma cena).
+    """
     readopted = {}
-    for identifier in at_risk:
+    for identifier in missing:
         wanted = state["scenes"].get(identifier)
         if wanted is None:
             continue
         matches = [s for s in idless if signature(s) == wanted]
-        rivals = [other for other in at_risk if other != identifier and state["scenes"].get(other) == wanted]
+        rivals = [other for other in missing if other != identifier and state["scenes"].get(other) == wanted]
         if len(matches) == 1 and not rivals and matches[0].line not in readopted:
             readopted[matches[0].line] = identifier
     return readopted
@@ -99,22 +104,27 @@ def plan_ids(doc, beats, items, state):
     shots = set(_scene_ids(c.get("shot") for c in items))
     at_risk = sorted(i for i in known - present if any(_base(s) == i for s in shots))
     idless = [s for s in doc.scenes if not s.scene_id]
-    readopted = _readopt(at_risk, idless, state)
+    readopted = _readopt(sorted(set(state["scenes"]) - present), idless, state)
     remaining = [s for s in idless if s.line not in readopted]
     orphaned = [i for i in at_risk if i not in readopted.values()]
     next_id = max(state["next_id"], highest_seen(doc, beats, items, state) + 1)
     if remaining and orphaned:
         lines = ", ".join(str(s.line) for s in remaining)
+        fresh = (
+            f"dê a ela um id novo à mão: `<!-- c{next_id:02d} -->`."
+            if next_id <= MAX_SCENE
+            else f"não há id novo livre (o roteiro passou de c{MAX_SCENE}): divida o vídeo em dois projetos."
+        )
         refusal = (
             f"Cena sem id (linha {lines}) e beat com candidatos que ficaria sem cena ({', '.join(orphaned)}). "
             f"Se é a mesma cena de antes, devolva o comentário ao título (ex.: `## Título <!-- {orphaned[0]} -->`). "
-            f"Se a cena antiga saiu de propósito e esta é nova, dê a ela um id novo à mão: `<!-- c{next_id:02d} -->`."
+            f"Se a cena antiga saiu de propósito e esta é nova, {fresh}"
         )
         return {"assign": {}, "readopted": readopted, "refusal": refusal, "next_id": next_id}
     assign = dict(readopted)
     for scene in remaining:
         if next_id > MAX_SCENE:
-            raise ValueError(f"O roteiro passou de c{MAX_SCENE}: divida o vídeo em dois projetos.")
+            raise ValueError(_CEILING)
         assign[scene.line] = f"c{next_id:02d}"
         next_id += 1
     return {"assign": assign, "readopted": readopted, "refusal": None, "next_id": next_id}

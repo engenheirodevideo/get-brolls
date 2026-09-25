@@ -96,6 +96,63 @@ class ReadoptionTests(unittest.TestCase):
         plan = roteiro_ids.plan_ids(doc, [{"id": "c03-a"}], [], PROVA)
         self.assertEqual(plan["assign"], {6: "c04"})
 
+    def test_every_known_scene_comes_back_when_all_comments_are_lost(self):
+        state = {
+            "next_id": 5,
+            "scenes": {
+                "c01": {"title": "Gancho", "layout": "A-ROLL", "args": []},
+                "c02": {"title": "Prova", "layout": "SPLIT", "args": ["tela", "mapa"]},
+                "c03": {"title": "Demo", "layout": "BROLL", "args": ["x"]},
+                "c04": {"title": "CTA", "layout": "BROLL", "args": ["y"]},
+            },
+        }
+        doc = read("## Gancho\n[A-ROLL]\n## Prova\n[SPLIT: tela | mapa]\n## Demo\n[BROLL: x]\n## CTA\n[BROLL: y]\n")
+        beats = [{"id": "c02-a"}, {"id": "c02-b"}, {"id": "c03"}, {"id": "c04"}]
+        plan = roteiro_ids.plan_ids(doc, beats, [shot("c02-a"), shot("c03")], state)
+        expected = {6: "c01", 8: "c02", 10: "c03", 12: "c04"}
+        self.assertEqual(plan["readopted"], expected)
+        self.assertEqual(plan["assign"], expected)
+        self.assertIsNone(plan["refusal"])
+        self.assertEqual(plan["next_id"], 5)
+
+    def test_two_missing_ids_with_one_signature_adopt_neither(self):
+        twin = {"title": "Prova", "layout": "A-ROLL", "args": []}
+        state = {"next_id": 3, "scenes": {"c01": twin, "c02": dict(twin)}}
+        plan = roteiro_ids.plan_ids(read("## Prova\n[A-ROLL]\n"), [], [], state)
+        self.assertEqual(plan["readopted"], {})
+        self.assertEqual(plan["assign"], {6: "c03"})
+        self.assertIsNone(plan["refusal"])
+
+    def test_rival_at_risk_ids_with_one_signature_refuse(self):
+        twin = {"title": "Prova", "layout": "A-ROLL", "args": []}
+        state = {"next_id": 3, "scenes": {"c01": twin, "c02": dict(twin)}}
+        plan = roteiro_ids.plan_ids(read("## Prova\n[A-ROLL]\n"), [], [shot("c01"), shot("c02")], state)
+        self.assertEqual(plan["assign"], {})
+        self.assertIn("c01, c02", plan["refusal"])
+
+    def test_partial_readoption_then_orphan_refusal_writes_nothing(self):
+        state = {
+            "next_id": 3,
+            "scenes": {
+                "c01": {"title": "Gancho", "layout": "A-ROLL", "args": []},
+                "c02": {"title": "Prova", "layout": "SPLIT", "args": ["tela", "mapa"]},
+            },
+        }
+        text = HEAD + "## Gancho\n[A-ROLL]\n## Prova\n[SPLIT: tela | outro]\n"
+        plan = roteiro_ids.plan_ids(roteiro.parse(text, plugins=frozenset()), [], [shot("c01"), shot("c02")], state)
+        self.assertEqual(plan["readopted"], {6: "c01"})
+        self.assertEqual(plan["assign"], {})
+        self.assertIn("c02", plan["refusal"])
+        self.assertEqual(roteiro_ids.apply_ids(text, plan["assign"]), text)
+
+    def test_refusal_at_the_ceiling_points_to_the_limit_not_c1000(self):
+        state = {"next_id": 1000, "scenes": PROVA["scenes"]}
+        doc = read("## Prova\n[SPLIT: tela | outro mapa]\n")
+        plan = roteiro_ids.plan_ids(doc, [{"id": "c03-a"}], [shot("c03-a")], state)
+        self.assertEqual(plan["assign"], {})
+        self.assertNotIn("c1000", plan["refusal"])
+        self.assertIn(f"c{roteiro_ids.MAX_SCENE}", plan["refusal"])
+
 
 class StateFileTests(unittest.TestCase):
     def setUp(self):
@@ -109,6 +166,13 @@ class StateFileTests(unittest.TestCase):
         roteiro_ids.write_state(self.project, state)
         self.assertEqual(roteiro_ids.read_state(self.project), state)
         self.assertEqual([p.name for p in (self.project / "brolls").iterdir()], [roteiro_ids.STATE_FILE])
+
+    def test_legacy_state_without_scenes_reads_as_empty_scenes(self):
+        (self.project / "brolls").mkdir()
+        roteiro_ids.state_path(self.project).write_text(json.dumps({"next_id": 4}), encoding="utf-8")
+        state = roteiro_ids.read_state(self.project)
+        self.assertEqual(state, {"next_id": 4, "scenes": {}})
+        self.assertEqual(roteiro_ids.plan_ids(read("## Nova\n[A-ROLL]\n"), [], [], state)["assign"], {6: "c04"})
 
     def test_broken_state_is_a_clean_error(self):
         (self.project / "brolls").mkdir()
