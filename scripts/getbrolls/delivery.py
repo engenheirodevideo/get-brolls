@@ -190,13 +190,15 @@ def _thaw_unlink(path):
     path.unlink()
 
 
-def link_or_copy(src, dest, read_only=False):  # noqa: C901 - existing size; hardlink/reflink/copy fallback ladder across OSes
+def link_or_copy(src, dest, read_only=False, allow_symlink=True):  # noqa: C901 - existing size; hardlink/reflink/copy fallback ladder across OSes
     """Liga `dest` a `src` pelo jeito mais barato que o sistema aceitar.
 
     Hardlink primeiro (não ocupa disco e não quebra ao mover a pasta de dentro),
     symlink depois (no Windows pode faltar privilégio) e cópia por último. Devolve o
     método usado. Se `dest` já é o mesmo arquivo, não faz nada; se é um arquivo comum
     com conteúdo diferente, é obra da pessoa e o erro nomeia o arquivo.
+    `allow_symlink=False` pula o symlink (hardlink ou cópia): quem monta um projeto
+    que vai para outra máquina não pode depender de link para fora da pasta.
     """
     src, dest = Path(src), Path(dest)
     methods = (
@@ -204,7 +206,7 @@ def link_or_copy(src, dest, read_only=False):  # noqa: C901 - existing size; har
         if copies_forced()
         else (
             ("hardlink", os.link),
-            ("symlink", os.symlink),
+            *((("symlink", os.symlink),) if allow_symlink else ()),
             ("copy", shutil.copy2),
         )
     )
@@ -485,8 +487,11 @@ def _brief_beats(project):
 RETIRED_REASON = "beat aposentado pelo roteiro"
 
 
-def _drop_retired(project, collected, retired=None):
-    """`collected` sem os clipes de beat aposentado; cada um vai para `retired`, se for lista."""
+def _drop_retired(project, collected, retired=None, log_event="deliver_skipped"):
+    """`collected` sem os clipes de beat aposentado; cada um vai para `retired`, se for lista.
+
+    `log_event` nomeia o evento de log de cada clipe deixado de fora (o export usa o dele).
+    """
     from .brief import retired_beat_ids
 
     gone = retired_beat_ids(project)
@@ -499,23 +504,24 @@ def _drop_retired(project, collected, retired=None):
             continue
         if retired is not None:
             retired.append({"id": c["id"], "shot": c["shot"], "reason": RETIRED_REASON})
-        logs.event(log, logging.INFO, "deliver_skipped", candidate=c["id"], reason="retired_beat")
+        logs.event(log, logging.INFO, log_event, candidate=c["id"], reason="retired_beat")
     return kept
 
 
-def _plan(project, items, retired=None):
-    """Um grupo por beat, na ordem do brief; sem brief, na ordem do manifesto.
+def deliverable(project, items, retired=None, log_event="deliver_skipped"):
+    """(clipes entregáveis na ordem do manifesto, pulados com o motivo): o predicado do `deliver`.
 
     Clipe cujo `shot` é um beat aposentado (`"retired": true`, gravado pelo sync do
-    roteiro) não vira pasta: sai do plano e, quando `retired` é uma lista, entra nela
-    com o motivo. O arquivo em `brolls/` fica como está.
+    roteiro) sai e, quando `retired` é uma lista, entra nela com o motivo. O arquivo
+    em `brolls/` fica como está.
 
     Fica de fora quem não tem `output.path`, quem tem a chave `output.verified`
     presente com um valor falso (`False`, `0`, `None` — verificação de sha256 que
     falhou ou nunca rodou) e quem foi rejeitado na aprovação — mesmo que `reject` já
     limpe `output` nesses casos, a checagem aqui é defesa extra. Um item sem a chave
     `verified` (manifesto antigo) segue endereçado normalmente; a mesma regra que
-    `STAGE_TESTS["verified"]` usa em `commands.py`.
+    `STAGE_TESTS["verified"]` usa em `commands.py`. `log_event` nomeia o evento de
+    log de cada pulo (`deliver_skipped` no `deliver`, `export_skipped` no export).
     """
     collected, skipped = [], []
     for c in items:
@@ -532,14 +538,22 @@ def _plan(project, items, retired=None):
                     ),
                 }
             )
-            logs.event(log, logging.INFO, "deliver_skipped", candidate=c["id"], reason="unverified")
+            logs.event(log, logging.INFO, log_event, candidate=c["id"], reason="unverified")
             continue
         if (c.get("approval") or {}).get("status") == "rejected":
             skipped.append({"id": c["id"], "reason": "candidato foi rejeitado: não entra na entrega."})
-            logs.event(log, logging.INFO, "deliver_skipped", candidate=c["id"], reason="rejected")
+            logs.event(log, logging.INFO, log_event, candidate=c["id"], reason="rejected")
             continue
         collected.append(c)
-    collected = _drop_retired(project, collected, retired)
+    return _drop_retired(project, collected, retired, log_event), skipped
+
+
+def _plan(project, items, retired=None):
+    """Um grupo por beat, na ordem do brief; sem brief, na ordem do manifesto.
+
+    Quem entra é decidido por `deliverable` (o mesmo predicado do export).
+    """
+    collected, skipped = deliverable(project, items, retired)
     beats = _brief_beats(project)
     order = [b["id"] for b in beats]
     meta = {b["id"]: b for b in beats}
