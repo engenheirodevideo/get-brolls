@@ -12,6 +12,7 @@ import logging
 import os
 import sys
 import types
+from pathlib import Path
 
 from .. import logs
 from ..ledger import atomic_write
@@ -42,18 +43,34 @@ def state_path():
 # contando — são o vetor do Finding 1 (round 1): um bytecode plantado tem que mudar
 # o hash, mesmo nunca sendo lido, porque `_import` sempre compila a fonte na hora.
 JUNK_FILENAMES = frozenset({".DS_Store", "Thumbs.db", "desktop.ini"})
-# Pasta de VCS que sobra de um `git pull`/clone dentro da pasta do plugin: metadado
-# do controle de versão, não conteúdo que `_import` executa.
+# Pastas de VCS. Só o `.git` DE TOPO (o de um `git pull`/clone da própria pasta do
+# plugin) fica fora do hash: é metadado do controle de versão, não conteúdo que
+# `_import` executa. Qualquer pasta de VCS em outro lugar (`vendor/.hg`, `.svn`
+# aninhado, `.git` dentro de subpasta) torna o plugin inválido (`nested_vcs`), e
+# `.hg`/`.svn` de topo contam no hash como qualquer arquivo (RT-12).
 VCS_DIRNAMES = frozenset({".git", ".hg", ".svn"})
+TOP_LEVEL_VCS = ".git"
 
 
 def _counted_files(folder):
     """(caminho relativo, caminho) de cada arquivo que entra no hash, em ordem estável."""
     for path in sorted(p for p in folder.rglob("*") if p.is_file()):
         rel = path.relative_to(folder)
-        if rel.name in JUNK_FILENAMES or VCS_DIRNAMES & set(rel.parts[:-1]):
+        if rel.name in JUNK_FILENAMES or rel.parts[0] == TOP_LEVEL_VCS:
             continue
         yield rel, path
+
+
+def nested_vcs(folder):
+    """Caminho relativo (texto) da primeira pasta de VCS fora do `.git` de topo, ou `None`."""
+    for current, dirs, _files in os.walk(folder):
+        rel = Path(current).relative_to(folder)
+        for name in sorted(dirs):
+            if name.casefold() in VCS_DIRNAMES and (rel.parts or name != TOP_LEVEL_VCS):
+                return (rel / name).as_posix()
+        if not rel.parts and TOP_LEVEL_VCS in dirs:
+            dirs.remove(TOP_LEVEL_VCS)
+    return None
 
 
 # Tetos do hash da pasta (RT-11): o `folder_digest` roda a cada comando, para cada
@@ -208,6 +225,17 @@ def entries():
             result.append((_invalid_row(folder.name, reason), folder, None))
             continue
         try:
+            nested = nested_vcs(folder)
+        except OSError as exc:
+            nested = f"({type(exc).__name__})"
+        if nested is not None:
+            reason = (
+                f"O plugin tem uma pasta de controle de versão aninhada ({nested}), fora do hash do pin; "
+                "tire-a da pasta do plugin e habilite de novo."
+            )
+            result.append((_invalid_row(manifest["id"], reason), folder, None))
+            continue
+        try:
             status, reason = _status(manifest, folder, selection, state)
         except DigestLimitError as exc:
             status, reason = "suspended", str(exc)
@@ -333,10 +361,19 @@ def _load_one(row, folder, manifest, pinned, registry):
     return row
 
 
+def _no_bytecode():
+    """Plugin que importa um módulo irmão (`sys.path` + `import`) faria o `import`
+    normal gravar `__pycache__` na pasta dele — o que muda o hash e suspende o
+    próprio plugin depois do primeiro uso. Desligado para o processo inteiro antes
+    de rodar qualquer código de plugin (imports tardios, dentro de `search`, também)."""
+    sys.dont_write_bytecode = True
+
+
 def load_enabled(registry):
     """Monta o registro de plugins habilitados; nunca deixa um `plugins.json`
     corrompido ou uma pasta ilegível derrubar os built-ins — o pior caso é
     carregar nenhum plugin, registrado como `plugin_failed` com `plugin="-"`."""
+    _no_bytecode()
     try:
         rows = entries()
     except (ValueError, OSError) as exc:
@@ -470,6 +507,7 @@ def trial_load(folder):
     providers.register_builtins(registry)
     presets.register_builtins(registry)
     plugin_id = manifest["id"]
+    _no_bytecode()
     # Mesmo isolamento do carregamento (BaseException, tipo seguro, sem cadeia). Aqui,
     # e só aqui, o texto de um tipo embutido exato (RuntimeError('boom')) também aparece:
     # `check` é a ferramenta de quem escreve o plugin, rodando a pasta que ele apontou.

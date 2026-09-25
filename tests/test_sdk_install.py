@@ -33,6 +33,7 @@ Cobre também as duas rodadas de correções de segurança:
   `_has_core_ssh_command` usa `--includes` (M4).
 """
 
+import atexit
 import json
 import os
 import shutil
@@ -61,17 +62,49 @@ def write_plugin(folder, manifest=MANIFEST, code=PLUGIN_CODE):
     return folder
 
 
+# O git dos TESTES (montar o repositório de origem) não pode herdar o config de
+# quem roda a suíte: `commit.gpgsign=true` pediria senha/agente e um hook global
+# poderia falhar ou travar o commit. Config global vazio, sem config de sistema,
+# sem hooks e sem assinatura (Minor 13). O git do PRODUTO tem o próprio isolamento
+# (`install._git_env`), que estes testes exercitam à parte.
+_EMPTY_GITCONFIG_FD, _EMPTY_GITCONFIG = tempfile.mkstemp(prefix="gb-test-gitconfig-")
+os.close(_EMPTY_GITCONFIG_FD)
+atexit.register(lambda: Path(_EMPTY_GITCONFIG).unlink(missing_ok=True))
+_GIT_ISOLATION = [
+    "-c",
+    "commit.gpgsign=false",
+    "-c",
+    "tag.gpgsign=false",
+    "-c",
+    f"core.hooksPath={os.devnull}",
+    "-c",
+    "user.name=Teste",
+    "-c",
+    "user.email=teste@example.invalid",
+]
+
+
+def _git_test_env():
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env["GIT_CONFIG_GLOBAL"] = _EMPTY_GITCONFIG
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    return env
+
+
 def git(folder, *args):
     subprocess.run(
-        ["git", "-c", "user.name=Teste", "-c", "user.email=teste@example.invalid", *args],
+        ["git", *_GIT_ISOLATION, *args],
         cwd=folder,
         check=True,
         capture_output=True,
+        env=_git_test_env(),
     )
 
 
 def head(folder):
-    done = subprocess.run(["git", "rev-parse", "HEAD"], cwd=folder, check=True, capture_output=True, text=True)
+    done = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=folder, check=True, capture_output=True, text=True, env=_git_test_env()
+    )
     return done.stdout.strip()
 
 
@@ -269,7 +302,7 @@ class FolderInstallTests(InstallTestCase):
         stale_install.mkdir()
         (stale_install / "resto.txt").write_text("x", encoding="utf-8")
         stale_old = self.home / "plugins" / f".old-{old_epoch}-outroplugin-{uuid.uuid4().hex}"
-        stale_old.mkdir()  # "outroplugin" não tem pasta em plugins/: some por não ter pra onde restaurar
+        stale_old.mkdir()  # vazio, sem manifesto: não é um plugin de verdade, então a varredura apaga (não restaura)
 
         preview = install_mod.install(str(source), confirm=False)
         install_mod.install(str(source), confirm=True, expect=preview["plugin"]["sha256"])

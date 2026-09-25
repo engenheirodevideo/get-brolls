@@ -36,7 +36,11 @@ _log = logs.get("sdk")
 
 GIT_URL_RE = re.compile(r"(https://\S+|git@[A-Za-z0-9.-]+:\S+)")
 GIT_TIMEOUT_S = 120
-COPY_IGNORE = shutil.ignore_patterns(".git", ".hg", ".svn", "__pycache__", "*.pyc", ".DS_Store", "Thumbs.db")
+# Cópia de pasta local: sem metadado de VCS de topo (VCS aninhado é recusado antes,
+# em `_refuse_nested_vcs`), sem bytecode e sem lixo de SO (`loader.JUNK_FILENAMES`).
+COPY_IGNORE = shutil.ignore_patterns(".git", ".hg", ".svn", "__pycache__", "*.pyc", *sorted(loader.JUNK_FILENAMES))
+# Quantos nomes de arquivo a prévia do install/update lista (o total vem sempre).
+PREVIEW_FILES_MAX = 50
 
 # Tamanho materializado que aceitamos sem confirmação extra: além de link
 # simbólico/submódulo recusado à parte, um plugin gigantesco (histórico git
@@ -225,21 +229,30 @@ def _tree_entries(dest):
         yield mode, sha, path, size
 
 
+# Nomes curtos 8.3 que o NTFS pode resolver como alias de uma pasta de VCS.
+_VCS_SHORT_ALIASES = frozenset({"git~1", "hg~1", "svn~1"})
+
+
 def _refuse_git_path_component(path):
-    """Recusa qualquer entrada cujo caminho tenha um componente `.git` — em
-    qualquer maiúsc./minúsc.; com ponto(s)/espaço(s) sobrando à direita
-    (`.git.`, `.git `, `.GIT. `), porque o Windows apaga ponto e espaço à
-    direita do nome ao gravar em disco, então essas variantes viram `.git` de
-    verdade sem bater numa comparação exata; ou o nome curto 8.3 `GIT~1`
-    (também em qualquer maiúsc./minúsc.), que o NTFS pode resolver como alias
-    de `.git`. Mesmo já nunca fazendo `checkout`, escrever um `.git`/arquivo
-    dentro da própria pasta materializada não é conteúdo de plugin: na melhor
-    das hipóteses é lixo, na pior é uma tentativa de plantar metadado git que
-    outra ferramenta (fora deste código) trataria como especial mais adiante."""
+    """Recusa qualquer entrada cujo caminho tenha um componente de VCS — `.git`,
+    `.hg` ou `.svn` — em qualquer maiúsc./minúsc.; com ponto(s)/espaço(s) sobrando
+    à direita (`.git.`, `.hg `, `.SVN. `), porque o Windows apaga ponto e espaço à
+    direita do nome ao gravar em disco, então essas variantes viram a pasta de
+    verdade sem bater numa comparação exata; ou o nome curto 8.3 (`GIT~1`, `HG~1`,
+    `SVN~1`), que o NTFS pode resolver como alias. Também recusa `:` e `\\` em
+    qualquer componente: `:` abre fluxo alternativo NTFS (`.git::$INDEX_ALLOCATION`)
+    e `\\` vira separador de pasta no Windows. `.hg`/`.svn` materializados de um
+    histórico git ficariam fora do hash do pin (Minor 3); nenhum deles é conteúdo de
+    plugin — na melhor das hipóteses é lixo, na pior é metadado plantado que outra
+    ferramenta trataria como especial mais adiante."""
     for part in path.split("/"):
+        if ":" in part or "\\" in part:
+            raise ValueError(f"Caminho com ':' ou '\\' no histórico git não é aceito: {path!r}.")
         folded = part.casefold()
-        if folded.rstrip(". ") == ".git" or folded == "git~1":
-            raise ValueError(f'Caminho não pode ter um componente equivalente a ".git" no histórico git: {path!r}.')
+        if folded.rstrip(". ") in loader.VCS_DIRNAMES or folded in _VCS_SHORT_ALIASES:
+            raise ValueError(
+                f"Caminho não pode ter um componente de controle de versão (.git, .hg, .svn) no histórico git: {path!r}."
+            )
 
 
 def _refuse_oversized_blob(path, size):
@@ -300,12 +313,13 @@ def _write_tree_entry(dest, root, path, mode, content):
         raise ValueError(f"Não consegui gravar {path!r} do histórico git ({type(exc).__name__}).") from exc
 
 
-def _materialize_tree(dest, paths_only=None):
-    """Escreve o conteúdo de HEAD em `dest` (que já é a pasta clonada com
-    `--no-checkout`, ainda sem nenhum arquivo de trabalho), um blob por vez, sem
-    jamais passar por um `checkout` — por isso sem filtro/smudge/hook. Recusa
-    qualquer modo que não seja arquivo regular, qualquer caminho com componente
-    `.git`, e qualquer blob (mesmo na passada cedo) maior que `MAX_BYTES` — tudo
+def _materialize_tree(clone, dest, paths_only=None):
+    """Escreve o conteúdo de HEAD de `clone` (clonado com `--no-checkout`) em `dest`
+    — uma pasta de staging SEPARADA do clone, então nenhuma entrada da árvore
+    consegue alcançar o `.git` do clone (Minor 4) —, um blob por vez, sem jamais
+    passar por um `checkout` — por isso sem filtro/smudge/hook. Recusa qualquer
+    modo que não seja arquivo regular, qualquer caminho com componente de VCS ou com
+    `:`/`\\`, e qualquer blob (mesmo na passada cedo) maior que `MAX_BYTES` — tudo
     isso ANTES de pedir o conteúdo do blob. Na passada completa (`paths_only=None`)
     também limita o total de arquivos/bytes a `MAX_FILES`/`MAX_BYTES`.
 
@@ -313,8 +327,9 @@ def _materialize_tree(dest, paths_only=None):
     validação cedo do manifesto (I4), que não passa pelo teto de total (são no
     máximo dois arquivos pequenos: o manifesto e o `entry`), mas passa pelo teto
     por-blob do jeito que qualquer outra entrada passa."""
+    dest.mkdir(exist_ok=True)
     root = dest.resolve()
-    entries = [entry for entry in _tree_entries(dest) if paths_only is None or entry[2] in paths_only]
+    entries = [entry for entry in _tree_entries(clone) if paths_only is None or entry[2] in paths_only]
     _refuse_tree_collisions(path for _mode, _sha, path, _size in entries)
     total_files = 0
     total_bytes = 0
@@ -331,7 +346,7 @@ def _materialize_tree(dest, paths_only=None):
             total_bytes += size or 0
             if total_bytes > MAX_BYTES:
                 raise ValueError(f"O plugin passa de {MAX_BYTES // (1024 * 1024)} MB; recusado.")
-        content = _git_blob(dest, sha)
+        content = _git_blob(clone, sha)
         _write_tree_entry(dest, root, path, mode, content)
 
 
@@ -350,15 +365,44 @@ def _peek_entry_name(dest):
     return entry if isinstance(entry, str) else None
 
 
-def _validate_manifest_early(dest):
+def _validate_manifest_early(clone, dest):
     """I4: materializa e valida o manifesto (e o `entry` que ele declara) antes
     de trazer o resto — potencialmente grande — da árvore; falha cedo, sem gastar
     tempo/disco com um plugin incompatível ou inválido."""
-    _materialize_tree(dest, paths_only={MANIFEST_NAME})
+    _materialize_tree(clone, dest, paths_only={MANIFEST_NAME})
     entry = _peek_entry_name(dest)
     if entry:
-        _materialize_tree(dest, paths_only={MANIFEST_NAME, entry})
+        _materialize_tree(clone, dest, paths_only={MANIFEST_NAME, entry})
     _checked_manifest(dest)
+
+
+def _from_git(source_uri, dest, ssh=False):
+    """Clona sem checkout numa pasta de staging própria, materializa a árvore em
+    `dest` (outra pasta) e apaga o clone; devolve o commit."""
+    clone = dest.with_name(_new_install_staging_name())
+    try:
+        commit = _clone_no_checkout(source_uri, clone, ssh=ssh)
+        _validate_manifest_early(clone, dest)
+        _materialize_tree(clone, dest)
+    finally:
+        shutil.rmtree(clone, ignore_errors=True)
+    _refuse_links(dest)
+    return commit
+
+
+def _refuse_nested_vcs(folder):
+    """Pasta de VCS (`.git`, `.hg`, `.svn`) fora do topo da pasta do plugin é
+    recusada (RT-12): o hash do pin só deixa de fora o `.git` de topo, e uma pasta
+    aninhada dessas seria conteúdo que o plugin lê/executa sem ser metadado de nada."""
+    nested = loader.nested_vcs(folder)
+    if nested is not None:
+        raise ValueError(f"O plugin tem uma pasta de controle de versão aninhada ({nested}); tire-a antes de instalar.")
+
+
+def _file_list(folder):
+    """Arquivos que o pin vai cobrir, para a prévia: total e nomes (no máximo `PREVIEW_FILES_MAX`)."""
+    names = [rel.as_posix() for rel, _path in loader._counted_files(folder)]
+    return {"count": len(names), "names": names[:PREVIEW_FILES_MAX], "truncated": len(names) > PREVIEW_FILES_MAX}
 
 
 def _guard_folder_cap(folder):
@@ -386,14 +430,14 @@ def _materialize(source, dest):
     folder = Path(raw).expanduser()
     if raw and not raw.startswith("-") and folder.is_dir():
         folder = folder.resolve()
-        if (folder / ".git").exists():
-            commit = _clone_no_checkout(folder.as_uri(), dest)
-            _validate_manifest_early(dest)
-            _materialize_tree(dest)
-            shutil.rmtree(dest / ".git", ignore_errors=True)
-            _refuse_links(dest)
-            return str(folder), commit
+        git_dir = folder / ".git"
+        # Só uma PASTA `.git` de verdade faz da origem um repositório: um arquivo
+        # `.git` (gitfile de worktree/submódulo) ou um link apontaria o clone para
+        # outro repositório, não para a pasta que a pessoa está vendo.
+        if git_dir.is_dir() and not git_dir.is_symlink():
+            return str(folder), _from_git(folder.as_uri(), dest)
         _checked_manifest(folder)
+        _refuse_nested_vcs(folder)
         _guard_folder_cap(folder)
         _refuse_tree_collisions(rel.as_posix() for rel, _path in loader._counted_files(folder))
         try:
@@ -409,12 +453,7 @@ def _materialize(source, dest):
         parts = urlsplit(raw)
         if parts.username or parts.password:
             raise ValueError("URL git com usuário/senha não é aceita; use uma URL sem credencial.")
-    commit = _clone_no_checkout(raw, dest, ssh=raw.startswith("git@"))
-    _validate_manifest_early(dest)
-    _materialize_tree(dest)
-    shutil.rmtree(dest / ".git", ignore_errors=True)
-    _refuse_links(dest)
-    return raw, commit
+    return raw, _from_git(raw, dest, ssh=raw.startswith("git@"))
 
 
 # O epoch de criação vai no NOME da pasta de staging, não é lido do `st_mtime`
@@ -455,7 +494,7 @@ def _sweep_stale_old(root, entry, name, now):
         return  # nome corrompido/inesperado: nunca usa como caminho sem validar antes
     target = root / plugin_id
     try:
-        if not target.exists():
+        if not target.exists() and _restorable(entry, plugin_id):
             entry.replace(target)
         else:
             shutil.rmtree(entry, ignore_errors=True)
@@ -465,6 +504,16 @@ def _sweep_stale_old(root, entry, name, now):
         # abortar quem chamou `install`/`update`: na pior hipótese essa pasta
         # de resto fica pra próxima varredura.
         pass
+
+
+def _restorable(entry, plugin_id):
+    """Um `.old-*` só volta ao lugar se for mesmo aquele plugin: manifesto legível
+    e com o mesmo id do nome (Minor 5). Pasta vazia, parcial ou de outro plugin é
+    resto — restaurá-la travaria um `install` futuro com um plugin quebrado."""
+    try:
+        return read_manifest(entry, require_folder_match=False)["id"] == plugin_id
+    except (ValueError, OSError):
+        return False
 
 
 def _sweep_one_stale_entry(root, entry, now):
@@ -526,7 +575,7 @@ def _checked_manifest(folder):
     return manifest
 
 
-def _summary(manifest, origin, commit, sha256):
+def _summary(manifest, origin, commit, sha256, files):
     return {
         "id": manifest["id"],
         "name": manifest["name"],
@@ -536,6 +585,7 @@ def _summary(manifest, origin, commit, sha256):
         "source": origin,
         "commit": commit,
         "sha256": sha256,
+        "files": files,
     }
 
 
@@ -565,7 +615,7 @@ def install(source, confirm, expect=None):
                 f"Plugin {manifest['id']} já está instalado; use plugins --action update --id {manifest['id']}."
             )
         sha = loader.folder_digest(staging)
-        preview = _summary(manifest, origin, commit, sha)
+        preview = _summary(manifest, origin, commit, sha, _file_list(staging))
         if not confirm:
             return {"installed": False, "plugin": preview, "note": loader.SANDBOX_NOTE}
         _check_expect(expect, sha)
@@ -611,7 +661,7 @@ def update(plugin_id, confirm, expect=None):
         if manifest["id"] != plugin_id:
             raise ValueError(f"A origem agora traz o plugin {manifest['id']}, não {plugin_id}; nada foi trocado.")
         sha = loader.folder_digest(staging)
-        preview = _summary(manifest, source, commit, sha)
+        preview = _summary(manifest, source, commit, sha, _file_list(staging))
         diff = _diff(folder, current, staging, manifest)
         if not confirm:
             return {"updated": False, "plugin": preview, "diff": diff, "note": loader.SANDBOX_NOTE}
