@@ -186,6 +186,25 @@ def pin_digests(folder):
     return whole.hexdigest(), files
 
 
+# Teto do mapa por arquivo do pin: o mesmo do `install` (`install.MAX_FILES`). Uma
+# pasta copiada à mão não passa por esse teto; acima dele o pin guarda só o sha256
+# total (`files_omitted`), senão o plugins.json — relido a cada comando — incharia.
+PIN_MAP_MAX_FILES = 2000
+MAP_OMITTED_NOTE = (
+    "Plugin com muitos arquivos, diff omitido (mais de {limit}); confira a pasta do plugin antes de confirmar."
+)
+
+
+def pin_entry(manifest, sha, files):
+    """Entrada de `enabled`/`last_pins`: versão, sha256 e o mapa por arquivo (se cabe no teto)."""
+    entry = {"version": manifest["version"], "sha256": sha}
+    if len(files) > PIN_MAP_MAX_FILES:
+        entry["files_omitted"] = True
+    else:
+        entry["files"] = files
+    return entry
+
+
 def _pinned_files(pin):
     """Mapa por arquivo guardado no pin, ou `None` num pin antigo (ou malformado)."""
     files = pin.get("files")
@@ -241,9 +260,13 @@ def read_state():
         # `sources` (origem/commit gravados pelo `plugins install`) é opcional: um
         # plugins.json de antes desta versão continua válido sem ela.
         sources = data.get("sources", {})
+        # `last_pins` (o pin guardado pelo `disable`) também é opcional.
+        last_pins = data.get("last_pins", {})
         if (
             isinstance(enabled, dict)
             and all(_valid_pin(entry) for entry in enabled.values())
+            and isinstance(last_pins, dict)
+            and all(_valid_pin(entry) for entry in last_pins.values())
             and isinstance(sources, dict)
             and all(_valid_origin(entry) for entry in sources.values())
         ):
@@ -564,16 +587,21 @@ def enable(plugin_id, confirm, expect=None):
     sha, files = pin_digests(folder)
     preview = _preview(manifest, folder, sha)
     state = read_state()
-    pinned = state["enabled"].get(plugin_id)
+    # Pin atual ou, depois de um `disable`, o último pin guardado: desligar e mudar
+    # a pasta não pode virar atalho para re-pinar às cegas só com `--yes`.
+    pinned = state["enabled"].get(plugin_id) or state.get("last_pins", {}).get(plugin_id)
     changed = pinned is not None and pinned.get("sha256") != sha
     extra = {}
     if pinned is not None and changed:
         before = _pinned_files(pinned)
+        too_many = pinned.get("files_omitted") is True or len(files) > PIN_MAP_MAX_FILES
         extra["diff"] = {
             "version": {"from": pinned.get("version"), "to": manifest["version"]},
-            "files": files_diff(before, files) if before is not None else None,
+            "files": files_diff(before, files) if before is not None and not too_many else None,
         }
-        if before is None:
+        if too_many:
+            extra["diff"]["note"] = MAP_OMITTED_NOTE.format(limit=PIN_MAP_MAX_FILES)
+        elif before is None:
             extra["diff"]["note"] = (
                 "O pin anterior não guardou a lista de arquivos (versão antiga); confira a pasta do plugin "
                 "antes de confirmar."
@@ -582,7 +610,8 @@ def enable(plugin_id, confirm, expect=None):
         return {"enabled": False, "plugin": preview, **extra, "note": EXPECT_NOTE if changed else SANDBOX_NOTE}
     if changed or expect:
         check_expect(expect, sha)
-    state["enabled"][plugin_id] = {"version": manifest["version"], "sha256": sha, "files": files}
+    state["enabled"][plugin_id] = pin_entry(manifest, sha, files)
+    state.get("last_pins", {}).pop(plugin_id, None)
     _write_state(state)
     reset_registry()
     logs.event(_log, logging.INFO, "plugin_enabled", plugin=plugin_id, version=manifest["version"])
@@ -595,14 +624,21 @@ def pin(manifest, folder, origin=None, enable=True):
 
     `enable=False` (usado pelo `update` de um plugin que já estava desabilitado)
     só atualiza `sources`, sem criar/mudar a entrada em `enabled` — atualizar o
-    conteúdo não liga de volta um plugin que a pessoa desligou de propósito."""
+    conteúdo não liga de volta um plugin que a pessoa desligou de propósito. O
+    `last_pins` dele, se houver, passa a ser este conteúdo: a pessoa já o aprovou
+    no update (`--expect`), então religar depois é só `--yes`."""
     from .registry import reset_registry
 
     plugin_id = manifest["id"]
     sha, files = pin_digests(folder)
     state = read_state()
+    entry = pin_entry(manifest, sha, files)
+    last_pins = state.get("last_pins", {})
     if enable:
-        state["enabled"][plugin_id] = {"version": manifest["version"], "sha256": sha, "files": files}
+        state["enabled"][plugin_id] = entry
+        last_pins.pop(plugin_id, None)
+    elif plugin_id in last_pins:
+        last_pins[plugin_id] = entry
     if origin is not None:
         state.setdefault("sources", {})[plugin_id] = origin
     _write_state(state)
@@ -614,8 +650,12 @@ def disable(plugin_id):
     from .registry import reset_registry
 
     state = read_state()
-    was = state["enabled"].pop(plugin_id, None) is not None
+    last = state["enabled"].pop(plugin_id, None)
+    was = last is not None
     if was:
+        # Guarda o último pin: um `enable` depois de a pasta mudar mostra o diff e
+        # exige `--expect`; conteúdo igual religa só com `--yes`.
+        state.setdefault("last_pins", {})[plugin_id] = last
         _write_state(state)
     reset_registry()
     logs.event(_log, logging.INFO, "plugin_disabled", plugin=plugin_id, was_enabled=was)

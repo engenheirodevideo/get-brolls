@@ -395,6 +395,13 @@ python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
   (pin sem `files`) continua válido; a prévia só avisa que o diff é
   desconhecido e pede para conferir a pasta. O primeiro `enable` de um plugin
   nunca pinado segue só com `--yes`.
+- O mesmo vale depois de um `disable`: ele tira o plugin de `enabled` mas
+  guarda o último pin em `plugins.json` (`last_pins.<id>`). Religar com a pasta
+  igual é só `--yes`; com a pasta mudada, a prévia traz o `diff` e confirmar
+  exige `--expect`. Um `plugins.json` sem `last_pins` continua válido.
+- O mapa por arquivo tem o mesmo teto do `install` (2000 arquivos): acima
+  disso o pin guarda só o sha256 total (`files_omitted`) e a prévia diz
+  "muitos arquivos, diff omitido" — o `--expect` continua obrigatório.
 - `--yes` grava um **pin de hash**: um sha256 sobre todo arquivo da pasta do
   plugin, exceto lixo de SO (`.DS_Store`, `Thumbs.db`, `desktop.ini`) e a pasta
   `.git` **de topo** — só essas ficam fora da conta. Qualquer outra mudança no

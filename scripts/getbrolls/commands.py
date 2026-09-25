@@ -374,9 +374,10 @@ STATUS_LADDER = (
 
 def provider_error_text(name, error):
     """`<fonte>: <erro>`, sem repetir o nome quando o erro de plugin já vem como
-    "Plugin <fonte>: …" (dava "pasta_local: Plugin pasta_local: …", BUG-10)."""
+    "Plugin <fonte>: …" ou "Fonte <fonte> é do plugin …" (dava "pasta_local:
+    Plugin pasta_local: …" e "pasta_local: Fonte pasta_local …", BUG-10)."""
     text = str(error)
-    return text if text.startswith(f"Plugin {name}:") else f"{name}: {text}"
+    return text if text.startswith((f"Plugin {name}:", f"Fonte {name} ")) else f"{name}: {text}"
 
 
 def status_next(counts, format_pending=0, pending_preview=None, undelivered=0):

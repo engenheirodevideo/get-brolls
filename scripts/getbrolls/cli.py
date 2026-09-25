@@ -126,7 +126,8 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
             p.add_argument(
                 "--expect",
                 help=(
-                    "sha256 mostrado na prévia (sem --yes) de install/update; obrigatório junto com --yes, "
+                    "sha256 mostrado na prévia (sem --yes) de install/update e do enable de um plugin cujo "
+                    "conteúdo mudou desde o pin (suspenso ou desligado); obrigatório junto com --yes, "
                     "para confirmar que o conteúdo não mudou desde a prévia"
                 ),
             )

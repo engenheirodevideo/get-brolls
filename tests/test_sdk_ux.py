@@ -3,6 +3,8 @@
 import argparse
 import json
 import os
+import shutil
+import unittest
 from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
@@ -697,3 +699,118 @@ class DocsGapsTests(LoaderTestCase):
 
     def test_contributing_shows_how_to_run_one_test_file(self):
         self.assertIn('discover -s tests -p "test_x.py"', self.read("CONTRIBUTING.md"))
+
+
+class ReviewFollowUpTests(LoaderTestCase):
+    """Minors do review da onda de UX, dobrados pelo controller."""
+
+    def env(self):
+        return {"GB_HOME": str(self.home)}
+
+    def test_pin_map_is_capped_like_install(self):
+        from getbrolls.sdk import install
+
+        self.assertEqual(install.MAX_FILES, loader.PIN_MAP_MAX_FILES)
+        folder = self.install()
+        with patch.object(loader, "PIN_MAP_MAX_FILES", 1):
+            loader.enable("demo", confirm=True)
+            pin = _state(self.home)["enabled"]["demo"]
+            self.assertNotIn("files", pin)
+            self.assertTrue(pin["files_omitted"])
+            self.assertEqual(loader.folder_digest(folder), pin["sha256"])
+            (folder / "plugin.py").write_text(PLUGIN_CODE + "\n# mudou\n", encoding="utf-8")
+            preview = loader.enable("demo", confirm=False)
+        self.assertIsNone(preview["diff"]["files"])
+        self.assertIn("muitos arquivos, diff omitido", preview["diff"]["note"])
+        with self.assertRaises(ValueError):
+            loader.enable("demo", confirm=True)
+
+    def test_current_folder_over_the_cap_omits_the_diff_too(self):
+        folder = self.install()
+        loader.enable("demo", confirm=True)
+        (folder / "extra.py").write_text("X = 1\n", encoding="utf-8")
+        with patch.object(loader, "PIN_MAP_MAX_FILES", 2):
+            preview = loader.enable("demo", confirm=False)
+        self.assertIsNone(preview["diff"]["files"])
+        self.assertIn("muitos arquivos, diff omitido", preview["diff"]["note"])
+
+    def test_disable_keeps_the_last_pin_and_a_changed_re_enable_needs_expect(self):
+        folder = self.install()
+        loader.enable("demo", confirm=True)
+        pinned = _state(self.home)["enabled"]["demo"]
+        loader.disable("demo")
+        state = _state(self.home)
+        self.assertNotIn("demo", state["enabled"])
+        self.assertEqual(pinned, state["last_pins"]["demo"])
+        self.assertEqual("disabled", loader.inventory()[0]["status"])
+        (folder / "plugin.py").write_text(PLUGIN_CODE + "\n# mudou\n", encoding="utf-8")
+        preview = loader.enable("demo", confirm=False)
+        self.assertEqual(["plugin.py"], preview["diff"]["files"]["changed"])
+        self.assertIn("--expect", preview["note"])
+        with self.assertRaises(ValueError):
+            loader.enable("demo", confirm=True)
+        self.assertTrue(loader.enable("demo", confirm=True, expect=preview["plugin"]["sha256"])["enabled"])
+        self.assertNotIn("demo", _state(self.home).get("last_pins", {}))
+
+    def test_disable_then_unchanged_re_enable_keeps_plain_yes(self):
+        self.install()
+        loader.enable("demo", confirm=True)
+        loader.disable("demo")
+        preview = loader.enable("demo", confirm=False)
+        self.assertNotIn("diff", preview)
+        self.assertTrue(loader.enable("demo", confirm=True)["enabled"])
+
+    def test_state_without_last_pins_stays_valid_and_a_bad_one_is_refused(self):
+        folder = self.install()
+        sha = loader.folder_digest(folder)
+        (self.home / "plugins.json").write_text(
+            json.dumps({"enabled": {"demo": {"version": "0.1.0", "sha256": sha}}}), encoding="utf-8"
+        )
+        self.assertEqual("enabled", loader.inventory()[0]["status"])
+        (self.home / "plugins.json").write_text(json.dumps({"enabled": {}, "last_pins": {"demo": 1}}), encoding="utf-8")
+        with self.assertRaises(ValueError):
+            loader.read_state()
+
+    def test_update_of_a_disabled_plugin_refreshes_its_last_pin(self):
+        from getbrolls.sdk import install
+
+        source = self.home / "fonte" / "demo"
+        source.mkdir(parents=True)
+        (source / "getbrolls-plugin.json").write_text(json.dumps(MANIFEST), encoding="utf-8")
+        (source / "plugin.py").write_text(PLUGIN_CODE, encoding="utf-8")
+        install.install(
+            str(source), confirm=True, expect=install.install(str(source), confirm=False)["plugin"]["sha256"]
+        )
+        loader.disable("demo")
+        (source / "plugin.py").write_text(PLUGIN_CODE + "\n# v2\n", encoding="utf-8")
+        install.update("demo", confirm=True, expect=install.update("demo", confirm=False)["plugin"]["sha256"])
+        # A pessoa já aprovou este conteúdo no update (--expect): religar é só --yes.
+        self.assertNotIn("diff", loader.enable("demo", confirm=False))
+
+    def test_search_does_not_prefix_the_source_name_to_an_unavailable_plugin_message(self):
+        from getbrolls.commands import provider_error_text
+
+        text = "Fonte pasta_local é do plugin pasta_local, que está suspended. Rode plugins --action list / doctor."
+        self.assertEqual(text, provider_error_text("pasta_local", text))
+        self.assertEqual("youtube: falhou", provider_error_text("youtube", "falhou"))
+
+    def test_expect_help_mentions_the_suspended_enable(self):
+        from getbrolls.cli import build_parser
+
+        subparsers = next(a for a in build_parser()._actions if isinstance(a, argparse._SubParsersAction))
+        expect = next(a for a in subparsers.choices["plugins"]._actions if "--expect" in a.option_strings)
+        self.assertIn("enable", expect.help or "")
+
+    @unittest.skipIf(os.name == "nt" or not shutil.which("sh"), "comando POSIX do README")
+    def test_pasta_local_readme_copy_command_works_on_a_fresh_gb_home(self):
+        import re
+        import subprocess
+
+        from _paths import ROOT
+
+        text = (ROOT / "examples/plugins/pasta_local/README.md").read_text(encoding="utf-8")
+        block = next(b for b in re.findall(r"```sh\n(.*?)```", text, re.DOTALL) if "cp -r" in b)
+        fresh = self.home / "novo-home"
+        subprocess.run(["sh", "-c", block], cwd=ROOT, env={**os.environ, "GB_HOME": str(fresh)}, check=True)
+        self.assertTrue((fresh / "plugins" / "pasta_local" / "getbrolls-plugin.json").is_file())
+        self.assertFalse((fresh / "plugins" / "plugin.py").exists())
