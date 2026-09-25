@@ -1771,6 +1771,12 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
         # A biblioteca é pessoal e vive fora do projeto: não depende das regras
         # dele nem passa pelo portão de formato.
         return library_command(args)
+    if cmd in ("roteiro", "assets"):
+        # Organização do conteúdo: não passa pelo portão de formato; o roteiro confere
+        # o aspecto contra o RULES.md e o BRIEF.md por conta própria.
+        from getbrolls import roteiro_commands
+
+        return roteiro_commands.run(args)
     rules = load_rules(args.project)
     if cmd == "rules":
         return rules

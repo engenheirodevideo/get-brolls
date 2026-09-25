@@ -292,7 +292,15 @@ def project_lock(project):
 READ_ONLY_COMMANDS = ("status", "serve", "brief", "doctor", "x")
 # (comando, ação) somente leitura, além dos comandos inteiros acima: `queue --action status`
 # só consulta queue.json (mesmo contrato de `status`), nunca deve tomar a trava exclusiva.
-READ_ONLY_ACTIONS = {("queue", "status")}
+# `roteiro --action check|plan` e `assets` também só leem: plano de cena, sync simulado e
+# inventário de componentes, sem trava nem árvore nova.
+READ_ONLY_ACTIONS = {
+    ("queue", "status"),
+    ("roteiro", "check"),
+    ("roteiro", "plan"),
+    ("assets", "list"),
+    ("assets", "where"),
+}
 
 
 # Erro que veio de um plugin: "Plugin <id>: …" (todo erro do core sobre código de

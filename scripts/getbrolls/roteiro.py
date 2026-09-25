@@ -134,9 +134,33 @@ def roteiro_path(project):
     return Path(project).expanduser().resolve() / ROTEIRO_FILE
 
 
+def path_problem(path):
+    """Erro de um ROTEIRO.md que existe mas não é arquivo (link quebrado ou em laço, pasta); None no resto.
+
+    Nunca "crie com new": isso empurraria alguém a rodar `new --force` por cima do link.
+    """
+    if path.is_file():
+        return None
+    if path.is_symlink():
+        try:
+            target = path.readlink()
+        except OSError:
+            target = "?"
+        return (
+            f"{path} é um link quebrado: aponta para {target}, que não existe ou não é um arquivo. "
+            "Conserte o link (ou troque-o pelo arquivo de verdade) e repita."
+        )
+    if path.exists():
+        return f"{path} é uma pasta, não um arquivo: renomeie a pasta e repita."
+    return None
+
+
 def load_text(project):
     """Texto do ROTEIRO.md sem BOM e com fim de linha `\\n`; erro claro quando ele não existe."""
     path = roteiro_path(project)
+    problem = path_problem(path)
+    if problem:
+        raise ValueError(problem)
     if not path.is_file():
         raise ValueError("Este projeto não tem ROTEIRO.md. Crie com `roteiro --action new --genero reels --tema ...`.")
     try:

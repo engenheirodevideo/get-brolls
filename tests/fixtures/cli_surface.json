@@ -129,6 +129,82 @@
         }
       ]
     },
+    "assets": {
+      "help": "Listar componentes do projeto (marca, lettering, sfx, música, composições, A-ROLL) e resolver nomes",
+      "options": [
+        {
+          "action": "_HelpAction",
+          "choices": null,
+          "default": "==SUPPRESS==",
+          "dest": "help",
+          "help": "show this help message and exit",
+          "nargs": 0,
+          "option_strings": [
+            "--help",
+            "-h"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "project",
+          "help": "Pasta do projeto que guarda brolls/, fora da instalação da skill",
+          "nargs": null,
+          "option_strings": [
+            "--project"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "list",
+            "where"
+          ],
+          "default": null,
+          "dest": "action",
+          "help": "list: inventário; where: onde um nome resolve",
+          "nargs": null,
+          "option_strings": [
+            "--action"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "aroll",
+            "composicao",
+            "lettering",
+            "marca",
+            "musica",
+            "sfx"
+          ],
+          "default": null,
+          "dest": "kind",
+          "help": "Tipo de componente",
+          "nargs": null,
+          "option_strings": [
+            "--kind"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "name",
+          "help": "Nome do componente, sem extensão (where)",
+          "nargs": null,
+          "option_strings": [
+            "--name"
+          ],
+          "required": false
+        }
+      ]
+    },
     "brief": {
       "help": "Mostrar os beats do vídeo e o comando pronto de cada um",
       "options": [
@@ -1874,6 +1950,142 @@
           "nargs": 0,
           "option_strings": [
             "--confirm-format-change"
+          ],
+          "required": false
+        }
+      ]
+    },
+    "roteiro": {
+      "help": "Criar, validar, revisar e sincronizar o ROTEIRO.md com os beats do BRIEF.md",
+      "options": [
+        {
+          "action": "_HelpAction",
+          "choices": null,
+          "default": "==SUPPRESS==",
+          "dest": "help",
+          "help": "show this help message and exit",
+          "nargs": 0,
+          "option_strings": [
+            "--help",
+            "-h"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "project",
+          "help": "Pasta do projeto que guarda brolls/, fora da instalação da skill",
+          "nargs": null,
+          "option_strings": [
+            "--project"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "check",
+            "new",
+            "plan",
+            "review",
+            "sync"
+          ],
+          "default": null,
+          "dest": "action",
+          "help": "new: esqueleto; check: valida e mostra o plano de cena; review: registra a revisão humana; plan: mostra o sync sem gravar; sync: grava ids e beats",
+          "nargs": null,
+          "option_strings": [
+            "--action"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "reels"
+          ],
+          "default": null,
+          "dest": "genero",
+          "help": "Gênero do conteúdo (new)",
+          "nargs": null,
+          "option_strings": [
+            "--genero"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "tema",
+          "help": "Tema do vídeo numa linha (new)",
+          "nargs": null,
+          "option_strings": [
+            "--tema"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreTrueAction",
+          "choices": null,
+          "default": false,
+          "dest": "force",
+          "help": "Recomeçar do esqueleto; o atual vira ROTEIRO.md.bak, ou uma cópia com data se ele já existe (new)",
+          "nargs": 0,
+          "option_strings": [
+            "--force"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "by",
+          "help": "Nome de quem revisou o roteiro (review)",
+          "nargs": null,
+          "option_strings": [
+            "--by"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "chat"
+          ],
+          "default": "chat",
+          "dest": "channel",
+          "help": "Por onde a revisão chegou (review)",
+          "nargs": null,
+          "option_strings": [
+            "--channel"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "statement",
+          "help": "Frase exata dita por quem revisou (review)",
+          "nargs": null,
+          "option_strings": [
+            "--statement"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreTrueAction",
+          "choices": null,
+          "default": false,
+          "dest": "confirm_target_change",
+          "help": "Aceitar que aprovações de beats com alvo novo voltem a pendente (sync)",
+          "nargs": 0,
+          "option_strings": [
+            "--confirm-target-change"
           ],
           "required": false
         }

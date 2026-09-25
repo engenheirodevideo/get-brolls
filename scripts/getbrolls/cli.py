@@ -46,6 +46,8 @@ SUMMARIES = {
     "queue": "Enfileirar URLs sociais e ditar o ritmo do lote (add, next, mark, status)",
     "serve": "Servir brolls/review.html em 127.0.0.1 para abrir o Storyboard no navegador",
     "deliver": "Organizar os trechos coletados em entrega/, uma pasta por beat",
+    "roteiro": "Criar, validar, revisar e sincronizar o ROTEIRO.md com os beats do BRIEF.md",
+    "assets": "Listar componentes do projeto (marca, lettering, sfx, música, composições, A-ROLL) e resolver nomes",
 }
 
 # Subcomandos que `execute()` (commands.py) de fato leva até
@@ -194,6 +196,8 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
         "queue",
         "serve",
         "deliver",
+        "roteiro",
+        "assets",
     ):
         p = sub.add_parser(name, help=SUMMARIES[name], description=SUMMARIES[name])
         _SUBPARSERS[name] = p
@@ -202,7 +206,8 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
             required=True,
             help="Pasta do projeto que guarda brolls/, fora da instalação da skill",
         )
-        if name != "status":
+        # `roteiro` e `assets` nascem sem a flag: eles nunca chegam a `sync_formats`.
+        if name not in ("status", "roteiro", "assets"):
             # Mudar o formato-alvo derruba aprovações humanas; qualquer comando que
             # sincronize formato precisa deste sim explícito antes de apagá-las. Mas
             # `execute()` só chega a `sync_formats` (commands.py) depois de passar
@@ -218,6 +223,44 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
                 if reaches_sync_formats
                 else argparse.SUPPRESS,
             )
+        if name == "roteiro":
+            from .roteiro import GENRES
+
+            p.add_argument(
+                "--action",
+                required=True,
+                choices=["new", "check", "review", "plan", "sync"],
+                help=(
+                    "new: esqueleto; check: valida e mostra o plano de cena; review: registra a revisão humana; "
+                    "plan: mostra o sync sem gravar; sync: grava ids e beats"
+                ),
+            )
+            p.add_argument("--genero", choices=sorted(GENRES), help="Gênero do conteúdo (new)")
+            p.add_argument("--tema", help="Tema do vídeo numa linha (new)")
+            p.add_argument(
+                "--force",
+                action="store_true",
+                help="Recomeçar do esqueleto; o atual vira ROTEIRO.md.bak, ou uma cópia com data se ele já existe (new)",
+            )
+            p.add_argument("--by", help="Nome de quem revisou o roteiro (review)")
+            p.add_argument("--channel", choices=["chat"], default="chat", help="Por onde a revisão chegou (review)")
+            p.add_argument("--statement", help="Frase exata dita por quem revisou (review)")
+            p.add_argument(
+                "--confirm-target-change",
+                action="store_true",
+                help="Aceitar que aprovações de beats com alvo novo voltem a pendente (sync)",
+            )
+        if name == "assets":
+            from .assets import ASSET_KINDS
+
+            p.add_argument(
+                "--action",
+                required=True,
+                choices=["list", "where"],
+                help="list: inventário; where: onde um nome resolve",
+            )
+            p.add_argument("--kind", choices=sorted(ASSET_KINDS), help="Tipo de componente")
+            p.add_argument("--name", help="Nome do componente, sem extensão (where)")
         if name == "serve":
             g = p.add_mutually_exclusive_group()
             g.add_argument(
