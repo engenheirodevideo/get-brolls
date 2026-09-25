@@ -53,12 +53,22 @@ TOP_LEVEL_VCS = ".git"
 
 
 def _counted_files(folder):
-    """(caminho relativo, caminho) de cada arquivo que entra no hash, em ordem estável."""
-    for path in sorted(p for p in folder.rglob("*") if p.is_file()):
+    """(caminho relativo, caminho) de cada arquivo que entra no hash, em ordem estável.
+
+    Ordena pela string POSIX do caminho relativo (`rel.as_posix()`), não pelo
+    `Path` em si: no `WindowsPath` real, `Path.__lt__` compara sem diferenciar
+    maiúsculas de minúsculas, o que mudaria a ordem (e portanto o hash) entre
+    Windows e POSIX para o mesmo conteúdo (B1)."""
+    candidates = []
+    for path in folder.rglob("*"):
+        if not path.is_file():
+            continue
         rel = path.relative_to(folder)
         if rel.name in JUNK_FILENAMES or rel.parts[0] == TOP_LEVEL_VCS:
             continue
-        yield rel, path
+        candidates.append((rel, path))
+    candidates.sort(key=lambda item: item[0].as_posix())
+    yield from candidates
 
 
 def nested_vcs(folder):

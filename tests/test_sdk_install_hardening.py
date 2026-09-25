@@ -78,6 +78,31 @@ class FolderInstallHardeningTests(InstallTestCase):
         self.assertEqual(str(source.resolve()), preview["plugin"]["source"])
 
 
+class CountedFilesOrderTests(InstallTestCase):
+    """B1: a ordem de `_counted_files` (e por tabela `folder_digest`/prévia de
+    arquivos) não pode depender de `Path.__lt__` — no `WindowsPath` real essa
+    comparação é insensível a maiúsculas, então `getbrolls-plugin.json` viria antes
+    de `LEIAME.md`. Simulamos essa comparação insensível via patch para provar que
+    a ordem do código continua por ponto de código mesmo assim."""
+
+    @staticmethod
+    def _casefold_lt(path_obj, other):
+        return str(path_obj).casefold() < str(other).casefold()
+
+    def test_order_is_code_point_stable_even_if_path_comparison_is_case_insensitive(self):
+        folder = self.work / "mixed_case"
+        folder.mkdir()
+        for name in ("getbrolls-plugin.json", "LEIAME.md", "plugin.py"):
+            (folder / name).write_text("x", encoding="utf-8")
+
+        with patch.object(Path, "__lt__", self._casefold_lt):
+            names = [rel.as_posix() for rel, _path in loader._counted_files(folder)]
+            digest_under_case_insensitive_cmp = loader.folder_digest(folder)
+
+        self.assertEqual(["LEIAME.md", "getbrolls-plugin.json", "plugin.py"], names)
+        self.assertEqual(digest_under_case_insensitive_cmp, loader.folder_digest(folder))
+
+
 class LoaderVcsTests(InstallTestCase):
     def test_nested_vcs_in_an_installed_plugin_makes_it_invalid(self):
         folder = self.install()
