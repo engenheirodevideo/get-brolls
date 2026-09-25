@@ -146,6 +146,11 @@ def require_fetch(c):
     if c["approval"]["status"] != "approved" or c["approval"].get("signature") != signature(c):
         raise ValueError("Aprovação humana ausente ou inválida para esta fonte e intervalo.")
     if c["rights"]["status"] != "permitted" or not c["rights"]["evidence"]:
-        raise ValueError("Registre a autorização/condições de uso com permit --evidence antes de obter mídia.")
+        raise ValueError(
+            "Registre a autorização/condições de uso com permit antes de obter mídia: "
+            "--evidence com a condição real da fonte, --preset com as condições genéricas "
+            "da fonte (nasa, commons...) ou --declared-by/--declaration-text com a "
+            "declaração de quem responde pelo uso."
+        )
     if c["acquisition"]["status"] != "available":
         raise ValueError("Esta fonte é somente referência; forneça um original local autorizado.")
