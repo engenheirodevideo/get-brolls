@@ -82,8 +82,17 @@ def _check_preset_name(args):
     if not name or name in presets.PERMIT_PRESETS:
         return
     valid = presets.names()
-    if name not in valid and "permit" in _SUBPARSERS:
-        _SUBPARSERS["permit"].error(f"argument --preset: invalid choice: {name!r} (choose from {', '.join(valid)})")
+    parser = _SUBPARSERS.get("permit")
+    if name in valid or parser is None:
+        return
+    # O próprio argparse monta a mensagem, byte a byte como no 2.5.0 (quando `--preset`
+    # tinha `choices=`), em qualquer versão do Python: aspas em cada nome e tudo.
+    action = next(a for a in parser._actions if a.dest == "preset")
+    action.choices = valid
+    try:
+        parser._check_value(action, name)
+    except argparse.ArgumentError as exc:
+        parser.error(str(exc))
 
 
 def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse builder with one branch per subcommand/flag
