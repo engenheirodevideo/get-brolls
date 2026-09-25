@@ -52,6 +52,8 @@ _NOTE = re.compile(r"(?<!\[)\[([^\[\]\n]+)\](?![\](])")
 _CHECKBOX = re.compile(r"^\s*[-*+]\s+\[[ xX]\]\s*")
 _PLACEHOLDER = re.compile(r"<[^<>\n]{1,200}>")
 _WORD = re.compile(r"\w+")
+# Aspa simples só fecha o argumento quando vem antes de `|` ou do fim: `d'água` segue texto.
+_SINGLE_CLOSE = re.compile(r"\s*(?:\||$)")
 _TAKE = re.compile(r"[a-z0-9][a-z0-9_-]{0,19}")
 _EXT = re.compile(r"^([a-z][a-z0-9_]{1,31}):([a-z0-9][a-z0-9-]*)(?::(.*))?$")
 # Chave = maiúsculas sem acento e sem nada que não seja letra ou número.
@@ -135,7 +137,10 @@ def load_text(project):
     path = roteiro_path(project)
     if not path.is_file():
         raise ValueError("Este projeto não tem ROTEIRO.md. Crie com `roteiro --action new --genero reels --tema ...`.")
-    return path.read_text(encoding="utf-8-sig").replace("\r\n", "\n")
+    try:
+        return path.read_text(encoding="utf-8-sig").replace("\r\n", "\n")
+    except UnicodeDecodeError:
+        raise ValueError("ROTEIRO.md não está em UTF-8: salve o arquivo como UTF-8 e rode de novo.") from None
 
 
 def enabled_plugins():
@@ -273,21 +278,32 @@ def estimate(speech):
 
 
 def _split_args(raw):
-    """Divide em `|` fora de aspas duplas; `\\"` é aspa literal dentro do texto."""
-    parts, current, quoted, index = [], [], False, 0
+    """Divide em `|` fora de aspas; `\\"` é aspa literal dentro do texto.
+
+    Aspa dupla abre e fecha em qualquer ponto. Aspa simples só abre no começo do
+    argumento e só fecha antes de `|` ou do fim, para o apóstrofo (`d'água`) ser texto.
+    """
+    parts, current, double, single, started, index = [], [], False, False, False, 0
     while index < len(raw):
         ch = raw[index]
         if ch == "\\" and raw[index + 1 : index + 2] == '"':
             current.append('\\"')
+            started = True
             index += 2
             continue
-        if ch == '"':
-            quoted = not quoted
-        if ch == "|" and not quoted:
+        if ch == '"' and not single:
+            double = not double
+        elif ch == "'" and not double:
+            if single:
+                single = _SINGLE_CLOSE.match(raw, index + 1) is None
+            elif not started:
+                single = True
+        if ch == "|" and not double and not single:
             parts.append("".join(current).strip())
-            current = []
+            current, started = [], False
         else:
             current.append(ch)
+            started = started or not ch.isspace()
         index += 1
     parts.append("".join(current).strip())
     return [p for p in parts if p] if any(parts) else []
@@ -404,17 +420,15 @@ def _open_scene(heading, number, errors, ids):
 
 
 def _spoken_count(scene):
-    return sum(1 for line in scene["speech"] if line.strip())
+    return sum(1 for line in scene["speech"] if strip_notes(line))
+
+
+_HIDDEN = "comentário HTML esconde texto da revisão: apague o <!-- ... --> (só o id no fim do título vale)"
 
 
 def _body_line(scene, line, number, plugins, found):
     """Uma linha dentro de cena: diretiva, nota de cena, subtítulo ou fala."""
     errors, warnings = found
-    if "<!--" in line:
-        errors.append(
-            (number, "comentário HTML esconde texto da revisão: apague o <!-- ... --> (só o id no fim do título vale)")
-        )
-        return
     placeholder = _PLACEHOLDER.search(line)
     if placeholder:
         warnings.append(f"linha {number}: {placeholder.group(0)} parece texto do esqueleto; troque pelo conteúdo real")
@@ -439,6 +453,20 @@ def _body_line(scene, line, number, plugins, found):
     scene["speech"].append(line.rstrip())
 
 
+def _line(scene, line, number, plugins, found):
+    """Qualquer linha depois do frontmatter que não é título de cena."""
+    errors = found[0]
+    if "<!--" in line or "-->" in line:
+        errors.append((number, _HIDDEN))  # vale fora de cena também: um H1 não pode abrir comentário
+        return
+    if scene is None:
+        stripped = line.strip()
+        if stripped and not (stripped.startswith("# ") and not stripped.startswith("##")):
+            errors.append((number, "texto fora de cena: toda fala vai depois de um título ## Cena"))
+        return
+    _body_line(scene, line, number, plugins, found)
+
+
 def _close(scene, errors):
     if scene is None or scene["broken"]:
         return None
@@ -450,17 +478,17 @@ def _close(scene, errors):
     if len(layouts) > 1:
         errors.append((layouts[1].line, "mais de um layout na mesma cena; separe em duas cenas"))
         return None
-    spoken = [line for line in scene["speech"] if line.strip()]
+    # Mesmo critério de `_spoken_count`: a âncora indexa as linhas de `speech_clean`.
+    clean = [text for text in (strip_notes(line) for line in scene["speech"]) if text]
     offsets = [0]
-    for line in spoken:
-        offsets.append(offsets[-1] + _spoken_words(line))
+    for line in clean:
+        offsets.append(offsets[-1] + len(_WORD.findall(line)))
     anchored = [
-        replace(d, anchor=position if position < len(spoken) else END_ANCHOR, word_offset=offsets[position])
+        replace(d, anchor=position if position < len(clean) else END_ANCHOR, word_offset=offsets[position])
         for d, position in scene["directives"]
     ]
     speech = "\n".join(scene["speech"]).strip()
     duration, over = estimate(speech)
-    clean = [strip_notes(line) for line in spoken]
     return Scene(
         title=scene["title"],
         scene_id=scene["id"],
@@ -471,7 +499,7 @@ def _close(scene, errors):
         speech=speech,
         duration_s=duration,
         over_cap=over,
-        speech_clean="\n".join(line for line in clean if line),
+        speech_clean="\n".join(clean),
         notes=tuple(scene["notes"]),
     )
 
@@ -496,12 +524,7 @@ def parse(text, plugins=None):
                 scenes.append(scene)
             current = _open_scene(heading, number, errors, ids)
             continue
-        if current is None:
-            stripped = line.strip()
-            if stripped and not (stripped.startswith("# ") and not stripped.startswith("##")):
-                errors.append((number, "texto fora de cena: toda fala vai depois de um título ## Cena"))
-            continue
-        _body_line(current, line, number, plugins, (errors, warnings))
+        _line(current, line, number, plugins, (errors, warnings))
     scene = _close(current, errors)
     if scene:
         scenes.append(scene)

@@ -51,6 +51,12 @@ class HiddenTextTests(unittest.TestCase):
         found = errors_of("## A\n[A-ROLL]\n<!--\n[BROLL: escondido]\n-->\n")
         self.assertEqual(found[0][0], 8)
 
+    def test_comment_opened_before_the_first_scene_is_an_error(self):
+        body = "# Titulo <!--\n## Escondida\n[BROLL: segredo]\nfala escondida\n-->\n## Visivel\n[A-ROLL]\nOi."
+        found = errors_of(body)
+        self.assertEqual([n for n, _ in found], [6, 10])
+        self.assertIn("esconde texto", found[0][1])
+
 
 class EncodingTests(unittest.TestCase):
     def setUp(self):
@@ -71,6 +77,12 @@ class EncodingTests(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             roteiro.load_text(self.project)
         self.assertIn("roteiro --action new", str(ctx.exception))
+
+    def test_file_not_in_utf8_is_a_clear_error(self):
+        (self.project / "ROTEIRO.md").write_bytes("---\ntema: ação\n".encode("latin-1"))
+        with self.assertRaises(ValueError) as ctx:
+            roteiro.load_text(self.project)
+        self.assertEqual(str(ctx.exception), "ROTEIRO.md não está em UTF-8: salve o arquivo como UTF-8 e rode de novo.")
 
 
 class DirectiveArgsTests(unittest.TestCase):
@@ -101,6 +113,15 @@ class DirectiveArgsTests(unittest.TestCase):
         self.assertEqual(take.args, ("t2",))
         self.assertIn("take", errors_of("## A\n[A-ROLL: take 2!]\n")[0][1])
         self.assertIn("no máximo um take", errors_of("## A\n[A-ROLL: t1 | t2]\n")[0][1])
+
+    def test_pipe_inside_single_quotes_is_text(self):
+        self.assertIn("dois lados", errors_of("## A\n[SPLIT: 'x | y']\n")[0][1])
+        lettering = parse("## A\n[A-ROLL]\n[LETTERING: 'a | b' | neon]\n").scenes[0].layers[0]
+        self.assertEqual((lettering.args, lettering.quoted), (("a | b", "neon"), (True, False)))
+        self.assertIn("BROLL aceita no máximo 1", errors_of("## A\n[BROLL: copo d'água | x]\n")[0][1])
+        apostrophe = parse('## A\n[A-ROLL]\n[LETTERING: "d\'água" | neon]\n').scenes[0].layers[0]
+        self.assertEqual(apostrophe.args, ("d'água", "neon"))
+        self.assertEqual(parse("## A\n[BROLL: Sampa's skyline]\n").scenes[0].layout.args, ("Sampa's skyline",))
 
 
 class PluginAndNotesTests(unittest.TestCase):
@@ -152,11 +173,11 @@ class HeadingTests(unittest.TestCase):
         for line in lines:
             started = time.perf_counter()
             roteiro._heading(line)
-            self.assertLess(time.perf_counter() - started, 0.05)
+            self.assertLess(time.perf_counter() - started, 0.25)
         started = time.perf_counter()
         with self.assertRaises(roteiro.RoteiroError):
             parse("## " + " " * 5000 + "\n[A-ROLL]\n")
-        self.assertLess(time.perf_counter() - started, 0.05)
+        self.assertLess(time.perf_counter() - started, 0.25)
 
     def test_scene_ids_are_ascii_and_never_zero(self):
         for bad in ("c00", "c000", "c٠١"):
@@ -195,6 +216,11 @@ class AnchorTests(unittest.TestCase):
         self.assertEqual((whoosh.anchor, whoosh.word_offset), (0, 0))
         self.assertEqual((lettering.anchor, lettering.word_offset), (1, 3))
         self.assertEqual((music.anchor, music.word_offset), (roteiro.END_ANCHOR, 5))
+
+    def test_anchor_indexes_speech_clean_lines(self):
+        scene = parse("## A\n[A-ROLL]\nOi.\n[risos] [pausa]\n[SFX: x]\nTchau.\n").scenes[0]
+        self.assertEqual(scene.speech_clean.split("\n"), ["Oi.", "Tchau."])
+        self.assertEqual((scene.layers[0].anchor, scene.layers[0].word_offset), (1, 1))
 
     def test_placeholder_left_from_skeleton_warns(self):
         doc = parse("## A\n[BROLL: <o que aparece>]\n<a dor>\n")

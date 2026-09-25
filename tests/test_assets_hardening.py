@@ -96,6 +96,13 @@ class AssetHardeningTests(unittest.TestCase):
         self.assertIn("preenchidos", " ".join(found["warnings"]))
         self.assertNotIn("não registrada", " ".join(found["warnings"]))
 
+    def test_license_sidecar_with_bom_is_read(self):
+        self._put("assets/sfx", "d.wav")
+        data = json.dumps({"origem": "banco", "licenca": "CC0", "credito": "X"})
+        (self.project / "assets/sfx/d.licenca.json").write_bytes(data.encode("utf-8-sig"))
+        found = assets.resolve(self.project, "sfx", "d")
+        self.assertEqual((found["license"]["licenca"], found["license_error"]), ("CC0", None))
+
 
 if __name__ == "__main__":
     unittest.main()

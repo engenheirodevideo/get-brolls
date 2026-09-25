@@ -89,7 +89,7 @@ def _license(path):
     if not sidecar.is_file():
         return None, None
     try:
-        data = json.loads(sidecar.read_text(encoding="utf-8"))
+        data = json.loads(sidecar.read_text(encoding="utf-8-sig"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None, f"{sidecar.name} não é um JSON válido: conserte ou apague o arquivo."
     if (
