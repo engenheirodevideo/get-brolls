@@ -2117,10 +2117,17 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                     raise ValueError(_already_collected(planned))
             # O arquivo da rota vai para o cache privado (fora de `brolls/`) e é
             # reaproveitado se este `fetch` falhar adiante: a licença é consumida uma vez.
-            routed = fetch_routed_source(ledger, c)
+            reacquire = bool(getattr(args, "reacquire", False))
+            routed = fetch_routed_source(ledger, c, reacquire=reacquire)
             src = routed.path
             routed_remote = True
             changed = False
+            if reacquire and not routed.reused and c["acquisition"].get("route_consumed_at"):
+                # Nova aquisição confirmada pela pessoa: a primeira data fica, e esta
+                # entra na lista — o ledger mostra que a licença foi consumida de novo.
+                c["acquisition"].setdefault("route_reacquired_at", []).append(now())
+                logs.event(_log, logging.INFO, "route_reacquired", candidate=c["id"], plugin=routed.plugin)
+                changed = True
             if routed.license:
                 # Evidência a mais, gravada depois do permit humano — nunca no lugar dele.
                 evidence = license_evidence(routed.plugin, routed.license)

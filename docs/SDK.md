@@ -190,6 +190,14 @@ Rota `stage="fetch"` consome licença ou cota **uma vez só**:
   trecho aprovado passa da duração real que a fonte entregou — o `fetch` avisa
   com a duração), o próximo `fetch` reaproveita o arquivo do cache: a rota não
   é chamada de novo e a licença aparece uma vez só.
+- Com `route_consumed_at` gravado e o arquivo fora do cache (a pasta
+  `.getbrolls-sources/` foi apagada, ou o projeto mudou de computador levando só
+  `brolls/`), o `fetch` **recusa** sem chamar a rota e diz em que data a licença
+  foi consumida. Restaure `.getbrolls-sources/`, ou — só com o ok da pessoa,
+  porque é uma nova compra/cota — rode `fetch --candidate <ID> --reacquire`: a
+  rota roda de novo, a nova licença entra na evidência e a data vai para
+  `acquisition.route_reacquired_at`. Com o cache presente, `--reacquire` não
+  muda nada (o arquivo é reaproveitado).
 - A busca grava `preview.route_stage = "fetch"` nos candidatos dessa fonte:
   `status`/guidance leem isso (sem rodar plugin) e nunca sugerem `inspect` nem
   prévia com mídia para eles — sugerem `preview --reference-only`, depois

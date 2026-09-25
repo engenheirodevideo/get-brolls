@@ -396,6 +396,18 @@
             "--candidate"
           ],
           "required": true
+        },
+        {
+          "action": "_StoreTrueAction",
+          "choices": null,
+          "default": false,
+          "dest": "reacquire",
+          "help": "Rota de plugin cuja licença já foi consumida e cujo arquivo sumiu do cache: roda a rota de novo (nova licença/cota), só com o ok da pessoa",
+          "nargs": 0,
+          "option_strings": [
+            "--reacquire"
+          ],
+          "required": false
         }
       ]
     },

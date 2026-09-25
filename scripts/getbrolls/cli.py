@@ -265,6 +265,15 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
                 required=True,
                 help="ID do candidato retornado por search/resolve",
             )
+        if name == "fetch":
+            p.add_argument(
+                "--reacquire",
+                action="store_true",
+                help=(
+                    "Rota de plugin cuja licença já foi consumida e cujo arquivo sumiu do cache: "
+                    "roda a rota de novo (nova licença/cota), só com o ok da pessoa"
+                ),
+            )
         if name in ("preview", "approve"):
             p.add_argument("--start", type=float, help="Início do trecho na origem, em segundos")
             p.add_argument("--end", type=float, help="Fim do trecho na origem, em segundos")

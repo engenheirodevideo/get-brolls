@@ -10,6 +10,7 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- SDK (segurança): rota de `fetch` com licença já consumida e arquivo fora do cache privado não roda de novo — o `fetch` recusa e diz a data; a nova flag `fetch --reacquire` permite, com o ok da pessoa, uma nova aquisição, registrada em `acquisition.route_reacquired_at`.
 - SDK: `print` de plugin (no import, `register`, busca, rota ou comando) vai para o stderr — o JSON do stdout continua legível; e uma subclasse de `KeyboardInterrupt` levantada por plugin é falha do plugin, não interrupção da CLI.
 - SDK (segurança): `source_id` de plugin só aceita `[A-Za-z0-9._:-]` (1 a 128) — outro caractere recusa o candidato, com registro no log —, e comando sugerido com id de candidato de plugin vai citado com `shlex.quote` quando preciso.
 - Core: `public_url` das fontes embutidas volta ao filtro do 2.5.0 (nomes exatos + assinaturas S3/GCS): URLs com `x-signature`, `ig_cache_key`, `page_token` ou `sort_key` voltam a passar em `resolve --source-url`, review e import-review. O filtro amplo de query secreta vale só para URL que veio de plugin.

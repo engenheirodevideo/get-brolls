@@ -299,7 +299,17 @@ def _reuse_fetched(cache, candidate):
     return None
 
 
-def fetch_routed_source(ledger, candidate):
+def route_consumed_message(candidate, consumed_at):
+    return (
+        f"A licença da fonte {candidate.get('provider')} para {candidate.get('id')} já foi consumida em "
+        f"{consumed_at}, e o arquivo licenciado não está mais no cache privado do projeto "
+        "(.getbrolls-sources/). Não rodei a rota de novo: isso consumiria outra licença ou cota. "
+        "Restaure a pasta .getbrolls-sources/ do projeto; ou, se a pessoa confirmar uma nova aquisição, "
+        f"rode `fetch --candidate {candidate_arg(candidate)} --reacquire`."
+    )
+
+
+def fetch_routed_source(ledger, candidate, reacquire=False):
     """O arquivo da rota de `fetch`, trazido uma única vez (RT-07).
 
     A rota consome licença ou cota: o arquivo verificado vai para o cache privado
@@ -314,6 +324,12 @@ def fetch_routed_source(ledger, candidate):
     reused = _reuse_fetched(cache, candidate)
     if reused is not None:
         return reused
+    consumed_at = (candidate.get("acquisition") or {}).get("route_consumed_at")
+    if consumed_at and not reacquire:
+        # B-05: licença já consumida e cache perdido (pasta apagada, projeto movido):
+        # nunca chama a rota de novo sem o `--reacquire` explícito.
+        logs.event(log, logging.WARNING, "route_refused", candidate=candidate["id"], reason="license_consumed")
+        raise ValueError(route_consumed_message(candidate, consumed_at))
     with plugin_source(ledger, candidate, "fetch") as routed:
         suffix = _cache_suffix(routed.path)
         info = probe(routed.path)
