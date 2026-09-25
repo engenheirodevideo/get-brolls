@@ -3,6 +3,8 @@
 import copy
 import json
 import shutil
+import subprocess
+import sys
 import tempfile
 import types
 import unittest
@@ -14,6 +16,8 @@ from _paths import ROOT
 
 from getbrolls import brief, delivery
 from getbrolls.commands import brief_report, brief_state
+from getbrolls.ledger import Ledger
+from getbrolls.models import candidate, now, set_segment
 
 BASE = {
     "version": 1,
@@ -119,6 +123,145 @@ class DocsAndSchemaTests(unittest.TestCase):
                 body = path.read_text(encoding="utf-8")
                 self.assertIn("ROTEIRO.md", body)
                 self.assertIn('"beats": []', body)
+
+
+CLI = ROOT / "scripts" / "gb.py"
+RETIRED_REASON = "beat aposentado pelo roteiro"
+
+
+def run_cli(test, *args):
+    done = subprocess.run(
+        [sys.executable, str(CLI), *map(str, args)], capture_output=True, text=True, encoding="utf-8", check=False
+    )
+    test.assertEqual(0, done.returncode, done.stderr + done.stdout)
+    return json.loads(done.stdout)
+
+
+def fetched(source_id, title, shot):
+    """Clipe aprovado, permitido, coletado e conferido, ligado ao beat `shot`."""
+    c = candidate("local", source_id, title, source_url="https://example.org/" + source_id)
+    set_segment(c, 0, 2)
+    c["creator"]["name"] = "Autora Exemplo"
+    c["preview"]["contact_sheet_path"] = f"previews/{source_id}.jpg"
+    c["approval"] = {"status": "approved", "by": "Humano", "at": now(), "revision": 1, "channel": "chat",
+                     "statement": "aprovo"}  # fmt: skip
+    c["rights"]["status"] = "permitted"
+    c["rights"]["evidence"] = ["Condições conferidas na página da fonte"]
+    c["output"] = {"path": f"clips/{source_id}.mp4", "sha256": "a" * 64, "verified": True}
+    c["state"] = "verified"
+    c["shot"] = shot
+    c["id"] += ":shot:" + shot
+    return c
+
+
+class RetiredDeliveryTests(unittest.TestCase):
+    """Q18: clipe de beat aposentado fica em brolls/, mas não vira pasta viva em entrega/."""
+
+    def setUp(self):
+        self.project = Path(tempfile.mkdtemp(prefix="gb-brief-rot-"))
+        self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
+        run_cli(self, "init-rules", "--project", self.project)
+
+    def write_brief(self, data):
+        body = "# Brief\n\n```json\n" + json.dumps(data, ensure_ascii=False, indent=2) + "\n```\n"
+        (self.project / "BRIEF.md").write_text(body, encoding="utf-8")
+
+    def store(self, items):
+        ledger = Ledger(self.project)
+        stored = [ledger.add(c) for c in items]
+        ledger.save_many("fixture", stored)
+        for c in stored:
+            for rel in (c["output"]["path"], c["preview"]["contact_sheet_path"]):
+                path = ledger.root / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"conteudo de " + rel.encode())
+        return stored
+
+    def folders(self):
+        root = self.project / "entrega"
+        return sorted(p.name for p in root.iterdir() if p.is_dir()) if root.is_dir() else []
+
+    def three_clips(self):
+        return self.store([fetched("a", "Titulo c01", "c01"), fetched("b", "Titulo c02", "c02"),
+                           fetched("c", "Titulo manual", "manual-1")])  # fmt: skip
+
+    def test_deliver_skips_clips_of_retired_beats(self):
+        self.write_brief(BASE)
+        _, retired, _ = self.three_clips()
+        expected = [delivery.beat_dir_name(1, "c01", "mesa"), delivery.beat_dir_name(2, "manual-1", "algo")]
+        entry = {"id": retired["id"], "shot": "c02", "reason": RETIRED_REASON}
+        planned = delivery.build_delivery(str(self.project), dry_run=True)
+        self.assertEqual(planned["retired"], [entry])
+        self.assertEqual(self.folders(), [])
+        report = delivery.build_delivery(str(self.project))
+        self.assertEqual(self.folders(), expected)
+        self.assertEqual(report["retired"], [entry])
+        self.assertNotIn("c02", {item["beat"] for item in report["items"]})
+        self.assertTrue((self.project / "brolls" / "clips" / "b.mp4").is_file())
+        cli = run_cli(self, "deliver", "--dry-run", "--project", self.project)
+        self.assertEqual(cli["retired"], [entry])
+
+    def test_shot_outside_the_brief_keeps_todays_behaviour(self):
+        self.write_brief(BASE)
+        self.store([fetched("a", "Titulo c01", "c01"), fetched("d", "Titulo fora", "fora")])
+        report = delivery.build_delivery(str(self.project))
+        self.assertEqual(
+            self.folders(), [delivery.beat_dir_name(1, "c01", "mesa"), delivery.beat_dir_name(3, "fora", "Titulo fora")]
+        )
+        self.assertNotIn("retired", report)
+
+    def test_folder_of_a_beat_retired_later_is_swept(self):
+        alive = copy.deepcopy(BASE)
+        del alive["beats"][1]["retired"]
+        self.write_brief(alive)
+        self.three_clips()
+        delivery.build_delivery(str(self.project))
+        old = delivery.beat_dir_name(2, "c02", "mapa")
+        self.assertIn(old, self.folders())
+        self.write_brief(BASE)
+        report = delivery.build_delivery(str(self.project))
+        self.assertNotIn(old, self.folders())
+        self.assertTrue(any(rel.startswith(old) for rel in report["removed"]))
+
+    def test_status_does_not_ask_to_deliver_a_retired_clip(self):
+        self.write_brief(BASE)
+        self.three_clips()
+        run_cli(self, "deliver", "--project", self.project)
+        status = run_cli(self, "status", "--project", self.project)
+        self.assertNotEqual(status["summary"]["do"]["step"], "deliver")
+        self.assertNotIn("entrega/ com deliver", status["summary"]["next"])
+        self.assertIn("Fluxo completo", status["summary"]["next"])
+
+
+class ZeroBeatsWithRoteiroTests(unittest.TestCase):
+    """Com ROTEIRO.md e nenhum beat ativo, todo comando aponta para o sync do roteiro."""
+
+    def setUp(self):
+        self.project = Path(tempfile.mkdtemp(prefix="gb-brief-rot-"))
+        self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
+        run_cli(self, "init-rules", "--project", self.project)
+        body = "# Brief\n\n```json\n" + json.dumps(with_beats([]), ensure_ascii=False, indent=2) + "\n```\n"
+        (self.project / "BRIEF.md").write_text(body, encoding="utf-8")
+        (self.project / "ROTEIRO.md").write_text("---\n", encoding="utf-8")
+
+    def test_status_points_to_sync(self):
+        status = run_cli(self, "status", "--project", self.project)
+        self.assertEqual(status["summary"]["do"]["step"], "roteiro-sync")
+        self.assertIn("roteiro --action sync", status["summary"]["do"]["command"])
+        self.assertIn("roteiro --action sync", status["summary"]["next"])
+
+    def test_plain_brief_points_to_sync(self):
+        result = run_cli(self, "brief", "--project", self.project)
+        self.assertIn("sync", result["summary"]["next"])
+        self.assertNotIn("buscar as fontes", result["summary"]["next"])
+
+    def test_validate_is_consistent(self):
+        result = run_cli(self, "brief", "--validate", "--project", self.project)
+        self.assertTrue(result["valid"])
+        self.assertNotIn("para resolver", result["summary"]["line"])
+        self.assertIn("ROTEIRO.md", result["summary"]["line"])
+        self.assertIn("roteiro --action sync", result["summary"]["next"])
+        self.assertNotIn("repita", result["summary"]["next"])
 
 
 if __name__ == "__main__":

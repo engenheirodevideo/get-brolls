@@ -58,6 +58,8 @@ TEMPLATES = {
     "fetch": "fetch --project {project} --candidate {candidate}",
     "verify": "verify --project {project}",
     "deliver": "deliver --project {project}",
+    # Fora de STEPS: só aparece com ROTEIRO.md e BRIEF.md ainda sem beats.
+    "roteiro-sync": "roteiro --action sync --project {project}",
 }
 
 
@@ -484,6 +486,16 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
     # formato passa na frente, porque ele invalida a própria decisão que seria tomada.
     if counts["pending"] > 0:
         return _approve_action(state, counts["pending"])
+    if brief.get("roteiro_sync"):
+        # Com ROTEIRO.md, quem cria os beats é o sync: buscar sem beat não tem alvo.
+        return _action(
+            "roteiro-sync",
+            "O BRIEF.md ainda não tem beats: com ROTEIRO.md no projeto, eles nascem do sync do roteiro.",
+            "O roteiro ainda não virou beats no brief: revise o ROTEIRO.md comigo e, com a sua "
+            "aprovação, eu rodo o sync que cria os beats antes de buscar qualquer coisa.",
+            state,
+            blocking_human=True,
+        )
     blocked = list(brief.get("blocked") or [])
     if blocked:
         return _action(

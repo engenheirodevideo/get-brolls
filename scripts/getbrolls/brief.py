@@ -487,6 +487,21 @@ def template_leftovers(data):
     return found
 
 
+def retired_beat_ids(project):
+    """Ids dos beats aposentados (`"retired": true`) de um BRIEF.md válido.
+
+    Vazio quando o brief falta ou não valida: aí ninguém é aposentado e todo clipe
+    segue a regra de antes. `deliver` e `status` usam isto para deixar esses clipes
+    fora de `entrega/` sem tratá-los como pendência.
+    """
+    try:
+        raw = load_brief(project)
+        validate_brief(raw, project=project)
+    except (ValueError, OSError):
+        return frozenset()
+    return frozenset(b["id"] for b in raw["beats"] if b.get("retired") is True)
+
+
 def search_query(beat, limit=QUERY_MAX_TOKENS):
     """Termos que vão para a fonte: entidade + ação, nunca a frase inteira do `target`.
 

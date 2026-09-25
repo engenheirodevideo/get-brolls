@@ -527,20 +527,22 @@ def brief_report(args):
     problems += [f'O beat "{entry["id"]}" está travado esperando você: {entry["reason"]}' for entry in stalled]
     # Modelo intocado passa na validação de formato, mas não é um brief pronto.
     problems += template_leftovers(data)
-    if not data["beats"]:
-        # Só chega aqui com ROTEIRO.md no projeto: os beats nascem do sync do roteiro.
-        problems.append(
-            "O BRIEF.md ainda não tem beats: eles vêm do ROTEIRO.md. Revise o roteiro com a pessoa e "
-            "rode `roteiro --action sync --project <projeto>`."
-        )
+    # Só chega sem beats com ROTEIRO.md no projeto: os beats nascem do sync do roteiro.
+    awaiting_sync = not data["beats"]
+    if awaiting_sync:
+        problems.append(ROTEIRO_SYNC_PROBLEM)
     if getattr(args, "validate", False):
         beat_count = _count(len(data["beats"]), "beat", "beats")
+        # Brief válido que só espera o sync: não é "ponto para resolver" no brief.
+        only_sync = awaiting_sync and problems == [ROTEIRO_SYNC_PROBLEM]
         return {
             "summary": {
                 # "válido" só quando não sobrou nada para a pessoa resolver: um conflito
                 # de formato ou um RULES.md ilegível não é um brief pronto para buscar.
                 "line": (
-                    f'Brief de "{data["video"]["title"]}" lido, com {beat_count}, mas '
+                    f'Brief de "{data["video"]["title"]}" válido, ainda sem beats: eles vêm do ROTEIRO.md.'
+                    if only_sync
+                    else f'Brief de "{data["video"]["title"]}" lido, com {beat_count}, mas '
                     + _count(len(problems), "ponto", "pontos")
                     + " para resolver antes de buscar."
                     if problems
@@ -553,6 +555,8 @@ def brief_report(args):
                     # "pode buscar" enquanto ela não responder.
                     blocked_beats_question(stalled)
                     if stalled
+                    else ROTEIRO_SYNC_NEXT
+                    if only_sync
                     else "Resolva os pontos acima e repita `brief --validate --project ...`."
                     if problems
                     else "Pode buscar: `brief --project ...` mostra o comando pronto de cada beat."
@@ -637,6 +641,8 @@ def brief_report(args):
                         ],
                         "blocked": blocked,
                         "conflicts": conflicts,
+                        # Só com ROTEIRO.md e nenhum beat: a escada manda para o sync.
+                        **({"roteiro_sync": True} if awaiting_sync else {}),
                     },
                     "review_page": (root / "review.html").is_file(),
                     "board_url": _live_board_url(args.project),
@@ -1131,6 +1137,8 @@ def brief_state(project, rules, items, data=None):
         "conflicts": conflicts,
         # O que o `inspect` de um candidato do beat procura: a fala, ou o alvo.
         "beat_queries": {b["id"]: b["resolved"].get("narration") or b["resolved"]["target"] for b in beats},
+        # Só com ROTEIRO.md e nenhum beat ativo: a escada manda para o sync do roteiro.
+        **({"roteiro_sync": True} if not beats else {}),
     }
 
 
@@ -1289,9 +1297,25 @@ def _needs_preview(items):
     return [c for c in items if not _has_preview(c) and _stage_status(c, "approval") != "rejected"]
 
 
-def _undelivered(items):
-    """Arquivos já conferidos que ainda não apareceram em `entrega/`."""
-    return [c for c in items if STAGE_TESTS["verified"](c) and not (c.get("delivery") or {}).get("path")]
+def _undelivered(items, retired=frozenset()):
+    """Arquivos já conferidos que ainda não apareceram em `entrega/`.
+
+    Clipe de beat aposentado (`retired`, ids do BRIEF.md) fica fora de `entrega/` de
+    propósito: contá-lo aqui deixaria o fluxo pedindo `deliver` para sempre.
+    """
+    return [
+        c
+        for c in items
+        if STAGE_TESTS["verified"](c)
+        and not (c.get("delivery") or {}).get("path")
+        and not (retired and c.get("shot") in retired)
+    ]
+
+
+def _retired_shots(project):
+    from getbrolls.brief import retired_beat_ids
+
+    return retired_beat_ids(project)
 
 
 _UNSET = object()
@@ -1346,7 +1370,7 @@ def _flow_state(ledger, rules, counts=None, format_pending=0, brief=_UNSET):
         "inspect_candidate": next((c["id"] for c in _uninspected(items)), None),
         "reference_only": _reference_only(items),
         "inspect_query": _inspect_query(items, brief_value),
-        "undelivered": len(_undelivered(items)),
+        "undelivered": len(_undelivered(items, _retired_shots(ledger.root.parent))),
         "pending_preview": len(_needs_preview(items)),
         "preview_image": _preview_is_image(items),
     }
@@ -1376,6 +1400,18 @@ def _flow_next(ledger, rules):
 REFERENCE_ONLY_NEXT = (
     "Registre a prévia de referência (preview --reference-only) do candidato cuja fonte só entrega "
     "o arquivo no fetch; depois approve, permit e fetch."
+)
+
+
+# `summary.next` quando o BRIEF.md ainda não tem beats porque o projeto tem ROTEIRO.md:
+# buscar sem beat não tem alvo, e repetir `brief --validate` não muda nada.
+ROTEIRO_SYNC_NEXT = (
+    "Revise o ROTEIRO.md com a pessoa e rode `roteiro --action sync --project ...`: os beats "
+    "nascem dele. Depois, `brief --project ...` mostra o comando pronto de cada beat."
+)
+ROTEIRO_SYNC_PROBLEM = (
+    "O BRIEF.md ainda não tem beats: eles vêm do ROTEIRO.md. Revise o roteiro com a pessoa e "
+    "rode `roteiro --action sync --project <projeto>`."
 )
 
 
@@ -1418,11 +1454,13 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
         "next": (
             REFERENCE_ONLY_NEXT
             if _reference_only_step(do)
+            else ROTEIRO_SYNC_NEXT
+            if do.get("step") == "roteiro-sync"
             else status_next(
                 counts,
                 format_pending,
                 pending_preview=len(_needs_preview(items)),
-                undelivered=len(_undelivered(items)),
+                undelivered=len(_undelivered(items, _retired_shots(ledger.root.parent))),
             )
         ),
         # Aditivo: `line/stages/next` seguem iguais; `do` traz o mesmo passo já em

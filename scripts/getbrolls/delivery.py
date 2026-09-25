@@ -482,8 +482,33 @@ def _brief_beats(project):
         return []
 
 
-def _plan(project, items):
+RETIRED_REASON = "beat aposentado pelo roteiro"
+
+
+def _drop_retired(project, collected, retired=None):
+    """`collected` sem os clipes de beat aposentado; cada um vai para `retired`, se for lista."""
+    from .brief import retired_beat_ids
+
+    gone = retired_beat_ids(project)
+    if not gone:
+        return collected
+    kept = []
+    for c in collected:
+        if c.get("shot") not in gone:
+            kept.append(c)
+            continue
+        if retired is not None:
+            retired.append({"id": c["id"], "shot": c["shot"], "reason": RETIRED_REASON})
+        logs.event(log, logging.INFO, "deliver_skipped", candidate=c["id"], reason="retired_beat")
+    return kept
+
+
+def _plan(project, items, retired=None):
     """Um grupo por beat, na ordem do brief; sem brief, na ordem do manifesto.
+
+    Clipe cujo `shot` é um beat aposentado (`"retired": true`, gravado pelo sync do
+    roteiro) não vira pasta: sai do plano e, quando `retired` é uma lista, entra nela
+    com o motivo. O arquivo em `brolls/` fica como está.
 
     Fica de fora quem não tem `output.path`, quem tem a chave `output.verified`
     presente com um valor falso (`False`, `0`, `None` — verificação de sha256 que
@@ -514,6 +539,7 @@ def _plan(project, items):
             logs.event(log, logging.INFO, "deliver_skipped", candidate=c["id"], reason="rejected")
             continue
         collected.append(c)
+    collected = _drop_retired(project, collected, retired)
     beats = _brief_beats(project)
     order = [b["id"] for b in beats]
     meta = {b["id"]: b for b in beats}
@@ -721,7 +747,8 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):  # noqa
             "de entrega precisa ser uma pasta real dentro do projeto, nunca um atalho para "
             "outro lugar."
         )
-    groups, skipped = _plan(project, items)
+    retired = []
+    groups, skipped = _plan(project, items, retired)
     expected, listed, rows, changed = set(), [], [], []
     conflicts, conflicted = [], []
     for group in groups:
@@ -849,4 +876,6 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):  # noqa
         "removed": removed,
         "kept": kept,
         "skipped": skipped,
+        # Só aparece com beat aposentado no brief: sem ele, o relatório é o de sempre.
+        **({"retired": retired} if retired else {}),
     }
