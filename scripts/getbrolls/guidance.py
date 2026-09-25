@@ -37,6 +37,9 @@ TEMPLATES = {
     "search": "search --project {project} --query TERMOS_DA_BUSCA --intent literal",
     "inspect": ("inspect --project {project} --candidate {candidate} --query NARRACAO_OU_ALVO"),
     "preview": ("preview --project {project} --candidate {candidate} --start 0 --end 5"),
+    # Fonte de plugin que só entrega o arquivo no `fetch` (rota `stage="fetch"`):
+    # a prévia é só referência; o arquivo vem depois de approve e permit.
+    "preview-reference": ("preview --project {project} --candidate {candidate} --start 0 --end 5 --reference-only"),
     # IDs explícitos, nunca `--all`: "aprovei todos" quer dizer "os que você me
     # mostrou", e só quem mostrou sabe quais foram. Repita `--candidate` por item.
     "approve": (
@@ -417,6 +420,19 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
                     state["project"],
                     state.get("inspect_candidate") or step_candidate(state, "inspect"),
                 ),
+            )
+        preview_candidate = step_candidate(state, "preview")
+        if preview_candidate and preview_candidate in (state.get("reference_only") or ()):
+            return _action(
+                "preview",
+                "Há candidato sem prévia cuja fonte só entrega o arquivo no `fetch` (baixar "
+                "consome licença ou cota): a prévia dele é só de referência, e `inspect` ou "
+                "prévia com mídia são recusados.",
+                "Essa fonte só libera o arquivo depois da sua aprovação e das condições de "
+                "uso: vou registrar a prévia de referência (miniatura e intervalo) para você "
+                "decidir; depois é approve, permit e fetch.",
+                state,
+                command=command_for("preview-reference", state["project"], preview_candidate),
             )
         return _action(
             "preview",

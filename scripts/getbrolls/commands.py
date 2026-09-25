@@ -570,6 +570,7 @@ def brief_report(args):
                     "candidates": _step_candidates(items),
                     "duration_unknown": len(_uninspected(items)),
                     "inspect_candidate": next((c["id"] for c in _uninspected(items)), None),
+                    "reference_only": _reference_only(items),
                 }
             )["for_human"],
         },
@@ -1010,6 +1011,8 @@ def _uninspected(items):
     `--start/--end` é palpite, e o palpite custa um pedido à fonte. Item rejeitado
     fica de fora: ninguém gasta pedido à fonte por um trecho já descartado.
     """
+    from .acquisition import fetch_only
+
     return [
         c
         for c in items
@@ -1017,7 +1020,17 @@ def _uninspected(items):
         and c.get("source_url")
         and not _has_preview(c)
         and _stage_status(c, "approval") != "rejected"
+        # Fonte que só entrega no `fetch`: `inspect` é recusado antes de rodar o plugin.
+        and not fetch_only(c)
     ]
+
+
+def _reference_only(items):
+    """Ids dos itens sem quadro cuja fonte só entrega o arquivo no `fetch` (rota de
+    plugin `stage="fetch"`): a prévia deles é `--reference-only`, nunca com mídia."""
+    from .acquisition import fetch_only
+
+    return [c["id"] for c in _needs_preview(items) if fetch_only(c)]
 
 
 def serve_state(project):
@@ -1147,6 +1160,7 @@ def _flow_state(ledger, rules, counts=None, format_pending=0, brief=_UNSET):
         "candidates": _step_candidates(items),
         "duration_unknown": len(_uninspected(items)),
         "inspect_candidate": next((c["id"] for c in _uninspected(items)), None),
+        "reference_only": _reference_only(items),
         "undelivered": len(_undelivered(items)),
         "pending_preview": len(_needs_preview(items)),
     }
@@ -2014,12 +2028,15 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
             c["state"] = "awaiting_approval" if c.get("local_path") else "reference_only"
             approval_invalidated = True
     elif cmd == "fetch":
-        from .acquisition import license_evidence, plugin_source, route_name
+        from .acquisition import fetch_routed_source, license_evidence, route_name
 
         _fetch_started_at = time.monotonic()
         require_fetch(c)
         src = c.get("local_path")
         temp = None
+        # Arquivo de rota no cache privado: remoto como um download, mas não é
+        # temporário — fica para um retry não consumir a licença de novo.
+        routed_remote = False
         if src:
             if digest(src) != c["local_sha256"]:
                 raise ValueError("Original local mudou: importe novamente e aprove a nova versão.")
@@ -2038,18 +2055,36 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                 if (ledger.root / planned).exists():
                     # Recusa antes de gastar licença/cota numa revisão já coletada.
                     raise ValueError(_already_collected(planned))
-            with plugin_source(ledger, c, "fetch") as routed:
-                temp = (
-                    ledger.root / "previews" / ("download-" + id_stem(c["id"]) + ".part" + routed.path.suffix.lower())
-                )
-                temp.unlink(missing_ok=True)
-                shutil.move(routed.path, temp)
-            src = temp
+            # O arquivo da rota vai para o cache privado (fora de `brolls/`) e é
+            # reaproveitado se este `fetch` falhar adiante: a licença é consumida uma vez.
+            routed = fetch_routed_source(ledger, c, image=c.get("media", {}).get("kind") == "image")
+            src = routed.path
+            routed_remote = True
+            changed = False
             if routed.license:
                 # Evidência a mais, gravada depois do permit humano — nunca no lugar dele.
                 evidence = license_evidence(routed.plugin, routed.license)
                 if evidence not in c["rights"]["evidence"]:
                     c["rights"]["evidence"].append(evidence)
+                    changed = True
+            if not c["acquisition"].get("route_consumed_at"):
+                c["acquisition"]["route_consumed_at"] = now()
+                changed = True
+            if changed:
+                # Grava já, antes do corte: se o corte falhar, a licença consumida e o
+                # marcador ficam no ledger (a rota não roda de novo no próximo fetch).
+                ledger.save("fetch-route", c)
+            if (
+                c.get("media", {}).get("kind") != "image"
+                and routed.duration_s is not None
+                and c["segment"]["end_s"] > routed.duration_s + 0.1
+            ):
+                raise ValueError(
+                    f"A fonte entregou {routed.duration_s:g} s, mas o trecho aprovado vai até "
+                    f"{c['segment']['end_s']:g} s: a duração real é menor. Gere a prévia com um "
+                    "intervalo dentro dela (preview --reference-only), aprove e rode fetch de novo; "
+                    "o arquivo já baixado é reaproveitado."
+                )
         else:
             # Re-resolve from the provider to refresh temporary variant URLs.
             fresh = providers.refresh(c)
@@ -2082,7 +2117,7 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                     logging.INFO,
                     "fetch",
                     candidate=c["id"],
-                    kind="remote" if temp else "local",
+                    kind="remote" if temp or routed_remote else "local",
                     bytes=_safe_size(dest),
                     sha256_prefix=_sha256_prefix(c["output"]["sha256"]),
                     ms=round((time.monotonic() - _fetch_started_at) * 1000),
@@ -2170,7 +2205,7 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                 logging.INFO,
                 "fetch",
                 candidate=c["id"],
-                kind="remote" if temp else "local",
+                kind="remote" if temp or routed_remote else "local",
                 bytes=_safe_size(ledger.root / c["output"]["path"]) if c["output"].get("path") else None,
                 sha256_prefix=_sha256_prefix(c["output"].get("sha256")),
                 ms=round((time.monotonic() - _fetch_started_at) * 1000),

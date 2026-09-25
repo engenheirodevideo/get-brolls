@@ -104,7 +104,10 @@ def set_segment(c, start, end):
     if duration and end > duration + 0.1:
         raise ValueError("Intervalo excede a duração do vídeo.")
     if (start, end) != (c["segment"]["start_s"], c["segment"]["end_s"]):
-        c["preview"] = {k: v for k, v in c["preview"].items() if k in ("poster_url", "embed_url", "seek_mode")}
+        # `route_stage` (só em candidato de rota de plugin) é fato da fonte, não da prévia.
+        c["preview"] = {
+            k: v for k, v in c["preview"].items() if k in ("poster_url", "embed_url", "seek_mode", "route_stage")
+        }
         invalidate_approval(c, bump_revision=False)
         c["segment"] = {
             "start_s": start,

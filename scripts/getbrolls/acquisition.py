@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from . import logs
+from .http import DOWNLOAD_MAX_BYTES
 from .ledger import digest
 from .media import probe
 from .models import id_stem
@@ -20,8 +21,17 @@ from .runtime import record_warning
 
 INDEX_NAME = "index.json"
 ROUTE_PREFIX = "plugin:"
-# Mesmo teto do download do core: rota de plugin não traz arquivo maior do que o core baixaria.
-ROUTE_MAX_BYTES = 512 * 1024 * 1024
+# Mesmo teto do download do core (uma fonte só: `http.DOWNLOAD_MAX_BYTES`): rota de
+# plugin não traz arquivo maior do que o core baixaria.
+ROUTE_MAX_BYTES = DOWNLOAD_MAX_BYTES
+# Chave do índice de fontes para o arquivo que uma rota `stage="fetch"` já trouxe:
+# separada da chave do candidato, então `inspect`/`preview` nunca reaproveitam por
+# engano o arquivo licenciado como mídia de trabalho — só o `fetch` o lê.
+FETCH_INDEX_SUFFIX = "#fetch"
+# Extensões aceitas para uma imagem entregue por rota (o nome do arquivo final em
+# `clips/` herda a extensão): qualquer outra (`.bin`, `.part`...) é recusada.
+ROUTED_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp", ".gif")
+_CACHE_SUFFIX_CHARS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789")
 
 log = logs.get("acquisition")
 
@@ -145,6 +155,13 @@ def license_evidence(plugin, text):
     return f"Licença registrada pelo plugin {plugin}: {text}"
 
 
+def fetch_only(candidate):
+    """O candidato só tem arquivo no `fetch` (rota `stage="fetch"`)? Lido do próprio
+    candidato — `preview.route_stage`, gravado pelo core na busca —, sem montar o
+    registro: `status`/guidance nunca rodam código de plugin para responder isto."""
+    return route_name(candidate) is not None and (candidate.get("preview") or {}).get("route_stage") == "fetch"
+
+
 def _route_for(candidate):
     from .sdk.registry import get_registry
 
@@ -233,6 +250,91 @@ def plugin_source(ledger, candidate, stage):
         yield RoutedFile(path, license_text, owner)
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
+
+
+class FetchedSource(NamedTuple):
+    """Arquivo que a rota de `fetch` trouxe, já no cache privado do projeto."""
+
+    path: Path
+    license: str | None
+    plugin: str
+    duration_s: float | None
+    reused: bool
+
+
+def _cache_suffix(path):
+    suffix = Path(path).suffix.lower()
+    if 1 < len(suffix) <= 9 and set(suffix[1:]) <= _CACHE_SUFFIX_CHARS:  # noqa: PLR2004 - ponto + 1 a 8 caracteres
+        return suffix
+    return ".bin"
+
+
+def _reuse_fetched(cache, candidate):
+    key = candidate["id"] + FETCH_INDEX_SUFFIX
+    for entry in _load_index(cache).get(key, []):
+        if not isinstance(entry, dict):
+            continue
+        path = Path(entry.get("path") or "")
+        if path.is_file() and digest(path) == entry.get("sha"):
+            logs.event(log, logging.INFO, "source_cache", candidate=candidate["id"], result="hit", reason="route_fetch")
+            license_text = entry.get("license")
+            duration = entry.get("duration")
+            return FetchedSource(
+                path,
+                license_text if isinstance(license_text, str) else None,
+                str(entry.get("plugin") or ""),
+                duration if isinstance(duration, (int, float)) else None,
+                True,
+            )
+    return None
+
+
+def fetch_routed_source(ledger, candidate, image=False):
+    """O arquivo da rota de `fetch`, trazido uma única vez (RT-07).
+
+    A rota consome licença ou cota: o arquivo verificado vai para o cache privado
+    `.getbrolls-sources/` (índice por candidato + sha, chave separada da mídia de
+    trabalho) e a licença fica guardada junto. Um `fetch` que falha depois (corte,
+    cópia) e é repetido reaproveita esse arquivo — a rota não é chamada de novo.
+    Imagem com extensão fora de `ROUTED_IMAGE_SUFFIXES` é recusada antes de ir ao
+    cache (o nome final em `clips/` herdaria essa extensão)."""
+    from .http import ProviderError
+
+    cache = ledger.root.parent / ".getbrolls-sources"
+    _ensure_private_cache_dir(cache)
+    reused = _reuse_fetched(cache, candidate)
+    if reused is not None:
+        return reused
+    with plugin_source(ledger, candidate, "fetch") as routed:
+        suffix = _cache_suffix(routed.path)
+        if image and routed.path.suffix.lower() not in ROUTED_IMAGE_SUFFIXES:
+            raise ProviderError(
+                f"Plugin {routed.plugin}: a rota devolveu uma imagem com extensão não aceita; "
+                f"use {', '.join(ROUTED_IMAGE_SUFFIXES)}."
+            )
+        info = probe(routed.path)
+        sha = digest(routed.path)
+        final = cache / (id_stem(candidate["id"]) + "-fetch-" + sha + suffix)
+        if not final.exists():
+            routed.path.replace(final)
+            final.chmod(0o600)
+        elif digest(final) != sha:
+            raise ValueError("Cache de mídia inconsistente; não foi sobrescrito.")
+        plugin, license_text = routed.plugin, routed.license
+    index = _load_index(cache)
+    entries = index.setdefault(candidate["id"] + FETCH_INDEX_SUFFIX, [])
+    entries[:] = [e for e in entries if isinstance(e, dict) and e.get("sha") != sha]
+    entries.append(
+        {
+            "path": str(final.resolve()),
+            "sha": sha,
+            "duration": info["duration_s"],
+            "plugin": plugin,
+            "license": license_text,
+        }
+    )
+    _save_index(cache, index)
+    return FetchedSource(final, license_text, plugin, info["duration_s"], False)
 
 
 def direct_media(candidate):

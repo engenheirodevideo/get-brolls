@@ -307,7 +307,7 @@ def _kept(raw, allowed):
     return kept, dropped
 
 
-def plugin_candidate(item, provider, owner, download=True, route=None):  # noqa: C901, PLR0912, PLR0915 - um campo guardado por seção do candidato (Finding 2 do fix round 1)
+def plugin_candidate(item, provider, owner, download=True, route=None, *, route_stage=None):  # noqa: C901, PLR0912, PLR0913, PLR0915 - route_stage (keyword) grava o estágio da rota na prévia; um campo guardado por seção do candidato (Finding 2 do fix round 1)
     item = _normalize(item, owner)
     if not isinstance(item, dict):
         raise ProviderError(f"Plugin {owner}: {provider} devolveu um candidato que não é objeto.")
@@ -341,6 +341,11 @@ def plugin_candidate(item, provider, owner, download=True, route=None):  # noqa:
         "embed_url": public_url(raw_preview.get("embed_url")),
         "seek_mode": raw_preview.get("seek_mode", "unknown"),
     }
+    if route is not None and route_stage == "fetch":
+        # Gravado pelo core, a partir do estágio registrado da rota: `status`/guidance
+        # leem isto para nunca sugerir `inspect`/prévia com intervalo de uma fonte que
+        # só entrega o arquivo no `fetch` (sem montar o registro nem rodar plugin).
+        preview["route_stage"] = "fetch"
 
     raw_rights, dropped = _kept(item.get("rights"), RIGHTS_KEYS)
     tampered += [f"rights.{k}" for k in dropped]
