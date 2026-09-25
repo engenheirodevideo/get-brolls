@@ -55,10 +55,17 @@ TOP_LEVEL_VCS = ".git"
 def _counted_files(folder):
     """(caminho relativo, caminho) de cada arquivo que entra no hash, em ordem estável.
 
-    Ordena pela string POSIX do caminho relativo (`rel.as_posix()`), não pelo
+    Ordena por `rel.parts` (tupla de `str`, componente por componente), não pelo
     `Path` em si: no `WindowsPath` real, `Path.__lt__` compara sem diferenciar
     maiúsculas de minúsculas, o que mudaria a ordem (e portanto o hash) entre
-    Windows e POSIX para o mesmo conteúdo (B1)."""
+    Windows e POSIX para o mesmo conteúdo (B1). `.parts` é texto puro em
+    qualquer SO, então a comparação de tupla já é por ponto de código — e dá a
+    MESMA ordem que o `sorted(Path...)` antigo já dava no POSIX (`sub/x.py`
+    antes de `sub.py`, porque a tupla compara `"sub"` com `"sub.py"` antes de
+    olhar o resto do caminho): nenhum pin de plugin no POSIX muda com este
+    fix. Ordenar pela string inteira (`rel.as_posix()`) foi tentado antes e
+    descartado — inverte esse par (`.` fica antes de `/` na comparação de string
+    inteira), o que mudaria pin no POSIX também, não só no Windows."""
     candidates = []
     for path in folder.rglob("*"):
         if not path.is_file():
@@ -67,7 +74,7 @@ def _counted_files(folder):
         if rel.name in JUNK_FILENAMES or rel.parts[0] == TOP_LEVEL_VCS:
             continue
         candidates.append((rel, path))
-    candidates.sort(key=lambda item: item[0].as_posix())
+    candidates.sort(key=lambda item: item[0].parts)
     yield from candidates
 
 

@@ -102,6 +102,22 @@ class CountedFilesOrderTests(InstallTestCase):
         self.assertEqual(["LEIAME.md", "getbrolls-plugin.json", "plugin.py"], names)
         self.assertEqual(digest_under_case_insensitive_cmp, loader.folder_digest(folder))
 
+    def test_sub_directory_sorts_before_sibling_file_matching_the_pre_wave_posix_order(self):
+        """Review (Minor 1): ordenar pela string POSIX inteira (`rel.as_posix()`)
+        inverteria esse par — `.` vem antes de `/` na comparação de string —, o
+        que mudaria o pin no POSIX também, não só no Windows. `rel.parts` (tupla
+        por componente) reproduz a MESMA ordem que `sorted(Path...)` já dava
+        antes desta onda: `sub/x.py` antes de `sub.py`, porque a tupla compara
+        `"sub"` com `"sub.py"` primeiro (e `"sub"` é prefixo, logo "menor")."""
+        folder = self.work / "sub_vs_file"
+        folder.mkdir()
+        (folder / "sub").mkdir()
+        (folder / "sub" / "x.py").write_text("x", encoding="utf-8")
+        (folder / "sub.py").write_text("x", encoding="utf-8")
+
+        names = [rel.as_posix() for rel, _path in loader._counted_files(folder)]
+        self.assertEqual(["sub/x.py", "sub.py"], names)
+
 
 class LoaderVcsTests(InstallTestCase):
     def test_nested_vcs_in_an_installed_plugin_makes_it_invalid(self):

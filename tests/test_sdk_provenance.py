@@ -342,6 +342,7 @@ class PluginGetJsonTests(unittest.TestCase):
 PAGINATION_PAYLOAD = {
     "items": [],
     "next_page_token": "np_1",
+    "nextPageToken": "np_2",
     "page_token": "pt_1",
     "continuation_token": "ct_1",
     "sort_key": "created_at",
@@ -353,11 +354,27 @@ PAGINATION_PAYLOAD = {
     "password": "pw_SECRET",
 }
 
+# Review (Important 1): a primeira versão do M1 só casava snake_case exato, então
+# uma API real com essas variações de nome (camelCase, kebab-case, prefixo
+# composto) passava pelo scrub estrito sem ser tocada. Todos têm que sumir.
+LEAKING_CREDENTIAL_KEYS_PAYLOAD = {
+    "accessToken": "at_SECRET",
+    "x-api-key": "xak_SECRET",
+    "aws_secret_access_key": "awssak_SECRET",
+    "secret_key": "sk_SECRET",
+    "x-amz-security-token": "xast_SECRET",
+    "jwt": "jwt_SECRET",
+    "credentials": "cred_SECRET",
+}
+
 
 class PluginGetJsonPaginationKeysTests(unittest.TestCase):
     """M1: o scrub estrito de `api.get_json` só derruba chave de credencial de
     verdade — chave de paginação/id que só TERMINA com uma palavra parecida
-    (`*_key`, `*_token`) não pode mais sumir do JSON do plugin."""
+    (`*_key`, `*_token`) não pode mais sumir do JSON do plugin, em snake_case ou
+    camelCase; uma chave de credencial de verdade continua sumindo mesmo fora do
+    snake_case (achado do review: `accessToken`, `x-api-key`,
+    `aws_secret_access_key`...)."""
 
     def api(self):
         manifest = {
@@ -372,15 +389,19 @@ class PluginGetJsonPaginationKeysTests(unittest.TestCase):
         opener.open.side_effect = lambda *a, **k: _Resp(json.dumps(payload).encode())
         return opener
 
-    def test_pagination_keys_survive_while_credential_keys_still_drop(self):
+    def get(self, payload):
         with (
             tempfile.TemporaryDirectory() as tmp,
             patch.dict(os.environ, {"GB_CACHE_DIR": tmp}),
-            patch.object(http, "_opener", return_value=self.opener(PAGINATION_PAYLOAD)),
+            patch.object(http, "_opener", return_value=self.opener(payload)),
             patch.object(http, "_network_url"),
         ):
-            data = self.api().get_json("https://api.example.com/v1/list", cache_ttl=3600)
+            return self.api().get_json("https://api.example.com/v1/list", cache_ttl=3600)
+
+    def test_pagination_keys_survive_snake_and_camel_case_while_credential_keys_still_drop(self):
+        data = self.get(PAGINATION_PAYLOAD)
         self.assertEqual("np_1", data["next_page_token"])
+        self.assertEqual("np_2", data["nextPageToken"])
         self.assertEqual("pt_1", data["page_token"])
         self.assertEqual("ct_1", data["continuation_token"])
         self.assertEqual("created_at", data["sort_key"])
@@ -388,6 +409,30 @@ class PluginGetJsonPaginationKeysTests(unittest.TestCase):
         self.assertEqual("cu_1", data["cursor"])
         for dropped in ("refresh_token", "client_secret", "api_key", "password"):
             self.assertNotIn(dropped, data)
+
+    def test_credential_keys_drop_regardless_of_case_and_separator(self):
+        data = self.get(LEAKING_CREDENTIAL_KEYS_PAYLOAD)
+        rendered = json.dumps(data)
+        for dropped in (
+            "accessToken",
+            "x-api-key",
+            "aws_secret_access_key",
+            "secret_key",
+            "x-amz-security-token",
+            "jwt",
+            "credentials",
+        ):
+            self.assertNotIn(dropped, data, dropped)
+        for secret in (
+            "at_SECRET",
+            "xak_SECRET",
+            "awssak_SECRET",
+            "sk_SECRET",
+            "xast_SECRET",
+            "jwt_SECRET",
+            "cred_SECRET",
+        ):
+            self.assertNotIn(secret, rendered, secret)
 
 
 if __name__ == "__main__":

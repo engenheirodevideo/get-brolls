@@ -46,32 +46,55 @@ SECRET_NAMES = {
     "sig",
 }
 
-# M1: nomes de CHAVE de JSON descartados só no scrub estrito (`_scrub(strict=True)`,
-# só o caminho de plugin), além de `SECRET_NAMES` acima (que já vale para todo
-# mundo). Uma lista explícita, não `runtime.SECRET_NAME_RE` (o regex amplo usado
-# para nome de QUERY de URL, em `_secret_query_name`): o regex casa qualquer nome
-# que só TERMINE em "key"/"token"/"policy", o que derrubava chave de paginação ou
-# id de plugin sem ser credencial nenhuma (`next_page_token`, `page_token`,
-# `continuation_token`, `sort_key`, `cursor_key`...). Comparação por nome inteiro,
-# sem diferenciar maiúsculas de minúsculas.
-STRICT_JSON_SECRET_KEYS = frozenset(
-    {
-        "access_token",
-        "refresh_token",
-        "id_token",
-        "auth_token",
-        "session_token",
-        "bearer_token",
-        "api_key",
-        "apikey",
-        "api_secret",
-        "client_secret",
-        "secret",
-        "private_key",
-        "password",
-        "passwd",
-    }
+
+def _normalize_key(name):
+    """`name` em minúsculas, sem "-"/"_"/espaço/qualquer separador — para comparar
+    `access_token`, `accessToken` e `X-Api-Key` como o MESMO nome. A primeira
+    versão do M1 só casava snake_case exato e deixava passar `accessToken`,
+    `x-api-key`, `aws_secret_access_key`, `x-amz-security-token`, `jwt` e
+    `credentials` (achado do review): formato real de API não é sempre
+    snake_case."""
+    return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
+# M1 (fix round 2, achado do review): nome de chave de JSON descartado só no
+# scrub estrito (`_scrub(strict=True)`, só o caminho de plugin), além de
+# `SECRET_NAMES` acima (que já vale para todo mundo). Cada item aqui é usado com
+# `str.endswith` sobre `_normalize_key(k)`, o que cobre IGUALDADE exata (o nome
+# normalizado bate o marcador inteiro, ex.: `jwt`, `secret`, `credentials`) E
+# nome composto de verdade (`aws_secret_access_key` normalizado termina em
+# `secretaccesskey`; `x-api-key` termina em `apikey`; `x-amz-security-token`
+# termina em `securitytoken`). Uma lista explícita, não `runtime.SECRET_NAME_RE`
+# (o regex amplo usado para nome de QUERY de URL, em `_secret_query_name`): esse
+# regex casa qualquer nome que só TERMINE em "key"/"token"/"policy" sozinho, o
+# que derrubava chave de paginação ou id de plugin sem ser credencial nenhuma
+# (`next_page_token`, `page_token`, `continuation_token`, `sort_key`,
+# `cursor_key`, `cursor`...). Por isso nenhum marcador aqui é um sufixo genérico
+# como "key"/"token" isolado — só combinações fortes de credencial.
+STRICT_JSON_SECRET_KEY_MARKERS = (
+    "accesstoken",
+    "refreshtoken",
+    "idtoken",
+    "authtoken",
+    "sessiontoken",
+    "securitytoken",
+    "bearertoken",
+    "apikey",
+    "apisecret",
+    "clientsecret",
+    "secretkey",
+    "secretaccesskey",
+    "privatekey",
+    "password",
+    "passwd",
+    "credentials",
+    "jwt",
+    "secret",
 )
+
+
+def _strict_secret_key(name):
+    return isinstance(name, str) and _normalize_key(name).endswith(STRICT_JSON_SECRET_KEY_MARKERS)
 
 
 def public_url(url, allow_signed=False):
@@ -204,15 +227,17 @@ def _scrub(value, keep_signed=False, strict=False):
     `strict=True` (só o caminho de plugin, `PluginApi.get_json`) vai além, sem mudar
     nada para os built-ins: casa o esquema sem diferenciar maiúsculas (`HTTPS://`),
     troca por "[URL omitida]" uma URL assinada que venha no meio de um texto e
-    descarta toda chave de JSON da lista explícita `STRICT_JSON_SECRET_KEYS`
-    (`refresh_token`, `client_secret`, `password`...), não só os nomes exatos de
-    `SECRET_NAMES`. Chave de paginação/id (`next_page_token`, `sort_key`,
-    `cursor_key`...) não é credencial e sobrevive (M1)."""
+    descarta toda chave de JSON cujo nome normalizado (`_normalize_key`: minúsculo,
+    sem "-"/"_"/espaço) bate ou termina num marcador forte de credencial
+    (`STRICT_JSON_SECRET_KEY_MARKERS`: `refresh_token`/`refreshToken`,
+    `client_secret`, `x-api-key`, `aws_secret_access_key`, `password`...), não só
+    os nomes exatos de `SECRET_NAMES`. Chave de paginação/id (`next_page_token`,
+    `sort_key`, `cursor_key`, `cursor`...) não é credencial e sobrevive (M1)."""
     if isinstance(value, dict):
         return {
             k: _scrub(v, keep_signed, strict)
             for k, v in value.items()
-            if k.lower() not in SECRET_NAMES and not (strict and k.lower() in STRICT_JSON_SECRET_KEYS)
+            if k.lower() not in SECRET_NAMES and not (strict and _strict_secret_key(k))
         }
     if isinstance(value, list):
         return [_scrub(v, keep_signed, strict) for v in value]
