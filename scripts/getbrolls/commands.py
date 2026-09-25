@@ -528,26 +528,37 @@ def brief_report(args):
     problems += [f'O beat "{entry["id"]}" está travado esperando você: {entry["reason"]}' for entry in stalled]
     # Modelo intocado passa na validação de formato, mas não é um brief pronto.
     problems += template_leftovers(data)
-    # Só chega sem beats com ROTEIRO.md no projeto: os beats nascem do sync do roteiro.
-    awaiting_sync = not data["beats"]
+    # Só com ROTEIRO.md do get-brolls: fora de sincronia, os beats vêm do sync do roteiro;
+    # em dia e sem beat ativo, o roteiro simplesmente não pede b-roll.
+    sync_needed = roteiro_sync_needed(args.project, data["beats"])
+    awaiting_sync = bool(sync_needed)
+    no_broll = sync_needed is False and not data["beats"]
+    sync_problem = ROTEIRO_SYNC_PROBLEM if not data["beats"] else ROTEIRO_DRIFT_PROBLEM
     if awaiting_sync:
-        problems.append(ROTEIRO_SYNC_PROBLEM)
+        problems.append(sync_problem)
     if getattr(args, "validate", False):
         beat_count = _count(len(data["beats"]), "beat", "beats")
         # Brief válido que só espera o sync: não é "ponto para resolver" no brief.
-        only_sync = awaiting_sync and problems == [ROTEIRO_SYNC_PROBLEM]
+        only_sync = awaiting_sync and problems == [sync_problem]
+        title = data["video"]["title"]
         return {
             "summary": {
                 # "válido" só quando não sobrou nada para a pessoa resolver: um conflito
                 # de formato ou um RULES.md ilegível não é um brief pronto para buscar.
                 "line": (
-                    f'Brief de "{data["video"]["title"]}" válido, ainda sem beats: eles vêm do ROTEIRO.md.'
+                    (
+                        f'Brief de "{title}" válido, ainda sem beats: eles vêm do ROTEIRO.md.'
+                        if not data["beats"]
+                        else f'Brief de "{title}" válido, com {beat_count}, mas o ROTEIRO.md mudou desde o último sync.'
+                    )
                     if only_sync
-                    else f'Brief de "{data["video"]["title"]}" lido, com {beat_count}, mas '
+                    else f'Brief de "{title}" lido, com {beat_count}, mas '
                     + _count(len(problems), "ponto", "pontos")
                     + " para resolver antes de buscar."
                     if problems
-                    else f'Brief de "{data["video"]["title"]}" válido: {beat_count}.'
+                    else f'Brief de "{title}" válido, sem beats ativos: {ROTEIRO_NO_BROLL}.'
+                    if no_broll
+                    else f'Brief de "{title}" válido: {beat_count}.'
                 ),
                 "problems": problems,
                 "next": (
@@ -560,6 +571,8 @@ def brief_report(args):
                     if only_sync
                     else "Resolva os pontos acima e repita `brief --validate --project ...`."
                     if problems
+                    else ROTEIRO_NO_BROLL_NEXT
+                    if no_broll
                     else "Pode buscar: `brief --project ...` mostra o comando pronto de cada beat."
                 ),
             },
@@ -616,7 +629,8 @@ def brief_report(args):
             "line": f'Brief de "{data["video"]["title"]}": '
             + _count(len(listed), "beat", "beats")
             + f", {covered} com candidato e {len(missing)} sem"
-            + (f", {len(blocked)} travado(s) esperando você." if blocked else "."),
+            + (f", {len(blocked)} travado(s) esperando você." if blocked else ".")
+            + (f" Sem beats ativos: {ROTEIRO_NO_BROLL}." if no_broll else ""),
             "problems": problems,
             # Mesma escada de `status`: a pessoa ouve a mesma frase nos dois comandos.
             "next": next_action(
@@ -649,7 +663,7 @@ def brief_report(args):
                         ],
                         "blocked": blocked,
                         "conflicts": conflicts,
-                        # Só com ROTEIRO.md e nenhum beat: a escada manda para o sync.
+                        # Só com ROTEIRO.md do get-brolls fora de sincronia: a escada manda para o sync.
                         **({"roteiro_sync": True} if awaiting_sync else {}),
                     },
                     "review_page": (root / "review.html").is_file(),
@@ -1165,9 +1179,27 @@ def brief_state(project, rules, items, data=None):
         "conflicts": conflicts,
         # O que o `inspect` de um candidato do beat procura: a fala, ou o alvo.
         "beat_queries": {b["id"]: b["resolved"].get("narration") or b["resolved"]["target"] for b in beats},
-        # Só com ROTEIRO.md e nenhum beat ativo: a escada manda para o sync do roteiro.
-        **({"roteiro_sync": True} if not beats else {}),
+        # Só com ROTEIRO.md do get-brolls: fora de sincronia, a escada manda para o sync;
+        # em dia e sem beat ativo, o `status` diz que o roteiro não pede b-roll e segue.
+        **_roteiro_flags(roteiro_sync_needed(project, beats), beats),
     }
+
+
+def roteiro_sync_needed(project, beats):
+    """None sem ROTEIRO.md do get-brolls; senão, se o brief ainda não reflete o roteiro. Só lê."""
+    from getbrolls import roteiro, roteiro_sync
+
+    if not roteiro.is_roteiro(project):
+        return None
+    return roteiro_sync.out_of_sync(project, [b["id"] for b in beats])
+
+
+def _roteiro_flags(sync_needed, beats):
+    if sync_needed:
+        return {"roteiro_sync": True}
+    if sync_needed is False and not beats:
+        return {"roteiro_no_broll": True}
+    return {}
 
 
 def _rights_mode(rules):
@@ -1437,6 +1469,15 @@ ROTEIRO_SYNC_NEXT = (
     "Revise o ROTEIRO.md com a pessoa e rode `roteiro --action sync --project ...`: os beats "
     "nascem dele. Depois, `brief --project ...` mostra o comando pronto de cada beat."
 )
+ROTEIRO_DRIFT_PROBLEM = (
+    "O ROTEIRO.md mudou desde o último sync: os beats do BRIEF.md não batem com as cenas. Revise o "
+    "roteiro com a pessoa e rode `roteiro --action sync --project <projeto>`."
+)
+ROTEIRO_NO_BROLL = "o roteiro não pede b-roll"
+ROTEIRO_NO_BROLL_NEXT = (
+    "Nada para buscar: o roteiro não pede b-roll. Se a pessoa quiser, ponha uma cena [BROLL: ...] no "
+    "ROTEIRO.md, revise com ela e rode `roteiro --action sync --project ...`."
+)
 ROTEIRO_SYNC_PROBLEM = (
     "O BRIEF.md ainda não tem beats: eles vêm do ROTEIRO.md. Revise o roteiro com a pessoa e "
     "rode `roteiro --action sync --project <projeto>`."
@@ -1458,6 +1499,8 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
     review_page = ledger.root / "review.html"
     brief = brief_state(ledger.root.parent, rules, items, ledger.data)
     line = _status_line({"counts": counts})
+    if brief and brief.get("roteiro_no_broll"):
+        line += f" Sem beats ativos: {ROTEIRO_NO_BROLL}."
     if ledger.recovered:
         line += " Há uma gravação interrompida pendente; o próximo comando de escrita a concluirá."
     if queue and queue.get("error"):

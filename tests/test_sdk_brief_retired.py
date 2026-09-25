@@ -41,8 +41,10 @@ def register(api):
 
 
 def write_brief(project, data):
+    """BRIEF.md mais um ROTEIRO.md do get-brolls: só com ele `retired` vale."""
     body = "# Brief\n\n```json\n" + json.dumps(data, ensure_ascii=False, indent=2) + "\n```\n"
     (Path(project) / "BRIEF.md").write_text(body, encoding="utf-8")
+    (Path(project) / "ROTEIRO.md").write_text('---\ntype: roteiro\ngenero: reels\ntema: "t"\n---\n', encoding="utf-8")
 
 
 def without_retired(data):

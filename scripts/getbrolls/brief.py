@@ -342,7 +342,8 @@ def _active_beats(defaults, raw_beats, roteiro_owned):
     """Beats validados, na ordem, sem os aposentados (`"retired": true`, gravado pelo sync do roteiro).
 
     Todo beat é validado (o id aposentado continua reservado); só os ativos voltam.
-    Lista vazia só vale quando o projeto tem ROTEIRO.md: aí quem gera os beats é o roteiro.
+    Lista vazia e `retired` só valem quando o projeto tem ROTEIRO.md do get-brolls
+    (`type: roteiro`): aí quem gera os beats é o roteiro.
     """
     empty = 'Em BRIEF.md, "beats" tem que ser uma lista com pelo menos um beat; cada beat precisa de "id" e "target".'
     if (
@@ -360,7 +361,8 @@ def _active_beats(defaults, raw_beats, roteiro_owned):
                 "precisa de um id único, porque ele vira o --shot do candidato."
             )
         seen.add(resolved["id"])
-        if _flag(raw.get("retired", False), f"beats[{position}].retired"):
+        # `retired` só existe com ROTEIRO.md do get-brolls: sem ele, o beat é o de sempre.
+        if roteiro_owned and _flag(raw.get("retired", False), f"beats[{position}].retired"):
             continue
         beats.append({"id": resolved["id"], "resolved": resolved})
     if not beats and not roteiro_owned:
@@ -371,7 +373,8 @@ def _active_beats(defaults, raw_beats, roteiro_owned):
 def validate_brief(data, rules=None, project=None):
     """Devolve (brief normalizado, conflitos). Erro = brief inutilizável; conflito = aviso.
 
-    `project`: com ROTEIRO.md nessa pasta, `"beats": []` é válido (o roteiro gera os beats).
+    `project`: com ROTEIRO.md do get-brolls nessa pasta, `"beats": []` é válido (o roteiro
+    gera os beats) e beat `"retired": true` sai da lista.
     """
     if not isinstance(data, dict) or type(data.get("version")) is not int or data["version"] != 1:
         raise ValueError('Em BRIEF.md, "version" tem que ser o número 1. Ajuste essa linha.')
@@ -402,9 +405,9 @@ def validate_brief(data, rules=None, project=None):
     }
     roteiro_owned = False
     if project is not None:
-        from .roteiro import roteiro_path
+        from .roteiro import is_roteiro
 
-        roteiro_owned = roteiro_path(project).is_file()
+        roteiro_owned = is_roteiro(project)
     beats = _active_beats(defaults, data.get("beats"), roteiro_owned)
     conflicts = []
     if not rights["stock_allowed"] and any(b["resolved"]["stock"] for b in beats):
@@ -494,8 +497,13 @@ def retired_beat_ids(project):
     direitos deixa inválido continua com os aposentados fora de `entrega/`, da busca e
     do `resolve`. Vazio quando o brief falta ou o json não é legível; id fora do
     formato de beat não conta. `deliver` e `status` usam isto para deixar esses clipes
-    fora de `entrega/` sem tratá-los como pendência.
+    fora de `entrega/` sem tratá-los como pendência. Sem ROTEIRO.md do get-brolls
+    (`type: roteiro`), nada é aposentado: vazio.
     """
+    from .roteiro import is_roteiro
+
+    if project is None or not is_roteiro(project):
+        return frozenset()
     try:
         raw = load_brief(project)
     except (ValueError, OSError):

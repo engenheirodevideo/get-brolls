@@ -169,6 +169,30 @@ def load_text(project):
         raise ValueError("ROTEIRO.md não está em UTF-8: salve o arquivo como UTF-8 e rode de novo.") from None
 
 
+def is_roteiro(project):
+    """True só quando ROTEIRO.md é do get-brolls: o primeiro frontmatter tem `type: roteiro`.
+
+    O roteiro que a pessoa já escreve por conta própria (sem frontmatter, ou com outro
+    `type`) conta como ausente: não libera brief sem beats nem aposenta nada. Só lê e
+    nunca levanta — arquivo ilegível, pasta ou link quebrado também contam como ausente.
+    """
+    path = roteiro_path(project)
+    try:
+        if not path.is_file():
+            return False
+        lines = path.read_text(encoding="utf-8-sig").replace("\r\n", "\n").split("\n")
+    except (OSError, UnicodeDecodeError):
+        return False
+    if not lines or lines[0].strip() != "---":
+        return False
+    _, body, _ = parse_frontmatter(lines)
+    for line in lines[1:body]:
+        match = _PAIR.match(line)
+        if match and match.group(1) == "type":
+            return _unquote(match.group(2).strip())[0] == "roteiro"
+    return False
+
+
 def enabled_plugins():
     """Ids de plugin habilitados, pelo inventário pré-carga (manifesto e pin): nenhum código de plugin roda."""
     from .sdk import loader

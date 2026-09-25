@@ -93,6 +93,20 @@ def _readopt(missing, idless, state):
     return readopted
 
 
+def _already_retired(beats):
+    """Ids de cena cujos beats no BRIEF.md estão todos aposentados: a saída já foi revisada num sync anterior.
+
+    Só o id que some NESTE sync fica em risco; um aposentado antes nunca volta a travar cena nova.
+    """
+    status = {}
+    for beat in beats:
+        identifier = beat.get("id")
+        if isinstance(identifier, str) and SCENE_BEAT_RE.fullmatch(identifier):
+            base = _base(identifier)
+            status[base] = status.get(base, True) and beat.get("retired") is True
+    return {base for base, retired in status.items() if retired}
+
+
 def plan_ids(doc, beats, items, state):
     """Decide o id de cada cena sem id: readota, recusa ou dá o próximo número nunca usado.
 
@@ -102,7 +116,8 @@ def plan_ids(doc, beats, items, state):
     present = {s.scene_id for s in doc.scenes if s.scene_id}
     known = set(state["scenes"]) | {_base(b) for b in _scene_ids(b.get("id") for b in beats)}
     shots = set(_scene_ids(c.get("shot") for c in items))
-    at_risk = sorted(i for i in known - present if any(_base(s) == i for s in shots))
+    settled = _already_retired(beats)
+    at_risk = sorted(i for i in known - present - settled if any(_base(s) == i for s in shots))
     idless = [s for s in doc.scenes if not s.scene_id]
     readopted = _readopt(sorted(set(state["scenes"]) - present), idless, state)
     remaining = [s for s in idless if s.line not in readopted]

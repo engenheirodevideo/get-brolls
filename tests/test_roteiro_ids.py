@@ -153,6 +153,17 @@ class ReadoptionTests(unittest.TestCase):
         self.assertNotIn("c1000", plan["refusal"])
         self.assertIn(f"c{roteiro_ids.MAX_SCENE}", plan["refusal"])
 
+    def test_id_whose_beats_are_already_retired_is_not_at_risk(self):
+        beats = [{"id": "c03-a", "retired": True}, {"id": "c03-b", "retired": True}]
+        plan = roteiro_ids.plan_ids(read("## Nova\n[BROLL: y]\n"), beats, [shot("c03-a")], PROVA)
+        self.assertIsNone(plan["refusal"])
+        self.assertEqual(plan["assign"], {6: "c04"})
+
+    def test_id_with_one_active_beat_is_still_at_risk(self):
+        beats = [{"id": "c03-a", "retired": True}, {"id": "c03-b"}]
+        plan = roteiro_ids.plan_ids(read("## Nova\n[BROLL: y]\n"), beats, [shot("c03-a")], PROVA)
+        self.assertIn("c03", plan["refusal"])
+
 
 class StateFileTests(unittest.TestCase):
     def setUp(self):

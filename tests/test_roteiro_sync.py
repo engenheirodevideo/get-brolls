@@ -263,6 +263,25 @@ class WriteTests(SyncCase):
         self.assertEqual(report["reactivated"], ["c03-a", "c03-b"])
         self.assertNotIn("retired", {k for b in self.beats() for k in b})
 
+    def test_new_scene_after_a_retirement_gets_a_fresh_id(self):
+        self.review()
+        self.sync()
+        self.approved("c02")
+        text = self.text("ROTEIRO.md")
+        start, end = text.index("## Problema"), text.index("## Prova")
+        self.write(text[:start] + text[end:])
+        self.review()
+        self.assertEqual(self.sync()["retired"], ["c02"])
+        self.write(self.text("ROTEIRO.md") + "\n## Nova\n[BROLL: praia]\nFala nova.\n")
+        self.review()
+        planned = self.plan()
+        self.assertIsNone(planned["refusal"])
+        self.assertEqual(planned["new"], ["c04"])
+        report = self.sync()
+        self.assertIn("## Nova <!-- c04 -->", self.text("ROTEIRO.md"))
+        self.assertNotIn("<!-- c02 -->", self.text("ROTEIRO.md"))
+        self.assertEqual(report["beats"], ["c03-a", "c03-b", "c04", "manual-1"])
+
 
 class ApprovalGateTests(SyncCase):
     def setUp(self):
@@ -651,6 +670,63 @@ class CarriedRequirementTests(SyncCase):
         self.assertEqual([b["id"] for b in self.beats()], ["c02", "c03-a", "c03-b", "manual-1"])
         self.assertTrue(self.text("BRIEF.md").startswith("﻿# Brief"))
         self.assertTrue(self.text("BRIEF.md").endswith("Fim da prosa.\n"))
+
+
+class StatusDriftTests(SyncCase):
+    """`status` só manda para o sync quando o roteiro está fora de sincronia com o brief."""
+
+    AROLL_ONLY = '---\ntype: roteiro\ngenero: reels\ntema: "t"\n---\n\n## Gancho\n[A-ROLL]\nOi.\n\n## CTA\n[FULL: logo]\nTchau.\n'
+
+    def status(self):
+        from getbrolls.commands import status_report
+        from getbrolls.rules import load_rules
+
+        return status_report(Ledger(self.project, recover=False), load_rules(self.project))["summary"]
+
+    def brief_line(self):
+        import types
+
+        from getbrolls.commands import brief_report
+
+        return brief_report(types.SimpleNamespace(project=str(self.project), validate=True, beat=None))["summary"]
+
+    def test_roteiro_without_broll_leaves_the_sync_step_after_the_sync(self):
+        self.write_brief({**BRIEF, "beats": []})
+        self.write(self.AROLL_ONLY)
+        self.assertEqual(self.status()["do"]["step"], "roteiro-sync")
+        self.review()
+        self.sync()
+        summary = self.status()
+        self.assertNotEqual(summary["do"]["step"], "roteiro-sync")
+        self.assertIn("o roteiro não pede b-roll", self.brief_line()["line"])
+        self.write(self.text("ROTEIRO.md") + "\n## Prova\n[BROLL: mapa]\nProva.\n")
+        self.assertEqual(self.status()["do"]["step"], "roteiro-sync")
+
+    def test_status_is_read_only_while_checking_drift(self):
+        self.write_brief({**BRIEF, "beats": []})
+        self.write(self.AROLL_ONLY)
+        self.review()
+        self.sync()
+        before = tree(self.project)
+        self.status()
+        self.brief_line()
+        self.assertEqual(before, tree(self.project))
+
+    def test_new_scene_after_sync_is_drift_even_with_active_beats(self):
+        self.review()
+        self.sync()
+        self.assertNotEqual(self.status()["do"]["step"], "roteiro-sync")
+        self.write(self.text("ROTEIRO.md") + "\n## Nova\n[BROLL: praia]\nFala.\n")
+        self.assertEqual(self.status()["do"]["step"], "roteiro-sync")
+        self.assertIn("mudou desde o último sync", " ".join(self.brief_line()["problems"]))
+
+    def test_roteiro_without_scenes_converges_after_one_sync(self):
+        self.write_brief({**BRIEF, "beats": []})
+        self.write('---\ntype: roteiro\ngenero: reels\ntema: "t"\n---\n')
+        self.review()
+        self.sync()
+        self.assertTrue(roteiro_ids.state_path(self.project).is_file())
+        self.assertNotEqual(self.status()["do"]["step"], "roteiro-sync")
 
 
 if __name__ == "__main__":

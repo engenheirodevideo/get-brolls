@@ -39,10 +39,23 @@ EMPTY_MESSAGE = (
 )
 
 
+ROTEIRO_HEAD = '---\ntype: roteiro\ngenero: reels\ntema: "t"\n---\n'
+SCENES = {"c01": "## Mesa <!-- c01 -->\n[BROLL: mesa]\nFala.\n", "c02": "## Mapa <!-- c02 -->\n[BROLL: mapa]\nFala.\n"}
+
+
 def with_beats(beats):
     data = copy.deepcopy(BASE)
     data["beats"] = beats
     return data
+
+
+def write_roteiro_at(project, ids=("c01",)):
+    """ROTEIRO.md do get-brolls já sincronizado com os beats de cena ativos `ids`: nada pede sync."""
+    project = Path(project)
+    (project / "ROTEIRO.md").write_text(ROTEIRO_HEAD + "\n" + "\n".join(SCENES[i] for i in ids), encoding="utf-8")
+    state = project / "brolls" / "roteiro-state.json"
+    state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_text('{"next_id": 3, "scenes": {}}\n', encoding="utf-8")
 
 
 class ValidateBriefTests(unittest.TestCase):
@@ -55,33 +68,38 @@ class ValidateBriefTests(unittest.TestCase):
             with self.subTest(project=project), self.assertRaises(ValueError) as ctx:
                 brief.validate_brief(with_beats([]), project=project)
             self.assertEqual(str(ctx.exception), EMPTY_MESSAGE)
-        (self.project / "ROTEIRO.md").write_text("---\n", encoding="utf-8")
+        (self.project / "ROTEIRO.md").write_text(ROTEIRO_HEAD, encoding="utf-8")
         data, conflicts = brief.validate_brief(with_beats([]), project=self.project)
         self.assertEqual((data["beats"], conflicts), ([], []))
         with self.assertRaises(ValueError):
             brief.validate_brief(with_beats([]))
 
     def test_retired_beats_are_validated_but_not_returned(self):
-        data, _ = brief.validate_brief(copy.deepcopy(BASE))
+        write_roteiro_at(self.project)
+        data, _ = brief.validate_brief(copy.deepcopy(BASE), project=self.project)
         self.assertEqual([b["id"] for b in data["beats"]], ["c01", "manual-1"])
         duplicated = with_beats([{"id": "c01", "target": "a"}, {"id": "c01", "target": "b", "retired": True}])
         with self.assertRaises(ValueError) as ctx:
-            brief.validate_brief(duplicated)
+            brief.validate_brief(duplicated, project=self.project)
         self.assertIn("repetido", str(ctx.exception))
         with self.assertRaises(ValueError) as ctx:
-            brief.validate_brief(with_beats([{"id": "c01", "target": "a", "retired": "sim"}]))
+            brief.validate_brief(with_beats([{"id": "c01", "target": "a", "retired": "sim"}]), project=self.project)
         self.assertIn("beats[0].retired", str(ctx.exception))
 
-    def test_only_retired_beats_without_roteiro_is_the_old_error(self):
-        with self.assertRaises(ValueError) as ctx:
-            brief.validate_brief(with_beats([{"id": "c01", "target": "a", "retired": True}]))
-        self.assertEqual(str(ctx.exception), EMPTY_MESSAGE)
+    def test_retired_flag_without_roteiro_is_ignored_like_before(self):
+        only_retired = with_beats([{"id": "c01", "target": "a", "retired": True}])
+        data, _ = brief.validate_brief(copy.deepcopy(only_retired))
+        self.assertEqual([b["id"] for b in data["beats"]], ["c01"])
+        write_roteiro_at(self.project)
+        data, _ = brief.validate_brief(only_retired, project=self.project)
+        self.assertEqual(data["beats"], [])
 
 
 class ConsumersTests(unittest.TestCase):
     def setUp(self):
         self.project = Path(tempfile.mkdtemp(prefix="gb-brief-rot-"))
         self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
+        write_roteiro_at(self.project)
 
     def write_brief(self, data):
         body = "# Brief\n\n```json\n" + json.dumps(data, ensure_ascii=False, indent=2) + "\n```\n"
@@ -106,7 +124,8 @@ class ConsumersTests(unittest.TestCase):
 
     def test_validate_with_roteiro_and_no_beats_points_to_sync(self):
         self.write_brief(with_beats([]))
-        (self.project / "ROTEIRO.md").write_text("---\n", encoding="utf-8")
+        (self.project / "ROTEIRO.md").write_text(ROTEIRO_HEAD, encoding="utf-8")
+        (self.project / "brolls" / "roteiro-state.json").unlink()
         result = self.report(validate=True)
         self.assertEqual(result["beats"], 0)
         self.assertIn("roteiro --action sync", " ".join(result["summary"]["problems"]))
@@ -182,6 +201,7 @@ class RetiredDeliveryTests(unittest.TestCase):
         self.project = Path(tempfile.mkdtemp(prefix="gb-brief-rot-"))
         self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
         run_cli(self, "init-rules", "--project", self.project)
+        write_roteiro_at(self.project)
 
     def write_brief(self, data):
         write_brief_at(self.project, data)
@@ -226,11 +246,13 @@ class RetiredDeliveryTests(unittest.TestCase):
         alive = copy.deepcopy(BASE)
         del alive["beats"][1]["retired"]
         self.write_brief(alive)
+        write_roteiro_at(self.project, ("c01", "c02"))
         self.three_clips()
         delivery.build_delivery(str(self.project))
         old = delivery.beat_dir_name(2, "c02", "mapa")
         self.assertIn(old, self.folders())
         self.write_brief(BASE)
+        write_roteiro_at(self.project)
         report = delivery.build_delivery(str(self.project))
         self.assertNotIn(old, self.folders())
         self.assertTrue(any(rel.startswith(old) for rel in report["removed"]))
@@ -280,6 +302,7 @@ class RetiredBeatLadderTests(unittest.TestCase):
         if not retired:
             del beat["retired"]
         write_brief_at(self.project, data)
+        write_roteiro_at(self.project, ("c01",) if retired else ("c01", "c02"))
         if variant == "exhausted":
             ledger = Ledger(self.project)
             resolved = brief.resolve_beat(data["defaults"], beat, 1)
@@ -333,6 +356,7 @@ class SearchRetiredShotTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, project, ignore_errors=True)
         run_cli(self, "init-rules", "--project", project)
         write_brief_at(project, BASE)
+        write_roteiro_at(project)
         done = subprocess.run(
             [sys.executable, str(CLI), "search", "--query", "mapa", "--shot", "c02", "--provider", "youtube",
              "--project", str(project)],
@@ -359,6 +383,7 @@ class RetiredWithoutFullValidationTests(unittest.TestCase):
         self.project = Path(tempfile.mkdtemp(prefix="gb-brief-rot-"))
         self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
         run_cli(self, "init-rules", "--project", self.project)
+        write_roteiro_at(self.project)
 
     def declaration_brief(self):
         data = copy.deepcopy(BASE)
@@ -403,6 +428,7 @@ class RetiredShotEverywhereTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
         run_cli(self, "init-rules", "--project", self.project)
         write_brief_at(self.project, BASE)
+        write_roteiro_at(self.project)
 
     def failed(self, *args):
         done = subprocess.run(
@@ -442,7 +468,7 @@ class ZeroBeatsWithRoteiroTests(unittest.TestCase):
         run_cli(self, "init-rules", "--project", self.project)
         body = "# Brief\n\n```json\n" + json.dumps(with_beats([]), ensure_ascii=False, indent=2) + "\n```\n"
         (self.project / "BRIEF.md").write_text(body, encoding="utf-8")
-        (self.project / "ROTEIRO.md").write_text("---\n", encoding="utf-8")
+        (self.project / "ROTEIRO.md").write_text(ROTEIRO_HEAD, encoding="utf-8")
 
     def test_status_points_to_sync(self):
         status = run_cli(self, "status", "--project", self.project)
@@ -462,6 +488,58 @@ class ZeroBeatsWithRoteiroTests(unittest.TestCase):
         self.assertIn("ROTEIRO.md", result["summary"]["line"])
         self.assertIn("roteiro --action sync", result["summary"]["next"])
         self.assertNotIn("repita", result["summary"]["next"])
+
+
+class RoteiroOwnershipTests(unittest.TestCase):
+    """Só um ROTEIRO.md do get-brolls (`type: roteiro` no frontmatter) muda o brief; o roteiro da pessoa não."""
+
+    FOREIGN = (
+        "# Meu roteiro\n\nCena 1: fala.\n",
+        "---\ntype: nota\n---\n\n## Cena\nFala.\n",
+        "---\ntitle: x\n---\n",
+    )
+
+    def setUp(self):
+        self.project = Path(tempfile.mkdtemp(prefix="gb-brief-rot-"))
+        self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
+        run_cli(self, "init-rules", "--project", self.project)
+
+    def test_foreign_roteiro_keeps_the_old_rules(self):
+        for text in self.FOREIGN:
+            with self.subTest(text=text):
+                (self.project / "ROTEIRO.md").write_text(text, encoding="utf-8")
+                with self.assertRaises(ValueError) as ctx:
+                    brief.validate_brief(with_beats([]), project=self.project)
+                self.assertEqual(str(ctx.exception), EMPTY_MESSAGE)
+                write_brief_at(self.project, BASE)
+                self.assertEqual(brief.retired_beat_ids(self.project), frozenset())
+                data, _ = brief.validate_brief(copy.deepcopy(BASE), project=self.project)
+                self.assertEqual([b["id"] for b in data["beats"]], ["c01", "c02", "manual-1"])
+                status = run_cli(self, "status", "--project", self.project)
+                self.assertNotEqual(status["summary"]["do"]["step"], "roteiro-sync")
+
+    def test_unreadable_or_odd_roteiro_never_raises(self):
+        from getbrolls import roteiro
+
+        path = self.project / "ROTEIRO.md"
+        path.write_bytes(b"---\ntype: roteiro\xff\n---\n")
+        self.assertFalse(roteiro.is_roteiro(self.project))
+        path.unlink()
+        path.mkdir()
+        self.assertFalse(roteiro.is_roteiro(self.project))
+        path.rmdir()
+        self.assertFalse(roteiro.is_roteiro(self.project))
+
+    def test_getbrolls_roteiro_is_recognised(self):
+        from getbrolls import roteiro
+
+        path = self.project / "ROTEIRO.md"
+        for text in ("---\ntype: roteiro\n---\n", '\ufeff---\r\ntype: "roteiro"\r\ngenero: x\r\n---\r\n'):
+            with self.subTest(text=text):
+                path.write_text(text, encoding="utf-8")
+                self.assertTrue(roteiro.is_roteiro(self.project))
+        path.write_text("---\ngenero: reels\n---\ntype: roteiro\n", encoding="utf-8")
+        self.assertFalse(roteiro.is_roteiro(self.project))
 
 
 if __name__ == "__main__":

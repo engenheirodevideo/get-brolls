@@ -60,6 +60,25 @@ def is_scene_beat(beat_id):
     return isinstance(beat_id, str) and roteiro.SCENE_BEAT_RE.fullmatch(beat_id) is not None
 
 
+def out_of_sync(project, active_ids):
+    """True quando o BRIEF.md ainda não reflete o roteiro; só lê, sem trava, e nunca levanta.
+
+    Fora de sincronia: sem `brolls/roteiro-state.json` (nunca houve sync), cena sem id,
+    ou os beats que o roteiro pede agora diferentes dos beats de cena ativos do brief
+    (`active_ids`, na ordem). Roteiro que não abre também conta: o sync mostra o erro.
+    """
+    if not roteiro_ids.state_path(project).is_file():
+        return True
+    try:
+        doc = roteiro.parse(roteiro.load_text(project))
+        if any(not scene.scene_id for scene in doc.scenes):
+            return True
+        planned = [beat["id"] for beat in scene_plan(project, doc)["beats"]]
+    except (ValueError, OSError):
+        return True
+    return planned != [i for i in active_ids if is_scene_beat(i)]
+
+
 def _active(beats):
     return [b["id"] for b in beats if not b.get("retired")]
 
@@ -270,7 +289,8 @@ def run(project, write=False, confirm=False, plugins=None):
         )
     written = _commit(project, ctx, hits, new_text, new_data)
     new_state = roteiro_ids.next_state(ctx["state"], doc, ids["next_id"])
-    if new_state != ctx["state"]:
+    # Sem o arquivo, o `status` acharia que o sync nunca rodou (roteiro sem cena nenhuma).
+    if new_state != ctx["state"] or not roteiro_ids.state_path(project).is_file():
         roteiro_ids.write_state(project, new_state)
         written.append(f"brolls/{roteiro_ids.STATE_FILE}")
     return {**result, "written": written, "invalidated": [c["id"] for c in hits]}
