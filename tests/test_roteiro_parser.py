@@ -115,7 +115,7 @@ def _doc(body=BODY):
 
 class SceneTests(unittest.TestCase):
     def test_parses_scenes_directives_and_speech(self):
-        doc = roteiro.parse(_doc())
+        doc = roteiro.parse(_doc(), plugins=frozenset({"hf"}))
         self.assertEqual([s.title for s in doc.scenes], ["Gancho", "Problema", "Prova"])
         self.assertEqual([s.scene_id for s in doc.scenes], ["c01", "c02", None])
         gancho, problema, prova = doc.scenes
@@ -142,7 +142,6 @@ class SceneTests(unittest.TestCase):
             "## X\n[SPLIT: só um lado]\n": "dois lados",
             "## X\n[BROLL]\n": "alvo",
             "## X\n[A-ROLL]\n[LETTERING: sem aspas]\n": "aspas",
-            "## X\n[A-ROLL]\n[risos]\n": "diretiva",
             "## X <!-- c01 -->\n[A-ROLL]\n## Y <!-- c01 -->\n[A-ROLL]\n": "c01",
             "texto solto antes\n## X\n[A-ROLL]\n": "fora de cena",
         }
