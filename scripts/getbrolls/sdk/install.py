@@ -21,6 +21,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -51,18 +52,10 @@ MAX_BYTES = 200 * 1024 * 1024
 _REFUSED_TREE_MODES = {"120000": "link simbólico", "160000": "submódulo (gitlink)"}
 _ALLOWED_TREE_MODES = {"100644", "100755"}
 
-# Variáveis que, vindas do ambiente de quem chama, redirecionariam o git para
-# um `.git`/índice/objetos que não são os do clone que acabamos de criar
-# (ex.: um `GIT_DIR` apontando pro repositório de outro projeto). Nenhuma tem
-# uso legítimo aqui: cada `_git`/`_git_blob` já recebe `cwd` explícito.
-_STRIP_GIT_ENV = (
-    "GIT_DIR",
-    "GIT_WORK_TREE",
-    "GIT_INDEX_FILE",
-    "GIT_OBJECT_DIRECTORY",
-    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-    "GIT_CONFIG_PARAMETERS",
-)
+# `.old-*`/`.install-*` mais nova que isso pode ser um `install`/`update` concorrente
+# ainda em andamento (não terminou de rodar o próprio `finally`); só mexemos em
+# quem já passou desse prazo.
+STALE_STAGING_MAX_AGE_S = 3600
 
 # `core.hooksPath` para um diretório sem hooks desliga qualquer hook do clone;
 # `protocol.ext.allow=never` recusa o transporte `ext::` (rodaria um comando
@@ -85,12 +78,53 @@ _GIT_HARDENING = [
 ]
 
 
+def _has_core_ssh_command(env):
+    """`git config --global --get core.sshCommand` já configurado pela pessoa —
+    nesse caso o próprio git já sabe como conectar (e não precisamos, nem
+    devemos, empurrar um `GIT_SSH_COMMAND` nosso por cima). `--global` de
+    propósito: ainda não existe repositório clonado (isto roda antes do
+    `clone`), então sem `--global` a busca cairia no cwd deste processo, que
+    pode por acaso estar dentro de outro repositório qualquer."""
+    git = shutil.which("git")
+    if not git:
+        return False
+    done = subprocess.run(
+        [git, "config", "--global", "--get", "core.sshCommand"],
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=10,
+        check=False,
+    )
+    return bool(done.stdout.strip())
+
+
 def _git_env(ssh=False):
-    env = {k: v for k, v in os.environ.items() if k not in _STRIP_GIT_ENV}
+    """Ambiente do subprocesso git: toda variável `GIT_*` herdada é removida
+    primeiro — nenhuma delas (`GIT_DIR`, `GIT_CONFIG_GLOBAL`, `GIT_COMMON_DIR`,
+    `GIT_CONFIG_COUNT`, etc.) tem uso legítimo aqui, e preservar qualquer uma
+    por engano reabriria a porta que estamos fechando (redirecionar o git pra
+    um `.git`/índice/config que não é o do clone que acabamos de criar). Só
+    depois disso o código volta a acrescentar, de propósito, as poucas que
+    ele mesmo decide usar."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GIT_CONFIG_NOSYSTEM"] = "1"
     env["GIT_LFS_SKIP_SMUDGE"] = "1"
-    if ssh and "GIT_SSH_COMMAND" not in env:
+    if not ssh:
+        return env
+    # SSH sem terminal para responder a um prompt de host novo/senha trava o
+    # processo; só usamos o `BatchMode=yes` de reserva quando a pessoa não já
+    # tem a própria forma de conectar (variável de ambiente ou `core.sshCommand`).
+    user_ssh_command = os.environ.get("GIT_SSH_COMMAND")
+    user_ssh = os.environ.get("GIT_SSH")
+    if user_ssh_command:
+        env["GIT_SSH_COMMAND"] = user_ssh_command
+    elif user_ssh:
+        env["GIT_SSH"] = user_ssh
+    elif not _has_core_ssh_command(env):
         env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes"
     return env
 
@@ -152,51 +186,94 @@ def _clone_no_checkout(source_uri, dest, ssh=False):
 
 
 def _tree_entries(dest):
-    """(modo, sha, caminho) de cada entrada de `git ls-tree -r HEAD` — inclui todo
-    blob recursivamente e as entradas de submódulo (que `-r` não expande)."""
-    raw = _git(["ls-tree", "-r", "-z", "HEAD"], cwd=dest)
+    """(modo, sha, caminho, tamanho) de cada entrada de `git ls-tree -r -l HEAD` —
+    inclui todo blob recursivamente e as entradas de submódulo (que `-r` não
+    expande). `-l` traz o tamanho declarado do objeto (`-` para submódulo), o que
+    deixa checar o tamanho ANTES de pedir o conteúdo (`cat-file blob`) — um blob
+    gigante nunca chega a ser lido só para descobrirmos que ele estoura o teto."""
+    raw = _git(["ls-tree", "-r", "-l", "-z", "HEAD"], cwd=dest)
     for record in raw.split("\0"):
         if not record:
             continue
         meta, _, path = record.partition("\t")
-        mode, _kind, sha = meta.split(" ")
-        yield mode, sha, path
+        mode, _kind, sha, size_text = meta.split()
+        try:
+            size = int(size_text)
+        except ValueError:
+            size = None
+        yield mode, sha, path, size
+
+
+def _refuse_git_path_component(path):
+    """Recusa qualquer entrada cujo caminho tenha um componente `.git` (em
+    qualquer maiúsc./minúsc.) — mesmo já nunca fazendo `checkout`, escrever um
+    `.git`/`arquivo` dentro da própria pasta materializada não é conteúdo de
+    plugin: na melhor das hipóteses é lixo, na pior é uma tentativa de plantar
+    metadado git que outra ferramenta (fora deste código) trataria como
+    especial mais adiante."""
+    if any(part.lower() == ".git" for part in path.split("/")):
+        raise ValueError(f'Caminho não pode ter um componente ".git" no histórico git: {path!r}.')
+
+
+def _refuse_oversized_blob(path, size):
+    if size is not None and size > MAX_BYTES:
+        raise ValueError(f"O plugin tem um arquivo de mais de {MAX_BYTES // (1024 * 1024)} MB ({path!r}); recusado.")
+
+
+def _write_tree_entry(dest, root, path, mode, content):
+    """Escreve `content` em `dest/path`, convertendo qualquer `OSError` de
+    sistema de arquivos (por exemplo dois caminhos do histórico git que só
+    diferem em maiúsc./minúsc. colidindo num disco que não distingue caixa)
+    num `ValueError` com o caminho e o motivo, em vez de deixar o traceback
+    cru do `OSError` vazar."""
+    target = (dest / path).resolve()
+    if root not in target.parents:
+        raise ValueError(f"Caminho fora da pasta do plugin no histórico git: {path!r}.")
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        if mode == "100755":
+            target.chmod(target.stat().st_mode | 0o111)
+    except OSError as exc:
+        raise ValueError(
+            f"Não consegui gravar {path!r} do histórico git (colisão de nome, "
+            f"possivelmente maiúsc./minúsc. num disco que não distingue caixa: {type(exc).__name__})."
+        ) from exc
 
 
 def _materialize_tree(dest, paths_only=None):
     """Escreve o conteúdo de HEAD em `dest` (que já é a pasta clonada com
     `--no-checkout`, ainda sem nenhum arquivo de trabalho), um blob por vez, sem
     jamais passar por um `checkout` — por isso sem filtro/smudge/hook. Recusa
-    qualquer modo que não seja arquivo regular e, na passada completa
-    (`paths_only=None`), limita o total de arquivos/bytes a `MAX_FILES`/`MAX_BYTES`.
+    qualquer modo que não seja arquivo regular, qualquer caminho com componente
+    `.git`, e qualquer blob (mesmo na passada cedo) maior que `MAX_BYTES` — tudo
+    isso ANTES de pedir o conteúdo do blob. Na passada completa (`paths_only=None`)
+    também limita o total de arquivos/bytes a `MAX_FILES`/`MAX_BYTES`.
 
     `paths_only`, quando dado, materializa só esses caminhos exatos — usado pela
-    validação cedo do manifesto (I4), que não passa pelo teto (são no máximo dois
-    arquivos pequenos: o manifesto e o `entry`)."""
+    validação cedo do manifesto (I4), que não passa pelo teto de total (são no
+    máximo dois arquivos pequenos: o manifesto e o `entry`), mas passa pelo teto
+    por-blob do jeito que qualquer outra entrada passa."""
     root = dest.resolve()
     total_files = 0
     total_bytes = 0
-    for mode, sha, path in _tree_entries(dest):
+    for mode, sha, path, size in _tree_entries(dest):
         if paths_only is not None and path not in paths_only:
             continue
         if mode not in _ALLOWED_TREE_MODES:
             reason = _REFUSED_TREE_MODES.get(mode, f"modo {mode}")
             raise ValueError(f"O plugin tem {reason} em {path!r} no histórico git; isso não é aceito.")
-        target = (dest / path).resolve()
-        if root not in target.parents:
-            raise ValueError(f"Caminho fora da pasta do plugin no histórico git: {path!r}.")
-        content = _git_blob(dest, sha)
+        _refuse_git_path_component(path)
+        _refuse_oversized_blob(path, size)
         if paths_only is None:
             total_files += 1
             if total_files > MAX_FILES:
                 raise ValueError(f"O plugin tem mais de {MAX_FILES} arquivos; recusado.")
-            total_bytes += len(content)
+            total_bytes += size or 0
             if total_bytes > MAX_BYTES:
                 raise ValueError(f"O plugin passa de {MAX_BYTES // (1024 * 1024)} MB; recusado.")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(content)
-        if mode == "100755":
-            target.chmod(target.stat().st_mode | 0o111)
+        content = _git_blob(dest, sha)
+        _write_tree_entry(dest, root, path, mode, content)
 
 
 def _peek_entry_name(dest):
@@ -259,7 +336,13 @@ def _materialize(source, dest):
             return str(folder), commit
         _checked_manifest(folder)
         _guard_folder_cap(folder)
-        shutil.copytree(folder, dest, symlinks=True, ignore=COPY_IGNORE)
+        try:
+            shutil.copytree(folder, dest, symlinks=True, ignore=COPY_IGNORE)
+        except OSError as exc:
+            raise ValueError(
+                f"Não consegui copiar a pasta do plugin (colisão de nome, possivelmente "
+                f"maiúsc./minúsc. num disco que não distingue caixa: {type(exc).__name__})."
+            ) from exc
         _refuse_links(dest)
         return str(folder), None
     if not GIT_URL_RE.fullmatch(raw):
@@ -277,16 +360,51 @@ def _materialize(source, dest):
     return raw, commit
 
 
+def _peek_plugin_id(folder):
+    """Id do plugin que `folder` era antes de virar `.old-<uuid>` (lido do
+    próprio manifesto que sobrou lá dentro) — só pra saber pra onde devolver a
+    pasta em `_sweep_stale_staging`; não é validação (essa acontece de novo no
+    próximo `install`/`update` que tocar nesse plugin)."""
+    try:
+        raw = json.loads((folder / MANIFEST_NAME).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
+    plugin_id = raw.get("id") if isinstance(raw, dict) else None
+    return plugin_id if isinstance(plugin_id, str) else None
+
+
 def _sweep_stale_staging():
-    """M2: uma pasta `.install-*`/`.old-*` que sobrou de um processo anterior
-    morto no meio (sem chance de rodar o `finally`) não deve ficar acumulando
-    disco nem confundir uma leitura futura de `plugins/`."""
+    """Uma pasta `.install-*`/`.old-*` que sobrou de um processo anterior morto
+    no meio (sem chance de rodar o próprio `finally`) não deve ficar acumulando
+    disco nem confundir uma leitura futura de `plugins/`. Duas ressalvas:
+
+    - Uma pasta mais nova que `STALE_STAGING_MAX_AGE_S` pode ser de um
+      `install`/`update` concorrente ainda em andamento — mexer nela agora
+      corromperia esse processo em vez de limpar um resto de verdade.
+    - Se `plugins/<id>` já não existe e sobrou um `.old-<uuid>` cujo manifesto
+      diz que ele era esse `<id>`, é porque o processo morreu bem entre as duas
+      trocas do `update` (depois de retirar a pasta original, antes de pôr a
+      nova no lugar): esse `.old-*` é a ÚNICA cópia que resta do plugin, e
+      apagá-lo destruiria o plugin inteiro. Devolvemos ele ao lugar em vez de
+      apagar."""
     root = loader.plugins_root()
     if not root.is_dir():
         return
+    cutoff = time.time() - STALE_STAGING_MAX_AGE_S
     for entry in root.iterdir():
-        if entry.is_dir() and entry.name.startswith((".install-", ".old-")):
-            shutil.rmtree(entry, ignore_errors=True)
+        if not entry.is_dir() or not entry.name.startswith((".install-", ".old-")):
+            continue
+        try:
+            if entry.stat().st_mtime > cutoff:
+                continue
+        except OSError:
+            continue
+        if entry.name.startswith(".old-"):
+            plugin_id = _peek_plugin_id(entry)
+            if plugin_id and not (root / plugin_id).exists():
+                entry.replace(root / plugin_id)
+                continue
+        shutil.rmtree(entry, ignore_errors=True)
 
 
 def _staging():

@@ -1,13 +1,23 @@
 """`plugins install/update`: pasta ou git, dois passos, origem e commit no plugins.json.
 
-Cobre também a rodada de correções de segurança: nunca fazer `checkout` de git
-(I1), link simbólico recusado no conteúdo materializado, não na origem (I2),
-`--yes` exige `--expect <sha256>` batendo com a prévia (I3), manifesto validado
-e árvore limitada antes de copiar/clonar tudo (I4), `plugins.json` corrompido
-recusa antes de qualquer mutação (M1), troca de pasta do `update` desfaz se a
-segunda metade falhar (M2), `update` não liga de volta um plugin desabilitado
-(M3), variáveis de ambiente perigosas do git são removidas e SSH usa
-`BatchMode` (M4), e URL git com query/fragmento é recusada (M5).
+Cobre também as duas rodadas de correções de segurança:
+
+- Round 1: nunca fazer `checkout` de git (I1), link simbólico recusado no
+  conteúdo materializado, não na origem (I2), `--yes` exige `--expect <sha256>`
+  batendo com a prévia (I3), manifesto validado e árvore limitada antes de
+  copiar/clonar tudo (I4), `plugins.json` corrompido recusa antes de qualquer
+  mutação (M1), troca de pasta do `update` desfaz se a segunda metade falhar
+  (M2), `update` não liga de volta um plugin desabilitado (M3), variáveis de
+  ambiente perigosas do git são removidas e SSH usa `BatchMode` (M4 — refinado
+  no round 2), e URL git com query/fragmento é recusada (M5).
+- Round 2: tamanho do blob checado (via `ls-tree -l`) antes de qualquer
+  `cat-file`, inclusive na passada cedo do manifesto (N1); TODA variável
+  `GIT_*` é removida do ambiente do git, não só uma lista fixa, e o
+  `GIT_SSH_COMMAND` de reserva só entra sem override nenhum da pessoa (M4,
+  revisado); a varredura de pasta de resto não apaga a única cópia de um
+  plugin e ignora pasta jovem demais pra ser resto de verdade (N2); caminho com
+  componente `.git` é recusado e uma colisão de nome (maiúsc./minúsc.) vira
+  `ValueError` claro em vez de um `OSError` cru (N3).
 """
 
 import json
@@ -15,6 +25,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -241,6 +252,11 @@ class FolderInstallTests(InstallTestCase):
         (stale_install / "resto.txt").write_text("x", encoding="utf-8")
         stale_old = self.home / "plugins" / ".old-lixo"
         stale_old.mkdir()
+        # N2: só mexe em pasta de resto mais velha que STALE_STAGING_MAX_AGE_S — uma
+        # pasta jovem pode ser um install/update concorrente ainda em andamento.
+        old_time = time.time() - (install_mod.STALE_STAGING_MAX_AGE_S + 60)
+        os.utime(stale_install, (old_time, old_time))
+        os.utime(stale_old, (old_time, old_time))
 
         preview = install_mod.install(str(source), confirm=False)
         install_mod.install(str(source), confirm=True, expect=preview["plugin"]["sha256"])
@@ -267,34 +283,113 @@ class FolderInstallTests(InstallTestCase):
         self.assertEqual("disabled", loader.inventory()[0]["status"])
         self.assertEqual("0.2.0", loader.inventory()[0]["version"])
 
-    # -- M4: variáveis perigosas removidas, SSH em BatchMode ----------------------
+    # -- M4: TODA variável GIT_* é removida; SSH em BatchMode só sem override ----
 
-    def test_git_env_strips_dangerous_vars_and_sets_ssh_batch_mode(self):
-        dangerous = {
+    def test_git_env_strips_every_git_star_var(self):
+        # Inclui as originais (round 1) e as que vazam config/paths de outro
+        # repositório sem serem um `GIT_DIR`/`GIT_WORK_TREE` explícito.
+        poison = {
             "GIT_DIR": "/tmp/x",
             "GIT_WORK_TREE": "/tmp/y",
             "GIT_INDEX_FILE": "/tmp/z",
             "GIT_OBJECT_DIRECTORY": "/tmp/o",
             "GIT_ALTERNATE_OBJECT_DIRECTORIES": "/tmp/a",
             "GIT_CONFIG_PARAMETERS": "x",
+            "GIT_COMMON_DIR": "/tmp/common",
+            "GIT_CONFIG_COUNT": "3",
+            "GIT_CONFIG_GLOBAL": "/tmp/global-gitconfig",
+            "GIT_CONFIG_KEY_0": "core.hooksPath",
+            "GIT_CONFIG_VALUE_0": "/tmp/hooks",
         }
-        with patch.dict(os.environ, dangerous, clear=False):
-            os.environ.pop("GIT_SSH_COMMAND", None)
-            env = install_mod._git_env(ssh=True)
-        for key in dangerous:
+        with patch.dict(os.environ, poison, clear=False):
+            env = install_mod._git_env(ssh=False)
+        for key in poison:
             self.assertNotIn(key, env)
-        self.assertEqual("ssh -o BatchMode=yes", env["GIT_SSH_COMMAND"])
-        self.assertEqual("1", env["GIT_LFS_SKIP_SMUDGE"])
+        self.assertEqual("0", env["GIT_TERMINAL_PROMPT"])
         self.assertEqual("1", env["GIT_CONFIG_NOSYSTEM"])
+        self.assertEqual("1", env["GIT_LFS_SKIP_SMUDGE"])
 
-        with patch.dict(os.environ, {"GIT_SSH_COMMAND": "custom-ssh"}):
-            env2 = install_mod._git_env(ssh=True)
-        self.assertEqual("custom-ssh", env2["GIT_SSH_COMMAND"])
-
+    def test_ssh_batch_mode_only_applies_without_any_override(self):
+        # Sem GIT_SSH_COMMAND/GIT_SSH e sem core.sshCommand configurado: usa o
+        # BatchMode de reserva (isolado de `~/.gitconfig` de verdade via o patch
+        # de `_has_core_ssh_command`, não do ambiente real de quem roda o teste).
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("GIT_SSH_COMMAND", None)
-            env3 = install_mod._git_env(ssh=False)
-        self.assertNotIn("GIT_SSH_COMMAND", env3)
+            os.environ.pop("GIT_SSH", None)
+            with patch.object(install_mod, "_has_core_ssh_command", return_value=False):
+                env = install_mod._git_env(ssh=True)
+            self.assertEqual("ssh -o BatchMode=yes", env["GIT_SSH_COMMAND"])
+
+            # core.sshCommand já configurado: não empurra BatchMode por cima.
+            with patch.object(install_mod, "_has_core_ssh_command", return_value=True):
+                env2 = install_mod._git_env(ssh=True)
+            self.assertNotIn("GIT_SSH_COMMAND", env2)
+
+        # GIT_SSH_COMMAND da pessoa é preservado (não vira o BatchMode nosso).
+        with patch.dict(os.environ, {"GIT_SSH_COMMAND": "custom-ssh"}, clear=False):
+            os.environ.pop("GIT_SSH", None)
+            with patch.object(install_mod, "_has_core_ssh_command", return_value=False):
+                env3 = install_mod._git_env(ssh=True)
+            self.assertEqual("custom-ssh", env3["GIT_SSH_COMMAND"])
+
+        # GIT_SSH (variável legada) da pessoa também é preservado.
+        with patch.dict(os.environ, {"GIT_SSH": "legado-ssh"}, clear=False):
+            os.environ.pop("GIT_SSH_COMMAND", None)
+            with patch.object(install_mod, "_has_core_ssh_command", return_value=False):
+                env4 = install_mod._git_env(ssh=True)
+            self.assertEqual("legado-ssh", env4["GIT_SSH"])
+            self.assertNotIn("GIT_SSH_COMMAND", env4)
+
+        # Fonte não é SSH (pasta local ou https://): nunca mexe em SSH.
+        env5 = install_mod._git_env(ssh=False)
+        self.assertNotIn("GIT_SSH_COMMAND", env5)
+        self.assertNotIn("GIT_SSH", env5)
+
+    # -- N3: caminho com componente ".git" é recusado (checagem unitária) -------
+
+    def test_refuse_git_path_component_is_case_insensitive(self):
+        for bad in ("x/.git/evil", ".git/evil", "sub/.GIT/x", "a/b/.Git/c"):
+            with self.subTest(path=bad), self.assertRaises(ValueError):
+                install_mod._refuse_git_path_component(bad)
+        install_mod._refuse_git_path_component("normal/path/plugin.py")  # não levanta
+
+    # -- N2: varredura de resto não apaga a única cópia de um plugin -------------
+
+    def test_sweep_restores_the_old_folder_when_the_current_one_is_missing(self):
+        source = write_plugin(self.work / "demo_src")
+        preview = install_mod.install(str(source), confirm=False)
+        install_mod.install(str(source), confirm=True, expect=preview["plugin"]["sha256"])
+
+        current = self.home / "plugins" / "demo"
+        retired = self.home / "plugins" / ".old-simulado"
+        current.rename(retired)  # simula a morte do processo entre as duas trocas do update
+        old_time = time.time() - (install_mod.STALE_STAGING_MAX_AGE_S + 60)
+        os.utime(retired, (old_time, old_time))
+
+        install_mod._sweep_stale_staging()
+
+        self.assertFalse(retired.exists())
+        self.assertTrue((current / "plugin.py").is_file())
+
+    def test_sweep_skips_a_recent_staging_dir(self):
+        (self.home / "plugins").mkdir(parents=True, exist_ok=True)
+        fresh_install = self.home / "plugins" / ".install-recente"
+        fresh_install.mkdir()
+
+        install_mod._sweep_stale_staging()
+
+        self.assertTrue(fresh_install.exists())
+
+    def test_sweep_deletes_an_old_orphan_old_dir_with_no_matching_id(self):
+        (self.home / "plugins").mkdir(parents=True, exist_ok=True)
+        orphan = self.home / "plugins" / ".old-orfao"
+        orphan.mkdir()  # sem manifesto dentro: não dá pra saber de que plugin era
+        old_time = time.time() - (install_mod.STALE_STAGING_MAX_AGE_S + 60)
+        os.utime(orphan, (old_time, old_time))
+
+        install_mod._sweep_stale_staging()
+
+        self.assertFalse(orphan.exists())
 
 
 @unittest.skipUnless(HAS_GIT, "git required")
@@ -386,13 +481,19 @@ class GitInstallTests(InstallTestCase):
         git(repo, "add", ".gitattributes")
         git(repo, "commit", "--quiet", "-m", "gitattributes")
 
+        # M4 (round 2) faz `_git_env` remover TODA variável `GIT_*` — inclusive
+        # `GIT_CONFIG_GLOBAL` — do que chega ao subprocesso git. Por isso o config
+        # malicioso não pode ser injetado por essa variável (o próprio código a
+        # apaga de propósito); em vez disso vai pelo `HOME`, que não é `GIT_*` e é
+        # onde o git de verdade procura `~/.gitconfig` quando nada mais é dito.
         marker = self.work / "pwned.marker"
-        global_config = self.work / "malicious-gitconfig"
-        global_config.write_text(
+        fake_home = self.work / "fake-home"
+        fake_home.mkdir()
+        (fake_home / ".gitconfig").write_text(
             f'[filter "pwn"]\n\tsmudge = touch "{marker}" && cat\n\trequired = true\n',
             encoding="utf-8",
         )
-        env = {**self.env(), "GIT_CONFIG_GLOBAL": str(global_config)}
+        env = {**self.env(), "HOME": str(fake_home)}
 
         preview = run_cli("plugins", "--action", "install", "--source", repo, env=env)
         self.assertFalse(marker.exists())
@@ -434,6 +535,72 @@ class GitInstallTests(InstallTestCase):
         with patch.object(install_mod, "MAX_FILES", 1), self.assertRaises(ValueError) as ctx:
             install_mod.install(str(repo), confirm=False)
         self.assertIn("arquivos", str(ctx.exception))
+
+    # -- N1: tamanho do blob checado (via ls-tree -l) antes de qualquer cat-file -
+
+    def test_git_oversized_blob_is_refused_without_reading_its_content(self):
+        repo = self.repo()
+        # Arquivo pequeno de verdade (poucos KB, disco continua minúsculo); só
+        # precisa ficar maior que o teto rebaixado pelo teste.
+        (repo / "grande.bin").write_bytes(b"x" * 50_000)
+        git(repo, "add", "grande.bin")
+        git(repo, "commit", "--quiet", "-m", "arquivo grande")
+        big_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD:grande.bin"], cwd=repo, check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+        real_blob = install_mod._git_blob
+
+        def spy(dest, sha):
+            if sha == big_sha:
+                raise AssertionError("não devia ler o conteúdo do blob grande")
+            return real_blob(dest, sha)
+
+        with (
+            patch.object(install_mod, "MAX_BYTES", 10_000),
+            patch.object(install_mod, "_git_blob", side_effect=spy),
+            self.assertRaises(ValueError) as ctx,
+        ):
+            install_mod.install(str(repo), confirm=False)
+        self.assertIn("MB", str(ctx.exception))
+
+    # -- N3: caminho ".git" e colisão de nome no histórico git -------------------
+
+    def test_git_tree_name_collision_becomes_a_clear_value_error(self):
+        repo = self.repo()
+        top_blob = subprocess.run(
+            ["git", "hash-object", "-w", "--stdin"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+            input="topo\n",
+        ).stdout.strip()
+        nested_blob = subprocess.run(
+            ["git", "hash-object", "-w", "--stdin"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+            input="aninhado\n",
+        ).stdout.strip()
+        subprocess.run(
+            ["git", "update-index", "--add", "--cacheinfo", f"100644,{top_blob},Config"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "update-index", "--add", "--cacheinfo", f"100644,{nested_blob},config/extra.py"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        )
+        git(repo, "commit", "--quiet", "-m", "colisao de nomes")
+
+        err = run_cli("plugins", "--action", "install", "--source", repo, expect=2, env=self.env())
+        self.assertIn("colisão", err["error"])
+        self.assertFalse((self.home / "plugins" / "demo").exists())
 
     # -- M5: URL git com query/fragmento é recusada -------------------------------
 
