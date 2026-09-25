@@ -315,6 +315,38 @@ def _done_action(state, counts):
     )
 
 
+def _brief_still_helps(counts):
+    """Sem BRIEF.md, o plano só ajuda enquanto a pessoa ainda escolhe material.
+
+    Antes da primeira aprovação, ou com prévia esperando decisão, o brief muda o
+    que buscar e o que aprovar. Depois que tudo que foi mostrado está decidido e
+    algo foi aprovado, ele não muda mais nada: o próximo passo é o do fluxo real.
+    """
+    return not counts["approved"] or counts["pending"] > 0
+
+
+def _init_brief_action(state, counts):
+    """Degrau do brief ausente, com a frase certa para projeto vazio ou já em curso."""
+    if not counts["candidates"]:
+        for_human = (
+            "Antes de buscar qualquer coisa, precisamos do plano do vídeo: rode "
+            "`/get-brolls-brief` para eu te fazer as perguntas, ou `init-brief` para "
+            "criar o modelo e preencher à mão."
+        )
+    else:
+        for_human = (
+            "O projeto já tem candidatos, mas ainda não tem o plano do vídeo (BRIEF.md) "
+            "dizendo o que cada trecho precisa mostrar: rode `/get-brolls-brief` para eu "
+            "te fazer as perguntas, ou `init-brief` para criar o modelo e preencher à mão."
+        )
+    return _action(
+        "init-brief",
+        "O projeto ainda não tem BRIEF.md, então nada define o que buscar.",
+        for_human,
+        state,
+    )
+
+
 def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one branch/return per project state deciding the single next step
     """Único passo que faz sentido agora, com a frase para repassar sem parafrasear.
 
@@ -328,14 +360,12 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
     brief = state.get("brief")
     conflicts = list((brief or {}).get("conflicts") or [])
     if brief is None:
-        return _action(
-            "init-brief",
-            "O projeto ainda não tem BRIEF.md, então nada define o que buscar.",
-            "Antes de buscar qualquer coisa, precisamos do plano do vídeo: rode "
-            "`/get-brolls-brief` para eu te fazer as perguntas, ou `init-brief` para "
-            "criar o modelo e preencher à mão.",
-            state,
-        )
+        if _brief_still_helps(counts):
+            return _init_brief_action(state, counts)
+        # Sem brief e com a escolha já feita: o plano não muda mais nada, e repetir
+        # "antes de buscar" depois da entrega diria à pessoa que nada aconteceu.
+        # A escada segue pelo estado real, sem beats a cobrir.
+        brief = {}
     if brief.get("error"):
         # Arquivo existe e está errado: corrigir é diferente de começar do zero.
         return _action(

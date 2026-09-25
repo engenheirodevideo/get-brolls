@@ -10,6 +10,8 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- **Próximo passo sem BRIEF.md.** Num projeto sem `BRIEF.md`, `status.summary.do`, o `summary.next` do `deliver` e o "Próximo passo" do `entrega/README.md` repetiam "Antes de buscar qualquer coisa..." em todas as etapas, inclusive depois da entrega completa. A sugestão do brief agora fica só enquanto a pessoa ainda escolhe material (nenhuma aprovação ou prévia esperando decisão); depois disso o passo segue o fluxo real (`permit`, `fetch`, `verify`, `deliver`, fluxo completo). Com candidatos já registrados, a frase do brief deixa de dizer "antes de buscar".
+
 - Docs: `docs/MANUAL.md`, manual + tutorial em português para quem está chegando — tutorial do zero à `entrega/`, todos os subcomandos agrupados nos 8 passos do fluxo com explicação dentro de cada bloco, as três rotas do `permit`, como ler `summary.line`/`summary.do`/erros/códigos de saída, `BRIEF.md`, `RULES.md` e `.env` campo a campo, e receitas de automação com `jq`. Ligado no README, no README.en e no AGENTS. Fecha #80.
 - READMEs: os diagramas `assets/flow*.svg` e `assets/formats*.svg` passam a mostrar o fluxo atual — brief, análise da fonte, direitos como segundo portão, verificação e `entrega/` por beat — e a árvore de pastas ganha `BRIEF.md`, `entrega/`, `getbrolls.log` e `reviews/`. Eram da 2.3.x e apontavam `clips/` como lugar dos arquivos finais.
 - READMEs: badges de FFmpeg, yt-dlp e Playwright no topo, ao lado de Python e Node, para mostrar o que a instalação coloca na máquina.
