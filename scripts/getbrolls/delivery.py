@@ -309,7 +309,10 @@ def plugin_label(c):
     return row["id"] if row else provider
 
 
-_MARKDOWN_SIGNIFICANT = re.compile(r"([\\`*_\[\]()<>!|])")
+# Toda pontuação ASCII que o CommonMark deixa escapar com barra invertida: além de
+# `<img>`, `[link](url)` e `**ênfase**`, cobre `%%comentário%%` e `==realce==` do
+# Obsidian, `~~riscado~~`, `#tag`, `$matemática$` e o autolink de `https://`/`www.`.
+_MARKDOWN_SIGNIFICANT = re.compile(r"([!-/:-@\[-`{-~])")
 # Prefixos que o core escreve na frente de um texto de plugin guardado como evidência.
 _PLUGIN_EVIDENCE_PREFIXES = ("Licença registrada pelo plugin ", "Condições informadas pelo plugin ")
 

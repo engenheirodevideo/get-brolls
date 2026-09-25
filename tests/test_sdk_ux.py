@@ -521,8 +521,10 @@ class PluginProvenanceTests(LoaderTestCase):
         self.install()
         c = _plugin_fetched()
         c["source_url"] = "https://demo.example/v/1"
+        # URL de plugin sai com a pontuação escapada (sem autolink), e renderiza igual.
         self.assertIn(
-            "- Fonte: plugin demo (https://demo.example/v/1)", delivery.render_origin(c, "a.mp4").splitlines()
+            "- Fonte: plugin demo (https\\:\\/\\/demo\\.example\\/v\\/1)",
+            delivery.render_origin(c, "a.mp4").splitlines(),
         )
 
     def test_credits_name_the_plugin_and_title(self):

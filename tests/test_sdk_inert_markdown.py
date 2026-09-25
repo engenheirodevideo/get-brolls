@@ -12,12 +12,13 @@ from getbrolls import delivery
 from getbrolls.rendering import render
 
 HOSTILE_TITLE = 'Clip <img src="https://tracker.example/p.gif"> [Licença CC0 verificada](https://evil.example/)'
+OBSIDIAN_EXTRAS = " %%oculto%% ~~risco~~ ==realce== #tag $x^2$ www.evil.example https://evil.example/x"
 HOSTILE_LICENSE = "**CC0 — conferida pelo core**"
 HOSTILE_AUTHOR = "Autor ![x](https://tracker.example/a.png) `code` _it_ |col|"
 
 
 def plugin_candidate():
-    c = fetched("a", HOSTILE_TITLE)
+    c = fetched("a", HOSTILE_TITLE + OBSIDIAN_EXTRAS)
     c["provider"] = "demo"
     c["id"] = "demo:a"
     c["creator"]["name"] = HOSTILE_AUTHOR
@@ -33,10 +34,12 @@ def plugin_candidate():
 def assert_inert(case, text):
     # Tira cada par "barra + caractere" (escapado): o que sobra não pode ter sintaxe viva.
     live = re.sub(r"\\.", "", text)
-    for raw in ("<img", "](https://", "**CC0", "![x]", "`code`", "<b>"):
+    for raw in ("<img", "](https", "**CC0", "![x]", "`code`", "<b>", "%%", "~~", "==", "#tag", "$x", "https:/", "www."):
         case.assertNotIn(raw, live, raw)
     case.assertIn("\\<img", text)
-    case.assertIn("\\[Licença CC0 verificada\\]\\(https://evil.example/\\)", text)
+    case.assertIn("\\[Licença CC0 verificada\\]\\(https\\:\\/\\/evil\\.example\\/\\)", text)
+    case.assertIn("\\%\\%oculto\\%\\% \\~\\~risco\\~\\~ \\=\\=realce\\=\\= \\#tag \\$x\\^2\\$", text)
+    case.assertIn("www\\.evil\\.example https\\:\\/\\/evil\\.example\\/x", text)
     case.assertIn("\\*\\*CC0 — conferida pelo core\\*\\*", text)
     case.assertIn("Licença registrada pelo plugin demo: \\[pago\\]", text)
     case.assertIn("Vi a página da fonte", text)
@@ -53,10 +56,10 @@ class InertPluginMarkdownTests(unittest.TestCase):
             assert_inert(self, (ledger.root / "credits.md").read_text(encoding="utf-8"))
 
     def test_builtin_text_is_unchanged(self):
-        c = fetched("a", HOSTILE_TITLE)
+        c = fetched("a", HOSTILE_TITLE + OBSIDIAN_EXTRAS)
         c["rights"]["license_name"] = HOSTILE_LICENSE
         lines = delivery.render_origin(c, "a.mp4").splitlines()
-        self.assertIn("- Título na fonte: " + HOSTILE_TITLE, lines)
+        self.assertIn("- Título na fonte: " + HOSTILE_TITLE + OBSIDIAN_EXTRAS, lines)
         self.assertIn("- Licença: " + HOSTILE_LICENSE, lines)
         self.assertIn("- Fonte: https://example.org/a", lines)
         self.assertIn("- Evidência: Condições conferidas na página da fonte", lines)
