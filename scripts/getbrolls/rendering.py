@@ -267,7 +267,7 @@ def render(ledger):
                 f"## {one_line(c['id'])}",
                 f"- Arquivo: {one_line(out)}",
                 # Fonte de plugin: o título do arquivo na fonte (ex.: nome do arquivo da
-                # pasta local) entra também — built-in segue sem esta linha (BUG-12).
+                # pasta local) entra também — built-in segue sem esta linha.
                 *([f"- Título na fonte: {inert(c.get('title') or 'não informado', plugin)}"] if plugin else []),
                 f"- Fonte: {one_line(source_label(c, plugin))}",
                 f"- Autor: {inert(c['creator'].get('name') or 'não informado', plugin)}",

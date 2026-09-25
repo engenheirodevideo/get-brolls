@@ -351,7 +351,7 @@ def evidence_line(evidence, plugin):
 def source_label(c, plugin):
     """Linha "Fonte:" de ORIGEM.md/credits.md. Fonte embutida: a URL ou "original
     local", como sempre; fonte de plugin: o plugin e a URL (ou "arquivo local") —
-    antes saía "original local" sem dizer de onde o arquivo veio (BUG-12).
+    antes saía "original local" sem dizer de onde o arquivo veio.
     `plugin` é o `plugin_label(c)` que quem chama já calculou."""
     url = c.get("source_url")
     if plugin is None:

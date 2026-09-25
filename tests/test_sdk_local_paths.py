@@ -1,5 +1,5 @@
-"""Arquivos locais e pastas: raízes de `permissions.paths` (Minor 1), `api.local_file`
-endurecido (Minor 2 / ledger T3) e `folder_digest` limitado (RT-11)."""
+"""Arquivos locais e pastas: raízes de `permissions.paths`, `api.local_file`
+endurecido e `folder_digest` limitado."""
 
 import os
 import shutil
@@ -25,7 +25,7 @@ POSIX = os.name != "nt"
 
 
 class PathRootsTests(unittest.TestCase):
-    """Minor 1: raiz ampla demais (sistema, unidade, home) não vale como `permissions.paths`."""
+    """Raiz ampla demais (sistema, unidade, home) não vale como `permissions.paths`."""
 
     def read(self, paths):
         with tempfile.TemporaryDirectory() as tmp:
@@ -50,7 +50,7 @@ class PathRootsTests(unittest.TestCase):
 
 
 class LocalFileHardeningTests(LoaderTestCase):
-    """Minor 2 / T3: abre sem seguir link, confere o fd, copia com teto e cria o destino exclusivo."""
+    """Abre sem seguir link, confere o fd, copia com teto e cria o destino exclusivo."""
 
     def setUp(self):
         super().setUp()
@@ -134,7 +134,7 @@ class LocalFileHardeningTests(LoaderTestCase):
 
 
 class DigestLimitTests(LoaderTestCase):
-    """RT-11: hash em pedaços, com teto por arquivo e total; estourar suspende, não derruba."""
+    """Hash em pedaços, com teto por arquivo e total; estourar suspende, não derruba."""
 
     def test_digest_reads_in_chunks_not_whole_files(self):
         folder = self.install()

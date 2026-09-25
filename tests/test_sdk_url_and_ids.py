@@ -1,5 +1,5 @@
-"""A I1: fontes embutidas voltam ao filtro de URL do 2.5.0; o filtro amplo de query
-secreta vale só para URL que veio de plugin. B-06: `source_id` de plugin só com
+"""Fontes embutidas voltam ao filtro de URL do 2.5.0; o filtro amplo de query
+secreta vale só para URL que veio de plugin. `source_id` de plugin só com
 caracteres seguros, e o id de candidato de plugin vai citado em comando sugerido."""
 
 import unittest

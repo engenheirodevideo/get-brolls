@@ -74,7 +74,7 @@ def names():
 
 def get(name):
     """`{"url", "text"}` do preset. Preset de plugin: o texto sai saneado e marcado como
-    informado pelo plugin (B-04) — nunca uma declaração ou outra evidência forjada."""
+    informado pelo plugin — nunca uma declaração ou outra evidência forjada."""
     from .sdk.contracts import CORE
     from .sdk.registry import get_registry
 

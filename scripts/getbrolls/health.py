@@ -21,7 +21,7 @@ def _plugin_detail(owner, error):
 
 
 def _plugin_refresh(source, owner, row):
-    """Refresh de uma fonte de plugin sem transformar desenho em falha (BUG-05): a
+    """Refresh de uma fonte de plugin sem transformar desenho em falha: a
     rota traz o arquivo (nem chama refresh), e fonte sem `media_url` na busca é
     só-metadados. Refresh que falha de verdade vira campo, não derruba a busca ok."""
     if source.capabilities.route:

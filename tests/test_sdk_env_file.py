@@ -1,4 +1,4 @@
-"""C H-1: o `.env` aceita as chaves de `permissions.env` dos plugins instalados.
+"""O `.env` aceita as chaves de `permissions.env` dos plugins instalados.
 
 O README do `banco_http` e a orientação do `brief`/`status` mandam pôr o token no
 `.env`; antes disso travava TODO comando com "variável desconhecida".

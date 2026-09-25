@@ -1,4 +1,4 @@
-"""B-01/B-02/B-03: o que roda é o que o pin cobre — sem lixo de SO materializado,
+"""O que roda é o que o pin cobre — sem lixo de SO materializado,
 sem link simbólico e sem bytecode ao lado da fonte revisada."""
 
 import os
@@ -52,7 +52,7 @@ class GitMaterializationTests(InstallTestCase):
         self.assertEqual("enabled", loader.inventory()[0]["status"])
 
     def test_junk_swapped_after_preview_never_runs(self):
-        """Repro do B-01: o `.DS_Store` que o plugin executa não chega a `plugins/`."""
+        """Reprodução: o `.DS_Store` que o plugin executa não chega a `plugins/`."""
         repo = write_plugin(self.work / "junkexec", code=JUNK_EXEC_CODE)
         (repo / "sub").mkdir()
         (repo / "sub" / ".DS_Store").write_text('V = "reviewed"\n', encoding="utf-8")
@@ -149,7 +149,7 @@ if __name__ == "__main__":
 
 
 class InstallPinsWhatWasConfirmedTests(InstallTestCase):
-    """B-11: o pin do install é o sha256 confirmado no staging, não um novo hash depois da troca."""
+    """O pin do install é o sha256 confirmado no staging, não um novo hash depois da troca."""
 
     def test_content_swapped_after_the_move_is_suspended(self):
         from pathlib import Path

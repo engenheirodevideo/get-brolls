@@ -37,7 +37,7 @@ EXPECT_NOTE = (
 # Respostas de sucesso: nada para rodar de novo.
 DONE_NOTE = "Pronto. " + NOT_SANDBOX
 GB_PLUGINS_REASON = "desligado por GB_PLUGINS (a variável escolhe os plugins desta sessão, sem mexer no plugins.json)"
-# `GB_PLUGINS` só FILTRA (B-07): escolhe, entre os plugins habilitados com pin válido,
+# `GB_PLUGINS` só FILTRA: escolhe, entre os plugins habilitados com pin válido,
 # os desta sessão. Nunca carrega um plugin sem pin, nunca habilitado ou adulterado.
 GB_PLUGINS_UNPINNED_REASON = (
     "GB_PLUGINS só escolhe entre plugins já habilitados; habilite com plugins --action enable --id {id}."
@@ -54,20 +54,20 @@ def state_path():
 
 # Arquivo de lixo de SO que aparece sozinho (Finder/Explorer abriram a pasta): contá-lo
 # no hash suspenderia o plugin por um arquivo que ninguém escreveu de propósito. Fica
-# fora do hash — e por isso o `install` nunca o materializa (B-01): código do plugin
+# fora do hash — e por isso o `install` nunca o materializa: código do plugin
 # não pode ler nem executar esses nomes, nem o `.git` de topo (docs/SDK.md).
 JUNK_FILENAMES = frozenset({".DS_Store", "Thumbs.db", "desktop.ini"})
 # Bytecode ao lado da fonte: o `import` de um módulo irmão lê um `.pyc` de
 # `__pycache__` (um `.pyc` com hash não conferido nem olha a fonte), então o código
-# que roda deixaria de ser o que a pessoa revisou (B-03). Pasta com bytecode, ou com
-# link simbólico (conteúdo fora do hash, B-02), fica `invalid` e nunca carrega.
+# que roda deixaria de ser o que a pessoa revisou. Pasta com bytecode, ou com
+# link simbólico (conteúdo fora do hash), fica `invalid` e nunca carrega.
 BYTECODE_DIRNAME = "__pycache__"
 BYTECODE_SUFFIXES = (".pyc", ".pyo")
 # Pastas de VCS. Só o `.git` DE TOPO (o de um `git pull`/clone da própria pasta do
 # plugin) fica fora do hash: é metadado do controle de versão, não conteúdo que
 # `_import` executa. Qualquer pasta de VCS em outro lugar (`vendor/.hg`, `.svn`
 # aninhado, `.git` dentro de subpasta) torna o plugin inválido (`nested_vcs`), e
-# `.hg`/`.svn` de topo contam no hash como qualquer arquivo (RT-12).
+# `.hg`/`.svn` de topo contam no hash como qualquer arquivo.
 VCS_DIRNAMES = frozenset({".git", ".hg", ".svn"})
 TOP_LEVEL_VCS = ".git"
 
@@ -155,7 +155,7 @@ def content_reason(problem, fix):
     )
 
 
-# Tetos do hash da pasta (RT-11): o `folder_digest` roda a cada comando, para cada
+# Tetos do hash da pasta: o `folder_digest` roda a cada comando, para cada
 # plugin habilitado. Um arquivo enorme largado na pasta (um plugin que faz cache ao
 # lado do `__file__`) não pode custar a memória/tempo dele a cada comando: passou do
 # teto, o plugin fica suspenso com o motivo — nunca um MemoryError derrubando a CLI.
@@ -228,7 +228,7 @@ def pin_digests(folder):
 
     O mapa por arquivo (caminho relativo POSIX → sha256) fica ao lado do pin em
     plugins.json: é o que deixa o `enable` de um plugin suspenso mostrar o que
-    mudou (BUG-06). Mesmo recorte e mesmos tetos das duas funções acima."""
+    mudou. Mesmo recorte e mesmos tetos das duas funções acima."""
     whole = hashlib.sha256()
     files = {}
     budget = DIGEST_MAX_TOTAL_BYTES
@@ -288,7 +288,7 @@ def files_diff(before, after):
 
 
 def check_expect(expect, sha):
-    """I3: `--yes` sozinho não basta — o sha256 mostrado na prévia (do conteúdo
+    """`--yes` sozinho não basta — o sha256 mostrado na prévia (do conteúdo
     já materializado, não de um manifesto solto) tem que ser reapresentado, ou
     a pessoa pode estar confirmando um conteúdo diferente do que viu."""
     if not expect:
@@ -502,7 +502,7 @@ def _load_one(row, folder, manifest, pinned, registry):
     # Código de plugin é de terceiro: qualquer falha (incl. SystemExit de um sys.exit()
     # no import, uma BaseException custom, um `__str__` hostil) desliga só aquele
     # plugin, nunca o processo. A razão guarda só o tipo — ou o texto de uma recusa do
-    # core/`PluginError`, já saneado —, nunca `str(exc)` do plugin (RT-01/RT-10).
+    # core/`PluginError`, já saneado —, nunca `str(exc)` do plugin.
     outcome = guard.attempt(manifest["id"], load)
     failure = outcome.failure
     if failure is not None:
@@ -547,7 +547,7 @@ def load_enabled(registry):
     daqui incondicionalmente: numa instalação sem plugin nenhum,
     `providers`/`search`/`doctor` (que montam o registro assim mesmo) não
     tinham motivo pra desligar o cache de `.pyc` dos módulos do próprio core,
-    importados de leve (lazy) depois (M2)."""
+    importados de leve (lazy) depois."""
     try:
         rows = entries()
     except (ValueError, OSError) as exc:
@@ -606,7 +606,7 @@ def status_phrase(row):
 
     Sem ponto final (quem chama fecha a frase) e sem repetir o `Plugin <id>:` que o
     motivo às vezes já traz — um `reason` termina em "." e colá-lo antes de ". Rode…"
-    ou "; removida…" dava "..", ".;" e "Plugin X: Plugin X:" (BUG-10)."""
+    ou "; removida…" dava "..", ".;" e "Plugin X: Plugin X:"."""
     reason = (row.get("reason") or "").strip()
     reason = without_prefix(row["id"], reason).rstrip(" .")
     return f"que está {row['status']}" + (f": {reason}" if reason else "")
@@ -614,7 +614,7 @@ def status_phrase(row):
 
 def status_hint(row, default):
     """O que fazer com um plugin indisponível: fora de `GB_PLUGINS`, a saída é a
-    variável — `enable` não resolve (BUG-09); nos outros casos, `default`."""
+    variável — `enable` não resolve; nos outros casos, `default`."""
     if row.get("status") == "disabled" and row.get("reason") == GB_PLUGINS_REASON:
         return (
             f"Inclua {row['id']} em GB_PLUGINS (ou tire GB_PLUGINS do ambiente) para usá-lo nesta sessão; "
@@ -698,7 +698,7 @@ def enable(plugin_id, confirm, expect=None):
     sempre. Plugin com pin cujo conteúdo mudou (o `suspended` de "mudou desde o
     enable"): a prévia traz o `diff` dos arquivos contra o mapa guardado no pin, e
     confirmar exige `--expect <sha256>` desta prévia — paridade com install/update,
-    sem re-pinar às cegas o que estiver no disco (BUG-06)."""
+    sem re-pinar às cegas o que estiver no disco."""
     from .registry import reset_registry
 
     row, folder, manifest = find(plugin_id)
@@ -766,7 +766,7 @@ def pin(manifest, folder, origin=None, enable=True, digests=None):
 
     `digests` (`(sha, files)` já calculados) vem do `install`/`update`: o pin grava
     exatamente o conteúdo que a pessoa confirmou no staging, não um novo hash da
-    pasta depois da troca — se alguém mexer nela no meio, o plugin fica suspenso (B-11)."""
+    pasta depois da troca — se alguém mexer nela no meio, o plugin fica suspenso."""
     from .registry import reset_registry
 
     plugin_id = manifest["id"]

@@ -115,7 +115,7 @@ PLUGIN_PROBLEM_STATUSES = ("failed", "suspended", "invalid", "incompatible")
 
 
 def doctor_plugin_problems(rows):
-    """Uma linha para o `summary` quando algum plugin não carregou (BUG-14): quem lê
+    """Uma linha para o `summary` quando algum plugin não carregou: quem lê
     só o veredito vê a falha sem abrir `plugins[]`. `None` quando está tudo certo."""
     broken = [row for row in rows if row.get("status") in PLUGIN_PROBLEM_STATUSES]
     if not broken:
@@ -381,7 +381,7 @@ STATUS_LADDER = (
 def provider_error_text(name, error):
     """`<fonte>: <erro>`, sem repetir o nome quando o erro de plugin já vem como
     "Plugin <fonte>: …" ou "Fonte <fonte> é do plugin …" (dava "pasta_local:
-    Plugin pasta_local: …" e "pasta_local: Fonte pasta_local …", BUG-10)."""
+    Plugin pasta_local: …" e "pasta_local: Fonte pasta_local …")."""
     text = str(error)
     return text if text.startswith((f"Plugin {name}:", f"Fonte {name} ")) else f"{name}: {text}"
 
@@ -453,7 +453,7 @@ def _plugin_reference_note(c):
 
 
 def _plugin_nothing_seen(c):
-    """Candidato de plugin sem nada que a pessoa possa ter visto (C M-7): sem prévia
+    """Candidato de plugin sem nada que a pessoa possa ter visto: sem prévia
     local, sem `poster_url` e sem `embed_url`. Fonte embutida nunca cai aqui."""
     preview = c.get("preview") or {}
     return _is_plugin_candidate(c) and not (_has_preview(c) or preview.get("poster_url") or preview.get("embed_url"))
@@ -1366,7 +1366,7 @@ def _flow_next(ledger, rules):
 
 # `summary.next` quando `summary.do` manda a prévia de referência (fonte de plugin
 # que só entrega o arquivo no `fetch`): o texto genérico "Gere prévias com preview…"
-# contradizia o comando pronto ao lado (G11). Fontes embutidas nunca chegam aqui.
+# contradizia o comando pronto ao lado. Fontes embutidas nunca chegam aqui.
 REFERENCE_ONLY_NEXT = (
     "Registre a prévia de referência (preview --reference-only) do candidato cuja fonte só entrega "
     "o arquivo no fetch; depois approve, permit e fetch."
@@ -2314,7 +2314,7 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                 # Grava já, antes do corte: se o corte falhar, a licença consumida e o
                 # marcador ficam no ledger (a rota não roda de novo no próximo fetch).
                 ledger.save("fetch-route", c)
-            # Minor 9: o formato só é conferido DEPOIS que cache e licença já estão
+            # O formato só é conferido DEPOIS que cache e licença já estão
             # gravados (acima) — uma imagem de formato não reconhecido é recusada sem
             # custar a rota (e a licença) de novo a cada retry; o cache já existe.
             # A extensão vem do conteúdo, como na foto das fontes embutidas
@@ -2649,7 +2649,7 @@ def inspect_warnings(probe, query=None):
     downloaded = probe.get("downloaded_bytes")
     if downloaded and probe.get("local_copy"):
         # Rota de plugin: o arquivo chegou pela rota (cópia local ou download do próprio
-        # plugin), não por um download do core — "baixar ... (0.0 MB)" confundia (BUG-11).
+        # plugin), não por um download do core — "baixar ... (0.0 MB)" confundia.
         found.append(
             f"esta fonte não tem metadados públicos, então a análise usou a cópia local do arquivo "
             f"({_byte_size(downloaded)}), trazida pela rota {probe['local_copy']} para o cache privado"

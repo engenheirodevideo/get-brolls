@@ -37,6 +37,16 @@ LOCAL_PATH_SCAN_SUFFIXES = (
 )
 
 
+# Identificador de revisão interna (achado de ledger, rodada de conserto): não tem
+# significado para quem lê o repositório público. O motivo técnico fica no texto;
+# o id, não. `red[-]team` fica partido para o próprio padrão não casar consigo.
+INTERNAL_REVIEW_ID_PATTERN = re.compile(
+    r"\b(?:RT|BUG|B|M|I|D3|H4|C1|T2)-\d{1,2}\b(?![-\d])"
+    r"|\bC [HML]-\d+\b|\bA [IM]\d\b|\bMinor \d+\b|\b[Ff]ix round \d\b"
+    r"|\bred[-]team\b|\bFinding \d+\b|\bG\d{1,2}:(?!\d)"
+)
+
+
 def github_slug(heading):
     value = unicodedata.normalize("NFC", heading.strip().lower())
     value = re.sub(r"[^\w\- ]", "", value, flags=re.UNICODE)
@@ -294,7 +304,7 @@ class RepositoryDocumentationTests(unittest.TestCase):
             self.assertIn(marker, security, marker)
 
     def test_plugin_install_update_yes_always_pairs_with_expect(self):
-        """Finding SDK Task 10 fix round 1 / 1: `--yes` sozinho não instala nada em
+        """`--yes` sozinho não instala nada em
         `plugins --action install|update` (precisa de `--expect <sha256>` — ver
         `getbrolls.sdk.install._check_expect`); um exemplo documentado sem `--expect`
         é um comando que falha exatamente como escrito."""
@@ -427,6 +437,59 @@ class RepositoryDocumentationTests(unittest.TestCase):
             self.assertIsNotNone(LOCAL_PATH_PATTERN.search(sample), sample)
         for suffix in (".canvas", ".svg", ".html"):
             self.assertIn(suffix, LOCAL_PATH_SCAN_SUFFIXES, suffix)
+
+    def test_tracked_text_has_no_internal_review_ids(self):
+        """Comentário, docstring, nome de teste e documentação explicam o motivo
+        técnico; id de revisão interna não entra no repositório público."""
+        tracked = (
+            subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True)
+            .stdout.decode("utf-8")
+            .split("\0")
+        )
+        problems = []
+        for path in filter(None, tracked):
+            try:
+                text = (ROOT / path).read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue  # binário, ou apagado do worktree sem commit
+            for number, line in enumerate(text.splitlines(), 1):
+                match = INTERNAL_REVIEW_ID_PATTERN.search(line)
+                if match:
+                    problems.append(f"{path}:{number}: {match.group(0)}")
+        self.assertEqual([], problems)
+
+    def test_internal_review_id_pattern_is_precise(self):
+        """Exemplos montados em partes, para este arquivo não casar consigo."""
+        matching = (
+            "RT" + "-07",
+            "BUG" + "-14",
+            "B" + "-06",
+            "(C M" + "-7)",
+            "A " + "I1",
+            "Minor " + "9",
+            "Fix " + "round 2",
+            "red" + "-team",
+            "Finding " + "3",
+            "G" + "11: texto",
+            "D3" + "-1",
+        )
+        for sample in matching:
+            self.assertIsNotNone(INTERNAL_REVIEW_ID_PATTERN.search(sample), sample)
+        legitimate = (
+            "B-roll",
+            "b-rolls do beat",
+            "2026-09-24",
+            "insert-02",
+            "H.264",
+            "Checkpoint C3",
+            "class Finding20NasaInvalidLinesTests",
+            "(finding #25: duplicado)",
+            "ISO-8601",
+            "12:30:00",
+            "mar, onda",
+        )
+        for sample in legitimate:
+            self.assertIsNone(INTERNAL_REVIEW_ID_PATTERN.search(sample), sample)
 
     def test_release_workflow_uses_gh_cli_and_the_pinned_checkout(self):
         release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")

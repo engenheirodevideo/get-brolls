@@ -34,7 +34,7 @@ _log = logs.get("sdk")
 
 
 def public_url(url):
-    """URL que veio de plugin: o filtro estrito de query secreta (A I1)."""
+    """URL que veio de plugin: o filtro estrito de query secreta."""
     return _core_public_url(url, strict=True)
 
 
@@ -118,7 +118,7 @@ def remember_env(owner, keys):
 
 
 # id do plugin → valores de texto do `settings.json` dele (lidos por `api.config()`),
-# trocados por [REDACTED] em `sanitize_text` como os de `permissions.env` (B-16).
+# trocados por [REDACTED] em `sanitize_text` como os de `permissions.env`.
 _CONFIG_VALUES: dict[str, frozenset[str]] = {}
 _CONFIG_SECRET_MIN_CHARS = 8
 
@@ -149,7 +149,7 @@ def _trusted_types():
 def plain_line(text, limit=MESSAGE_MAX_CHARS):
     """Uma linha só, sem caractere de controle/formatação (categoria Unicode `C*`,
     separadores de linha/parágrafo), espaços colapsados, até `limit` caracteres."""
-    # Corta antes de classificar caractere por caractere (B-12): um título de 50 MB
+    # Corta antes de classificar caractere por caractere: um título de 50 MB
     # não custa a classificação inteira para sobrar 300 caracteres.
     text = text[: max(limit, 1) * 4]
     text = "".join(
@@ -168,7 +168,7 @@ LICENSE_EVIDENCE_LABEL = "Licença registrada pelo plugin"
 
 
 def plugin_evidence(label, owner, text):
-    """Texto de plugin que vira evidência (texto de preset, `RouteResult.license`), B-04.
+    """Texto de plugin que vira evidência (texto de preset, `RouteResult.license`).
 
     Uma linha, sem caractere de controle nem de formatação (bidi U+200E/F,
     U+202A–202E, U+2066–2069, U+FEFF), até 300 caracteres, e sempre com o prefixo
@@ -222,13 +222,13 @@ def attempt(owner, fn, *args, builtin_text=False) -> Outcome:
     """`Outcome(resultado, None)` ou `Outcome(None, Failure)`; só `KeyboardInterrupt` atravessa.
 
     Tudo o que o código de plugin escreve em `sys.stdout` (um `print` no import, no
-    `register`, na busca, na rota ou no comando) vai para `sys.stderr` (C M-8): o
+    `register`, na busca, na rota ou no comando) vai para `sys.stderr`: o
     stdout da CLI é só o envelope JSON que o agente lê."""
     try:
         with contextlib.redirect_stdout(sys.stderr):
             return Outcome(fn(*args), None)
     except BaseException as exc:  # isolamento deliberado de código de plugin de terceiro; ver o bloco acima
-        # Só o Ctrl+C de verdade atravessa (B-10): uma SUBCLASSE de KeyboardInterrupt
+        # Só o Ctrl+C de verdade atravessa: uma SUBCLASSE de KeyboardInterrupt
         # levantada pelo plugin é falha dele, não interrupção da pessoa.
         if type(exc) is KeyboardInterrupt:
             raise
@@ -298,7 +298,7 @@ ACQUISITION_STATUSES = ("available", "unavailable")
 ACQUISITION_METHODS = (None, "https", "yt-dlp")
 UNAVAILABLE_ACQUISITION = {"status": "unavailable", "method": None, "evidence": []}
 LICENSE_MAX_CHARS = 500
-# `source_id` de plugin (B-06): vira parte do id do candidato, que aparece em
+# `source_id` de plugin: vira parte do id do candidato, que aparece em
 # comandos sugeridos e no ledger compartilhado. Só caracteres seguros num shell.
 SOURCE_ID_RE = re.compile(r"[A-Za-z0-9._:-]{1,128}")
 PENDING_SEGMENT = {"start_s": None, "end_s": None, "revision": 0}
@@ -358,7 +358,7 @@ def _normalize(value, owner):
 
 def _display_text(value):
     """Campo de texto que o core exibe (ORIGEM.md, credits.md, review): uma linha só,
-    sem controle, até 300 caracteres (RT-04). Não-texto passa como veio — o schema
+    sem controle, até 300 caracteres. Não-texto passa como veio — o schema
     do candidato recusa o tipo errado logo depois."""
     return plain_line(value) if isinstance(value, str) else value
 
@@ -373,7 +373,7 @@ def _kept(raw, allowed):
     return kept, dropped
 
 
-def plugin_candidate(item, provider, owner, download=True, route=None, *, route_stage=None):  # noqa: C901, PLR0912, PLR0913, PLR0915 - route_stage (keyword) grava o estágio da rota na prévia; um campo guardado por seção do candidato (Finding 2 do fix round 1)
+def plugin_candidate(item, provider, owner, download=True, route=None, *, route_stage=None):  # noqa: C901, PLR0912, PLR0913, PLR0915 - route_stage (keyword) grava o estágio da rota na prévia; um campo guardado por seção do candidato
     item = _normalize(item, owner)
     if not isinstance(item, dict):
         raise ProviderError(f"Plugin {owner}: {provider} devolveu um candidato que não é objeto.")
@@ -429,7 +429,7 @@ def plugin_candidate(item, provider, owner, download=True, route=None, *, route_
     if raw_rights.get("evidence") not in (None, []):
         # Evidência é o registro que a pessoa lê em ORIGEM.md/credits.md para decidir
         # se pode usar: só o permit humano (e a licença que o CORE registra depois dele,
-        # "Licença registrada pelo plugin ...") escreve ali, nunca o candidato (RT-04).
+        # "Licença registrada pelo plugin ...") escreve ali, nunca o candidato.
         tampered.append("rights.evidence")
     rights = {
         "status": "unknown",

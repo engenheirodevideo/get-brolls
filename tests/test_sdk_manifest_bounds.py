@@ -1,4 +1,4 @@
-"""B-08: um manifesto gigante ou aninhado demais vira `invalid` naquela linha —
+"""Um manifesto gigante ou aninhado demais vira `invalid` naquela linha —
 nunca INTERNAL_ERROR em `plugins list`, `doctor` ou `x --list`."""
 
 import unittest

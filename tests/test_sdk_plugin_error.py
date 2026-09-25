@@ -1,4 +1,4 @@
-"""`PluginError`: a única exceção de plugin cujo texto chega à pessoa (I2 da revisão final)."""
+"""`PluginError`: a única exceção de plugin cujo texto chega à pessoa."""
 
 import json
 import os

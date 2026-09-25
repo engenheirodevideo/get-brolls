@@ -1,6 +1,6 @@
 """`search --shot`: o beat do BRIEF.md decide de que fonte o material dele pode vir.
 
-M-4: `search --provider youtube --shot abertura` num beat que só permite NASA era
+`search --provider youtube --shot abertura` num beat que só permite NASA era
 aceito calado, e o candidato ficava ligado ao beat como se a fonte fosse permitida.
 """
 

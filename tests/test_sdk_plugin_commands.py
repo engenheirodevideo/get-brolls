@@ -139,7 +139,7 @@ class PluginCommandLoggingTests(LoaderTestCase):
 
 
 class ArgParsingNeverEchoesTheValueTests(unittest.TestCase):
-    """Fix round 1, item 2: `--arg` inválido nunca ecoa o par bruto nem o valor —
+    """`--arg` inválido nunca ecoa o par bruto nem o valor —
     um `--arg` digitado errado (sem `--arg`, ou como `=valor`) pode carregar um
     segredo colado onde a chave deveria estar."""
 
@@ -164,7 +164,7 @@ class ArgParsingNeverEchoesTheValueTests(unittest.TestCase):
 
 
 class PluginNameValidationTests(unittest.TestCase):
-    """Fix round 1, item 3: id/nome fora do charset `^[a-z][a-z0-9_]{1,31}$` são
+    """Id/nome fora do charset `^[a-z][a-z0-9_]{1,31}$` são
     recusados ANTES de `get_registry()` — que monta o registro de plugins
     habilitados e roda `register()` de verdade na primeira consulta do processo."""
 
@@ -345,7 +345,7 @@ def register(api):
 
 
 class PluginFailureIsolationTests(LoaderTestCase):
-    """Fix round 1, items 1/4/5: `__str__` hostil, SystemExit e retorno não
+    """`__str__` hostil, SystemExit e retorno não
     serializável (gerador, NaN) nunca escapam cru — isolados num plugin próprio
     (`isola`) para não mexer nas asserções já existentes de `COMMAND_MANIFEST`."""
 
@@ -392,7 +392,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         self.assertIn("objeto JSON", str(ctx.exception))
 
     def test_dict_result_raising_system_exit_during_serialization_is_isolated(self):
-        # Fix round 2, item A: o round-trip de JSON (não só a chamada do handler)
+        # O round-trip de JSON (não só a chamada do handler)
         # também precisa isolar BaseException de código de terceiro — aqui, o
         # `.items()` de um dict de terceiro rodando durante `json.dumps`.
         pin_plugins("isola")
@@ -401,7 +401,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         self.assertIn("objeto JSON", str(ctx.exception))
 
     def test_dict_result_raising_runtime_error_during_serialization_hides_the_message(self):
-        # Fix round 2, item A: a mensagem nunca ecoa o texto da exceção de terceiro.
+        # A mensagem nunca ecoa o texto da exceção de terceiro.
         pin_plugins("isola")
         with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
             plugin_commands.run(self.args("dict_runtime"))
@@ -410,7 +410,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         self.assertNotIn("SEGREDO2", message)
 
     def test_metaclass_name_raising_system_exit_never_runs_the_hostile_property(self):
-        # Fix round 2, item B: `type(exc).__name__` pode rodar código do plugin
+        # `type(exc).__name__` pode rodar código do plugin
         # (metaclasse com `__name__` como property); a leitura segura lê o
         # descritor cru de `type` — nunca invoca a property hostil, então o
         # `SystemExit` dela nunca dispara, e o nome verdadeiro (não a mensagem
@@ -432,7 +432,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         self.assertNotIn("nao-deveria-aparecer", joined)
 
     def test_metaclass_name_returning_arbitrary_text_is_not_trusted(self):
-        # Fix round 2, item B: a leitura segura nunca invoca a property da
+        # A leitura segura nunca invoca a property da
         # metaclasse — o texto arbitrário que ela devolveria ("SEGREDO3") nunca
         # chega à mensagem; o nome verdadeiro do tipo aparece em vez dele.
         pin_plugins("isola")
@@ -443,7 +443,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         self.assertIn("ExcMetaLeak", message)
 
     def test_base_exception_subclass_never_escapes_raw(self):
-        # Fix round 2, item C: uma classe que herda BaseException direto (não
+        # Uma classe que herda BaseException direto (não
         # Exception, não SystemExit) não pode escapar como traceback cru.
         pin_plugins("isola")
         with (
@@ -461,7 +461,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         self.assertIn("error=Fugitiva", joined)
 
     def test_oversized_result_is_refused(self):
-        # Fix round 2, item D + fix round 3, item D2: um resultado maior que o
+        # Um resultado maior que o
         # teto de JSON é recusado, não escrito por inteiro em stdout/diagnostics
         # — e a mensagem é a exata (a conta antiga `1_000_000 // (1024*1024)`
         # dava "> 0 MB"; o teto agora é um múltiplo exato de 1024*1024).
@@ -474,7 +474,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         )
 
     def test_deeply_nested_result_is_refused_by_depth_not_size(self):
-        # Fix round 3, item D1: aninhamento estreito e profundo (200 níveis)
+        # Aninhamento estreito e profundo (200 níveis)
         # cabe fácil sob o teto de tamanho compacto, mas explodiria ao ser
         # indentado (o que a CLI de fato escreve) — o teto de profundidade
         # recusa isso rápido, sem nunca montar a saída grande.
@@ -487,7 +487,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         )
 
     def test_class_name_that_is_a_str_subclass_raising_system_exit_falls_back(self):
-        # Fix round 3, item B: `isinstance(name, str)` aceita uma SUBCLASSE de
+        # `isinstance(name, str)` aceita uma SUBCLASSE de
         # str — CPython guarda essa instância como o nome real da classe. Uma
         # subclasse hostil sobrescrevendo __format__ não pode disparar (exit 0
         # silencioso) nem ser repetida: `type(name) is not str` cai no fallback
@@ -509,7 +509,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         self.assertNotIn("nao-deveria-aparecer", joined)
 
     def test_class_name_that_is_a_str_subclass_returning_arbitrary_text_is_not_trusted(self):
-        # Fix round 3, item B: mesma proteção quando o __format__ hostil não
+        # Mesma proteção quando o __format__ hostil não
         # levanta, só devolve texto diferente ("SEGREDO7") — também nunca chega
         # à mensagem/log; o fallback seguro aparece em vez dele.
         pin_plugins("isola")
@@ -520,7 +520,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         self.assertIn("Exception", message)
 
     def test_generator_exit_from_handler_is_converted_not_propagated(self):
-        # Fix round 3, item E: só KeyboardInterrupt continua propagando;
+        # Só KeyboardInterrupt continua propagando;
         # GeneratorExit de um handler (que não é chamado como gerador aqui)
         # também vira ValueError, não um traceback cru.
         pin_plugins("isola")

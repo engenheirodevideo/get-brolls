@@ -1,36 +1,31 @@
 """`plugins install/update`: pasta ou git, dois passos, origem e commit no plugins.json.
 
-Cobre também as duas rodadas de correções de segurança:
+Cobre também o endurecimento de segurança:
 
-- Round 1: nunca fazer `checkout` de git (I1), link simbólico recusado no
-  conteúdo materializado, não na origem (I2), `--yes` exige `--expect <sha256>`
-  batendo com a prévia (I3), manifesto validado e árvore limitada antes de
-  copiar/clonar tudo (I4), `plugins.json` corrompido recusa antes de qualquer
-  mutação (M1), troca de pasta do `update` desfaz se a segunda metade falhar
-  (M2), `update` não liga de volta um plugin desabilitado (M3), variáveis de
-  ambiente perigosas do git são removidas e SSH usa `BatchMode` (M4 — refinado
-  no round 2), e URL git com query/fragmento é recusada (M5).
-- Round 2: tamanho do blob checado (via `ls-tree -l`) antes de qualquer
-  `cat-file`, inclusive na passada cedo do manifesto (N1); TODA variável
-  `GIT_*` é removida do ambiente do git, não só uma lista fixa, e o
-  `GIT_SSH_COMMAND` de reserva só entra sem override nenhum da pessoa (M4,
-  revisado no round 3); a varredura de pasta de resto não apaga a única cópia
-  de um plugin e ignora pasta jovem demais pra ser resto de verdade (N2,
-  revisado no round 3); caminho com componente `.git` é recusado e uma colisão
-  de nome (maiúsc./minúsc.) vira `ValueError` claro em vez de um `OSError` cru
-  (N3, revisado no round 3).
-- Round 3: colisão de nome detectada direto da listagem do `ls-tree`
-  (casefold), sem depender do disco de destino distinguir caixa — antes só uma
-  escrita real colidindo no disco disparava o erro, o que passava batido num
-  disco case-sensitive (Linux/CI); também recusa alias de `.git` no Windows
-  (ponto/espaço sobrando, nome curto 8.3 `GIT~1`) (N3); o epoch de criação vai
-  no NOME da pasta de staging (`.install-<epoch>-<uuid>`,
+- Nunca fazer `checkout` de git; link simbólico recusado no conteúdo
+  materializado, não na origem; `--yes` exige `--expect <sha256>` batendo com a
+  prévia; manifesto validado e árvore limitada antes de copiar/clonar tudo;
+  `plugins.json` corrompido recusa antes de qualquer mutação; a troca de pasta
+  do `update` desfaz se a segunda metade falhar; `update` não liga de volta um
+  plugin desabilitado; URL git com query/fragmento é recusada.
+- Tamanho do blob checado (via `ls-tree -l`) antes de qualquer `cat-file`,
+  inclusive na passada cedo do manifesto; TODA variável `GIT_*` é removida do
+  ambiente do git, não só uma lista fixa, e o `GIT_SSH_COMMAND` de reserva (SSH
+  em `BatchMode`) só entra sem override nenhum da pessoa; a varredura de pasta
+  de resto não apaga a única cópia de um plugin e ignora pasta jovem demais pra
+  ser resto de verdade; caminho com componente `.git` é recusado e uma colisão
+  de nome (maiúsc./minúsc.) vira `ValueError` claro em vez de um `OSError` cru.
+- Colisão de nome detectada direto da listagem do `ls-tree` (casefold), sem
+  depender do disco de destino distinguir caixa — uma escrita real colidindo no
+  disco passaria batido num disco case-sensitive (Linux/CI); também recusa alias
+  de `.git` no Windows (ponto/espaço sobrando, nome curto 8.3 `GIT~1`); o epoch
+  de criação vai no NOME da pasta de staging (`.install-<epoch>-<uuid>`,
   `.old-<epoch>-<id>-<uuid>`) em vez de `st_mtime` (que `os.replace`/
   `shutil.copytree` preservam do conteúdo de origem, fazendo uma pasta nova
   parecer velha), e nenhum erro de sistema de arquivos na varredura aborta
-  quem chamou `install`/`update` (N2); mais `GIT_SSL_CAINFO`/`GIT_SSL_CAPATH`/
+  quem chamou `install`/`update`; mais `GIT_SSL_CAINFO`/`GIT_SSL_CAPATH`/
   `GIT_SSH_VARIANT` preservados depois da limpeza de `GIT_*`, e
-  `_has_core_ssh_command` usa `--includes` (M4).
+  `_has_core_ssh_command` usa `--includes`.
 """
 
 import atexit
@@ -65,7 +60,7 @@ def write_plugin(folder, manifest=MANIFEST, code=PLUGIN_CODE):
 # O git dos TESTES (montar o repositório de origem) não pode herdar o config de
 # quem roda a suíte: `commit.gpgsign=true` pediria senha/agente e um hook global
 # poderia falhar ou travar o commit. Config global vazio, sem config de sistema,
-# sem hooks e sem assinatura (Minor 13). O git do PRODUTO tem o próprio isolamento
+# sem hooks e sem assinatura. O git do PRODUTO tem o próprio isolamento
 # (`install._git_env`), que estes testes exercitam à parte.
 _EMPTY_GITCONFIG_FD, _EMPTY_GITCONFIG = tempfile.mkstemp(prefix="gb-test-gitconfig-")
 os.close(_EMPTY_GITCONFIG_FD)
@@ -130,7 +125,7 @@ class InstallTestCase(LoaderTestCase):
 class FolderInstallTests(InstallTestCase):
     def test_install_from_a_folder_is_two_steps(self):
         source = write_plugin(self.work / "demo_src")
-        # Bytecode na origem agora é recusado (B-03, test_sdk_pin_integrity); aqui só o caminho feliz.
+        # Bytecode na origem agora é recusado (test_sdk_pin_integrity); aqui só o caminho feliz.
         preview = run_cli("plugins", "--action", "install", "--source", source, env=self.env())
         self.assertFalse(preview["installed"])
         self.assertEqual("demo", preview["plugin"]["id"])
@@ -214,7 +209,7 @@ class FolderInstallTests(InstallTestCase):
         with self.assertRaises(ValueError):
             loader.read_state()
 
-    # -- I3: --yes exige --expect batendo com o sha256 da prévia -----------------
+    # -- --yes exige --expect batendo com o sha256 da prévia -----------------
 
     def test_yes_needs_a_matching_expect(self):
         source = write_plugin(self.work / "demo_src")
@@ -242,7 +237,7 @@ class FolderInstallTests(InstallTestCase):
         done = run_cli("plugins", "--action", "install", "--source", source, "--yes", "--expect", sha, env=self.env())
         self.assertTrue(done["installed"])
 
-    # -- I4: manifesto validado e árvore limitada antes de copiar tudo ------------
+    # -- Manifesto validado e árvore limitada antes de copiar tudo ------------
 
     def test_install_refuses_a_source_over_the_file_cap(self):
         source = write_plugin(self.work / "demo_src")
@@ -252,7 +247,7 @@ class FolderInstallTests(InstallTestCase):
         self.assertIn("arquivos", str(ctx.exception))
         self.assertFalse((self.home / "plugins" / "demo").exists())
 
-    # -- M1: plugins.json corrompido recusa antes de qualquer mutação ------------
+    # -- Plugins.json corrompido recusa antes de qualquer mutação ------------
 
     def test_install_refuses_up_front_when_plugins_json_is_corrupt(self):
         source = write_plugin(self.work / "demo_src")
@@ -263,7 +258,7 @@ class FolderInstallTests(InstallTestCase):
         plugins_dir = self.home / "plugins"
         self.assertEqual([], [p.name for p in plugins_dir.iterdir()] if plugins_dir.exists() else [])
 
-    # -- M2: troca do update desfaz se a segunda metade falhar --------------------
+    # -- Troca do update desfaz se a segunda metade falhar --------------------
 
     def test_update_restores_the_retired_folder_if_the_swap_fails(self):
         source = write_plugin(self.work / "demo_src")
@@ -293,7 +288,7 @@ class FolderInstallTests(InstallTestCase):
     def test_stale_staging_dirs_are_swept_at_the_start(self):
         source = write_plugin(self.work / "demo_src")
         (self.home / "plugins").mkdir(parents=True, exist_ok=True)
-        # N2 (round 3): a idade vem do epoch codificado no NOME, não do
+        # A idade vem do epoch codificado no NOME, não do
         # `st_mtime` — por isso o nome já nasce com um epoch antigo, sem
         # precisar de `os.utime`.
         old_epoch = int(time.time()) - (install_mod.STALE_STAGING_MAX_AGE_S + 60)
@@ -309,7 +304,7 @@ class FolderInstallTests(InstallTestCase):
         self.assertFalse(stale_install.exists())
         self.assertFalse(stale_old.exists())
 
-    # -- M3: update não liga de volta um plugin desabilitado ----------------------
+    # -- Update não liga de volta um plugin desabilitado ----------------------
 
     def test_update_keeps_a_disabled_plugin_disabled(self):
         source = write_plugin(self.work / "demo_src")
@@ -328,10 +323,10 @@ class FolderInstallTests(InstallTestCase):
         self.assertEqual("disabled", loader.inventory()[0]["status"])
         self.assertEqual("0.2.0", loader.inventory()[0]["version"])
 
-    # -- M4: TODA variável GIT_* é removida; SSH em BatchMode só sem override ----
+    # -- TODA variável GIT_* é removida; SSH em BatchMode só sem override ----
 
     def test_git_env_strips_every_git_star_var(self):
-        # Inclui as originais (round 1) e as que vazam config/paths de outro
+        # Inclui as de sempre e as que vazam config/paths de outro
         # repositório sem serem um `GIT_DIR`/`GIT_WORK_TREE` explícito.
         poison = {
             "GIT_DIR": "/tmp/x",
@@ -391,7 +386,7 @@ class FolderInstallTests(InstallTestCase):
         self.assertNotIn("GIT_SSH", env5)
 
     def test_safe_git_env_vars_survive_the_git_star_cleanup(self):
-        # M4 (round 3): GIT_SSL_CAINFO/GIT_SSL_CAPATH não redirecionam o git pra
+        # GIT_SSL_CAINFO/GIT_SSL_CAPATH não redirecionam o git pra
         # outro repositório/config — são a CA que um proxy corporativo ou registro
         # interno exige; removê-las sem repor quebraria um clone HTTPS legítimo.
         safe = {"GIT_SSL_CAINFO": "/etc/ssl/corp-ca.pem", "GIT_SSL_CAPATH": "/etc/ssl/corp-certs"}
@@ -441,7 +436,7 @@ class FolderInstallTests(InstallTestCase):
         self.assertIn("--includes", recorded["args"])
         self.assertIn("core.sshCommand", recorded["args"])
 
-    # -- N3: caminho com componente ".git" é recusado (checagem unitária) -------
+    # -- Caminho com componente ".git" é recusado (checagem unitária) -------
 
     def test_refuse_git_path_component_is_case_insensitive(self):
         for bad in (
@@ -449,7 +444,7 @@ class FolderInstallTests(InstallTestCase):
             ".git/evil",
             "sub/.GIT/x",
             "a/b/.Git/c",
-            # N3 (round 3): variantes que o Windows normaliza pra ".git" de
+            # Variantes que o Windows normaliza pra ".git" de
             # verdade ao gravar em disco (ponto/espaço sobrando à direita), e o
             # nome curto 8.3 que o NTFS pode resolver como alias de ".git".
             "sub/.git./evil",
@@ -463,7 +458,7 @@ class FolderInstallTests(InstallTestCase):
         install_mod._refuse_git_path_component("normal/path/plugin.py")  # não levanta
         install_mod._refuse_git_path_component("gita/evil")  # prefixo, não é ".git": não levanta
 
-    # -- N2: varredura de resto não apaga a única cópia de um plugin -------------
+    # -- Varredura de resto não apaga a única cópia de um plugin -------------
 
     def test_sweep_restores_the_old_folder_when_the_current_one_is_missing(self):
         source = write_plugin(self.work / "demo_src")
@@ -490,7 +485,7 @@ class FolderInstallTests(InstallTestCase):
         self.assertTrue(fresh_install.exists())
 
     def test_young_old_dir_is_not_swept_even_if_its_content_mtime_is_old(self):
-        # N2 (round 3): a idade vem só do epoch no NOME. Um `.old-*` recém-criado
+        # A idade vem só do epoch no NOME. Um `.old-*` recém-criado
         # (epoch de agora) tem que ficar intocado mesmo que o CONTEÚDO dentro dele
         # (e a própria pasta) carreguem um `st_mtime` antigo — exatamente o que
         # `os.replace`/`shutil.copytree` fariam com o conteúdo de um plugin
@@ -619,7 +614,7 @@ class GitInstallTests(InstallTestCase):
         self.assertEqual(["demo"], [p.name for p in (self.home / "plugins").iterdir()])
         self.assertEqual("enabled", loader.inventory()[0]["status"])
 
-    # -- I1: filtro git (smudge) nunca roda, com ou sem --yes ---------------------
+    # -- Filtro git (smudge) nunca roda, com ou sem --yes ---------------------
 
     def test_git_filter_smudge_never_runs(self):
         repo = self.repo()
@@ -627,7 +622,7 @@ class GitInstallTests(InstallTestCase):
         git(repo, "add", ".gitattributes")
         git(repo, "commit", "--quiet", "-m", "gitattributes")
 
-        # M4 (round 2) faz `_git_env` remover TODA variável `GIT_*` — inclusive
+        # `_git_env` remove TODA variável `GIT_*` — inclusive
         # `GIT_CONFIG_GLOBAL` — do que chega ao subprocesso git. Por isso o config
         # malicioso não pode ser injetado por essa variável (o próprio código a
         # apaga de propósito); em vez disso vai pelo `HOME`, que não é `GIT_*` e é
@@ -659,7 +654,7 @@ class GitInstallTests(InstallTestCase):
         self.assertFalse(marker.exists())
         self.assertEqual(PLUGIN_CODE, (self.home / "plugins" / "demo" / "plugin.py").read_text(encoding="utf-8"))
 
-    # -- I2: link simbólico commitado e depois apagado do worktree local ---------
+    # -- Link simbólico commitado e depois apagado do worktree local ---------
 
     @unittest.skipIf(os.name == "nt", "symlink exige privilégio no Windows")
     def test_symlink_committed_then_removed_from_worktree_is_still_refused(self):
@@ -674,7 +669,7 @@ class GitInstallTests(InstallTestCase):
         self.assertIn("link simbólico", err["error"])
         self.assertFalse((self.home / "plugins" / "demo").exists())
 
-    # -- I4 (git): árvore limitada antes de materializar tudo ---------------------
+    # -- git: árvore limitada antes de materializar tudo ---------------------
 
     def test_install_from_git_refuses_over_the_file_cap(self):
         repo = self.repo()
@@ -682,7 +677,7 @@ class GitInstallTests(InstallTestCase):
             install_mod.install(str(repo), confirm=False)
         self.assertIn("arquivos", str(ctx.exception))
 
-    # -- N1: tamanho do blob checado (via ls-tree -l) antes de qualquer cat-file -
+    # -- Tamanho do blob checado (via ls-tree -l) antes de qualquer cat-file -
 
     def test_git_oversized_blob_is_refused_without_reading_its_content(self):
         repo = self.repo()
@@ -710,10 +705,10 @@ class GitInstallTests(InstallTestCase):
             install_mod.install(str(repo), confirm=False)
         self.assertIn("MB", str(ctx.exception))
 
-    # -- N3: caminho ".git" e colisão de nome no histórico git -------------------
+    # -- Caminho ".git" e colisão de nome no histórico git -------------------
 
     def test_git_tree_name_collision_becomes_a_clear_value_error(self):
-        # N3 (round 3): a colisão é detectada direto da listagem do `ls-tree`
+        # A colisão é detectada direto da listagem do `ls-tree`
         # (casefold dos caminhos), não da escrita real em disco — por isso este
         # teste vale em qualquer sistema de arquivos, incluindo um disco
         # case-sensitive (ubuntu-latest/CI Linux), onde a versão anterior deste
@@ -753,7 +748,7 @@ class GitInstallTests(InstallTestCase):
         self.assertIn("colidem", err["error"])
         self.assertFalse((self.home / "plugins" / "demo").exists())
 
-    # -- M5: URL git com query/fragmento é recusada -------------------------------
+    # -- URL git com query/fragmento é recusada -------------------------------
 
     def test_git_url_with_query_or_fragment_is_refused(self):
         for source in ("https://example.com/demo.git?token=segredo", "git@example.com:demo.git#ref"):

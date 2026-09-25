@@ -1,5 +1,5 @@
-"""C M-8: `print` de plugin nunca corrompe o JSON do stdout da CLI.
-B-10: uma subclasse de KeyboardInterrupt levantada pelo plugin é falha dele."""
+"""`print` de plugin nunca corrompe o JSON do stdout da CLI.
+Uma subclasse de KeyboardInterrupt levantada pelo plugin é falha dele."""
 
 import json
 import os

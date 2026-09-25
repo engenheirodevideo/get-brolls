@@ -1,6 +1,5 @@
-"""Lows da revisão completa: B-15 (prévia do enable lista arquivos), B-16 (valor do
-settings.json nunca aparece em mensagem), C L-1/L-4/L-10/L-12 (textos que apontam
-o conserto certo)."""
+"""Ajustes pequenos: a prévia do enable lista arquivos, o valor do settings.json nunca
+aparece em mensagem e os textos apontam o conserto certo."""
 
 import json
 import os
@@ -48,7 +47,7 @@ def register(api):
 """
 
 
-class LowFixesTests(LoaderTestCase):
+class SmallFixesTests(LoaderTestCase):
     def test_settings_json_value_never_reaches_the_message(self):
         self.install({**MANIFEST, "contributes": {"providers": ["demo"]}}, CONFIG_LEAK_PLUGIN)
         data = self.home / "plugin-data" / "demo"
@@ -95,7 +94,7 @@ if __name__ == "__main__":
 
 
 class ResolvedRootBreadthTests(unittest.TestCase):
-    """B-09: raiz de `permissions.paths` que, resolvida, é a pasta pessoal, uma pasta
+    """Raiz de `permissions.paths` que, resolvida, é a pasta pessoal, uma pasta
     acima dela ou a raiz do disco não vale — mesmo passando pela checagem de texto."""
 
     def api(self, paths):

@@ -141,7 +141,7 @@ def route_name(candidate):
 
 
 def candidate_arg(candidate):
-    """Id do candidato pronto para um comando sugerido (B-06): candidato de plugin vai
+    """Id do candidato pronto para um comando sugerido: candidato de plugin vai
     por `shlex.quote` quando tem caractere inseguro; fonte embutida sai como sempre."""
     from .providers import BUILTIN_CAPABILITIES
 
@@ -334,15 +334,15 @@ def route_consumed_message(candidate, consumed_at):
 
 
 def fetch_routed_source(ledger, candidate, reacquire=False):
-    """O arquivo da rota de `fetch`, trazido uma única vez (RT-07).
+    """O arquivo da rota de `fetch`, trazido uma única vez.
 
     A rota consome licença ou cota: o arquivo verificado vai para o cache privado
     `.getbrolls-sources/` (índice por candidato + sha, chave separada da mídia de
     trabalho) e a licença fica guardada junto — ANTES de devolver, então qualquer
     recusa posterior (extensão de imagem, corte, cópia) não perde esse registro.
     Um `fetch` que falha depois é repetido e reaproveita esse arquivo — a rota não
-    é chamada de novo (Minor 9: a extensão da imagem roteada só é conferida por
-    quem chama, depois que o cache e a licença já foram gravados)."""
+    é chamada de novo (a extensão da imagem roteada só é conferida por quem chama,
+    depois que o cache e a licença já foram gravados)."""
     cache = ledger.root.parent / ".getbrolls-sources"
     _ensure_private_cache_dir(cache)
     reused = _reuse_fetched(cache, candidate)
@@ -350,7 +350,7 @@ def fetch_routed_source(ledger, candidate, reacquire=False):
         return reused
     consumed_at = (candidate.get("acquisition") or {}).get("route_consumed_at")
     if consumed_at and not reacquire:
-        # B-05: licença já consumida e cache perdido (pasta apagada, projeto movido):
+        # Licença já consumida e cache perdido (pasta apagada, projeto movido):
         # nunca chama a rota de novo sem o `--reacquire` explícito.
         logs.event(log, logging.WARNING, "route_refused", candidate=candidate["id"], reason="license_consumed")
         raise ValueError(route_consumed_message(candidate, consumed_at))

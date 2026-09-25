@@ -177,9 +177,8 @@ class HttpDownloadTests(unittest.TestCase):
         self.assertIn("quota exceeded for this key", str(caught.exception))
 
     def test_get_json_403_body_is_still_echoed_for_a_builtin_style_call_with_headers(self):
-        """Rodada 3 (controller ruling): o gate depende só de `quiet_errors` — um
-        parâmetro explícito que só o SDK seta — nunca de `headers` estar presente.
-        `sem plugins, saída idêntica` é uma restrição vinculante: um provider
+        """O gate depende só de `quiet_errors` — um parâmetro explícito que só o SDK
+        seta — nunca de `headers` estar presente. Sem plugins, a saída não muda: um provider
         built-in que manda header (ex.: Pexels com `Authorization`) e não passa
         `quiet_errors` mantém a mensagem de sempre, corpo incluído."""
         body = b'{"error":"forbidden","fake_key":"AKIAFAKESEGREDOCHAVE"}'
@@ -367,7 +366,7 @@ class PluginDownloadTests(LoaderTestCase):
                 api.download("https://demo.example/files/1", "a.mp4", {name: "evil.example"})
 
     def test_invalid_header_name_never_echoes_the_name(self):
-        """Rodada 2 (A): um nome de header inválido pode carregar o cabeçalho inteiro
+        """Um nome de header inválido pode carregar o cabeçalho inteiro
         contrabandeado ali dentro (`{"Authorization: Bearer <segredo>": ""}` tem nome
         com ':' e espaço, então falha no regex de token) — a mensagem não pode ecoar
         esse `name`, nem em posição de causa/contexto."""
@@ -382,7 +381,7 @@ class PluginDownloadTests(LoaderTestCase):
         _assert_secret_absent_everywhere(self, caught.exception, "segredo-vazado")
 
     def test_header_value_out_of_latin1_never_leaks_via_context(self):
-        """Rodada 2 (B): a checagem de latin-1 não pode usar
+        """A checagem de latin-1 não pode usar
         `try/except UnicodeEncodeError` — o `UnicodeEncodeError` do stdlib inclui o
         valor no próprio `repr`, e isso sobrevive em `exc.__context__` mesmo com
         `raise ... from None` (só `__cause__`/`__suppress_context__` são limpos)."""
@@ -397,7 +396,7 @@ class PluginDownloadTests(LoaderTestCase):
         _assert_secret_absent_everywhere(self, caught.exception, "segredo-")
 
     def test_other_control_characters_in_header_value_are_rejected(self):
-        """Rodada 2 (B): não só `\\r`/`\\n`/NUL — todo `0x01`-`0x1f` e `0x7f` (DEL)."""
+        """Não só `\\r`/`\\n`/NUL — todo `0x01`-`0x1f` e `0x7f` (DEL)."""
         api = self.api()
         for bad_char in ("\x01", "\x1f", "\x7f"):
             with (
@@ -409,7 +408,7 @@ class PluginDownloadTests(LoaderTestCase):
                 api.download("https://demo.example/files/1", "a.mp4", {"X-Api-Key": f"segredo{bad_char}fim"})
 
     def test_get_json_through_the_plugin_path_always_drops_the_error_body(self):
-        """Rodada 3: `PluginApi.get_json` sempre passa `quiet_errors=True` para o core
+        """`PluginApi.get_json` sempre passa `quiet_errors=True` para o core
         — diferente de um provider built-in, que nunca seta esse parâmetro e mantém a
         mensagem de sempre (ver `HttpDownloadTests` para o lado built-in)."""
         api = self.api()

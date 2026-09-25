@@ -36,7 +36,7 @@ def no_brief_state(**counts):
 
 
 class NoBriefFollowsTheRealStage(unittest.TestCase):
-    """M-1: sem BRIEF.md, `do` repetia "Antes de buscar..." até depois da entrega."""
+    """Sem BRIEF.md, `do` repetia "Antes de buscar..." até depois da entrega."""
 
     def test_an_empty_project_still_starts_with_the_brief(self):
         action = next_action(no_brief_state())
@@ -62,7 +62,7 @@ class NoBriefFollowsTheRealStage(unittest.TestCase):
         self.assertEqual("deliver", next_action(state)["step"])
 
     def test_a_preview_waiting_for_a_decision_outranks_the_missing_brief(self):
-        """I-3: decisão humana pendente ganha, como em todo o resto da escada."""
+        """Decisão humana pendente ganha, como em todo o resto da escada."""
         action = next_action(no_brief_state(candidates=3, previews=1, pending=1))
         self.assertEqual("approve", action["step"])
         self.assertTrue(action["blocking_human"])
@@ -121,7 +121,7 @@ def with_brief_state(**counts):
 
 
 class ApprovedItemsComeBeforeLeftoverPreviews(unittest.TestCase):
-    """M-2: depois do `approve`, o próximo passo pedia prévia dos candidatos que sobraram."""
+    """Depois do `approve`, o próximo passo pedia prévia dos candidatos que sobraram."""
 
     DOWNSTREAM: tuple[tuple[str, dict[str, int], int], ...] = (
         ("permit", {"approved": 1}, 0),

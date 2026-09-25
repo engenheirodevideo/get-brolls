@@ -53,15 +53,14 @@ SECRET_NAMES = {
 
 def _normalize_key(name):
     """`name` em minúsculas, sem "-"/"_"/espaço/qualquer separador — para comparar
-    `access_token`, `accessToken` e `X-Api-Key` como o MESMO nome. A primeira
-    versão do M1 só casava snake_case exato e deixava passar `accessToken`,
-    `x-api-key`, `aws_secret_access_key`, `x-amz-security-token`, `jwt` e
-    `credentials` (achado do review): formato real de API não é sempre
-    snake_case."""
+    `access_token`, `accessToken` e `X-Api-Key` como o MESMO nome. Casar só
+    snake_case exato deixaria passar `accessToken`, `x-api-key`,
+    `aws_secret_access_key`, `x-amz-security-token`, `jwt` e `credentials`:
+    formato real de API não é sempre snake_case."""
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
-# M1 (fix round 2, achado do review): nome de chave de JSON descartado só no
+# Nome de chave de JSON descartado só no
 # scrub estrito (`_scrub(strict=True)`, só o caminho de plugin), além de
 # `SECRET_NAMES` acima (que já vale para todo mundo). Cada item aqui é usado com
 # `str.endswith` sobre `_normalize_key(k)`, o que cobre IGUALDADE exata (o nome
@@ -122,7 +121,7 @@ def public_url(url, allow_signed=False, strict=False):
     drops any query name that ends in a secret word (`runtime.SECRET_NAME_RE`); the
     built-in paths keep the 2.5.0 filter — exact `SECRET_NAMES` plus S3/GCS
     signatures — so a TikTok `x-signature`, an Instagram `ig_cache_key` or a
-    `page_token`/`sort_key` query from a built-in source survives as before (A I1).
+    `page_token`/`sort_key` query from a built-in source survives as before.
     """
     if not isinstance(url, str):
         return None
@@ -254,7 +253,7 @@ def _scrub(value, keep_signed=False, strict=False):
     (`STRICT_JSON_SECRET_KEY_MARKERS`: `refresh_token`/`refreshToken`,
     `client_secret`, `x-api-key`, `aws_secret_access_key`, `password`...), não só
     os nomes exatos de `SECRET_NAMES`. Chave de paginação/id (`next_page_token`,
-    `sort_key`, `cursor_key`, `cursor`...) não é credencial e sobrevive (M1)."""
+    `sort_key`, `cursor_key`, `cursor`...) não é credencial e sobrevive."""
     if isinstance(value, dict):
         return {
             k: _scrub(v, keep_signed, strict)

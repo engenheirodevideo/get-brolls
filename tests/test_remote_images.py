@@ -170,7 +170,7 @@ class RemoteImageFlowBase(unittest.TestCase):
 
 
 class CommonsImageRefreshTests(unittest.TestCase):
-    """BUG-02: o `refresh` do Commons só aceitava `video/*`, e a foto nunca era coletada."""
+    """O `refresh` do Commons só aceitava `video/*`, e a foto nunca era coletada."""
 
     def _item(self, kind):
         item = providers.candidate("commons", "11901243", "File:FullMoon2010.jpg", "https://commons.wikimedia.org/x")
@@ -208,7 +208,7 @@ class CommonsImageFetchTests(RemoteImageFlowBase):
 
 
 class RemoteImagePreviewTests(RemoteImageFlowBase):
-    """BUG-01: `preview` de imagem remota sem intervalo morria em `TypeError`."""
+    """`preview` de imagem remota sem intervalo morria em `TypeError`."""
 
     def assert_static_preview(self, provider, preset):
         item = self.found(provider)
@@ -239,7 +239,7 @@ class RemoteImagePreviewTests(RemoteImageFlowBase):
 
 
 class RemoteImageExtensionTests(RemoteImageFlowBase):
-    """BUG-03: a foto coletada sem prévia local saía como `.part` em `clips/` e `entrega/`."""
+    """A foto coletada sem prévia local saía como `.part` em `clips/` e `entrega/`."""
 
     def collect_reference_only(self, provider="nasa"):
         item = self.found(provider)
@@ -345,7 +345,7 @@ class ApprovedPhotoBytesTests(RemoteImageFlowBase):
 
 
 class RemoteImageGuidanceTests(RemoteImageFlowBase):
-    """BUG-04: `status` mandava inspecionar a foto para sempre; `inspect` e `--scan` não saíam do lugar."""
+    """`status` mandava inspecionar a foto para sempre; `inspect` e `--scan` não saíam do lugar."""
 
     COVERED: ClassVar[dict] = {"beats": 1, "covered": 1, "missing": [], "blocked": [], "conflicts": []}
 

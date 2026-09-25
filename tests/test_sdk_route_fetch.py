@@ -1,9 +1,9 @@
 """Rota de `fetch`: licença consumida uma vez só, estágio visível para status/guidance e CLI de inspect.
 
-RT-07/Minor 10 (arquivo da rota vai para o cache privado, licença e marcador gravados
-antes do corte, retry reaproveita), Minor 8 (status nunca manda inspecionar nem gerar
-prévia com intervalo de uma fonte que só entrega no fetch), Minor 9 (extensão da
-imagem roteada), Minor 11 (um teto só) e Minor 15 (inspect --candidate/--url na CLI).
+Arquivo da rota vai para o cache privado, licença e marcador gravados antes do corte,
+retry reaproveita; status nunca manda inspecionar nem gerar prévia com intervalo de uma
+fonte que só entrega no fetch; extensão da imagem roteada; um teto só; e
+`inspect --candidate/--url` na CLI.
 """
 
 import json
@@ -45,7 +45,7 @@ class Fonte:
 
     def item(self):
         item = self.api.candidate("demo", "1", "Demo", "https://demo.example/v/1")
-        item["preview"]["embed_url"] = "https://demo.example/embed/1"  # C M-7: algo para a pessoa ver
+        item["preview"]["embed_url"] = "https://demo.example/embed/1"  # algo para a pessoa ver
         item["media"]["kind"] = KIND
         if KIND == "video":
             item["media"]["duration_s"] = float(os.environ.get("DEMO_DURATION", "30"))
@@ -204,7 +204,7 @@ class RoutedImageExtensionTests(FetchRouteCase):
         self.assertEqual([], sorted((self.project / "brolls" / "clips").glob("*")))
 
     def test_unrecognized_content_does_not_call_the_route_again_on_retry(self):
-        """Minor 9: a rota já rodou e devolveu um arquivo verificado; a recusa por
+        """A rota já rodou e devolveu um arquivo verificado; a recusa por
         formato não pode custar a licença de novo a cada retry — o cache e a
         licença já foram gravados antes dessa checagem."""
         self.enable(self.image_plugin("foto.jpg"), source=self.ppm)
@@ -297,7 +297,7 @@ class LockedWorkdirCleanupTests(FetchRouteCase):
 
 
 class FetchStageGuidanceTests(FetchRouteCase):
-    """Minor 8: status/guidance mandam `preview --reference-only`, nunca inspect ou prévia com intervalo."""
+    """`status`/`guidance` mandam `preview --reference-only`, nunca inspect ou prévia com intervalo."""
 
     def test_candidate_carries_the_fetch_stage_and_guidance_recommends_reference_only(self):
         import shlex
@@ -394,7 +394,7 @@ class FetchStageGuidanceTests(FetchRouteCase):
 
 
 class InspectCliTests(FetchRouteCase):
-    """Minor 15: `inspect --candidate` e `inspect --url` recusam a rota de fetch antes de rodar o plugin."""
+    """`inspect --candidate` e `inspect --url` recusam a rota de fetch antes de rodar o plugin."""
 
     def test_inspect_candidate_and_url_are_refused_without_calling_the_plugin(self):
         self.enable()

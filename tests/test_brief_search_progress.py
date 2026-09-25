@@ -1,6 +1,6 @@
 """Busca do beat que volta vazia não vira o mesmo comando para sempre.
 
-M-3: o degrau `brief-search` sempre sugeria a primeira fonte pesquisável do beat.
+O degrau `brief-search` sempre sugeria a primeira fonte pesquisável do beat.
 Quando ela voltava sem nada, `status` repetia o comando idêntico em laço e nunca
 tentava a próxima fonte permitida. Agora a busca vazia fica registrada no projeto,
 o degrau passa para a fonte seguinte e, esgotadas todas, diz isso à pessoa.
@@ -121,7 +121,7 @@ def add_approved_item(project):
 
 
 class ExhaustedBeatWaitsForApprovedWork(unittest.TestCase):
-    """I-1: o beat esgotado não pode travar item já aprovado a caminho da entrega."""
+    """O beat esgotado não pode travar item já aprovado a caminho da entrega."""
 
     def test_an_approved_item_goes_to_permit_before_the_exhausted_question(self):
         with tempfile.TemporaryDirectory() as tmp:

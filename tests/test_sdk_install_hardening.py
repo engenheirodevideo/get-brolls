@@ -1,6 +1,6 @@
-"""Install/pin endurecidos: VCS aninhado (Minor 3 + RT-12), ":"/"\\\\" e clone separado
-(Minor 4), varredura com conferência (Minor 5), README do scaffold (Minor 6), `.git`
-que não é pasta, lista de arquivos na prévia e bytecode de plugin (notas do red-team)."""
+"""Install/pin endurecidos: VCS aninhado, ":"/"\\\\" e clone separado, varredura com
+conferência, README do scaffold, `.git` que não é pasta, lista de arquivos na prévia e
+bytecode de plugin."""
 
 import os
 import subprocess
@@ -102,12 +102,12 @@ class CountedFilesOrderTests(InstallTestCase):
         self.assertEqual(["LEIAME.md", "getbrolls-plugin.json", "plugin.py"], names)
         self.assertEqual(digest_under_case_insensitive_cmp, loader.folder_digest(folder))
 
-    def test_sub_directory_sorts_before_sibling_file_matching_the_pre_wave_posix_order(self):
-        """Review (Minor 1): ordenar pela string POSIX inteira (`rel.as_posix()`)
+    def test_sub_directory_sorts_before_sibling_file_matching_the_previous_posix_order(self):
+        """Ordenar pela string POSIX inteira (`rel.as_posix()`)
         inverteria esse par — `.` vem antes de `/` na comparação de string —, o
         que mudaria o pin no POSIX também, não só no Windows. `rel.parts` (tupla
-        por componente) reproduz a MESMA ordem que `sorted(Path...)` já dava
-        antes desta onda: `sub/x.py` antes de `sub.py`, porque a tupla compara
+        por componente) reproduz a MESMA ordem que `sorted(Path...)` sempre
+        deu: `sub/x.py` antes de `sub.py`, porque a tupla compara
         `"sub"` com `"sub.py"` primeiro (e `"sub"` é prefixo, logo "menor")."""
         folder = self.work / "sub_vs_file"
         folder.mkdir()
@@ -138,7 +138,7 @@ class LoaderVcsTests(InstallTestCase):
 
 
 class SweepTests(InstallTestCase):
-    """Minor 5: `.old-*` só volta ao lugar se o manifesto dele lê e o id bate."""
+    """`.old-*` só volta ao lugar se o manifesto dele lê e o id bate."""
 
     def stale_old(self, plugin_id):
         (self.home / "plugins").mkdir(parents=True, exist_ok=True)
@@ -188,7 +188,7 @@ class SweepTests(InstallTestCase):
 
 
 class ScaffoldReadmeTests(unittest.TestCase):
-    """Minor 6: o README gerado pelo scaffold nunca manda `--yes` sem `--expect`."""
+    """O README gerado pelo scaffold nunca manda `--yes` sem `--expect`."""
 
     def test_generated_readme_pairs_yes_with_expect(self):
         action_re = __import__("re").compile(r"--action\s+(install|update)\b")
@@ -202,7 +202,7 @@ class ScaffoldReadmeTests(unittest.TestCase):
 
 
 class BytecodeTests(InstallTestCase):
-    """Nota do red-team: plugin com módulo irmão não pode suspender a si mesmo com `__pycache__`."""
+    """Plugin com módulo irmão não pode suspender a si mesmo com `__pycache__`."""
 
     def test_two_module_plugin_stays_enabled_after_use(self):
         code = (
@@ -225,7 +225,7 @@ class BytecodeTests(InstallTestCase):
 
 
 class BytecodeOnlyWhenPluginLoadsTests(InstallTestCase):
-    """M2: `_no_bytecode()` só mexe em `sys.dont_write_bytecode` quando existe uma
+    """`_no_bytecode()` só mexe em `sys.dont_write_bytecode` quando existe uma
     linha `enabled` para carregar — antes rodava no topo de `load_enabled` mesmo
     sem plugin nenhum, desligando o cache de `.pyc` para os módulos do próprio
     core que `providers`/`search`/`doctor` importam de leve (lazy) depois, numa
@@ -251,7 +251,7 @@ class BytecodeOnlyWhenPluginLoadsTests(InstallTestCase):
 
 @unittest.skipUnless(HAS_GIT, "git required")
 class GitTestHelperIsolationTests(InstallTestCase):
-    """Minor 13: o helper `git()` dos testes ignora gpgsign e hooks do config de quem roda."""
+    """O helper `git()` dos testes ignora gpgsign e hooks do config de quem roda."""
 
     def test_helper_commit_survives_a_hostile_global_config(self):
         hooks = self.work / "hooks"

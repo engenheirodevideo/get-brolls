@@ -17,7 +17,7 @@ from getbrolls.http import ProviderError
 from getbrolls.presets import PERMIT_PRESETS
 from getbrolls.sdk.registry import reset_registry
 
-# Fix final: `demo` some do contributes.providers efetivo porque register() nunca chega
+# `demo` some do contributes.providers efetivo porque register() nunca chega
 # a chamar `api.provider(...)` — o plugin continua declarando a fonte no manifesto.
 REGISTER_RAISES = PLUGIN_CODE.replace(
     "def register(api):\n    api.provider(Fonte(api))\n",
@@ -37,7 +37,7 @@ GREEDY = PLUGIN_CODE.replace(
 )
 assert GREEDY != PLUGIN_CODE
 
-# Fix round 1 / Finding 2: tenta pré-preencher estado de revisão/local que só o
+# Tenta pré-preencher estado de revisão/local que só o
 # core pode gravar (contact_sheet_path, local_path/sha256, review, segment).
 GREEDY_STATE = PLUGIN_CODE.replace(
     '        return [self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")]',
@@ -51,7 +51,7 @@ GREEDY_STATE = PLUGIN_CODE.replace(
 )
 assert GREEDY_STATE != PLUGIN_CODE
 
-# Fix round 1 / Finding 1: search() devolve um gerador que quebra no meio.
+# `search()` devolve um gerador que quebra no meio.
 GENERATOR_THAT_RAISES = PLUGIN_CODE.replace(
     "    def search(self, query, limit, media):\n"
     '        return [self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")]\n',
@@ -63,7 +63,7 @@ GENERATOR_THAT_RAISES = PLUGIN_CODE.replace(
 )
 assert GENERATOR_THAT_RAISES != PLUGIN_CODE
 
-# Fix round 1 / Finding 1: search() não devolve lista/tupla/gerador nenhum.
+# `search()` não devolve lista/tupla/gerador nenhum.
 NON_LIST_SEARCH = PLUGIN_CODE.replace(
     "    def search(self, query, limit, media):\n"
     '        return [self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")]\n',
@@ -71,7 +71,7 @@ NON_LIST_SEARCH = PLUGIN_CODE.replace(
 )
 assert NON_LIST_SEARCH != PLUGIN_CODE
 
-# Fix final / Finding 2: search() chama sys.exit em vez de estourar uma Exception comum.
+# `search()` chama sys.exit em vez de estourar uma Exception comum.
 SEARCH_SYS_EXIT = PLUGIN_CODE.replace(
     "    def search(self, query, limit, media):\n"
     '        return [self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")]\n',
@@ -79,7 +79,7 @@ SEARCH_SYS_EXIT = PLUGIN_CODE.replace(
 )
 assert SEARCH_SYS_EXIT != PLUGIN_CODE
 
-# Fix final / Finding 5: media.duration_s vem NaN — `json.dumps` padrão deixa passar.
+# Media.duration_s vem NaN — `json.dumps` padrão deixa passar.
 NAN_MEDIA = PLUGIN_CODE.replace(
     '        return [self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")]',
     '        item = self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")\n'
@@ -173,7 +173,7 @@ class PluginProviderTests(PluginTestCase):
         self.assertIn("Fonte de URL não suportada", str(caught.exception))
 
     def test_search_on_a_failed_plugin_source_names_plugin_and_status(self):
-        """Finding 1: register() estourou, então "demo" nunca entrou no registro — a
+        """`register()` estourou, então "demo" nunca entrou no registro — a
         mensagem tem que apontar o plugin e o status real, não "fonte desconhecida"."""
         self.enable(REGISTER_RAISES)
         with self.assertRaises(ProviderError) as caught:
@@ -184,7 +184,7 @@ class PluginProviderTests(PluginTestCase):
         self.assertIn("plugins --action list", message)
 
     def test_search_on_a_suspended_plugin_source_names_plugin_and_status(self):
-        """Finding 1: pin quebrado suspende o plugin; a busca por esse nome de fonte tem
+        """Pin quebrado suspende o plugin; a busca por esse nome de fonte tem
         que dizer isso, não "fonte desconhecida"."""
         folder = self.install()
         from getbrolls.sdk import loader
@@ -234,10 +234,8 @@ class PluginProviderTests(PluginTestCase):
         args = build_parser().parse_args(["permit", "--project", ".", "--candidate", "x", "--preset", "demo"])
         self.assertEqual("demo", args.preset)
 
-    # --- Fix round 1 -----------------------------------------------------
-
     def test_plugin_cannot_preset_review_state_or_local_paths(self):
-        """Finding 2: a allowlist restringe também dentro de `preview`, e
+        """A allowlist restringe também dentro de `preview`, e
         `local_path`/`local_sha256`/`review`/`segment` nunca vêm do plugin."""
         self.enable(GREEDY_STATE)
         with self.assertLogs("getbrolls.sdk", level="WARNING") as cm:
@@ -261,7 +259,7 @@ class PluginProviderTests(PluginTestCase):
         self.assertEqual([], schema_errors(item, load_schema("candidate")))
 
     def test_generator_search_that_raises_midway_becomes_provider_error(self):
-        """Finding 1: um gerador quebrando no meio nunca deve chegar cru na CLI."""
+        """Um gerador quebrando no meio nunca deve chegar cru na CLI."""
         self.enable(GENERATOR_THAT_RAISES)
         with self.assertRaises(ProviderError) as caught, self.assertLogs("getbrolls.sdk", level="WARNING") as cm:
             providers.search("demo", "mar", 2)
@@ -271,7 +269,7 @@ class PluginProviderTests(PluginTestCase):
         self.assertIn("error=KeyError", joined)
 
     def test_search_sys_exit_becomes_provider_error(self):
-        """Finding 2: `sys.exit` dentro de `search()` (não no import) tem que passar pelo
+        """`sys.exit` dentro de `search()` (não no import) tem que passar pelo
         mesmo isolamento de `guard.rows` que qualquer outra exceção de plugin."""
         self.enable(SEARCH_SYS_EXIT)
         with self.assertRaises(ProviderError) as caught, self.assertLogs("getbrolls.sdk", level="WARNING") as cm:
@@ -280,7 +278,7 @@ class PluginProviderTests(PluginTestCase):
         self.assertIn("error=SystemExit", "\n".join(cm.output))
 
     def test_search_returning_a_non_list_becomes_provider_error(self):
-        """Finding 1: `search` devolvendo um int (não lista/tupla/gerador)."""
+        """`search` devolvendo um int (não lista/tupla/gerador)."""
         self.enable(NON_LIST_SEARCH)
         with self.assertRaises(ProviderError) as caught:
             providers.search("demo", "mar", 1)
@@ -288,7 +286,7 @@ class PluginProviderTests(PluginTestCase):
         self.assertIn("tem que devolver uma lista de candidatos", str(caught.exception))
 
     def test_nan_media_duration_becomes_provider_error(self):
-        """Finding 5: NaN/Infinity sobrevivem a um `json.dumps` padrão (não é JSON
+        """NaN/Infinity sobrevivem a um `json.dumps` padrão (não é JSON
         estrito) — o guard tem que recusar antes que isso vaze no candidato."""
         self.enable(NAN_MEDIA)
         with self.assertRaises(ProviderError) as caught:
@@ -315,7 +313,7 @@ class PluginProviderTests(PluginTestCase):
         self.assertEqual({"status": "unavailable", "method": None, "evidence": []}, item["acquisition"])
 
     def test_names_falls_back_to_builtins_when_plugin_dir_is_unreadable(self):
-        """Finding 3: OSError (ex.: PermissionError) não pode derrubar o parser da CLI."""
+        """OSError (ex.: PermissionError) não pode derrubar o parser da CLI."""
         with patch("getbrolls.sdk.loader.declared", side_effect=PermissionError("sem permissão")):
             self.assertEqual(sorted(PERMIT_PRESETS), presets.names())
 
@@ -371,7 +369,7 @@ class RegistryDrivenValidationTests(PluginTestCase):
         return project
 
     def test_preferred_providers_drops_a_suspended_plugin_source_with_a_warning(self):
-        """Finding 3: um plugin suspenso citado em preferred_providers não pode quebrar
+        """Um plugin suspenso citado em preferred_providers não pode quebrar
         `load_rules` (e por tabela, toda busca do projeto) — só sai da lista com aviso."""
         from getbrolls import rules
         from getbrolls.sdk import loader
@@ -398,7 +396,7 @@ class RegistryDrivenValidationTests(PluginTestCase):
         self.assertIn("preferred_providers.literal", str(caught.exception))
 
     def test_brief_allowed_sources_names_the_plugin_for_a_suspended_source(self):
-        """Finding 3: BRIEF.md continua recusando a fonte suspensa, mas a mensagem
+        """BRIEF.md continua recusando a fonte suspensa, mas a mensagem
         nomeia o plugin e o status em vez de só listar as fontes válidas."""
         from getbrolls.brief import _sources
         from getbrolls.sdk import loader

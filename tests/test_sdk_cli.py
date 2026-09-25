@@ -42,7 +42,7 @@ class PluginsCommandTests(LoaderTestCase):
         self.assertFalse((self.home / "plugins.json").exists())
 
     def test_check_surfaces_the_plugins_own_error_instead_of_internal_error(self):
-        """Finding 6: `register()` estourando RuntimeError não pode virar INTERNAL_ERROR
+        """`register()` estourando RuntimeError não pode virar INTERNAL_ERROR
         (exit 3, bug interno) — é erro do plugin, exit 2, com tipo e mensagem visíveis."""
         folder = self.install(code="def register(api):\n    raise RuntimeError('boom')\n")
         err = run_cli("plugins", "--action", "check", "--path", folder, expect=2, env=self.env())
@@ -66,7 +66,7 @@ class PluginsCommandTests(LoaderTestCase):
         self.assertIn("plugins.json", doctor["plugins_error"])
 
     def test_list_note_says_status_is_pre_load(self):
-        """Finding 1: `plugins --action list` nunca roda código; a nota deixa claro que o
+        """`plugins --action list` nunca roda código; a nota deixa claro que o
         status ali é pré-carga e manda para `doctor` o resultado real do carregamento."""
         self.install()
         out = run_cli("plugins", "--action", "list", env=self.env())
@@ -74,7 +74,7 @@ class PluginsCommandTests(LoaderTestCase):
         self.assertIn("doctor", out["note"])
 
     def test_provider_import_sys_exit_does_not_crash_the_cli(self):
-        """Finding 2: `sys.exit(0)` no import do plugin não pode sair do processo com
+        """`sys.exit(0)` no import do plugin não pode sair do processo com
         stdout vazio — `providers`/`doctor` continuam respondendo com os built-ins."""
         self.install(code="import sys\n\nsys.exit(0)\n")
         pin_plugins("demo")
@@ -86,7 +86,7 @@ class PluginsCommandTests(LoaderTestCase):
         self.assertIn("SystemExit", doctor["plugins"][0]["reason"])
 
     def test_doctor_overlays_failed_status_and_reason_over_the_preload_inventory(self):
-        """Finding 1: `plugins.json` marca o plugin habilitado (pré-carga: "enabled"), mas o
+        """`plugins.json` marca o plugin habilitado (pré-carga: "enabled"), mas o
         register() dele estoura — o doctor tem que mostrar o resultado real do carregamento."""
         self.install(code="def register(api):\n    raise RuntimeError('boom')\n")
         pin_plugins("demo")
@@ -95,7 +95,7 @@ class PluginsCommandTests(LoaderTestCase):
         self.assertIn("RuntimeError", doctor["plugins"][0]["reason"])
 
     def test_preset_selected_via_env_file_is_accepted(self):
-        """Finding 4 + B-07: `--preset` não trava em `choices=` calculado ANTES do `.env`
+        """`--preset` não trava em `choices=` calculado ANTES do `.env`
         ser lido; `GB_PLUGINS` num `--env-file` só filtra plugins já habilitados (com pin).
         Offline: o candidato vem da busca do próprio plugin de teste, nunca do YouTube."""
         self.install()
@@ -120,7 +120,7 @@ class PluginsCommandTests(LoaderTestCase):
         )
         self.assertEqual("permitted", result["rights"]["status"])
         env_file.write_text("GB_PLUGINS=off\n", encoding="utf-8")
-        # Fora da seleção, o nome vira erro de uso (A M1): sai do argparse, antes do projeto.
+        # Fora da seleção, o nome vira erro de uso: sai do argparse, antes do projeto.
         done = subprocess.run(
             [
                 sys.executable,

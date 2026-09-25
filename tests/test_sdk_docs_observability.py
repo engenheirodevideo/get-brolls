@@ -1,4 +1,4 @@
-"""Documentação e observabilidade do SDK (Minor 7, 12, 14 e RT-13 da onda final)."""
+"""Documentação e observabilidade do SDK."""
 
 import os
 import unittest
@@ -27,22 +27,22 @@ class PluginLoadedLogTests(LoaderTestCase):
 
 
 class SdkDocTests(unittest.TestCase):
-    """Cada comportamento novo desta onda está escrito em SDK.md."""
+    """Cada comportamento do SDK que o autor de plugin precisa saber está escrito em SDK.md."""
 
-    def test_sdk_doc_covers_the_final_wave(self):
+    def test_sdk_doc_covers_plugin_behaviors(self):
         text = SDK_DOC.read_text(encoding="utf-8")
         for marker in (
-            "keep_signed=True",  # Minor 7: download_url assinado (Envato)
-            "PluginError",  # I2
-            "nunca vai para o cache",  # RT-09
-            "C:\\",  # Minor 1: raízes recusadas
-            "pasta de controle de versão aninhada",  # Minor 3 / RT-12
-            "dont_write_bytecode",  # nota do red-team
-            "tempo limite",  # RT-13: sem timeout nas chamadas de plugin
-            "GIT_SSL_CAINFO",  # Minor 12
-            "route_consumed_at",  # RT-07
-            "preview.route_stage",  # Minor 8
-            "rights.evidence",  # RT-04
+            "keep_signed=True",  # download_url assinado (Envato)
+            "PluginError",  # a única exceção cujo texto chega à pessoa
+            "nunca vai para o cache",  # resposta de plugin fora do cache em disco
+            "C:\\",  # raízes recusadas
+            "pasta de controle de versão aninhada",
+            "dont_write_bytecode",
+            "tempo limite",  # sem timeout nas chamadas de plugin
+            "GIT_SSL_CAINFO",
+            "route_consumed_at",
+            "preview.route_stage",
+            "rights.evidence",
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, text)

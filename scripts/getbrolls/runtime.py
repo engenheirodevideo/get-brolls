@@ -302,14 +302,14 @@ _PLUGIN_ERROR_RE = re.compile(r"Plugin [A-Za-z0-9_-]+: |Fonte \S+ é do plugin "
 PLUGIN_ERROR_HINT = "Veja plugins --action list / doctor e docs/SDK.md."
 
 
-# Comandos cujo erro de uso sai sem traceback nem dica de recovery (G12).
+# Comandos cujo erro de uso sai sem traceback nem dica de recovery.
 QUIET_ERROR_COMMANDS = ("plugins", "x")
 
 
 def provider_error_message(text):
     """Mensagem de `ProviderError` para a pessoa: built-in segue com o " Confira
     docs/RULES.md." de sempre; erro de plugin ganha dica de plugin (ou nenhuma,
-    quando já traz a dele), com a frase fechada antes (BUG-08)."""
+    quando já traz a dele), com a frase fechada antes."""
     if not _PLUGIN_ERROR_RE.match(text):
         return text + " Confira docs/RULES.md."
     if text.startswith("Fonte "):
@@ -385,7 +385,7 @@ def audited(args, execute):  # noqa: C901, PLR0912, PLR0915 - existing size; wra
         if args.command in QUIET_ERROR_COMMANDS and event["error_code"] != "INTERNAL_ERROR":
             # `plugins`/`x` não gravam no projeto: erro de uso ali (flag faltando, plugin
             # inexistente) é só a mensagem — traceback e a dica de recovery/review eram
-            # ruído (G12). `diagnostics.jsonl` (quando há projeto) guarda tudo igual.
+            # ruído. `diagnostics.jsonl` (quando há projeto) guarda tudo igual.
             for key in ("traceback", "repr", "hint"):
                 payload.pop(key, None)
         failure = OperationError(payload)

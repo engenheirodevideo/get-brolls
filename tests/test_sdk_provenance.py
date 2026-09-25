@@ -1,4 +1,4 @@
-"""Proveniência e segredos: RT-04 (registro forjado), RT-08 (URL com credencial) e RT-09 (cache do get_json)."""
+"""Proveniência e segredos: registro forjado, URL com credencial e cache do get_json."""
 
 import hashlib
 import io
@@ -82,7 +82,7 @@ ROUTE_MANIFEST = {**MANIFEST, "contributes": {"providers": ["demo"], "routes": [
 
 
 class GuardProvenanceTests(LoaderTestCase):
-    """RT-04: o guard descarta evidência do plugin e deixa todo texto exibível numa linha."""
+    """O guard descarta evidência do plugin e deixa todo texto exibível numa linha."""
 
     def setUp(self):
         super().setUp()
@@ -152,7 +152,7 @@ class RenderedProvenanceTests(unittest.TestCase):
 
 @skip_unless_ffmpeg
 class ForgedProvenanceFlowTests(LoaderTestCase):
-    """RT-04 ponta a ponta: search → preview → approve → permit (preset) → fetch → deliver."""
+    """Ponta a ponta: search → preview → approve → permit (preset) → fetch → deliver."""
 
     def test_delivered_origin_shows_only_core_and_human_records(self):
         work = Path(tempfile.mkdtemp(prefix="gb-rt04-"))
@@ -212,8 +212,8 @@ SIGNED_URLS = (
 
 
 class PublicUrlTests(unittest.TestCase):
-    """RT-08: `public_url` estrito (URL de plugin) também recusa query com nome de segredo;
-    URLs reais dos built-ins passam. A I1: o filtro amplo vale só no modo estrito."""
+    """`public_url` estrito (URL de plugin) também recusa query com nome de segredo;
+    URLs reais dos built-ins passam. O filtro amplo vale só no modo estrito."""
 
     def test_secret_query_names_are_dropped(self):
         for url in SIGNED_URLS:
@@ -296,7 +296,7 @@ SECRETS = ("deadbeefcafe", "feedbead0001", "c0ffee00", "rt_SECRET", "cs_SECRET",
 
 
 class PluginGetJsonTests(unittest.TestCase):
-    """RT-09: `api.get_json` de plugin nunca grava cache e limpa URL/chave secreta a fundo."""
+    """`api.get_json` de plugin nunca grava cache e limpa URL/chave secreta a fundo."""
 
     def api(self):
         manifest = {
@@ -359,9 +359,9 @@ PAGINATION_PAYLOAD = {
     "password": "pw_SECRET",
 }
 
-# Review (Important 1): a primeira versão do M1 só casava snake_case exato, então
-# uma API real com essas variações de nome (camelCase, kebab-case, prefixo
-# composto) passava pelo scrub estrito sem ser tocada. Todos têm que sumir.
+# Casar só snake_case exato deixaria uma API real com essas variações de nome
+# (camelCase, kebab-case, prefixo composto) passar pelo scrub estrito sem ser
+# tocada. Todos têm que sumir.
 LEAKING_CREDENTIAL_KEYS_PAYLOAD = {
     "accessToken": "at_SECRET",
     "x-api-key": "xak_SECRET",
@@ -374,11 +374,11 @@ LEAKING_CREDENTIAL_KEYS_PAYLOAD = {
 
 
 class PluginGetJsonPaginationKeysTests(unittest.TestCase):
-    """M1: o scrub estrito de `api.get_json` só derruba chave de credencial de
+    """O scrub estrito de `api.get_json` só derruba chave de credencial de
     verdade — chave de paginação/id que só TERMINA com uma palavra parecida
     (`*_key`, `*_token`) não pode mais sumir do JSON do plugin, em snake_case ou
     camelCase; uma chave de credencial de verdade continua sumindo mesmo fora do
-    snake_case (achado do review: `accessToken`, `x-api-key`,
+    snake_case (`accessToken`, `x-api-key`,
     `aws_secret_access_key`...)."""
 
     def api(self):

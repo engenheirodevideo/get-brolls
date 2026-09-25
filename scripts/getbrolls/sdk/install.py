@@ -38,7 +38,7 @@ GIT_URL_RE = re.compile(r"(https://\S+|git@[A-Za-z0-9.-]+:\S+)")
 GIT_TIMEOUT_S = 120
 # Cópia de pasta local: sem metadado de VCS de topo (VCS aninhado é recusado antes,
 # em `_refuse_nested_vcs`) e sem lixo de SO (`loader.JUNK_FILENAMES`), que fica fora
-# do hash. Bytecode e link simbólico não são ignorados: são recusados (B-01/B-03).
+# do hash. Bytecode e link simbólico não são ignorados: são recusados.
 COPY_IGNORE = shutil.ignore_patterns(".git", ".hg", ".svn", *sorted(loader.JUNK_FILENAMES))
 # Quantos nomes de arquivo a prévia do install/update lista (o total vem sempre).
 PREVIEW_FILES_MAX = 50
@@ -246,7 +246,7 @@ def _refuse_git_path_component(path):
     `SVN~1`), que o NTFS pode resolver como alias. Também recusa `:` e `\\` em
     qualquer componente: `:` abre fluxo alternativo NTFS (`.git::$INDEX_ALLOCATION`)
     e `\\` vira separador de pasta no Windows. `.hg`/`.svn` materializados de um
-    histórico git ficariam fora do hash do pin (Minor 3); nenhum deles é conteúdo de
+    histórico git ficariam fora do hash do pin; nenhum deles é conteúdo de
     plugin — na melhor das hipóteses é lixo, na pior é metadado plantado que outra
     ferramenta trataria como especial mais adiante."""
     for part in path.split("/"):
@@ -333,7 +333,7 @@ def _write_tree_entry(dest, root, path, mode, content):
 def _materialize_tree(clone, dest, paths_only=None):
     """Escreve o conteúdo de HEAD de `clone` (clonado com `--no-checkout`) em `dest`
     — uma pasta de staging SEPARADA do clone, então nenhuma entrada da árvore
-    consegue alcançar o `.git` do clone (Minor 4) —, um blob por vez, sem jamais
+    consegue alcançar o `.git` do clone —, um blob por vez, sem jamais
     passar por um `checkout` — por isso sem filtro/smudge/hook. Recusa qualquer
     modo que não seja arquivo regular, qualquer caminho com componente de VCS ou com
     `:`/`\\`, e qualquer blob (mesmo na passada cedo) maior que `MAX_BYTES` — tudo
@@ -341,13 +341,13 @@ def _materialize_tree(clone, dest, paths_only=None):
     também limita o total de arquivos/bytes a `MAX_FILES`/`MAX_BYTES`.
 
     `paths_only`, quando dado, materializa só esses caminhos exatos — usado pela
-    validação cedo do manifesto (I4), que não passa pelo teto de total (são no
+    validação cedo do manifesto, que não passa pelo teto de total (são no
     máximo dois arquivos pequenos: o manifesto e o `entry`), mas passa pelo teto
     por-blob do jeito que qualquer outra entrada passa."""
     dest.mkdir(exist_ok=True)
     root = dest.resolve()
     # Lixo de SO (`.DS_Store`...) fica fora do hash e da lista da prévia: nunca é
-    # gravado, senão o arquivo que roda poderia mudar sem mudar o sha256 (B-01).
+    # gravado, senão o arquivo que roda poderia mudar sem mudar o sha256.
     entries = [
         entry
         for entry in _tree_entries(clone)
@@ -376,7 +376,7 @@ def _materialize_tree(clone, dest, paths_only=None):
 
 def _peek_entry_name(dest):
     """Nome do arquivo `entry` do manifesto já materializado em `dest`, só pra
-    saber qual outro arquivo trazer cedo junto (I4) — `read_manifest` exige o
+    saber qual outro arquivo trazer cedo junto — `read_manifest` exige o
     `entry` presente em disco, então validar o manifesto sozinho sempre falharia.
     Não é validação de verdade (isso é `_checked_manifest`/`read_manifest`
     logo a seguir): um manifesto ilegível aqui só significa que não dá pra
@@ -393,7 +393,7 @@ def _peek_entry_name(dest):
 
 
 def _validate_manifest_early(clone, dest):
-    """I4: materializa e valida o manifesto (e o `entry` que ele declara) antes
+    """Materializa e valida o manifesto (e o `entry` que ele declara) antes
     de trazer o resto — potencialmente grande — da árvore; falha cedo, sem gastar
     tempo/disco com um plugin incompatível ou inválido."""
     _materialize_tree(clone, dest, paths_only={MANIFEST_NAME})
@@ -419,7 +419,7 @@ def _from_git(source_uri, dest, ssh=False):
 
 def _refuse_nested_vcs(folder):
     """Pasta de VCS (`.git`, `.hg`, `.svn`) fora do topo da pasta do plugin é
-    recusada (RT-12): o hash do pin só deixa de fora o `.git` de topo, e uma pasta
+    recusada: o hash do pin só deixa de fora o `.git` de topo, e uma pasta
     aninhada dessas seria conteúdo que o plugin lê/executa sem ser metadado de nada."""
     nested = loader.nested_vcs(folder)
     if nested is not None:
@@ -433,7 +433,7 @@ def _file_list(folder):
 
 
 def _guard_folder_cap(folder):
-    """I4 para o caminho de pasta comum: mesmo recorte de `folder_digest`
+    """Teto de árvore antes de copiar, no caminho de pasta comum: mesmo recorte de `folder_digest`
     (`loader._counted_files`), então o que conta aqui é exatamente o que seria
     materializado por `shutil.copytree` com `COPY_IGNORE`."""
     total_bytes = 0
@@ -452,7 +452,7 @@ def _materialize(source, dest):
     módulo); pasta comum com link ou bytecode é recusada, e a cópia (links
     copiados como links, `symlinks=True`, sem `.git` nem lixo de SO) é
     conferida de novo — checar o resultado materializado, não só a origem,
-    fecha a corrida entre "olhar" e "copiar" (I2)."""
+    fecha a corrida entre "olhar" e "copiar"."""
     raw = str(source).strip()
     folder = Path(raw).expanduser()
     if raw and not raw.startswith("-") and folder.is_dir():
@@ -536,7 +536,7 @@ def _sweep_stale_old(root, entry, name, now):
 
 def _restorable(entry, plugin_id):
     """Um `.old-*` só volta ao lugar se for mesmo aquele plugin: manifesto legível
-    e com o mesmo id do nome (Minor 5). Pasta vazia, parcial ou de outro plugin é
+    e com o mesmo id do nome. Pasta vazia, parcial ou de outro plugin é
     resto — restaurá-la travaria um `install` futuro com um plugin quebrado."""
     try:
         return read_manifest(entry, require_folder_match=False)["id"] == plugin_id
@@ -622,12 +622,12 @@ def _summary(manifest, origin, commit, sha256, files):
 
 
 def _check_expect(expect, sha):
-    """I3: ver `loader.check_expect` (compartilhado com o `enable` de plugin suspenso)."""
+    """Ver `loader.check_expect` (compartilhado com o `enable` de plugin suspenso)."""
     loader.check_expect(expect, sha)
 
 
 def install(source, confirm, expect=None):
-    loader.read_state()  # M1: plugins.json corrompido recusa antes de qualquer mutação.
+    loader.read_state()  # plugins.json corrompido recusa antes de qualquer mutação.
     _sweep_stale_staging()
     staging = _staging()
     try:
@@ -664,7 +664,7 @@ def _diff(old_folder, old_manifest, new_folder, new_manifest):
 
 
 def update(plugin_id, confirm, expect=None):
-    state = loader.read_state()  # M1: plugins.json corrompido recusa antes de qualquer mutação.
+    state = loader.read_state()  # plugins.json corrompido recusa antes de qualquer mutação.
     origin = (state.get("sources") or {}).get(plugin_id)
     if origin is None:
         raise ValueError(
@@ -690,7 +690,7 @@ def update(plugin_id, confirm, expect=None):
         try:
             os.replace(staging, folder)
         except OSError as exc:
-            # M2: a troca de verdade falhou no meio — devolve o conteúdo antigo
+            # A troca de verdade falhou no meio — devolve o conteúdo antigo
             # ao lugar em vez de deixar o plugin sem pasta nenhuma.
             try:
                 os.replace(retired, folder)
@@ -704,7 +704,7 @@ def update(plugin_id, confirm, expect=None):
         force_rmtree(retired)
     finally:
         force_rmtree(staging)
-    # M3: atualizar o conteúdo não liga de volta um plugin que estava desabilitado —
+    # Atualizar o conteúdo não liga de volta um plugin que estava desabilitado —
     # só quem já estava habilitado sai daqui com pin novo (senão o pin some).
     sha_after = loader.pin(
         manifest, folder, {"source": source, "commit": commit}, enable=was_enabled, digests=(sha, files)

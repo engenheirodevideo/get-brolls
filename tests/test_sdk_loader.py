@@ -110,7 +110,7 @@ class DiscoveryTests(LoaderTestCase):
         self.assertEqual("disabled", loader.inventory()[0]["status"])
 
     def test_gb_plugins_only_filters_pinned_plugins(self):
-        """B-07: `GB_PLUGINS` escolhe entre os habilitados com pin; nunca carrega sem pin."""
+        """`GB_PLUGINS` escolhe entre os habilitados com pin; nunca carrega sem pin."""
         folder = self.install()
         with patch.dict(os.environ, {"GB_PLUGINS": "demo"}):
             row = loader.inventory()[0]
@@ -174,7 +174,7 @@ class FailureIsolationTests(LoaderTestCase):
         self.assertEqual("core", reg.owner("provider", "youtube"))
 
     def test_system_exit_at_import_is_isolated_like_any_other_exception(self):
-        """Finding 2: `sys.exit(0)` no import do plugin é `SystemExit`, não `Exception` —
+        """`sys.exit(0)` no import do plugin é `SystemExit`, não `Exception` —
         sem captura explícita ele atravessa o loader e derruba o processo com exit 0."""
         self.install(code="import sys\n\nsys.exit(0)\n")
         pin_plugins("demo")
@@ -268,7 +268,7 @@ class PluginApiTests(LoaderTestCase):
 
 
 class HashPinTamperTests(LoaderTestCase):
-    """Fix round 1 / Finding 1: `.pyc` plantado não pode driblar o pin de hash."""
+    """`.pyc` plantado não pode driblar o pin de hash."""
 
     def test_planted_pycache_bytecode_blocks_instead_of_running(self):
         folder = self.install()
@@ -280,14 +280,14 @@ class HashPinTamperTests(LoaderTestCase):
         (pycache / "plugin.cpython-311.pyc").write_bytes(b"not real bytecode")
 
         reset_registry()
-        # B-03: bytecode ao lado da fonte deixa o plugin `invalid` (antes: `suspended`).
+        # Bytecode ao lado da fonte deixa o plugin `invalid` (antes: `suspended`).
         self.assertEqual("invalid", loader.inventory()[0]["status"])
         self.assertNotIn("demo", get_registry().provider_names())
         self.assertIn("youtube", get_registry().provider_names())
 
 
 class JunkFileDigestTests(LoaderTestCase):
-    """Fix final / Finding 3: `.DS_Store`/`git pull` num plugin não pode suspendê-lo."""
+    """`.DS_Store`/`git pull` num plugin não pode suspendê-lo."""
 
     def test_os_junk_and_vcs_dir_do_not_change_the_pinned_hash(self):
         folder = self.install()
@@ -315,7 +315,7 @@ class JunkFileDigestTests(LoaderTestCase):
 
 
 class CorruptStateTests(LoaderTestCase):
-    """Fix round 1 / Finding 2: `plugins.json` corrompido não pode derrubar os built-ins."""
+    """`plugins.json` corrompido não pode derrubar os built-ins."""
 
     def _corrupt(self, raw_bytes):
         self.install()

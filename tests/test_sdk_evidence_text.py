@@ -1,4 +1,4 @@
-"""B-04: texto de plugin que vira evidência (preset, `RouteResult.license`) sai numa
+"""Texto de plugin que vira evidência (preset, `RouteResult.license`) sai numa
 linha, sem controle/bidi, com teto, sempre prefixado como do plugin — nunca um item
 de evidência à parte nem uma "Declaração do usuário" forjada em ORIGEM/credits."""
 

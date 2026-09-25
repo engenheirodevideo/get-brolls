@@ -1,4 +1,4 @@
-"""B-05: licença de rota `fetch` já consumida e cache perdido → o `fetch` recusa sem
+"""Licença de rota `fetch` já consumida e cache perdido → o `fetch` recusa sem
 chamar a rota; só `fetch --reacquire` (nova licença, com o ok da pessoa) roda de novo."""
 
 import shutil

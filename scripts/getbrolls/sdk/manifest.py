@@ -26,7 +26,7 @@ CONTRIBUTION_KINDS = (
     "brief_templates",
     "eval_rubrics",
 )
-# Tipos que esta versão do SDK sabe carregar; os outros chegam nas próximas ondas.
+# Tipos que esta versão do SDK sabe carregar; os outros ficam para versões futuras.
 SUPPORTED_KINDS = ("providers", "presets", "routes", "commands")
 TOP_LEVEL = frozenset(
     {
@@ -173,7 +173,7 @@ def _description(ident, raw):
     return value
 
 
-# Teto do manifesto (B-08): ele é relido a cada comando, para todo plugin da pasta.
+# Teto do manifesto: ele é relido a cada comando, para todo plugin da pasta.
 # Um arquivo gigante ou com aninhamento absurdo vira `invalid` naquela linha — nunca
 # um INTERNAL_ERROR de `plugins list`/`doctor`/`x --list`.
 MANIFEST_MAX_BYTES = 64 * 1024

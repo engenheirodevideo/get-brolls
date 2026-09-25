@@ -1,6 +1,6 @@
 """Foto da NASA sai na versão original, não na cópia de 1280 px.
 
-M-5: `search --provider nasa --media image` → `fetch` entregava `~medium.jpg`
+`search --provider nasa --media image` → `fetch` entregava `~medium.jpg`
 (1280x1018) mesmo com `~orig.jpg` publicado no mesmo item. O vídeo continua como
 estava: `~medium.mp4` primeiro, que é o arquivo de trabalho leve da fonte.
 """
@@ -96,7 +96,7 @@ class _Sized(io.BytesIO):
 
 
 class SizeCapFallsBackToASmallerRendition(unittest.TestCase):
-    """I-2: a original acima do teto de download não derruba a coleta; a próxima versão menor vale."""
+    """A original acima do teto de download não derruba a coleta; a próxima versão menor vale."""
 
     def test_fetch_uses_the_next_rendition_when_the_original_is_over_the_cap(self):
         from getbrolls import http

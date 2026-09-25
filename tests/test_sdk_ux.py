@@ -1,4 +1,4 @@
-"""Onda de UX do SDK: achados do QA funcional (BUG-05..14, G2..G11) e nomes de segredo residuais."""
+"""UX do SDK: o que a pessoa e o agente leem aponta o comando que funciona; nomes de segredo residuais."""
 
 import argparse
 import json
@@ -22,7 +22,7 @@ def _state(home):
 
 
 class PinFileMapTests(LoaderTestCase):
-    """BUG-06: o pin guarda um mapa por arquivo para o re-enable mostrar o que mudou."""
+    """O pin guarda um mapa por arquivo para o re-enable mostrar o que mudou."""
 
     def test_enable_stores_a_per_file_sha_map_next_to_the_pin(self):
         folder = self.install()
@@ -45,7 +45,7 @@ class PinFileMapTests(LoaderTestCase):
 
 
 class ReenableSuspendedTests(LoaderTestCase):
-    """BUG-06: re-enable de plugin suspenso mostra o diff e exige --expect, como install/update."""
+    """Re-enable de plugin suspenso mostra o diff e exige --expect, como install/update."""
 
     def _suspend(self):
         folder = self.install()
@@ -127,7 +127,7 @@ class ReenableSuspendedTests(LoaderTestCase):
 
 
 class NoteTests(LoaderTestCase):
-    """BUG-07: a prévia manda o comando que funciona; o sucesso não manda rodar de novo."""
+    """A prévia manda o comando que funciona; o sucesso não manda rodar de novo."""
 
     def _source(self):
         source = self.home / "fonte" / "demo"
@@ -164,7 +164,7 @@ class NoteTests(LoaderTestCase):
 
 
 class GbPluginsSelectionTests(LoaderTestCase):
-    """BUG-09: plugin fora de GB_PLUGINS diz o porquê; a busca aponta GB_PLUGINS, não enable."""
+    """Plugin fora de GB_PLUGINS diz o porquê; a busca aponta GB_PLUGINS, não enable."""
 
     def test_list_row_names_gb_plugins_as_the_reason(self):
         self.install()
@@ -191,7 +191,7 @@ class GbPluginsSelectionTests(LoaderTestCase):
 
     def test_cli_list_under_gb_plugins_off(self):
         self.install()
-        loader.enable("demo", confirm=True)  # B-07: GB_PLUGINS só filtra plugins habilitados
+        loader.enable("demo", confirm=True)  # GB_PLUGINS só filtra plugins habilitados
         out = run_cli("plugins", "--action", "list", env={"GB_HOME": str(self.home), "GB_PLUGINS": "off"})
         self.assertIn("desligado por GB_PLUGINS", out["plugins"][0]["reason"])
 
@@ -228,7 +228,7 @@ RULES_DATA = {
 
 
 class UnavailableSourceMessageTests(LoaderTestCase):
-    """BUG-10: sem ".." nem "Plugin X: Plugin X:" nas mensagens de fonte indisponível
+    """Sem ".." nem "Plugin X: Plugin X:" nas mensagens de fonte indisponível
     (busca, BRIEF.md e RULES.md usam a mesma frase de status)."""
 
     def _messages(self):
@@ -291,7 +291,7 @@ assert SEARCH_RAISES_PLUGIN_ERROR != PLUGIN_CODE
 
 
 class SearchPluginErrorTests(LoaderTestCase):
-    """BUG-10: `search` não repete o nome da fonte na frente de "Plugin <fonte>: …"."""
+    """`search` não repete o nome da fonte na frente de "Plugin <fonte>: …"."""
 
     def test_search_error_and_warning_have_a_single_prefix(self):
         import tempfile
@@ -308,7 +308,7 @@ class SearchPluginErrorTests(LoaderTestCase):
 
 
 class PluginErrorHintTests(LoaderTestCase):
-    """BUG-08: erro de plugin não leva o "Confira docs/RULES.md." genérico; built-in igual."""
+    """Erro de plugin não leva o "Confira docs/RULES.md." genérico; built-in igual."""
 
     def _message(self, error):
         from argparse import Namespace
@@ -365,7 +365,7 @@ assert WITH_MEDIA_URL != PLUGIN_CODE
 
 
 class LivePluginChecksTests(LoaderTestCase):
-    """BUG-05: `doctor --live` não marca "failed" uma fonte de plugin só-metadados ou
+    """`doctor --live` não marca "failed" uma fonte de plugin só-metadados ou
     com rota, e mostra a mensagem (saneada) do PluginError em vez de uma genérica."""
 
     def _live(self):
@@ -418,7 +418,7 @@ class LivePluginChecksTests(LoaderTestCase):
 
 
 class DoctorSummaryPluginsTests(LoaderTestCase):
-    """BUG-14: o `summary` do doctor cita plugin failed/suspended/invalid."""
+    """O `summary` do doctor cita plugin failed/suspended/invalid."""
 
     def env(self):
         return {"GB_HOME": str(self.home)}
@@ -448,7 +448,7 @@ class DoctorSummaryPluginsTests(LoaderTestCase):
 
 
 class InspectLocalCopyTests(LoaderTestCase):
-    """BUG-11: `inspect` de fonte que veio por rota não diz "baixar o arquivo inteiro (0.0 MB)"."""
+    """`inspect` de fonte que veio por rota não diz "baixar o arquivo inteiro (0.0 MB)"."""
 
     def test_route_copy_is_named_and_small_sizes_use_kb(self):
         from getbrolls.commands import inspect_warnings
@@ -503,7 +503,7 @@ def _plugin_fetched():
 
 
 class PluginProvenanceTests(LoaderTestCase):
-    """BUG-12: ORIGEM.md/credits.md de candidato de plugin nomeiam o plugin e o arquivo."""
+    """ORIGEM.md/credits.md de candidato de plugin nomeiam o plugin e o arquivo."""
 
     def test_origin_names_the_plugin_and_local_file(self):
         from getbrolls import delivery
@@ -563,7 +563,7 @@ class PluginProvenanceTests(LoaderTestCase):
 
 
 class SearchHelpTests(LoaderTestCase):
-    """BUG-13: `search --help` cita fontes de plugin e manda rodar `providers`."""
+    """`search --help` cita fontes de plugin e manda rodar `providers`."""
 
     def test_provider_help_mentions_plugins_and_providers(self):
         from getbrolls.cli import build_parser
@@ -577,7 +577,7 @@ class SearchHelpTests(LoaderTestCase):
 
 @skip_unless_ffmpeg
 class StatusNextAgreesWithDoTests(FetchRouteCase):
-    """G11: com candidato de rota `fetch`, `summary.next` não contradiz `summary.do`."""
+    """Com candidato de rota `fetch`, `summary.next` não contradiz `summary.do`."""
 
     def test_next_says_reference_only_when_do_does(self):
         from test_delivery import with_brief
@@ -653,7 +653,7 @@ class StrictScrubResidualNamesTests(LoaderTestCase):
 
 
 class PluginsEnvelopeTests(LoaderTestCase):
-    """G12: erro de uso em `plugins`/`x` sai sem traceback nem a dica de recovery_pending."""
+    """Erro de uso em `plugins`/`x` sai sem traceback nem a dica de recovery_pending."""
 
     def test_plugins_and_x_user_errors_have_no_traceback_or_recovery_hint(self):
         env = {"GB_HOME": str(self.home)}
@@ -674,7 +674,7 @@ class PluginsEnvelopeTests(LoaderTestCase):
 
 
 class DocsGapsTests(LoaderTestCase):
-    """G2–G10: o que o agente lê primeiro diz o comando que funciona."""
+    """O que o agente lê primeiro diz o comando que funciona."""
 
     @staticmethod
     def read(relative):
@@ -714,8 +714,8 @@ class DocsGapsTests(LoaderTestCase):
         self.assertIn('discover -s tests -p "test_x.py"', self.read("CONTRIBUTING.md"))
 
 
-class ReviewFollowUpTests(LoaderTestCase):
-    """Minors do review da onda de UX, dobrados pelo controller."""
+class MessageFollowUpTests(LoaderTestCase):
+    """Ajustes pequenos de texto e fluxo nas mensagens do SDK."""
 
     def env(self):
         return {"GB_HOME": str(self.home)}

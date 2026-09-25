@@ -58,7 +58,7 @@ class ManifestTests(unittest.TestCase):
                 with self.assertRaises(ManifestError):
                     read_manifest(folder, require_folder_match=False)
 
-    def test_kinds_of_later_waves_are_refused_until_supported(self):
+    def test_unsupported_kinds_are_refused(self):
         manifest = {**BASE, "contributes": {"exporters": ["acme_sheet"]}}
         with tempfile.TemporaryDirectory() as tmp, self.assertRaises(ManifestError) as caught:
             read_manifest(write_plugin(tmp, manifest))

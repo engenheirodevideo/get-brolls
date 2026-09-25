@@ -75,7 +75,7 @@ _SUBPARSERS: dict[str, argparse.ArgumentParser] = {}
 
 
 def _check_preset_name(args):
-    """`permit --preset <nome>` desconhecido é erro de uso, como no 2.5.0 (A M1): sai
+    """`permit --preset <nome>` desconhecido é erro de uso, como no 2.5.0: sai
     antes de abrir, travar ou registrar o projeto — nenhum `brolls/` é criado. Nome
     embutido nem olha plugin; os de plugin vêm do manifesto (sem rodar código)."""
     name = getattr(args, "preset", None) if args.command == "permit" else None

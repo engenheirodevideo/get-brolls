@@ -1,4 +1,4 @@
-"""C M-7: candidato de plugin sem nada que a pessoa possa ter visto (sem prévia local,
+"""Candidato de plugin sem nada que a pessoa possa ter visto (sem prévia local,
 sem poster_url, sem embed_url) não é aprovado; `preview --reference-only` diz que
 ficou sem imagem. Fonte embutida não muda."""
 

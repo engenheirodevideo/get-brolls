@@ -1,4 +1,4 @@
-"""Portabilidade para o job Windows do CI (I3 da revisão final).
+"""Portabilidade para o job Windows do CI.
 
 O Git para Windows grava objetos como somente-leitura, e `shutil.rmtree(...,
 ignore_errors=True)` deixa esses arquivos para trás em silêncio — um `.git` ficava
@@ -103,7 +103,7 @@ class GitCleanupTests(InstallTestCase):
         self.assertFalse((self.home / "plugins" / "demo" / ".git").exists())
 
     def test_git_config_written_by_tests_uses_forward_slashes(self):
-        # I3(b): `.gitconfig` com caminho do Windows (`C:\\Users\\...`) quebra o parser
+        # `.gitconfig` com caminho do Windows (`C:\\Users\\...`) quebra o parser
         # do git ("bad config line"); o teste do smudge grava o caminho em forma POSIX.
         source = Path(__file__).with_name("test_sdk_install.py").read_text(encoding="utf-8")
         self.assertIn('touch "{marker.as_posix()}"', source)

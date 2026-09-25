@@ -1,4 +1,4 @@
-"""A M1: `permit --preset <desconhecido>` é erro de uso, como no 2.5.0 — nada do
+"""`permit --preset <desconhecido>` é erro de uso, como no 2.5.0 — nada do
 projeto é aberto, travado ou registrado, e nenhum `brolls/` é criado."""
 
 import os

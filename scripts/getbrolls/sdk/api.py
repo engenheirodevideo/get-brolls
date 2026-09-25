@@ -258,7 +258,7 @@ class PluginApi:
     def get_json(self, url, params=None, headers=None, cache_ttl=0, keep_signed=False):  # noqa: ARG002 - `cache_ttl` fica na assinatura pública por compatibilidade; plugin nunca grava cache (ver abaixo)
         self._check_host(url)
         headers = self._validate_headers(headers)
-        # Resposta de plugin NUNCA vai para o cache em disco (RT-09): ela pode trazer
+        # Resposta de plugin NUNCA vai para o cache em disco: ela pode trazer
         # URL assinada ou campo secreto que a limpeza não reconhece, e o cache é
         # compartilhado por todo o processo. `cache_ttl` é aceito e ignorado.
         # `quiet_errors=True` always: a plugin's error body is never assumed safe to

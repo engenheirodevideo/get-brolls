@@ -1,7 +1,6 @@
 """Isolamento uniforme de código de plugin: toda porta de entrada passa pelo mesmo guarda-corpo.
 
-Cobre o I1 da revisão final e os achados RT-01, RT-02, RT-03, RT-05, RT-06 e RT-10 do
-red-team: exceção hostil (`__str__`/metaclasse/`BaseException`), capabilities mal
+Cobre exceção hostil (`__str__`/metaclasse/`BaseException`), capabilities mal
 tipadas ou que mudam depois do registro, e segredo de `permissions.env` que nunca
 pode chegar à mensagem, ao traceback, ao log nem ao `diagnostics.jsonl`.
 """
@@ -108,7 +107,7 @@ class ExitItems(dict):
 
 
 class RegisterIsolationTests(LoaderTestCase):
-    """RT-01/RT-10: register() nunca derruba o registro, nem vaza o texto da exceção."""
+    """`register()` nunca derruba o registro, nem vaza o texto da exceção."""
 
     def load(self, register_body, helpers=HOSTILE_HELPERS):
         code = helpers + "\n\ndef register(api):\n" + register_body
@@ -180,7 +179,7 @@ class RegisterIsolationCliTests(LoaderTestCase):
 
 
 class CapabilitySnapshotTests(LoaderTestCase):
-    """RT-02: capabilities são lidas uma vez, validadas por tipo, e viram snapshot."""
+    """Capabilities são lidas uma vez, validadas por tipo, e viram snapshot."""
 
     def load(self, capabilities_line):
         code = BASE_CODE.replace(
@@ -234,7 +233,7 @@ class CapabilitySnapshotTests(LoaderTestCase):
 
 
 class CallIsolationTests(LoaderTestCase):
-    """RT-05/RT-06: search/resolve nunca saem do guarda-corpo, nem com BaseException."""
+    """`search`/`resolve` nunca saem do guarda-corpo, nem com BaseException."""
 
     def enable(self, code):
         self.install(PROVIDER_MANIFEST, code=HOSTILE_HELPERS + code)
@@ -298,7 +297,7 @@ class CallIsolationTests(LoaderTestCase):
 
 
 class ResolveLeakCliTests(LoaderTestCase):
-    """RT-03 ponta a ponta: o valor de api.env nunca aparece em stderr, log nem diagnostics."""
+    """Ponta a ponta: o valor de api.env nunca aparece em stderr, log nem diagnostics."""
 
     def test_env_value_never_reaches_stderr_log_or_diagnostics(self):
         code = BASE_CODE.replace(

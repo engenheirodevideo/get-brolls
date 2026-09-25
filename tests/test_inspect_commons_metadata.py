@@ -1,6 +1,6 @@
 """`inspect` de vídeo do Commons lê a duração da API, sem baixar o arquivo inteiro.
 
-M-6: no QA, `inspect --candidate commons:<vídeo>` baixou 72 MB para dentro do
+No uso real, `inspect --candidate commons:<vídeo>` baixou 72 MB para dentro do
 projeto antes de qualquer confirmação — e só depois disse "Confirme antes de
 baixar". O Commons publica a duração no mesmo `imageinfo` que a busca já pede;
 com ela, o `inspect` cumpre o que o guia promete: metadados primeiro, nada de mídia.

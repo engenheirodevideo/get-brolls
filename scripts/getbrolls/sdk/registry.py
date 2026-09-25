@@ -51,7 +51,7 @@ def _texts(value: object) -> tuple[str, ...] | None:
 
 
 def _plain_capabilities(name: str, caps: ProviderCapabilities) -> ProviderCapabilities:
-    """Cópia só com tipos do core, conferida campo a campo (RT-02).
+    """Cópia só com tipos do core, conferida campo a campo.
 
     Lida uma única vez, dentro do isolamento do `register()`: depois disso o core
     só lê esta cópia, nunca mais o objeto do plugin (que pode ter property que muda,
