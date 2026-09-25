@@ -478,20 +478,38 @@ def _cli_prefix():
     return f'python3 "{CLI}"'
 
 
-def beat_commands(project, beat):
+def exhausted_phrase(beat_id, sources, query):
+    """Todas as fontes do beat já voltaram vazias para esta busca: a pessoa decide o que muda."""
+    return (
+        f'Busquei o beat "{beat_id}" em todas as fontes que o BRIEF.md permite para ele '
+        f'({", ".join(sources)}) com "{query}", e nenhuma trouxe nada. Repetir a mesma busca '
+        "não vai mudar isso. Me diga como seguir: outra forma de dizer o que precisa aparecer "
+        '(entra em "queries" do beat), mais fontes em allowed_sources, ou o seu próprio '
+        "material para esse trecho."
+    )
+
+
+def beat_commands(project, beat, tried=()):
     """search/resolve/inspect/preview prontos para este beat, com --shot, --intent e --narração.
 
     Beat sem fonte pesquisável por API (só instagram/tiktok/local) não ganha `search`:
     no lugar dele vai um `note` explicando que o caminho é `resolve --url/--file`.
+    `tried` são as fontes em que a busca sugerida deste beat já voltou vazia: o
+    `search` passa para a próxima fonte permitida e, sem nenhuma sobrando, some e dá
+    lugar a `exhausted` — repetir um comando que já voltou vazio seria andar em círculo.
     """
     project = shlex.quote(str(Path(project).expanduser().resolve()))
     prefix = f"{_cli_prefix()} "
     still = wants_a_still(beat)
     # Um beat de foto no YouTube devolve vídeo, sempre: a fonte de imagem vem antes,
     # e a busca sai com `--media image` para o acervo não responder só com vídeo.
-    provider = next((s for s in beat["allowed_sources"] if still and s in STILL_SOURCES), None) or next(
-        (s for s in beat["allowed_sources"] if s in SEARCHABLE), None
+    ordered = list(
+        dict.fromkeys(
+            [s for s in beat["allowed_sources"] if still and s in STILL_SOURCES]
+            + [s for s in beat["allowed_sources"] if s in SEARCHABLE]
+        )
     )
+    provider = next((s for s in ordered if s not in tried), None)
     query = search_query(beat)
     origin = "--file ARQUIVO" if beat["allowed_sources"] == ["local"] else "--url URL_PUBLICA"
     narration = f" --narration {shlex.quote(beat['narration'])}" if beat.get("narration") else ""
@@ -516,7 +534,10 @@ def beat_commands(project, beat):
         + shlex.quote(beat.get("narration") or beat["target"])
     )
     commands["preview"] = prefix + f"preview --project {project} --candidate ID" + narration
-    if not provider:
+    if not provider and ordered:
+        commands["exhausted"] = ordered
+        commands["note"] = exhausted_phrase(beat["id"], ordered, query)
+    elif not provider:
         # Instagram, TikTok e material próprio não têm busca por API: entram por URL/arquivo.
         commands["note"] = (
             "Nenhuma fonte deste beat é pesquisável por API ("

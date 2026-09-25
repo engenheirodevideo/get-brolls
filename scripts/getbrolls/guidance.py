@@ -420,8 +420,25 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
             blocking_human=True,
             command=None,
         )
-    if missing:
+    # Beat com todas as fontes já vazias sai da fila de busca: sugerir de novo o mesmo
+    # comando é o laço que prendia o `status` num beat sem resultado.
+    searchable = [entry for entry in missing if not entry.get("exhausted")]
+    if missing and not searchable:
         first = missing[0]
+        from .brief import exhausted_phrase
+
+        sources = list(first["exhausted"])
+        return _action(
+            "brief-exhausted",
+            f'O beat "{first["id"]}" já foi buscado em todas as fontes permitidas '
+            f"({', '.join(sources)}) sem nenhum resultado.",
+            exhausted_phrase(first["id"], sources, first.get("query") or ""),
+            state,
+            blocking_human=True,
+            command=None,
+        )
+    if searchable:
+        first = searchable[0]
         return _action(
             "brief-search",
             f'O beat "{first["id"]}" do brief ainda não tem candidato registrado.',

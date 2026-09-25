@@ -442,6 +442,7 @@ def brief_report(args):
         missing_provider_keys,
         provider_unavailable,
         provider_warnings,
+        search_query,
         template_leftovers,
         validate_brief,
     )
@@ -506,13 +507,18 @@ def brief_report(args):
             )
         beats = chosen
     root = Path(args.project).expanduser().resolve() / "brolls"
-    items = Ledger(args.project, recover=False).data["items"] if root.is_dir() else []
+    manifest = Ledger(args.project, recover=False).data if root.is_dir() else {"items": []}
+    items = manifest["items"]
     progress = beat_progress(beats, items)
     listed = [
         {
             "id": b["id"],
             "resolved": b["resolved"],
-            "commands": beat_commands(args.project, b["resolved"]),
+            "commands": beat_commands(
+                args.project,
+                b["resolved"],
+                tried=tried_sources(manifest, b["id"], search_query(b["resolved"])),
+            ),
             "candidates": progress[b["id"]],
         }
         for b in beats
@@ -555,6 +561,8 @@ def brief_report(args):
                             {
                                 "id": entry["id"],
                                 "search": entry["commands"].get("search"),
+                                "exhausted": entry["commands"].get("exhausted") or [],
+                                "query": search_query(entry["resolved"]),
                                 "intent": entry["resolved"].get("intent"),
                                 "target": entry["resolved"].get("target"),
                                 "unavailable": (
@@ -946,10 +954,39 @@ def _beat_search_names(project, shot, rules, provider, names):
     return chosen
 
 
-def brief_state(project, rules, items):
+# Teto do registro de buscas vazias: é memória de orientação, não histórico.
+MAX_EMPTY_SEARCHES = 500
+
+
+def record_empty_searches(ledger, shot, empty):
+    """Guarda no manifesto que `search --shot` voltou vazio nesta fonte, com esta query.
+
+    É o que tira o degrau `brief-search` do laço: sem registro, a escada sugeria a
+    mesma fonte e a mesma query para sempre, sem nunca tentar a próxima permitida.
+    """
+    log = ledger.data.setdefault("empty_searches", [])
+    for provider, query in empty:
+        entry = {"shot": shot, "provider": provider, "query": query}
+        if not any({k: e.get(k) for k in entry} == entry for e in log):
+            log.append({**entry, "at": now()})
+    del log[:-MAX_EMPTY_SEARCHES]
+    ledger.save("search")
+
+
+def tried_sources(data, shot, query):
+    """Fontes em que a busca sugerida deste beat, com esta query, já voltou vazia."""
+    return {
+        e.get("provider")
+        for e in (data or {}).get("empty_searches") or []
+        if isinstance(e, dict) and e.get("shot") == shot and e.get("query") == query
+    }
+
+
+def brief_state(project, rules, items, data=None):
     """Cobertura dos beats para a escada de orientação, sem gravar nada no projeto.
 
     Devolve `None` quando não há BRIEF.md legível: esse é o degrau do topo da escada.
+    `data` é o manifesto, para o degrau de busca pular a fonte que já voltou vazia.
     """
     from getbrolls.brief import (
         beat_commands,
@@ -958,9 +995,11 @@ def brief_state(project, rules, items):
         load_brief,
         missing_provider_keys,
         provider_unavailable,
+        search_query,
         validate_brief,
     )
 
+    manifest = data
     try:
         data, conflicts = validate_brief(load_brief(project), rules)
     except (ValueError, OSError) as exc:
@@ -977,10 +1016,18 @@ def brief_state(project, rules, items):
     # buscar" — é pergunta em aberto para a pessoa, e vira degrau próprio na escada.
     blocked = blocked_entries(beats)
     stuck = {entry["id"] for entry in blocked}
+
+    def commands_for(beat):
+        query = search_query(beat["resolved"])
+        return beat_commands(project, beat["resolved"], tried=tried_sources(manifest, beat["id"], query))
+
     missing = [
         {
             "id": b["id"],
-            "search": beat_commands(project, b["resolved"]).get("search"),
+            "search": commands_for(b).get("search"),
+            # Todas as fontes permitidas já voltaram vazias: pergunta para a pessoa.
+            "exhausted": commands_for(b).get("exhausted") or [],
+            "query": search_query(b["resolved"]),
             # A frase para a pessoa muda quando o beat não tem alvo literal: prometer
             # busca ali contradiz a guarda "literal primeiro, nada de preenchimento".
             "intent": b["resolved"].get("intent"),
@@ -1178,7 +1225,7 @@ def _flow_state(ledger, rules, counts=None, format_pending=0, brief=_UNSET):
     """Estado que a escada de `guidance` lê: a mesma leitura em status, brief e deliver."""
     items = ledger.data["items"]
     review_page = (ledger.root / "review.html").is_file()
-    brief_value = brief_state(ledger.root.parent, rules, items) if brief is _UNSET else brief
+    brief_value = brief_state(ledger.root.parent, rules, items, ledger.data) if brief is _UNSET else brief
     return {
         "project": str(ledger.root.parent),
         "counts": counts or {key: sum(1 for c in items if STAGE_TESTS[key](c)) for key in STAGE_TESTS},
@@ -1226,7 +1273,7 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
     format_pending = sum(1 for value in pending_format.values() if value)
     remembered, references_error = status_references(ledger.root)
     review_page = ledger.root / "review.html"
-    brief = brief_state(ledger.root.parent, rules, items)
+    brief = brief_state(ledger.root.parent, rules, items, ledger.data)
     line = _status_line({"counts": counts})
     if ledger.recovered:
         line += " Há uma gravação interrompida pendente; o próximo comando de escrita a concluirá."
@@ -1578,6 +1625,9 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                 "Nenhuma fonte configurada: use resolve --file, Commons/NASA ou configure a chave de um banco."
             )
 
+        # (fonte, query, quantos ficaram) de cada fonte que respondeu sem erro.
+        answered = []
+
         def sweep(query, retry=False):
             """Uma varredura pelos provedores escolhidos, com esta query exata."""
             items, errors, excluded = [], [], 0
@@ -1604,6 +1654,7 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                     continue
                 # ledger.add/save stay outside the provider try: a disk/write error here is not the
                 # provider's fault and must not be attributed to it as a search failure.
+                kept = 0
                 for c in candidates:
                     if not allowed(c, rules):
                         excluded += 1
@@ -1624,6 +1675,8 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                     added = ledger.add(c)
                     ledger.save("search", added)
                     items.append(added)
+                    kept += 1
+                answered.append((name, query, kept))
                 logs.event(
                     _log,
                     logging.INFO,
@@ -1662,6 +1715,10 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                 ),
             }
             query_used = short
+        # Fonte que respondeu sem nada para este beat: a escada não sugere de novo.
+        empty = [(name, query) for name, query, kept in answered if not kept]
+        if shot and empty and not dry_run:
+            record_empty_searches(ledger, shot, empty)
         if not items and errors:
             raise ValueError("; ".join(f"{e['provider']}: {e['error']}" for e in errors))
         items.sort(key=lambda c: not domain_matches(c.get("source_url"), rules["preferred_domains"]))
