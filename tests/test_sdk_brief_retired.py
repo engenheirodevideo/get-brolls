@@ -87,6 +87,28 @@ class CommandContextBriefTests(unittest.TestCase):
         assert again is not None
         self.assertEqual(2, len(again["beats"]))
 
+    def test_one_predicate_and_brief_order(self):
+        data = copy.deepcopy(BRIEF)
+        data["beats"] = [
+            {"id": "c03", "target": "rua", "retired": True},
+            {"id": "Cena 9", "target": "x", "retired": True},
+            {"id": "c01", "target": "mesa"},
+            {"id": "c02", "target": "mapa", "retired": True},
+        ]
+        write_brief(self.project, data)
+        ctx = CommandContext("demo", self.project)
+        brief = ctx.brief()
+        assert brief is not None
+        self.assertEqual(["Cena 9", "c01"], [b["id"] for b in brief["beats"]])
+        self.assertEqual(["c03", "c02"], ctx.retired_beat_ids())
+
+    def test_without_a_getbrolls_roteiro_nothing_is_retired(self):
+        write_brief(self.project, BRIEF)
+        (self.project / "ROTEIRO.md").write_text("# Meu roteiro\n", encoding="utf-8")
+        ctx = CommandContext("demo", self.project)
+        self.assertEqual(load_brief(self.project), ctx.brief())
+        self.assertEqual([], ctx.retired_beat_ids())
+
     def test_no_project_or_no_brief(self):
         self.assertIsNone(CommandContext("demo", None).brief())
         self.assertEqual([], CommandContext("demo", None).retired_beat_ids())

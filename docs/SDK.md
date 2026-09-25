@@ -376,9 +376,11 @@ api.command("recentes", recentes, "Lista os vídeos mais recentes da pasta")
   "result"}`. `args` é um dicionário de texto; chave repetida é erro.
 - `ctx.plugin_id`, `ctx.project` (ou `None`), `ctx.candidates()` (cópias dos
   candidatos do projeto) e `ctx.brief()` (cópia do JSON do BRIEF.md, ou
-  `None`). Beat aposentado pelo roteiro (`"retired": true`) sai de `beats`: o
-  plugin vê os mesmos beats que o `status`. `ctx.retired_beat_ids()` devolve os
-  ids desses beats aposentados, em ordem, para quem precisa do histórico.
+  `None`). Com `ROTEIRO.md` do get-brolls (`type: roteiro`), beat aposentado
+  pelo roteiro (`"retired": true`) sai de `beats`: o plugin vê os mesmos beats
+  que o `status`. `ctx.retired_beat_ids()` devolve exatamente os ids que saíram,
+  na ordem do BRIEF.md; beat marcado `retired` com id fora do formato continua
+  em `beats`.
   Comando **só lê** o projeto: não há como gravar no ledger, e `x` não toma a
   trava exclusiva nem cria `brolls/`.
 - O retorno tem que ser um objeto JSON (dict). Exceção no handler vira erro
