@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-23
+updated: 2026-09-24
 tags: [get-brolls]
 ---
 
@@ -45,10 +45,22 @@ ou varredura — só no `fetch`, depois da aprovação humana e do `permit`.
 `api.download` segue o transporte do core (HTTPS, IP público, sem redirect,
 host em `permissions.network`) e aceita header de autorização e URL assinada
 sem registrá-los em log nem em mensagem de erro. `api.local_file` só lê
-arquivos dentro de `permissions.paths` e sempre copia. `permissions.paths` e
-`permissions.network` aparecem no preview do `enable` e do `install`.
-Comandos de plugin (`gb x`) só leem o projeto, por cópias. `install`/`update`
-clonam com `GIT_TERMINAL_PROMPT=0`, recusam URL com credencial e link
-simbólico, e não executam código do plugin. `GB_PLUGINS=off` desliga tudo.
+arquivos dentro de `permissions.paths` (pastas específicas — nunca `/`, a raiz
+de uma unidade, `~` nem a pasta pessoal inteira), sem seguir link e sempre
+copiando. `permissions.paths` e `permissions.network` aparecem no preview do
+`enable` e do `install`. A resposta de `api.get_json` de um plugin nunca vai
+para o cache em disco. Comandos de plugin (`gb x`) só leem o projeto, por
+cópias. `install`/`update` clonam com `GIT_TERMINAL_PROMPT=0`, recusam URL com
+credencial, link simbólico e pasta de controle de versão fora do topo, e não
+executam código do plugin. `GB_PLUGINS=off` desliga tudo.
+
+Exceção levantada por código de plugin aparece só pelo tipo — o texto dela
+(que pode carregar um token) não chega à mensagem, ao `diagnostics.jsonl` nem
+ao log; só `PluginError`, saneado e com os valores de `permissions.env`
+trocados por `[REDACTED]`, mostra texto. O plugin também não escreve evidência
+de direitos: `ORIGEM.md` e `credits.md` só trazem o que o humano registrou no
+`permit` e a licença que o core anotou da rota de `fetch`, cada campo numa
+linha. Chamada de plugin não tem tempo limite: um plugin travado segura o
+comando até Ctrl+C.
 
 Para reportar vulnerabilidades, use o relatório privado do GitHub em **Security → Report a vulnerability**, habilitado neste repositório. Não publique segredos ou dados de clientes em issues públicas. Nenhum endereço de contato é presumido neste pacote.

@@ -74,9 +74,17 @@ ou começar por `<id>_`; nomes de comando só seguem a regra de nome
 que é declarado precisa ser efetivamente registrado em `register(api)`
 (conferido por `api.finish()`).
 
-`permissions.paths` lista raízes absolutas ou começando por `~/` (sem `..`),
-ex.: `["~/Movies", "/Volumes/NAS/brolls"]`. Só arquivos dentro delas passam por
-`api.local_file`.
+`permissions.paths` lista pastas específicas, absolutas ou começando por `~/`
+(sem `..`), ex.: `["~/Movies", "/Volumes/NAS/brolls", "D:\\Acervo"]`. Só arquivos
+dentro delas passam por `api.local_file`. Uma raiz ampla demais é recusada no
+manifesto, porque tornaria a declaração sem sentido: a raiz do sistema (`/`,
+`\`), a raiz de uma unidade (`C:\`, `C:/`, `C:`), `~` sozinho (`~`, `~/`) e a
+própria pasta pessoal escrita por extenso — `~` inteiro cobriria `~/.ssh` e o
+`plugin-data` de outros plugins. O manifesto é conferido do mesmo jeito em
+qualquer sistema (um caminho POSIX ou Windows absoluto vale nos dois); na hora de
+usar, só entram as raízes absolutas no sistema atual (uma `D:\Acervo` é ignorada
+no macOS). Num disco que não diferencia maiúsculas de minúsculas, escreva a raiz
+com a mesma caixa que o sistema mostra.
 
 Os campos `schema` e `signed_fields` existem no formato do manifesto para
 versões futuras do SDK; nesta versão eles têm que ficar ausentes ou vazios.
@@ -97,6 +105,14 @@ class Provider(Protocol):
 
 `name` segue a mesma regra de `id` (2–32 caracteres `a-z0-9_`) e tem que
 casar com o `id` do plugin, ou começar por `<id>_`.
+
+O core lê `capabilities` **uma vez**, no registro, confere o tipo de cada campo
+(`bool` em `search`/`resolve_url`/`download`; texto em `match_kind`/`transport`/
+`seek`; tupla — ou lista — de textos em `media_kinds`/`url_hosts`; `None` ou texto
+em `env_key`/`route`) e guarda uma cópia. Depois disso nunca mais lê o objeto do
+plugin: uma `property` que muda de valor, levanta ou devolve `bytes`/`NaN` no
+lugar de texto faz o plugin falhar no carregamento (`failed`, com o campo no
+motivo), não os comandos do core.
 
 `ProviderCapabilities`, campo a campo:
 
@@ -159,6 +175,24 @@ rota roda no `fetch`, **depois** do permit humano; nunca substitui o permit.
 Uma rota `stage="preview"` que já deixou a mídia de trabalho pronta não roda de
 novo no `fetch`, então a licença dela não é registrada.
 
+Rota `stage="fetch"` consome licença ou cota **uma vez só**:
+
+- O arquivo que ela trouxe vai para o cache privado do projeto
+  (`.getbrolls-sources/`, índice por candidato + sha256, separado da mídia de
+  trabalho de `inspect`/`preview`), junto com a licença.
+- Antes de cortar, o `fetch` já grava no ledger a evidência da licença e o
+  marcador `acquisition.route_consumed_at`. Se o corte falhar (por exemplo, o
+  trecho aprovado passa da duração real que a fonte entregou — o `fetch` avisa
+  com a duração), o próximo `fetch` reaproveita o arquivo do cache: a rota não
+  é chamada de novo e a licença aparece uma vez só.
+- A busca grava `preview.route_stage = "fetch"` nos candidatos dessa fonte:
+  `status`/guidance leem isso (sem rodar plugin) e nunca sugerem `inspect` nem
+  prévia com mídia para eles — sugerem `preview --reference-only`, depois
+  approve, permit e fetch.
+- Uma imagem entregue pela rota tem que terminar em `.jpg`, `.jpeg`, `.png`,
+  `.webp` ou `.gif` (a extensão vai para o nome do arquivo em `clips/`); outra
+  extensão é recusada.
+
 ## PluginApi
 
 `register(api)` recebe a única porta de entrada no registro:
@@ -167,11 +201,11 @@ novo no `fetch`, então a licença dela não é registrada.
 - `api.preset(name, url, text)` — registra um preset de licença; `text` tem que terminar em `"verifique a página da fonte: {url}"`.
 - `api.candidate(provider, source_id, title, source_url=None)` — monta um candidato vazio, no formato que o core espera; use isto em vez de montar o dicionário à mão.
 - `api.env(key)` — lê uma variável de ambiente; `key` tem que estar em `permissions.env` do manifesto, senão levanta erro.
-- `api.get_json(url, params=None, headers=None, cache_ttl=0)` — faz uma requisição HTTP GET com o mesmo transporte validado do core (resolução de IP, HTTPS, sem redirect); o host de `url` tem que estar em `permissions.network`. A resposta passa pela mesma limpeza do core: URL assinada dentro do JSON some.
+- `api.get_json(url, params=None, headers=None, cache_ttl=0, keep_signed=False)` — faz uma requisição HTTP GET com o mesmo transporte validado do core (resolução de IP, HTTPS, sem redirect); o host de `url` tem que estar em `permissions.network`. A resposta de um plugin **nunca vai para o cache** em disco (`cache_ttl` é aceito e ignorado) e passa por uma limpeza mais rígida que a dos built-ins: chave com nome de segredo some (`token`, `refresh_token`, `client_secret`, `password`, `*_key`...), URL assinada vira `None` (inclusive com esquema em maiúsculas, `HTTPS://`) e uma URL assinada no meio de um texto vira `[URL omitida]`. Com `keep_signed=True`, a URL assinada **fica** na resposta — é o caso de uma API que devolve um `download_url` pré-assinado para o arquivo licenciado (estilo Envato): leia o `download_url` e passe para `api.download` dentro da rota. As chaves com nome de segredo continuam saindo, e o corpo de um erro HTTP nunca aparece na mensagem.
 - `api.route(route)` — registra uma `Route`; o `name` tem que estar em `contributes.routes`.
 - `api.command(name, handler, help)` — registra um comando; `name` tem que estar em `contributes.commands`, `help` é a frase que `x --list` mostra.
 - `api.download(url, name, headers=None)` — só dentro de `Route.prepare`: baixa `url` (https, host em `permissions.network`, IP público, sem redirect, teto de 512 MB) para `workdir/name` e devolve o caminho. Aceita URL assinada (ex.: um link S3 que o próprio plugin assinou) e headers como `Authorization`; nenhum dos dois vai para log ou mensagem de erro. `name` é só nome de arquivo (`[A-Za-z0-9._-]`, sem `/` nem `..`).
-- `api.local_file(path)` — só dentro de `Route.prepare`: copia um arquivo que esteja dentro de `permissions.paths` (resolvido, com link simbólico seguido) para o `workdir`. Sempre cópia, nunca hardlink — o original da pessoa não muda.
+- `api.local_file(path)` — só dentro de `Route.prepare`: copia um arquivo que esteja dentro de `permissions.paths` (resolvido, com link simbólico seguido) para o `workdir`. Sempre cópia, nunca hardlink — o original da pessoa não muda. O arquivo é aberto sem seguir link (`O_NOFOLLOW`) nem travar numa FIFO (`O_NONBLOCK`), conferido pelo próprio descritor (arquivo regular, até 512 MB) e copiado dele com o teto contado nos bytes lidos; o destino é criado exclusivo, sem seguir link plantado. A recusa nomeia o arquivo que o plugin pediu, nunca o alvo resolvido. No Windows, onde `O_NOFOLLOW` não existe, vale a resolução + conferência de raiz (link simbólico lá exige privilégio de administrador).
 - `api.data_dir` — `$GB_HOME/plugin-data/<id>/` (0700), criado na primeira leitura: estado e cache do plugin. Fica fora da pasta do plugin, então escrever ali não muda o pin de hash.
 - `api.config()` — lê `data_dir/settings.json` como dicionário (`{}` sem arquivo); JSON inválido ou que não é objeto vira erro com o caminho relativo.
 - `api.finish()` — chamado automaticamente pelo loader depois de `register()`; confere se tudo declarado em `contributes` foi mesmo registrado e se cada `capabilities.route` aponta para uma rota registrada pelo próprio plugin.
@@ -196,8 +230,25 @@ sobrevive:
 
 Qualquer campo de topo ou subcampo fora dessas listas é descartado em
 silêncio (do ponto de vista do retorno da CLI) e registrado no log estruturado
-`plugin_candidate_sanitized`, com os nomes dos campos removidos. `media_url` e
-`source_url` sempre passam pelo mesmo `public_url()` que valida URLs do core.
+`plugin_candidate_sanitized`, com os nomes dos campos removidos. `media_url`,
+`source_url`, `preview.poster_url`/`embed_url`, `creator.url` e
+`rights.license_url` sempre passam pelo mesmo `public_url()` que valida URLs do
+core: só HTTPS público, e URL com parâmetro de credencial na query (`key`,
+`token`, `signature`, `password`, `hmac`, `jwt`, `client_secret`, `*_token`,
+Akamai `__token__`/`hdnts`/`hdnea`, CloudFront `Policy`/`Key-Pair-Id`, `X-Amz-*`,
+`X-Goog-*`) vira `None`.
+
+O registro de proveniência que a pessoa lê para decidir (`ORIGEM.md`,
+`credits.md`, Storyboard) não aceita texto do plugin como decisão:
+
+- `rights.evidence` vindo do plugin é **descartado**. Evidência só entra pelo
+  `permit` humano e, depois dele, pela licença que o core registra da rota de
+  `fetch`.
+- `title`, `creator.name`/`handle`, `rights.license_name`/`attribution` e
+  `match.reason` viram uma linha só, sem caractere de controle, com até 300
+  caracteres — um título com quebra de linha não forja uma linha
+  "Direitos:"/"Aprovado por:" no `ORIGEM.md`. O próprio `ORIGEM.md`/`credits.md`
+  também escreve cada valor numa linha só (texto normal sai idêntico).
 
 Uma exceção levantada dentro de `search`, `resolve`, `refresh` ou `Route.prepare` nunca derruba
 a CLI: ela vira `ProviderError` com a mensagem `Plugin <id>: ...`, e a busca
@@ -239,7 +290,8 @@ if not token:
   Python (ex.: `RuntimeError('boom')`), para facilitar a depuração.
 
 Eventos do log estruturado relacionados a plugins:
-`plugin_loaded`, `plugin_skipped`, `plugin_failed`, `plugin_enabled`,
+`plugin_loaded` (plugin, versão, providers, presets e a quantidade de rotas e
+comandos registrados), `plugin_skipped`, `plugin_failed`, `plugin_enabled`,
 `plugin_disabled`, `plugin_installed`, `plugin_updated`,
 `plugin_request_refused`, `plugin_path_refused`, `plugin_call_failed`,
 `plugin_candidate_sanitized`, `plugin_route` (plugin, rota, estágio, bytes, ms)
@@ -285,13 +337,28 @@ python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
   `--no-checkout` e o conteúdo é materializado por nós, um blob por vez, direto
   de `git ls-tree`/`git cat-file blob` — comandos que nunca aplicam filtro
   `clean`/`smudge` nem hook, ao contrário de um `checkout` de verdade — com
-  `GIT_TERMINAL_PROMPT=0`; só o que está commitado entra. É recusado: link
-  simbólico, submódulo (gitlink), qualquer caminho com um componente
-  equivalente a `.git`, colisão de maiúsculas/minúsculas entre dois caminhos,
+  `GIT_TERMINAL_PROMPT=0`; só o que está commitado entra. O clone fica numa
+  pasta de staging própria e a árvore é escrita em outra, que nunca tem `.git`.
+  É recusado: link simbólico, submódulo (gitlink), qualquer caminho com um
+  componente de controle de versão (`.git`, `.hg`, `.svn`, também com ponto ou
+  espaço sobrando e os nomes curtos `GIT~1`/`HG~1`/`SVN~1`), `:` ou `\` em
+  qualquer componente, colisão de maiúsculas/minúsculas entre dois caminhos,
   mais de 2000 arquivos e mais de 200 MB (no total ou num arquivo só).
+- Uma pasta local só é tratada como repositório git quando `.git` é uma pasta
+  de verdade (um arquivo `.git` de worktree/submódulo ou um link apontariam
+  para outro repositório). Pasta local comum é copiada sem `.git`/`.hg`/`.svn`
+  de topo, `__pycache__`/`.pyc` e lixo de SO; uma pasta de controle de versão
+  aninhada é recusada.
+- No Windows, `https://` usa a configuração de TLS do Git para Windows que está
+  no config de **sistema**, que o install ignora de propósito
+  (`GIT_CONFIG_NOSYSTEM=1`, para nenhum config de fora redirecionar o clone). Se
+  o clone `https://` falhar por certificado, defina `GIT_SSL_CAINFO` (e, se
+  preciso, `GIT_SSL_CAPATH`) apontando para o bundle de CAs — essas duas
+  variáveis são repassadas ao git; ou instale a partir de uma pasta local.
 - Sem `--yes`, nada fica instalado: a resposta mostra id, versão, permissões
-  (`network`, `env`, `paths`), contribuições, origem, commit e o `sha256` do
-  conteúdo já materializado, para revisão.
+  (`network`, `env`, `paths`), contribuições, origem, commit, a lista de
+  arquivos (`files`: total e até 50 nomes) e o `sha256` do conteúdo já
+  materializado, para revisão.
 - `--yes` sozinho não basta: precisa vir junto com `--expect <sha256>`, igual
   ao `sha256` que a prévia (sem `--yes`) mostrou — confirma que a pessoa está
   aprovando o mesmo conteúdo que viu, não um que mudou na origem entre a
@@ -313,21 +380,44 @@ python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
   `--yes` só mostra o manifesto e as permissões declaradas, para revisão
   humana; `--yes` de fato habilita.
 - `--yes` grava um **pin de hash**: um sha256 sobre todo arquivo da pasta do
-  plugin, exceto lixo de SO (`.DS_Store`, `Thumbs.db`, `desktop.ini`) e o
-  conteúdo de uma pasta de VCS (`.git`, `.hg`, `.svn`) — esses nunca entram na
-  conta. Qualquer outra mudança no conteúdo da pasta — mesmo um arquivo que
-  não é código, `__pycache__` incluso — deixa o plugin `suspended` até um novo
-  `enable`.
+  plugin, exceto lixo de SO (`.DS_Store`, `Thumbs.db`, `desktop.ini`) e a pasta
+  `.git` **de topo** — só essas ficam fora da conta. Qualquer outra mudança no
+  conteúdo da pasta — mesmo um arquivo que não é código, `__pycache__` e
+  `.hg`/`.svn` de topo inclusos — deixa o plugin `suspended` até um novo
+  `enable`. Uma pasta de controle de versão aninhada (`vendor/.hg`,
+  `sub/.svn`, `sub/.git`) deixa o plugin `invalid`: seria conteúdo que o plugin
+  lê fora do hash.
+- O hash é lido em pedaços, com teto de 200 MB por arquivo e 400 MB no total:
+  passou disso (um cache largado ao lado do `__file__`, por exemplo), o plugin
+  fica `suspended` com o motivo, e o `enable` recusa. Guarde estado em
+  `api.data_dir`.
 - O arquivo de entrada é sempre executado a partir da fonte (`.py`); bytecode
   (`.pyc`/`__pycache__`) nunca é lido para rodar o plugin, mas continua
-  contando no hash como qualquer outro arquivo (só o lixo de SO e o VCS
-  acima ficam de fora).
+  contando no hash como qualquer outro arquivo (só o lixo de SO e o `.git` de
+  topo ficam de fora).
 - `GB_PLUGINS=id1,id2` seleciona plugins habilitados sem depender do pin de
   hash — pensado para CI/testes, não para uso diário. `GB_PLUGINS=off`
   desliga todos os plugins, mesmo os habilitados em `plugins.json`.
 - Um plugin que falha ao carregar (manifesto inválido, exceção em
   `register()`, hash divergente) fica marcado como `failed`/`suspended` e o
   resto do Get B-rolls — built-ins inclusive — continua funcionando normalmente.
+- Toda chamada ao código do plugin (`register`, `search`/`resolve`/`refresh`,
+  `Route.prepare`, handler de comando, o `plugins check`) passa pelo mesmo
+  isolamento: qualquer exceção — inclusive `SystemExit`, `GeneratorExit`,
+  `asyncio.CancelledError` e uma classe que herde `BaseException` — vira erro
+  do plugin com só o **tipo** (veja [`PluginError`](#mensagens-de-erro-pluginerror)),
+  sem cadeia até a exceção original: o texto dela nunca chega ao traceback de
+  `diagnostics.jsonl`, ao `getbrolls.log` nem ao motivo em `doctor`. Só
+  `KeyboardInterrupt` passa. Falhar ao montar o registro de plugins nunca
+  derruba `providers`/`doctor`/`rules`/`search` dos built-ins.
+- **Não há tempo limite** nas chamadas ao plugin: um `search` ou
+  `Route.prepare` que trava segura o comando (e a trava do projeto) até ser
+  interrompido com Ctrl+C. Código em processo não tem como ser cortado com
+  segurança; isso fica para um modelo de subprocesso futuro.
+- Antes de rodar qualquer código de plugin, o core liga
+  `sys.dont_write_bytecode`: um plugin com módulo irmão (`sys.path` + `import`)
+  não grava `__pycache__` na própria pasta — o que mudaria o hash e o
+  suspenderia depois do primeiro uso.
 - **O SDK não é uma caixa de areia.** Um plugin habilitado roda com as mesmas
   permissões do processo que executa a CLI. `permissions.network` e
   `permissions.env` limitam o que `api.get_json`/`api.env` aceitam, mas não

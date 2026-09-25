@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-23
+updated: 2026-09-24
 tags: [get-brolls]
 ---
 
@@ -11,6 +11,7 @@ tags: [get-brolls]
 ## Unreleased
 
 - SDK de extensões (experimental): fontes e presets de licença por plugin em `~/.getbrolls/plugins`, com opt-in, pin de hash e guarda-corpos; comando `plugins`; schemas do candidato e do brief descrevem o formato real e aceitam `ext`. Sem mudança para quem não instala plugin.
+- SDK, endurecimento final das rotas: toda chamada a código de plugin passa por um isolamento único (qualquer `BaseException`, só o tipo na mensagem, sem cadeia até a exceção original — o texto de um erro de plugin não chega mais a `diagnostics.jsonl`, ao log nem ao `doctor`; falha ao montar os plugins não derruba mais `providers`/`doctor`/`search` dos built-ins); `PluginError` público para mensagens de orientação; capabilities conferidas e copiadas no registro; evidência de direitos vinda do plugin é descartada e os campos exibidos ficam numa linha; `api.get_json` de plugin nunca grava cache; rota de `fetch` consome a licença uma vez só (arquivo guardado no cache privado, licença gravada antes do corte, retry reaproveita); `permissions.paths` recusa `/`, raiz de unidade e `~`; `api.local_file` e o hash do pin endurecidos; install recusa `.hg`/`.svn`/`:`/`\` no histórico e VCS aninhado, e limpa pastas somente-leitura do git no Windows. Para todo mundo: `public_url` também descarta URL com parâmetro de credencial como `password`, `hmac`, `jwt`, `client_secret` ou `*_token` na query, e `ORIGEM.md`/`credits.md` escrevem cada valor numa linha só (texto normal sai igual).
 - SDK: rotas de plugin (`contributes.routes`) trazem o arquivo do candidato — `stage="preview"` para mídia de trabalho, `stage="fetch"` para download que consome licença, só depois de aprovação e permit — com `api.download` (headers e URL assinada, sem log) e `api.local_file` (raízes em `permissions.paths`); o core verifica o arquivo e registra a licença da rota como evidência extra. Comandos de plugin com `gb x`, estado em `~/.getbrolls/plugin-data/<id>/`, `plugins --action install|update|new` e `getbrolls.sdk.testing`. Exemplos `banco_http` (novo) e `pasta_local` (rota de prévia e comando `recentes`). Sem mudança para quem não instala plugin.
 - Docs: `docs/MANUAL.md`, manual + tutorial em português para quem está chegando — tutorial do zero à `entrega/`, todos os subcomandos agrupados nos 8 passos do fluxo com explicação dentro de cada bloco, as três rotas do `permit`, como ler `summary.line`/`summary.do`/erros/códigos de saída, `BRIEF.md`, `RULES.md` e `.env` campo a campo, e receitas de automação com `jq`. Ligado no README, no README.en e no AGENTS. Fecha #80.
 - READMEs: os diagramas `assets/flow*.svg` e `assets/formats*.svg` passam a mostrar o fluxo atual — brief, análise da fonte, direitos como segundo portão, verificação e `entrega/` por beat — e a árvore de pastas ganha `BRIEF.md`, `entrega/`, `getbrolls.log` e `reviews/`. Eram da 2.3.x e apontavam `clips/` como lugar dos arquivos finais.
