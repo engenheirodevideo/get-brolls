@@ -5,11 +5,17 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from test_sdk_loader import MANIFEST, LoaderTestCase
 
+from getbrolls.http import ProviderError
 from getbrolls.sdk import safe_copy
+from getbrolls.sdk.api import PluginApi, route_scope
+from getbrolls.sdk.manifest import read_manifest
+from getbrolls.sdk.registry import Registry
 from getbrolls.sdk.safe_copy import UnsafeFileError
 
 POSIX = os.name != "nt"
@@ -123,6 +129,68 @@ class RecheckTests(SafeCopyTestCase):
         self.refused(safe_copy.CHANGED, safe_copy.recheck, self.source, dev, ino, size + 1)
         os.link(self.source, self.base / "outro-nome.wav")
         self.refused(safe_copy.LINKED, safe_copy.recheck, self.source, dev, ino, size)
+
+
+class RootTests(SafeCopyTestCase):
+    def setUp(self):
+        super().setUp()
+        self.base = self.base.resolve()
+        self.root = self.base / "acervo"
+        (self.root / "sub").mkdir(parents=True)
+        self.inner = self.root / "sub" / "eco.wav"
+        self.inner.write_bytes(b"eco")
+
+    def test_within_roots_compares_the_real_folders(self):
+        self.assertTrue(safe_copy.within_roots(self.inner, [self.root]))
+        self.assertFalse(safe_copy.within_roots(self.source, [self.root]))
+        self.assertFalse(safe_copy.within_roots(self.inner, [self.base / "nao-existe"]))
+        self.assertFalse(safe_copy.within_roots(self.root, [self.root]))  # a raiz em si não é um arquivo dentro dela
+
+    def test_open_under_accepts_a_file_inside(self):
+        fd, info = safe_copy.open_under(self.inner, [self.root])
+        os.close(fd)
+        self.assertEqual(self.inner.stat().st_ino, info.st_ino)
+        self.refused(safe_copy.OUTSIDE, safe_copy.open_under, self.source, [self.root])
+
+    @unittest.skipUnless(POSIX, "symlink exige privilégio no Windows")
+    def test_folder_swapped_after_the_open_is_caught(self):
+        fd, _ = safe_copy.open_regular(self.inner)
+        self.addCleanup(os.close, fd)
+        outside = self.base / "fora"
+        outside.mkdir()
+        (outside / "eco.wav").write_bytes(b"outro eco")
+        (self.root / "sub").rename(self.base / "sub-original")
+        (self.root / "sub").symlink_to(outside)
+        self.refused(safe_copy.OUTSIDE, safe_copy.still_under, self.inner, [self.root], fd)
+
+
+class LocalFileSwapTests(LoaderTestCase):
+    @unittest.skipUnless(POSIX, "symlink exige privilégio no Windows")
+    def test_folder_swapped_before_the_open_is_refused(self):
+        base = Path(tempfile.mkdtemp(prefix="gb-swap-")).resolve()
+        self.addCleanup(shutil.rmtree, base, ignore_errors=True)
+        root, outside, work = base / "acervo", base / "fora", base / "work"
+        for folder in (root / "sub", outside / "sub", work):
+            folder.mkdir(parents=True)
+        (root / "sub" / "praia.mp4").write_bytes(b"de dentro")
+        (outside / "sub" / "praia.mp4").write_bytes(b"de fora")
+        manifest = {**MANIFEST, "permissions": {**MANIFEST["permissions"], "paths": [str(root)]}}
+        api = PluginApi(read_manifest(self.install(manifest)), Registry())
+        real_open = safe_copy.open_regular
+
+        def swapping_open(path, **kwargs):
+            (root / "sub").rename(base / "sub-original")
+            (root / "sub").symlink_to(outside / "sub")
+            return real_open(path, **kwargs)
+
+        with (
+            route_scope("demo", work),
+            patch.object(safe_copy, "open_regular", swapping_open),
+            self.assertRaises(ProviderError) as caught,
+        ):
+            api.local_file(root / "sub" / "praia.mp4")
+        self.assertIn("praia.mp4 está fora de permissions.paths", str(caught.exception))
+        self.assertEqual([], list(work.iterdir()))
 
 
 if __name__ == "__main__":

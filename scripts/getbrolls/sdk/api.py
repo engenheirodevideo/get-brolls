@@ -38,7 +38,7 @@ SUFFIX_RE = re.compile(r"\.[a-z0-9]{1,8}")
 # onde "CON.mp4"/"con"/"LPT1.txt" não são arquivos normais. `stem` = parte antes
 # do primeiro ponto.
 _RESERVED_STEMS = frozenset(
-    {"CON", "PRN", "AUX", "NUL"} | {f"COM{n}" for n in range(1, 10)} | {f"LPT{n}" for n in range(1, 10)}
+    {"CON", "PRN", "AUX", "NUL"} | {f"COM{n}" for n in range(10)} | {f"LPT{n}" for n in range(10)}
 )
 
 # Nome de header HTTP (RFC 7230 token): letras, dígitos e os símbolos abaixo, sem
@@ -312,7 +312,7 @@ class PluginApi:
         if _bad_file_name(name):
             raise ProviderError(
                 f"Plugin {self.plugin_id}: nome de arquivo inválido; use letras, números, '.', '_' ou '-', sem pasta, "
-                "sem terminar em '.' e sem ser um nome reservado do Windows (CON, PRN, AUX, NUL, COM1-9, LPT1-9)."
+                "sem terminar em '.' e sem ser um nome reservado do Windows (CON, PRN, AUX, NUL, COM0-9, LPT0-9)."
             )
         headers = self._validate_headers(headers)
         self._check_host(url)
@@ -359,7 +359,7 @@ class PluginApi:
         if not any(source.is_relative_to(root) for root in roots):
             logs.event(_log, logging.WARNING, "plugin_path_refused", plugin=self.plugin_id)
             raise self._refuse(f"{shown} está fora de permissions.paths.")
-        return source, shown
+        return source, shown, roots
 
     def local_file(self, path):
         """Copia um arquivo de dentro de `permissions.paths` para a pasta de trabalho.
@@ -382,18 +382,24 @@ class PluginApi:
         """
         workdir = self._workdir("local_file")
         cap = core_http.DOWNLOAD_MAX_BYTES
-        source, shown = self._local_source(path)
+        source, shown, roots = self._local_source(path)
         too_big = f"{shown} passa do teto de {cap // (1024 * 1024)} MB para arquivo de trabalho."
         refusals = {
             safe_copy.NOT_REGULAR: f"{shown} não é um arquivo.",
             safe_copy.TOO_BIG: too_big,
             safe_copy.TARGET_EXISTS: "api.local_file já trouxe um arquivo nesta rota.",
+            safe_copy.OUTSIDE: f"{shown} está fora de permissions.paths.",
+            safe_copy.CHANGED: f"{shown} mudou enquanto era aberto; tente de novo.",
         }
         try:
             # Sem exigir um nome só no disco (`single_link=False`): a rota sempre aceitou
-            # hardlink dentro da raiz, e a cópia nunca mexe no original.
-            source_fd, info = safe_copy.open_regular(source, single_link=False)
+            # hardlink dentro da raiz, e a cópia nunca mexe no original. `open_under`
+            # confere de novo, com o arquivo aberto, que o caminho segue dentro da raiz
+            # (uma pasta do meio trocada por link depois da conferência é recusada).
+            source_fd, info = safe_copy.open_under(source, roots, single_link=False)
         except safe_copy.UnsafeFileError as exc:
+            if exc.reason == safe_copy.OUTSIDE:
+                logs.event(_log, logging.WARNING, "plugin_path_refused", plugin=self.plugin_id)
             text = refusals.get(exc.reason) or f"{shown} não pôde ser aberto ({exc.type_name})."
             raise self._refuse(text) from None
         try:

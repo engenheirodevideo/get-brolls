@@ -76,9 +76,19 @@ def _check_text(text, where):
         raise ExportValidationError(f"{where}: o texto não é UTF-8 válido.") from None
 
 
+def _snapshot(value, copy):
+    """Cópia rasa (`dict(...)`/`list(...)`) antes de conferir: o que for conferido é o
+    que segue adiante, mesmo que o plugin ainda mexa no objeto dele."""
+    try:
+        return copy(value)
+    except (RuntimeError, TypeError):
+        raise ExportValidationError("o resultado mudou enquanto era conferido; devolva valores prontos.") from None
+
+
 def _check_files(files):
     if type(files) is not dict:
         raise ExportValidationError("files tem que ser um dict de caminho para texto.")
+    files = _snapshot(files, dict)
     if len(files) > FILES_MAX:
         raise ExportValidationError(f"files passa de {FILES_MAX} arquivos.")
     total = 0
@@ -107,6 +117,7 @@ def _check_files(files):
 def _check_media(media):
     if type(media) is not list:
         raise ExportValidationError("media tem que ser uma lista de MediaRequest.")
+    media = _snapshot(media, list)
     if len(media) > MEDIA_MAX:
         raise ExportValidationError(f"media passa de {MEDIA_MAX} pedidos.")
     checked = []
@@ -127,6 +138,7 @@ def _check_media(media):
 def _check_notes(notes, owner):
     if type(notes) is not list:
         raise ExportValidationError("notes tem que ser uma lista de texto.")
+    notes = _snapshot(notes, list)
     if len(notes) > NOTES_MAX:
         raise ExportValidationError(f"notes passa de {NOTES_MAX} itens.")
     if any(type(note) is not str for note in notes):
@@ -171,10 +183,23 @@ def validate_export_result(result, owner=CORE):
     return ValidatedExport(checked_files, checked_media, checked_notes)
 
 
+NOTE_LABEL = "Nota do plugin"
+
+
+def note_line(owner, text):
+    """Uma nota do exportador pronta para mostrar: uma linha, sem marcação ativa
+    (link, imagem e ênfase saem escapados) e com o prefixo que diz de qual plugin veio.
+    `ValidatedExport.notes` já vem numa linha, mas com a marcação como o plugin escreveu."""
+    from ..delivery import inert
+
+    clean = guard.sanitize_text(owner, str(text))
+    return f"{NOTE_LABEL} {owner}: {inert(clean, plugin=owner)}"
+
+
 def _json_copy(value, what):
     try:
         return json.loads(json.dumps(value, allow_nan=False))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, RecursionError):
         raise ValueError(f"{what} do export não é JSON válido.") from None
 
 

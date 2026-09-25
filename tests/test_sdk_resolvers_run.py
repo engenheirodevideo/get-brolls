@@ -209,6 +209,56 @@ class RefusedHitTests(ResolverTestCase):
         self.refused("permissions.paths")
 
 
+class SwapTests(ResolverTestCase):
+    """Uma pasta do meio trocada por link entre a conferência da raiz e a abertura."""
+
+    def setUp(self):
+        super().setUp()
+        (self.root / "sub").mkdir()
+        (self.root / "sub" / "eco.wav").write_bytes(b"eco de dentro")
+        (self.outside / "sub").mkdir()
+        (self.outside / "sub" / "eco.wav").write_bytes(b"eco de fora")
+
+    def swap_sub_for_a_link(self):
+        (self.root / "sub").rename(self.base / "sub-original")
+        (self.root / "sub").symlink_to(self.outside / "sub")
+
+    @unittest.skipUnless(POSIX, "symlink exige privilégio no Windows")
+    def test_folder_swapped_before_the_open_is_refused(self):
+        real_open = safe_copy.open_regular
+
+        def swapping_open(path, **kwargs):
+            self.swap_sub_for_a_link()
+            return real_open(path, **kwargs)
+
+        self.returns(ResolverHit(self.root / "sub" / "eco.wav"))
+        with patch.object(safe_copy, "open_regular", swapping_open):
+            self.refused("fora de permissions.paths")
+
+    @unittest.skipUnless(POSIX, "symlink exige privilégio no Windows")
+    def test_copy_step_rechecks_the_root(self):
+        self.returns(ResolverHit(self.root / "sub" / "eco.wav"))
+        hit, _ = self.resolve()
+        assert hit is not None
+        # O mesmo arquivo (mesmo inode) agora é alcançado por um link que sai da raiz.
+        (self.root / "sub").rename(self.outside / "movida")
+        (self.root / "sub").symlink_to(self.outside / "movida")
+        found = (hit["path"], hit["st_dev"], hit["st_ino"], hit["st_size"])
+        with self.assertRaises(safe_copy.UnsafeFileError) as caught:
+            safe_copy.recheck(*found, roots=self.registry.resolver_roots("demo"))
+        self.assertEqual(safe_copy.OUTSIDE, caught.exception.reason)
+
+    def test_case_variant_of_the_root_is_inside(self):
+        variant = self.base / self.root.name.upper() / "porta.wav"
+        if not variant.exists():
+            self.skipTest("disco diferencia maiúsculas de minúsculas")
+        self.returns(ResolverHit(variant))
+        hit, warnings = self.resolve()
+        self.assertEqual([], warnings)
+        assert hit is not None
+        self.assertEqual(self.sound.stat().st_ino, hit["st_ino"])
+
+
 class IsolationTests(ResolverTestCase):
     def test_exception_becomes_a_warning_and_the_next_resolver_runs(self):
         def says(kind, name):

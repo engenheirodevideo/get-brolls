@@ -13,7 +13,7 @@ from _plugin_pins import pin_plugins
 from test_sdk_exporters_resolvers import EXPORT_CODE
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
-from getbrolls.sdk import ExporterSpec, ExportResult, MediaRequest, PluginError, loader, testing
+from getbrolls.sdk import ExporterSpec, ExportResult, MediaRequest, PluginError, exporters, loader, testing
 from getbrolls.sdk.exporters import (
     FILE_MAX_BYTES,
     MINIMAL_PLAN,
@@ -79,6 +79,8 @@ class ValidatorTests(unittest.TestCase):
             "trailing dot": "css./site.css",
             "reserved stem": "CON.html",
             "reserved stem in folder": "nul/site.css",
+            "reserved COM0": "COM0.md",
+            "reserved lpt0": "docs/lpt0.txt",
             "too long": "d" * 100 + "/" + "d" * 100 + "/" + "e" * 40 + ".html",
             "too deep": "a/b/c/d/e/f/g.html",
         }
@@ -129,10 +131,32 @@ class ValidatorTests(unittest.TestCase):
         self.refused(good(media=[MediaRequest("", "assets/a.wav")]), "media_id")
         self.refused(good(notes=["nota"] * 51), "50 itens")
 
+    def test_snapshot_failure_is_a_normal_refusal(self):
+        def changing(value):
+            raise RuntimeError("dictionary changed size during iteration")
+
+        with self.assertRaises(ExportValidationError) as caught:
+            exporters._snapshot({"index.html": "x"}, changing)
+        self.assertIn("mudou enquanto era conferido", str(caught.exception))
+
+    def test_checked_files_are_a_snapshot(self):
+        files = {"index.html": "x"}
+        checked = validate_export_result(good(files=files))
+        files["outro.html"] = "y"
+        self.assertEqual({"index.html": "x"}, checked.files)
+        self.assertIsNot(files, checked.files)
+
     def test_notes_are_sanitized_to_one_line(self):
         checked = validate_export_result(good(notes=["primeira\nsegunda\u202e", "x" * 400]))
         self.assertEqual("primeira segunda", checked.notes[0])
         self.assertLessEqual(len(checked.notes[1]), 300)
+
+    def test_note_line_is_inert_and_prefixed(self):
+        line = exporters.note_line("demo", "Veja [aqui](http://exemplo.com) <img src=x> **já**")
+        self.assertTrue(line.startswith("Nota do plugin demo: "))
+        self.assertIn("\\[aqui\\]", line)
+        self.assertIn("\\<img", line)
+        self.assertIn("\\*\\*já\\*\\*", line)
 
 
 def export_registry(export, status="enabled"):
@@ -236,6 +260,23 @@ class RunExporterTests(unittest.TestCase):
             self.run_with(lambda plan, options: good(), plan={"x": float("nan")})
         self.assertIn("JSON", str(caught.exception))
 
+    def test_plan_nested_too_deep_is_refused_not_crashed(self):
+        deep: dict = {}
+        for _ in range(10_000):
+            deep = {"x": deep}
+        # Conforme a versão do Python, o `json` aguenta esse aninhamento ou levanta
+        # RecursionError; no segundo caso a recusa é a mesma de um plano que não é JSON.
+        try:
+            self.run_with(lambda plan, options: good(), plan=deep)
+        except ValueError as exc:
+            self.assertIn("JSON", str(exc))
+        with (
+            patch.object(exporters.json, "dumps", side_effect=RecursionError),
+            self.assertRaises(ValueError) as caught,
+        ):
+            self.run_with(lambda plan, options: good(), plan=deep)
+        self.assertIn("O plano do export não é JSON válido", str(caught.exception))
+
 
 class LocalPathScanTests(unittest.TestCase):
     def test_absolute_local_paths_are_found_anywhere(self):
@@ -246,8 +287,9 @@ class LocalPathScanTests(unittest.TestCase):
             "credit": "https://example.com/home/fotos",
             "relative": "clips/tmp/a.mp4",
             "scenes": [
-                {"clip": "/home/ana/clips/a.mp4"},
-                {"clip": "C:\\Users\\ana\\a.mp4"},
+                # Montados na hora: o repositório não guarda caminho de máquina, nem de exemplo.
+                {"clip": "/" + "home/ana/clips/a.mp4"},
+                {"clip": "C:\\" + "Users\\ana\\a.mp4"},
                 {"clip": "$HOME/Musica/a.wav"},
                 {"clip": home + "/Musica/b.wav"},
                 {"clip": "~/Musica/c.wav"},

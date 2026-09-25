@@ -3,7 +3,7 @@
 Só o comando que exporta chama isto, só para os tipos de `RESOLVER_KINDS` e só
 depois de as pastas do projeto e da pessoa não acharem nada. O resolvedor diz
 onde está o arquivo; o core confere tudo pelo disco e pelo descritor aberto. A
-cópia acontece depois, com `safe_copy.recheck` + `safe_copy.copy_from_fd`: sempre
+cópia acontece depois, com `safe_copy.recheck(..., roots=...)` + `safe_copy.copy_from_fd`: sempre
 cópia, nunca hardlink nem mudança de permissão no original da pessoa.
 """
 
@@ -60,17 +60,23 @@ def _checked_file(owner, raw, roots, extensions):
         resolved = Path(raw).resolve(strict=True)
     except (OSError, RuntimeError, ValueError) as exc:
         raise _RefusedError(f"{shown} não foi encontrado ({type(exc).__name__}).") from None
-    if not any(resolved.is_relative_to(root) for root in roots):
+    if not safe_copy.within_roots(resolved, roots):
         logs.event(_log, logging.WARNING, "plugin_path_refused", plugin=owner, reason="resolver_outside_roots")
         raise _RefusedError(f"{shown} está fora de permissions.paths.")
     if resolved.suffix.lower() not in extensions:
         raise _RefusedError(f"{shown} não tem uma extensão aceita ({', '.join(extensions)}).")
     try:
-        fd, info = safe_copy.open_regular(resolved)
+        # `open_under`: com o arquivo aberto, o caminho ainda fica dentro da raiz — uma
+        # pasta do meio trocada por link depois da conferência acima é recusada.
+        fd, info = safe_copy.open_under(resolved, roots)
     except safe_copy.UnsafeFileError as exc:
+        if exc.reason == safe_copy.OUTSIDE:
+            logs.event(_log, logging.WARNING, "plugin_path_refused", plugin=owner, reason="resolver_outside_roots")
         reasons = {
             safe_copy.NOT_REGULAR: f"{shown} não é um arquivo.",
             safe_copy.LINKED: f"{shown} tem mais de um nome no disco (hardlink) e foi recusado.",
+            safe_copy.OUTSIDE: f"{shown} está fora de permissions.paths.",
+            safe_copy.CHANGED: f"{shown} mudou enquanto era aberto.",
         }
         raise _RefusedError(reasons.get(exc.reason) or f"{shown} não pôde ser aberto ({exc.type_name}).") from None
     os.close(fd)
