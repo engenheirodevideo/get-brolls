@@ -20,6 +20,22 @@ from getbrolls.sdk.registry import reset_registry
 
 ROUTE_MANIFEST = {**MANIFEST, "contributes": {"providers": ["demo"], "routes": ["demo"]}}
 
+
+def _hardlinks_work():
+    """`os.link` funciona aqui? No NTFS funciona; só um sistema de arquivos sem
+    hardlink (ou um `os` sem `link`) faz o teste de hardlink ser pulado."""
+    with tempfile.TemporaryDirectory() as tmp:
+        source = Path(tmp) / "a"
+        source.write_bytes(b"x")
+        try:
+            os.link(source, Path(tmp) / "b")
+        except (AttributeError, NotImplementedError, OSError):
+            return False
+    return True
+
+
+HARDLINKS_WORK = _hardlinks_work()
+
 ROUTE_PLUGIN = """
 import os
 import shutil
@@ -195,7 +211,7 @@ class RouteAcquisitionTests(LoaderTestCase):
         cases = {"fora": OUTSIDE, "vazio": EMPTY, "não é mídia": NOT_MEDIA}
         if os.name != "nt":
             cases["link"] = SYMLINK
-        if os.name != "nt" and hasattr(os, "link"):
+        if HARDLINKS_WORK:
             cases["hardlink"] = HARDLINK
         self.enable()
         for label, code in cases.items():
@@ -215,8 +231,8 @@ class RouteAcquisitionTests(LoaderTestCase):
         self.assertTrue(self.source.is_file())
 
     def test_hardlink_is_refused_and_leaves_the_original_untouched(self):
-        if os.name == "nt" or not hasattr(os, "link"):
-            self.skipTest("hardlink requer os.link (POSIX)")
+        if not HARDLINKS_WORK:
+            self.skipTest("os.link não funciona neste sistema de arquivos")
         self.enable(HARDLINK)
         before_mode = self.source.stat().st_mode
         ledger = Ledger(self.project)
@@ -253,7 +269,17 @@ class RouteAcquisitionTests(LoaderTestCase):
             ["preview", "--project", project, "--candidate", ident, "--start", "0", "--end", "2", "--reference-only"]
         )
         cli.main(
-            ["approve", "--project", project, "--candidate", ident, "--by", "Bruno", "--statement", "pode usar esse"]
+            [
+                "approve",
+                "--project",
+                project,
+                "--candidate",
+                ident,
+                "--by",
+                "Pessoa Teste",
+                "--statement",
+                "pode usar esse",
+            ]
         )
         cli.main(["permit", "--project", project, "--candidate", ident, "--evidence", "Plano anual da conta Demo"])
         self.assertEqual([], self.calls_made())
@@ -275,7 +301,17 @@ class RouteAcquisitionTests(LoaderTestCase):
         ident = found["items"][0]["id"]
         cli.main(["preview", "--project", project, "--candidate", ident, "--reference-only"])
         cli.main(
-            ["approve", "--project", project, "--candidate", ident, "--by", "Bruno", "--statement", "pode usar essa"]
+            [
+                "approve",
+                "--project",
+                project,
+                "--candidate",
+                ident,
+                "--by",
+                "Pessoa Teste",
+                "--statement",
+                "pode usar essa",
+            ]
         )
         cli.main(["permit", "--project", project, "--candidate", ident, "--evidence", "Plano anual da conta Demo"])
         self.assertEqual([], self.calls_made())

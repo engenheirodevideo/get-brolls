@@ -106,7 +106,7 @@ class BancoHttpExampleTests(LoaderTestCase):
             self.gb("preview", "--candidate", item["id"], "--start", "0", "--end", "2")
         self.assertIn("--reference-only", str(caught.exception))
         self.gb("preview", "--candidate", item["id"], "--start", "0", "--end", "2", "--reference-only")
-        self.gb("approve", "--candidate", item["id"], "--by", "Bruno", "--statement", "pode usar esse trecho")
+        self.gb("approve", "--candidate", item["id"], "--by", "Pessoa Teste", "--statement", "pode usar esse trecho")
         self.gb("permit", "--candidate", item["id"], "--evidence", "Plano anual do Banco Exemplo, conferido na conta")
         self.assertEqual(["search"], self.api.paths())
 
@@ -184,18 +184,15 @@ class PastaLocalExampleTests(LoaderTestCase):
         self.assertEqual(0, out["result"]["candidatos_no_projeto"])
 
 
-class ExampleHygieneTests(unittest.TestCase):
-    def test_examples_pass_check_and_ship_no_local_paths(self):
+class ExampleCheckTests(unittest.TestCase):
+    # Caminho de máquina em arquivo rastreado (exemplos inclusos) é coberto por
+    # `test_repository.test_no_internal_working_material_is_tracked`.
+    def test_examples_pass_check(self):
         for name in ("banco_http", "pasta_local"):
             with self.subTest(name=name):
                 out = run_cli("plugins", "--action", "check", "--path", EXAMPLES / name)
                 self.assertTrue(out["ok"])
                 self.assertTrue(out["contracts"]["routes"])
-                for path in (EXAMPLES / name).rglob("*"):
-                    if path.is_file():
-                        text = path.read_text(encoding="utf-8")
-                        self.assertNotIn("/Users/", text)
-                        self.assertNotIn("/private/tmp", text)
 
 
 if __name__ == "__main__":

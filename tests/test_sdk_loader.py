@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -61,6 +62,9 @@ class LoaderTestCase(unittest.TestCase):
         env.start()
         self.addCleanup(env.stop)
         os.environ.pop("GB_PLUGINS", None)
+        # Carregar plugin liga `sys.dont_write_bytecode`; o valor volta ao fim do
+        # teste para não mudar o comportamento dos testes seguintes.
+        self.addCleanup(setattr, sys, "dont_write_bytecode", sys.dont_write_bytecode)
         reset_registry()
         self.addCleanup(reset_registry)
 

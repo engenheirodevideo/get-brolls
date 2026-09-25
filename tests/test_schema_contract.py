@@ -139,13 +139,35 @@ class BriefSchemaContractTests(unittest.TestCase):
             self.assertNotIn("enum", sources)
             self.assertEqual("^[a-z][a-z0-9_]{1,31}$", sources["pattern"])
 
-    def test_ext_is_accepted_at_top_and_beat_and_unknown_keys_are_not(self):
+    def test_schema_is_closed_at_top_and_beat_and_reserves_ext(self):
+        """O schema (documental) é fechado e reserva `ext`; o runtime não o aplica —
+        veja `test_runtime_accepts_and_ignores_unknown_keys`."""
         schema = schemas.load("brief")
         self.assertIs(False, schema["additionalProperties"])
         beat = schema["properties"]["beats"]["items"]
         self.assertIs(False, beat["additionalProperties"])
         self.assertEqual("object", schema["properties"]["ext"]["type"])
         self.assertEqual("object", beat["properties"]["ext"]["type"])
+
+    def test_runtime_accepts_and_ignores_unknown_keys(self):
+        """O runtime é permissivo: chave desconhecida (e `ext`) no topo, em `video` ou
+        num beat não recusa o BRIEF.md e não aparece no brief normalizado."""
+        from getbrolls import brief as brief_module
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = (ROOT / "docs" / "BRIEF.md").read_text(encoding="utf-8")
+            (Path(tmp) / "BRIEF.md").write_text(raw, encoding="utf-8")
+            data = brief_module.load_brief(tmp)
+        baseline, _ = brief_module.validate_brief(json.loads(json.dumps(data)))
+        data["ext"] = {"meu_plugin": {"x": 1}}
+        data["campo_novo"] = "qualquer coisa"
+        data["video"]["campo_novo"] = 1
+        data["beats"][0]["ext"] = {"meu_plugin": {"y": 2}}
+        data["beats"][0]["campo_novo"] = [1, 2]
+        normalized, _ = brief_module.validate_brief(data)
+        self.assertEqual(baseline, normalized)
+        self.assertNotIn("ext", normalized)
+        self.assertNotIn("ext", normalized["beats"][0]["resolved"])
 
 
 if __name__ == "__main__":

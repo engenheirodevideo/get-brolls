@@ -147,7 +147,7 @@ class FetchRouteCase(LoaderTestCase):
 
     def approve_range(self, ident, start, end):
         self.gb("preview", "--candidate", ident, "--start", str(start), "--end", str(end), "--reference-only")
-        self.gb("approve", "--candidate", ident, "--by", "Bruno", "--statement", "pode usar esse")
+        self.gb("approve", "--candidate", ident, "--by", "Pessoa Teste", "--statement", "pode usar esse")
         self.gb("permit", "--candidate", ident, "--evidence", "Plano anual da conta Demo")
 
 
@@ -196,7 +196,7 @@ class RoutedImageExtensionTests(FetchRouteCase):
         self.enable(self.image_plugin("foto.jpg"), source=self.ppm)
         ident = self.gb("search", "--provider", "demo", "--query", "mar")["items"][0]["id"]
         self.gb("preview", "--candidate", ident, "--reference-only")
-        self.gb("approve", "--candidate", ident, "--by", "Bruno", "--statement", "pode usar essa")
+        self.gb("approve", "--candidate", ident, "--by", "Pessoa Teste", "--statement", "pode usar essa")
         self.gb("permit", "--candidate", ident, "--evidence", "Plano anual da conta Demo")
         with self.assertRaises(OperationError) as caught:
             self.gb("fetch", "--candidate", ident)
@@ -210,7 +210,7 @@ class RoutedImageExtensionTests(FetchRouteCase):
         self.enable(self.image_plugin("foto.jpg"), source=self.ppm)
         ident = self.gb("search", "--provider", "demo", "--query", "mar")["items"][0]["id"]
         self.gb("preview", "--candidate", ident, "--reference-only")
-        self.gb("approve", "--candidate", ident, "--by", "Bruno", "--statement", "pode usar essa")
+        self.gb("approve", "--candidate", ident, "--by", "Pessoa Teste", "--statement", "pode usar essa")
         self.gb("permit", "--candidate", ident, "--evidence", "Plano anual da conta Demo")
         for _attempt in range(2):
             with self.assertRaises(OperationError) as caught:
@@ -228,7 +228,7 @@ class RoutedImageExtensionTests(FetchRouteCase):
         self.enable(self.image_plugin("foto.PNG"), source=self.image)
         ident = self.gb("search", "--provider", "demo", "--query", "mar")["items"][0]["id"]
         self.gb("preview", "--candidate", ident, "--reference-only")
-        self.gb("approve", "--candidate", ident, "--by", "Bruno", "--statement", "pode usar essa")
+        self.gb("approve", "--candidate", ident, "--by", "Pessoa Teste", "--statement", "pode usar essa")
         self.gb("permit", "--candidate", ident, "--evidence", "Plano anual da conta Demo")
         done = self.gb("fetch", "--candidate", ident)
         self.assertTrue(done["output"]["path"].endswith(".png"))
@@ -237,7 +237,7 @@ class RoutedImageExtensionTests(FetchRouteCase):
         self.enable(self.image_plugin(target), source=source)
         ident = self.gb("search", "--provider", "demo", "--query", "mar")["items"][0]["id"]
         self.gb("preview", "--candidate", ident, "--reference-only")
-        self.gb("approve", "--candidate", ident, "--by", "Bruno", "--statement", "pode usar essa")
+        self.gb("approve", "--candidate", ident, "--by", "Pessoa Teste", "--statement", "pode usar essa")
         self.gb("permit", "--candidate", ident, "--evidence", "Plano anual da conta Demo")
         return self.gb("fetch", "--candidate", ident)
 
@@ -258,7 +258,7 @@ class RoutedImageExtensionTests(FetchRouteCase):
         self.gb("preview", "--candidate", ident)
         stored = self.manifest_item(ident)
         self.assertEqual(".png", Path(stored["local_path"]).suffix)
-        self.gb("approve", "--candidate", ident, "--by", "Bruno", "--statement", "pode usar essa")
+        self.gb("approve", "--candidate", ident, "--by", "Pessoa Teste", "--statement", "pode usar essa")
         self.gb("permit", "--candidate", ident, "--evidence", "Plano anual da conta Demo")
         done = self.gb("fetch", "--candidate", ident)
         self.assertTrue(done["output"]["path"].endswith(".png"))

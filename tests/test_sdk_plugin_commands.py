@@ -73,9 +73,11 @@ class PluginCommandCliTests(LoaderTestCase):
             project=self.project,
             env={**self.env(), **OFFLINE_YTDLP},
         )
-        out = run_cli("x", "demo", "contar", "--arg", "nome=Bruno", project=self.project, env=self.env())
+        out = run_cli("x", "demo", "contar", "--arg", "nome=Pessoa Teste", project=self.project, env=self.env())
         self.assertEqual("demo", out["plugin"])
-        self.assertEqual({"plugin": "demo", "candidatos": 1, "args": {"nome": "Bruno"}, "brief": None}, out["result"])
+        self.assertEqual(
+            {"plugin": "demo", "candidatos": 1, "args": {"nome": "Pessoa Teste"}, "brief": None}, out["result"]
+        )
         again = run_cli("x", "demo", "tenta", project=self.project, env=self.env())
         self.assertEqual({"ok": "pending"}, again["result"])
 

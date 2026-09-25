@@ -67,14 +67,26 @@ class BlindApprovalTests(LoaderTestCase):
         ident, preview = self.found()
         self.assertIn("Sem imagem de referência", preview["summary"]["line"])
         with self.assertRaises(OperationError) as caught:
-            self.gb("approve", "--candidate", ident, "--start", "0", "--end", "2", "--by", "Bruno", "--statement", "ok")
+            self.gb(
+                "approve",
+                "--candidate",
+                ident,
+                "--start",
+                "0",
+                "--end",
+                "2",
+                "--by",
+                "Pessoa Teste",
+                "--statement",
+                "ok",
+            )
         self.assertIn("não pode ser aprovada", str(caught.exception))
         self.assertEqual("pending", Ledger(self.project).get(ident)["approval"]["status"])
 
     def test_embed_url_is_something_seen(self):
         ident, _preview = self.found(BLIND_PLUGIN.replace("EMBED = None", 'EMBED = "https://demo.example/embed/1"'))
         done = self.gb(
-            "approve", "--candidate", ident, "--start", "0", "--end", "2", "--by", "Bruno", "--statement", "ok"
+            "approve", "--candidate", ident, "--start", "0", "--end", "2", "--by", "Pessoa Teste", "--statement", "ok"
         )
         self.assertEqual("approved", done["approval"]["status"])
 

@@ -92,6 +92,8 @@ class ScaffoldTests(LoaderTestCase):
             "GB_HOME": str(self.home),
             "PYTHONPATH": str(ROOT / "scripts"),
             "PYTHONDONTWRITEBYTECODE": "1",
+            # A saída é lida como UTF-8: no Windows, sem isto o filho escreve em cp1252.
+            "PYTHONIOENCODING": "utf-8",
         }
         return subprocess.run(
             [sys.executable, "-m", "unittest", "discover", "-s", str(folder / "tests")],

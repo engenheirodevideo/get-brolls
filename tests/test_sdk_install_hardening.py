@@ -17,7 +17,6 @@ from test_repository import _logical_units
 from test_sdk_install import HAS_GIT, InstallTestCase, git, head, write_plugin
 from test_sdk_loader import MANIFEST, PLUGIN_CODE
 
-from getbrolls import runtime
 from getbrolls.sdk import install as install_mod
 from getbrolls.sdk import loader, scaffold
 from getbrolls.sdk.registry import get_registry, reset_registry
@@ -271,8 +270,8 @@ class GitTestHelperIsolationTests(InstallTestCase):
 
 @unittest.skipUnless(HAS_GIT, "git required")
 class GitHardeningTests(InstallTestCase):
-    def repo(self):
-        folder = write_plugin(self.work / "demo_repo")
+    def repo(self, name="demo_repo"):
+        folder = write_plugin(self.work / name)
         git(folder, "init", "--quiet")
         git(folder, "add", ".")
         git(folder, "commit", "--quiet", "-m", "v0.1.0")
@@ -291,14 +290,15 @@ class GitHardeningTests(InstallTestCase):
         git(repo, "commit", "--quiet", "-m", f"add {path}")
 
     def test_hg_and_svn_from_git_history_are_refused(self):
-        for path in ("vendor/.hg/hgrc", ".svn/entries"):
+        for index, path in enumerate(("vendor/.hg/hgrc", ".svn/entries")):
             with self.subTest(path=path):
-                repo = self.repo()
+                # Uma pasta por subteste: um repositório que sobrou do anterior (o Git
+                # para Windows deixa objetos somente-leitura) nunca contamina o próximo.
+                repo = self.repo(f"demo_repo_{index}")
                 self.add_blob(repo, path, "x\n")
                 with self.assertRaises(ValueError):
                     install_mod.install(str(repo), confirm=False)
                 self.assertEqual([], self.leftover_staging())
-                runtime.force_rmtree(repo)
 
     def test_materialized_tree_never_shares_the_clone_folder(self):
         repo = self.repo()

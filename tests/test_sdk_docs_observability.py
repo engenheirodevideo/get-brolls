@@ -48,6 +48,26 @@ class SdkDocTests(unittest.TestCase):
                 self.assertIn(marker, text)
         self.assertNotIn("URL assinada dentro do JSON some.", text)
 
+    def test_sdk_doc_follows_the_code(self):
+        """A lista vem do código, não de uma frase do próprio documento: extensão de
+        foto aceita, campo de `ProviderCapabilities`, método de `PluginApi` e status
+        de plugin — o que mudar no código e não no SDK.md quebra aqui."""
+        import dataclasses
+
+        from getbrolls.commands import PLUGIN_PROBLEM_STATUSES
+        from getbrolls.media import SNIFFED_IMAGE_SUFFIXES
+        from getbrolls.sdk.api import PluginApi
+        from getbrolls.sdk.contracts import ProviderCapabilities
+
+        text = SDK_DOC.read_text(encoding="utf-8")
+        expected = [f"`{suffix}`" for suffix in SNIFFED_IMAGE_SUFFIXES]
+        expected += [f"| `{field.name}` |" for field in dataclasses.fields(ProviderCapabilities)]
+        expected += [f"`api.{name}" for name in dir(PluginApi) if not name.startswith("_")]
+        expected += [f"`{status}`" for status in ("disabled", "enabled", *PLUGIN_PROBLEM_STATUSES)]
+        for marker in expected:
+            with self.subTest(marker=marker):
+                self.assertIn(marker, text)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -37,13 +37,6 @@ class ExamplePluginTests(LoaderTestCase):
         titles = [item["title"] for item in found["items"]]
         self.assertEqual(["por do sol na praia"], titles)
 
-    def test_example_ships_no_local_paths(self):
-        for path in EXAMPLE.rglob("*"):
-            if path.is_file():
-                text = path.read_text(encoding="utf-8")
-                self.assertNotIn("/Users/", text)
-                self.assertNotIn("/private/tmp", text)
-
 
 if __name__ == "__main__":
     unittest.main()

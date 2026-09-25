@@ -121,7 +121,7 @@ class HttpDownloadTests(unittest.TestCase):
             _assert_secret_absent_everywhere(self, caught.exception, "segredo")
 
     def test_http_error_body_is_not_echoed_when_headers_are_present(self):
-        body = b'{"Code":"AccessDenied","AWSAccessKeyId":"AKIAFAKESEGREDOCHAVE"}'
+        body = b'{"Code":"AccessDenied","AWSAccessKeyId":"CHAVE-FALSA-DE-TESTE"}'
 
         class _ErrorOpener:
             def open(self, request, timeout=None):
@@ -136,10 +136,10 @@ class HttpDownloadTests(unittest.TestCase):
         ):
             http.download("https://videos.demo.example/v.mp4", Path(tmp) / "v.mp4", headers={"Authorization": TOKEN})
         self.assertEqual("Provedor retornou HTTP 403 ao baixar mídia", str(caught.exception))
-        self.assertNotIn("AKIAFAKESEGREDOCHAVE", str(caught.exception))
+        self.assertNotIn("CHAVE-FALSA-DE-TESTE", str(caught.exception))
 
     def test_http_error_body_is_not_echoed_when_allow_signed(self):
-        body = b'{"Code":"AccessDenied","AWSAccessKeyId":"AKIAFAKESEGREDOCHAVE"}'
+        body = b'{"Code":"AccessDenied","AWSAccessKeyId":"CHAVE-FALSA-DE-TESTE"}'
 
         class _ErrorOpener:
             def open(self, request, timeout=None):
@@ -154,7 +154,7 @@ class HttpDownloadTests(unittest.TestCase):
         ):
             http.download(SIGNED, Path(tmp) / "v.mp4", allow_signed=True)
         self.assertEqual("Provedor retornou HTTP 403 ao baixar mídia", str(caught.exception))
-        self.assertNotIn("AKIAFAKESEGREDOCHAVE", str(caught.exception))
+        self.assertNotIn("CHAVE-FALSA-DE-TESTE", str(caught.exception))
 
     def test_http_error_body_is_still_echoed_without_headers_or_allow_signed(self):
         """Comportamento anterior preservado: sem header nem URL assinada, o corpo do
@@ -181,7 +181,7 @@ class HttpDownloadTests(unittest.TestCase):
         seta — nunca de `headers` estar presente. Sem plugins, a saída não muda: um provider
         built-in que manda header (ex.: Pexels com `Authorization`) e não passa
         `quiet_errors` mantém a mensagem de sempre, corpo incluído."""
-        body = b'{"error":"forbidden","fake_key":"AKIAFAKESEGREDOCHAVE"}'
+        body = b'{"error":"forbidden","fake_key":"CHAVE-FALSA-DE-TESTE"}'
 
         class _ErrorOpener:
             def open(self, request, timeout=None):
@@ -195,12 +195,12 @@ class HttpDownloadTests(unittest.TestCase):
             self.assertRaises(ProviderError) as caught,
         ):
             http.get_json("https://api.example.com/v1/videos/1", headers={"Authorization": TOKEN})
-        self.assertIn("AKIAFAKESEGREDOCHAVE", str(caught.exception))
+        self.assertIn("CHAVE-FALSA-DE-TESTE", str(caught.exception))
 
     def test_get_json_403_body_is_dropped_with_quiet_errors(self):
         """Mesma chamada da anterior, agora com `quiet_errors=True` explícito (o que o
         SDK sempre faz) — o corpo some da mensagem."""
-        body = b'{"error":"forbidden","fake_key":"AKIAFAKESEGREDOCHAVE"}'
+        body = b'{"error":"forbidden","fake_key":"CHAVE-FALSA-DE-TESTE"}'
 
         class _ErrorOpener:
             def open(self, request, timeout=None):
@@ -215,13 +215,13 @@ class HttpDownloadTests(unittest.TestCase):
         ):
             http.get_json("https://api.example.com/v1/videos/1", headers={"Authorization": TOKEN}, quiet_errors=True)
         self.assertEqual("Autenticação/permissão ou quota recusada pelo provedor (HTTP 403)", str(caught.exception))
-        self.assertNotIn("AKIAFAKESEGREDOCHAVE", str(caught.exception))
+        self.assertNotIn("CHAVE-FALSA-DE-TESTE", str(caught.exception))
 
     def test_get_json_403_body_is_not_echoed_when_keep_signed(self):
         """`keep_signed=True` implies `quiet_errors`, even without passing it explicitly
         (a signed URL kept in the response is exactly the kind of call whose error
         body might reflect it back)."""
-        body = b'{"error":"forbidden","fake_key":"AKIAFAKESEGREDOCHAVE"}'
+        body = b'{"error":"forbidden","fake_key":"CHAVE-FALSA-DE-TESTE"}'
 
         class _ErrorOpener:
             def open(self, request, timeout=None):
@@ -235,7 +235,7 @@ class HttpDownloadTests(unittest.TestCase):
             self.assertRaises(ProviderError) as caught,
         ):
             http.get_json("https://api.example.com/v1/videos/1", keep_signed=True)
-        self.assertNotIn("AKIAFAKESEGREDOCHAVE", str(caught.exception))
+        self.assertNotIn("CHAVE-FALSA-DE-TESTE", str(caught.exception))
 
     def test_get_json_403_body_is_still_echoed_by_default(self):
         """Comportamento anterior preservado (providers built-in sem `quiet_errors`,
@@ -412,7 +412,7 @@ class PluginDownloadTests(LoaderTestCase):
         — diferente de um provider built-in, que nunca seta esse parâmetro e mantém a
         mensagem de sempre (ver `HttpDownloadTests` para o lado built-in)."""
         api = self.api()
-        body = b'{"error":"forbidden","fake_key":"AKIAFAKESEGREDOCHAVE"}'
+        body = b'{"error":"forbidden","fake_key":"CHAVE-FALSA-DE-TESTE"}'
 
         class _ErrorOpener:
             def open(self, request, timeout=None):
@@ -423,7 +423,7 @@ class PluginDownloadTests(LoaderTestCase):
         with patch.object(http, "_opener", return_value=_ErrorOpener()), self.assertRaises(ProviderError) as caught:
             api.get_json("https://demo.example/v1/videos/1")
         self.assertEqual("Autenticação/permissão ou quota recusada pelo provedor (HTTP 403)", str(caught.exception))
-        self.assertNotIn("AKIAFAKESEGREDOCHAVE", str(caught.exception))
+        self.assertNotIn("CHAVE-FALSA-DE-TESTE", str(caught.exception))
 
 
 class SignedJsonTests(unittest.TestCase):

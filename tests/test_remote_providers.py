@@ -269,6 +269,7 @@ class HTTPTests(unittest.TestCase):
             tempfile.TemporaryDirectory() as cache,
             patch.dict(os.environ, {"GETBROLLS_CACHE_DIR": cache}),
         ):
+            os.environ.pop("GB_CACHE_DIR", None)  # o nome novo venceria o antigo
             first = http.get_json("https://example.org/api", {"key": "secret"}, cache_ttl=86400)
             second = http.get_json("https://example.org/api", {"key": "secret"}, cache_ttl=86400)
             self.assertEqual(first, second)

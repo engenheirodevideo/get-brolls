@@ -44,6 +44,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _cli import run_cli
 from test_sdk_loader import MANIFEST, PLUGIN_CODE, LoaderTestCase
 
+from getbrolls import runtime
 from getbrolls.sdk import install as install_mod
 from getbrolls.sdk import loader
 
@@ -107,7 +108,10 @@ class InstallTestCase(LoaderTestCase):
     def setUp(self):
         super().setUp()
         self.work = Path(tempfile.mkdtemp(prefix="gb-src-"))
-        self.addCleanup(shutil.rmtree, self.work, ignore_errors=True)
+        # O Git para Windows grava objetos somente-leitura: `rmtree(ignore_errors=True)`
+        # deixaria `.git`/staging para trás. `force_rmtree` libera a escrita e apaga.
+        self.addCleanup(runtime.force_rmtree, self.work)
+        self.addCleanup(runtime.force_rmtree, self.home)
 
     def env(self):
         return {"GB_HOME": str(self.home)}
@@ -635,6 +639,20 @@ class GitInstallTests(InstallTestCase):
             encoding="utf-8",
         )
         env = {**self.env(), "HOME": str(fake_home)}
+
+        # Controle positivo: um clone comum (com checkout), com o mesmo HOME falso,
+        # lê esse config e roda o filtro. Sem isto, "o marcador não existe" abaixo
+        # passaria também com um config que o git nunca leu.
+        plain_env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        plain_env.update(HOME=str(fake_home), GIT_CONFIG_NOSYSTEM="1")
+        subprocess.run(
+            ["git", "clone", "--quiet", "--", str(repo), str(self.work / "clone-comum")],
+            env=plain_env,
+            check=True,
+            capture_output=True,
+        )
+        self.assertTrue(marker.exists(), "o clone comum devia rodar o smudge do config do HOME falso")
+        marker.unlink()
 
         preview = run_cli("plugins", "--action", "install", "--source", repo, env=env)
         self.assertFalse(marker.exists())

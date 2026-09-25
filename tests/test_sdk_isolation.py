@@ -24,7 +24,7 @@ from getbrolls.http import ProviderError
 from getbrolls.sdk import guard, loader
 from getbrolls.sdk.registry import Registry, get_registry, reset_registry
 
-SECRET = "sk_live_SECRET123"
+SECRET = "sk_test_SECRET123"
 
 BASE_CODE = """
 from getbrolls.sdk import ProviderCapabilities

@@ -677,6 +677,7 @@ class Finding36CacheAndBodyReadNarrowingTests(unittest.TestCase):
             token = runtime.ACTIVE.set(event)
             try:
                 with patch.dict("os.environ", {"GETBROLLS_CACHE_DIR": tmp}):
+                    os.environ.pop("GB_CACHE_DIR", None)  # o nome novo venceria o antigo
                     cache_path = Path(tmp) / (hashlib.sha256(b"https://example.org/api").hexdigest() + ".json")
                     cache_path.parent.mkdir(parents=True, exist_ok=True)
                     cache_path.write_bytes(b"not valid json")
