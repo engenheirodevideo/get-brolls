@@ -291,13 +291,7 @@ FLOW_SUMMARIES = {
     "resolve": lambda r: f"Registrei o candidato {_identifier(r)}: estado {r.get('state')}.",
     "preview": lambda r: (
         f"Gerei somente a referência estática de {_identifier(r)}: "
-        f"estado {r.get('state')}, aprovação {(r.get('approval') or {}).get('status')}."
-        + (
-            " Sem imagem de referência: a fonte do plugin não mandou miniatura (poster_url), "
-            "então não há nada para mostrar à pessoa."
-            if _plugin_reference_without_image(r)
-            else ""
-        )
+        f"estado {r.get('state')}, aprovação {(r.get('approval') or {}).get('status')}." + _plugin_reference_note(r)
         if r.get("state") == "reference_only"
         else f"Gerei a prévia de {_identifier(r)}: "
         f"estado {r.get('state')}, aprovação {(r.get('approval') or {}).get('status')}."
@@ -439,8 +433,21 @@ def _is_plugin_candidate(c):
     return c.get("provider") not in BUILTIN_CAPABILITIES
 
 
-def _plugin_reference_without_image(c):
-    return _is_plugin_candidate(c) and not (c.get("preview") or {}).get("poster_path")
+def _plugin_reference_note(c):
+    """Frase extra do resumo de `preview --reference-only` de um candidato de plugin que
+    ficou sem imagem: diz se a fonte não mandou miniatura ou se ela não baixou."""
+    preview = c.get("preview") or {}
+    if not _is_plugin_candidate(c) or preview.get("poster_path"):
+        return ""
+    if preview.get("poster_url"):
+        return (
+            " Sem imagem de referência: a miniatura da fonte (poster_url) não pôde ser baixada agora; "
+            "tente a prévia de novo mais tarde antes de mostrar à pessoa."
+        )
+    return (
+        " Sem imagem de referência: a fonte do plugin não mandou miniatura (poster_url), "
+        "então não há nada para mostrar à pessoa."
+    )
 
 
 def _plugin_nothing_seen(c):
@@ -2760,7 +2767,7 @@ def scan_candidate(ledger, c, config):  # noqa: C901 - existing size; contact-sh
         if duration:
             c["media"]["duration_s"] = duration
     if not duration:
-        raise ValueError("Duração desconhecida: rode `inspect --candidate " + c["id"] + "` antes de varrer.")
+        raise ValueError("Duração desconhecida: rode `inspect --candidate " + candidate_arg(c) + "` antes de varrer.")
     duration = float(duration)
     # O teto vale sobre a duração real: pedir 900 s de um vídeo de 126 s faz a fonte
     # devolver menos do que o pedido, e a grade sairia rotulada com tempos que não existem.

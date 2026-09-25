@@ -151,7 +151,7 @@ def content_reason(problem, fix):
         )
     return (
         f"O plugin tem bytecode Python ({rel}); o Python pode rodá-lo no lugar da fonte revisada. "
-        f"Apague __pycache__/.pyc/.pyo da pasta do plugin e {fix}."
+        f"Basta apagar a pasta __pycache__ (e qualquer .pyc/.pyo solto) da pasta do plugin e {fix}."
     )
 
 
@@ -623,11 +623,13 @@ def status_hint(row, default):
     return default
 
 
-def env_warnings(manifest):
-    """Avisos (não recusas) sobre `permissions.env` para a prévia de enable/install:
-    variável do core, variável do espaço de nomes de outro plugin instalado, ou nome
-    fora do espaço de nomes do próprio plugin (o `.env` não a entrega)."""
+def permission_warnings(manifest):
+    """Avisos (não recusas) para a prévia de enable/install e o `plugins check`:
+    `permissions.env` com variável do core, do espaço de nomes de outro plugin
+    instalado ou fora do espaço de nomes do próprio plugin (o `.env` não a entrega), e
+    `permissions.paths` que, neste sistema, é ampla demais e fica ignorada."""
     from .. import config
+    from .api import ignored_paths
 
     plugin_id = manifest["id"]
     others = [other for other in config.installed_env() if other != plugin_id]
@@ -650,6 +652,11 @@ def env_warnings(manifest):
                 f"permissions.env pede {key}, fora do espaço de nomes {own}...: o .env não entrega essa "
                 "variável ao plugin, só o ambiente do processo."
             )
+    warnings.extend(
+        f"permissions.paths {raw} é, neste sistema, a raiz de um disco, um ponto de montagem, a pasta "
+        "pessoal ou uma pasta acima dela: fica ignorada por api.local_file. Use uma pasta específica."
+        for raw in ignored_paths(manifest)
+    )
     return warnings
 
 
@@ -662,7 +669,7 @@ def _preview(manifest, folder, sha=None):
         "permissions": manifest["permissions"],
         "sha256": sha if sha is not None else folder_digest(folder),
     }
-    warnings = env_warnings(manifest)
+    warnings = permission_warnings(manifest)
     if warnings:
         preview["warnings"] = warnings
     return preview
@@ -790,6 +797,13 @@ def trial_load(folder):
     problem = compatibility_problem(manifest)
     if problem:
         raise ValueError(f"Plugin {manifest['id']}: {problem}")
+    # O mesmo que o `install` recusaria: VCS aninhado, link simbólico e bytecode.
+    nested = nested_vcs(folder)
+    if nested is not None:
+        raise ValueError(f"Plugin {manifest['id']}: pasta de controle de versão aninhada ({nested}); tire-a da pasta.")
+    content = content_problem(folder)
+    if content is not None:
+        raise ValueError(f"Plugin {manifest['id']}: {content_reason(content, 'rode o check de novo')}")
     registry = Registry()
     providers.register_builtins(registry)
     presets.register_builtins(registry)

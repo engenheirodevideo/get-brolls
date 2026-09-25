@@ -107,10 +107,11 @@ def _same(a, b):
 
 
 def _too_broad(root):
-    """A raiz resolvida é a raiz de um disco, a pasta pessoal ou uma pasta que a
-    contém? Comparação pelo arquivo de verdade (`samefile`), não pelo texto: vale
-    para link, firmlink e disco que não diferencia maiúsculas."""
-    if root == Path(root.anchor):
+    """A raiz resolvida é a raiz de um disco (inclusive um ponto de montagem, como
+    `/Volumes/Backup`), a pasta pessoal ou uma pasta que a contém? Comparação pelo
+    arquivo de verdade (`samefile`), não pelo texto: vale para link, firmlink e disco
+    que não diferencia maiúsculas."""
+    if root == Path(root.anchor) or os.path.ismount(root):
         return True
     try:
         home = Path.home().resolve()
@@ -118,6 +119,31 @@ def _too_broad(root):
         return False
     parts = home.parts
     return any(_same(root.joinpath(*parts[i:]), home) for i in range(1, len(parts) + 1))
+
+
+def _checked_roots(paths):
+    """`(raízes resolvidas que valem, entradas ignoradas por serem amplas demais)`."""
+    roots, ignored = [], []
+    for raw in paths:
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            continue
+        resolved = path.resolve()
+        if _too_broad(resolved):
+            ignored.append(raw)
+        else:
+            roots.append(resolved)
+    return roots, ignored
+
+
+def ignored_paths(manifest):
+    """Entradas de `permissions.paths` que, neste sistema, apontam para a raiz de um
+    disco, um ponto de montagem, a pasta pessoal ou uma pasta acima dela — ignoradas
+    por `api.local_file`. Só lê o manifesto e o disco; não roda código do plugin."""
+    try:
+        return _checked_roots(manifest["permissions"]["paths"])[1]
+    except (OSError, RuntimeError, ValueError):
+        return []
 
 
 class PluginApi:
@@ -268,19 +294,12 @@ class PluginApi:
         plataforma — ele viaja entre máquinas —; aqui só entra a que é absoluta no
         sistema atual (uma `C:\\acervo` lida no macOS seria um caminho relativo à pasta
         corrente, então é ignorada)."""
-        roots = []
-        for raw in self._manifest["permissions"]["paths"]:
-            path = Path(raw).expanduser()
-            if not path.is_absolute():
-                continue
-            resolved = path.resolve()
-            if _too_broad(resolved):
-                # B-09: o manifesto passou na checagem de texto, mas a pasta de verdade é
-                # a raiz do disco, a pasta pessoal ou uma pasta acima dela (link,
-                # `/Volumes/Macintosh HD`, `/Users`, outra caixa do mesmo nome): ignorada.
-                logs.event(_log, logging.WARNING, "plugin_path_refused", plugin=self.plugin_id, reason="too_broad")
-                continue
-            roots.append(resolved)
+        # B-09: o manifesto passou na checagem de texto, mas a pasta de verdade é a raiz
+        # do disco, um ponto de montagem, a pasta pessoal ou uma pasta acima dela (link,
+        # `/Volumes/Macintosh HD`, `/Users`, outra caixa do mesmo nome): ignorada.
+        roots, ignored = _checked_roots(self._manifest["permissions"]["paths"])
+        for _raw in ignored:
+            logs.event(_log, logging.WARNING, "plugin_path_refused", plugin=self.plugin_id, reason="too_broad")
         return roots
 
     def _refuse(self, text):

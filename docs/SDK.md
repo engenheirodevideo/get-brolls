@@ -84,9 +84,11 @@ própria pasta pessoal escrita por extenso — `~` inteiro cobriria `~/.ssh` e o
 qualquer sistema (um caminho POSIX ou Windows absoluto vale nos dois); na hora de
 usar, só entram as raízes absolutas no sistema atual (uma `D:\Acervo` é ignorada
 no macOS). Na hora de usar, a raiz também é conferida pelo arquivo de verdade:
-se, resolvida, ela for a raiz de um disco, a pasta pessoal ou uma pasta que a
-contém (um link, `/Volumes/Macintosh HD`, `/Users`, a pasta pessoal com outra
-caixa), ela é ignorada e o log registra `plugin_path_refused`. Num disco que não
+se, resolvida, ela for a raiz de um disco, um ponto de montagem
+(`/Volumes/Backup`), a pasta pessoal ou uma pasta que a contém (um link,
+`/Volumes/Macintosh HD`, `/Users`, a pasta pessoal com outra caixa), ela é
+ignorada e o log registra `plugin_path_refused`. A prévia de `enable`/`install`
+e o `plugins --action check` listam essas raízes em `warnings`. Num disco que não
 diferencia maiúsculas de minúsculas, escreva a raiz com a mesma caixa que o
 sistema mostra.
 

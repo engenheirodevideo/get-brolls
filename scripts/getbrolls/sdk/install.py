@@ -604,7 +604,7 @@ def _checked_manifest(folder):
 
 
 def _summary(manifest, origin, commit, sha256, files):
-    warnings = loader.env_warnings(manifest)
+    warnings = loader.permission_warnings(manifest)
     summary = {
         "id": manifest["id"],
         "name": manifest["name"],

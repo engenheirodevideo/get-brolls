@@ -156,8 +156,12 @@ def _missing(registry, plugin_id, name):
     if row is None:
         return f"Plugin {plugin_id} não está instalado. Rode x --list para ver os comandos disponíveis."
     if row["status"] != "enabled":
-        detail = f": {row['reason']}" if row["reason"] else ""
-        return f"Plugin {plugin_id} está {row['status']}{detail}. Rode plugins --action list / doctor."
+        # Motivo sem o ponto final (a frase continua) e, fora de GB_PLUGINS, a dica
+        # certa: ajustar a variável, não habilitar de novo.
+        reason = guard.without_prefix(plugin_id, (row.get("reason") or "").strip()).rstrip(" .")
+        detail = f": {reason}" if reason else ""
+        hint = loader.status_hint(row, "Rode plugins --action list / doctor.")
+        return f"Plugin {plugin_id} está {row['status']}{detail}. {hint}"
     return f"Plugin {plugin_id} não tem o comando {name}. Rode x --list para ver os comandos disponíveis."
 
 

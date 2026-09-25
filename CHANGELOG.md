@@ -10,6 +10,7 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- SDK: ponto de montagem (`/Volumes/Backup`) conta como raiz de disco em `permissions.paths`, e as raízes ignoradas aparecem em `warnings` na prévia e no `plugins check`; o `check` recusa o que o `install` recusaria; mensagens: prévia sem miniatura diz se o download falhou, `x` num plugin fora de `GB_PLUGINS` manda ajustar a variável, sem ponto duplo, e o motivo de bytecode diz que apagar `__pycache__` basta.
 - SDK: o `enable` de um plugin cujo conteúdo mudou mostra também as permissões de/para (`network`, `env`, `paths`), como o `update`; o pin passa a guardar as permissões aprovadas.
 - SDK (segurança): o `.env` entrega a um plugin só variáveis do espaço de nomes dele (`<ID>_...`), nunca do core, de outro plugin ou do sistema (`HTTPS_PROXY`, `NODE_OPTIONS`...); a prévia de enable/install avisa quando `permissions.env` pede uma variável assim, e a linha que sobrou de um plugin removido diz como consertar.
 - SDK: o arquivo trazido pela rota de `fetch` é procurado no cache do projeto atual — projeto movido reaproveita o arquivo sem consumir licença de novo, e uma cópia nunca lê o cache do original.
