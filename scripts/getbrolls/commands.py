@@ -595,6 +595,8 @@ def brief_report(args):
             "candidates": progress[b["id"]],
         }
         for b in beats
+        # Fora de `progress` = beat aposentado: nem lista, nem degrau de busca.
+        if b["id"] in progress
     ]
     # Beat travado espera um fato da pessoa: ele não é "sem candidato ainda". A lista
     # já entrou em `problems` lá em cima, junto com a da rota `--validate`.
@@ -996,9 +998,16 @@ def _beat_search_names(project, shot, rules, provider, names):
     `allowed_sources` é recusada com a lista certa, em vez de virar candidato ligado
     ao beat como se a pessoa tivesse permitido aquela origem.
     """
-    from getbrolls.brief import beat_sources
+    from getbrolls.brief import beat_sources, retired_beat_ids
     from getbrolls.brief import searchable as searchable_sources
 
+    if shot in retired_beat_ids(project, rules):
+        raise ValueError(
+            f'O beat "{shot}" foi aposentado pelo roteiro ("retired": true no BRIEF.md): a cena '
+            "saiu do ROTEIRO.md, então não busco material para ele. Se a cena voltou, ajuste o "
+            "ROTEIRO.md e rode `roteiro --action sync --project ...`; `status --project ...` "
+            "mostra os beats ativos."
+        )
     allowed = beat_sources(project, shot, rules)
     if allowed is None:
         return names
@@ -1124,7 +1133,8 @@ def brief_state(project, rules, items, data=None):
 
     missing = []
     for b in beats:
-        if b["id"] in stuck or progress[b["id"]]:
+        if b["id"] not in progress or b["id"] in stuck or progress[b["id"]]:
+            # Fora de `progress` = beat aposentado: não vira degrau de busca.
             continue
         tried = tried_searches(manifest, b["id"])
         commands = beat_commands(project, b["resolved"], tried)

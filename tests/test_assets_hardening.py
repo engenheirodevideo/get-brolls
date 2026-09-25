@@ -1,4 +1,4 @@
-"""Rotas de componentes depois da revisão adversarial: ocultos, symlinks, extensões, NFC e licença."""
+"""Rotas de componentes com entrada hostil: ocultos, symlinks, extensões, NFC e licença."""
 
 import json
 import os

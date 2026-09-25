@@ -167,7 +167,7 @@ class AspectTests(unittest.TestCase):
 
 
 class SplitPresenterTests(unittest.TestCase):
-    """Fix round 1: lados de SPLIT com apresentador, takes por lado e takes reservados."""
+    """Lados de SPLIT com apresentador, takes por lado e takes reservados."""
 
     # Mesmos auxiliares, sem herdar (herdar rodaria os testes de ScenePlanTests duas vezes).
     setUp = ScenePlanTests.setUp

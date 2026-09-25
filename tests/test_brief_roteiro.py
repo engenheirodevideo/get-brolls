@@ -9,15 +9,18 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
+from typing import ClassVar, cast
+from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _paths import ROOT
 
 from getbrolls import brief, delivery
-from getbrolls.commands import brief_report, brief_state
+from getbrolls.commands import brief_report, brief_state, record_empty_searches, status_report
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, now, set_segment
+from getbrolls.rules import load_rules
 
 BASE = {
     "version": 1,
@@ -154,8 +157,26 @@ def fetched(source_id, title, shot):
     return c
 
 
+def write_brief_at(project, data):
+    body = "# Brief\n\n```json\n" + json.dumps(data, ensure_ascii=False, indent=2) + "\n```\n"
+    (project / "BRIEF.md").write_text(body, encoding="utf-8")
+
+
+def store_at(project, items):
+    """Grava os clipes no manifesto e cria os arquivos de saída e de prévia deles."""
+    ledger = Ledger(project)
+    stored = [ledger.add(c) for c in items]
+    ledger.save_many("fixture", stored)
+    for c in stored:
+        for rel in (c["output"]["path"], c["preview"]["contact_sheet_path"]):
+            path = ledger.root / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"conteudo de " + rel.encode())
+    return stored
+
+
 class RetiredDeliveryTests(unittest.TestCase):
-    """Q18: clipe de beat aposentado fica em brolls/, mas não vira pasta viva em entrega/."""
+    """Clipe de beat aposentado fica em brolls/, mas não vira pasta viva em entrega/."""
 
     def setUp(self):
         self.project = Path(tempfile.mkdtemp(prefix="gb-brief-rot-"))
@@ -163,19 +184,10 @@ class RetiredDeliveryTests(unittest.TestCase):
         run_cli(self, "init-rules", "--project", self.project)
 
     def write_brief(self, data):
-        body = "# Brief\n\n```json\n" + json.dumps(data, ensure_ascii=False, indent=2) + "\n```\n"
-        (self.project / "BRIEF.md").write_text(body, encoding="utf-8")
+        write_brief_at(self.project, data)
 
     def store(self, items):
-        ledger = Ledger(self.project)
-        stored = [ledger.add(c) for c in items]
-        ledger.save_many("fixture", stored)
-        for c in stored:
-            for rel in (c["output"]["path"], c["preview"]["contact_sheet_path"]):
-                path = ledger.root / rel
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(b"conteudo de " + rel.encode())
-        return stored
+        return store_at(self.project, items)
 
     def folders(self):
         root = self.project / "entrega"
@@ -231,6 +243,113 @@ class RetiredDeliveryTests(unittest.TestCase):
         self.assertNotEqual(status["summary"]["do"]["step"], "deliver")
         self.assertNotIn("entrega/ com deliver", status["summary"]["next"])
         self.assertIn("Fluxo completo", status["summary"]["next"])
+
+
+BRIEF_STEPS = {"brief-search", "brief-exhausted", "brief-unavailable", "brief-resolve"}
+
+
+class RetiredBeatLadderTests(unittest.TestCase):
+    """Beat aposentado sem candidato nunca vira degrau brief-* nem entra no progresso do `brief`."""
+
+    # Fontes do beat c02 → degrau que ele daria se estivesse ativo.
+    VARIANTS: ClassVar[dict[str, tuple[list[str], str]]] = {
+        "search": (["youtube"], "brief-search"),
+        "resolve": (["instagram"], "brief-resolve"),
+        "unavailable": (["pexels"], "brief-unavailable"),
+        "exhausted": (["youtube"], "brief-exhausted"),
+    }
+
+    def setUp(self):
+        self.project = Path(tempfile.mkdtemp(prefix="gb-brief-rot-"))
+        self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
+        run_cli(self, "init-rules", "--project", self.project)
+        # Chave de banco ausente sem depender do ambiente de quem roda o teste.
+        no_keys = patch.object(brief, "env_is_set", return_value=False)
+        no_keys.start()
+        self.addCleanup(no_keys.stop)
+        stored = store_at(self.project, [fetched("a", "Titulo c01", "c01"), fetched("c", "Titulo manual", "manual-1")])
+        self.assertEqual(len(stored), 2)
+        delivery.build_delivery(str(self.project))
+
+    def write(self, sources, retired, variant):
+        data = copy.deepcopy(BASE)
+        data["rights"]["stock_allowed"] = True
+        beat = data["beats"][1]
+        beat["allowed_sources"] = sources
+        beat["stock"] = sources == ["pexels"]
+        if not retired:
+            del beat["retired"]
+        write_brief_at(self.project, data)
+        if variant == "exhausted":
+            ledger = Ledger(self.project)
+            resolved = brief.resolve_beat(data["defaults"], beat, 1)
+            record_empty_searches(ledger, "c02", [(s, q) for s in sources for q in brief.search_queries(resolved)])
+
+    def step(self):
+        report = status_report(Ledger(self.project, recover=False), load_rules(str(self.project)))
+        return report["summary"]["do"]
+
+    def test_active_control_reaches_each_brief_step(self):
+        for variant, (sources, expected) in self.VARIANTS.items():
+            with self.subTest(variant=variant):
+                self.write(sources, retired=False, variant=variant)
+                do = self.step()
+                self.assertEqual(do["step"], expected)
+                data = Ledger(self.project, recover=False).data
+                state = brief_state(str(self.project), None, data["items"], data)
+                assert state is not None
+                self.assertEqual([entry["id"] for entry in cast("list", state["missing"])], ["c02"])
+
+    def test_retired_beat_never_becomes_a_brief_step(self):
+        for variant, (sources, _expected) in self.VARIANTS.items():
+            with self.subTest(variant=variant):
+                self.write(sources, retired=True, variant=variant)
+                do = self.step()
+                self.assertNotIn(do["step"], BRIEF_STEPS)
+                self.assertNotIn("c02", json.dumps(do, ensure_ascii=False))
+                data = Ledger(self.project, recover=False).data
+                state = brief_state(str(self.project), None, data["items"], data)
+                assert state is not None
+                self.assertEqual((state["missing"], state["beats"], state["covered"]), ([], 2, 2))
+
+    def test_brief_progress_does_not_list_a_retired_beat(self):
+        self.write(["youtube"], retired=True, variant="search")
+        report = brief_report(types.SimpleNamespace(project=str(self.project), validate=False, beat=None))
+        self.assertEqual([b["id"] for b in report["beats"]], ["c01", "manual-1"])
+        self.assertIn("2 beats, 2 com candidato e 0 sem", report["summary"]["line"])
+        self.assertNotIn("c02", " ".join(report["summary"]["problems"]))
+
+    def test_beat_progress_skips_a_raw_retired_beat(self):
+        beats = [{"id": "c01"}, {"id": "c02", "retired": True}]
+        items = [{"id": "x", "shot": "c02"}]
+        self.assertEqual(brief.beat_progress(beats, items), {"c01": []})
+
+
+class SearchRetiredShotTests(unittest.TestCase):
+    """`search --shot` num beat aposentado recusa antes de consultar qualquer fonte."""
+
+    def test_search_on_a_retired_beat_is_refused_in_portuguese(self):
+        project = Path(tempfile.mkdtemp(prefix="gb-brief-rot-"))
+        self.addCleanup(shutil.rmtree, project, ignore_errors=True)
+        run_cli(self, "init-rules", "--project", project)
+        write_brief_at(project, BASE)
+        done = subprocess.run(
+            [sys.executable, str(CLI), "search", "--query", "mapa", "--shot", "c02", "--provider", "youtube",
+             "--project", str(project)],
+            capture_output=True, text=True, encoding="utf-8", check=False,
+        )  # fmt: skip
+        self.assertNotEqual(done.returncode, 0)
+        error = json.loads(done.stderr or done.stdout)
+        self.assertIn('O beat "c02" foi aposentado pelo roteiro', error["error"])
+        self.assertIn("roteiro --action sync", error["error"])
+        self.assertFalse(error["state_committed"])
+        manifest = project / "brolls" / "manifest.json"
+        items = json.loads(manifest.read_text(encoding="utf-8"))["items"] if manifest.is_file() else []
+        self.assertEqual(items, [])
+        # Beat ativo do mesmo brief segue com a regra de fontes de antes.
+        from getbrolls.commands import _beat_search_names
+
+        self.assertEqual(_beat_search_names(str(project), "c01", None, "youtube", ["youtube"]), ["youtube"])
 
 
 class ZeroBeatsWithRoteiroTests(unittest.TestCase):

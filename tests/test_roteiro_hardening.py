@@ -1,4 +1,4 @@
-"""ROTEIRO.md depois da revisão adversarial: texto escondido, notas, âncoras, takes e desempenho."""
+"""ROTEIRO.md com entrada hostil: texto escondido, notas, âncoras, takes e desempenho."""
 
 import shutil
 import tempfile

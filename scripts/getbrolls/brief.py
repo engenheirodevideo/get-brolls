@@ -449,7 +449,7 @@ def beat_sources(project, shot, rules=None):
     e `--shot` que não é beat do brief segue livre, como sempre foi.
     """
     try:
-        data, _ = validate_brief(load_brief(project), rules)
+        data, _ = validate_brief(load_brief(project), rules, project=project)
     except (ValueError, OSError):
         return None
     for beat in data["beats"]:
@@ -487,16 +487,17 @@ def template_leftovers(data):
     return found
 
 
-def retired_beat_ids(project):
+def retired_beat_ids(project, rules=None):
     """Ids dos beats aposentados (`"retired": true`) de um BRIEF.md válido.
 
     Vazio quando o brief falta ou não valida: aí ninguém é aposentado e todo clipe
     segue a regra de antes. `deliver` e `status` usam isto para deixar esses clipes
-    fora de `entrega/` sem tratá-los como pendência.
+    fora de `entrega/` sem tratá-los como pendência; `search --shot` passa `rules`
+    para validar o brief como a busca valida.
     """
     try:
         raw = load_brief(project)
-        validate_brief(raw, project=project)
+        validate_brief(raw, rules, project=project)
     except (ValueError, OSError):
         return frozenset()
     return frozenset(b["id"] for b in raw["beats"] if b.get("retired") is True)
@@ -761,4 +762,7 @@ def beat_progress(beats, items):
             if c.get("shot") == beat["id"] and (c.get("approval") or {}).get("status") != "rejected"
         ]
         for beat in beats
+        # Beat aposentado pelo roteiro não é pendência de busca, como em `deliver`.
+        # `validate_brief` já o tira da lista; isto cobre quem passar o beat cru.
+        if beat.get("retired") is not True
     }
