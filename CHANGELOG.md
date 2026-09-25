@@ -10,6 +10,13 @@ tags: [get-brolls]
 
 ## Unreleased
 
+### Novo — Roteiro e componentes
+
+- **Roteiro de reels.** O comando `roteiro` (`--action new|check|review|plan|sync`) organiza o conteúdo do vídeo num `ROTEIRO.md` por cenas, com um layout por cena (`[A-ROLL]`, `[BROLL: alvo]`, `[SPLIT: esquerda | direita]`, `[FULL: alvo]`, `[UGC: descrição]`), camadas (`[LETTERING]`, `[SFX]`, `[MUSICA]`, `[COMP]`, diretiva de plugin habilitado) e a fala. `check` valida e mostra o plano de cena; `review` registra a revisão humana pelo chat (`--by`, `--channel chat`, `--statement`); `sync` só roda com revisão válida para o texto atual e cria os beats `cNN` (`cNN-a`/`cNN-b` nos lados do `SPLIT`) no `BRIEF.md`. Gênero disponível: `reels`.
+- **Mudanças no roteiro depois da coleta.** Ids de cena nunca são reaproveitados, e a cena que perdeu o comentário `<!-- cNN -->` recebe o id de volta quando não há dúvida (senão o sync recusa e diz como resolver). Só mudar o alvo de um beat já aprovado pede `--confirm-target-change` e devolve as aprovações a pendente; mudar a fala é aviso. Cena removida deixa o beat **aposentado** (`"retired": true`): ele fica no `BRIEF.md`, mas `brief`, `status`, busca e `deliver` o ignoram, o `deliver` lista os clipes dele em `retired`, e candidatos e clipes ficam intactos. O sync copia `ROTEIRO.md` e `BRIEF.md` para `*.sync.bak` antes de gravar; `new --force` guarda o roteiro anterior em `ROTEIRO.md.bak`.
+- **Brief com roteiro.** Com `ROTEIRO.md` no projeto, a entrevista de `/get-brolls-brief` pergunta só vídeo, fontes e direitos, `"beats": []` é um brief válido e o `status` aponta o degrau `roteiro-sync` até o primeiro sync. Sem `ROTEIRO.md`, o brief continua exigindo pelo menos um beat.
+- **Componentes.** `assets --action list|where` mostra onde cada componente resolve: `assets/marca`, `lettering`, `sfx`, `musica` e `composicoes` do projeto, depois a biblioteca pessoal `~/.getbrolls/assets/`. Gravação do apresentador e UGC em `aroll/cNN.mp4` ou `aroll/cNN-<take>.mp4` (também `.mov` e `.m4v`). Licença de música, SFX e marca em `<nome>.licenca.json` (`origem`, `licenca`, `credito`); sem ela, aviso. As pastas `aroll/` e `assets/` só nascem com `roteiro --action new`: projetos sem roteiro não mudam.
+
 ### Novo — SDK de extensões (experimental)
 
 - **Plugins locais.** O Get B-rolls carrega plugins em Python de `$GB_HOME/plugins/<id>/` (padrão `~/.getbrolls/plugins/`), sempre com opt-in por id. Experimental: `sdk_api` 1 pode mudar em versão minor; plugins declaram `requires_getbrolls`. Um plugin contribui fontes de busca, presets de licença para o `permit --preset`, rotas que trazem o arquivo do candidato (`stage="preview"` ou `stage="fetch"`) e comandos próprios, rodados com `x <plugin> <comando>` (`x --list` mostra quais). RULES.md (`preferred_providers`) e BRIEF.md (`allowed_sources`) aceitam fontes de plugin; no RULES.md, a fonte de um plugin instalado mas não carregado sai da lista com um aviso (`rule_source_skipped` no log), sem erro. Referência completa em [`docs/SDK.md`](docs/SDK.md).
@@ -49,6 +56,7 @@ tags: [get-brolls]
 
 ### Docs
 
+- `references/roteiro.md` (formato do roteiro, componentes e o que fazer quando o sync para) e `references/generos/reels.md` (regras de copy do reels) para o agente; o Passo 1 do SKILL.md aponta para o primeiro, e o GUIDE ganha a árvore de pastas do roteiro e a seção "Roteiro e componentes".
 - `docs/MANUAL.md`, manual + tutorial em português para quem está chegando — tutorial do zero à `entrega/`, todos os subcomandos agrupados nos 8 passos do fluxo com explicação dentro de cada bloco, as três rotas do `permit`, como ler `summary.line`/`summary.do`/erros/códigos de saída, `BRIEF.md`, `RULES.md` e `.env` campo a campo, e receitas de automação com `jq`. Ligado no README, no README.en e no AGENTS. Fecha #80.
 - O GUIDE ganha a seção "Plugins", e SECURITY, `references/providers.md`, SKILL.md e MANUAL cobrem plugins, `GB_PLUGINS` e `--yes --expect`.
 - READMEs: os diagramas `assets/flow*.svg` e `assets/formats*.svg` passam a mostrar o fluxo atual — brief, análise da fonte, direitos como segundo portão, verificação e `entrega/` por beat — e a árvore de pastas ganha `BRIEF.md`, `entrega/`, `getbrolls.log` e `reviews/`. Eram da 2.3.x e apontavam `clips/` como lugar dos arquivos finais. Ganham também badges de FFmpeg, yt-dlp e Playwright no topo, ao lado de Python e Node.

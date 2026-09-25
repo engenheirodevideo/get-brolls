@@ -27,7 +27,7 @@ Você planeja fontes literais, mostra o trecho à pessoa, recebe a decisão dela
 
 ## Passo 1 — Entreviste antes de buscar
 
-Sem `BRIEF.md` na pasta do projeto, conduza a entrevista de `/get-brolls-brief`. O roteiro está em [`${CLAUDE_PLUGIN_ROOT}/references/interview.md`](${CLAUDE_PLUGIN_ROOT}/references/interview.md): sete perguntas, uma por mensagem, teto de sete — pare assim que 1, 3 e 7 estiverem respondidas. Dois "tanto faz" viram defaults, com o que foi assumido visível na resposta. Nunca invente narração, alvo, link ou responsável.
+Pediram roteiro ou conteúdo pronto? Comece por [`${CLAUDE_PLUGIN_ROOT}/references/roteiro.md`](${CLAUDE_PLUGIN_ROOT}/references/roteiro.md). Sem `BRIEF.md` na pasta do projeto, conduza a entrevista de `/get-brolls-brief` ([`${CLAUDE_PLUGIN_ROOT}/references/interview.md`](${CLAUDE_PLUGIN_ROOT}/references/interview.md)): uma pergunta por mensagem, teto de sete — pare quando 1, 3 e 7 estiverem respondidas. Dois "tanto faz" viram defaults, visíveis na resposta. Nunca invente narração, alvo, link ou responsável.
 
 ## Passo 2 — Confirme o brief
 

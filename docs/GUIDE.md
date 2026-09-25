@@ -425,17 +425,37 @@ No storyboard, imagem/GIF mantém proporção. Captura móvel padrão é 390×84
 ```text
 video-01/
 ├── RULES.md
+├── BRIEF.md                 # plano do vídeo; com roteiro, os beats cNN vêm do sync
+├── ROTEIRO.md               # opcional: cenas, diretivas e fala (roteiro --action new)
+├── aroll/                   # apresentador e UGC: cNN.mp4 ou cNN-<take>.mp4
+├── assets/                  # componentes do projeto (não é o assets/ da instalação)
+│   └── marca/  lettering/  sfx/  musica/  composicoes/
 ├── output/playwright/       # screenshots e snapshots de trabalho
+├── entrega/                 # uma pasta NN-<beat>-<alvo> por beat, gerada pelo deliver
 └── brolls/
     ├── manifest.json        # tipo, formato, contexto e procedência
     ├── references.json      # referências explícitas e seus motivos
     ├── events.jsonl
+    ├── roteiro-reviews.jsonl  # revisões humanas do roteiro (só acrescenta)
+    ├── roteiro-state.json   # ids de cena já usados; nenhum volta
     ├── candidates/
     ├── previews/            # poster, contact sheet, GIF
     ├── clips/               # vídeo ou imagem final
     ├── credits.md
     └── review.html
 ```
+
+`aroll/` e `assets/` só nascem com `roteiro --action new`: projeto sem roteiro não ganha pasta nova, e `assets --action list|where` não cria nada.
+
+### Roteiro e componentes
+
+Para quem quer o conteúdo pronto (hoje, reels 9:16), o `ROTEIRO.md` descreve o vídeo por cenas: `## Título`, um layout por cena (`[A-ROLL]` ou `[A-ROLL: take]`, `[BROLL: alvo]`, `[SPLIT: esquerda | direita]`, `[FULL: alvo]`, `[UGC: descrição]`), camadas (`[LETTERING: "texto" | estilo]`, `[SFX]`, `[MUSICA]`, `[COMP]`, `[<plugin>:<nome>]` de plugin habilitado) e a fala. Comentário HTML só vale como o id `<!-- cNN -->` que o sync põe no fim do título; ao duplicar uma cena, não copie esse comentário.
+
+O fluxo: `roteiro --action new --genero reels --tema "..."` cria o esqueleto; com ele no projeto, a entrevista do brief pergunta só vídeo, fontes e direitos e grava `"beats": []`. `check` valida e mostra o plano de cena (componentes, onde cada camada entra na fala, duração); `review --by NOME --channel chat --statement "frase exata"` registra a revisão humana, ligada ao conteúdo; `plan` mostra o sync sem gravar; `sync` grava os ids de cena e os beats `cNN`, `cNN-a` e `cNN-b` no `BRIEF.md`. Até o primeiro sync, `status` aponta o degrau `roteiro-sync`; depois, a coleta segue normal com `brief --beat cNN`.
+
+Só mudar o alvo de um beat já aprovado pede `--confirm-target-change` (as aprovações voltam a pendente); mudar a fala é aviso. Ids de cena nunca são reaproveitados. Cena removida deixa o beat aposentado (`"retired": true`): ele continua no `BRIEF.md`, fica fora de `brief`, `status` e `deliver` (que o lista em `retired`), e candidatos e clipes ficam intactos. Antes de gravar, o sync copia `ROTEIRO.md` e `BRIEF.md` para `*.sync.bak`; `new --force` guarda o roteiro anterior em `ROTEIRO.md.bak`.
+
+Componentes resolvem pelo nome, primeiro em `assets/<tipo>/` do projeto, depois na biblioteca pessoal `~/.getbrolls/assets/<tipo>/`; `assets --action list|where` mostra onde cada um está. Música, SFX e marca registram a licença em `<nome>.licenca.json` (`origem`, `licenca`, `credito`) ao lado do arquivo. Quem monta o vídeo aponta para `brolls/clips/`, não para `entrega/`, que é renumerada quando a ordem muda. Guia do agente, com o formato completo: [`references/roteiro.md`](../references/roteiro.md).
 
 A memória é por projeto. Para consultar referências de outro projeto, use `references --project /caminho/anterior` com autorização do usuário. Os exemplos orientam a próxima busca; nunca transferem aprovação/licença automaticamente.
 
