@@ -682,7 +682,7 @@ def enable(plugin_id, confirm, expect=None):
     return {"enabled": True, "plugin": preview, **extra, "note": DONE_NOTE}
 
 
-def pin(manifest, folder, origin=None, enable=True):
+def pin(manifest, folder, origin=None, enable=True, digests=None):
     """Grava o pin de hash de `folder` como o plugin `manifest["id"]` e, vindo do
     `install`/`update`, a origem (`{"source", "commit"}`) em `plugins.json`.
 
@@ -690,11 +690,15 @@ def pin(manifest, folder, origin=None, enable=True):
     só atualiza `sources`, sem criar/mudar a entrada em `enabled` — atualizar o
     conteúdo não liga de volta um plugin que a pessoa desligou de propósito. O
     `last_pins` dele, se houver, passa a ser este conteúdo: a pessoa já o aprovou
-    no update (`--expect`), então religar depois é só `--yes`."""
+    no update (`--expect`), então religar depois é só `--yes`.
+
+    `digests` (`(sha, files)` já calculados) vem do `install`/`update`: o pin grava
+    exatamente o conteúdo que a pessoa confirmou no staging, não um novo hash da
+    pasta depois da troca — se alguém mexer nela no meio, o plugin fica suspenso (B-11)."""
     from .registry import reset_registry
 
     plugin_id = manifest["id"]
-    sha, files = pin_digests(folder)
+    sha, files = digests if digests is not None else pin_digests(folder)
     state = read_state()
     entry = pin_entry(manifest, sha, files)
     last_pins = state.get("last_pins", {})

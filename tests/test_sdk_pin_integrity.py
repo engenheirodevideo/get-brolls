@@ -145,3 +145,27 @@ class LoadTimeContentTests(LoaderTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InstallPinsWhatWasConfirmedTests(InstallTestCase):
+    """B-11: o pin do install é o sha256 confirmado no staging, não um novo hash depois da troca."""
+
+    def test_content_swapped_after_the_move_is_suspended(self):
+        from pathlib import Path
+        from unittest.mock import patch
+
+        source = write_plugin(self.work / "demo_src")
+        preview = install_mod.install(str(source), confirm=False)
+        original_replace = Path.replace
+
+        def replace_then_tamper(self_path, target):
+            moved = original_replace(self_path, target)
+            if Path(target).name == "demo":
+                with (Path(target) / "plugin.py").open("a", encoding="utf-8") as handle:
+                    handle.write("\n# trocado entre a troca e o pin\n")
+            return moved
+
+        with patch.object(Path, "replace", replace_then_tamper):
+            install_mod.install(str(source), confirm=True, expect=preview["plugin"]["sha256"])
+        self.assertEqual(preview["plugin"]["sha256"], self.state()["enabled"]["demo"]["sha256"])
+        self.assertEqual("suspended", loader.inventory()[0]["status"])

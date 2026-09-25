@@ -634,7 +634,7 @@ def install(source, confirm, expect=None):
             raise ValueError(
                 f"Plugin {manifest['id']} já está instalado; use plugins --action update --id {manifest['id']}."
             )
-        sha = loader.folder_digest(staging)
+        sha, files = loader.pin_digests(staging)
         preview = _summary(manifest, origin, commit, sha, _file_list(staging))
         if not confirm:
             return {"installed": False, "plugin": preview, "note": loader.EXPECT_NOTE}
@@ -642,7 +642,7 @@ def install(source, confirm, expect=None):
         staging.replace(target)
     finally:
         force_rmtree(staging)
-    pinned_sha = loader.pin(manifest, target, {"source": origin, "commit": commit})
+    pinned_sha = loader.pin(manifest, target, {"source": origin, "commit": commit}, digests=(sha, files))
     logs.event(_log, logging.INFO, "plugin_installed", plugin=manifest["id"], version=manifest["version"])
     return {"installed": True, "plugin": {**preview, "sha256": pinned_sha}, "note": loader.DONE_NOTE}
 
@@ -676,7 +676,7 @@ def update(plugin_id, confirm, expect=None):
         manifest = _checked_manifest(staging)
         if manifest["id"] != plugin_id:
             raise ValueError(f"A origem agora traz o plugin {manifest['id']}, não {plugin_id}; nada foi trocado.")
-        sha = loader.folder_digest(staging)
+        sha, files = loader.pin_digests(staging)
         preview = _summary(manifest, source, commit, sha, _file_list(staging))
         diff = _diff(folder, current, staging, manifest)
         if not confirm:
@@ -703,7 +703,9 @@ def update(plugin_id, confirm, expect=None):
         force_rmtree(staging)
     # M3: atualizar o conteúdo não liga de volta um plugin que estava desabilitado —
     # só quem já estava habilitado sai daqui com pin novo (senão o pin some).
-    sha_after = loader.pin(manifest, folder, {"source": source, "commit": commit}, enable=was_enabled)
+    sha_after = loader.pin(
+        manifest, folder, {"source": source, "commit": commit}, enable=was_enabled, digests=(sha, files)
+    )
     logs.event(
         _log,
         logging.INFO,
