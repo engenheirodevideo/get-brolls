@@ -188,6 +188,8 @@ python3 scripts/gb.py search --provider youtube --query "Sua busca" --project /c
 # ── search --shot ───────────────────────────────────────────
 # O QUE FAZ: igual, mas já liga os resultados a um beat do BRIEF.
 # POR QUE: assim a entrega sai organizada por beat no final.
+# ATENÇÃO: a fonte tem que estar em allowed_sources do beat no BRIEF;
+#          fora da lista, o comando recusa e diz quais fontes valem.
 python3 scripts/gb.py search --provider youtube --query "Sua busca" --shot "<ID_DO_BEAT>" --project /caminho/meu-video
 
 # ── search --dry-run ────────────────────────────────────────

@@ -905,6 +905,44 @@ def blocked_entries(beats):
     ]
 
 
+def _beat_search_names(project, shot, rules, provider, names):
+    """Fontes que `search --shot` pode consultar: as que o beat do BRIEF.md permite.
+
+    Sem BRIEF.md válido, ou com um `--shot` que não é beat dele, nada muda: o beat
+    livre continua valendo como antes. Com o beat no brief, fonte fora de
+    `allowed_sources` é recusada com a lista certa, em vez de virar candidato ligado
+    ao beat como se a pessoa tivesse permitido aquela origem.
+    """
+    from getbrolls.brief import SEARCHABLE, beat_sources
+
+    allowed = beat_sources(project, shot, rules)
+    if allowed is None:
+        return names
+    searchable = [name for name in allowed if name in SEARCHABLE]
+    if provider != "auto":
+        if provider in allowed:
+            return names
+        route = (
+            f"Busque com --provider {searchable[0]} (ou --provider auto, que fica nas fontes do beat)."
+            if searchable
+            else f"Nenhuma dessas fontes tem busca por API: registre o material com "
+            f"`resolve --url URL_PUBLICA --shot {shot}` ou `resolve --file ARQUIVO --shot {shot}`."
+        )
+        raise ValueError(
+            f'O beat "{shot}" do BRIEF.md só aceita material de {", ".join(allowed)}, e {provider} '
+            f"não está nessa lista. {route} Se {provider} também serve para esse trecho, "
+            "acrescente a fonte em allowed_sources do beat e rode `brief --validate`."
+        )
+    chosen = [name for name in names if name in allowed] or searchable
+    if not chosen:
+        raise ValueError(
+            f'O beat "{shot}" do BRIEF.md só aceita {", ".join(allowed)}, e nenhuma dessas '
+            f"fontes tem busca por API: registre o material com `resolve --url URL_PUBLICA "
+            f"--shot {shot}` ou `resolve --file ARQUIVO --shot {shot}`."
+        )
+    return chosen
+
+
 def brief_state(project, rules, items):
     """Cobertura dos beats para a escada de orientação, sem gravar nada no projeto.
 
@@ -1516,6 +1554,8 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
             raise ValueError("--shot: use 1–80 letras, números, hífen ou underscore.")
         dry_run = bool(getattr(args, "dry_run", False))
         names = rules["preferred_providers"][args.intent] if args.provider == "auto" else [args.provider]
+        if shot:
+            names = _beat_search_names(args.project, shot, rules, args.provider, names)
         if not names:
             raise ValueError(
                 "Nenhuma fonte configurada: use resolve --file, Commons/NASA ou configure a chave de um banco."

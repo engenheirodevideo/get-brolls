@@ -10,6 +10,7 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- **`search --shot` respeita o beat.** Buscar com `--shot <beat>` numa fonte fora de `allowed_sources` daquele beat do `BRIEF.md` era aceito calado e o candidato ficava ligado ao beat. Agora a busca é recusada com a lista de fontes permitidas (e o `resolve` certo quando nenhuma delas tem busca por API), e `--provider auto` consulta só as fontes do beat. `--shot` que não é beat do brief, projeto sem brief ou brief inválido continuam como antes.
 - **Próximo passo depois do `approve`.** Com mais de um candidato, aprovar um deles fazia `status` (`summary.next` e `summary.do`) pedir prévia dos candidatos que sobraram sem quadro, e o aprovado ficava parado antes do `permit`. Agora o item aprovado segue `permit` → `fetch` → `verify` → `deliver` primeiro; quem sobrou sem prévia continua como aparte no fim do fluxo, como já dizia "Fluxo completo".
 - **Próximo passo sem BRIEF.md.** Num projeto sem `BRIEF.md`, `status.summary.do`, o `summary.next` do `deliver` e o "Próximo passo" do `entrega/README.md` repetiam "Antes de buscar qualquer coisa..." em todas as etapas, inclusive depois da entrega completa. A sugestão do brief agora fica só enquanto a pessoa ainda escolhe material (nenhuma aprovação ou prévia esperando decisão); depois disso o passo segue o fluxo real (`permit`, `fetch`, `verify`, `deliver`, fluxo completo). Com candidatos já registrados, a frase do brief deixa de dizer "antes de buscar".
 

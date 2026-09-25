@@ -354,6 +354,22 @@ def validate_brief(data, rules=None):
     )
 
 
+def beat_sources(project, shot, rules=None):
+    """`allowed_sources` do beat `shot` num BRIEF.md válido; None quando não há o que conferir.
+
+    Brief ausente ou inválido não trava a busca (quem avisa disso é `status`/`brief`),
+    e `--shot` que não é beat do brief segue livre, como sempre foi.
+    """
+    try:
+        data, _ = validate_brief(load_brief(project), rules)
+    except (ValueError, OSError):
+        return None
+    for beat in data["beats"]:
+        if beat["id"] == shot:
+            return list(beat["resolved"]["allowed_sources"])
+    return None
+
+
 def search_query(beat, limit=QUERY_MAX_TOKENS):
     """Termos que vão para a fonte: entidade + ação, nunca a frase inteira do `target`.
 

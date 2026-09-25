@@ -44,7 +44,8 @@ python3 scripts/gb.py resolve --url <URL> --shot <beat.id> --project <projeto>
 Detalhe operacional na seção [YouTube](../docs/GUIDE.md#provedor--youtube) do guia.
 
 `--shot <beat.id>` também funciona no `search`: ele liga cada candidato ao beat do
-BRIEF.md na hora, sem precisar re-registrar por URL depois. E `--dry-run` lista o que
+BRIEF.md na hora, sem precisar re-registrar por URL depois — e só aceita as fontes de
+`allowed_sources` daquele beat (fora da lista, a busca é recusada com a lista certa). E `--dry-run` lista o que
 a fonte devolveu **sem gravar nada** no projeto — use-o para sondar uma query antes de
 sujar as contagens do `status` com material que você não vai usar.
 
