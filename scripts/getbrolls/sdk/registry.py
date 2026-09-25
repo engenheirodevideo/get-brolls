@@ -251,9 +251,11 @@ def get_registry() -> Registry:
         registry = _builtins_only()
         try:
             loader.load_enabled(registry)
-        except KeyboardInterrupt:
-            raise
-        except BaseException as exc:  # noqa: BLE001 - montar o registro de plugins nunca derruba os built-ins (providers/doctor/rules/search)
+        except (
+            BaseException
+        ) as exc:  # montar o registro de plugins nunca derruba os built-ins (providers/doctor/rules/search)
+            if type(exc) is KeyboardInterrupt:
+                raise
             from .. import logs
             from .guard import safe_type_name
 

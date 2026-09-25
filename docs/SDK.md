@@ -460,9 +460,12 @@ python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
   `asyncio.CancelledError` e uma classe que herde `BaseException` — vira erro
   do plugin com só o **tipo** (veja [`PluginError`](#mensagens-de-erro-pluginerror)),
   sem cadeia até a exceção original: o texto dela nunca chega ao traceback de
-  `diagnostics.jsonl`, ao `getbrolls.log` nem ao motivo em `doctor`. Só
-  `KeyboardInterrupt` passa. Falhar ao montar o registro de plugins nunca
-  derruba `providers`/`doctor`/`rules`/`search` dos built-ins.
+  `diagnostics.jsonl`, ao `getbrolls.log` nem ao motivo em `doctor`. Só o
+  `KeyboardInterrupt` de verdade passa (uma subclasse dele levantada pelo
+  plugin é falha do plugin). Falhar ao montar o registro de plugins nunca
+  derruba `providers`/`doctor`/`rules`/`search` dos built-ins. Tudo o que o
+  código do plugin escreve em `sys.stdout` (um `print`) vai para o stderr: o
+  stdout da CLI é só o JSON.
 - **Não há tempo limite** nas chamadas ao plugin: um `search` ou
   `Route.prepare` que trava segura o comando (e a trava do projeto) até ser
   interrompido com Ctrl+C. Código em processo não tem como ser cortado com

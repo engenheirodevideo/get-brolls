@@ -9,12 +9,14 @@ plugin passa primeiro por um round-trip de JSON: um objeto de terceiro com
 """
 
 import builtins
+import contextlib
 import copy
 import itertools
 import json
 import logging
 import os
 import re
+import sys
 import types
 import unicodedata
 from typing import Any, NamedTuple
@@ -192,12 +194,19 @@ class Outcome(NamedTuple):
 
 
 def attempt(owner, fn, *args, builtin_text=False) -> Outcome:
-    """`Outcome(resultado, None)` ou `Outcome(None, Failure)`; só `KeyboardInterrupt` atravessa."""
+    """`Outcome(resultado, None)` ou `Outcome(None, Failure)`; só `KeyboardInterrupt` atravessa.
+
+    Tudo o que o código de plugin escreve em `sys.stdout` (um `print` no import, no
+    `register`, na busca, na rota ou no comando) vai para `sys.stderr` (C M-8): o
+    stdout da CLI é só o envelope JSON que o agente lê."""
     try:
-        return Outcome(fn(*args), None)
-    except KeyboardInterrupt:
-        raise
-    except BaseException as exc:  # noqa: BLE001 - isolamento deliberado de código de plugin de terceiro; ver o bloco acima
+        with contextlib.redirect_stdout(sys.stderr):
+            return Outcome(fn(*args), None)
+    except BaseException as exc:  # isolamento deliberado de código de plugin de terceiro; ver o bloco acima
+        # Só o Ctrl+C de verdade atravessa (B-10): uma SUBCLASSE de KeyboardInterrupt
+        # levantada pelo plugin é falha dele, não interrupção da pessoa.
+        if type(exc) is KeyboardInterrupt:
+            raise
         failure = Failure(safe_type_name(exc), plugin_text(owner, exc, builtin=builtin_text))
     return Outcome(None, failure)
 
