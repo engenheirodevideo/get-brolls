@@ -78,7 +78,7 @@ def register(api):
     api.route(Licenciada())
 """
 
-# B2: a rota deixa uma pasta comum (não um objeto git) sem nenhuma permissão dentro
+# A rota deixa uma pasta comum (não um objeto git) sem nenhuma permissão dentro
 # do workdir. force_rmtree precisa limpar isso no `finally` do plugin_source sem
 # levantar — senão o fetch vira INTERNAL_ERROR mesmo com o arquivo já verificado.
 LOCKED_DIR_FETCH_PLUGIN = FETCH_PLUGIN.replace(
@@ -269,7 +269,7 @@ class RoutedImageExtensionTests(FetchRouteCase):
 @unittest.skipIf(os.name == "nt", "walk por fd (func=os.open) do force_rmtree é POSIX-only")
 @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root ignora permissão de escrita")
 class LockedWorkdirCleanupTests(FetchRouteCase):
-    """B2: a rota deixa `workdir/locked` (mode 0) para trás. force_rmtree
+    """A rota deixa `workdir/locked` (mode 0) para trás. force_rmtree
     (chamado no `finally` de `plugin_source`) não pode levantar TypeError — o
     arquivo já tinha sido movido para o cache antes da limpeza, então um
     INTERNAL_ERROR aqui perderia o `_save_index` e faria a rota rodar nunca (o

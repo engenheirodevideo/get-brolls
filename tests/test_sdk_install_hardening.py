@@ -78,7 +78,7 @@ class FolderInstallHardeningTests(InstallTestCase):
 
 
 class CountedFilesOrderTests(InstallTestCase):
-    """B1: a ordem de `_counted_files` (e por tabela `folder_digest`/prévia de
+    """A ordem de `_counted_files` (e por tabela `folder_digest`/prévia de
     arquivos) não pode depender de `Path.__lt__` — no `WindowsPath` real essa
     comparação é insensível a maiúsculas, então `getbrolls-plugin.json` viria antes
     de `LEIAME.md`. Simulamos essa comparação insensível via patch para provar que

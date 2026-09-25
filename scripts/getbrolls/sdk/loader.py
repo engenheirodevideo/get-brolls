@@ -79,7 +79,7 @@ def _counted_files(folder):
     Ordena por `rel.parts` (tupla de `str`, componente por componente), não pelo
     `Path` em si: no `WindowsPath` real, `Path.__lt__` compara sem diferenciar
     maiúsculas de minúsculas, o que mudaria a ordem (e portanto o hash) entre
-    Windows e POSIX para o mesmo conteúdo (B1). `.parts` é texto puro em
+    Windows e POSIX para o mesmo conteúdo. `.parts` é texto puro em
     qualquer SO, então a comparação de tupla já é por ponto de código — e dá a
     MESMA ordem que o `sorted(Path...)` antigo já dava no POSIX (`sub/x.py`
     antes de `sub.py`, porque a tupla compara `"sub"` com `"sub.py"` antes de

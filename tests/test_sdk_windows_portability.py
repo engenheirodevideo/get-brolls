@@ -49,7 +49,7 @@ class ForceRmtreeTests(unittest.TestCase):
     @unittest.skipIf(IS_ROOT, "root ignora permissão de escrita")
     @unittest.skipIf(os.name == "nt", "fd-based rmtree walk (func=os.open) é POSIX-only")
     def test_dirs_without_read_or_execute_permission_are_fully_removed(self):
-        """B2: numa subpasta sem leitura/execução (0 ou só escrita), o walk por fd
+        """Numa subpasta sem leitura/execução (0 ou só escrita), o walk por fd
         do shutil.rmtree chama a retentativa com func=os.open, não
         os.unlink/os.rmdir/os.remove. Chamar `func(failed)` sem flags levantava
         TypeError, que escapava do antigo `suppress(OSError)` e violava o "nunca

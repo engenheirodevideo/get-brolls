@@ -44,6 +44,16 @@ INTERNAL_REVIEW_ID_PATTERN = re.compile(
     r"\b(?:RT|BUG|B|M|I|D3|H4|C1|T2)-\d{1,2}\b(?![-\d])"
     r"|\bC [HML]-\d+\b|\bA [IM]\d\b|\bMinor \d+\b|\b[Ff]ix round \d\b"
     r"|\bred[-]team\b|\bFinding \d+\b|\bG\d{1,2}:(?!\d)"
+    # Forma sem hífen (letra + 1 ou 2 dígitos): só logo depois de "(", aspas, "#", espaço ou
+    # início da linha, e só antes de ":" ou ")" — "C3" em prosa, "H264", "M4A" e
+    # "I/O" não casam; o "Checkpoint C3:" do SKILL.md também não.
+    r"|(?:^|(?<=[\s(\"#]))(?<!Checkpoint )[BMIHLTDC]\d{1,2}(?=[:)])"
+)
+# Rodada/onda de revisão escrita por extenso, no começo de comentário ou docstring e
+# seguida de ":" ou "(": só em código — na prosa (CHANGELOG, eval/), "rodada" e
+# "onda" numeradas são histórico legítimo.
+INTERNAL_REVIEW_ROUND_PATTERN = re.compile(
+    r"(?:^\s*|(?<=[(\"])|(?<=#)\s?)(?:[Rr]ound|[Rr]odada|[Oo]nda|[Ww]ave|Task) \d+(?=:|\)| \()"
 )
 
 
@@ -452,8 +462,11 @@ class RepositoryDocumentationTests(unittest.TestCase):
                 text = (ROOT / path).read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
                 continue  # binário, ou apagado do worktree sem commit
+            patterns = [INTERNAL_REVIEW_ID_PATTERN]
+            if path.endswith(".py"):
+                patterns.append(INTERNAL_REVIEW_ROUND_PATTERN)
             for number, line in enumerate(text.splitlines(), 1):
-                match = INTERNAL_REVIEW_ID_PATTERN.search(line)
+                match = next((m for pattern in patterns if (m := pattern.search(line))), None)
                 if match:
                     problems.append(f"{path}:{number}: {match.group(0)}")
         self.assertEqual([], problems)
@@ -472,9 +485,22 @@ class RepositoryDocumentationTests(unittest.TestCase):
             "Finding " + "3",
             "G" + "11: texto",
             "D3" + "-1",
+            "mesmo conteúdo (B" + "1).",
+            '    """B' + "2: a rota deixa",
+            "# M" + "4: GIT_SSL_CAINFO",
+            "rollback (M" + "2) poder",
+            "texto I" + "3: fim",
         )
         for sample in matching:
             self.assertIsNotNone(INTERNAL_REVIEW_ID_PATTERN.search(sample), sample)
+        for sample in (
+            '    """Rodada' + " 3 (decisão): o gate",
+            "# round" + " 3: a idade",
+            "# Inclui as originais (round" + " 1) e",
+            "Task" + " 10: texto",
+            '"""Onda' + " 2: texto",
+        ):
+            self.assertIsNotNone(INTERNAL_REVIEW_ROUND_PATTERN.search(sample), sample)
         legitimate = (
             "B-roll",
             "b-rolls do beat",
@@ -487,9 +513,22 @@ class RepositoryDocumentationTests(unittest.TestCase):
             "ISO-8601",
             "12:30:00",
             "mar, onda",
+            "Antes do C3, rejeite",
+            "**Checkpoint C3:** descreva",
+            "vídeo em H264: ok",
+            "áudio M4A (AAC)",
+            "erro de I/O: disco",
+            "(B-roll)",
         )
         for sample in legitimate:
             self.assertIsNone(INTERNAL_REVIEW_ID_PATTERN.search(sample), sample)
+        for sample in (
+            "mar, onda",
+            '"""Fricção 1 da rodada 2: texto"""',
+            "(onda 2 de correções)",
+            "test_add_next_mark_status_round_trip",
+        ):
+            self.assertIsNone(INTERNAL_REVIEW_ROUND_PATTERN.search(sample), sample)
 
     def test_release_workflow_uses_gh_cli_and_the_pinned_checkout(self):
         release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
