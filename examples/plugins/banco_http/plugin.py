@@ -36,6 +36,9 @@ class BancoHttp:
         for row in data.get("items", [])[:limit]:
             item = self.api.candidate(self.name, row["id"], row["title"], row.get("page_url"))
             item["media"].update(duration_s=row.get("duration"), kind="video")
+            # O que a pessoa vê antes de aprovar: sem miniatura nem player, o core
+            # recusa aprovar um candidato de plugin (não há nada para mostrar).
+            item["preview"].update(poster_url=row.get("thumb_url"), embed_url=row.get("embed_url"))
             found.append(item)
         return found
 

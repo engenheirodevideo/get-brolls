@@ -289,6 +289,12 @@ FLOW_SUMMARIES = {
     "preview": lambda r: (
         f"Gerei somente a referência estática de {_identifier(r)}: "
         f"estado {r.get('state')}, aprovação {(r.get('approval') or {}).get('status')}."
+        + (
+            " Sem imagem de referência: a fonte do plugin não mandou miniatura (poster_url), "
+            "então não há nada para mostrar à pessoa."
+            if _plugin_reference_without_image(r)
+            else ""
+        )
         if r.get("state") == "reference_only"
         else f"Gerei a prévia de {_identifier(r)}: "
         f"estado {r.get('state')}, aprovação {(r.get('approval') or {}).get('status')}."
@@ -422,6 +428,32 @@ def status_next(counts, format_pending=0, pending_preview=None, undelivered=0):
 
 def _has_preview(c):
     return any((c.get("preview") or {}).get(key) for key in PREVIEW_ARTIFACTS)
+
+
+def _is_plugin_candidate(c):
+    from .providers import BUILTIN_CAPABILITIES
+
+    return c.get("provider") not in BUILTIN_CAPABILITIES
+
+
+def _plugin_reference_without_image(c):
+    return _is_plugin_candidate(c) and not (c.get("preview") or {}).get("poster_path")
+
+
+def _plugin_nothing_seen(c):
+    """Candidato de plugin sem nada que a pessoa possa ter visto (C M-7): sem prévia
+    local, sem `poster_url` e sem `embed_url`. Fonte embutida nunca cai aqui."""
+    preview = c.get("preview") or {}
+    return _is_plugin_candidate(c) and not (_has_preview(c) or preview.get("poster_url") or preview.get("embed_url"))
+
+
+def _refuse_blind_plugin_approval(c):
+    if _plugin_nothing_seen(c):
+        raise ValueError(
+            f"Não registrei a aprovação de {c['id']}: a fonte do plugin não deu nada que a pessoa possa ter "
+            "visto (nenhuma prévia local, nenhum poster_url nem embed_url). Sem material para mostrar, esta "
+            "fonte não pode ser aprovada; peça ao autor do plugin uma miniatura (poster_url) ou um embed_url."
+        )
 
 
 def rules_from_flags(template, mode, responsible, declaration, video_format=None):
@@ -728,7 +760,9 @@ def approve_all(ledger, args, rules, only=None):  # noqa: C901, PLR0912 - existi
     for c in ledger.data["items"]:
         if wanted is not None and c["id"] not in wanted:
             continue
-        if not _has_preview(c):
+        if _plugin_nothing_seen(c):
+            reason = "fonte de plugin sem nada para mostrar (sem prévia, poster_url nem embed_url)"
+        elif not _has_preview(c):
             reason = "sem prévia gerada; rode preview antes"
         elif not allowed(c, rules):
             reason = "bloqueado pelas regras atuais do usuário"
@@ -1980,6 +2014,7 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
     preview_mode = None
     approval_invalidated = False
     if cmd == "approve":
+        _refuse_blind_plugin_approval(c)
         approve(c, args.by, args.channel, args.statement)
     elif cmd == "permit":
         preset = getattr(args, "preset", None)

@@ -10,6 +10,7 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- SDK: `approve` recusa candidato de plugin sem nada que a pessoa possa ter visto (sem prévia local, `poster_url` nem `embed_url`), e `preview --reference-only` diz "Sem imagem de referência" nesse caso; o exemplo `banco_http` passa `thumb_url`/`embed_url` da API. Fontes embutidas não mudam.
 - SDK (segurança): rota de `fetch` com licença já consumida e arquivo fora do cache privado não roda de novo — o `fetch` recusa e diz a data; a nova flag `fetch --reacquire` permite, com o ok da pessoa, uma nova aquisição, registrada em `acquisition.route_reacquired_at`.
 - SDK: `print` de plugin (no import, `register`, busca, rota ou comando) vai para o stderr — o JSON do stdout continua legível; e uma subclasse de `KeyboardInterrupt` levantada por plugin é falha do plugin, não interrupção da CLI.
 - SDK (segurança): `source_id` de plugin só aceita `[A-Za-z0-9._:-]` (1 a 128) — outro caractere recusa o candidato, com registro no log —, e comando sugerido com id de candidato de plugin vai citado com `shlex.quote` quando preciso.

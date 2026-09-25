@@ -55,7 +55,10 @@ class Fonte:
         self.api = api
 
     def search(self, query, limit, media):
-        return [self.api.candidate(self.name, "exemplo-1", f"Exemplo: {query}")][:limit]
+        item = self.api.candidate(self.name, "exemplo-1", f"Exemplo: {query}")
+        # Preencha item["preview"]["poster_url"] (miniatura) ou ["embed_url"] (player):
+        # sem nada para a pessoa ver, o core recusa aprovar um candidato de plugin.
+        return [item][:limit]
 
     def resolve(self, url):
         return None

@@ -56,7 +56,13 @@ class _BancoApi:
         if url.startswith("https://api.banco.example/v1/search"):
             payload = {
                 "items": [
-                    {"id": "1", "title": "Praia ao entardecer", "page_url": "https://banco.example/v/1", "duration": 6}
+                    {
+                        "id": "1",
+                        "title": "Praia ao entardecer",
+                        "page_url": "https://banco.example/v/1",
+                        "embed_url": "https://banco.example/embed/1",
+                        "duration": 6,
+                    }
                 ]
             }
             return _Response(json.dumps(payload).encode())

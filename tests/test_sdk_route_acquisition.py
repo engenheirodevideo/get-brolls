@@ -40,6 +40,7 @@ class Fonte:
 
     def search(self, query, limit, media):
         item = self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")
+        item["preview"]["embed_url"] = "https://demo.example/embed/1"  # C M-7: algo para a pessoa ver
         item["media"]["duration_s"] = 6
         item["media"]["kind"] = "video"
         return [item]

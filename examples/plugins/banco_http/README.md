@@ -11,7 +11,9 @@ aprovação humana e do `permit`, pela rota `banco_http` (`stage="fetch"`).
 ## O que faz
 
 - `search` chama `GET /v1/search` com `Authorization: Bearer $BANCO_HTTP_TOKEN`
-  e devolve um candidato por item (título, página pública, duração).
+  e devolve um candidato por item (título, página pública, duração, miniatura
+  `thumb_url` e player `embed_url`). Sem miniatura nem player, não há o que
+  mostrar à pessoa e o `approve` recusa o candidato.
 - A rota `banco_http` chama `GET /v1/videos/<id>/license` e registra o texto
   devolvido como licença; depois baixa `GET /v1/videos/<id>/file` com
   `api.download`, que grava o arquivo na pasta de trabalho criada pelo core.

@@ -45,6 +45,7 @@ class Fonte:
 
     def item(self):
         item = self.api.candidate("demo", "1", "Demo", "https://demo.example/v/1")
+        item["preview"]["embed_url"] = "https://demo.example/embed/1"  # C M-7: algo para a pessoa ver
         item["media"]["kind"] = KIND
         if KIND == "video":
             item["media"]["duration_s"] = float(os.environ.get("DEMO_DURATION", "30"))

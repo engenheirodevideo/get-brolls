@@ -158,7 +158,12 @@ class RouteResult:
 - `stage="fetch"`: trazer o arquivo consome licença ou cota, então o core só
   chama a rota no `fetch`, depois da aprovação humana e do `permit`. Em
   `inspect`/`preview`/varredura ela é recusada com uma mensagem que manda usar
-  `preview --candidate ID --start ... --end ... --reference-only`.
+  `preview --candidate ID --start ... --end ... --reference-only`. Essa
+  referência é a miniatura da fonte (`preview.poster_url`): preencha
+  `poster_url` ou `embed_url` no candidato. Candidato de plugin sem prévia
+  local, sem `poster_url` e sem `embed_url` não tem nada que a pessoa possa ter
+  visto — o `preview --reference-only` avisa "Sem imagem de referência" e o
+  `approve` recusa.
 - `item` é uma **cópia** do candidato: mexer nela não muda nada no projeto.
 - `workdir` é criado pelo core em `.getbrolls-sources/plugin-<id>-<uuid>/` e
   apagado ao fim, com ou sem erro. Use `api.download` ou `api.local_file`
