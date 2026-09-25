@@ -370,6 +370,35 @@ def beat_sources(project, shot, rules=None):
     return None
 
 
+# Textos de exemplo do modelo (`docs/BRIEF.md`): quem os deixou não preencheu o campo.
+TEMPLATE_VIDEO_TEXT = {
+    "title": "Troque pelo nome real do vídeo",
+    "objective": "O que este vídeo precisa provar para quem assiste",
+}
+TEMPLATE_BEAT_TEXT = {
+    "narration": "Cole aqui a fala exata deste trecho, ou deixe null.",
+    "target": "O que precisa aparecer na tela neste trecho",
+}
+
+
+def template_leftovers(data):
+    """Campos que ainda trazem o texto de exemplo do modelo, um aviso por campo.
+
+    O modelo é válido de propósito (serve de ponto de partida), mas buscar pelo
+    "O que precisa aparecer na tela" dele é buscar pelo exemplo, não pelo vídeo.
+    """
+    found = [
+        f"video.{key} ainda está com o texto de exemplo do modelo: troque pelo real."
+        for key, text in TEMPLATE_VIDEO_TEXT.items()
+        if data["video"].get(key) == text
+    ]
+    for beat in data["beats"]:
+        for key, text in TEMPLATE_BEAT_TEXT.items():
+            if beat["resolved"].get(key) == text:
+                found.append(f'O beat "{beat["id"]}" ainda está com o {key} de exemplo do modelo: troque pelo real.')
+    return found
+
+
 def search_query(beat, limit=QUERY_MAX_TOKENS):
     """Termos que vão para a fonte: entidade + ação, nunca a frase inteira do `target`.
 

@@ -442,6 +442,7 @@ def brief_report(args):
         missing_provider_keys,
         provider_unavailable,
         provider_warnings,
+        template_leftovers,
         validate_brief,
     )
     from getbrolls.rules import load_rules
@@ -460,6 +461,8 @@ def brief_report(args):
     # brief com todos os seis beats esperando um fato da pessoa.
     stalled = blocked_entries(data["beats"])
     problems += [f'O beat "{entry["id"]}" está travado esperando você: {entry["reason"]}' for entry in stalled]
+    # Modelo intocado passa na validação de formato, mas não é um brief pronto.
+    problems += template_leftovers(data)
     if getattr(args, "validate", False):
         beat_count = _count(len(data["beats"]), "beat", "beats")
         return {
