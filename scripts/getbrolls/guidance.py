@@ -431,6 +431,49 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
         # conferida, mandar inspecionar um candidato descartado diria à pessoa que o
         # vídeo dela não acabou quando acabou.
         return _done_action(state, counts)
+    # Item aprovado segue para permit/fetch/verify/deliver antes de qualquer prévia
+    # nova: quem sobrou sem quadro é rascunho do agente (ver `flow_complete`), e
+    # pedir prévia dele deixava o aprovado parado no meio do caminho.
+    if counts["approved"]:
+        if counts["permitted"] < counts["approved"]:
+            per_item = state.get("rights_mode", "per_item_evidence") == "per_item_evidence"
+            return _action(
+                "permit",
+                "Itens aprovados ainda sem as condições reais de uso registradas.",
+                (
+                    "Falta registrar de onde vem o direito de usar cada trecho aprovado: me "
+                    "diga a condição real da fonte (licença, autorização, contato) que eu "
+                    "gravo."
+                    if per_item
+                    else "Vou registrar as condições de uso dos aprovados com a declaração que já está no RULES.md."
+                ),
+                state,
+                blocking_human=per_item,
+            )
+        if counts["delivered"] < counts["permitted"]:
+            return _action(
+                "fetch",
+                "Itens aprovados e permitidos ainda sem o corte final em clips/.",
+                "Está tudo decidido e permitido: vou coletar os cortes finais agora.",
+                state,
+            )
+        if counts["verified"] < counts["delivered"]:
+            return _action(
+                "verify",
+                "Arquivos coletados ainda sem conferência de integridade.",
+                "Coletei os cortes; vou conferir se todos os arquivos abrem e estão íntegros.",
+                state,
+            )
+        if state.get("undelivered"):
+            # `brolls/` guarda por hash; quem abre a pasta precisa de nome de gente.
+            return _action(
+                "deliver",
+                "Há arquivo conferido que ainda não aparece em entrega/, a pasta que a pessoa abre.",
+                "Vou organizar os trechos conferidos em `entrega/`, uma pasta por beat, com "
+                "o contact sheet e a origem de cada um do lado — é essa pasta que você "
+                "arrasta para o editor.",
+                state,
+            )
     if _pending_preview(state, counts) > 0:
         if state.get("duration_unknown"):
             # Sem saber a duração, qualquer intervalo é chute — e baixar trecho errado
@@ -461,43 +504,4 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
         )
     if not counts["approved"]:
         return _approve_action(state)
-    if counts["permitted"] < counts["approved"]:
-        per_item = state.get("rights_mode", "per_item_evidence") == "per_item_evidence"
-        return _action(
-            "permit",
-            "Itens aprovados ainda sem as condições reais de uso registradas.",
-            (
-                "Falta registrar de onde vem o direito de usar cada trecho aprovado: me "
-                "diga a condição real da fonte (licença, autorização, contato) que eu "
-                "gravo."
-                if per_item
-                else "Vou registrar as condições de uso dos aprovados com a declaração que já está no RULES.md."
-            ),
-            state,
-            blocking_human=per_item,
-        )
-    if counts["delivered"] < counts["permitted"]:
-        return _action(
-            "fetch",
-            "Itens aprovados e permitidos ainda sem o corte final em clips/.",
-            "Está tudo decidido e permitido: vou coletar os cortes finais agora.",
-            state,
-        )
-    if counts["verified"] < counts["delivered"]:
-        return _action(
-            "verify",
-            "Arquivos coletados ainda sem conferência de integridade.",
-            "Coletei os cortes; vou conferir se todos os arquivos abrem e estão íntegros.",
-            state,
-        )
-    if state.get("undelivered"):
-        # `brolls/` guarda por hash; quem abre a pasta precisa de nome de gente.
-        return _action(
-            "deliver",
-            "Há arquivo conferido que ainda não aparece em entrega/, a pasta que a pessoa abre.",
-            "Vou organizar os trechos conferidos em `entrega/`, uma pasta por beat, com "
-            "o contact sheet e a origem de cada um do lado — é essa pasta que você "
-            "arrasta para o editor.",
-            state,
-        )
     return _done_action(state, counts)

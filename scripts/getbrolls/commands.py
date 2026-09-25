@@ -322,10 +322,28 @@ def with_summary(command, result):
 
 
 # Escada do fluxo: a primeira condição verdadeira nomeia o próximo passo real.
+# Item aprovado segue para permit/fetch/verify/deliver antes de prévia nova: quem
+# sobrou sem quadro é rascunho (ver `guidance.flow_complete`), não trava o aprovado.
 STATUS_LADDER = (
     (
         lambda c: not c["candidates"],
         "Nenhum candidato ainda: registre fontes com search ou resolve.",
+    ),
+    (
+        lambda c: c["permitted"] < c["approved"],
+        "Registre as condições reais de uso com permit nos itens aprovados.",
+    ),
+    (
+        lambda c: c["approved"] and c["delivered"] < c["permitted"],
+        "Colete os cortes aprovados e permitidos com fetch.",
+    ),
+    (
+        lambda c: c["approved"] and c["verified"] < c["delivered"],
+        "Confira os arquivos coletados com verify.",
+    ),
+    (
+        lambda c: c["approved"] and c["undelivered"] > 0,
+        "Organize os trechos conferidos em entrega/ com deliver.",
     ),
     (
         lambda c: c["pending_preview"] > 0,
@@ -338,22 +356,6 @@ STATUS_LADDER = (
             "no chat (approve --candidate ID --by NOME --channel chat --statement "
             '"frase"), com os IDs que você mostrou.'
         ),
-    ),
-    (
-        lambda c: c["permitted"] < c["approved"],
-        "Registre as condições reais de uso com permit nos itens aprovados.",
-    ),
-    (
-        lambda c: c["delivered"] < c["permitted"],
-        "Colete os cortes aprovados e permitidos com fetch.",
-    ),
-    (
-        lambda c: c["verified"] < c["delivered"],
-        "Confira os arquivos coletados com verify.",
-    ),
-    (
-        lambda c: c["undelivered"] > 0,
-        "Organize os trechos conferidos em entrega/ com deliver.",
     ),
 )
 

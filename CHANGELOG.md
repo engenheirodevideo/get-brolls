@@ -10,6 +10,7 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- **Próximo passo depois do `approve`.** Com mais de um candidato, aprovar um deles fazia `status` (`summary.next` e `summary.do`) pedir prévia dos candidatos que sobraram sem quadro, e o aprovado ficava parado antes do `permit`. Agora o item aprovado segue `permit` → `fetch` → `verify` → `deliver` primeiro; quem sobrou sem prévia continua como aparte no fim do fluxo, como já dizia "Fluxo completo".
 - **Próximo passo sem BRIEF.md.** Num projeto sem `BRIEF.md`, `status.summary.do`, o `summary.next` do `deliver` e o "Próximo passo" do `entrega/README.md` repetiam "Antes de buscar qualquer coisa..." em todas as etapas, inclusive depois da entrega completa. A sugestão do brief agora fica só enquanto a pessoa ainda escolhe material (nenhuma aprovação ou prévia esperando decisão); depois disso o passo segue o fluxo real (`permit`, `fetch`, `verify`, `deliver`, fluxo completo). Com candidatos já registrados, a frase do brief deixa de dizer "antes de buscar".
 
 - Docs: `docs/MANUAL.md`, manual + tutorial em português para quem está chegando — tutorial do zero à `entrega/`, todos os subcomandos agrupados nos 8 passos do fluxo com explicação dentro de cada bloco, as três rotas do `permit`, como ler `summary.line`/`summary.do`/erros/códigos de saída, `BRIEF.md`, `RULES.md` e `.env` campo a campo, e receitas de automação com `jq`. Ligado no README, no README.en e no AGENTS. Fecha #80.
