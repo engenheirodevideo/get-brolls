@@ -390,6 +390,7 @@ def trial_load(folder):
     descartável com os built-ins, para pegar colisão de nome sem habilitar nada."""
     from .. import presets, providers
     from .registry import Registry
+    from .testing import check_registry
 
     manifest = read_manifest(folder, require_folder_match=False)
     problem = compatibility_problem(manifest)
@@ -405,4 +406,8 @@ def trial_load(folder):
         SystemExit,
     ) as exc:  # código de plugin é de terceiro: sem isto, um bug do plugin (RuntimeError, KeyError...) chegava cru em `runtime.audited()` e virava INTERNAL_ERROR/exit 3 — "erro interno" nosso, escondendo o motivo real. Reembrulhado em ValueError, vira exit 2 com o tipo e a mensagem visíveis; KeyboardInterrupt continua propagando.
         raise ValueError(f"Plugin {manifest['id']}: {type(exc).__name__}: {exc}") from exc
-    return {"ok": True, **_preview(manifest, folder), "manifest_file": MANIFEST_NAME}
+    try:
+        contracts = check_registry(registry, manifest["id"])
+    except AssertionError as exc:
+        raise ValueError(f"Plugin {manifest['id']}: contrato: {exc}") from exc
+    return {"ok": True, **_preview(manifest, folder), "manifest_file": MANIFEST_NAME, "contracts": contracts}

@@ -5,35 +5,73 @@ from pathlib import Path
 from . import loader
 
 
-def run(args):
-    action = args.action
-    if action == "list":
-        return {
-            "plugins_dir": str(loader.plugins_root()),
-            "selection": "GB_PLUGINS" if loader.env_selection() is not None else "plugins.json",
-            "plugins": loader.inventory(),
-            "note": (
-                "Status pré-carga (manifesto + pin de hash), sem executar código de plugin; "
-                "rode `doctor` para o resultado real do carregamento (register() executado)."
-            ),
-        }
-    if action in ("enable", "disable", "update") and not args.id:
-        raise ValueError(f"--id é obrigatório em plugins --action {action}.")
-    if action == "enable":
-        return loader.enable(args.id, confirm=bool(args.yes))
-    if action == "disable":
-        return loader.disable(args.id)
-    if action in ("install", "update"):
-        from . import install
+def _list(args):  # noqa: ARG001 - mesma assinatura das outras ações
+    return {
+        "plugins_dir": str(loader.plugins_root()),
+        "selection": "GB_PLUGINS" if loader.env_selection() is not None else "plugins.json",
+        "plugins": loader.inventory(),
+        "note": (
+            "Status pré-carga (manifesto + pin de hash), sem executar código de plugin; "
+            "rode `doctor` para o resultado real do carregamento (register() executado)."
+        ),
+    }
 
-        if action == "update":
-            return install.update(args.id, confirm=bool(args.yes), expect=args.expect)
-        if not args.source:
-            raise ValueError("--source é obrigatório em plugins --action install (pasta local ou URL git).")
-        return install.install(args.source, confirm=bool(args.yes), expect=args.expect)
+
+def _require_id(args):
+    if not args.id:
+        raise ValueError(f"--id é obrigatório em plugins --action {args.action}.")
+    return args.id
+
+
+def _enable(args):
+    return loader.enable(_require_id(args), confirm=bool(args.yes))
+
+
+def _disable(args):
+    return loader.disable(_require_id(args))
+
+
+def _check(args):
     if not args.path:
         raise ValueError("--path é obrigatório em plugins --action check.")
     folder = Path(args.path).expanduser().resolve()
     if not folder.is_dir():
         raise ValueError("--path tem que ser a pasta do plugin.")
     return loader.trial_load(folder)
+
+
+def _install(args):
+    from . import install
+
+    if not args.source:
+        raise ValueError("--source é obrigatório em plugins --action install (pasta local ou URL git).")
+    return install.install(args.source, confirm=bool(args.yes), expect=args.expect)
+
+
+def _update(args):
+    from . import install
+
+    return install.update(_require_id(args), confirm=bool(args.yes), expect=args.expect)
+
+
+def _new(args):
+    from . import scaffold
+
+    if not args.kind:
+        raise ValueError("plugins --action new precisa de --kind (provider, route ou command).")
+    return scaffold.new(_require_id(args), args.kind, args.path)
+
+
+ACTIONS = {
+    "list": _list,
+    "enable": _enable,
+    "disable": _disable,
+    "check": _check,
+    "install": _install,
+    "update": _update,
+    "new": _new,
+}
+
+
+def run(args):
+    return ACTIONS[args.action](args)

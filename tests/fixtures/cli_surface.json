@@ -1028,7 +1028,7 @@
       ]
     },
     "plugins": {
-      "help": "Listar, instalar, atualizar, habilitar, desabilitar ou validar plugins do SDK (~/.getbrolls/plugins)",
+      "help": "Listar, instalar, atualizar, criar, habilitar, desabilitar ou validar plugins do SDK (~/.getbrolls/plugins)",
       "options": [
         {
           "action": "_HelpAction",
@@ -1051,11 +1051,12 @@
             "enable",
             "install",
             "list",
+            "new",
             "update"
           ],
           "default": null,
           "dest": "action",
-          "help": "list: inventário sem executar código; enable/disable: liga/desliga por id; check: valida uma pasta; install/update: traz de pasta ou git, em dois passos",
+          "help": "list: inventário sem executar código; enable/disable: liga/desliga por id; check: valida uma pasta; install/update: traz de pasta ou git, em dois passos; new: gera um plugin mínimo",
           "nargs": null,
           "option_strings": [
             "--action"
@@ -1067,7 +1068,7 @@
           "choices": null,
           "default": null,
           "dest": "id",
-          "help": "Id do plugin (enable/disable/update)",
+          "help": "Id do plugin (enable/disable/update/new)",
           "nargs": null,
           "option_strings": [
             "--id"
@@ -1091,10 +1092,26 @@
           "choices": null,
           "default": null,
           "dest": "path",
-          "help": "Pasta do plugin a validar (check); executa o register() do plugin",
+          "help": "check: pasta do plugin a validar (executa o register()); new: pasta onde criar o plugin",
           "nargs": null,
           "option_strings": [
             "--path"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "command",
+            "provider",
+            "route"
+          ],
+          "default": null,
+          "dest": "kind",
+          "help": "Tipo do plugin gerado por new: fonte, fonte com rota de download, ou comando",
+          "nargs": null,
+          "option_strings": [
+            "--kind"
           ],
           "required": false
         },

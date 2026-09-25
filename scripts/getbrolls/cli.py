@@ -20,7 +20,7 @@ EXIT_INTERNAL_ERROR = 3
 SUMMARIES = {
     "providers": "Listar fontes disponíveis, transporte e chaves configuradas",
     "doctor": "Diagnosticar dependências, caminhos fixados e fontes utilizáveis",
-    "plugins": "Listar, instalar, atualizar, habilitar, desabilitar ou validar plugins do SDK (~/.getbrolls/plugins)",
+    "plugins": "Listar, instalar, atualizar, criar, habilitar, desabilitar ou validar plugins do SDK (~/.getbrolls/plugins)",
     "x": "Rodar um comando de plugin habilitado (x --list mostra quais existem); só lê o projeto",
     "status": "Resumir onde o projeto está por etapa, sem alterar arquivos",
     "search": "Pesquisar candidatos numa fonte e registrá-los no projeto (--shot liga ao beat; --dry-run não grava)",
@@ -101,15 +101,23 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
             p.add_argument(
                 "--action",
                 required=True,
-                choices=["list", "enable", "disable", "check", "install", "update"],
+                choices=["list", "enable", "disable", "check", "install", "update", "new"],
                 help=(
                     "list: inventário sem executar código; enable/disable: liga/desliga por id; check: valida uma "
-                    "pasta; install/update: traz de pasta ou git, em dois passos"
+                    "pasta; install/update: traz de pasta ou git, em dois passos; new: gera um plugin mínimo"
                 ),
             )
-            p.add_argument("--id", help="Id do plugin (enable/disable/update)")
+            p.add_argument("--id", help="Id do plugin (enable/disable/update/new)")
             p.add_argument("--source", help="Pasta local ou URL git (https:// ou git@) do plugin a instalar (install)")
-            p.add_argument("--path", help="Pasta do plugin a validar (check); executa o register() do plugin")
+            p.add_argument(
+                "--path",
+                help="check: pasta do plugin a validar (executa o register()); new: pasta onde criar o plugin",
+            )
+            p.add_argument(
+                "--kind",
+                choices=["provider", "route", "command"],
+                help="Tipo do plugin gerado por new: fonte, fonte com rota de download, ou comando",
+            )
             p.add_argument(
                 "--yes",
                 action="store_true",
