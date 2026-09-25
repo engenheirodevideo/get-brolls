@@ -991,6 +991,8 @@ def missing_beat_entry(beat_id, resolved, commands, plan):
         # Todas as fontes e buscas já voltaram vazias: pergunta para a pessoa.
         "exhausted": plan["sources"] if state == "exhausted" else [],
         "queries": plan["queries"] if state == "exhausted" else [],
+        # Frase pronta do motivo (esgotado, falta de chave): a escada repassa como veio.
+        "note": plan["note"],
         # A frase para a pessoa muda quando o beat não tem alvo literal: prometer
         # busca ali contradiz a guarda "literal primeiro, nada de preenchimento".
         "intent": resolved.get("intent"),

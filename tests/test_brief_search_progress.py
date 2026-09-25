@@ -236,6 +236,70 @@ class BeatsWithoutApiSearch(unittest.TestCase):
         self.assertIn("resolve --url", action["for_human"])
 
 
+class MixedBeatsSayWhatWasReallySearched(unittest.TestCase):
+    """Beat com fonte pesquisável e fonte só por link/arquivo: a frase não inventa busca."""
+
+    def _exhausted(self, sources, env=None, **extra):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", env or {}):
+            one_beat_brief(tmp, sources, **extra)
+            return exhaust(tmp)
+
+    def test_youtube_plus_instagram_exhausted_offers_the_link_route(self):
+        action = self._exhausted(["youtube", "instagram"])
+        self.assertEqual("brief-exhausted", action["step"])
+        self.assertNotIn("todas as fontes que o BRIEF.md permite", action["for_human"])
+        self.assertIn("todas as fontes que consigo pesquisar", action["for_human"])
+        self.assertIn("resolve --url URL_PUBLICA --shot abertura", action["for_human"])
+
+    def test_pexels_with_key_plus_instagram_exhausted_offers_the_link_route(self):
+        action = self._exhausted(["pexels", "instagram"], env={"PEXELS_API_KEY": "chave-de-teste"}, stock=True)
+        self.assertEqual("brief-exhausted", action["step"])
+        self.assertNotIn("todas as fontes que o BRIEF.md permite", action["for_human"])
+        self.assertIn("resolve --url URL_PUBLICA --shot abertura", action["for_human"])
+
+    def test_a_record_from_a_source_removed_from_the_brief_is_not_an_earlier_search(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {"PEXELS_API_KEY": ""}):
+            one_beat_brief(tmp, ["youtube", "instagram"])
+            with patch.object(providers, "search", return_value=[]):
+                run(status_do(tmp)["command"])
+            one_beat_brief(tmp, ["pexels", "instagram"], stock=True)
+            action = status_do(tmp)
+        self.assertEqual("brief-unavailable", action["step"])
+        self.assertNotIn("já voltaram vazias", action["for_human"])
+
+    def test_own_files_are_offered_with_resolve_file(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {"PEXELS_API_KEY": ""}):
+            one_beat_brief(tmp, ["pexels", "local"], stock=True)
+            action = status_do(tmp)
+        self.assertEqual("brief-unavailable", action["step"])
+        self.assertIn("resolve --file ARQUIVO --shot abertura", action["for_human"])
+        self.assertNotIn("--url", action["for_human"])
+        self.assertNotIn("material de local", action["for_human"])
+
+    def test_link_and_file_sources_get_both_routes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            one_beat_brief(tmp, ["instagram", "local"])
+            action = status_do(tmp)
+        self.assertEqual("brief-resolve", action["step"])
+        self.assertIn("resolve --url URL_PUBLICA --shot abertura", action["for_human"])
+        self.assertIn("resolve --file ARQUIVO --shot abertura", action["for_human"])
+
+    def test_steps_that_wait_for_the_person_offer_a_way_out(self):
+        for sources, extra, step in (
+            (["instagram"], {}, "brief-resolve"),
+            (["pexels"], {"stock": True}, "brief-unavailable"),
+        ):
+            with (
+                self.subTest(step=step),
+                tempfile.TemporaryDirectory() as tmp,
+                patch.dict("os.environ", {"PEXELS_API_KEY": ""}),
+            ):
+                one_beat_brief(tmp, sources, **extra)
+                action = status_do(tmp)
+                self.assertEqual(step, action["step"])
+                self.assertIn("remova o beat do BRIEF.md ou siga sem ele", action["for_human"])
+
+
 class EmptySearchRecord(unittest.TestCase):
     def test_a_malformed_record_is_tolerated_and_rebuilt(self):
         """M-b: registro editado à mão nunca vira TypeError."""

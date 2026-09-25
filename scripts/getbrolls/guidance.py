@@ -330,15 +330,20 @@ def _approved_work(state, counts):
 
 
 def _exhausted_action(state, beat):
-    """Beat com todas as fontes e buscas vazias: pergunta para a pessoa, sem comando."""
+    """Beat com todas as fontes pesquisáveis e buscas vazias: pergunta para a pessoa, sem comando."""
     from .brief import exhausted_phrase
 
     sources = list(beat["exhausted"])
+    phrase = beat.get("note") or exhausted_phrase(
+        {"id": beat["id"], "allowed_sources": beat.get("allowed_sources") or sources},
+        sources,
+        beat.get("queries") or [],
+    )
     return _action(
         "brief-exhausted",
-        f'O beat "{beat["id"]}" já foi buscado em todas as fontes permitidas '
+        f'O beat "{beat["id"]}" já foi buscado em todas as fontes pesquisáveis '
         f"({', '.join(sources)}) sem nenhum resultado.",
-        exhausted_phrase(beat["id"], sources, beat.get("queries") or []),
+        phrase,
         state,
         blocking_human=True,
         command=None,
@@ -347,21 +352,15 @@ def _exhausted_action(state, beat):
 
 def _resolve_action(state, beat):
     """Beat sem fonte com busca por API: a pessoa traz o link ou o arquivo, e eu registro."""
-    if beat.get("allowed_sources") == ["local"]:
-        ask = (
-            f'O beat "{beat["id"]}" só aceita o seu próprio material: me mande o arquivo '
-            "(o caminho dele no computador) e eu registro com `resolve --file`."
-        )
-    else:
-        sources = ", ".join(beat.get("allowed_sources") or [])
-        ask = (
-            f'O beat "{beat["id"]}" só aceita fontes que eu não consigo pesquisar ({sources}): '
-            "me mande o link público do post ou vídeo (ou o seu arquivo) e eu registro com `resolve`."
-        )
+    from .brief import WAY_OUT, resolve_routes
+
+    sources = ", ".join(beat.get("allowed_sources") or [])
+    routes = resolve_routes(beat["id"], beat.get("allowed_sources") or [])
+    ask = f'O beat "{beat["id"]}" só aceita material que eu não consigo pesquisar ({sources}). {routes}'
     return _action(
         "brief-resolve",
         f'O beat "{beat["id"]}" não tem fonte com busca por API; o material entra por link ou arquivo.',
-        ask,
+        f"{ask} {WAY_OUT}",
         state,
         blocking_human=True,
         command=beat["resolve"],
@@ -370,11 +369,13 @@ def _resolve_action(state, beat):
 
 def _unavailable_action(state, beat):
     """Beat que só sobra em fonte sem chave de API: diz qual chave, sem comando que falharia."""
+    from .brief import WAY_OUT
+
     keys = ", ".join(dict.fromkeys(entry["env_key"] for entry in beat["unavailable"]))
     return _action(
         "brief-unavailable",
         f'O beat "{beat["id"]}" só pode ser buscado agora em fonte que falta chave de API: {keys}.',
-        _missing_beat_phrase(beat),
+        f"{_missing_beat_phrase(beat)} {WAY_OUT}",
         state,
         blocking_human=True,
         command=None,

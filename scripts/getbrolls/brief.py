@@ -478,24 +478,52 @@ def _cli_prefix():
     return f'python3 "{CLI}"'
 
 
-def exhausted_phrase(beat_id, sources, queries):
-    """Todas as fontes do beat já voltaram vazias para todas as buscas: a pessoa decide o que muda."""
+WAY_OUT = "Se não tiver esse material, remova o beat do BRIEF.md ou siga sem ele."
+
+
+def resolve_routes(beat_id, allowed_sources):
+    """Frase com o `resolve` certo para cada fonte sem busca por API do beat.
+
+    Link público (Instagram, TikTok) entra com `resolve --url`; o arquivo da própria
+    pessoa, com `resolve --file`. Sem fonte assim no beat, a frase é vazia.
+    """
+    manual = [source for source in allowed_sources if source not in SEARCHABLE]
+    links = [source for source in manual if source != "local"]
+    parts = []
+    if links:
+        parts.append(
+            f"o link público do post ou vídeo ({', '.join(links)}) eu registro com "
+            f"`resolve --url URL_PUBLICA --shot {beat_id}`"
+        )
+    if "local" in manual:
+        parts.append(f"o seu próprio arquivo eu registro com `resolve --file ARQUIVO --shot {beat_id}`")
+    if not parts:
+        return ""
+    return "Se você tiver esse material, " + "; ".join(parts) + "."
+
+
+def exhausted_phrase(beat, sources, queries):
+    """Todas as fontes pesquisáveis do beat já voltaram vazias para todas as buscas.
+
+    Com fonte que só entra por link ou arquivo no beat, a frase diz "as fontes que
+    consigo pesquisar", não "todas as permitidas", e oferece o `resolve` dela.
+    """
     asked = " / ".join(f'"{query}"' for query in queries)
+    routes = resolve_routes(beat["id"], beat["allowed_sources"])
+    where = (
+        "em todas as fontes que consigo pesquisar para ele"
+        if routes
+        else "em todas as fontes que o BRIEF.md permite para ele"
+    )
     return (
-        f'Busquei o beat "{beat_id}" em todas as fontes que o BRIEF.md permite para ele '
-        f"({', '.join(sources)}) com {asked}, e nenhuma trouxe nada. Repetir a mesma busca "
-        "não vai mudar isso. Me diga como seguir: outra forma de dizer o que precisa aparecer "
+        f'Busquei o beat "{beat["id"]}" {where} ({", ".join(sources)}) com {asked}, e nenhuma '
+        "trouxe nada. Repetir a mesma busca não vai mudar isso."
+        + (f" {routes}" if routes else "")
+        + " Me diga como seguir: outra forma de dizer o que precisa aparecer "
         '(acrescente em "queries" do beat — eu tento cada busca nova que ainda não voltou '
         "vazia), mais fontes em allowed_sources, o seu próprio material para esse trecho, "
         "ou remova o beat do BRIEF.md (ou siga sem ele)."
     )
-
-
-def resolve_route(beat):
-    """Como registrar o material de fonte sem busca por API: link público ou arquivo."""
-    if beat["allowed_sources"] == ["local"]:
-        return f"`resolve --file ARQUIVO --shot {beat['id']}`"
-    return f"`resolve --url URL_PUBLICA --shot {beat['id']}`"
 
 
 def remaining_keys_phrase(beat, entries, searched):
@@ -507,13 +535,8 @@ def remaining_keys_phrase(beat, entries, searched):
         if searched
         else f"A busca deste trecho só pode ser feita em {names}, que responde só com chave de API."
     )
-    manual = [source for source in beat["allowed_sources"] if source not in SEARCHABLE]
-    route = (
-        f" Se você tiver o material de {', '.join(manual)}, me mande o link (ou o arquivo) e eu "
-        f"registro com {resolve_route(beat)}."
-        if manual
-        else " Ou me diga outra forma de buscar esse trecho."
-    )
+    routes = resolve_routes(beat["id"], beat["allowed_sources"])
+    route = f" {routes}" if routes else " Ou me diga outra forma de buscar esse trecho."
     return f"{head} Coloque {keys} no arquivo `.env` da skill (ou no ambiente) e eu busco na hora.{route}"
 
 
@@ -562,10 +585,13 @@ def search_plan(beat, tried=()):
         # nota diz o que de fato destrava o trecho.
         plan.update(state="unavailable", needs_keys=absent, note=unavailable_phrase(absent))
     elif not provider and waiting_keys:
-        note = remaining_keys_phrase(beat, waiting_keys, searched=bool(tried))
+        # Só conta o que foi buscado com as fontes e buscas de agora: registro de uma
+        # fonte que saiu do brief não é "as outras já voltaram vazias".
+        searched = any((source, query) in tried for source in ordered for query in queries)
+        note = remaining_keys_phrase(beat, waiting_keys, searched=searched)
         plan.update(state="needs_keys", needs_keys=waiting_keys, note=note)
     elif not provider and ordered:
-        plan.update(state="exhausted", note=exhausted_phrase(beat["id"], ordered, queries))
+        plan.update(state="exhausted", note=exhausted_phrase(beat, ordered, queries))
     elif not provider:
         # Instagram, TikTok e material próprio não têm busca por API: entram por URL/arquivo.
         plan.update(

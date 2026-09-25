@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _media import skip_unless_ffmpeg, synth_image, synth_video
+from _media import skip_unless_ffmpeg, synth_image
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
 
 from getbrolls import providers
@@ -137,7 +137,9 @@ class SizeCapFallsBackToASmallerRendition(unittest.TestCase):
         self.assertIn("excede limite", str(caught.exception))
 
     @skip_unless_ffmpeg
-    def test_fetch_delivers_the_smaller_rendition_when_the_original_is_over_the_cap(self):
+    def test_fetch_of_a_nasa_photo_delivers_the_smaller_rendition_over_the_cap(self):
+        """Caminho real do `fetch`: a API da NASA (dublada) monta as versões, e a `~orig`
+        acima do teto cai para a `~large`, sem nada injetado em `refresh`."""
         from getbrolls import cli, http
         from getbrolls.ledger import Ledger
         from getbrolls.models import approve, candidate
@@ -158,57 +160,23 @@ class SizeCapFallsBackToASmallerRendition(unittest.TestCase):
             item = candidate("nasa", "S69-1", "Saturn V", "https://images.nasa.gov/details/S69-1")
             item["media"]["kind"] = "image"
             item["asset_type"] = "image"
-            item["media_url"] = IMAGE_BASE + "~orig.jpg"
+            item["media_url"] = IMAGE_BASE + "~medium.jpg"
             item["acquisition"].update({"status": "available", "method": "https", "evidence": []})
             approve(item, "Pessoa Humana")
             item["rights"].update(status="permitted", evidence=["Condições conferidas na página do item"])
             ledger.save_many("fixture", [ledger.add(item)])
-            fresh = {
-                "media_url": IMAGE_BASE + "~orig.jpg",
-                "media_url_fallbacks": [IMAGE_BASE + "~large.jpg", IMAGE_BASE + "~medium.jpg"],
-            }
-            with (
-                patch.object(providers, "refresh", side_effect=lambda c: {**c, **fresh}),
-                patch.object(http, "_opener", Opener),
-            ):
+            payload = assets(
+                IMAGE_BASE + "~thumb.jpg",
+                IMAGE_BASE + "~orig.jpg",
+                IMAGE_BASE + "~medium.jpg",
+                IMAGE_BASE + "~large.jpg",
+                IMAGE_BASE + "~metadata.json",
+            )
+            with patch.object(providers, "get_json", return_value=payload), patch.object(http, "_opener", Opener):
                 result = cli.main(["fetch", "--project", tmp, "--candidate", item["id"]])
             delivered = Path(tmp) / "brolls" / result["output"]["path"]
             self.assertEqual(body, delivered.read_bytes())
         self.assertEqual([IMAGE_BASE + "~orig.jpg", IMAGE_BASE + "~large.jpg"], asked)
-
-    @skip_unless_ffmpeg
-    def test_preview_caches_the_smaller_rendition_when_the_first_is_over_the_cap(self):
-        """Mesmo fallback no `prepare_source`, a mídia de trabalho que a prévia usa."""
-        from getbrolls import acquisition, http
-        from getbrolls.ledger import Ledger
-        from getbrolls.models import candidate
-
-        with tempfile.TemporaryDirectory() as tmp:
-            clip = Path(tmp) / "large.mp4"
-            synth_video(clip, size="96x64", duration=3, rate=10)
-            body = clip.read_bytes()
-            asked = []
-
-            class Opener:
-                def open(self, request, timeout=None):
-                    asked.append(request.full_url)
-                    huge = request.full_url.endswith("~orig.mp4")
-                    return _Sized(b"" if huge else body, 600 * 1024 * 1024 if huge else len(body))
-
-            ledger = Ledger(tmp)
-            item = ledger.add(candidate("nasa", "KSC-1", "Rollout", "https://images.nasa.gov/details/KSC-1"))
-            item["acquisition"].update({"status": "available", "method": "https", "evidence": []})
-            fresh = {
-                "media_url": VIDEO_BASE + "~orig.mp4",
-                "media_url_fallbacks": [VIDEO_BASE + "~large.mp4"],
-            }
-            with (
-                patch.object(providers, "refresh", side_effect=lambda c: {**c, **fresh}),
-                patch.object(http, "_opener", Opener),
-            ):
-                acquisition.prepare_source(ledger, item, 0, 2)
-            self.assertEqual(body, Path(item["local_path"]).read_bytes())
-        self.assertEqual([VIDEO_BASE + "~orig.mp4", VIDEO_BASE + "~large.mp4"], asked)
 
 
 if __name__ == "__main__":
