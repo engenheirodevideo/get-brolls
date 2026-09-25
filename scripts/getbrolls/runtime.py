@@ -6,6 +6,8 @@ import json
 import logging
 import os
 import re
+import shutil
+import stat
 import sys
 import time
 import traceback
@@ -141,6 +143,43 @@ def one_line(value):
 
     Texto normal (sem controle) volta idêntico — a saída dos built-ins não muda."""
     return _LINE_BREAKING.sub(" ", str(value))
+
+
+def _writable(target):
+    """Liga a escrita do dono em `target` (e leitura/entrada, se for pasta); link não é tocado."""
+    with contextlib.suppress(OSError):
+        mode = target.lstat().st_mode
+        if stat.S_ISLNK(mode):
+            return
+        extra = stat.S_IWUSR | (stat.S_IRUSR | stat.S_IXUSR if stat.S_ISDIR(mode) else 0)
+        target.chmod(stat.S_IMODE(mode) | extra)
+
+
+def force_rmtree(path):
+    """Apaga `path` inteiro mesmo com entrada somente-leitura; pasta ausente não é erro.
+
+    O Git para Windows grava objetos (`.git/objects/**`) como somente-leitura, e o
+    Windows não apaga arquivo somente-leitura — `rmtree(..., ignore_errors=True)`
+    deixava um `.git` dentro do plugin instalado e `.install-*` acumulando. Na
+    falha, libera a escrita da entrada (e da pasta de cima, se ela ainda é parte da
+    árvore — nunca a pasta que CONTÉM `path`) e tenta de novo. Nunca levanta: o que
+    sobrar fica para a varredura seguinte (`install._sweep_stale_staging`)."""
+    root = Path(path)
+    if not os.path.lexists(root):
+        return
+
+    def retry(func, failed, _exc):
+        failed_path = Path(failed)
+        if failed_path != root:
+            _writable(failed_path.parent)
+        _writable(failed_path)
+        func(failed)
+
+    with contextlib.suppress(OSError):
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(root, onexc=retry)
+        else:  # pragma: no cover - Python 3.11
+            shutil.rmtree(root, onerror=retry)
 
 
 def scrub_home(text):

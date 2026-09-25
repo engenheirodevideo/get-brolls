@@ -3,7 +3,6 @@
 que não é pasta, lista de arquivos na prévia e bytecode de plugin (notas do red-team)."""
 
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -18,6 +17,7 @@ from test_repository import _logical_units
 from test_sdk_install import HAS_GIT, InstallTestCase, git, head, write_plugin
 from test_sdk_loader import MANIFEST, PLUGIN_CODE
 
+from getbrolls import runtime
 from getbrolls.sdk import install as install_mod
 from getbrolls.sdk import loader, scaffold
 from getbrolls.sdk.registry import get_registry, reset_registry
@@ -232,7 +232,7 @@ class GitHardeningTests(InstallTestCase):
                 with self.assertRaises(ValueError):
                     install_mod.install(str(repo), confirm=False)
                 self.assertEqual([], self.leftover_staging())
-                shutil.rmtree(repo)
+                runtime.force_rmtree(repo)
 
     def test_materialized_tree_never_shares_the_clone_folder(self):
         repo = self.repo()

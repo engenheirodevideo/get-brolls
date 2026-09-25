@@ -76,6 +76,7 @@ def register(api):
 """
 
 
+@skip_unless_ffmpeg
 class FetchRouteCase(LoaderTestCase):
     @classmethod
     def setUpClass(cls):

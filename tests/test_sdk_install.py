@@ -637,7 +637,7 @@ class GitInstallTests(InstallTestCase):
         fake_home = self.work / "fake-home"
         fake_home.mkdir()
         (fake_home / ".gitconfig").write_text(
-            f'[filter "pwn"]\n\tsmudge = touch "{marker}" && cat\n\trequired = true\n',
+            f'[filter "pwn"]\n\tsmudge = touch "{marker.as_posix()}" && cat\n\trequired = true\n',
             encoding="utf-8",
         )
         env = {**self.env(), "HOME": str(fake_home)}

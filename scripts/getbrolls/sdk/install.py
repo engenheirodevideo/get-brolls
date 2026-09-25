@@ -27,7 +27,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from .. import logs
-from ..runtime import stderr_tail
+from ..runtime import force_rmtree, stderr_tail
 from . import loader
 from .contracts import NAME_RE
 from .manifest import MANIFEST_NAME, compatibility_problem, read_manifest
@@ -385,7 +385,7 @@ def _from_git(source_uri, dest, ssh=False):
         _validate_manifest_early(clone, dest)
         _materialize_tree(clone, dest)
     finally:
-        shutil.rmtree(clone, ignore_errors=True)
+        force_rmtree(clone)
     _refuse_links(dest)
     return commit
 
@@ -480,7 +480,7 @@ def _sweep_stale_install(entry, name, now):
     match = _INSTALL_STAGING_RE.match(name)
     if not match or now - int(match.group(1)) < STALE_STAGING_MAX_AGE_S:
         return  # nome não reconhecido (versão anterior/lixo) ou jovem demais: não mexe
-    shutil.rmtree(entry, ignore_errors=True)
+    force_rmtree(entry)
 
 
 def _sweep_stale_old(root, entry, name, now):
@@ -497,7 +497,7 @@ def _sweep_stale_old(root, entry, name, now):
         if not target.exists() and _restorable(entry, plugin_id):
             entry.replace(target)
         else:
-            shutil.rmtree(entry, ignore_errors=True)
+            force_rmtree(entry)
     except OSError:
         # Uma corrida com outro processo (a pasta já não existe mais, ou o
         # destino apareceu entre o `exists()` e o `replace()`) nunca pode
@@ -621,7 +621,7 @@ def install(source, confirm, expect=None):
         _check_expect(expect, sha)
         staging.replace(target)
     finally:
-        shutil.rmtree(staging, ignore_errors=True)
+        force_rmtree(staging)
     pinned_sha = loader.pin(manifest, target, {"source": origin, "commit": commit})
     logs.event(_log, logging.INFO, "plugin_installed", plugin=manifest["id"], version=manifest["version"])
     return {"installed": True, "plugin": {**preview, "sha256": pinned_sha}, "note": loader.SANDBOX_NOTE}
@@ -682,9 +682,9 @@ def update(plugin_id, confirm, expect=None):
                     f"{folder}. Confira as duas pastas manualmente antes de tentar de novo."
                 ) from rollback_exc
             raise
-        shutil.rmtree(retired, ignore_errors=True)
+        force_rmtree(retired)
     finally:
-        shutil.rmtree(staging, ignore_errors=True)
+        force_rmtree(staging)
     # M3: atualizar o conteúdo não liga de volta um plugin que estava desabilitado —
     # só quem já estava habilitado sai daqui com pin novo (senão o pin some).
     sha_after = loader.pin(manifest, folder, {"source": source, "commit": commit}, enable=was_enabled)

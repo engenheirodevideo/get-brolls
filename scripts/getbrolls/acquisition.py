@@ -5,7 +5,6 @@ import copy
 import json
 import logging
 import os
-import shutil
 import tempfile
 import time
 import uuid
@@ -17,7 +16,7 @@ from .http import DOWNLOAD_MAX_BYTES
 from .ledger import digest
 from .media import probe
 from .models import id_stem
-from .runtime import record_warning
+from .runtime import force_rmtree, record_warning
 
 INDEX_NAME = "index.json"
 ROUTE_PREFIX = "plugin:"
@@ -249,7 +248,7 @@ def plugin_source(ledger, candidate, stage):
         )
         yield RoutedFile(path, license_text, owner)
     finally:
-        shutil.rmtree(workdir, ignore_errors=True)
+        force_rmtree(workdir)
 
 
 class FetchedSource(NamedTuple):
