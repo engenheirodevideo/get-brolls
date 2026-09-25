@@ -10,6 +10,7 @@ import json
 import os
 import shutil
 import tempfile
+import unittest
 from pathlib import Path
 from unittest.mock import patch
 
@@ -74,6 +75,15 @@ def register(api):
     api.provider(Fonte(api))
     api.route(Licenciada())
 """
+
+# B2: a rota deixa uma pasta comum (não um objeto git) sem nenhuma permissão dentro
+# do workdir. force_rmtree precisa limpar isso no `finally` do plugin_source sem
+# levantar — senão o fetch vira INTERNAL_ERROR mesmo com o arquivo já verificado.
+LOCKED_DIR_FETCH_PLUGIN = FETCH_PLUGIN.replace(
+    '        return RouteResult(target, "Standard License #42")',
+    '        (workdir / "locked").mkdir(mode=0)\n        return RouteResult(target, "Standard License #42")',
+)
+assert LOCKED_DIR_FETCH_PLUGIN != FETCH_PLUGIN
 
 
 @skip_unless_ffmpeg
@@ -190,6 +200,37 @@ class RoutedImageExtensionTests(FetchRouteCase):
         self.gb("permit", "--candidate", ident, "--evidence", "Plano anual da conta Demo")
         done = self.gb("fetch", "--candidate", ident)
         self.assertTrue(done["output"]["path"].endswith(".png"))
+
+
+@skip_unless_ffmpeg
+@unittest.skipIf(os.name == "nt", "walk por fd (func=os.open) do force_rmtree é POSIX-only")
+@unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root ignora permissão de escrita")
+class LockedWorkdirCleanupTests(FetchRouteCase):
+    """B2: a rota deixa `workdir/locked` (mode 0) para trás. force_rmtree
+    (chamado no `finally` de `plugin_source`) não pode levantar TypeError — o
+    arquivo já tinha sido movido para o cache antes da limpeza, então um
+    INTERNAL_ERROR aqui perderia o `_save_index` e faria a rota rodar nunca (o
+    cache já existe) ou o marcador da licença nunca ser gravado."""
+
+    def test_a_permission_locked_leftover_in_the_workdir_does_not_cause_internal_error(self):
+        self.enable(LOCKED_DIR_FETCH_PLUGIN)
+        ident = self.gb("search", "--provider", "demo", "--query", "mar")["items"][0]["id"]
+        self.approve_range(ident, 0, 2)
+        done = self.gb("fetch", "--candidate", ident)
+        self.assertTrue(done["output"]["verified"])
+        self.assertEqual(["demo:1"], self.calls_made())  # a rota rodou uma vez só
+        self.assertEqual(
+            1, done["rights"]["evidence"].count("Licença registrada pelo plugin demo: Standard License #42")
+        )
+        self.assertIsInstance(self.manifest_item(ident)["acquisition"].get("route_consumed_at"), str)
+        # workdir (e a pasta `locked` de dentro) limpos: nada sobra em .getbrolls-sources/
+        self.assertEqual([], sorted((self.project / ".getbrolls-sources").glob("plugin-demo-*")))
+
+        # `verify` reconfere o mesmo arquivo do cache sem chamar a rota de novo.
+        again = self.gb("verify")
+        self.assertEqual(1, again["count"])
+        self.assertEqual(["demo:1"], self.calls_made())
+        self.assertTrue(self.manifest_item(ident)["output"]["verified"])
 
 
 class FetchStageGuidanceTests(FetchRouteCase):

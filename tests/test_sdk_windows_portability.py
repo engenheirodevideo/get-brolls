@@ -46,6 +46,32 @@ class ForceRmtreeTests(unittest.TestCase):
         runtime.force_rmtree(base)
         self.assertFalse(base.exists())
 
+    @unittest.skipIf(IS_ROOT, "root ignora permissão de escrita")
+    @unittest.skipIf(os.name == "nt", "fd-based rmtree walk (func=os.open) é POSIX-only")
+    def test_dirs_without_read_or_execute_permission_are_fully_removed(self):
+        """B2: numa subpasta sem leitura/execução (0 ou só escrita), o walk por fd
+        do shutil.rmtree chama a retentativa com func=os.open, não
+        os.unlink/os.rmdir/os.remove. Chamar `func(failed)` sem flags levantava
+        TypeError, que escapava do antigo `suppress(OSError)` e violava o "nunca
+        levanta" do docstring — cada retry deixava a árvore para trás."""
+        base = Path(tempfile.mkdtemp(prefix="gb-b2-"))
+        self.addCleanup(shutil.rmtree, base, ignore_errors=True)
+
+        no_perm = base / "locked000"
+        no_perm.mkdir()
+        (no_perm / "inner.txt").write_text("x", encoding="utf-8")
+        no_perm.chmod(0o000)
+        self.addCleanup(lambda: no_perm.exists() and no_perm.chmod(stat.S_IRWXU))
+
+        write_only = base / "locked200"
+        write_only.mkdir()
+        (write_only / "inner.txt").write_text("x", encoding="utf-8")
+        write_only.chmod(0o200)
+        self.addCleanup(lambda: write_only.exists() and write_only.chmod(stat.S_IRWXU))
+
+        runtime.force_rmtree(base)
+        self.assertFalse(base.exists())
+
     def test_missing_folder_is_fine(self):
         runtime.force_rmtree(Path(tempfile.gettempdir()) / "gb-nao-existe-mesmo-xyz")
 

@@ -155,6 +155,20 @@ def _writable(target):
         target.chmod(stat.S_IMODE(mode) | extra)
 
 
+_REMOVE_FUNCS = (os.unlink, os.remove, os.rmdir)
+
+
+def _removable(target):
+    """Libera leitura+execução+escrita do dono numa pasta (0o700) ou escrita numa
+    entrada comum (0o600); link não é tocado. Só precisa ser permissivo o
+    suficiente para apagar — chamada apenas na retentativa do force_rmtree."""
+    with contextlib.suppress(OSError):
+        mode = target.lstat().st_mode
+        if stat.S_ISLNK(mode):
+            return
+        target.chmod(0o700 if stat.S_ISDIR(mode) else 0o600)
+
+
 def force_rmtree(path):
     """Apaga `path` inteiro mesmo com entrada somente-leitura; pasta ausente não é erro.
 
@@ -162,8 +176,17 @@ def force_rmtree(path):
     Windows não apaga arquivo somente-leitura — `rmtree(..., ignore_errors=True)`
     deixava um `.git` dentro do plugin instalado e `.install-*` acumulando. Na
     falha, libera a escrita da entrada (e da pasta de cima, se ela ainda é parte da
-    árvore — nunca a pasta que CONTÉM `path`) e tenta de novo. Nunca levanta: o que
-    sobrar fica para a varredura seguinte (`install._sweep_stale_staging`)."""
+    árvore — nunca a pasta que CONTÉM `path`) e tenta de novo.
+
+    Numa pasta sem leitura/execução (uma pasta comum plantada pelo dono do plugin,
+    não um objeto git), o walk por fd do `rmtree` chama a retentativa com
+    `func=os.open`/`os.scandir`/`os.lstat` (não `os.unlink`/`os.rmdir`/`os.remove`)
+    — chamar `func(failed)` sem os argumentos certos levantaria `TypeError`. Nesse
+    caso, depois de liberar a permissão, a subárvore é apagada por conta própria
+    (`shutil.rmtree` recursivo) em vez de repetir a chamada original.
+
+    Nunca levanta (guarda `Exception`, não só `OSError`): o que sobrar fica para a
+    varredura seguinte (`install._sweep_stale_staging`)."""
     root = Path(path)
     if not os.path.lexists(root):
         return
@@ -172,10 +195,14 @@ def force_rmtree(path):
         failed_path = Path(failed)
         if failed_path != root:
             _writable(failed_path.parent)
-        _writable(failed_path)
-        func(failed)
+        _removable(failed_path)
+        if func in _REMOVE_FUNCS:
+            with contextlib.suppress(OSError):
+                func(failed)
+        else:
+            shutil.rmtree(failed_path, ignore_errors=True)
 
-    with contextlib.suppress(OSError):
+    with contextlib.suppress(Exception):
         if sys.version_info >= (3, 12):
             shutil.rmtree(root, onexc=retry)
         else:  # pragma: no cover - Python 3.11
