@@ -110,6 +110,20 @@ def doctor_summary(executables, pins=()):
     return {"ok": ok, "missing": missing, "optional": optional}
 
 
+PLUGIN_PROBLEM_STATUSES = ("failed", "suspended", "invalid", "incompatible")
+
+
+def doctor_plugin_problems(rows):
+    """Uma linha para o `summary` quando algum plugin não carregou (BUG-14): quem lê
+    só o veredito vê a falha sem abrir `plugins[]`. `None` quando está tudo certo."""
+    broken = [row for row in rows if row.get("status") in PLUGIN_PROBLEM_STATUSES]
+    if not broken:
+        return None
+    names = ", ".join(f"{row['id']} ({row['status']})" for row in broken)
+    label = "plugin com problema" if len(broken) == 1 else "plugins com problema"
+    return f"{len(broken)} {label}: {names}. Motivo em plugins[]; rode plugins --action list."
+
+
 def doctor_contact_sheet(ffmpeg_present):
     """Whether the contact sheet can be numbered by ffmpeg (drawtext + TrueType font)."""
     from .media import drawtext_available, find_font
@@ -1434,6 +1448,9 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                         else row
                         for row in installed
                     ]
+                    problems = doctor_plugin_problems(result["plugins"])
+                    if problems:
+                        summary["plugins"] = problems
             if args.live:
                 from getbrolls.health import live_checks
 

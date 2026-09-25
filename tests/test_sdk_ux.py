@@ -345,3 +345,97 @@ class PluginErrorHintTests(LoaderTestCase):
             "Falha ao resolver provedor Confira docs/RULES.md.",
             self._message(ProviderError("Falha ao resolver provedor")),
         )
+
+
+BUILTIN_LIVE = ("commons", "nasa", "pexels", "pixabay", "youtube")
+WITH_MEDIA_URL = PLUGIN_CODE.replace(
+    '        return [self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")]',
+    '        item = self.api.candidate("demo", "1", "Demo " + query, "https://demo.example/v/1")\n'
+    '        item["media_url"] = "https://demo.example/v/1.mp4"\n'
+    '        item["acquisition"] = {"status": "available", "method": "https", "evidence": []}\n'
+    "        return [item]",
+)
+assert WITH_MEDIA_URL != PLUGIN_CODE
+
+
+class LivePluginChecksTests(LoaderTestCase):
+    """BUG-05: `doctor --live` não marca "failed" uma fonte de plugin só-metadados ou
+    com rota, e mostra a mensagem (saneada) do PluginError em vez de uma genérica."""
+
+    def _live(self):
+        from getbrolls import providers
+        from getbrolls.health import live_checks
+
+        original = providers.search
+
+        def only_plugins(name, query, limit=8, media="any"):
+            return [] if name in BUILTIN_LIVE else original(name, query, limit, media)
+
+        reset_registry()
+        with patch.object(providers, "search", only_plugins):
+            checks = live_checks()["checks"]
+        return {row["provider"]: row for row in checks}
+
+    def test_metadata_only_source_is_search_ok_without_media_url(self):
+        self.install()
+        loader.enable("demo", confirm=True)
+        row = self._live()["demo"]
+        self.assertEqual("search_ok", row["status"])
+        self.assertEqual("no_media_url (fonte só-metadados)", row["refresh"])
+
+    def test_route_source_reports_the_route(self):
+        from test_sdk_route_acquisition import ROUTE_MANIFEST, ROUTE_PLUGIN
+
+        self.install(ROUTE_MANIFEST, ROUTE_PLUGIN)
+        loader.enable("demo", confirm=True)
+        row = self._live()["demo"]
+        self.assertEqual("search_ok", row["status"])
+        self.assertEqual("route", row["refresh"])
+
+    def test_source_with_media_url_still_refreshes(self):
+        self.install(code=WITH_MEDIA_URL)
+        loader.enable("demo", confirm=True)
+        row = self._live()["demo"]
+        self.assertEqual("search_ok", row["status"])
+        self.assertEqual("media_url_available", row["refresh"])
+
+    def test_plugin_error_text_reaches_the_detail_sanitized(self):
+        self.install(
+            code=SEARCH_RAISES_PLUGIN_ERROR.replace("Configure DEMO_DIR", "Configure DEMO_DIR (token=SEGREDO123)")
+        )
+        loader.enable("demo", confirm=True)
+        row = self._live()["demo"]
+        self.assertEqual("failed", row["status"])
+        self.assertIn("Configure DEMO_DIR", row["detail"])
+        self.assertNotIn("SEGREDO123", row["detail"])
+        self.assertNotIn("Consulte configuração", row["detail"])
+
+
+class DoctorSummaryPluginsTests(LoaderTestCase):
+    """BUG-14: o `summary` do doctor cita plugin failed/suspended/invalid."""
+
+    def env(self):
+        return {"GB_HOME": str(self.home)}
+
+    def test_failed_and_suspended_plugins_show_in_the_summary(self):
+        self.install(code=FAILS_WITH_RUNTIME_ERROR)
+        loader.enable("demo", confirm=True)
+        other = self.install({**MANIFEST, "id": "outro", "contributes": {"providers": ["outro"]}}, code="X = 1\n")
+        loader.enable("outro", confirm=True)
+        (other / "plugin.py").write_text("X = 2\n", encoding="utf-8")
+        doctor = run_cli("doctor", env=self.env())
+        line = doctor["summary"]["plugins"]
+        self.assertIn("2", line)
+        self.assertIn("demo (failed)", line)
+        self.assertIn("outro (suspended)", line)
+
+    def test_invalid_plugin_shows_in_the_summary(self):
+        (self.home / "plugins" / "quebrado").mkdir(parents=True)
+        doctor = run_cli("doctor", env=self.env())
+        self.assertIn("quebrado (invalid)", doctor["summary"]["plugins"])
+
+    def test_no_summary_line_without_plugins_or_when_all_are_fine(self):
+        self.assertNotIn("plugins", run_cli("doctor", env=self.env())["summary"])
+        self.install()
+        loader.enable("demo", confirm=True)
+        self.assertNotIn("plugins", run_cli("doctor", env=self.env())["summary"])

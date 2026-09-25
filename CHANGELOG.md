@@ -10,6 +10,8 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- SDK: `doctor --live` não marca mais como `failed` uma fonte de plugin só-metadados (`refresh: "no_media_url (fonte só-metadados)"`) ou com rota (`refresh: "route"`, sem chamar refresh); a mensagem de um `PluginError` (ex.: "Configure PASTA_LOCAL_DIR…"), já saneada, aparece no `detail` em vez da frase genérica. Fontes embutidas iguais.
+- `doctor`: com plugin `failed`/`suspended`/`invalid`/`incompatible`, o `summary` ganha a linha `plugins` com a contagem e os ids; sem plugin (ou com todos carregados) o `summary` não muda.
 - SDK: erro de fonte/rota de plugin ("Plugin <id>: …") não leva mais o sufixo genérico " Confira docs/RULES.md.": a frase é fechada com ponto e ganha "Veja plugins --action list / doctor e docs/SDK.md."; a mensagem de fonte de plugin fora do ar mantém só a dica dela. Mensagens das fontes embutidas não mudam.
 - SDK: `plugins --action enable` de um plugin suspenso (conteúdo mudou desde o pin) mostra na prévia o `diff` dos arquivos (adicionados, removidos, alterados) contra o mapa por arquivo que o pin agora guarda em `plugins.json`, e confirmar exige `--yes --expect <sha256>`, como install/update. Primeiro enable de plugin nunca pinado continua só com `--yes`; `plugins.json` antigo, sem o mapa, continua válido (a prévia diz que o diff é desconhecido).
 - SDK: a `note` da prévia de install/update manda rodar de novo com `--yes --expect <sha256>` (antes dizia só `--yes`, que falha); respostas de sucesso não mandam mais "rodar de novo".
