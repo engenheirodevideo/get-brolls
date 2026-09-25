@@ -83,8 +83,12 @@ própria pasta pessoal escrita por extenso — `~` inteiro cobriria `~/.ssh` e o
 `plugin-data` de outros plugins. O manifesto é conferido do mesmo jeito em
 qualquer sistema (um caminho POSIX ou Windows absoluto vale nos dois); na hora de
 usar, só entram as raízes absolutas no sistema atual (uma `D:\Acervo` é ignorada
-no macOS). Num disco que não diferencia maiúsculas de minúsculas, escreva a raiz
-com a mesma caixa que o sistema mostra.
+no macOS). Na hora de usar, a raiz também é conferida pelo arquivo de verdade:
+se, resolvida, ela for a raiz de um disco, a pasta pessoal ou uma pasta que a
+contém (um link, `/Volumes/Macintosh HD`, `/Users`, a pasta pessoal com outra
+caixa), ela é ignorada e o log registra `plugin_path_refused`. Num disco que não
+diferencia maiúsculas de minúsculas, escreva a raiz com a mesma caixa que o
+sistema mostra.
 
 Os campos `schema` e `signed_fields` existem no formato do manifesto para
 versões futuras do SDK; nesta versão eles têm que ficar ausentes ou vazios.

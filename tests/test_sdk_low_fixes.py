@@ -90,3 +90,35 @@ class LowFixesTests(LoaderTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ResolvedRootBreadthTests(unittest.TestCase):
+    """B-09: raiz de `permissions.paths` que, resolvida, é a pasta pessoal, uma pasta
+    acima dela ou a raiz do disco não vale — mesmo passando pela checagem de texto."""
+
+    def api(self, paths):
+        from getbrolls.sdk.api import PluginApi
+        from getbrolls.sdk.registry import Registry
+
+        manifest = {**MANIFEST, "permissions": {"network": [], "env": [], "paths": paths}}
+        return PluginApi(manifest, Registry())
+
+    def test_home_its_ancestors_and_links_to_them_are_ignored(self):
+        import shutil
+        import tempfile
+        from pathlib import Path
+
+        base = Path(tempfile.mkdtemp(prefix="gb-b09-")).resolve()
+        self.addCleanup(shutil.rmtree, base, ignore_errors=True)
+        home = base / "casa" / "pessoa"
+        (home / "Filmes").mkdir(parents=True)
+        links = []
+        if os.name != "nt":
+            (base / "atalho").symlink_to(base / "casa", target_is_directory=True)
+            links.append(str(base / "atalho"))
+        with (
+            patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}),
+            self.assertLogs("getbrolls.sdk", level="WARNING"),
+        ):
+            roots = self.api([str(base / "casa"), str(home), *links, str(home / "Filmes")])._roots()
+        self.assertEqual([home / "Filmes"], roots)

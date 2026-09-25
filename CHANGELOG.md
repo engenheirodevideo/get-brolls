@@ -10,6 +10,7 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- SDK (segurança): raiz de `permissions.paths` que, resolvida, é a raiz de um disco, a pasta pessoal ou uma pasta acima dela (link, `/Volumes/Macintosh HD`, `/Users`, outra caixa) é ignorada por `api.local_file`.
 - SDK (segurança): `install`/`update` pinam o sha256 confirmado no staging, não um novo hash da pasta depois da troca — conteúdo mexido nesse meio-tempo deixa o plugin `suspended`.
 - SDK: valores do `settings.json` do plugin (lidos por `api.config()`) também viram `[REDACTED]` nas mensagens; a prévia do `enable` lista os arquivos que o pin cobre; textos mais certeiros para `--expect` errado, falha no import do plugin, fonte de plugin desabilitada no BRIEF e o resumo do `doctor`; o GUIDE avisa que `plugins --action check` executa o código da pasta.
 - CLI: `permit --preset <nome desconhecido>` volta a ser erro de uso do argparse (exit 2), conferido logo depois do `.env` e antes de abrir, travar ou registrar o projeto — nenhum `brolls/` é criado.

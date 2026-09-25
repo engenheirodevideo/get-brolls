@@ -99,6 +99,27 @@ def route_scope(plugin_id, workdir):
         _ACTIVE_ROUTE.reset(token)
 
 
+def _same(a, b):
+    try:
+        return Path(a).samefile(b)
+    except OSError:
+        return False
+
+
+def _too_broad(root):
+    """A raiz resolvida é a raiz de um disco, a pasta pessoal ou uma pasta que a
+    contém? Comparação pelo arquivo de verdade (`samefile`), não pelo texto: vale
+    para link, firmlink e disco que não diferencia maiúsculas."""
+    if root == Path(root.anchor):
+        return True
+    try:
+        home = Path.home().resolve()
+    except (RuntimeError, OSError):
+        return False
+    parts = home.parts
+    return any(_same(root.joinpath(*parts[i:]), home) for i in range(1, len(parts) + 1))
+
+
 class PluginApi:
     def __init__(self, manifest, registry):
         self.plugin_id = manifest["id"]
@@ -250,8 +271,16 @@ class PluginApi:
         roots = []
         for raw in self._manifest["permissions"]["paths"]:
             path = Path(raw).expanduser()
-            if path.is_absolute():
-                roots.append(path.resolve())
+            if not path.is_absolute():
+                continue
+            resolved = path.resolve()
+            if _too_broad(resolved):
+                # B-09: o manifesto passou na checagem de texto, mas a pasta de verdade é
+                # a raiz do disco, a pasta pessoal ou uma pasta acima dela (link,
+                # `/Volumes/Macintosh HD`, `/Users`, outra caixa do mesmo nome): ignorada.
+                logs.event(_log, logging.WARNING, "plugin_path_refused", plugin=self.plugin_id, reason="too_broad")
+                continue
+            roots.append(resolved)
         return roots
 
     def _refuse(self, text):
