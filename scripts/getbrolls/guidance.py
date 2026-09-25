@@ -345,6 +345,19 @@ def _exhausted_action(state, beat):
     )
 
 
+def _unavailable_action(state, beat):
+    """Beat que só sobra em fonte sem chave de API: diz qual chave, sem comando que falharia."""
+    keys = ", ".join(dict.fromkeys(entry["env_key"] for entry in beat["unavailable"]))
+    return _action(
+        "brief-unavailable",
+        f'O beat "{beat["id"]}" só pode ser buscado agora em fonte que falta chave de API: {keys}.',
+        _missing_beat_phrase(beat),
+        state,
+        blocking_human=True,
+        command=None,
+    )
+
+
 def _done_action(state, counts):
     """Fim de fluxo: o que sobrou sem decisão entra como aparte, nunca como tarefa."""
     aside = leftover_aside(leftovers(state, counts))
@@ -453,19 +466,27 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
     # Beat com todas as fontes já vazias sai da fila de busca: sugerir de novo o mesmo
     # comando é o laço que prendia o `status` num beat sem resultado. A pergunta que
     # ele vira só entra depois da cadeia dos aprovados (ver `_exhausted_action`).
-    searchable = [entry for entry in missing if not entry.get("exhausted")]
-    exhausted = [entry for entry in missing if entry.get("exhausted")]
-    if searchable:
-        first = searchable[0]
+    # O mesmo vale para o beat cujas fontes restantes só respondem com chave de API:
+    # o `search` genérico que sobraria ali volta com erro e prende a escada do mesmo jeito.
+    stuck = [entry for entry in missing if entry.get("exhausted") or entry.get("unavailable")]
+    busy = _approved_work(state, counts)
+    for entry in missing:
+        # Na ordem do brief: o beat esgotado espera a cadeia dos aprovados, e o beat
+        # parado por chave só passa na frente enquanto nenhum aprovado estiver a caminho.
+        if entry.get("exhausted") or (entry.get("unavailable") and busy):
+            continue
+        if entry.get("unavailable"):
+            return _unavailable_action(state, entry)
         return _action(
             "brief-search",
-            f'O beat "{first["id"]}" do brief ainda não tem candidato registrado.',
-            _missing_beat_phrase(first),
+            f'O beat "{entry["id"]}" do brief ainda não tem candidato registrado.',
+            _missing_beat_phrase(entry),
             state,
-            command=first.get("search") or command_for("search", state["project"]),
+            command=entry.get("search") or command_for("search", state["project"]),
         )
-    if exhausted and not _approved_work(state, counts):
-        return _exhausted_action(state, exhausted[0])
+    if stuck and not busy:
+        first = stuck[0]
+        return _exhausted_action(state, first) if first.get("exhausted") else _unavailable_action(state, first)
     if not counts["candidates"]:
         warning = f" Antes disso, resolva: {conflicts[0]}" if conflicts else ""
         return _action(

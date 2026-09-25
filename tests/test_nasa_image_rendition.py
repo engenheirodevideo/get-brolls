@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _media import skip_unless_ffmpeg, synth_image
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
 
 from getbrolls import providers
@@ -135,13 +136,45 @@ class SizeCapFallsBackToASmallerRendition(unittest.TestCase):
             http.download_rendition({"media_url": VIDEO_BASE + "~medium.mp4"}, Path(tmp) / "x.part")
         self.assertIn("excede limite", str(caught.exception))
 
-    def test_fetch_and_preview_go_through_the_fallback_download(self):
-        import inspect as source_code
+    @skip_unless_ffmpeg
+    def test_fetch_delivers_the_smaller_rendition_when_the_original_is_over_the_cap(self):
+        from getbrolls import cli, http
+        from getbrolls.ledger import Ledger
+        from getbrolls.models import approve, candidate
 
-        from getbrolls import acquisition, commands
+        with tempfile.TemporaryDirectory() as tmp:
+            jpg = Path(tmp) / "large.jpg"
+            synth_image(jpg, size="96x64")
+            body = jpg.read_bytes()
+            asked = []
 
-        self.assertIn("download_rendition(", source_code.getsource(acquisition.prepare_source))
-        self.assertIn("download_rendition(", source_code.getsource(commands))
+            class Opener:
+                def open(self, request, timeout=None):
+                    asked.append(request.full_url)
+                    huge = request.full_url.endswith("~orig.jpg")
+                    return _Sized(b"" if huge else body, 600 * 1024 * 1024 if huge else len(body))
+
+            ledger = Ledger(tmp)
+            item = candidate("nasa", "S69-1", "Saturn V", "https://images.nasa.gov/details/S69-1")
+            item["media"]["kind"] = "image"
+            item["asset_type"] = "image"
+            item["media_url"] = IMAGE_BASE + "~orig.jpg"
+            item["acquisition"].update({"status": "available", "method": "https", "evidence": []})
+            approve(item, "Pessoa Humana")
+            item["rights"].update(status="permitted", evidence=["Condições conferidas na página do item"])
+            ledger.save_many("fixture", [ledger.add(item)])
+            fresh = {
+                "media_url": IMAGE_BASE + "~orig.jpg",
+                "media_url_fallbacks": [IMAGE_BASE + "~large.jpg", IMAGE_BASE + "~medium.jpg"],
+            }
+            with (
+                patch.object(providers, "refresh", side_effect=lambda c: {**c, **fresh}),
+                patch.object(http, "_opener", Opener),
+            ):
+                result = cli.main(["fetch", "--project", tmp, "--candidate", item["id"]])
+            delivered = Path(tmp) / "brolls" / result["output"]["path"]
+            self.assertEqual(body, delivered.read_bytes())
+        self.assertEqual([IMAGE_BASE + "~orig.jpg", IMAGE_BASE + "~large.jpg"], asked)
 
 
 if __name__ == "__main__":

@@ -173,6 +173,31 @@ class SourcesWithoutKeyAreSkipped(unittest.TestCase):
         self.assertNotIn("--provider pexels", after["command"] or "")
         self.assertIn("PEXELS_API_KEY", after["for_human"])
 
+    def test_only_keyless_sources_left_is_a_question_without_command(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {"PEXELS_API_KEY": ""}):
+            one_beat_brief(tmp, ["pexels", "commons"], stock=True)
+            with patch.object(providers, "search", return_value=[]):
+                run(status_do(tmp)["command"])
+            action = status_do(tmp)
+        self.assertEqual("brief-unavailable", action["step"])
+        self.assertIsNone(action["command"])
+        self.assertTrue(action["blocking_human"])
+        self.assertIn("PEXELS_API_KEY", action["for_human"])
+
+    def test_all_sources_keyless_from_the_start_is_the_same_question(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {"PEXELS_API_KEY": ""}):
+            one_beat_brief(tmp, ["pexels"], stock=True)
+            action = status_do(tmp)
+        self.assertEqual("brief-unavailable", action["step"])
+        self.assertIsNone(action["command"])
+        self.assertIn("PEXELS_API_KEY", action["for_human"])
+
+    def test_an_approved_item_goes_to_permit_before_the_key_question(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {"PEXELS_API_KEY": ""}):
+            one_beat_brief(tmp, ["pexels"], stock=True)
+            add_approved_item(tmp)
+            self.assertEqual("permit", status_do(tmp)["step"])
+
 
 class EmptySearchRecord(unittest.TestCase):
     def test_a_malformed_record_is_tolerated_and_rebuilt(self):
