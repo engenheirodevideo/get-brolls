@@ -146,12 +146,11 @@ class StatusCommandTests(unittest.TestCase):
             # O item `d` tem prévia e ninguém decidiu: a decisão humana ganha do
             # degrau de gerar mais prévia para quem sobrou sem quadro.
             self.assertIn("decisão humana", summary["next"])
-            # `do` é aditivo e tem degraus a mais que `next`: sem BRIEF.md o passo
-            # real é fazer o brief, e `summary["brief"]` fica None.
-            self.assertEqual("init-brief", summary["do"]["step"])
-            self.assertIn("init-brief --project", summary["do"]["command"])
-            self.assertIn("/get-brolls-brief", summary["do"]["for_human"])
-            self.assertFalse(summary["do"]["blocking_human"])
+            # Sem BRIEF.md e com prévia esperando decisão, `do` segue a mesma regra de
+            # `next`: a decisão humana pendente ganha (o brief só lidera antes da
+            # primeira prévia), e `summary["brief"]` fica None.
+            self.assertEqual("approve", summary["do"]["step"])
+            self.assertTrue(summary["do"]["blocking_human"])
             self.assertIsNone(summary["do"]["url"])
             self.assertIsNone(summary["brief"])
 

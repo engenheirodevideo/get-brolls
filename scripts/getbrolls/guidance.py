@@ -359,13 +359,13 @@ def _done_action(state, counts):
 
 
 def _brief_still_helps(counts):
-    """Sem BRIEF.md, o plano só ajuda enquanto a pessoa ainda escolhe material.
+    """Sem BRIEF.md, o plano só é o próximo passo antes da primeira prévia.
 
-    Antes da primeira aprovação, ou com prévia esperando decisão, o brief muda o
-    que buscar e o que aprovar. Depois que tudo que foi mostrado está decidido e
-    algo foi aprovado, ele não muda mais nada: o próximo passo é o do fluxo real.
+    Até ali o brief muda o que buscar. Com prévia na mesa, vale a regra do resto da
+    escada: a decisão humana pendente ganha, e depois dela o fluxo real (aprovar,
+    permitir, coletar) segue sem exigir um plano que não muda mais a escolha.
     """
-    return not counts["approved"] or counts["pending"] > 0
+    return not counts["previews"] and not counts["approved"]
 
 
 def _init_brief_action(state, counts):

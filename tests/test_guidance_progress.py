@@ -61,6 +61,17 @@ class NoBriefFollowsTheRealStage(unittest.TestCase):
         state["undelivered"] = 1
         self.assertEqual("deliver", next_action(state)["step"])
 
+    def test_a_preview_waiting_for_a_decision_outranks_the_missing_brief(self):
+        """I-3: decisão humana pendente ganha, como em todo o resto da escada."""
+        action = next_action(no_brief_state(candidates=3, previews=1, pending=1))
+        self.assertEqual("approve", action["step"])
+        self.assertTrue(action["blocking_human"])
+        self.assertNotIn(NO_BRIEF_OPENING, action["for_human"])
+
+    def test_previews_already_decided_do_not_bring_the_brief_back(self):
+        action = next_action(no_brief_state(candidates=3, previews=1, rejected=1))
+        self.assertNotEqual("init-brief", action["step"])
+
     def test_with_candidates_the_brief_suggestion_does_not_claim_nothing_was_searched(self):
         # Antes da primeira aprovação o plano ainda ajuda a escolher; a frase só não
         # pode dizer "antes de buscar" para quem já buscou.
