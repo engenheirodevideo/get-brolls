@@ -193,7 +193,10 @@ Rota `stage="fetch"` consome licença ou cota **uma vez só**:
 
 - O arquivo que ela trouxe vai para o cache privado do projeto
   (`.getbrolls-sources/`, índice por candidato + sha256, separado da mídia de
-  trabalho de `inspect`/`preview`), junto com a licença.
+  trabalho de `inspect`/`preview`), junto com a licença. O índice guarda só o
+  nome do arquivo, procurado sempre no cache do projeto atual: um projeto
+  movido continua achando o arquivo, e uma cópia nunca lê o cache do projeto
+  original (uma entrada antiga com caminho absoluto vale pelo nome do arquivo).
 - Antes de cortar, o `fetch` já grava no ledger a evidência da licença e o
   marcador `acquisition.route_consumed_at`. Se o corte falhar (por exemplo, o
   trecho aprovado passa da duração real que a fonte entregou — o `fetch` avisa

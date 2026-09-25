@@ -5,6 +5,7 @@ import copy
 import json
 import logging
 import os
+import re
 import shlex
 import tempfile
 import time
@@ -279,13 +280,28 @@ def _cache_suffix(path):
     return ".bin"
 
 
+def _fetched_in_cache(cache, raw):
+    """Arquivo de uma entrada de `fetch` dentro da pasta de cache DESTE projeto.
+
+    A entrada guarda só o nome do arquivo (relativo ao cache). Uma entrada antiga
+    com caminho absoluto vale pelo nome do arquivo, procurado aqui: um projeto
+    movido continua achando o próprio arquivo, e uma cópia do projeto nunca lê o
+    cache do projeto original."""
+    if not isinstance(raw, str) or not raw:
+        return None
+    name = re.split(r"[\\/]", raw)[-1]
+    if name in ("", ".", ".."):
+        return None
+    return cache / name
+
+
 def _reuse_fetched(cache, candidate):
     key = candidate["id"] + FETCH_INDEX_SUFFIX
     for entry in _load_index(cache).get(key, []):
         if not isinstance(entry, dict):
             continue
-        path = Path(entry.get("path") or "")
-        if path.is_file() and digest(path) == entry.get("sha"):
+        path = _fetched_in_cache(cache, entry.get("path"))
+        if path is not None and path.is_file() and digest(path) == entry.get("sha"):
             logs.event(log, logging.INFO, "source_cache", candidate=candidate["id"], result="hit", reason="route_fetch")
             license_text = entry.get("license")
             duration = entry.get("duration")
@@ -346,7 +362,7 @@ def fetch_routed_source(ledger, candidate, reacquire=False):
     entries[:] = [e for e in entries if isinstance(e, dict) and e.get("sha") != sha]
     entries.append(
         {
-            "path": str(final.resolve()),
+            "path": final.name,
             "sha": sha,
             "duration": info["duration_s"],
             "plugin": plugin,

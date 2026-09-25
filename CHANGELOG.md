@@ -10,6 +10,7 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- SDK: o arquivo trazido pela rota de `fetch` é procurado no cache do projeto atual — projeto movido reaproveita o arquivo sem consumir licença de novo, e uma cópia nunca lê o cache do original.
 - SDK (segurança): em ORIGEM.md, credits.md e na tabela de `entrega/README.md`, texto de candidato de plugin (título, autor, licença, URLs, licença/preset do plugin) sai com os caracteres de Markdown/HTML escapados — sem imagem remota, link ou ênfase forjados; fontes embutidas não mudam.
 - SDK (segurança): raiz de `permissions.paths` que, resolvida, é a raiz de um disco, a pasta pessoal ou uma pasta acima dela (link, `/Volumes/Macintosh HD`, `/Users`, outra caixa) é ignorada por `api.local_file`.
 - SDK (segurança): `install`/`update` pinam o sha256 confirmado no staging, não um novo hash da pasta depois da troca — conteúdo mexido nesse meio-tempo deixa o plugin `suspended`.
