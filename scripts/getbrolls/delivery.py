@@ -863,6 +863,14 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):  # noqa
         if (c.get("delivery") or {}).get("path", "").startswith(DELIVERY_DIR + "/")
     }
     removed, kept = _sweep(root, expected, dry_run, owned, ledger.root)
+    if not dry_run and retired:
+        # A pasta do beat aposentado acabou de ser varrida: o registro de entrega dela
+        # sai também, senão o beat reativado depois nunca pediria `deliver` de novo.
+        gone = {entry["id"] for entry in retired}
+        for c in items:
+            if c["id"] in gone and "delivery" in c:
+                del c["delivery"]
+                changed.append(c)
     if changed:
         ledger.save_many("deliver", changed)
     if conflicts:

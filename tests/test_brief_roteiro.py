@@ -257,6 +257,24 @@ class RetiredDeliveryTests(unittest.TestCase):
         self.assertNotIn(old, self.folders())
         self.assertTrue(any(rel.startswith(old) for rel in report["removed"]))
 
+    def test_reactivated_beat_asks_to_deliver_again(self):
+        alive = copy.deepcopy(BASE)
+        del alive["beats"][1]["retired"]
+        self.write_brief(alive)
+        write_roteiro_at(self.project, ("c01", "c02"))
+        _, clip, _ = self.three_clips()
+        run_cli(self, "deliver", "--project", self.project)
+        self.write_brief(BASE)
+        write_roteiro_at(self.project)
+        run_cli(self, "deliver", "--project", self.project)
+        self.assertNotIn("delivery", Ledger(self.project, recover=False).get(clip["id"]))
+        self.assertNotEqual(run_cli(self, "status", "--project", self.project)["summary"]["do"]["step"], "deliver")
+        self.write_brief(alive)
+        write_roteiro_at(self.project, ("c01", "c02"))
+        self.assertEqual(run_cli(self, "status", "--project", self.project)["summary"]["do"]["step"], "deliver")
+        run_cli(self, "deliver", "--project", self.project)
+        self.assertIn(delivery.beat_dir_name(2, "c02", "mapa"), self.folders())
+
     def test_status_does_not_ask_to_deliver_a_retired_clip(self):
         self.write_brief(BASE)
         self.three_clips()
