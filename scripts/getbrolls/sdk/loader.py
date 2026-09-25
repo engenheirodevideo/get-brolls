@@ -151,7 +151,7 @@ def content_reason(problem, fix):
         )
     return (
         f"O plugin tem bytecode Python ({rel}); o Python pode rodá-lo no lugar da fonte revisada. "
-        f"Basta apagar a pasta __pycache__ (e qualquer .pyc/.pyo solto) da pasta do plugin e {fix}."
+        f"Apague a pasta __pycache__ (e qualquer .pyc/.pyo solto) da pasta do plugin — isso basta — e {fix}."
     )
 
 
@@ -625,14 +625,16 @@ def status_hint(row, default):
 
 def permission_warnings(manifest):
     """Avisos (não recusas) para a prévia de enable/install e o `plugins check`:
-    `permissions.env` com variável do core, do espaço de nomes de outro plugin
-    instalado ou fora do espaço de nomes do próprio plugin (o `.env` não a entrega), e
-    `permissions.paths` que, neste sistema, é ampla demais e fica ignorada."""
+    `permissions.env` com variável do core, de ferramenta do sistema, do espaço de nomes
+    de outro plugin instalado ou fora do espaço de nomes do próprio plugin (o `.env` não
+    a entrega); outro plugin instalado que pede uma variável do espaço de nomes deste;
+    e `permissions.paths` que, neste sistema, é ampla demais e fica ignorada."""
     from .. import config
     from .api import ignored_paths
 
     plugin_id = manifest["id"]
-    others = [other for other in config.installed_env() if other != plugin_id]
+    installed = config.installed_env()
+    others = [other for other in installed if other != plugin_id]
     own = plugin_id.upper() + "_"
     warnings = []
     for key in manifest["permissions"]["env"]:
@@ -641,6 +643,11 @@ def permission_warnings(manifest):
             warnings.append(
                 f"permissions.env pede {key}, uma variável do core do Get B-rolls: o plugin leria a "
                 "configuração do core. Confira se isso faz sentido antes de confirmar."
+            )
+        elif config.toolchain_env_key(key):
+            warnings.append(
+                f"permissions.env pede {key}, uma variável que ferramentas do sistema leem (loader, git, ssh, "
+                "proxy, certificados, shell): o .env nunca a entrega a um plugin. Confira antes de confirmar."
             )
         elif owner is not None and owner != plugin_id:
             warnings.append(
@@ -652,6 +659,15 @@ def permission_warnings(manifest):
                 f"permissions.env pede {key}, fora do espaço de nomes {own}...: o .env não entrega essa "
                 "variável ao plugin, só o ambiente do processo."
             )
+    # O outro lado: um plugin já instalado que pede uma variável deste espaço de nomes
+    # (ex.: `banco` pedindo `BANCO_HTTP_TOKEN` quando chega `banco_http`).
+    warnings.extend(
+        f"O plugin instalado {other} pede {key}, do espaço de nomes deste plugin ({own}...): "
+        f"ele leria uma variável que é de {plugin_id}. Confira o {other} antes de confirmar."
+        for other in sorted(others)
+        for key in installed[other]
+        if config.env_namespace_owner(key, [*others, plugin_id]) == plugin_id
+    )
     warnings.extend(
         f"permissions.paths {raw} é, neste sistema, a raiz de um disco, um ponto de montagem, a pasta "
         "pessoal ou uma pasta acima dela: fica ignorada por api.local_file. Use uma pasta específica."

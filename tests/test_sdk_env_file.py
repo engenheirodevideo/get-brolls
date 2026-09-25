@@ -15,7 +15,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _cli import run_cli
 from _paths import ROOT
 from _plugin_pins import pin_plugins
-from test_sdk_loader import LoaderTestCase
+from test_sdk_loader import MANIFEST, LoaderTestCase
 
 from getbrolls import config
 
@@ -114,8 +114,91 @@ class PluginEnvKeysTests(LoaderTestCase):
         joined = "\n".join(warnings)
         self.assertIn("GB_HOME, uma variável do core", joined)
         self.assertIn("PASTA_LOCAL_DIR, do espaço de nomes do plugin pasta_local", joined)
-        self.assertIn("HTTPS_PROXY, fora do espaço de nomes BANCO_HTTP_", joined)
-        self.assertNotIn("warnings", loader.enable("pasta_local", confirm=False)["plugin"])
+        self.assertIn("HTTPS_PROXY, uma variável que ferramentas do sistema leem", joined)
+        # Do lado do pasta_local, o aviso é o de invasão do próprio espaço de nomes.
+        self.assertEqual(
+            ["O plugin instalado banco_http pede PASTA_LOCAL_DIR"],
+            [w.split(",")[0] for w in loader.enable("pasta_local", confirm=False)["plugin"]["warnings"]],
+        )
+
+
+TOOLCHAIN_CASES = {
+    "git_ssh": ["GIT_SSH_COMMAND"],
+    "dyld_insert": ["DYLD_INSERT_LIBRARIES"],
+    "ssl_cert": ["SSL_CERT_FILE", "SSL_CERT_DIR"],
+    "ld_library": ["LD_LIBRARY_PATH"],
+    "node_extra": ["NODE_EXTRA_CA_CERTS"],
+    "bash_env": ["BASH_ENV"],
+    "curl_ca": ["CURL_CA_BUNDLE"],
+    "requests_ca": ["REQUESTS_CA_BUNDLE"],
+}
+
+
+class ToolchainKeysTests(LoaderTestCase):
+    """Variável que uma ferramenta do sistema lê nunca sai do .env para um plugin — nem
+    quando o id do plugin faz dela parte do próprio espaço de nomes."""
+
+    def setUp(self):
+        super().setUp()
+        self.work = Path(tempfile.mkdtemp(prefix="gb-env-"))
+        self.addCleanup(shutil.rmtree, self.work, ignore_errors=True)
+
+    def plugin(self, plugin_id, env):
+        manifest = {**MANIFEST, "id": plugin_id, "contributes": {}, "permissions": {"network": [], "env": env}}
+        self.install(manifest, code="def register(api):\n    pass\n")
+
+    def test_underscored_ids_never_get_toolchain_keys(self):
+        for plugin_id, keys in TOOLCHAIN_CASES.items():
+            self.plugin(plugin_id, keys)
+        self.plugin("banco_http", ["BANCO_HTTP_TOKEN"])
+        accepted = config.plugin_env_keys()
+        # O plugin comum continua recebendo a sua; nenhuma variável de ferramenta passa.
+        self.assertEqual(frozenset({"BANCO_HTTP_TOKEN"}), accepted)
+        for plugin_id, keys in TOOLCHAIN_CASES.items():
+            for key in keys:
+                with self.subTest(key=key):
+                    self.assertNotIn(key, accepted)
+                    path = self.work / ".env"
+                    path.write_text(f"{key}=x\n", encoding="utf-8")
+                    with patch.dict(os.environ, {}), self.assertRaises(ValueError) as caught:
+                        config.load_env(path)
+                    self.assertIn(plugin_id, str(caught.exception))
+
+    def test_preview_warns_about_toolchain_keys(self):
+        from getbrolls.sdk import loader
+
+        self.plugin("git_ssh", ["GIT_SSH_COMMAND"])
+        self.plugin("banco_http", ["BANCO_HTTP_TOKEN"])
+        warnings = "\n".join(loader.enable("git_ssh", confirm=False)["plugin"]["warnings"])
+        self.assertIn("GIT_SSH_COMMAND, uma variável que ferramentas do sistema leem", warnings)
+        self.assertNotIn("warnings", loader.enable("banco_http", confirm=False)["plugin"])
+
+
+class NamespaceSquattingTests(LoaderTestCase):
+    """Outro plugin instalado que pede uma variável do espaço de nomes deste gera aviso."""
+
+    def plugin(self, plugin_id, env):
+        manifest = {**MANIFEST, "id": plugin_id, "contributes": {}, "permissions": {"network": [], "env": env}}
+        self.install(manifest, code="def register(api):\n    pass\n")
+
+    def test_squatter_installed_first(self):
+        from getbrolls.sdk import loader
+
+        self.plugin("banco", ["BANCO_HTTP_TOKEN"])
+        self.plugin("banco_http", ["BANCO_HTTP_TOKEN"])
+        warnings = "\n".join(loader.enable("banco_http", confirm=False)["plugin"]["warnings"])
+        self.assertIn("O plugin instalado banco pede BANCO_HTTP_TOKEN", warnings)
+
+    def test_squatter_arriving_after(self):
+        from getbrolls.sdk import loader
+
+        self.plugin("banco_http", ["BANCO_HTTP_TOKEN"])
+        loader.enable("banco_http", confirm=True)
+        self.plugin("banco", ["BANCO_HTTP_TOKEN"])
+        warnings = "\n".join(loader.enable("banco", confirm=False)["plugin"]["warnings"])
+        self.assertIn("BANCO_HTTP_TOKEN, do espaço de nomes do plugin banco_http", warnings)
+        again = "\n".join(loader.enable("banco_http", confirm=False)["plugin"]["warnings"])
+        self.assertIn("O plugin instalado banco pede BANCO_HTTP_TOKEN", again)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- SDK (segurança): o `.env` nunca entrega a um plugin uma variável que ferramentas do sistema leem (`GIT_SSH_COMMAND`, `DYLD_*`, `LD_*`, `SSL_*`, `NODE_*`, proxies...), seja qual for o id do plugin; a prévia avisa sobre essas variáveis e sobre outro plugin que pede uma do espaço de nomes deste. O escape de Markdown do texto de plugin cobre toda a pontuação ASCII (`%%`, `~~`, `==`, `#tag`, `$…$`, autolinks); o cache de `fetch` só aceita nomes no formato do core e nunca segue link.
 - **Recusa do `fetch` sem direitos.** A mensagem citava só `permit --evidence`; agora nomeia as três rotas do `permit`: `--evidence`, `--preset` da fonte e `--declared-by`/`--declaration-text`.
 - **Modelo do brief intocado.** `init-brief` seguido de `brief --validate` sem editar nada respondia "válido" com o título "Troque pelo nome real do vídeo". Agora cada campo que ainda traz o texto de exemplo do modelo (`video.title`, `video.objective`, `narration` e `target` dos beats) entra em `summary.problems`, e o brief só é chamado de válido depois de preenchido, como o `docs/BRIEF.md` já prometia.
 - **`inspect` pronto no `status`.** Quando o próximo passo era `inspect` de um candidato ligado a um beat do `BRIEF.md`, `summary.do.command` saía com `--query NARRACAO_OU_ALVO`, e rodá-lo como veio buscava o próprio marcador. Agora a `--query` já vem com a narração do beat (ou o alvo, sem narração); sem beat, o marcador continua para quem conhece a frase preencher.

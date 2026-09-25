@@ -70,15 +70,73 @@ PATH_KEYS = (*TOOL_PATH_KEYS.values(), "GB_VENV_PATH")
 
 # Um plugin só pode receber do `.env` variáveis do próprio espaço de nomes,
 # `<ID_EM_MAIÚSCULAS>_...` (ex.: `BANCO_HTTP_TOKEN` do plugin `banco_http`). Variável do
-# core (`KEYS`, `GB_*`) nunca. E um id que coincide com o prefixo de uma ferramenta do
-# sistema (`LD_`, `GIT_`, `NODE_`, `HTTPS_`...) não ganha espaço de nomes no `.env`.
-_TOOLCHAIN_NAMESPACES = frozenset(
-    {"LD", "DYLD", "GIT", "PYTHON", "NODE", "NPM", "PIP", "HTTP", "HTTPS", "SSL", "SSH", "GPG", "JAVA"}
+# core (`KEYS`, `GB_*`) nunca. E nenhuma variável que ferramentas do sistema leem
+# (loader, git, ssh, proxy, certificados, shells, interpretadores) passa, seja qual for o
+# id do plugin: `GIT_SSH_COMMAND` num `.env` vira execução de comando no próximo
+# `plugins install --source git@...`, `DYLD_INSERT_LIBRARIES` injeta código em processo.
+TOOLCHAIN_ENV_PREFIXES = (
+    "LD_",
+    "DYLD_",
+    "GIT_",
+    "PYTHON",
+    "NODE_",
+    "NPM_",
+    "PIP_",
+    "HTTP_",
+    "HTTPS_",
+    "SSL_",
+    "SSH_",
+    "GPG_",
+    "JAVA_",
+    "CURL_",
+    "REQUESTS_",
+    "PERL",
+    "RUBY",
+    "BASH_",
+    "ZSH",
+    "LUA_",
+    "GEM_",
+    "BUNDLE_",
+    "CARGO_",
+    "RUSTUP_",
+    "DOCKER_",
+    "FFMPEG_",
+    "YTDLP_",
+    "YT_DLP_",
+)
+TOOLCHAIN_ENV_KEYS = frozenset(
+    {
+        "ENV",
+        "BASH_ENV",
+        "SSLKEYLOGFILE",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "FTP_PROXY",
+        "FFREPORT",
+        "PATH",
+        "HOME",
+        "SHELL",
+        "TMPDIR",
+        "TEMP",
+        "TMP",
+        "IFS",
+        "PS4",
+        "EDITOR",
+        "VISUAL",
+        "PAGER",
+        "BROWSER",
+    }
 )
 
 
 def core_env_key(key):
     return key in KEYS or key.startswith("GB_")
+
+
+def toolchain_env_key(key):
+    """Variável que uma ferramenta do sistema lê (`GIT_SSH_COMMAND`, `LD_PRELOAD`,
+    `SSL_CERT_FILE`, `HTTPS_PROXY`...): nunca entregue a um plugin pelo `.env`."""
+    return key in TOOLCHAIN_ENV_KEYS or key.startswith(TOOLCHAIN_ENV_PREFIXES)
 
 
 def env_namespace_owner(key, plugin_ids):
@@ -111,14 +169,14 @@ def installed_env():
 
 def plugin_env_keys():
     """Nomes de `permissions.env` dos plugins instalados que o `.env` aceita: só os do
-    espaço de nomes do próprio plugin, nunca uma variável do core."""
+    espaço de nomes do próprio plugin, nunca uma variável do core nem uma que uma
+    ferramenta do sistema lê."""
     installed = installed_env()
     return frozenset(
         key
         for plugin_id, keys in installed.items()
-        if plugin_id.upper() not in _TOOLCHAIN_NAMESPACES
         for key in keys
-        if not core_env_key(key) and env_namespace_owner(key, installed) == plugin_id
+        if not core_env_key(key) and not toolchain_env_key(key) and env_namespace_owner(key, installed) == plugin_id
     )
 
 

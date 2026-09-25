@@ -178,7 +178,8 @@ class PreviewAndCheckMessagesTests(LoaderTestCase):
         with self.assertRaises(ValueError) as caught:
             loader.trial_load(folder)
         self.assertIn("bytecode", str(caught.exception))
-        self.assertIn("Basta apagar a pasta __pycache__", str(caught.exception))
+        self.assertIn("Apague a pasta __pycache__", str(caught.exception))
+        self.assertIn("isso basta — e rode o check de novo", str(caught.exception))
 
     def test_x_hint_for_a_plugin_left_out_by_gb_plugins(self):
         from getbrolls.sdk.plugin_commands import _missing
