@@ -2028,7 +2028,7 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
             c["state"] = "awaiting_approval" if c.get("local_path") else "reference_only"
             approval_invalidated = True
     elif cmd == "fetch":
-        from .acquisition import fetch_routed_source, license_evidence, route_name
+        from .acquisition import ROUTED_IMAGE_SUFFIXES, fetch_routed_source, license_evidence, route_name
 
         _fetch_started_at = time.monotonic()
         require_fetch(c)
@@ -2057,7 +2057,7 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                     raise ValueError(_already_collected(planned))
             # O arquivo da rota vai para o cache privado (fora de `brolls/`) e é
             # reaproveitado se este `fetch` falhar adiante: a licença é consumida uma vez.
-            routed = fetch_routed_source(ledger, c, image=c.get("media", {}).get("kind") == "image")
+            routed = fetch_routed_source(ledger, c)
             src = routed.path
             routed_remote = True
             changed = False
@@ -2074,6 +2074,16 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                 # Grava já, antes do corte: se o corte falhar, a licença consumida e o
                 # marcador ficam no ledger (a rota não roda de novo no próximo fetch).
                 ledger.save("fetch-route", c)
+            # Minor 9: a extensão só é conferida DEPOIS que cache e licença já estão
+            # gravados (acima) — uma imagem com extensão fora da lista é recusada sem
+            # custar a rota (e a licença) de novo a cada retry; o cache já existe.
+            if c.get("media", {}).get("kind") == "image" and routed.path.suffix.lower() not in ROUTED_IMAGE_SUFFIXES:
+                from .http import ProviderError
+
+                raise ProviderError(
+                    f"Plugin {routed.plugin}: a rota devolveu uma imagem com extensão não aceita; "
+                    f"use {', '.join(ROUTED_IMAGE_SUFFIXES)}."
+                )
             if (
                 c.get("media", {}).get("kind") != "image"
                 and routed.duration_s is not None

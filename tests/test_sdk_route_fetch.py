@@ -192,6 +192,27 @@ class RoutedImageExtensionTests(FetchRouteCase):
         self.assertIn(".jpg", str(caught.exception))
         self.assertEqual([], sorted((self.project / "brolls" / "clips").glob("*")))
 
+    def test_bad_extension_does_not_call_the_route_again_on_retry(self):
+        """Minor 9: a rota já rodou e devolveu um arquivo verificado; a recusa por
+        extensão não pode custar a licença de novo a cada retry — o cache e a
+        licença já foram gravados antes dessa checagem."""
+        self.enable(self.image_plugin("foto.bin"), source=self.image)
+        ident = self.gb("search", "--provider", "demo", "--query", "mar")["items"][0]["id"]
+        self.gb("preview", "--candidate", ident, "--reference-only")
+        self.gb("approve", "--candidate", ident, "--by", "Bruno", "--statement", "pode usar essa")
+        self.gb("permit", "--candidate", ident, "--evidence", "Plano anual da conta Demo")
+        for _attempt in range(2):
+            with self.assertRaises(OperationError) as caught:
+                self.gb("fetch", "--candidate", ident)
+            self.assertIn(".jpg", str(caught.exception))
+        self.assertEqual(["demo:1"], self.calls_made())  # a rota rodou uma vez só
+        stored = self.manifest_item(ident)
+        self.assertEqual(
+            1, stored["rights"]["evidence"].count("Licença registrada pelo plugin demo: Standard License #42")
+        )
+        self.assertIsInstance(stored["acquisition"].get("route_consumed_at"), str)
+        self.assertEqual([], sorted((self.project / "brolls" / "clips").glob("*")))
+
     def test_listed_image_extension_is_kept(self):
         self.enable(self.image_plugin("foto.PNG"), source=self.image)
         ident = self.gb("search", "--provider", "demo", "--query", "mar")["items"][0]["id"]

@@ -288,17 +288,16 @@ def _reuse_fetched(cache, candidate):
     return None
 
 
-def fetch_routed_source(ledger, candidate, image=False):
+def fetch_routed_source(ledger, candidate):
     """O arquivo da rota de `fetch`, trazido uma única vez (RT-07).
 
     A rota consome licença ou cota: o arquivo verificado vai para o cache privado
     `.getbrolls-sources/` (índice por candidato + sha, chave separada da mídia de
-    trabalho) e a licença fica guardada junto. Um `fetch` que falha depois (corte,
-    cópia) e é repetido reaproveita esse arquivo — a rota não é chamada de novo.
-    Imagem com extensão fora de `ROUTED_IMAGE_SUFFIXES` é recusada antes de ir ao
-    cache (o nome final em `clips/` herdaria essa extensão)."""
-    from .http import ProviderError
-
+    trabalho) e a licença fica guardada junto — ANTES de devolver, então qualquer
+    recusa posterior (extensão de imagem, corte, cópia) não perde esse registro.
+    Um `fetch` que falha depois é repetido e reaproveita esse arquivo — a rota não
+    é chamada de novo (Minor 9: a extensão da imagem roteada só é conferida por
+    quem chama, depois que o cache e a licença já foram gravados)."""
     cache = ledger.root.parent / ".getbrolls-sources"
     _ensure_private_cache_dir(cache)
     reused = _reuse_fetched(cache, candidate)
@@ -306,11 +305,6 @@ def fetch_routed_source(ledger, candidate, image=False):
         return reused
     with plugin_source(ledger, candidate, "fetch") as routed:
         suffix = _cache_suffix(routed.path)
-        if image and routed.path.suffix.lower() not in ROUTED_IMAGE_SUFFIXES:
-            raise ProviderError(
-                f"Plugin {routed.plugin}: a rota devolveu uma imagem com extensão não aceita; "
-                f"use {', '.join(ROUTED_IMAGE_SUFFIXES)}."
-            )
         info = probe(routed.path)
         sha = digest(routed.path)
         final = cache / (id_stem(candidate["id"]) + "-fetch-" + sha + suffix)
