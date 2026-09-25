@@ -89,10 +89,6 @@ class SmallFixesTests(LoaderTestCase):
         self.assertNotIn("plugins --action list", line)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ResolvedRootBreadthTests(unittest.TestCase):
     """Raiz de `permissions.paths` que, resolvida, é a pasta pessoal, uma pasta
     acima dela ou a raiz do disco não vale — mesmo passando pela checagem de texto."""
@@ -194,3 +190,7 @@ class PreviewAndCheckMessagesTests(LoaderTestCase):
         )
         self.assertNotIn("..", suspended)
         self.assertIn("plugins --action list", suspended)
+
+
+if __name__ == "__main__":
+    unittest.main()

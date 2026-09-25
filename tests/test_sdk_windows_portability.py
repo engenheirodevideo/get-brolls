@@ -109,10 +109,6 @@ class GitCleanupTests(InstallTestCase):
         self.assertIn('touch "{marker.as_posix()}"', source)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 @unittest.skipUnless(os.name == "nt", "junction do NTFS só existe no Windows")
 class NtfsJunctionTests(InstallTestCase):
     """Junction não é `is_symlink()`, mas aponta para conteúdo fora do hash do pin
@@ -141,3 +137,44 @@ class NtfsJunctionTests(InstallTestCase):
             install_mod.install(str(source), confirm=False)
         self.assertIn("vendor", str(caught.exception))
         self.assertEqual([], self.leftover_staging())
+
+
+class ReparseTagTests(unittest.TestCase):
+    """Só reparse point de "name surrogate" (junction, link do NTFS) conta como link.
+    Arquivo sob demanda do OneDrive e deduplicação também são reparse points, mas
+    guardam o próprio conteúdo: uma pasta sincronizada não pode ficar `invalid`.
+    A lógica do Windows roda em qualquer sistema com um `lstat` falso."""
+
+    CLOUD = 0x9000001A  # IO_REPARSE_TAG_CLOUD (OneDrive Files On-Demand)
+    DEDUP = 0x80000013  # IO_REPARSE_TAG_DEDUP
+    MOUNT_POINT = 0xA0000003  # IO_REPARSE_TAG_MOUNT_POINT (junction)
+    SYMLINK = 0xA000000C  # IO_REPARSE_TAG_SYMLINK
+
+    def is_link_with_tag(self, tag, windows=True):
+        from getbrolls.sdk import loader
+
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "pasta"
+            folder.mkdir()
+            real = os.lstat(folder)
+            fake = type("FakeStat", (), {"st_mode": real.st_mode, "st_reparse_tag": tag})()
+            with patch.object(loader.os, "lstat", return_value=fake):
+                return loader._is_link(folder, windows=windows)
+
+    def test_name_surrogate_tags_are_links(self):
+        for tag in (self.MOUNT_POINT, self.SYMLINK):
+            with self.subTest(tag=hex(tag)):
+                self.assertTrue(self.is_link_with_tag(tag))
+
+    def test_other_reparse_points_are_not_links(self):
+        for tag in (self.CLOUD, self.DEDUP, 0):
+            with self.subTest(tag=hex(tag)):
+                self.assertFalse(self.is_link_with_tag(tag))
+
+    def test_posix_ignores_the_reparse_tag(self):
+        # No POSIX só `is_symlink()` decide; a tag (que lá nem existe) não é lida.
+        self.assertFalse(self.is_link_with_tag(self.MOUNT_POINT, windows=False))
+
+
+if __name__ == "__main__":
+    unittest.main()

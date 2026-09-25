@@ -191,7 +191,7 @@ def _git_blob(dest, sha):
 
 
 def _refuse_links_and_bytecode(folder):
-    """Link simbólico ou junction/reparse point do NTFS (conteúdo fora do hash) e
+    """Link simbólico ou junction do NTFS (conteúdo fora do hash) e
     bytecode (roda no lugar da fonte revisada) nunca entram em `plugins/` — o loader
     marcaria a pasta `invalid`."""
     problem = loader.content_problem(folder)

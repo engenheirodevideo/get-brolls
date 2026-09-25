@@ -111,26 +111,40 @@ def nested_vcs(folder):
     return None
 
 
-def _is_link(path):
-    """Link simbólico, junction do NTFS ou outro reparse point do Windows.
+# Reparse points que são "name surrogate" — apontam para outro caminho, como um
+# link: a junction (MOUNT_POINT) e o link simbólico do NTFS. Os outros reparse
+# points (arquivo sob demanda do OneDrive, deduplicação) guardam o próprio
+# conteúdo e não tiram nada do hash; tratá-los como link deixaria `invalid` todo
+# plugin numa pasta sincronizada. As constantes só existem no `stat` do Windows.
+_NAME_SURROGATE_TAGS = frozenset(
+    {
+        getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003),
+        getattr(stat, "IO_REPARSE_TAG_SYMLINK", 0xA000000C),
+    }
+)
 
-    Junction não é `is_symlink()`: no Python 3.12+ `Path.is_junction()` a acha; no
-    3.11, o atributo `FILE_ATTRIBUTE_REPARSE_POINT` do `lstat` (só existe no Windows)
-    cobre junction e qualquer outro reparse point. Todos apontam para conteúdo
-    fora do hash do pin."""
+
+def _is_link(path, windows=None):
+    """Link simbólico, ou junction do NTFS (que não é `is_symlink()`).
+
+    No Windows, além de `is_symlink()` e de `Path.is_junction()` (3.12+), confere o
+    `st_reparse_tag` do `lstat` — o que acha a junction também no 3.11. Só as tags
+    de "name surrogate" contam; o bit `FILE_ATTRIBUTE_REPARSE_POINT` sozinho não.
+    No POSIX, `is_symlink()` basta."""
     if path.is_symlink():
         return True
+    if windows is None:
+        windows = os.name == "nt"
+    if not windows:
+        return False
     is_junction = getattr(path, "is_junction", None)
     if is_junction is not None and is_junction():
         return True
-    reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-    if not reparse:
-        return False
     try:
-        attributes = getattr(os.lstat(path), "st_file_attributes", 0)
+        tag = getattr(os.lstat(path), "st_reparse_tag", 0)
     except OSError:
         return False
-    return bool(attributes & reparse)
+    return tag in _NAME_SURROGATE_TAGS
 
 
 def is_bytecode_name(name, is_dir):
