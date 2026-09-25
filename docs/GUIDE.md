@@ -361,20 +361,34 @@ Também pode obter o original pela página oficial e usar resolve --file --sourc
 
 ## Plugins
 
-Além dos provedores nativos, o Get B-rolls aceita fontes e presets de licença
-via plugins locais, instalados em `$GB_HOME/plugins/<id>/` (por padrão,
-`~/.getbrolls/plugins/`) com opt-in explícito. O comando `plugins` gerencia
-esse ciclo:
+Além dos provedores nativos, o Get B-rolls aceita fontes, rotas de download,
+comandos e presets de licença via plugins locais, instalados em
+`$GB_HOME/plugins/<id>/` (por padrão, `~/.getbrolls/plugins/`) com opt-in
+explícito. O comando `plugins` gerencia esse ciclo:
 
 - `plugins --action list` — inventário dos plugins instalados, com status (`disabled`, `enabled`, `suspended`, `incompatible`) e o que cada um contribui.
 - `plugins --action enable --id <id>` — mostra o manifesto e as permissões declaradas, sem habilitar; rode de novo com `--yes` para confirmar e gravar o pin de hash da pasta.
 - `plugins --action disable --id <id>` — desliga um plugin habilitado.
-- `plugins --action check --path <pasta>` — valida o manifesto e roda `register()` contra um registro descartável, sem instalar nada; use antes de copiar um plugin novo para `$GB_HOME/plugins/`.
+- `plugins --action check --path <pasta>` — valida o manifesto, roda `register()` contra um registro descartável e confere o contrato de cada contribuição, sem instalar nada.
+- `plugins --action install --source <pasta-ou-url-git>` — mostra id, versão, permissões, origem e commit; com `--yes` instala em `plugins/<id>`, habilita com pin de hash e grava a origem.
+- `plugins --action update --id <id>` — mostra a diferença de versão, permissões e arquivos contra a origem gravada; com `--yes` troca a pasta e refaz o pin.
+- `plugins --action new --id <id> --kind provider|route|command [--path <pasta>]` — gera um plugin mínimo que já passa no próprio teste e no `check`.
+
+Fonte de plugin aparece em `providers` com `plugin` (e `route`, quando o
+arquivo vem por uma rota do plugin). Rota `stage="fetch"` só baixa no `fetch`:
+para revisar antes, use `preview --candidate ID --start ... --end ...
+--reference-only`, depois `approve`, `permit` e `fetch`. Comandos de plugin
+rodam com `x --list` e `x <plugin> <comando> --project <projeto> [--arg
+chave=valor]`; eles só leem o projeto.
 
 Escrever ou revisar um plugin é assunto do [SDK.md](SDK.md) — manifesto,
-contrato de `Provider`, `PluginApi`, o que o core reescreve nos candidatos e o
-modelo de confiança (não é uma caixa de areia). O exemplo funcional está em
-[`examples/plugins/pasta_local`](../examples/plugins/pasta_local/README.md).
+contrato de `Provider`/`Route`, `PluginApi`, o que o core reescreve nos
+candidatos e o modelo de confiança (não é uma caixa de areia). Os exemplos
+funcionais estão em
+[`examples/plugins/pasta_local`](../examples/plugins/pasta_local/README.md)
+(acervo local, rota de prévia e comando) e
+[`examples/plugins/banco_http`](../examples/plugins/banco_http/README.md)
+(API autenticada, rota de `fetch`).
 
 ## Tipos de assets e formatos
 

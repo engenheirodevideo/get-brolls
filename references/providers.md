@@ -148,6 +148,19 @@ achado com `search --provider youtube`, localizado com `inspect --query` e confi
 rota (2) é material de terceiro e passa pelo `permit` como qualquer outro. O que não vale é
 recriar a interface de memória.
 
+## Fontes de plugin
+
+`providers` marca com `plugin` a fonte que vem de um plugin habilitado, e com `route` a que entrega o arquivo por uma rota do plugin. O fluxo é o mesmo das outras fontes, com uma diferença: rota que consome licença ou cota só baixa no `fetch`. Se o `preview` responder que a fonte só entrega no `fetch`, gere a referência e siga os portões:
+
+```sh
+python3 scripts/gb.py preview --candidate <ID> --start <INICIO> --end <FIM> --reference-only --project <projeto>
+python3 scripts/gb.py approve --candidate <ID> --by NOME --channel chat --statement "frase exata" --project <projeto>
+python3 scripts/gb.py permit --candidate <ID> --evidence "condições reais" --project <projeto>
+python3 scripts/gb.py fetch --candidate <ID> --project <projeto>
+```
+
+A licença que a rota registrar aparece em `rights.evidence` como evidência a mais; o `permit` humano continua obrigatório. Plugins também trazem rotinas próprias: `x --list` mostra quais, e `x <plugin> <comando> --project <projeto> [--arg chave=valor]` roda uma — elas só leem o projeto. Instalar, habilitar ou atualizar plugin é decisão da pessoa: mostre o preview de `plugins --action install|enable|update` e só rode com `--yes` depois do ok dela.
+
 ## Quando não há fonte
 
 Reporte o que você tentou, com a fonte real do erro, e pergunte ao usuário se ele tem material próprio ou um link. Falha de extração é reportada com o motivo real: não invente indisponibilidade permanente nem troque de arquitetura por conta própria.

@@ -36,4 +36,19 @@ do SDK (`api.get_json`, `api.env`), não numa camada de isolamento do processo.
 permissões de quem executa a CLI, e não tem egress próprio além do que o
 código dele fizer — só habilite plugins cujo código você leu e em que confia.
 
+Rotas de plugin trazem o arquivo, mas o core decide o resto: a rota grava só
+na pasta de trabalho que o core cria em `.getbrolls-sources/` (e apaga ao
+fim), e o arquivo devolvido é recusado se estiver fora dela, for link
+simbólico, vazio, maior que 512 MB ou ilegível pelo `ffprobe`. Rota que
+consome licença ou cota (`stage="fetch"`) nunca roda em `inspect`, `preview`
+ou varredura — só no `fetch`, depois da aprovação humana e do `permit`.
+`api.download` segue o transporte do core (HTTPS, IP público, sem redirect,
+host em `permissions.network`) e aceita header de autorização e URL assinada
+sem registrá-los em log nem em mensagem de erro. `api.local_file` só lê
+arquivos dentro de `permissions.paths` e sempre copia. `permissions.paths` e
+`permissions.network` aparecem no preview do `enable` e do `install`.
+Comandos de plugin (`gb x`) só leem o projeto, por cópias. `install`/`update`
+clonam com `GIT_TERMINAL_PROMPT=0`, recusam URL com credencial e link
+simbólico, e não executam código do plugin. `GB_PLUGINS=off` desliga tudo.
+
 Para reportar vulnerabilidades, use o relatório privado do GitHub em **Security → Report a vulnerability**, habilitado neste repositório. Não publique segredos ou dados de clientes em issues públicas. Nenhum endereço de contato é presumido neste pacote.

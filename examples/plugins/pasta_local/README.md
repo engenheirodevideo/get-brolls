@@ -9,13 +9,21 @@ está em `plugin.py` e usa só o que o [SDK.md](../../../docs/SDK.md) documenta.
 
 `search` varre `PASTA_LOCAL_DIR` recursivamente, procurando arquivos `.mp4`,
 `.mov`, `.m4v` ou `.webm` cujo nome (sem extensão) contenha todas as palavras
-da busca. Cada arquivo encontrado vira um candidato com só metadados
-(`id`, `title`); nenhum arquivo é copiado, movido ou lido além do nome.
+da busca. Cada arquivo encontrado vira um candidato só com metadados.
 
-Depois de aprovado, o candidato entra no fluxo comum com `resolve --file`,
-apontando para o caminho real na pasta — exatamente como qualquer original
-local que você já importaria manualmente. O plugin não baixa, não copia e não
-tem acesso à rede (`permissions.network` vazio no manifesto).
+A rota `pasta_local` (`stage="preview"`) entrega o arquivo quando você pede a
+prévia: `preview --candidate <ID> --start ... --end ...` funciona direto, sem
+`resolve --file`. A rota acha o arquivo pelo id da busca e pede ao core uma
+cópia de trabalho com `api.local_file` — o core recusa qualquer arquivo fora
+de `permissions.paths` e nunca mexe no original. O plugin não tem acesso à
+rede (`permissions.network` vazio).
+
+O comando `recentes` lista os vídeos mais novos da pasta e quantos candidatos
+dela já estão no projeto:
+
+```sh
+python3 scripts/gb.py x pasta_local recentes --arg limite=5 --project <projeto>
+```
 
 ## Instalação
 
@@ -24,6 +32,10 @@ Copie a pasta para dentro da sua instalação pessoal do Get B-rolls:
 ```sh
 cp -r examples/plugins/pasta_local ~/.getbrolls/plugins/
 ```
+
+Ou deixe o `plugins --action install --source examples/plugins/pasta_local`
+copiar e registrar a origem (sem `--yes` ele só mostra o que chegaria; com
+`--yes` já instala e habilita, dispensando o `enable` abaixo).
 
 Habilite em dois passos. O primeiro só mostra o manifesto e as permissões
 declaradas — confira com a pessoa antes de continuar:
@@ -41,11 +53,15 @@ suspende o plugin até um novo `enable`):
 python3 scripts/gb.py plugins --action enable --id pasta_local --yes
 ```
 
-## Variável de ambiente
+## Variável de ambiente e raízes
 
 - `PASTA_LOCAL_DIR`: caminho absoluto da pasta com os vídeos a buscar. Sem essa
   variável (ou apontando para algo que não é pasta), `search` falha com uma
   mensagem pedindo para configurá-la.
+- `permissions.paths` no manifesto vem com `["~/Movies"]`. Se a sua pasta de
+  B-rolls fica em outro lugar (um NAS, outro disco), edite essa lista **antes**
+  do `enable`/`install` — o pin de hash cobre o manifesto. `PASTA_LOCAL_DIR`
+  tem que ficar dentro de uma dessas raízes; fora delas a prévia é recusada.
 
 ## Testar antes de habilitar
 

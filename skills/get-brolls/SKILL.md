@@ -39,7 +39,7 @@ Escreva o `BRIEF.md` com `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" init-bri
 
 ## Passo 3 — Busque fonte literal
 
-`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" brief --beat <ID> --project <projeto>` devolve o comando pronto do beat. Todo material entra com `--shot <beat.id>`. Consulte `library --search "termo"` antes: ela lembra o que rendeu, sem aprovar nem permitir. Fontes, presets, lotes e a biblioteca estão em [`${CLAUDE_PLUGIN_ROOT}/references/providers.md`](${CLAUDE_PLUGIN_ROOT}/references/providers.md). **Reel do Instagram: leia [`${CLAUDE_PLUGIN_ROOT}/references/instagram.md`](${CLAUDE_PLUGIN_ROOT}/references/instagram.md) antes de tocar no navegador** — é a rota que quebra primeiro.
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" brief --beat <ID> --project <projeto>` devolve o comando pronto do beat. Todo material entra com `--shot <beat.id>`. Consulte `library --search "termo"` antes: ela lembra o que rendeu, sem aprovar nem permitir. Fontes (inclusive de plugin), presets, lotes e biblioteca estão em [`${CLAUDE_PLUGIN_ROOT}/references/providers.md`](${CLAUDE_PLUGIN_ROOT}/references/providers.md). **Reel do Instagram: leia [`${CLAUDE_PLUGIN_ROOT}/references/instagram.md`](${CLAUDE_PLUGIN_ROOT}/references/instagram.md) antes de tocar no navegador** — é a rota que quebra primeiro.
 
 **Checkpoint C2.** Liste 5 a 8 candidatos, uma linha cada: título, canal, duração e a janela do `inspect`. Feche com "sigo com estes?".
 
@@ -73,7 +73,7 @@ Registre as condições com `permit` (`--evidence`, `--preset` ou `--declared-by
 
 ## Quando não há fonte
 
-Diga o que tentou e o motivo real. Pergunte se a pessoa tem material próprio ou um link. Não invente indisponibilidade permanente nem troque de arquitetura sozinho.
+Diga o que tentou e por quê. Pergunte se a pessoa tem material próprio ou um link. Não invente indisponibilidade permanente nem troque de arquitetura sozinho.
 
 ## Ambiente
 
