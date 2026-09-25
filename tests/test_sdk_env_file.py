@@ -203,6 +203,21 @@ class PluginEnvNeverExportedTests(LoaderTestCase):
             config.load_env(self.work / "nao-existe.env")
             self.assertEqual("do-shell", api_for("xdg", ["XDG_TOKEN"]).env("XDG_TOKEN"))
 
+    def test_shell_value_wins_over_env_file_like_core_keys(self):
+        self.plugin("banco_http", ["BANCO_HTTP_TOKEN"])
+        path = self.work / ".env"
+        path.write_text("BANCO_HTTP_TOKEN=do-env\n", encoding="utf-8")
+        api = api_for("banco_http", ["BANCO_HTTP_TOKEN"])
+        with patch.dict(os.environ, {"BANCO_HTTP_TOKEN": "do-shell"}):
+            config.load_env(path)
+            self.assertEqual("do-shell", api.env("BANCO_HTTP_TOKEN"))
+        with patch.dict(os.environ, {"BANCO_HTTP_TOKEN": ""}):
+            # Vazio no shell conta como não definido: vale o do .env.
+            self.assertEqual("do-env", api.env("BANCO_HTTP_TOKEN"))
+        with patch.dict(os.environ, {}):
+            os.environ.pop("BANCO_HTTP_TOKEN", None)
+            self.assertEqual("do-env", api.env("BANCO_HTTP_TOKEN"))
+
     def test_toolchain_names_warn_in_the_preview_and_on_load(self):
         from getbrolls.sdk import loader
 
