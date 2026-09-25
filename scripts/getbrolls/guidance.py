@@ -156,6 +156,19 @@ def _action(step, why, for_human, state, url=None, blocking_human=False, command
     }
 
 
+def _inspect_command(state):
+    """`inspect` do degrau; com o beat conhecido, a `--query` já sai com a fala dele."""
+    command = command_for(
+        "inspect",
+        state["project"],
+        state.get("inspect_candidate") or step_candidate(state, "inspect"),
+    )
+    query = state.get("inspect_query")
+    if command and query:
+        command = command.replace("--query NARRACAO_OU_ALVO", "--query " + shlex.quote(query))
+    return command
+
+
 def _library_hint():
     """Lembrete da biblioteca só quando ela existe de fato; nunca altera o comando."""
     from . import library
@@ -485,11 +498,7 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
                 "Antes de gerar prévia, vou analisar a fonte para saber a duração e em "
                 "que minuto está o que você pediu — assim o trecho não sai de palpite.",
                 state,
-                command=command_for(
-                    "inspect",
-                    state["project"],
-                    state.get("inspect_candidate") or step_candidate(state, "inspect"),
-                ),
+                command=_inspect_command(state),
             )
         return _action(
             "preview",

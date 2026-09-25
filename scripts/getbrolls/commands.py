@@ -995,6 +995,8 @@ def brief_state(project, rules, items):
         "missing": missing,
         "blocked": blocked,
         "conflicts": conflicts,
+        # O que o `inspect` de um candidato do beat procura: a fala, ou o alvo.
+        "beat_queries": {b["id"]: b["resolved"].get("narration") or b["resolved"]["target"] for b in beats},
     }
 
 
@@ -1173,11 +1175,12 @@ def _flow_state(ledger, rules, counts=None, format_pending=0, brief=_UNSET):
     """Estado que a escada de `guidance` lê: a mesma leitura em status, brief e deliver."""
     items = ledger.data["items"]
     review_page = (ledger.root / "review.html").is_file()
+    brief_value = brief_state(ledger.root.parent, rules, items) if brief is _UNSET else brief
     return {
         "project": str(ledger.root.parent),
         "counts": counts or {key: sum(1 for c in items if STAGE_TESTS[key](c)) for key in STAGE_TESTS},
         "format_pending": format_pending,
-        "brief": brief_state(ledger.root.parent, rules, items) if brief is _UNSET else brief,
+        "brief": brief_value,
         "review_page": review_page,
         # Só perguntamos ao servidor quando existe página para ele servir.
         "board_url": _live_board_url(ledger.root.parent) if review_page else None,
@@ -1187,9 +1190,20 @@ def _flow_state(ledger, rules, counts=None, format_pending=0, brief=_UNSET):
         "candidates": _step_candidates(items),
         "duration_unknown": len(_uninspected(items)),
         "inspect_candidate": next((c["id"] for c in _uninspected(items)), None),
+        "inspect_query": _inspect_query(items, brief_value),
         "undelivered": len(_undelivered(items)),
         "pending_preview": len(_needs_preview(items)),
     }
+
+
+def _inspect_query(items, brief):
+    """`--query` pronto para o `inspect` do degrau: a fala (ou o alvo) do beat do candidato.
+
+    Sem beat no brief, o lugar fica em MAIÚSCULAS para quem conhece a frase preencher.
+    """
+    first = next(iter(_uninspected(items)), None)
+    queries = (brief or {}).get("beat_queries") or {}
+    return queries.get((first or {}).get("shot")) or None
 
 
 def _flow_next(ledger, rules):

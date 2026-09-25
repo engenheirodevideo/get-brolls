@@ -214,5 +214,38 @@ class FollowingDoFinishesTheFlow(unittest.TestCase):
             self.assertEqual("permit", seen[seen.index("approve") + 1], seen)
 
 
+class InspectCommandCarriesTheBeat(unittest.TestCase):
+    """L-3: o `inspect` do degrau saía com `--query NARRACAO_OU_ALVO` mesmo com o beat no brief."""
+
+    def test_the_inspect_rung_uses_the_narration_of_the_candidates_beat(self):
+        from getbrolls.ledger import Ledger
+        from getbrolls.models import candidate
+
+        brief = json.loads(json.dumps(LOCAL_BRIEF))
+        brief["defaults"]["allowed_sources"] = ["youtube"]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "BRIEF.md").write_text(
+                "```json\n" + json.dumps(brief, ensure_ascii=False) + "\n```\n",
+                encoding="utf-8",
+            )
+            ledger = Ledger(tmp)
+            item = candidate("youtube", "abcdefghijk", "Sem duração", "https://www.youtube.com/watch?v=abcdefghijk")
+            item["id"] += ":shot:abertura"
+            item["shot"] = "abertura"
+            ledger.save_many("fixture", [ledger.add(item)])
+            action = run_cli("status", project=root)["summary"]["do"]
+        self.assertEqual("inspect", action["step"])
+        self.assertNotIn("NARRACAO_OU_ALVO", action["command"])
+        argv = shlex.split(action["command"])[2:]
+        parsed = build_parser().parse_args(argv)
+        self.assertEqual(LOCAL_BRIEF["beats"][0]["narration"], parsed.query)
+
+    def test_without_a_beat_the_placeholder_stays_for_the_agent_to_fill(self):
+        state = with_brief_state(candidates=1)
+        state.update(duration_unknown=1, inspect_candidate="youtube:abcdefghijk", pending_preview=1)
+        self.assertIn("NARRACAO_OU_ALVO", next_action(state)["command"])
+
+
 if __name__ == "__main__":
     unittest.main()
