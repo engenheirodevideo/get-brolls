@@ -2133,19 +2133,23 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                 # Grava já, antes do corte: se o corte falhar, a licença consumida e o
                 # marcador ficam no ledger (a rota não roda de novo no próximo fetch).
                 ledger.save("fetch-route", c)
-            # Minor 9: a extensão só é conferida DEPOIS que cache e licença já estão
-            # gravados (acima) — uma imagem com extensão fora da lista é recusada sem
+            # Minor 9: o formato só é conferido DEPOIS que cache e licença já estão
+            # gravados (acima) — uma imagem de formato não reconhecido é recusada sem
             # custar a rota (e a licença) de novo a cada retry; o cache já existe.
-            # A lista é a mesma da coleta de foto das fontes embutidas (`media.IMAGE_SUFFIXES`).
-            from .media import IMAGE_SUFFIXES
+            # A extensão vem do conteúdo, como na foto das fontes embutidas
+            # (`media.image_suffix`), nunca do nome que o plugin deu ao arquivo.
+            if c.get("media", {}).get("kind") == "image":
+                from .media import SNIFFED_IMAGE_SUFFIXES, image_suffix
 
-            if c.get("media", {}).get("kind") == "image" and routed.path.suffix.lower() not in IMAGE_SUFFIXES:
-                from .http import ProviderError
+                try:
+                    image_suffix(routed.path)
+                except ValueError:
+                    from .http import ProviderError
 
-                raise ProviderError(
-                    f"Plugin {routed.plugin}: a rota devolveu uma imagem com extensão não aceita; "
-                    f"use {', '.join(IMAGE_SUFFIXES)}."
-                )
+                    raise ProviderError(
+                        f"Plugin {routed.plugin}: a rota devolveu uma imagem de formato não "
+                        f"reconhecido; entregue {', '.join(SNIFFED_IMAGE_SUFFIXES)}."
+                    ) from None
             if (
                 c.get("media", {}).get("kind") != "image"
                 and routed.duration_s is not None
@@ -2174,13 +2178,14 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
         if c.get("media", {}).get("kind") == "image":
             from .media import IMAGE_SUFFIXES, copy_image, image_suffix
 
-            # O download chega como `.part` (e cópia antiga do cache como `.mp4`): a
-            # extensão de `clips/` — e, dela, a de `entrega/` — sai do conteúdo real,
-            # só de formato conhecido; o resto é recusado, nunca herda a da URL.
-            # Arquivo com extensão de imagem conhecida fica como está nomeado.
+            # O download chega como `.part` (e cópia antiga do cache como `.mp4`), e a
+            # rota de plugin nomeia o arquivo como quiser: a extensão de `clips/` — e,
+            # dela, a de `entrega/` — sai do conteúdo real, só de formato conhecido; o
+            # resto é recusado, nunca herda a da URL nem a do nome. Só o original
+            # local importado pela pessoa, já com extensão de imagem, fica como está.
             suffix = Path(src).suffix.lower()
             try:
-                if suffix not in IMAGE_SUFFIXES:
+                if c["provider"] != "local" or suffix not in IMAGE_SUFFIXES:
                     suffix = image_suffix(src)
                 rel = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}" + suffix
                 dest = ledger.root / rel
@@ -2199,7 +2204,7 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                 logging.INFO,
                 "fetch",
                 candidate=c["id"],
-                kind="remote" if temp or routed_remote else "local",
+                kind="remote" if c["provider"] != "local" else "local",
                 bytes=_safe_size(dest),
                 sha256_prefix=_sha256_prefix(c["output"]["sha256"]),
                 ms=round((time.monotonic() - _fetch_started_at) * 1000),

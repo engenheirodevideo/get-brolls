@@ -139,10 +139,12 @@ def route_name(candidate):
 
 
 def fetch_stage_message(candidate):
+    # Foto não tem trecho: a prévia de referência dela vai sem `--start/--end`.
+    span = "" if (candidate.get("media") or {}).get("kind") == "image" else " --start <INICIO> --end <FIM>"
     return (
         f"A fonte {candidate.get('provider')} só entrega o arquivo no `fetch`, depois da aprovação e do "
         "permit (baixar consome licença ou cota). Para revisar agora, use "
-        f"`preview --candidate {candidate.get('id')} --start <INICIO> --end <FIM> --reference-only`; "
+        f"`preview --candidate {candidate.get('id')}{span} --reference-only`; "
         "depois approve, permit e fetch."
     )
 

@@ -86,6 +86,13 @@ LOCKED_DIR_FETCH_PLUGIN = FETCH_PLUGIN.replace(
 assert LOCKED_DIR_FETCH_PLUGIN != FETCH_PLUGIN
 
 
+def image_plugin(target):
+    """A mesma rota de `fetch`, entregando uma foto com o nome `target`."""
+    code = FETCH_PLUGIN.replace('KIND = "video"', 'KIND = "image"').replace('TARGET = "v.mp4"', f"TARGET = {target!r}")
+    assert code != FETCH_PLUGIN
+    return code
+
+
 @skip_unless_ffmpeg
 class FetchRouteCase(LoaderTestCase):
     @classmethod
@@ -95,6 +102,11 @@ class FetchRouteCase(LoaderTestCase):
         synth_video(cls.video, duration=3)
         cls.image = Path(cls._media.name) / "foto.png"
         synth_image(cls.image)
+        # PPM decodifica no FFmpeg, mas não tem assinatura de foto conhecida.
+        cls.ppm = Path(cls._media.name) / "foto.ppm"
+        synth_image(cls.ppm)
+        cls.tif = Path(cls._media.name) / "foto.tif"
+        synth_image(cls.tif)
 
     @classmethod
     def tearDownClass(cls):
@@ -175,14 +187,10 @@ class LicenseConsumedOnceTests(FetchRouteCase):
 @skip_unless_ffmpeg
 class RoutedImageExtensionTests(FetchRouteCase):
     def image_plugin(self, target):
-        code = FETCH_PLUGIN.replace('KIND = "video"', 'KIND = "image"').replace(
-            'TARGET = "v.mp4"', f"TARGET = {target!r}"
-        )
-        self.assertNotEqual(FETCH_PLUGIN, code)
-        return code
+        return image_plugin(target)
 
-    def test_image_with_an_unlisted_extension_is_refused(self):
-        self.enable(self.image_plugin("foto.bin"), source=self.image)
+    def test_image_with_unrecognized_content_is_refused(self):
+        self.enable(self.image_plugin("foto.jpg"), source=self.ppm)
         ident = self.gb("search", "--provider", "demo", "--query", "mar")["items"][0]["id"]
         self.gb("preview", "--candidate", ident, "--reference-only")
         self.gb("approve", "--candidate", ident, "--by", "Bruno", "--statement", "pode usar essa")
@@ -192,11 +200,11 @@ class RoutedImageExtensionTests(FetchRouteCase):
         self.assertIn(".jpg", str(caught.exception))
         self.assertEqual([], sorted((self.project / "brolls" / "clips").glob("*")))
 
-    def test_bad_extension_does_not_call_the_route_again_on_retry(self):
+    def test_unrecognized_content_does_not_call_the_route_again_on_retry(self):
         """Minor 9: a rota já rodou e devolveu um arquivo verificado; a recusa por
-        extensão não pode custar a licença de novo a cada retry — o cache e a
+        formato não pode custar a licença de novo a cada retry — o cache e a
         licença já foram gravados antes dessa checagem."""
-        self.enable(self.image_plugin("foto.bin"), source=self.image)
+        self.enable(self.image_plugin("foto.jpg"), source=self.ppm)
         ident = self.gb("search", "--provider", "demo", "--query", "mar")["items"][0]["id"]
         self.gb("preview", "--candidate", ident, "--reference-only")
         self.gb("approve", "--candidate", ident, "--by", "Bruno", "--statement", "pode usar essa")
@@ -221,6 +229,37 @@ class RoutedImageExtensionTests(FetchRouteCase):
         self.gb("permit", "--candidate", ident, "--evidence", "Plano anual da conta Demo")
         done = self.gb("fetch", "--candidate", ident)
         self.assertTrue(done["output"]["path"].endswith(".png"))
+
+    def collect(self, target, source):
+        self.enable(self.image_plugin(target), source=source)
+        ident = self.gb("search", "--provider", "demo", "--query", "mar")["items"][0]["id"]
+        self.gb("preview", "--candidate", ident, "--reference-only")
+        self.gb("approve", "--candidate", ident, "--by", "Bruno", "--statement", "pode usar essa")
+        self.gb("permit", "--candidate", ident, "--evidence", "Plano anual da conta Demo")
+        return self.gb("fetch", "--candidate", ident)
+
+    def test_extension_comes_from_the_content_not_the_plugin_file_name(self):
+        done = self.collect("foto.jpg", self.image)
+        self.assertTrue(done["output"]["path"].endswith(".png"))
+
+    def test_tiff_is_accepted(self):
+        done = self.collect("foto.tif", self.tif)
+        self.assertTrue(done["output"]["path"].endswith(".tif"))
+
+    def test_preview_stage_photo_is_cached_and_collected_by_its_content(self):
+        """Rota `stage="preview"` de foto: a prévia estática (`prepare_image_source`)
+        guarda a foto no cache com a extensão do conteúdo, e o `fetch` a leva até `clips/`."""
+        code = self.image_plugin("foto.jpg").replace('stage = "fetch"', 'stage = "preview"')
+        self.enable(code, source=self.image)
+        ident = self.gb("search", "--provider", "demo", "--query", "mar")["items"][0]["id"]
+        self.gb("preview", "--candidate", ident)
+        stored = self.manifest_item(ident)
+        self.assertEqual(".png", Path(stored["local_path"]).suffix)
+        self.gb("approve", "--candidate", ident, "--by", "Bruno", "--statement", "pode usar essa")
+        self.gb("permit", "--candidate", ident, "--evidence", "Plano anual da conta Demo")
+        done = self.gb("fetch", "--candidate", ident)
+        self.assertTrue(done["output"]["path"].endswith(".png"))
+        self.assertEqual(["demo:1"], self.calls_made())
 
 
 @skip_unless_ffmpeg
@@ -290,6 +329,52 @@ class FetchStageGuidanceTests(FetchRouteCase):
         parsed = build_parser().parse_args(shlex.split(action["command"])[2:])
         self.assertTrue(parsed.reference_only)
         self.assertEqual(item["id"], parsed.candidate)
+
+    def test_fetch_stage_photo_reference_preview_has_no_range(self):
+        import shlex
+
+        from getbrolls import commands
+        from getbrolls.cli import build_parser
+        from getbrolls.guidance import next_action
+        from getbrolls.ledger import Ledger
+
+        self.enable(image_plugin("foto.png"), source=self.image)
+        item = self.gb("search", "--provider", "demo", "--query", "mar")["items"][0]
+        items = Ledger(self.project).data["items"]
+        state = {
+            "project": str(self.project),
+            "counts": {"candidates": 1, "previews": 0, "approved": 0, "permitted": 0, "delivered": 0, "verified": 0},
+            "format_pending": 0,
+            "brief": {"beats": 1, "covered": 1, "missing": [], "conflicts": []},
+            "review_page": False,
+            "rights_mode": "per_item_evidence",
+            "candidates": commands._step_candidates(items),
+            "duration_unknown": len(commands._uninspected(items)),
+            "inspect_candidate": None,
+            "reference_only": commands._reference_only(items),
+            "preview_image": commands._preview_is_image(items),
+        }
+        action = next_action(state)
+        self.assertEqual("preview", action["step"])
+        self.assertNotIn("--start", action["command"])
+        parsed = build_parser().parse_args(shlex.split(action["command"])[2:])
+        self.assertTrue(parsed.reference_only)
+        self.assertEqual(item["id"], parsed.candidate)
+        # O comando sugerido funciona de verdade numa foto.
+        self.gb("preview", "--candidate", item["id"], "--reference-only")
+        self.assertEqual([], self.calls_made())
+
+    def test_fetch_stage_message_for_a_photo_has_no_range(self):
+        self.enable(image_plugin("foto.png"), source=self.image)
+        ident = self.gb("search", "--provider", "demo", "--query", "mar")["items"][0]["id"]
+        with self.assertRaises(OperationError) as caught:
+            self.gb("preview", "--candidate", ident)
+        message = str(caught.exception)
+        self.assertIn(f"preview --candidate {ident} --reference-only", message)
+        self.assertNotIn("--start", message)
+        self.assertEqual([], self.calls_made())
+        video = acquisition.fetch_stage_message({"id": "demo:1", "provider": "demo", "media": {"kind": "video"}})
+        self.assertIn("--start <INICIO> --end <FIM> --reference-only", video)
 
     def test_route_stage_survives_a_new_segment(self):
         self.enable()

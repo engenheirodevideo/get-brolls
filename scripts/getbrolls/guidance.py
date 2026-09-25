@@ -40,6 +40,8 @@ TEMPLATES = {
     # Fonte de plugin que só entrega o arquivo no `fetch` (rota `stage="fetch"`):
     # a prévia é só referência; o arquivo vem depois de approve e permit.
     "preview-reference": ("preview --project {project} --candidate {candidate} --start 0 --end 5 --reference-only"),
+    # A mesma prévia de referência para foto: imagem não tem trecho.
+    "preview-image-reference": "preview --project {project} --candidate {candidate} --reference-only",
     # Foto não tem trecho: a prévia estática sai sem intervalo nenhum.
     "preview-image": "preview --project {project} --candidate {candidate}",
     # IDs explícitos, nunca `--all`: "aprovei todos" quer dizer "os que você me
@@ -434,7 +436,11 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
                 "uso: vou registrar a prévia de referência (miniatura e intervalo) para você "
                 "decidir; depois é approve, permit e fetch.",
                 state,
-                command=command_for("preview-reference", state["project"], preview_candidate),
+                command=command_for(
+                    "preview-image-reference" if state.get("preview_image") else "preview-reference",
+                    state["project"],
+                    preview_candidate,
+                ),
             )
         if state.get("preview_image"):
             # Foto não tem duração nem trecho: nem `inspect` nem `--start/--end`
