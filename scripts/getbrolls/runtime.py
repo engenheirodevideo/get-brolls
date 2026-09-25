@@ -295,6 +295,25 @@ READ_ONLY_COMMANDS = ("status", "serve", "brief", "doctor", "x")
 READ_ONLY_ACTIONS = {("queue", "status")}
 
 
+# Erro que veio de um plugin: "Plugin <id>: …" (todo erro do core sobre código de
+# plugin usa esse prefixo) ou "Fonte X é do plugin Y, …" (fonte de plugin fora do
+# ar, que já traz a própria dica). RULES.md não tem nada a ver com nenhum dos dois.
+_PLUGIN_ERROR_RE = re.compile(r"Plugin [A-Za-z0-9_-]+: |Fonte \S+ é do plugin ")
+PLUGIN_ERROR_HINT = "Veja plugins --action list / doctor e docs/SDK.md."
+
+
+def provider_error_message(text):
+    """Mensagem de `ProviderError` para a pessoa: built-in segue com o " Confira
+    docs/RULES.md." de sempre; erro de plugin ganha dica de plugin (ou nenhuma,
+    quando já traz a dele), com a frase fechada antes (BUG-08)."""
+    if not _PLUGIN_ERROR_RE.match(text):
+        return text + " Confira docs/RULES.md."
+    if text.startswith("Fonte "):
+        return text
+    closed = text if text.rstrip().endswith((".", "!", "?")) else text.rstrip() + "."
+    return f"{closed} {PLUGIN_ERROR_HINT}"
+
+
 def audited(args, execute):  # noqa: C901, PLR0912, PLR0915 - existing size; wraps every command with locking, logging and the audit trail
     started = time.monotonic()
     event = {
@@ -345,7 +364,7 @@ def audited(args, execute):  # noqa: C901, PLR0912, PLR0915 - existing size; wra
 
             if isinstance(exc, ProviderError):
                 event["error_code"] = "INVALID_DATA"
-                event["message"] = redact(exc) + " Confira docs/RULES.md."
+                event["message"] = provider_error_message(redact(exc))
                 current = ACTIVE.get()
                 if current is not None:
                     current["warnings"].append({"code": "PROVIDER_ERROR", "message": redact(exc)})

@@ -299,3 +299,49 @@ class SearchPluginErrorTests(LoaderTestCase):
         self.assertIn("Plugin demo: Configure DEMO_DIR com a pasta.", err["error"])
         self.assertNotIn("demo: Plugin demo:", err["error"])
         self.assertNotIn("demo: Plugin demo:", json.dumps(err["warnings"], ensure_ascii=False))
+
+
+class PluginErrorHintTests(LoaderTestCase):
+    """BUG-08: erro de plugin não leva o "Confira docs/RULES.md." genérico; built-in igual."""
+
+    def _message(self, error):
+        from argparse import Namespace
+
+        from getbrolls.runtime import OperationError, audited
+
+        def boom(_args):
+            raise error
+
+        with self.assertRaises(OperationError) as caught:
+            audited(Namespace(command="providers", project=None), boom)
+        return caught.exception.payload["message"]
+
+    def test_plugin_provider_error_gets_a_plugin_hint(self):
+        from getbrolls.http import ProviderError
+
+        message = self._message(ProviderError("Plugin meu_route: Falha ao resolver provedor"))
+        self.assertNotIn("RULES.md", message)
+        self.assertIn("Plugin meu_route: Falha ao resolver provedor.", message)
+        self.assertIn("docs/SDK.md", message)
+        self.assertNotIn("..", message)
+
+    def test_plugin_error_already_ending_with_a_period(self):
+        from getbrolls.http import ProviderError
+
+        message = self._message(ProviderError("Plugin demo: Configure DEMO_DIR com a pasta."))
+        self.assertNotIn("RULES.md", message)
+        self.assertNotIn("..", message)
+
+    def test_unavailable_plugin_source_keeps_its_own_hint_only(self):
+        from getbrolls.http import ProviderError
+
+        text = "Fonte demo é do plugin demo, que está failed. Rode plugins --action list / doctor."
+        self.assertEqual(text, self._message(ProviderError(text)))
+
+    def test_builtin_message_is_unchanged(self):
+        from getbrolls.http import ProviderError
+
+        self.assertEqual(
+            "Falha ao resolver provedor Confira docs/RULES.md.",
+            self._message(ProviderError("Falha ao resolver provedor")),
+        )
