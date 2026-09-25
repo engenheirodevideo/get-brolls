@@ -14,10 +14,23 @@ Cobre também as duas rodadas de correções de segurança:
   `cat-file`, inclusive na passada cedo do manifesto (N1); TODA variável
   `GIT_*` é removida do ambiente do git, não só uma lista fixa, e o
   `GIT_SSH_COMMAND` de reserva só entra sem override nenhum da pessoa (M4,
-  revisado); a varredura de pasta de resto não apaga a única cópia de um
-  plugin e ignora pasta jovem demais pra ser resto de verdade (N2); caminho com
-  componente `.git` é recusado e uma colisão de nome (maiúsc./minúsc.) vira
-  `ValueError` claro em vez de um `OSError` cru (N3).
+  revisado no round 3); a varredura de pasta de resto não apaga a única cópia
+  de um plugin e ignora pasta jovem demais pra ser resto de verdade (N2,
+  revisado no round 3); caminho com componente `.git` é recusado e uma colisão
+  de nome (maiúsc./minúsc.) vira `ValueError` claro em vez de um `OSError` cru
+  (N3, revisado no round 3).
+- Round 3: colisão de nome detectada direto da listagem do `ls-tree`
+  (casefold), sem depender do disco de destino distinguir caixa — antes só uma
+  escrita real colidindo no disco disparava o erro, o que passava batido num
+  disco case-sensitive (Linux/CI); também recusa alias de `.git` no Windows
+  (ponto/espaço sobrando, nome curto 8.3 `GIT~1`) (N3); o epoch de criação vai
+  no NOME da pasta de staging (`.install-<epoch>-<uuid>`,
+  `.old-<epoch>-<id>-<uuid>`) em vez de `st_mtime` (que `os.replace`/
+  `shutil.copytree` preservam do conteúdo de origem, fazendo uma pasta nova
+  parecer velha), e nenhum erro de sistema de arquivos na varredura aborta
+  quem chamou `install`/`update` (N2); mais `GIT_SSL_CAINFO`/`GIT_SSL_CAPATH`/
+  `GIT_SSH_VARIANT` preservados depois da limpeza de `GIT_*`, e
+  `_has_core_ssh_command` usa `--includes` (M4).
 """
 
 import json
@@ -27,6 +40,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+import uuid
 from pathlib import Path
 from unittest.mock import patch
 
@@ -247,16 +261,15 @@ class FolderInstallTests(InstallTestCase):
     def test_stale_staging_dirs_are_swept_at_the_start(self):
         source = write_plugin(self.work / "demo_src")
         (self.home / "plugins").mkdir(parents=True, exist_ok=True)
-        stale_install = self.home / "plugins" / ".install-lixo"
+        # N2 (round 3): a idade vem do epoch codificado no NOME, não do
+        # `st_mtime` — por isso o nome já nasce com um epoch antigo, sem
+        # precisar de `os.utime`.
+        old_epoch = int(time.time()) - (install_mod.STALE_STAGING_MAX_AGE_S + 60)
+        stale_install = self.home / "plugins" / f".install-{old_epoch}-{uuid.uuid4().hex}"
         stale_install.mkdir()
         (stale_install / "resto.txt").write_text("x", encoding="utf-8")
-        stale_old = self.home / "plugins" / ".old-lixo"
-        stale_old.mkdir()
-        # N2: só mexe em pasta de resto mais velha que STALE_STAGING_MAX_AGE_S — uma
-        # pasta jovem pode ser um install/update concorrente ainda em andamento.
-        old_time = time.time() - (install_mod.STALE_STAGING_MAX_AGE_S + 60)
-        os.utime(stale_install, (old_time, old_time))
-        os.utime(stale_old, (old_time, old_time))
+        stale_old = self.home / "plugins" / f".old-{old_epoch}-outroplugin-{uuid.uuid4().hex}"
+        stale_old.mkdir()  # "outroplugin" não tem pasta em plugins/: some por não ter pra onde restaurar
 
         preview = install_mod.install(str(source), confirm=False)
         install_mod.install(str(source), confirm=True, expect=preview["plugin"]["sha256"])
@@ -345,13 +358,78 @@ class FolderInstallTests(InstallTestCase):
         self.assertNotIn("GIT_SSH_COMMAND", env5)
         self.assertNotIn("GIT_SSH", env5)
 
+    def test_safe_git_env_vars_survive_the_git_star_cleanup(self):
+        # M4 (round 3): GIT_SSL_CAINFO/GIT_SSL_CAPATH não redirecionam o git pra
+        # outro repositório/config — são a CA que um proxy corporativo ou registro
+        # interno exige; removê-las sem repor quebraria um clone HTTPS legítimo.
+        safe = {"GIT_SSL_CAINFO": "/etc/ssl/corp-ca.pem", "GIT_SSL_CAPATH": "/etc/ssl/corp-certs"}
+        with patch.dict(os.environ, safe, clear=False):
+            env = install_mod._git_env(ssh=False)
+        self.assertEqual("/etc/ssl/corp-ca.pem", env["GIT_SSL_CAINFO"])
+        self.assertEqual("/etc/ssl/corp-certs", env["GIT_SSL_CAPATH"])
+
+        # Sem elas no ambiente de quem chama, não inventamos valor nenhum.
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("GIT_SSL_CAINFO", None)
+            os.environ.pop("GIT_SSL_CAPATH", None)
+            env2 = install_mod._git_env(ssh=False)
+        self.assertNotIn("GIT_SSL_CAINFO", env2)
+        self.assertNotIn("GIT_SSL_CAPATH", env2)
+
+    def test_git_ssh_variant_only_survives_alongside_git_ssh(self):
+        # GIT_SSH_VARIANT ("ssh" x "putty"/"plink") só descreve o cliente que
+        # GIT_SSH aponta; sem GIT_SSH não há o que descrever, então não sobrevive
+        # sozinho — mesmo que a pessoa tenha definido só ele por engano.
+        with patch.dict(os.environ, {"GIT_SSH": "plink.exe", "GIT_SSH_VARIANT": "putty"}, clear=False):
+            os.environ.pop("GIT_SSH_COMMAND", None)
+            with patch.object(install_mod, "_has_core_ssh_command", return_value=False):
+                env = install_mod._git_env(ssh=True)
+        self.assertEqual("plink.exe", env["GIT_SSH"])
+        self.assertEqual("putty", env["GIT_SSH_VARIANT"])
+
+        with patch.dict(os.environ, {"GIT_SSH_VARIANT": "putty"}, clear=False):
+            os.environ.pop("GIT_SSH", None)
+            os.environ.pop("GIT_SSH_COMMAND", None)
+            with patch.object(install_mod, "_has_core_ssh_command", return_value=False):
+                env2 = install_mod._git_env(ssh=True)
+        self.assertNotIn("GIT_SSH_VARIANT", env2)
+        self.assertEqual("ssh -o BatchMode=yes", env2["GIT_SSH_COMMAND"])
+
+    def test_has_core_ssh_command_queries_global_includes(self):
+        recorded = {}
+        real_run = subprocess.run
+
+        def spy(args, **kwargs):
+            recorded["args"] = args
+            return real_run(args, **kwargs)
+
+        with patch.object(install_mod.subprocess, "run", side_effect=spy):
+            install_mod._has_core_ssh_command(dict(os.environ))
+        self.assertIn("--global", recorded["args"])
+        self.assertIn("--includes", recorded["args"])
+        self.assertIn("core.sshCommand", recorded["args"])
+
     # -- N3: caminho com componente ".git" é recusado (checagem unitária) -------
 
     def test_refuse_git_path_component_is_case_insensitive(self):
-        for bad in ("x/.git/evil", ".git/evil", "sub/.GIT/x", "a/b/.Git/c"):
+        for bad in (
+            "x/.git/evil",
+            ".git/evil",
+            "sub/.GIT/x",
+            "a/b/.Git/c",
+            # N3 (round 3): variantes que o Windows normaliza pra ".git" de
+            # verdade ao gravar em disco (ponto/espaço sobrando à direita), e o
+            # nome curto 8.3 que o NTFS pode resolver como alias de ".git".
+            "sub/.git./evil",
+            "sub/.git /evil",
+            "sub/.GIT. /evil",
+            "sub/GIT~1/evil",
+            "sub/git~1/evil",
+        ):
             with self.subTest(path=bad), self.assertRaises(ValueError):
                 install_mod._refuse_git_path_component(bad)
         install_mod._refuse_git_path_component("normal/path/plugin.py")  # não levanta
+        install_mod._refuse_git_path_component("gita/evil")  # prefixo, não é ".git": não levanta
 
     # -- N2: varredura de resto não apaga a única cópia de um plugin -------------
 
@@ -361,10 +439,9 @@ class FolderInstallTests(InstallTestCase):
         install_mod.install(str(source), confirm=True, expect=preview["plugin"]["sha256"])
 
         current = self.home / "plugins" / "demo"
-        retired = self.home / "plugins" / ".old-simulado"
+        old_epoch = int(time.time()) - (install_mod.STALE_STAGING_MAX_AGE_S + 60)
+        retired = self.home / "plugins" / f".old-{old_epoch}-demo-{uuid.uuid4().hex}"
         current.rename(retired)  # simula a morte do processo entre as duas trocas do update
-        old_time = time.time() - (install_mod.STALE_STAGING_MAX_AGE_S + 60)
-        os.utime(retired, (old_time, old_time))
 
         install_mod._sweep_stale_staging()
 
@@ -373,23 +450,60 @@ class FolderInstallTests(InstallTestCase):
 
     def test_sweep_skips_a_recent_staging_dir(self):
         (self.home / "plugins").mkdir(parents=True, exist_ok=True)
-        fresh_install = self.home / "plugins" / ".install-recente"
+        fresh_install = self.home / "plugins" / f".install-{int(time.time())}-{uuid.uuid4().hex}"
         fresh_install.mkdir()
 
         install_mod._sweep_stale_staging()
 
         self.assertTrue(fresh_install.exists())
 
-    def test_sweep_deletes_an_old_orphan_old_dir_with_no_matching_id(self):
+    def test_young_old_dir_is_not_swept_even_if_its_content_mtime_is_old(self):
+        # N2 (round 3): a idade vem só do epoch no NOME. Um `.old-*` recém-criado
+        # (epoch de agora) tem que ficar intocado mesmo que o CONTEÚDO dentro dele
+        # (e a própria pasta) carreguem um `st_mtime` antigo — exatamente o que
+        # `os.replace`/`shutil.copytree` fariam com o conteúdo de um plugin
+        # instalado há muito tempo. Provar isso é o que faltava: um bug que volte
+        # a olhar pro `st_mtime` faria este teste falhar.
         (self.home / "plugins").mkdir(parents=True, exist_ok=True)
-        orphan = self.home / "plugins" / ".old-orfao"
-        orphan.mkdir()  # sem manifesto dentro: não dá pra saber de que plugin era
-        old_time = time.time() - (install_mod.STALE_STAGING_MAX_AGE_S + 60)
-        os.utime(orphan, (old_time, old_time))
+        fresh_epoch = int(time.time())
+        young = self.home / "plugins" / f".old-{fresh_epoch}-demo-{uuid.uuid4().hex}"
+        write_plugin(young)
+        old_time = time.time() - (install_mod.STALE_STAGING_MAX_AGE_S + 3600)
+        os.utime(young / "getbrolls-plugin.json", (old_time, old_time))
+        os.utime(young / "plugin.py", (old_time, old_time))
+        os.utime(young, (old_time, old_time))
 
         install_mod._sweep_stale_staging()
 
-        self.assertFalse(orphan.exists())
+        self.assertTrue(young.exists())
+        self.assertFalse((self.home / "plugins" / "demo").exists())
+
+    def test_sweep_leaves_an_unrecognized_staging_name_alone(self):
+        # Nome que não bate com `.install-<epoch>-<uuid>`/`.old-<epoch>-<id>-<uuid>`
+        # (de uma versão anterior deste código, ou qualquer outra coisa) não tem
+        # como ter a idade calculada com confiança — mais seguro não mexer do que
+        # arriscar apagar algo que não é mais o que costumava ser.
+        (self.home / "plugins").mkdir(parents=True, exist_ok=True)
+        legacy = self.home / "plugins" / ".old-orfao"
+        legacy.mkdir()
+
+        install_mod._sweep_stale_staging()
+
+        self.assertTrue(legacy.exists())
+
+    def test_a_sweep_error_does_not_abort_install(self):
+        source = write_plugin(self.work / "demo_src")
+        (self.home / "plugins").mkdir(parents=True, exist_ok=True)
+        old_epoch = int(time.time()) - (install_mod.STALE_STAGING_MAX_AGE_S + 60)
+        stale = self.home / "plugins" / f".old-{old_epoch}-outroplugin-{uuid.uuid4().hex}"
+        stale.mkdir()
+
+        with patch.object(install_mod, "_sweep_one_stale_entry", side_effect=OSError("falha simulada na varredura")):
+            preview = install_mod.install(str(source), confirm=False)
+        self.assertFalse(preview["installed"])
+
+        done = install_mod.install(str(source), confirm=True, expect=preview["plugin"]["sha256"])
+        self.assertTrue(done["installed"])
 
 
 @unittest.skipUnless(HAS_GIT, "git required")
@@ -567,6 +681,11 @@ class GitInstallTests(InstallTestCase):
     # -- N3: caminho ".git" e colisão de nome no histórico git -------------------
 
     def test_git_tree_name_collision_becomes_a_clear_value_error(self):
+        # N3 (round 3): a colisão é detectada direto da listagem do `ls-tree`
+        # (casefold dos caminhos), não da escrita real em disco — por isso este
+        # teste vale em qualquer sistema de arquivos, incluindo um disco
+        # case-sensitive (ubuntu-latest/CI Linux), onde a versão anterior deste
+        # teste passava batido (as duas entradas simplesmente coexistiam).
         repo = self.repo()
         top_blob = subprocess.run(
             ["git", "hash-object", "-w", "--stdin"],
@@ -599,7 +718,7 @@ class GitInstallTests(InstallTestCase):
         git(repo, "commit", "--quiet", "-m", "colisao de nomes")
 
         err = run_cli("plugins", "--action", "install", "--source", repo, expect=2, env=self.env())
-        self.assertIn("colisão", err["error"])
+        self.assertIn("colidem", err["error"])
         self.assertFalse((self.home / "plugins" / "demo").exists())
 
     # -- M5: URL git com query/fragmento é recusada -------------------------------
