@@ -8,6 +8,9 @@ tags: [get-brolls, sdk, plugins]
 
 # SDK de extensões — Get B-rolls
 
+> **Experimental:** `sdk_api` 1 pode mudar em versão minor; plugins declaram
+> `requires_getbrolls`. Confira o CHANGELOG antes de atualizar o Get B-rolls.
+
 O Get B-rolls aceita extensões locais em Python: **plugins** instalados numa
 pasta pessoal, com opt-in explícito, que contribuem fontes de busca
 (`providers`), rotas que trazem o arquivo (`routes`), comandos próprios
@@ -60,9 +63,9 @@ Campos de `getbrolls-plugin.json`:
 | `version` | string | sim | `X.Y.Z` do próprio plugin. |
 | `sdk_api` | inteiro | sim | Versão do contrato do SDK que o plugin fala; hoje `1`. Diferente da versão instalada do Get B-rolls, o plugin é recusado. |
 | `requires_getbrolls` | string | sim | Faixa de compatibilidade, ex.: `">=2.5,<3"`. |
-| `entry` | string | sim | Nome do arquivo `.py` de entrada, na raiz da pasta do plugin. |
-| `contributes` | objeto | sim | Listas por tipo de contribuição — veja abaixo. |
-| `permissions` | objeto | sim | `network` (hosts liberados para `get_json`/`download`), `env` (variáveis liberadas para `env`) e `paths` (pastas liberadas para `local_file`). |
+| `entry` | string | sim | Nome do arquivo de entrada na raiz da pasta do plugin: `[A-Za-z0-9_]{1,64}\.py` (sem subpasta, hífen ou ponto extra). |
+| `contributes` | objeto | não (padrão `{}`) | Listas por tipo de contribuição — veja abaixo. Chave ausente vale lista vazia. |
+| `permissions` | objeto | não (padrão `{}`) | `network` (hosts liberados para `get_json`/`download`), `env` (variáveis liberadas para `env`) e `paths` (pastas liberadas para `local_file`); cada chave ausente vale lista vazia. |
 
 `contributes` aceita as chaves `providers`, `presets`, `routes`, `commands`,
 `exporters`, `rules`, `hooks`, `themes`, `brief_templates` e `eval_rubrics`,
@@ -93,7 +96,9 @@ diferencia maiúsculas de minúsculas, escreva a raiz com a mesma caixa que o
 sistema mostra.
 
 Os campos `schema` e `signed_fields` existem no formato do manifesto para
-versões futuras do SDK; nesta versão eles têm que ficar ausentes ou vazios.
+versões futuras do SDK; nesta versão eles têm que ficar ausentes ou ser o objeto
+vazio `{}` — `[]`, `""` ou `null` são recusados. Qualquer outro campo de topo
+fora da tabela também recusa o manifesto.
 
 ## Contrato de Provider
 
@@ -164,7 +169,8 @@ class RouteResult:
 - `stage="fetch"`: trazer o arquivo consome licença ou cota, então o core só
   chama a rota no `fetch`, depois da aprovação humana e do `permit`. Em
   `inspect`/`preview`/varredura ela é recusada com uma mensagem que manda usar
-  `preview --candidate ID --start ... --end ... --reference-only`. Essa
+  `preview --candidate ID --start ... --end ... --reference-only` — numa foto,
+  `preview --candidate ID --reference-only`, sem `--start/--end`. Essa
   referência é a miniatura da fonte (`preview.poster_url`): preencha
   `poster_url` ou `embed_url` no candidato. Candidato de plugin sem prévia
   local, sem `poster_url` e sem `embed_url` não tem nada que a pessoa possa ter
@@ -216,9 +222,13 @@ Rota `stage="fetch"` consome licença ou cota **uma vez só**:
   `status`/guidance leem isso (sem rodar plugin) e nunca sugerem `inspect` nem
   prévia com mídia para eles — sugerem `preview --reference-only`, depois
   approve, permit e fetch.
-- Uma imagem entregue pela rota tem que terminar em `.jpg`, `.jpeg`, `.png`,
-  `.webp` ou `.gif` (a extensão vai para o nome do arquivo em `clips/`); outra
-  extensão é recusada.
+- Numa imagem entregue pela rota, a extensão vem do **conteúdo** do arquivo
+  (`media.image_suffix`), como nas fotos do Commons e da NASA: `.jpg`, `.png`,
+  `.webp`, `.gif`, `.tif` ou `.bmp` (`SNIFFED_IMAGE_SUFFIXES`), e é essa que vai
+  para o nome em `clips/`. O nome que o plugin deu ao arquivo é ignorado — um PNG
+  gravado como `foto.jpg` sai `.png`. Conteúdo que não é nenhum desses formatos
+  é recusado depois de a licença e `route_consumed_at` ficarem gravados, então o
+  retry não roda a rota de novo.
 
 ## PluginApi
 
@@ -524,6 +534,13 @@ python3 scripts/gb.py plugins --action new --id meu_banco --kind route --path <p
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=<pasta da skill>/scripts python3 -m unittest discover -s <pasta>/meu_banco/tests
 ```
 
+No PowerShell, as variáveis vêm antes, uma por linha:
+
+```powershell
+$env:PYTHONDONTWRITEBYTECODE = "1"; $env:PYTHONPATH = "<pasta da skill>\scripts"
+python -m unittest discover -s <pasta>\meu_banco\tests
+```
+
 `--kind` é `provider` (fonte), `route` (fonte + rota de `fetch` com token) ou
 `command`. Sem `PYTHONDONTWRITEBYTECODE=1`, o `__pycache__` que o teste cria
 muda o hash do plugin — o pin cobre todo arquivo da pasta.
@@ -541,19 +558,24 @@ python3 scripts/gb.py plugins --action check --path <pasta-do-plugin>
 
 Depois de instalado em `$GB_HOME/plugins/<id>/`, use
 `plugins --action list` para ver o status (`disabled`, `enabled`, `suspended`,
-`incompatible`) e `plugins --action disable --id <id>` para desligar.
+`invalid`, `incompatible`) e `plugins --action disable --id <id>` para desligar.
 `list` nunca executa código do plugin — o status ali é só manifesto + pin de
 hash (pré-carga), e o comando devolve uma `note` dizendo isso. Se o
 `register()` do plugin estourar uma exceção, `list` continua mostrando
-`enabled`; rode `doctor` para o resultado real do carregamento (`failed` com o
-motivo). Pedir busca numa fonte de um plugin instalado mas não carregado
-(`search --provider <nome>`) nomeia o plugin e o status atual na mensagem de
-erro, em vez de dizer só "fonte desconhecida".
+`enabled`; rode `doctor` para o resultado real do carregamento — só ele mostra
+`failed`, com o motivo. Pedir busca numa fonte de um plugin instalado mas não
+carregado (`search --provider <nome>`) nomeia o plugin e o status atual na
+mensagem de erro, em vez de dizer só "fonte desconhecida".
 
 ## Evolução do schema
 
-Os schemas de candidato e de brief já reservam um campo `ext` para dados de
-extensão — pensado para as próximas versões do SDK, não usado por este ainda.
+Os schemas de candidato e de brief (`schemas/*.schema.json`) já reservam um
+campo `ext` para dados de extensão — reservado para versões futuras e ignorado
+pelo runtime atual. Os schemas documentam o formato; o runtime não os aplica e é
+permissivo: no `BRIEF.md`, uma chave desconhecida (inclusive `ext`) é aceita e
+ignorada, e num candidato do `manifest.json` uma chave fora do schema não é
+recusada. Candidato que vem de plugin é diferente: o guarda-corpo descarta todo
+campo fora do allowlist, `ext` incluso (veja [Guarda-corpos](#guarda-corpos)).
 Também nas próximas versões: suporte aos demais tipos de `contributes`
 (`exporters`, `rules`, `hooks`, `themes`, `brief_templates`, `eval_rubrics`) e
 um caminho para promover um campo nascido em `ext.<id>` de um plugin para o

@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-23
-updated: 2026-09-23
+updated: 2026-09-25
 tags: [get-brolls, manual, tutorial, commands]
 ---
 
@@ -437,6 +437,50 @@ python3 scripts/gb.py queue --action mark --id "<ID_DA_FILA>" --skipped --reason
 # ── queue status ────────────────────────────────────────────
 # O QUE FAZ: mostra quantos faltam, quantos foram e se está em pausa.
 python3 scripts/gb.py queue --action status --project /caminho/meu-video
+```
+
+## 🧩 Plugins do SDK (experimental)
+
+> Plugins acrescentam fontes, rotas de download e comandos próprios, instalados em `~/.getbrolls/plugins`. Não é o plugin do Claude Code. Experimental: o contrato (`sdk_api` 1) pode mudar em versão minor. Detalhes em [SDK.md](SDK.md).
+
+```bash
+# ── plugins --action list ───────────────────────────────────
+# O QUE FAZ: lista os plugins instalados, com status e o que cada um traz.
+# STATUS: disabled · enabled · suspended · invalid · incompatible
+# ATENÇÃO: não roda código do plugin; o resultado real do carregamento sai no doctor.
+python3 scripts/gb.py plugins --action list
+
+# ── plugins --action install ────────────────────────────────
+# O QUE FAZ: traz um plugin de uma pasta ou de um repositório git.
+# EM DOIS PASSOS: sem --yes só mostra manifesto, permissões e o sha256;
+#                 depois de revisar, repita com --yes --expect <sha256 da prévia>.
+python3 scripts/gb.py plugins --action install --source "<pasta-ou-url-git>"
+python3 scripts/gb.py plugins --action install --source "<pasta-ou-url-git>" --yes --expect "<sha256>"
+
+# ── plugins --action update ─────────────────────────────────
+# O QUE FAZ: compara com a origem gravada no install e traz a versão nova.
+# CONFIRMA IGUAL AO INSTALL: --yes --expect <sha256 da prévia>.
+python3 scripts/gb.py plugins --action update --id "<id>"
+
+# ── plugins --action enable / disable ───────────────────────
+# O QUE FAZ: liga ou desliga um plugin que já está na pasta.
+# ENABLE EM DOIS PASSOS: sem --yes só mostra o manifesto; com --yes liga.
+# PLUGIN SUSPENSO (a pasta mudou): a prévia mostra o que mudou e pede --yes --expect <sha256>.
+python3 scripts/gb.py plugins --action enable --id "<id>"
+python3 scripts/gb.py plugins --action disable --id "<id>"
+
+# ── plugins --action new / check ────────────────────────────
+# O QUE FAZ: new cria um plugin mínimo (provider, route ou command) que já passa no teste;
+#            check valida uma pasta de plugin.
+# ATENÇÃO: check EXECUTA o código da pasta. Use só em plugin que você escreveu ou revisou.
+python3 scripts/gb.py plugins --action new --id meu_banco --kind route --path "<pasta>"
+python3 scripts/gb.py plugins --action check --path "<pasta>/meu_banco"
+
+# ── x ───────────────────────────────────────────────────────
+# O QUE FAZ: roda um comando próprio de um plugin habilitado. Só lê o projeto.
+# x --list mostra quais comandos existem.
+python3 scripts/gb.py x --list
+python3 scripts/gb.py x pasta_local recentes --arg limite=5 --project /caminho/meu-video
 ```
 
 ## ❓ Ajuda

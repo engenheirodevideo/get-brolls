@@ -155,6 +155,8 @@ recriar a interface de memória.
 
 ```sh
 python3 scripts/gb.py preview --candidate <ID> --start <INICIO> --end <FIM> --reference-only --project <projeto>
+# numa foto, no lugar da linha acima (foto não tem trecho):
+python3 scripts/gb.py preview --candidate <ID> --reference-only --project <projeto>
 python3 scripts/gb.py approve --candidate <ID> --by NOME --channel chat --statement "frase exata" --project <projeto>
 python3 scripts/gb.py permit --candidate <ID> --evidence "condições reais" --project <projeto>
 python3 scripts/gb.py fetch --candidate <ID> --project <projeto>

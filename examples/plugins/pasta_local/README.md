@@ -15,8 +15,10 @@ A rota `pasta_local` (`stage="preview"`) entrega o arquivo quando você pede a
 prévia: `preview --candidate <ID> --start ... --end ...` funciona direto, sem
 `resolve --file`. A rota acha o arquivo pelo id da busca e pede ao core uma
 cópia de trabalho com `api.local_file` — o core recusa qualquer arquivo fora
-de `permissions.paths` e nunca mexe no original. O plugin não tem acesso à
-rede (`permissions.network` vazio).
+de `permissions.paths` e nunca mexe no original. O plugin não declara host em
+`permissions.network`, então `api.get_json`/`api.download` recusam qualquer
+chamada — isso não é caixa de areia: o código do plugin roda com as suas
+permissões.
 
 O comando `recentes` lista os vídeos mais novos da pasta e quantos candidatos
 dela já estão no projeto:
@@ -36,6 +38,15 @@ rodar de novo só sobrescreve a mesma `plugins/pasta_local`:
 ```sh
 mkdir -p "${GB_HOME:-$HOME/.getbrolls}/plugins"
 cp -r examples/plugins/pasta_local "${GB_HOME:-$HOME/.getbrolls}/plugins/"
+```
+
+No PowerShell:
+
+```powershell
+$gbHome = if ($env:GB_HOME) { $env:GB_HOME } else { "$HOME\.getbrolls" }
+$plugins = Join-Path $gbHome "plugins"
+New-Item -ItemType Directory -Force $plugins | Out-Null
+Copy-Item -Recurse -Force examples\plugins\pasta_local $plugins
 ```
 
 Ou deixe o `plugins --action install --source examples/plugins/pasta_local`
@@ -68,8 +79,10 @@ mostra o que mudou (arquivos adicionados, removidos e alterados) e o novo
 - `PASTA_LOCAL_DIR`: caminho absoluto da pasta com os vídeos a buscar. Sem essa
   variável (ou apontando para algo que não é pasta), `search` falha com uma
   mensagem pedindo para configurá-la.
-- `permissions.paths` no manifesto vem com `["~/Movies"]`. Se a sua pasta de
-  B-rolls fica em outro lugar (um NAS, outro disco), edite essa lista **antes**
+- `permissions.paths` no manifesto vem com `["~/Movies"]` (a pasta de vídeos do
+  macOS). No Windows, a pasta equivalente é `~/Videos`: troque a entrada por
+  `"~/Videos"`. Se a sua pasta de B-rolls fica em outro lugar (um NAS, outro
+  disco), edite essa lista **antes**
   do `enable`/`install` — o pin de hash cobre o manifesto. `PASTA_LOCAL_DIR`
   tem que ficar dentro de uma dessas raízes para a prévia funcionar.
 - Fora das raízes, a **busca funciona** (ela só lê nomes de arquivo com o

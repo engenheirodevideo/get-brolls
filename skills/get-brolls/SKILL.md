@@ -39,7 +39,7 @@ Escreva o `BRIEF.md` com `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" init-bri
 
 ## Passo 3 — Busque fonte literal
 
-`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" brief --beat <ID> --project <projeto>` devolve o comando pronto do beat. Todo material entra com `--shot <beat.id>`. Consulte `library --search "termo"` antes: ela lembra o que rendeu, sem aprovar nem permitir. Fontes (inclusive de plugin), presets, lotes e biblioteca estão em [`${CLAUDE_PLUGIN_ROOT}/references/providers.md`](${CLAUDE_PLUGIN_ROOT}/references/providers.md); `plugins --action install|update` (e `enable` de plugin suspenso) exige `--yes --expect <sha256>` da prévia. **Reel do Instagram: leia [`${CLAUDE_PLUGIN_ROOT}/references/instagram.md`](${CLAUDE_PLUGIN_ROOT}/references/instagram.md) antes de tocar no navegador** — é a rota que quebra primeiro.
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" brief --beat <ID> --project <projeto>` devolve o comando pronto do beat. Todo material entra com `--shot <beat.id>`. Consulte `library --search "termo"` antes: lembra o que rendeu, sem aprovar nem permitir. Fontes, presets, lotes e biblioteca: [`${CLAUDE_PLUGIN_ROOT}/references/providers.md`](${CLAUDE_PLUGIN_ROOT}/references/providers.md). Plugin (experimental): `plugins --action install|update` e `enable` de plugin suspenso exigem `--yes --expect <sha256>` da prévia. **Reel do Instagram: leia [`${CLAUDE_PLUGIN_ROOT}/references/instagram.md`](${CLAUDE_PLUGIN_ROOT}/references/instagram.md) antes de tocar no navegador** — é a rota que quebra primeiro.
 
 **Checkpoint C2.** Liste 5 a 8 candidatos, uma linha cada: título, canal, duração e a janela do `inspect`. Feche com "sigo com estes?".
 
@@ -47,15 +47,15 @@ Escreva o `BRIEF.md` com `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" init-bri
 
 `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" inspect --candidate <ID> --query "fala ou alvo" --project <projeto>` lê duração, capítulos e legendas e devolve janelas pontuadas; escreva a `--query` no idioma da fonte. Escolha `--start/--end` a partir delas, nunca de palpite.
 
-Depois, `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" preview --candidate <ID> --start <INICIO> --end <FIM> --project <projeto>` gera poster, contact sheet e GIF: até 10 s por prévia (`GB_PREVIEW_MAX_SECONDS`) e **um `preview` por chamada**. A resposta traz `files.contact_sheet` (no `status` e no manifesto, `preview.contact_sheet_path`, relativo a `brolls/`) e `preview.frame_times_s`. **Abra e olhe antes de seguir.** Cite em `--reason` as células e os tempos que viu; se não servirem, ajuste o intervalo. Nunca descreva quadro que não conferiu.
+Depois, `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" preview --candidate <ID> --start <INICIO> --end <FIM> --project <projeto>` gera poster, contact sheet e GIF: até 10 s por prévia (`GB_PREVIEW_MAX_SECONDS`) e **um `preview` por chamada**, senão estoura o tempo. A resposta traz `files.contact_sheet` (no `status` e no manifesto, `preview.contact_sheet_path`, relativo a `brolls/`) e `preview.frame_times_s`. **Abra e olhe antes de seguir.** Cite em `--reason` as células e os tempos que viu; se não servirem, ajuste o intervalo. Nunca descreva quadro que não conferiu.
 
-Sem pista, `preview --scan` varre o vídeo inteiro, depois do `inspect`. Foto não tem trecho: `preview` sem `--start/--end`, e sem `inspect`.
+Sem pista, `preview --scan` varre o vídeo inteiro: exploratório, depois do `inspect`, ignora o intervalo escolhido. Foto não tem trecho: `preview` sem `--start/--end`, e sem `inspect`.
 
 ## Passo 5 — Revisão humana
 
 Duas rotas, e você para nas duas.
 
-**Board**, quando quem revisa é outra pessoa: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" review --project <projeto>`, depois `serve --background --project <projeto>`. Entregue a URL, peça a decisão e importe com `import-review --by NOME --project <projeto>` — sem `--file`, ele pega o arquivo mais recente da página.
+**Board**, quando quem revisa é outra pessoa: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" review --project <projeto>`, depois `serve --background --project <projeto>`. Entregue a URL, peça a decisão e importe com `import-review --by NOME --project <projeto>` — sem `--file`, pega o arquivo mais recente.
 
 Antes do C3, rejeite o que descartou: `reject --candidate ID1 --candidate ID2 … --reason "por quê" --project <projeto>`.
 

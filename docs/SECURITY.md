@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-24
+updated: 2026-09-25
 tags: [get-brolls]
 ---
 
@@ -32,9 +32,12 @@ grava um pin de hash sobre toda a pasta — qualquer mudança de conteúdo
 suspende o plugin até nova revisão. As permissões declaradas no manifesto
 (`permissions.network` e `permissions.env`) são conferidas nos próprios canais
 do SDK (`api.get_json`, `api.env`), não numa camada de isolamento do processo.
-Uma variável de plugin lida do `.env` nunca é exportada: só `api.env` do plugin
-dono a lê, e subprocessos (git, ffmpeg, yt-dlp, playwright), OpenSSL e o `ssl`
-do Python não a enxergam.
+O `.env` só entrega a um plugin variáveis do espaço de nomes dele (`<ID>_...`),
+nunca uma do core ou de outro plugin, e essa variável nunca é exportada: só
+`api.env` do plugin dono a lê, e subprocessos (git, ffmpeg, yt-dlp, playwright),
+OpenSSL e o `ssl` do Python não a enxergam. Um nome que ferramentas do sistema
+leem (`GIT_*`, `XDG_*`, `OPENSSL_*`, proxies...) só gera aviso, porque o valor
+não chega ao ambiente.
 **O SDK não é uma caixa de areia**: um plugin habilitado roda com as mesmas
 permissões de quem executa a CLI, e não tem egress próprio além do que o
 código dele fizer — só habilite plugins cujo código você leu e em que confia.

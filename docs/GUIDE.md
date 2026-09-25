@@ -361,6 +361,9 @@ Também pode obter o original pela página oficial e usar resolve --file --sourc
 
 ## Plugins
 
+> **Experimental:** `sdk_api` 1 pode mudar em versão minor; plugins declaram
+> `requires_getbrolls`.
+
 Além dos provedores nativos, o Get B-rolls aceita fontes, rotas de download,
 comandos e presets de licença via plugins locais, instalados em
 `$GB_HOME/plugins/<id>/` (por padrão, `~/.getbrolls/plugins/`) com opt-in
@@ -377,7 +380,8 @@ explícito. O comando `plugins` gerencia esse ciclo:
 Fonte de plugin aparece em `providers` com `plugin` (e `route`, quando o
 arquivo vem por uma rota do plugin). Rota `stage="fetch"` só baixa no `fetch`:
 para revisar antes, use `preview --candidate ID --start ... --end ...
---reference-only`, depois `approve`, `permit` e `fetch`. Comandos de plugin
+--reference-only` (numa foto, `preview --candidate ID --reference-only`, sem
+`--start/--end`), depois `approve`, `permit` e `fetch`. Comandos de plugin
 rodam com `x --list` e `x <plugin> <comando> --project <projeto> [--arg
 chave=valor]`; eles só leem o projeto.
 

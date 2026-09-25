@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Get B-rolls Candidate v1",
-  "$id": "https://github.com/engenheirodevideo/get-brolls/schemas/candidate.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/main/schemas/candidate.schema.json",
   "additionalProperties": false,
   "type": "object",
   "required": [
@@ -234,7 +234,7 @@
     "full_preview_media": { "type": "object" },
     "ext": {
       "type": "object",
-      "description": "Dados de plugins: uma chave por id de plugin, cada valor validado pelo schema daquele plugin.",
+      "description": "Dados de plugins, uma chave por id de plugin: reservado para versões futuras; ignorado pelo runtime atual.",
       "additionalProperties": { "type": "object" }
     }
   }
