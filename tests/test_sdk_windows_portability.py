@@ -111,3 +111,33 @@ class GitCleanupTests(InstallTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(os.name == "nt", "junction do NTFS só existe no Windows")
+class NtfsJunctionTests(InstallTestCase):
+    """Junction não é `is_symlink()`, mas aponta para conteúdo fora do hash do pin
+    como um link: o loader marca a pasta `invalid` e o install recusa."""
+
+    def plugin_with_junction(self, folder):
+        import _winapi  # só existe no Windows (a classe é pulada fora dele)
+
+        write_plugin(folder)
+        outside = self.work / "fora"
+        outside.mkdir()
+        (outside / "segredo.py").write_text("x = 1\n", encoding="utf-8")
+        _winapi.CreateJunction(str(outside), str(folder / "vendor"))  # type: ignore[attr-defined] - só no Windows
+        return folder
+
+    def test_loader_marks_a_folder_with_a_junction_invalid(self):
+        from getbrolls.sdk import loader
+
+        self.plugin_with_junction(self.home / "plugins" / "demo")
+        self.assertEqual(("link", "vendor"), loader.content_problem(self.home / "plugins" / "demo"))
+        self.assertEqual("invalid", loader.inventory()[0]["status"])
+
+    def test_install_refuses_a_source_with_a_junction(self):
+        source = self.plugin_with_junction(self.work / "demo_src")
+        with self.assertRaises(ValueError) as caught:
+            install_mod.install(str(source), confirm=False)
+        self.assertIn("vendor", str(caught.exception))
+        self.assertEqual([], self.leftover_staging())

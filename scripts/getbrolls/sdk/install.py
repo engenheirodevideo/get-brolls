@@ -191,8 +191,9 @@ def _git_blob(dest, sha):
 
 
 def _refuse_links_and_bytecode(folder):
-    """Link simbólico (conteúdo fora do hash) e bytecode (roda no lugar da fonte
-    revisada) nunca entram em `plugins/` — o loader marcaria a pasta `invalid`."""
+    """Link simbólico ou junction/reparse point do NTFS (conteúdo fora do hash) e
+    bytecode (roda no lugar da fonte revisada) nunca entram em `plugins/` — o loader
+    marcaria a pasta `invalid`."""
     problem = loader.content_problem(folder)
     if problem is not None:
         raise ValueError(loader.content_reason(problem, "rode a prévia de novo"))
@@ -461,7 +462,7 @@ def _materialize(source, dest):
         # Só uma PASTA `.git` de verdade faz da origem um repositório: um arquivo
         # `.git` (gitfile de worktree/submódulo) ou um link apontaria o clone para
         # outro repositório, não para a pasta que a pessoa está vendo.
-        if git_dir.is_dir() and not git_dir.is_symlink():
+        if git_dir.is_dir() and not loader._is_link(git_dir):
             return str(folder), _from_git(folder.as_uri(), dest)
         _checked_manifest(folder)
         _refuse_nested_vcs(folder)

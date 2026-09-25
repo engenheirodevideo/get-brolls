@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import os
+import stat
 import sys
 import types
 from pathlib import Path
@@ -111,11 +112,25 @@ def nested_vcs(folder):
 
 
 def _is_link(path):
-    """Link simbólico — ou junction do NTFS, que não é `is_symlink()` (3.12+)."""
+    """Link simbólico, junction do NTFS ou outro reparse point do Windows.
+
+    Junction não é `is_symlink()`: no Python 3.12+ `Path.is_junction()` a acha; no
+    3.11, o atributo `FILE_ATTRIBUTE_REPARSE_POINT` do `lstat` (só existe no Windows)
+    cobre junction e qualquer outro reparse point. Todos apontam para conteúdo
+    fora do hash do pin."""
     if path.is_symlink():
         return True
     is_junction = getattr(path, "is_junction", None)
-    return bool(is_junction is not None and is_junction())
+    if is_junction is not None and is_junction():
+        return True
+    reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    if not reparse:
+        return False
+    try:
+        attributes = getattr(os.lstat(path), "st_file_attributes", 0)
+    except OSError:
+        return False
+    return bool(attributes & reparse)
 
 
 def is_bytecode_name(name, is_dir):
