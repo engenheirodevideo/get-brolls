@@ -5,6 +5,7 @@ import os
 import shutil
 import unittest
 
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from test_sdk_install import HAS_GIT, InstallTestCase, git, write_plugin
 from test_sdk_loader import LoaderTestCase
 

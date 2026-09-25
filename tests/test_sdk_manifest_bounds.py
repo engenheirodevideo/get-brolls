@@ -3,6 +3,7 @@ nunca INTERNAL_ERROR em `plugins list`, `doctor` ou `x --list`."""
 
 import unittest
 
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _cli import run_cli
 from test_sdk_loader import LoaderTestCase
 

@@ -8,6 +8,7 @@ pessoa faria com `plugins --action enable --yes` (o mesmo `loader.pin`).
 import os
 from unittest.mock import patch
 
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 import _paths  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
 
 from getbrolls.sdk import loader

@@ -7,6 +7,7 @@ import os
 import unittest
 from unittest.mock import patch
 
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
