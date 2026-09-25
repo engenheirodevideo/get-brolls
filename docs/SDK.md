@@ -298,8 +298,9 @@ if not token:
   rotas, comandos (`gb x`) e no motivo de um `register()` que falhou.
 - A mensagem é saneada antes: vira uma linha só, sem caractere de controle,
   passa por `redact()` (URLs, headers e chaves conhecidas somem), o valor de
-  cada variável declarada em `permissions.env` vira `[REDACTED]` e o texto é
-  cortado em 300 caracteres.
+  cada variável declarada em `permissions.env` — e todo texto de 8 caracteres
+  ou mais do `settings.json` lido por `api.config()` — vira `[REDACTED]` e o
+  texto é cortado em 300 caracteres.
 - Vale só a própria classe, com um único argumento de texto: uma subclasse de
   `PluginError` (ou `PluginError(123)`) aparece só pelo tipo.
 - Qualquer outra exceção (`ValueError`, `KeyError`, `requests`-like, uma

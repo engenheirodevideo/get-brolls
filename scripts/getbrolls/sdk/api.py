@@ -383,6 +383,7 @@ class PluginApi:
             raise ApiError(f"Plugin {self.plugin_id}: {where} não é JSON válido em UTF-8.") from exc
         if not isinstance(data, dict):
             raise ApiError(f"Plugin {self.plugin_id}: {where} tem que ser um objeto JSON.")
+        guard.remember_config(self.plugin_id, data)
         return data
 
     def finish(self):

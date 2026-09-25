@@ -122,7 +122,10 @@ def doctor_plugin_problems(rows):
         return None
     names = ", ".join(f"{row['id']} ({row['status']})" for row in broken)
     label = "plugin com problema" if len(broken) == 1 else "plugins com problema"
-    return f"{len(broken)} {label}: {names}. Motivo em plugins[]; rode plugins --action list."
+    return (
+        f"{len(broken)} {label}: {names}. O motivo de cada um está em plugins[] deste doctor; "
+        "conserte a pasta do plugin (ou reinstale) e habilite de novo com plugins --action enable."
+    )
 
 
 def doctor_contact_sheet(ffmpeg_present):

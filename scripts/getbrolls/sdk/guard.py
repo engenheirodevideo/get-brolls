@@ -117,6 +117,27 @@ def remember_env(owner, keys):
     _ENV_KEYS[owner] = tuple(key for key in keys if type(key) is str)
 
 
+# id do plugin → valores de texto do `settings.json` dele (lidos por `api.config()`),
+# trocados por [REDACTED] em `sanitize_text` como os de `permissions.env` (B-16).
+_CONFIG_VALUES: dict[str, frozenset[str]] = {}
+_CONFIG_SECRET_MIN_CHARS = 8
+
+
+def remember_config(owner, data):
+    """Guarda os textos (8+ caracteres, em qualquer nível) do `settings.json` do plugin."""
+    found = set()
+    stack = [data]
+    while stack:
+        value = stack.pop()
+        if type(value) is str and len(value) >= _CONFIG_SECRET_MIN_CHARS:
+            found.add(value)
+        elif type(value) is dict:
+            stack.extend(value.values())
+        elif type(value) is list:
+            stack.extend(value)
+    _CONFIG_VALUES[owner] = frozenset(found)
+
+
 def _trusted_types():
     from .api import ApiError
     from .manifest import ManifestError
@@ -166,6 +187,8 @@ def sanitize_text(owner, text):
         value = os.environ.get(key)
         if value:
             text = text.replace(value, "[REDACTED]")
+    for value in sorted(_CONFIG_VALUES.get(owner, ()), key=len, reverse=True):
+        text = text.replace(value, "[REDACTED]")
     return plain_line(redact(plain_line(text, limit=len(text) + 1)))
 
 

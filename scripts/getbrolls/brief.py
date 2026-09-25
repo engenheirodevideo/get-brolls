@@ -238,7 +238,12 @@ def _plugin_source_hint(name):
     row = loader.declared_by(name)
     if row is None:
         return ""
-    hint = loader.status_hint(row, "Rode plugins --action list / doctor para reabilitar ou consertar o plugin.")
+    default = (
+        f"Habilite com plugins --action enable --id {row['id']}."
+        if row.get("status") == "disabled"
+        else "Rode plugins --action list / doctor para reabilitar ou consertar o plugin."
+    )
+    hint = loader.status_hint(row, default)
     return f' A fonte "{name}" é do plugin {row["id"]}, {loader.status_phrase(row)}. {hint}'
 
 

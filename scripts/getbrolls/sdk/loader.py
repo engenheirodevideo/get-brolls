@@ -245,6 +245,8 @@ def pin_digests(folder):
 # pasta copiada à mão não passa por esse teto; acima dele o pin guarda só o sha256
 # total (`files_omitted`), senão o plugins.json — relido a cada comando — incharia.
 PIN_MAP_MAX_FILES = 2000
+# Quantos nomes de arquivo a prévia do `enable` lista (o total vem sempre), como no install.
+PREVIEW_FILES_MAX = 50
 MAP_OMITTED_NOTE = (
     "Plugin com muitos arquivos, diff omitido (mais de {limit}); confira a pasta do plugin antes de confirmar."
 )
@@ -285,8 +287,8 @@ def check_expect(expect, sha):
         raise ValueError("--yes precisa de --expect <sha256>; rode a prévia (sem --yes) de novo e confira o valor.")
     if expect != sha:
         raise ValueError(
-            "O sha256 não bate com o conteúdo agora (a origem mudou desde a prévia); "
-            "rode a prévia de novo (sem --yes) e confirme com o --expect atualizado."
+            "O sha256 de --expect não bate com o conteúdo agora: o valor foi copiado errado, ou a origem "
+            "mudou desde a prévia. Rode a prévia de novo (sem --yes) e confirme com o sha256 dela."
         )
 
 
@@ -498,7 +500,7 @@ def _load_one(row, folder, manifest, pinned, registry):
     if failure is not None:
         registry.remove_owner(manifest["id"])
         logs.event(_log, logging.WARNING, "plugin_failed", plugin=row["id"], error=failure.type_name)
-        reason = failure.text or f"O register() do plugin falhou ({failure.type_name})."
+        reason = failure.text or f"O plugin falhou ao carregar, no import ou no register() ({failure.type_name})."
         return {**row, "status": "failed", "reason": reason}
     if outcome.value is not None:
         logs.event(_log, logging.DEBUG, "plugin_skipped", plugin=row["id"], status="suspended")
@@ -642,6 +644,12 @@ def enable(plugin_id, confirm, expect=None):
         raise ValueError(f"Plugin {plugin_id}: {problem}")
     sha, files = pin_digests(folder)
     preview = _preview(manifest, folder, sha)
+    names = sorted(files)
+    preview["files"] = {
+        "count": len(names),
+        "names": names[:PREVIEW_FILES_MAX],
+        "truncated": len(names) > PREVIEW_FILES_MAX,
+    }
     state = read_state()
     # Pin atual ou, depois de um `disable`, o último pin guardado: desligar e mudar
     # a pasta não pode virar atalho para re-pinar às cegas só com `--yes`.
