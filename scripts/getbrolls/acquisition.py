@@ -242,13 +242,13 @@ def prepare_source(ledger, candidate, start, end, tolerant=False):  # noqa: C901
             download_segment(c["source_url"], target, start, end)
             offset = start
         elif c["acquisition"].get("method") == "https":
-            from .http import download
+            from .http import download_rendition
             from .providers import refresh
 
             fresh = refresh(c)
             if not fresh.get("media_url"):
                 raise ValueError("Arquivo do provedor não está mais disponível.")
-            download(fresh["media_url"], target)
+            download_rendition(fresh, target)
             offset = 0
         else:
             method = c["acquisition"].get("method")

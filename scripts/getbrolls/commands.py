@@ -2113,10 +2113,10 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                     "Esta fonte não disponibilizou arquivo por transporte permitido; "
                     f"execute antes: preview --candidate {c['id']} --start ... --end ..."
                 )
-            from getbrolls.http import download
+            from getbrolls.http import download_rendition
 
             temp = ledger.root / "previews" / ("download-" + id_stem(c["id"]) + ".part")
-            download(url, temp)
+            download_rendition(fresh, temp)
             src = temp
         if c.get("media", {}).get("kind") == "image":
             rel = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}" + Path(src).suffix.lower()

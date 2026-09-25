@@ -355,10 +355,10 @@ NASA_IMAGE_RENDITIONS = ("~orig", "~large", "~medium", "~small", "~thumb")
 
 
 def _nasa_image_rank(url):
-    """Foto: a original primeiro, depois a maior versão; TIFF só perde para JPG/PNG do mesmo tamanho."""
+    """Foto: JPG/PNG antes de qualquer TIFF; dentro de cada formato, da original para a menor."""
     path = urlsplit(url).path.lower()
     rank = next((i for i, tag in enumerate(NASA_IMAGE_RENDITIONS) if tag in path), len(NASA_IMAGE_RENDITIONS))
-    return (rank, path.endswith((".tif", ".tiff")), len(url))
+    return (path.endswith((".tif", ".tiff")), rank, len(url))
 
 
 def _nasa_asset_urls(ident, suffixes):
@@ -484,6 +484,19 @@ def resolve(url):  # noqa: C901 - existing size; one branch per recognized sourc
     return item
 
 
+def _nasa_refresh(current, ident):
+    """Arquivo atual do item da NASA; foto traz as versões menores como plano B."""
+    image = (current.get("media") or {}).get("kind") == "image"
+    urls = _nasa_asset_urls(ident, NASA_IMAGE_SUFFIXES if image else (".mp4",))
+    if not urls:
+        raise ProviderError("Arquivo do provedor não está mais disponível")
+    current["media_url"] = urls[0]
+    if image:
+        # Acima do teto de download, a coleta cai para a próxima versão menor.
+        current["media_url_fallbacks"] = urls[1:]
+    return current
+
+
 def refresh(item):
     """Refresh public stock file URLs without changing selection or approval."""
     import copy
@@ -509,12 +522,7 @@ def refresh(item):
         )
         rows = _pixabay_rows(data)
     elif name == "nasa":
-        image = (item.get("media") or {}).get("kind") == "image"
-        urls = _nasa_asset_urls(ident, NASA_IMAGE_SUFFIXES if image else (".mp4",))
-        if not urls:
-            raise ProviderError("Arquivo do provedor não está mais disponível")
-        current["media_url"] = urls[0]
-        return current
+        return _nasa_refresh(current, ident)
     elif name == "commons":
         data = get_json(
             "https://commons.wikimedia.org/w/api.php",
