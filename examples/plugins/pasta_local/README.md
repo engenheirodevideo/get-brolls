@@ -29,12 +29,13 @@ python3 scripts/gb.py x pasta_local recentes --arg limite=5 --project <projeto>
 
 Copie a pasta para dentro da sua instalação pessoal do Get B-rolls — a pasta
 `plugins/` fica em `$GB_HOME` (por padrão, `~/.getbrolls`) e pode ainda não
-existir, por isso o `mkdir -p` antes; o destino nomeia `pasta_local` para o
-`cp` nunca espalhar os arquivos soltos em `plugins/`:
+existir, por isso o `mkdir -p` antes: com `plugins/` existindo, o `cp` copia a
+pasta `pasta_local` para dentro dela (em vez de espalhar os arquivos soltos), e
+rodar de novo só sobrescreve a mesma `plugins/pasta_local`:
 
 ```sh
 mkdir -p "${GB_HOME:-$HOME/.getbrolls}/plugins"
-cp -r examples/plugins/pasta_local "${GB_HOME:-$HOME/.getbrolls}/plugins/pasta_local"
+cp -r examples/plugins/pasta_local "${GB_HOME:-$HOME/.getbrolls}/plugins/"
 ```
 
 Ou deixe o `plugins --action install --source examples/plugins/pasta_local`

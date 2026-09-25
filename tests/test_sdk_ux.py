@@ -811,6 +811,13 @@ class ReviewFollowUpTests(LoaderTestCase):
         text = (ROOT / "examples/plugins/pasta_local/README.md").read_text(encoding="utf-8")
         block = next(b for b in re.findall(r"```sh\n(.*?)```", text, re.DOTALL) if "cp -r" in b)
         fresh = self.home / "novo-home"
-        subprocess.run(["sh", "-c", block], cwd=ROOT, env={**os.environ, "GB_HOME": str(fresh)}, check=True)
-        self.assertTrue((fresh / "plugins" / "pasta_local" / "getbrolls-plugin.json").is_file())
-        self.assertFalse((fresh / "plugins" / "plugin.py").exists())
+        # Duas vezes: a primeira numa pasta pessoal nova, a segunda por cima da cópia.
+        for _ in range(2):
+            subprocess.run(["sh", "-c", block], cwd=ROOT, env={**os.environ, "GB_HOME": str(fresh)}, check=True)
+        plugins = fresh / "plugins"
+        self.assertTrue((plugins / "pasta_local" / "getbrolls-plugin.json").is_file())
+        self.assertFalse((plugins / "plugin.py").exists())
+        self.assertFalse((plugins / "pasta_local" / "pasta_local").exists())
+        self.assertEqual(
+            [plugins / "pasta_local" / "getbrolls-plugin.json"], sorted(plugins.rglob("getbrolls-plugin.json"))
+        )
