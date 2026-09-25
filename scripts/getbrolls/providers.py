@@ -346,13 +346,19 @@ def _commons_item(row, info):
         field("Attribution") or field("Artist"),
     )
     mime = str(info.get("mime") or "")
+    duration = None
     if mime.startswith("image/"):
         item["media"]["kind"] = "image"
         item["asset_type"] = "image"
     elif mime.startswith("video/"):
         item["media"]["kind"] = "video"
+        # `iiprop=size` já traz a duração do vídeo: com ela, `inspect` não precisa
+        # baixar o arquivo inteiro só para descobrir quanto tempo ele tem.
+        raw = info.get("duration")
+        if isinstance(raw, (int, float)) and not isinstance(raw, bool) and raw > 0:
+            duration = float(raw)
     _poster(item, info.get("thumburl"))
-    return _media(item, info.get("url"), info.get("width"), info.get("height"))
+    return _media(item, info.get("url"), info.get("width"), info.get("height"), duration)
 
 
 def _commons_file(title):
@@ -435,17 +441,34 @@ def _nasa(query, limit, media="any"):
 
 # Arquivos de imagem que o acervo da NASA publica para um mesmo item.
 NASA_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
+# Versões de uma foto no acervo, da maior para a menor.
+NASA_IMAGE_RENDITIONS = ("~orig", "~large", "~medium", "~small", "~thumb")
+
+
+def _nasa_image_rank(url):
+    """Foto: JPG/PNG antes de qualquer TIFF; dentro de cada formato, da original para a menor."""
+    path = urlsplit(url).path.lower()
+    rank = next((i for i, tag in enumerate(NASA_IMAGE_RENDITIONS) if tag in path), len(NASA_IMAGE_RENDITIONS))
+    return (path.endswith((".tif", ".tiff")), rank, len(url))
 
 
 def _nasa_asset_urls(ident, suffixes):
-    """Arquivos públicos deste item, do mais completo para o mais leve."""
+    """Arquivos públicos deste item na ordem de uso.
+
+    Foto sai na versão original (a `~medium` tem 1280 px e era entregue mesmo com a
+    `~orig` publicada). Vídeo segue com a `~medium.mp4` primeiro: é o arquivo de
+    trabalho leve da fonte, e a `~orig` fica por último.
+    """
     data = get_json("https://images-api.nasa.gov/asset/" + quote(ident, safe=""), cache_ttl=86400)
     urls = [
         encoded_url(v["href"])
         for v in data.get("collection", {}).get("items", [])
         if public_url(v.get("href")) and urlsplit(v["href"]).path.lower().endswith(suffixes)
     ]
-    urls.sort(key=lambda u: ("~orig" in u, "~medium" not in u, len(u)))
+    if suffixes == NASA_IMAGE_SUFFIXES:
+        urls.sort(key=_nasa_image_rank)
+    else:
+        urls.sort(key=lambda u: ("~orig" in u, "~medium" not in u, len(u)))
     return urls
 
 
@@ -574,6 +597,19 @@ def resolve(url):
     return _resolve_builtin(url)
 
 
+def _nasa_refresh(current, ident):
+    """Arquivo atual do item da NASA; foto traz as versões menores como plano B."""
+    image = (current.get("media") or {}).get("kind") == "image"
+    urls = _nasa_asset_urls(ident, NASA_IMAGE_SUFFIXES if image else (".mp4",))
+    if not urls:
+        raise ProviderError("Arquivo do provedor não está mais disponível")
+    current["media_url"] = urls[0]
+    if image:
+        # Acima do teto de download, a coleta cai para a próxima versão menor.
+        current["media_url_fallbacks"] = urls[1:]
+    return current
+
+
 def _refresh_builtin(item):
     """Refresh public stock file URLs without changing selection or approval."""
     import copy
@@ -599,12 +635,7 @@ def _refresh_builtin(item):
         )
         rows = _pixabay_rows(data)
     elif name == "nasa":
-        image = (item.get("media") or {}).get("kind") == "image"
-        urls = _nasa_asset_urls(ident, NASA_IMAGE_SUFFIXES if image else (".mp4",))
-        if not urls:
-            raise ProviderError("Arquivo do provedor não está mais disponível")
-        current["media_url"] = urls[0]
-        return current
+        return _nasa_refresh(current, ident)
     elif name == "commons":
         data = get_json(
             "https://commons.wikimedia.org/w/api.php",

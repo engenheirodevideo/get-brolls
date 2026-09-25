@@ -340,10 +340,28 @@ def with_summary(command, result):
 
 
 # Escada do fluxo: a primeira condição verdadeira nomeia o próximo passo real.
+# Item aprovado segue para permit/fetch/verify/deliver antes de prévia nova: quem
+# sobrou sem quadro é rascunho (ver `guidance.flow_complete`), não trava o aprovado.
 STATUS_LADDER = (
     (
         lambda c: not c["candidates"],
         "Nenhum candidato ainda: registre fontes com search ou resolve.",
+    ),
+    (
+        lambda c: c["permitted"] < c["approved"],
+        "Registre as condições reais de uso com permit nos itens aprovados.",
+    ),
+    (
+        lambda c: c["approved"] and c["delivered"] < c["permitted"],
+        "Colete os cortes aprovados e permitidos com fetch.",
+    ),
+    (
+        lambda c: c["approved"] and c["verified"] < c["delivered"],
+        "Confira os arquivos coletados com verify.",
+    ),
+    (
+        lambda c: c["approved"] and c["undelivered"] > 0,
+        "Organize os trechos conferidos em entrega/ com deliver.",
     ),
     (
         lambda c: c["pending_preview"] > 0,
@@ -356,22 +374,6 @@ STATUS_LADDER = (
             "no chat (approve --candidate ID --by NOME --channel chat --statement "
             '"frase"), com os IDs que você mostrou.'
         ),
-    ),
-    (
-        lambda c: c["permitted"] < c["approved"],
-        "Registre as condições reais de uso com permit nos itens aprovados.",
-    ),
-    (
-        lambda c: c["delivered"] < c["permitted"],
-        "Colete os cortes aprovados e permitidos com fetch.",
-    ),
-    (
-        lambda c: c["verified"] < c["delivered"],
-        "Confira os arquivos coletados com verify.",
-    ),
-    (
-        lambda c: c["undelivered"] > 0,
-        "Organize os trechos conferidos em entrega/ com deliver.",
     ),
 )
 
@@ -502,9 +504,9 @@ def brief_report(args):
         beat_progress,
         brief_path,
         load_brief,
-        missing_provider_keys,
-        provider_unavailable,
         provider_warnings,
+        search_plan,
+        template_leftovers,
         validate_brief,
     )
     from getbrolls.rules import load_rules
@@ -523,6 +525,8 @@ def brief_report(args):
     # brief com todos os seis beats esperando um fato da pessoa.
     stalled = blocked_entries(data["beats"])
     problems += [f'O beat "{entry["id"]}" está travado esperando você: {entry["reason"]}' for entry in stalled]
+    # Modelo intocado passa na validação de formato, mas não é um brief pronto.
+    problems += template_leftovers(data)
     if getattr(args, "validate", False):
         beat_count = _count(len(data["beats"]), "beat", "beats")
         return {
@@ -566,13 +570,18 @@ def brief_report(args):
             )
         beats = chosen
     root = Path(args.project).expanduser().resolve() / "brolls"
-    items = Ledger(args.project, recover=False).data["items"] if root.is_dir() else []
+    manifest = Ledger(args.project, recover=False).data if root.is_dir() else {"items": []}
+    items = manifest["items"]
     progress = beat_progress(beats, items)
     listed = [
         {
             "id": b["id"],
             "resolved": b["resolved"],
-            "commands": beat_commands(args.project, b["resolved"]),
+            "commands": beat_commands(
+                args.project,
+                b["resolved"],
+                tried=tried_searches(manifest, b["id"]),
+            ),
             "candidates": progress[b["id"]],
         }
         for b in beats
@@ -612,17 +621,12 @@ def brief_report(args):
                         "beats": len(listed),
                         "covered": covered,
                         "missing": [
-                            {
-                                "id": entry["id"],
-                                "search": entry["commands"].get("search"),
-                                "intent": entry["resolved"].get("intent"),
-                                "target": entry["resolved"].get("target"),
-                                "unavailable": (
-                                    missing_provider_keys(entry["resolved"])
-                                    if provider_unavailable(entry["resolved"])
-                                    else []
-                                ),
-                            }
+                            missing_beat_entry(
+                                entry["id"],
+                                entry["resolved"],
+                                entry["commands"],
+                                search_plan(entry["resolved"], tried_searches(manifest, entry["id"])),
+                            )
                             for entry in missing
                         ],
                         "blocked": blocked,
@@ -972,21 +976,123 @@ def blocked_entries(beats):
     ]
 
 
-def brief_state(project, rules, items):
+def _beat_search_names(project, shot, rules, provider, names):
+    """Fontes que `search --shot` pode consultar: as que o beat do BRIEF.md permite.
+
+    Sem BRIEF.md válido, ou com um `--shot` que não é beat dele, nada muda: o beat
+    livre continua valendo como antes. Com o beat no brief, fonte fora de
+    `allowed_sources` é recusada com a lista certa, em vez de virar candidato ligado
+    ao beat como se a pessoa tivesse permitido aquela origem.
+    """
+    from getbrolls.brief import beat_sources
+    from getbrolls.brief import searchable as searchable_sources
+
+    allowed = beat_sources(project, shot, rules)
+    if allowed is None:
+        return names
+    searchable = [name for name in allowed if name in searchable_sources()]
+    if provider != "auto":
+        if provider in allowed:
+            return names
+        route = (
+            f"Busque com --provider {searchable[0]} (ou --provider auto, que fica nas fontes do beat)."
+            if searchable
+            else f"Nenhuma dessas fontes tem busca por API: registre o material com "
+            f"`resolve --url URL_PUBLICA --shot {shot}` ou `resolve --file ARQUIVO --shot {shot}`."
+        )
+        raise ValueError(
+            f'O beat "{shot}" do BRIEF.md só aceita material de {", ".join(allowed)}, e {provider} '
+            f"não está nessa lista. {route} Se {provider} também serve para esse trecho, "
+            "acrescente a fonte em allowed_sources do beat e rode `brief --validate`."
+        )
+    chosen = [name for name in names if name in allowed] or searchable
+    if not chosen:
+        raise ValueError(
+            f'O beat "{shot}" do BRIEF.md só aceita {", ".join(allowed)}, e nenhuma dessas '
+            f"fontes tem busca por API: registre o material com `resolve --url URL_PUBLICA "
+            f"--shot {shot}` ou `resolve --file ARQUIVO --shot {shot}`."
+        )
+    return chosen
+
+
+# Teto do registro de buscas vazias: é memória de orientação, não histórico.
+MAX_EMPTY_SEARCHES = 500
+
+
+def _empty_log(data):
+    """`empty_searches` do manifesto, só com entradas legíveis; lixo vira lista vazia."""
+    log = (data or {}).get("empty_searches") if isinstance(data, dict) else None
+    if not isinstance(log, list):
+        return []
+    return [e for e in log if isinstance(e, dict)]
+
+
+def record_empty_searches(ledger, shot, empty):
+    """Guarda no manifesto que `search --shot` voltou vazio nesta fonte, com esta query.
+
+    É o que tira o degrau `brief-search` do laço: sem registro, a escada sugeria a
+    mesma fonte e a mesma query para sempre, sem nunca tentar a próxima permitida.
+    Um registro ilegível (editado à mão) é refeito, nunca derruba a busca.
+    """
+    log = _empty_log(ledger.data)
+    for provider, query in empty:
+        entry = {"shot": shot, "provider": provider, "query": query}
+        if not any({k: e.get(k) for k in entry} == entry for e in log):
+            log.append({**entry, "at": now()})
+    ledger.data["empty_searches"] = log[-MAX_EMPTY_SEARCHES:]
+    ledger.save("search-empty")
+
+
+def tried_searches(data, shot):
+    """Pares (fonte, query) em que a busca deste beat já voltou vazia."""
+    return {
+        (e.get("provider"), e.get("query"))
+        for e in _empty_log(data)
+        if e.get("shot") == shot and isinstance(e.get("provider"), str) and isinstance(e.get("query"), str)
+    }
+
+
+def missing_beat_entry(beat_id, resolved, commands, plan):
+    """Beat sem candidato como a escada lê, igual em `status` e em `brief`."""
+    state = plan["state"]
+    return {
+        "id": beat_id,
+        "search": commands.get("search"),
+        # Todas as fontes e buscas já voltaram vazias: pergunta para a pessoa.
+        "exhausted": plan["sources"] if state == "exhausted" else [],
+        "queries": plan["queries"] if state == "exhausted" else [],
+        # Frase pronta do motivo (esgotado, falta de chave): a escada repassa como veio.
+        "note": plan["note"],
+        # A frase para a pessoa muda quando o beat não tem alvo literal: prometer
+        # busca ali contradiz a guarda "literal primeiro, nada de preenchimento".
+        "intent": resolved.get("intent"),
+        "target": resolved.get("target"),
+        # Toda fonte que sobra depende de uma chave que falta aqui: o degrau vira
+        # pedido de configuração, não pergunta sobre o conteúdo do trecho.
+        "unavailable": plan["needs_keys"] if state in ("unavailable", "needs_keys") else [],
+        "unavailable_note": plan["note"] if state == "needs_keys" else None,
+        # Nenhuma fonte com busca por API: o passo é a pessoa trazer o link ou o arquivo.
+        "resolve": commands.get("resolve") if state == "resolve_only" else None,
+        "allowed_sources": list(resolved.get("allowed_sources") or []),
+    }
+
+
+def brief_state(project, rules, items, data=None):
     """Cobertura dos beats para a escada de orientação, sem gravar nada no projeto.
 
     Devolve `None` quando não há BRIEF.md legível: esse é o degrau do topo da escada.
+    `data` é o manifesto, para o degrau de busca pular a fonte que já voltou vazia.
     """
     from getbrolls.brief import (
         beat_commands,
         beat_progress,
         brief_path,
         load_brief,
-        missing_provider_keys,
-        provider_unavailable,
+        search_plan,
         validate_brief,
     )
 
+    manifest = data
     try:
         data, conflicts = validate_brief(load_brief(project), rules)
     except (ValueError, OSError) as exc:
@@ -1003,27 +1109,22 @@ def brief_state(project, rules, items):
     # buscar" — é pergunta em aberto para a pessoa, e vira degrau próprio na escada.
     blocked = blocked_entries(beats)
     stuck = {entry["id"] for entry in blocked}
-    missing = [
-        {
-            "id": b["id"],
-            "search": beat_commands(project, b["resolved"]).get("search"),
-            # A frase para a pessoa muda quando o beat não tem alvo literal: prometer
-            # busca ali contradiz a guarda "literal primeiro, nada de preenchimento".
-            "intent": b["resolved"].get("intent"),
-            "target": b["resolved"].get("target"),
-            # Toda fonte permitida depende de uma chave que falta aqui: o degrau vira
-            # pedido de configuração, não pergunta sobre o conteúdo do trecho.
-            "unavailable": (missing_provider_keys(b["resolved"]) if provider_unavailable(b["resolved"]) else []),
-        }
-        for b in beats
-        if b["id"] not in stuck and not progress[b["id"]]
-    ]
+
+    missing = []
+    for b in beats:
+        if b["id"] in stuck or progress[b["id"]]:
+            continue
+        tried = tried_searches(manifest, b["id"])
+        commands = beat_commands(project, b["resolved"], tried)
+        missing.append(missing_beat_entry(b["id"], b["resolved"], commands, search_plan(b["resolved"], tried)))
     return {
         "beats": len(beats),
         "covered": len(beats) - len(missing) - len(blocked),
         "missing": missing,
         "blocked": blocked,
         "conflicts": conflicts,
+        # O que o `inspect` de um candidato do beat procura: a fala, ou o alvo.
+        "beat_queries": {b["id"]: b["resolved"].get("narration") or b["resolved"]["target"] for b in beats},
     }
 
 
@@ -1222,11 +1323,12 @@ def _flow_state(ledger, rules, counts=None, format_pending=0, brief=_UNSET):
     """Estado que a escada de `guidance` lê: a mesma leitura em status, brief e deliver."""
     items = ledger.data["items"]
     review_page = (ledger.root / "review.html").is_file()
+    brief_value = brief_state(ledger.root.parent, rules, items, ledger.data) if brief is _UNSET else brief
     return {
         "project": str(ledger.root.parent),
         "counts": counts or {key: sum(1 for c in items if STAGE_TESTS[key](c)) for key in STAGE_TESTS},
         "format_pending": format_pending,
-        "brief": brief_state(ledger.root.parent, rules, items) if brief is _UNSET else brief,
+        "brief": brief_value,
         "review_page": review_page,
         # Só perguntamos ao servidor quando existe página para ele servir.
         "board_url": _live_board_url(ledger.root.parent) if review_page else None,
@@ -1237,10 +1339,21 @@ def _flow_state(ledger, rules, counts=None, format_pending=0, brief=_UNSET):
         "duration_unknown": len(_uninspected(items)),
         "inspect_candidate": next((c["id"] for c in _uninspected(items)), None),
         "reference_only": _reference_only(items),
+        "inspect_query": _inspect_query(items, brief_value),
         "undelivered": len(_undelivered(items)),
         "pending_preview": len(_needs_preview(items)),
         "preview_image": _preview_is_image(items),
     }
+
+
+def _inspect_query(items, brief):
+    """`--query` pronto para o `inspect` do degrau: a fala (ou o alvo) do beat do candidato.
+
+    Sem beat no brief, o lugar fica em MAIÚSCULAS para quem conhece a frase preencher.
+    """
+    first = next(iter(_uninspected(items)), None)
+    queries = (brief or {}).get("beat_queries") or {}
+    return queries.get((first or {}).get("shot")) or None
 
 
 def _flow_next(ledger, rules):
@@ -1273,7 +1386,7 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
     format_pending = sum(1 for value in pending_format.values() if value)
     remembered, references_error = status_references(ledger.root)
     review_page = ledger.root / "review.html"
-    brief = brief_state(ledger.root.parent, rules, items)
+    brief = brief_state(ledger.root.parent, rules, items, ledger.data)
     line = _status_line({"counts": counts})
     if ledger.recovered:
         line += " Há uma gravação interrompida pendente; o próximo comando de escrita a concluirá."
@@ -1657,10 +1770,15 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
             raise ValueError("--shot: use 1–80 letras, números, hífen ou underscore.")
         dry_run = bool(getattr(args, "dry_run", False))
         names = rules["preferred_providers"][args.intent] if args.provider == "auto" else [args.provider]
+        if shot:
+            names = _beat_search_names(args.project, shot, rules, args.provider, names)
         if not names:
             raise ValueError(
                 "Nenhuma fonte configurada: use resolve --file, Commons/NASA ou configure a chave de um banco."
             )
+
+        # (fonte, query, quantos ficaram) de cada fonte que respondeu sem erro.
+        answered = []
 
         def sweep(query, retry=False):
             """Uma varredura pelos provedores escolhidos, com esta query exata."""
@@ -1688,6 +1806,7 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                     continue
                 # ledger.add/save stay outside the provider try: a disk/write error here is not the
                 # provider's fault and must not be attributed to it as a search failure.
+                kept = 0
                 for c in candidates:
                     if not allowed(c, rules):
                         excluded += 1
@@ -1708,6 +1827,8 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                     added = ledger.add(c)
                     ledger.save("search", added)
                     items.append(added)
+                    kept += 1
+                answered.append((name, query, kept))
                 logs.event(
                     _log,
                     logging.INFO,
@@ -1746,6 +1867,13 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                 ),
             }
             query_used = short
+        # Fonte que respondeu sem nada para este beat: a escada não sugere de novo.
+        # Só o resultado final conta: se o encurtamento achou algo, a busca não foi vazia.
+        # O registro leva a query pedida, que é a que a escada sugere de novo.
+        if shot and not items and not dry_run:
+            empty = [(name, args.query) for name, _query, _kept in answered]
+            if empty:
+                record_empty_searches(ledger, shot, empty)
         if not items and errors:
             raise ValueError("; ".join(provider_error_text(e["provider"], e["error"]) for e in errors))
         items.sort(key=lambda c: not domain_matches(c.get("source_url"), rules["preferred_domains"]))
@@ -2223,10 +2351,10 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
                     "Esta fonte não disponibilizou arquivo por transporte permitido; "
                     f"execute antes: preview --candidate {candidate_arg(c)} --start ... --end ..."
                 )
-            from getbrolls.http import download
+            from getbrolls.http import download_rendition
 
             temp = ledger.root / "previews" / ("download-" + id_stem(c["id"]) + ".part")
-            download(url, temp)
+            download_rendition(fresh, temp)
             src = temp
         if c.get("media", {}).get("kind") == "image":
             from .media import IMAGE_SUFFIXES, copy_image, image_suffix
@@ -2540,10 +2668,10 @@ def inspect_source(ledger, args, config=None):
     """O que a fonte já conta sobre si, antes de escolher intervalo.
 
     Na rota normal (página que o yt-dlp lê) nada de mídia é pedido: só metadados e
-    legenda. Numa fonte de arquivo direto (NASA, Commons, bancos) não existe metadado
-    para pedir: a duração só sai do arquivo, então o `inspect` **baixa o arquivo
-    inteiro** uma vez para o cache privado — e diz isso, com o tamanho, no resumo e
-    em `warnings[]`.
+    legenda. Numa fonte de arquivo direto (NASA, Commons, bancos), a duração que a
+    própria fonte publicou vale e nada é baixado. Sem ela (vídeo da NASA), a duração
+    só sai do arquivo, então o `inspect` **baixa o arquivo inteiro** uma vez para o
+    cache privado — e diz isso, com o tamanho, no resumo e em `warnings[]`.
 
     Somente leitura sobre decisão e intervalo em qualquer rota: com `--candidate`, o
     único campo que passa a existir no projeto é `media.duration_s` — nada de
@@ -2624,10 +2752,32 @@ def probe_direct(ledger, source, url=None, stage="inspect"):
     """O mesmo contrato de `social.probe_remote`, lido do arquivo direto da fonte.
 
     Sem capítulo e sem legenda: um mp4 servido por URL não traz nenhum dos dois. O
-    que ele traz é a duração real, que é o que separa a janela do palpite.
+    que ele traz é a duração real, que é o que separa a janela do palpite. Quando a
+    fonte já publicou a duração (Commons, bancos), ela vale e nada é baixado; só a
+    fonte sem esse metadado (vídeo da NASA) custa o download do arquivo inteiro.
     """
     from .acquisition import cache_direct_media, route_name
 
+    known = (source.get("media") or {}).get("duration_s")
+    # Rota de plugin segue pelo `cache_direct_media`, que recusa a rota de `fetch` e diz
+    # o estágio: o atalho da duração publicada vale só para as fontes embutidas.
+    if route_name(source) is None and isinstance(known, (int, float)) and not isinstance(known, bool) and known > 0:
+        # A fonte já publicou a duração nos metadados (o Commons manda no `imageinfo`):
+        # baixar o arquivo inteiro só para medir o que já se sabe custava dezenas de MB
+        # antes de a pessoa confirmar qualquer coisa.
+        return {
+            "downloaded_bytes": 0,
+            "local_copy": None,
+            "url": url or source.get("source_url") or source.get("media_url"),
+            "title": source.get("title"),
+            "duration_s": float(known),
+            "chapters": [],
+            "subtitle_langs": [],
+            "subtitle_langs_total": 0,
+            "description": "",
+            "tags": [],
+            "subtitles": {},
+        }
     path = cache_direct_media(ledger, source, stage=stage)
     info = probe(path)
     duration = info.get("duration_s")

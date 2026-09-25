@@ -163,6 +163,19 @@ def _action(step, why, for_human, state, url=None, blocking_human=False, command
     }
 
 
+def _inspect_command(state):
+    """`inspect` do degrau; com o beat conhecido, a `--query` já sai com a fala dele."""
+    command = command_for(
+        "inspect",
+        state["project"],
+        state.get("inspect_candidate") or step_candidate(state, "inspect"),
+    )
+    query = state.get("inspect_query")
+    if command and query:
+        command = command.replace("--query NARRACAO_OU_ALVO", "--query " + shlex.quote(query))
+    return command
+
+
 def _library_hint():
     """Lembrete da biblioteca só quando ela existe de fato; nunca altera o comando."""
     from . import library
@@ -185,6 +198,9 @@ def _missing_beat_phrase(beat):
     """
     name = beat["id"]
     unavailable = list(beat.get("unavailable") or [])
+    if unavailable and beat.get("unavailable_note"):
+        # As fontes sem chave são as únicas que sobraram depois das buscas vazias.
+        return f'O beat "{name}" está parado por configuração. ' + beat["unavailable_note"]
     if unavailable:
         # Nada aqui é dúvida sobre o trecho: falta chave de API nesta máquina. Pedir
         # "a empresa, a data" mandaria a pessoa responder uma pergunta que não é a dela.
@@ -309,6 +325,70 @@ def _approve_action(state, pending=0):
     )
 
 
+def _approved_work(state, counts):
+    """Há item aprovado ainda a caminho de `entrega/` (permit, fetch, verify, deliver)?"""
+    approved = counts["approved"]
+    return bool(approved) and (
+        counts["permitted"] < approved
+        or counts["delivered"] < counts["permitted"]
+        or counts["verified"] < counts["delivered"]
+        or bool(state.get("undelivered"))
+    )
+
+
+def _exhausted_action(state, beat):
+    """Beat com todas as fontes pesquisáveis e buscas vazias: pergunta para a pessoa, sem comando."""
+    from .brief import exhausted_phrase
+
+    sources = list(beat["exhausted"])
+    phrase = beat.get("note") or exhausted_phrase(
+        {"id": beat["id"], "allowed_sources": beat.get("allowed_sources") or sources},
+        sources,
+        beat.get("queries") or [],
+    )
+    return _action(
+        "brief-exhausted",
+        f'O beat "{beat["id"]}" já foi buscado em todas as fontes pesquisáveis '
+        f"({', '.join(sources)}) sem nenhum resultado.",
+        phrase,
+        state,
+        blocking_human=True,
+        command=None,
+    )
+
+
+def _resolve_action(state, beat):
+    """Beat sem fonte com busca por API: a pessoa traz o link ou o arquivo, e eu registro."""
+    from .brief import WAY_OUT, resolve_routes
+
+    sources = ", ".join(beat.get("allowed_sources") or [])
+    routes = resolve_routes(beat["id"], beat.get("allowed_sources") or [])
+    ask = f'O beat "{beat["id"]}" só aceita material que eu não consigo pesquisar ({sources}). {routes}'
+    return _action(
+        "brief-resolve",
+        f'O beat "{beat["id"]}" não tem fonte com busca por API; o material entra por link ou arquivo.',
+        f"{ask} {WAY_OUT}",
+        state,
+        blocking_human=True,
+        command=beat["resolve"],
+    )
+
+
+def _unavailable_action(state, beat):
+    """Beat que só sobra em fonte sem chave de API: diz qual chave, sem comando que falharia."""
+    from .brief import WAY_OUT
+
+    keys = ", ".join(dict.fromkeys(entry["env_key"] for entry in beat["unavailable"]))
+    return _action(
+        "brief-unavailable",
+        f'O beat "{beat["id"]}" só pode ser buscado agora em fonte que falta chave de API: {keys}.',
+        f"{_missing_beat_phrase(beat)} {WAY_OUT}",
+        state,
+        blocking_human=True,
+        command=None,
+    )
+
+
 def _done_action(state, counts):
     """Fim de fluxo: o que sobrou sem decisão entra como aparte, nunca como tarefa."""
     aside = leftover_aside(leftovers(state, counts))
@@ -319,6 +399,38 @@ def _done_action(state, counts):
         "conferidos e organizados em `entrega/`." + aside,
         state,
         command=None,
+    )
+
+
+def _brief_still_helps(counts):
+    """Sem BRIEF.md, o plano só é o próximo passo antes da primeira prévia.
+
+    Até ali o brief muda o que buscar. Com prévia na mesa, vale a regra do resto da
+    escada: a decisão humana pendente ganha, e depois dela o fluxo real (aprovar,
+    permitir, coletar) segue sem exigir um plano que não muda mais a escolha.
+    """
+    return not counts["previews"] and not counts["approved"]
+
+
+def _init_brief_action(state, counts):
+    """Degrau do brief ausente, com a frase certa para projeto vazio ou já em curso."""
+    if not counts["candidates"]:
+        for_human = (
+            "Antes de buscar qualquer coisa, precisamos do plano do vídeo: rode "
+            "`/get-brolls-brief` para eu te fazer as perguntas, ou `init-brief` para "
+            "criar o modelo e preencher à mão."
+        )
+    else:
+        for_human = (
+            "O projeto já tem candidatos, mas ainda não tem o plano do vídeo (BRIEF.md) "
+            "dizendo o que cada trecho precisa mostrar: rode `/get-brolls-brief` para eu "
+            "te fazer as perguntas, ou `init-brief` para criar o modelo e preencher à mão."
+        )
+    return _action(
+        "init-brief",
+        "O projeto ainda não tem BRIEF.md, então nada define o que buscar.",
+        for_human,
+        state,
     )
 
 
@@ -335,14 +447,12 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
     brief = state.get("brief")
     conflicts = list((brief or {}).get("conflicts") or [])
     if brief is None:
-        return _action(
-            "init-brief",
-            "O projeto ainda não tem BRIEF.md, então nada define o que buscar.",
-            "Antes de buscar qualquer coisa, precisamos do plano do vídeo: rode "
-            "`/get-brolls-brief` para eu te fazer as perguntas, ou `init-brief` para "
-            "criar o modelo e preencher à mão.",
-            state,
-        )
+        if _brief_still_helps(counts):
+            return _init_brief_action(state, counts)
+        # Sem brief e com a escolha já feita: o plano não muda mais nada, e repetir
+        # "antes de buscar" depois da entrega diria à pessoa que nada aconteceu.
+        # A escada segue pelo estado real, sem beats a cobrir.
+        brief = {}
     if brief.get("error"):
         # Arquivo existe e está errado: corrigir é diferente de começar do zero.
         return _action(
@@ -384,15 +494,33 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
             blocking_human=True,
             command=None,
         )
-    if missing:
-        first = missing[0]
+    # Beat com todas as fontes já vazias sai da fila de busca: sugerir de novo o mesmo
+    # comando é o laço que prendia o `status` num beat sem resultado. A pergunta que
+    # ele vira só entra depois da cadeia dos aprovados (ver `_exhausted_action`).
+    # O mesmo vale para o beat cujas fontes restantes só respondem com chave de API:
+    # o `search` genérico que sobraria ali volta com erro e prende a escada do mesmo jeito.
+    busy = _approved_work(state, counts)
+    for entry in missing:
+        # Na ordem do brief: o beat esgotado espera a cadeia dos aprovados, e o beat que
+        # depende da pessoa (chave de API, link ou arquivo) só passa na frente enquanto
+        # nenhum aprovado estiver a caminho da entrega.
+        waits_for_person = entry.get("unavailable") or entry.get("resolve")
+        if entry.get("exhausted") or (waits_for_person and busy):
+            continue
+        if entry.get("unavailable"):
+            return _unavailable_action(state, entry)
+        if entry.get("resolve"):
+            return _resolve_action(state, entry)
         return _action(
             "brief-search",
-            f'O beat "{first["id"]}" do brief ainda não tem candidato registrado.',
-            _missing_beat_phrase(first),
+            f'O beat "{entry["id"]}" do brief ainda não tem candidato registrado.',
+            _missing_beat_phrase(entry),
             state,
-            command=first.get("search") or command_for("search", state["project"]),
+            command=entry.get("search") or command_for("search", state["project"]),
         )
+    exhausted = [entry for entry in missing if entry.get("exhausted")]
+    if exhausted and not busy:
+        return _exhausted_action(state, exhausted[0])
     if not counts["candidates"]:
         warning = f" Antes disso, resolva: {conflicts[0]}" if conflicts else ""
         return _action(
@@ -408,6 +536,49 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
         # conferida, mandar inspecionar um candidato descartado diria à pessoa que o
         # vídeo dela não acabou quando acabou.
         return _done_action(state, counts)
+    # Item aprovado segue para permit/fetch/verify/deliver antes de qualquer prévia
+    # nova: quem sobrou sem quadro é rascunho do agente (ver `flow_complete`), e
+    # pedir prévia dele deixava o aprovado parado no meio do caminho.
+    if counts["approved"]:
+        if counts["permitted"] < counts["approved"]:
+            per_item = state.get("rights_mode", "per_item_evidence") == "per_item_evidence"
+            return _action(
+                "permit",
+                "Itens aprovados ainda sem as condições reais de uso registradas.",
+                (
+                    "Falta registrar de onde vem o direito de usar cada trecho aprovado: me "
+                    "diga a condição real da fonte (licença, autorização, contato) que eu "
+                    "gravo."
+                    if per_item
+                    else "Vou registrar as condições de uso dos aprovados com a declaração que já está no RULES.md."
+                ),
+                state,
+                blocking_human=per_item,
+            )
+        if counts["delivered"] < counts["permitted"]:
+            return _action(
+                "fetch",
+                "Itens aprovados e permitidos ainda sem o corte final em clips/.",
+                "Está tudo decidido e permitido: vou coletar os cortes finais agora.",
+                state,
+            )
+        if counts["verified"] < counts["delivered"]:
+            return _action(
+                "verify",
+                "Arquivos coletados ainda sem conferência de integridade.",
+                "Coletei os cortes; vou conferir se todos os arquivos abrem e estão íntegros.",
+                state,
+            )
+        if state.get("undelivered"):
+            # `brolls/` guarda por hash; quem abre a pasta precisa de nome de gente.
+            return _action(
+                "deliver",
+                "Há arquivo conferido que ainda não aparece em entrega/, a pasta que a pessoa abre.",
+                "Vou organizar os trechos conferidos em `entrega/`, uma pasta por beat, com "
+                "o contact sheet e a origem de cada um do lado — é essa pasta que você "
+                "arrasta para o editor.",
+                state,
+            )
     if _pending_preview(state, counts) > 0:
         if state.get("duration_unknown"):
             # Sem saber a duração, qualquer intervalo é chute — e baixar trecho errado
@@ -419,11 +590,7 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
                 "Antes de gerar prévia, vou analisar a fonte para saber a duração e em "
                 "que minuto está o que você pediu — assim o trecho não sai de palpite.",
                 state,
-                command=command_for(
-                    "inspect",
-                    state["project"],
-                    state.get("inspect_candidate") or step_candidate(state, "inspect"),
-                ),
+                command=_inspect_command(state),
             )
         preview_candidate = step_candidate(state, "preview")
         if preview_candidate and preview_candidate in (state.get("reference_only") or ()):
@@ -467,43 +634,4 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
         )
     if not counts["approved"]:
         return _approve_action(state)
-    if counts["permitted"] < counts["approved"]:
-        per_item = state.get("rights_mode", "per_item_evidence") == "per_item_evidence"
-        return _action(
-            "permit",
-            "Itens aprovados ainda sem as condições reais de uso registradas.",
-            (
-                "Falta registrar de onde vem o direito de usar cada trecho aprovado: me "
-                "diga a condição real da fonte (licença, autorização, contato) que eu "
-                "gravo."
-                if per_item
-                else "Vou registrar as condições de uso dos aprovados com a declaração que já está no RULES.md."
-            ),
-            state,
-            blocking_human=per_item,
-        )
-    if counts["delivered"] < counts["permitted"]:
-        return _action(
-            "fetch",
-            "Itens aprovados e permitidos ainda sem o corte final em clips/.",
-            "Está tudo decidido e permitido: vou coletar os cortes finais agora.",
-            state,
-        )
-    if counts["verified"] < counts["delivered"]:
-        return _action(
-            "verify",
-            "Arquivos coletados ainda sem conferência de integridade.",
-            "Coletei os cortes; vou conferir se todos os arquivos abrem e estão íntegros.",
-            state,
-        )
-    if state.get("undelivered"):
-        # `brolls/` guarda por hash; quem abre a pasta precisa de nome de gente.
-        return _action(
-            "deliver",
-            "Há arquivo conferido que ainda não aparece em entrega/, a pasta que a pessoa abre.",
-            "Vou organizar os trechos conferidos em `entrega/`, uma pasta por beat, com "
-            "o contact sheet e a origem de cada um do lado — é essa pasta que você "
-            "arrasta para o editor.",
-            state,
-        )
     return _done_action(state, counts)

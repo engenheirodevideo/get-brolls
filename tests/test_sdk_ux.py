@@ -582,6 +582,14 @@ class StatusNextAgreesWithDoTests(FetchRouteCase):
 
         self.enable(duration="0")
         with_brief(str(self.project))
+        # `search --shot` só consulta as fontes do beat: a fonte do plugin entra na lista.
+        brief = self.project / "BRIEF.md"
+        brief.write_text(
+            brief.read_text(encoding="utf-8").replace(
+                '"allowed_sources": [', '"allowed_sources": [\n        "demo",', 1
+            ),
+            encoding="utf-8",
+        )
         self.gb("search", "--provider", "demo", "--query", "mar", "--shot", "abertura")
         summary = run_cli("status", project=self.project, env=self.env)["summary"]
         self.assertEqual("preview", summary["do"]["step"])

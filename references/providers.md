@@ -44,7 +44,8 @@ python3 scripts/gb.py resolve --url <URL> --shot <beat.id> --project <projeto>
 Detalhe operacional na seção [YouTube](../docs/GUIDE.md#provedor--youtube) do guia.
 
 `--shot <beat.id>` também funciona no `search`: ele liga cada candidato ao beat do
-BRIEF.md na hora, sem precisar re-registrar por URL depois. E `--dry-run` lista o que
+BRIEF.md na hora, sem precisar re-registrar por URL depois — e só aceita as fontes de
+`allowed_sources` daquele beat (fora da lista, a busca é recusada com a lista certa). E `--dry-run` lista o que
 a fonte devolveu **sem gravar nada** no projeto — use-o para sondar uma query antes de
 sujar as contagens do `status` com material que você não vai usar.
 
@@ -87,7 +88,7 @@ Quando `inspect` não devolve janela nenhuma — vídeo sem legenda, sem capítu
 python3 scripts/gb.py preview --scan --candidate <ID> --project <projeto>
 ```
 
-O `--scan` não define intervalo: ele só mostra o vídeo todo, um quadro a cada N segundos (N = duração/12), com teto de `GB_SCAN_MAX_SECONDS` (padrão 900 s). **Ele baixa mídia de trabalho** — até esse teto — e por isso pode levar minutos num vídeo longo; rode em segundo plano se o seu shell tiver limite de tempo. A resposta traz `scan.downloaded_seconds`, `scan.start_s`/`scan.end_s` e um `note` dizendo que trecho da fonte entrou na grade — os rótulos de `frame_times_s` são tempo da fonte, mesmo quando a mídia de trabalho começa depois do zero. **Prefira `inspect --query` primeiro:** ele responde de graça, sem baixar nada, e só quando não sobrar pista é que a varredura (que baixa o vídeo inteiro até o teto) compensa. A varredura ignora o intervalo já escolhido no candidato: ela é exploratória e não define nem invalida segmento. Escolha o `--start/--end` olhando o resultado.
+O `--scan` não define intervalo: ele só mostra o vídeo todo, um quadro a cada N segundos (N = duração/12), com teto de `GB_SCAN_MAX_SECONDS` (padrão 900 s). **Ele baixa mídia de trabalho** — até esse teto — e por isso pode levar minutos num vídeo longo; rode em segundo plano se o seu shell tiver limite de tempo. A resposta traz `scan.downloaded_seconds`, `scan.start_s`/`scan.end_s` e um `note` dizendo que trecho da fonte entrou na grade — os rótulos de `frame_times_s` são tempo da fonte, mesmo quando a mídia de trabalho começa depois do zero. **Prefira `inspect --query` primeiro:** ele responde de graça, sem baixar nada (Commons e bancos incluídos: a duração vem dos metadados da fonte; a exceção é vídeo da NASA, que não publica a duração — ali o `inspect` baixa o arquivo uma vez para o cache privado e avisa o tamanho em `warnings`), e só quando não sobrar pista é que a varredura (que baixa o vídeo inteiro até o teto) compensa. A varredura ignora o intervalo já escolhido no candidato: ela é exploratória e não define nem invalida segmento. Escolha o `--start/--end` olhando o resultado.
 
 Quando `inspect` não encontra nada que case com a frase, ele ainda devolve janelas com
 `score: 0` e a `source` que as gerou (capítulo, legenda ou espaçamento pelo relógio):

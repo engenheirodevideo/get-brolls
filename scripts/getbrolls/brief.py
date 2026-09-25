@@ -416,6 +416,51 @@ def validate_brief(data, rules=None):
     )
 
 
+def beat_sources(project, shot, rules=None):
+    """`allowed_sources` do beat `shot` num BRIEF.md válido; None quando não há o que conferir.
+
+    Brief ausente ou inválido não trava a busca (quem avisa disso é `status`/`brief`),
+    e `--shot` que não é beat do brief segue livre, como sempre foi.
+    """
+    try:
+        data, _ = validate_brief(load_brief(project), rules)
+    except (ValueError, OSError):
+        return None
+    for beat in data["beats"]:
+        if beat["id"] == shot:
+            return list(beat["resolved"]["allowed_sources"])
+    return None
+
+
+# Textos de exemplo do modelo (`docs/BRIEF.md`): quem os deixou não preencheu o campo.
+TEMPLATE_VIDEO_TEXT = {
+    "title": "Troque pelo nome real do vídeo",
+    "objective": "O que este vídeo precisa provar para quem assiste",
+}
+TEMPLATE_BEAT_TEXT = {
+    "narration": "Cole aqui a fala exata deste trecho, ou deixe null.",
+    "target": "O que precisa aparecer na tela neste trecho",
+}
+
+
+def template_leftovers(data):
+    """Campos que ainda trazem o texto de exemplo do modelo, um aviso por campo.
+
+    O modelo é válido de propósito (serve de ponto de partida), mas buscar pelo
+    "O que precisa aparecer na tela" dele é buscar pelo exemplo, não pelo vídeo.
+    """
+    found = [
+        f"video.{key} ainda está com o texto de exemplo do modelo: troque pelo real."
+        for key, text in TEMPLATE_VIDEO_TEXT.items()
+        if data["video"].get(key) == text
+    ]
+    for beat in data["beats"]:
+        for key, text in TEMPLATE_BEAT_TEXT.items():
+            if beat["resolved"].get(key) == text:
+                found.append(f'O beat "{beat["id"]}" ainda está com o {key} de exemplo do modelo: troque pelo real.')
+    return found
+
+
 def search_query(beat, limit=QUERY_MAX_TOKENS):
     """Termos que vão para a fonte: entidade + ação, nunca a frase inteira do `target`.
 
@@ -496,30 +541,152 @@ def _cli_prefix():
     return f'python3 "{CLI}"'
 
 
-def beat_commands(project, beat):
-    """search/resolve/inspect/preview prontos para este beat, com --shot, --intent e --narração.
+WAY_OUT = "Se não tiver esse material, remova o beat do BRIEF.md ou siga sem ele."
 
-    Beat sem fonte pesquisável por API (só instagram/tiktok/local) não ganha `search`:
-    no lugar dele vai um `note` explicando que o caminho é `resolve --url/--file`.
+
+def resolve_routes(beat_id, allowed_sources):
+    """Frase com o `resolve` certo para cada fonte sem busca por API do beat.
+
+    Link público (Instagram, TikTok) entra com `resolve --url`; o arquivo da própria
+    pessoa, com `resolve --file`. Sem fonte assim no beat, a frase é vazia.
     """
-    project = shlex.quote(str(Path(project).expanduser().resolve()))
-    prefix = f"{_cli_prefix()} "
+    manual = [source for source in allowed_sources if source not in searchable()]
+    links = [source for source in manual if source != "local"]
+    parts = []
+    if links:
+        parts.append(
+            f"o link público do post ou vídeo ({', '.join(links)}) eu registro com "
+            f"`resolve --url URL_PUBLICA --shot {beat_id}`"
+        )
+    if "local" in manual:
+        parts.append(f"o seu próprio arquivo eu registro com `resolve --file ARQUIVO --shot {beat_id}`")
+    if not parts:
+        return ""
+    return "Se você tiver esse material, " + "; ".join(parts) + "."
+
+
+def exhausted_phrase(beat, sources, queries):
+    """Todas as fontes pesquisáveis do beat já voltaram vazias para todas as buscas.
+
+    Com fonte que só entra por link ou arquivo no beat, a frase diz "as fontes que
+    consigo pesquisar", não "todas as permitidas", e oferece o `resolve` dela.
+    """
+    asked = " / ".join(f'"{query}"' for query in queries)
+    routes = resolve_routes(beat["id"], beat["allowed_sources"])
+    where = (
+        "em todas as fontes que consigo pesquisar para ele"
+        if routes
+        else "em todas as fontes que o BRIEF.md permite para ele"
+    )
+    return (
+        f'Busquei o beat "{beat["id"]}" {where} ({", ".join(sources)}) com {asked}, e nenhuma '
+        "trouxe nada. Repetir a mesma busca não vai mudar isso."
+        + (f" {routes}" if routes else "")
+        + " Me diga como seguir: outra forma de dizer o que precisa aparecer "
+        '(acrescente em "queries" do beat — eu tento cada busca nova que ainda não voltou '
+        "vazia), mais fontes em allowed_sources, o seu próprio material para esse trecho, "
+        "ou remova o beat do BRIEF.md (ou siga sem ele)."
+    )
+
+
+def remaining_keys_phrase(beat, entries, searched):
+    """As fontes que ainda não tentei só respondem com chave de API: diga qual configurar."""
+    names = " e ".join(dict.fromkeys(entry["provider"] for entry in entries))
+    keys = " e ".join(dict.fromkeys(entry["env_key"] for entry in entries))
+    head = (
+        f"As outras fontes deste trecho já voltaram vazias; falta tentar {names}, que só responde com chave de API."
+        if searched
+        else f"A busca deste trecho só pode ser feita em {names}, que responde só com chave de API."
+    )
+    routes = resolve_routes(beat["id"], beat["allowed_sources"])
+    route = f" {routes}" if routes else " Ou me diga outra forma de buscar esse trecho."
+    return f"{head} Coloque {keys} no arquivo `.env` da skill (ou no ambiente) e eu busco na hora.{route}"
+
+
+def search_queries(beat):
+    """Buscas do beat, na ordem: as `queries` da pessoa, ou a derivada do `target`."""
+    return list(beat.get("queries") or []) or [search_query(beat)]
+
+
+def search_plan(beat, tried=()):
+    """Qual busca vem agora para este beat, ou por que nenhuma vem.
+
+    `tried` são os pares (fonte, query) em que a busca deste beat já voltou vazia: a
+    próxima busca passa para a fonte seguinte (pulando a que falta chave de API) e
+    depois para a próxima query de `queries`. Sem nenhum par sobrando, o `state` diz o
+    motivo: `unavailable`/`needs_keys` (só sobra fonte sem chave), `exhausted` (tudo
+    vazio) ou `resolve_only` (nenhuma fonte tem busca por API) — repetir um comando que
+    já voltou vazio, ou que só daria erro, seria andar em círculo.
+    """
     still = wants_a_still(beat)
     # Um beat de foto no YouTube devolve vídeo, sempre: a fonte de imagem vem antes,
     # e a busca sai com `--media image` para o acervo não responder só com vídeo.
-    provider = next((s for s in beat["allowed_sources"] if still and s in still_sources()), None) or next(
-        (s for s in beat["allowed_sources"] if s in searchable()), None
+    ordered = list(
+        dict.fromkeys(
+            [s for s in beat["allowed_sources"] if still and s in still_sources()]
+            + [s for s in beat["allowed_sources"] if s in searchable()]
+        )
     )
-    query = search_query(beat)
+    queries = search_queries(beat)
+    absent = missing_provider_keys(beat)
+    keyless = {entry["provider"] for entry in absent}
+    pending = [(source, query) for query in queries for source in ordered if (source, query) not in tried]
+    provider, query = next(((s, q) for s, q in pending if s not in keyless), (None, queries[0]))
+    plan = {
+        "provider": provider,
+        "query": query,
+        "media_image": bool(provider) and still and provider in still_sources(),
+        "state": "search",
+        "sources": ordered,
+        "queries": queries,
+        "needs_keys": [],
+        "note": None,
+    }
+    waiting_keys = [entry for entry in absent if any(source == entry["provider"] for source, _q in pending)]
+    if absent and provider_unavailable(beat):
+        # Problema de ambiente, não de brief: nenhuma fonte responde sem chave, e a
+        # nota diz o que de fato destrava o trecho.
+        plan.update(state="unavailable", needs_keys=absent, note=unavailable_phrase(absent))
+    elif not provider and waiting_keys:
+        # Só conta o que foi buscado com as fontes e buscas de agora: registro de uma
+        # fonte que saiu do brief não é "as outras já voltaram vazias".
+        searched = any((source, query) in tried for source in ordered for query in queries)
+        note = remaining_keys_phrase(beat, waiting_keys, searched=searched)
+        plan.update(state="needs_keys", needs_keys=waiting_keys, note=note)
+    elif not provider and ordered:
+        plan.update(state="exhausted", note=exhausted_phrase(beat, ordered, queries))
+    elif not provider:
+        # Instagram, TikTok e material próprio não têm busca por API: entram por URL/arquivo.
+        plan.update(
+            state="resolve_only",
+            note=(
+                "Nenhuma fonte deste beat é pesquisável por API ("
+                + ", ".join(beat["allowed_sources"])
+                + "): descubra a URL no navegador e registre com o resolve acima."
+            ),
+        )
+    return plan
+
+
+def beat_commands(project, beat, tried=()):
+    """search/resolve/inspect/preview prontos para este beat, com --shot, --intent e --narração.
+
+    Beat sem fonte pesquisável por API (só instagram/tiktok/local) não ganha `search`:
+    no lugar dele vai um `note` explicando que o caminho é `resolve --url/--file`. A
+    escolha da busca (e o motivo de não haver uma) sai de `search_plan`.
+    """
+    project = shlex.quote(str(Path(project).expanduser().resolve()))
+    prefix = f"{_cli_prefix()} "
+    plan = search_plan(beat, tried)
     origin = "--file ARQUIVO" if beat["allowed_sources"] == ["local"] else "--url URL_PUBLICA"
     narration = f" --narration {shlex.quote(beat['narration'])}" if beat.get("narration") else ""
     commands = {}
-    if provider:
-        media = " --media image" if still and provider in still_sources() else ""
+    if plan["provider"]:
+        media = " --media image" if plan["media_image"] else ""
         commands["search"] = (
             prefix
-            + f"search --project {project} --provider {provider} "
-            + f"--query {shlex.quote(query)}{media} --intent {beat['intent']} --shot {beat['id']}"
+            + f"search --project {project} --provider {plan['provider']} "
+            + f"--query {shlex.quote(plan['query'])}{media} --intent {beat['intent']} --shot {beat['id']}"
         )
     # Banco de imagem não tem página para colar: sugerir `resolve --url` num beat que
     # só aceita pexels/pixabay manda a pessoa procurar um link que não existe.
@@ -534,19 +701,8 @@ def beat_commands(project, beat):
         + shlex.quote(beat.get("narration") or beat["target"])
     )
     commands["preview"] = prefix + f"preview --project {project} --candidate ID" + narration
-    if not provider:
-        # Instagram, TikTok e material próprio não têm busca por API: entram por URL/arquivo.
-        commands["note"] = (
-            "Nenhuma fonte deste beat é pesquisável por API ("
-            + ", ".join(beat["allowed_sources"])
-            + "): descubra a URL no navegador e registre com o resolve acima."
-        )
-    absent = missing_provider_keys(beat)
-    if absent and provider_unavailable(beat):
-        # Problema de ambiente, não de brief: some com o `search` que só daria erro e
-        # troca a nota por aquela que diz o que de fato destrava o trecho.
-        commands.pop("search", None)
-        commands["note"] = unavailable_phrase(absent)
+    if plan["note"]:
+        commands["note"] = plan["note"]
     return commands
 
 

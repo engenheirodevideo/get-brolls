@@ -35,6 +35,10 @@ class ProviderError(ValueError):
     pass
 
 
+class DownloadTooLargeError(ProviderError):
+    """O arquivo passa do teto de download: quem tem versão menor da mesma mídia tenta ela."""
+
+
 SECRET_NAMES = {
     "key",
     "api_key",
@@ -527,6 +531,25 @@ def get_json(url, params=None, headers=None, cache_ttl=0, keep_signed=False, qui
     return data
 
 
+def download_rendition(fresh, target, **kwargs):
+    """Baixa `media_url`; acima do teto, tenta as versões menores de `media_url_fallbacks`.
+
+    Só a fonte que publica versões da mesma mídia (foto da NASA) traz fallbacks; para
+    as outras, o erro de teto sai igual ao de `download`. Devolve a URL usada.
+    """
+    urls = [fresh["media_url"], *(fresh.get("media_url_fallbacks") or [])]
+    for index, url in enumerate(urls):
+        try:
+            download(url, target, **kwargs)
+        except DownloadTooLargeError:
+            if index == len(urls) - 1:
+                raise
+            logs.event(_logger, logging.INFO, "download_fallback", host=_host_of(url), reason="size_cap")
+            continue
+        return url
+    raise ProviderError("Nenhuma versão da mídia disponível")
+
+
 DOWNLOAD_MAX_BYTES = 512 * 1024 * 1024
 
 
@@ -557,7 +580,7 @@ def download(url, target, max_bytes=DOWNLOAD_MAX_BYTES, headers=None, allow_sign
         cap = max_bytes / (1024 * 1024)
         actual = f"{size / (1024 * 1024):.1f} MB" if size else "tamanho acima do teto"
         logs.event(_logger, logging.WARNING, "download_aborted", host=host, reason="size_cap", limit_mb=round(cap))
-        return ProviderError(
+        return DownloadTooLargeError(
             f"Mídia excede limite de download: o arquivo tem {actual} e o teto desta "
             f"coleta é {cap:.0f} MB. Escolha um trecho menor com `preview --start/--end` "
             "antes do `fetch`, ou use uma variante de resolução mais baixa da mesma fonte."
