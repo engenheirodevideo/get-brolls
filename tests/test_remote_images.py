@@ -9,10 +9,12 @@ dublados; o arquivo servido é uma imagem de verdade gerada pelo FFmpeg.
 """
 
 import io
+import shlex
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
@@ -21,6 +23,9 @@ from _media import skip_unless_ffmpeg, synth_image
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
 
 from getbrolls import cli, http, providers
+from getbrolls.commands import _flow_state
+from getbrolls.guidance import next_action
+from getbrolls.ledger import Ledger
 
 NASA_ID = "as11-40-5903"
 NASA_MEDIA = f"https://images-assets.nasa.gov/image/{NASA_ID}/{NASA_ID}~medium.jpg"
@@ -256,6 +261,44 @@ class RemoteImageExtensionTests(RemoteImageFlowBase):
         self.files[NASA_MEDIA] = self.png
         fetched = self.collect_reference_only()
         self.assertTrue(fetched["output"]["path"].endswith(".png"), fetched["output"])
+
+
+class RemoteImageGuidanceTests(RemoteImageFlowBase):
+    """BUG-04: `status` mandava inspecionar a foto para sempre; `inspect` e `--scan` não saíam do lugar."""
+
+    COVERED: ClassVar[dict] = {"beats": 1, "covered": 1, "missing": [], "blocked": [], "conflicts": []}
+
+    def next_step(self):
+        ledger = Ledger(self.project)
+        return next_action(_flow_state(ledger, None, brief=dict(self.COVERED)))
+
+    def test_status_sends_a_photo_straight_to_a_rangeless_preview(self):
+        item = self.found("nasa")
+        step = self.next_step()
+        self.assertEqual("preview", step["step"], step)
+        self.assertIn(shlex.quote(item["id"]), step["command"])
+        self.assertNotIn("--start", step["command"])
+        self.assertNotIn("--end", step["command"])
+        self.assertNotIn("inspect", step["for_human"])
+        # O comando sugerido funciona de verdade, e o passo seguinte já é a decisão humana.
+        cli.main(shlex.split(step["command"])[2:])
+        self.assertEqual("approve", self.next_step()["step"])
+
+    def test_inspect_on_a_photo_points_to_the_static_preview(self):
+        item = self.found("commons")
+        with self.assertRaises(Exception) as caught:
+            self.gb("inspect", "--candidate", item["id"], "--query", "lua")
+        message = str(caught.exception)
+        self.assertIn("preview --candidate", message)
+        self.assertIn("sem `--start/--end`", message)
+
+    def test_scan_on_a_photo_points_to_the_static_preview(self):
+        item = self.found("nasa")
+        with self.assertRaises(Exception) as caught:
+            self.gb("preview", "--candidate", item["id"], "--scan")
+        message = str(caught.exception)
+        self.assertIn("preview --candidate", message)
+        self.assertIn("sem `--start/--end`", message)
 
 
 if __name__ == "__main__":  # pragma: no cover

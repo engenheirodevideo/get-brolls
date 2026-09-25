@@ -571,6 +571,7 @@ def brief_report(args):
                     "candidates": _step_candidates(items),
                     "duration_unknown": len(_uninspected(items)),
                     "inspect_candidate": next((c["id"] for c in _uninspected(items)), None),
+                    "preview_image": _preview_is_image(items),
                 }
             )["for_human"],
         },
@@ -1009,12 +1010,14 @@ def _uninspected(items):
 
     É o que separa o degrau `inspect` do degrau `preview`: sem duração, qualquer
     `--start/--end` é palpite, e o palpite custa um pedido à fonte. Item rejeitado
-    fica de fora: ninguém gasta pedido à fonte por um trecho já descartado.
+    fica de fora: ninguém gasta pedido à fonte por um trecho já descartado. Foto
+    também: não tem duração nem trecho a descobrir, e vai direto à prévia estática.
     """
     return [
         c
         for c in items
         if not (c.get("media") or {}).get("duration_s")
+        and (c.get("media") or {}).get("kind") != "image"
         and c.get("source_url")
         and not _has_preview(c)
         and _stage_status(c, "approval") != "rejected"
@@ -1089,6 +1092,12 @@ def _delivery_next(ledger, rules):
     return _flow_next(ledger, rules)
 
 
+def _preview_is_image(items):
+    """O item que o degrau `preview` nomeia é uma foto? Então o comando vai sem intervalo."""
+    chosen = _step_candidates(items)["preview"]
+    return any(c["id"] == chosen and (c.get("media") or {}).get("kind") == "image" for c in items)
+
+
 def _needs_preview(items):
     """Itens ainda em jogo e sem nenhum quadro: um item rejeitado não trava o fluxo."""
     return [c for c in items if not _has_preview(c) and _stage_status(c, "approval") != "rejected"]
@@ -1150,6 +1159,7 @@ def _flow_state(ledger, rules, counts=None, format_pending=0, brief=_UNSET):
         "inspect_candidate": next((c["id"] for c in _uninspected(items)), None),
         "undelivered": len(_undelivered(items)),
         "pending_preview": len(_needs_preview(items)),
+        "preview_image": _preview_is_image(items),
     }
 
 
@@ -2330,6 +2340,11 @@ def inspect_source(ledger, args, config=None):
     c = None
     if args.candidate:
         c = ledger.get(args.candidate)
+        if (c.get("media") or {}).get("kind") == "image":
+            raise ValueError(
+                "Imagem estática não tem duração nem trecho para analisar: gere a prévia "
+                f"dela direto com `preview --candidate {c['id']}`, sem `--start/--end`."
+            )
         url = c.get("source_url")
         if not url and not direct_media(c):
             raise ValueError(
@@ -2346,6 +2361,11 @@ def inspect_source(ledger, args, config=None):
         from getbrolls import providers
 
         source = providers.resolve(url)
+        if (source.get("media") or {}).get("kind") == "image":
+            raise ValueError(
+                "Esta URL é uma imagem estática, sem trecho para analisar: registre com "
+                "`resolve --url` e gere a prévia com `preview --candidate ID`, sem `--start/--end`."
+            )
     if direct_media(source):
         # NASA, Commons e os bancos publicam o arquivo; `source_url` é a página do
         # item, e o yt-dlp responde "Unsupported URL" para ela. A duração sai do
@@ -2507,7 +2527,10 @@ def scan_candidate(ledger, c, config):  # noqa: C901 - existing size; contact-sh
     from .media import scan_sheet
 
     if c.get("media", {}).get("kind") == "image":
-        raise ValueError("Imagem estática não tem o que varrer; gere a prévia normal.")
+        raise ValueError(
+            "Imagem estática não tem o que varrer: gere a prévia dela com "
+            f"`preview --candidate {c['id']}`, sem `--start/--end`."
+        )
     duration = c["media"].get("duration_s")
     if not duration and c["provider"] != "local":
         from .acquisition import direct_media
