@@ -10,6 +10,7 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- SDK (segurança): a instalação por git nunca grava lixo de SO (`.DS_Store`, `Thumbs.db`, `desktop.ini`, fora do hash); install/update recusam link simbólico e bytecode (`__pycache__`, `*.pyc`, `*.pyo`), e um plugin com qualquer um deles na pasta fica `invalid` e não carrega.
 - CLI: erro de uso em `plugins` e `x` (flag faltando, plugin inexistente) sai só com a mensagem, sem `traceback`/`repr` nem a dica de `recovery_pending`/`review`; os outros comandos não mudam.
 - Docs: SKILL.md cita `--yes --expect <sha256>` para install/update e o re-enable de plugin suspenso; GUIDE "Plugins" e SDK.md explicam `enable` × install/update, o diff do re-enable, `GB_PLUGINS` no `plugins list` e `doctor --live` com fonte só-metadados/rota; o README do `pasta_local` usa `$GB_HOME` (com `mkdir -p` antes do `cp`, que numa pasta pessoal nova espalhava os arquivos em `plugins/`) e explica que a busca funciona fora de `permissions.paths` mas a prévia é recusada; o README do scaffold diz rodar o teste com a pasta do plugin como diretório atual; CONTRIBUTING mostra como rodar um arquivo de teste só (`discover -s tests -p "test_x.py"`).
 - SDK: o scrub estrito de `api.get_json` também descarta `api_token`/`apiToken`, `signing_key` e `encryption_key` (como sufixo normalizado) e `pwd`/`hmac` (só como nome inteiro); chaves de paginação (`next_page_token`, `sort_key`, `cursor`…) continuam passando, e o caminho das fontes embutidas não muda.

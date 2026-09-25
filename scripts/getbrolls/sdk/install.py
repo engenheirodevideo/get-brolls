@@ -37,8 +37,9 @@ _log = logs.get("sdk")
 GIT_URL_RE = re.compile(r"(https://\S+|git@[A-Za-z0-9.-]+:\S+)")
 GIT_TIMEOUT_S = 120
 # Cópia de pasta local: sem metadado de VCS de topo (VCS aninhado é recusado antes,
-# em `_refuse_nested_vcs`), sem bytecode e sem lixo de SO (`loader.JUNK_FILENAMES`).
-COPY_IGNORE = shutil.ignore_patterns(".git", ".hg", ".svn", "__pycache__", "*.pyc", *sorted(loader.JUNK_FILENAMES))
+# em `_refuse_nested_vcs`) e sem lixo de SO (`loader.JUNK_FILENAMES`), que fica fora
+# do hash. Bytecode e link simbólico não são ignorados: são recusados (B-01/B-03).
+COPY_IGNORE = shutil.ignore_patterns(".git", ".hg", ".svn", *sorted(loader.JUNK_FILENAMES))
 # Quantos nomes de arquivo a prévia do install/update lista (o total vem sempre).
 PREVIEW_FILES_MAX = 50
 
@@ -189,9 +190,12 @@ def _git_blob(dest, sha):
     return _run_git(["cat-file", "blob", sha], cwd=dest, binary=True)
 
 
-def _refuse_links(folder):
-    if any(path.is_symlink() for path in folder.rglob("*")):
-        raise ValueError("O plugin tem link simbólico; copie os arquivos reais para a pasta antes de instalar.")
+def _refuse_links_and_bytecode(folder):
+    """Link simbólico (conteúdo fora do hash) e bytecode (roda no lugar da fonte
+    revisada) nunca entram em `plugins/` — o loader marcaria a pasta `invalid`."""
+    problem = loader.content_problem(folder)
+    if problem is not None:
+        raise ValueError(loader.content_reason(problem, "rode a prévia de novo"))
 
 
 def _refuse_query_or_fragment(raw):
@@ -253,6 +257,19 @@ def _refuse_git_path_component(path):
             raise ValueError(
                 f"Caminho não pode ter um componente de controle de versão (.git, .hg, .svn) no histórico git: {path!r}."
             )
+
+
+def _refuse_bytecode_path(path):
+    parts = path.split("/")
+    if any(loader.is_bytecode_name(part, True) for part in parts[:-1]) or loader.is_bytecode_name(parts[-1], False):
+        raise ValueError(
+            f"O plugin tem bytecode Python ({path!r}) no histórico git; o Python pode rodá-lo no lugar da "
+            "fonte revisada. Tire __pycache__/.pyc/.pyo do repositório."
+        )
+
+
+def _is_junk(path):
+    return path.rsplit("/", 1)[-1] in loader.JUNK_FILENAMES
 
 
 def _refuse_oversized_blob(path, size):
@@ -329,7 +346,13 @@ def _materialize_tree(clone, dest, paths_only=None):
     por-blob do jeito que qualquer outra entrada passa."""
     dest.mkdir(exist_ok=True)
     root = dest.resolve()
-    entries = [entry for entry in _tree_entries(clone) if paths_only is None or entry[2] in paths_only]
+    # Lixo de SO (`.DS_Store`...) fica fora do hash e da lista da prévia: nunca é
+    # gravado, senão o arquivo que roda poderia mudar sem mudar o sha256 (B-01).
+    entries = [
+        entry
+        for entry in _tree_entries(clone)
+        if (paths_only is None or entry[2] in paths_only) and not _is_junk(entry[2])
+    ]
     _refuse_tree_collisions(path for _mode, _sha, path, _size in entries)
     total_files = 0
     total_bytes = 0
@@ -338,6 +361,7 @@ def _materialize_tree(clone, dest, paths_only=None):
             reason = _REFUSED_TREE_MODES.get(mode, f"modo {mode}")
             raise ValueError(f"O plugin tem {reason} em {path!r} no histórico git; isso não é aceito.")
         _refuse_git_path_component(path)
+        _refuse_bytecode_path(path)
         _refuse_oversized_blob(path, size)
         if paths_only is None:
             total_files += 1
@@ -386,7 +410,7 @@ def _from_git(source_uri, dest, ssh=False):
         _materialize_tree(clone, dest)
     finally:
         force_rmtree(clone)
-    _refuse_links(dest)
+    _refuse_links_and_bytecode(dest)
     return commit
 
 
@@ -422,10 +446,10 @@ def _materialize(source, dest):
     """Traz `source` para `dest` (que não existe) e devolve `(origem, commit)`.
 
     Pasta com `.git` e URL git nunca são `checkout`adas (ver o docstring do
-    módulo); pasta comum é copiada com os links copiados como links
-    (`symlinks=True`), sem `.git`/`__pycache__`, e então recusada se sobrar
-    algum link — checar o resultado materializado, não a origem, fecha a
-    corrida entre "olhar" e "copiar" (I2)."""
+    módulo); pasta comum com link ou bytecode é recusada, e a cópia (links
+    copiados como links, `symlinks=True`, sem `.git` nem lixo de SO) é
+    conferida de novo — checar o resultado materializado, não só a origem,
+    fecha a corrida entre "olhar" e "copiar" (I2)."""
     raw = str(source).strip()
     folder = Path(raw).expanduser()
     if raw and not raw.startswith("-") and folder.is_dir():
@@ -438,13 +462,14 @@ def _materialize(source, dest):
             return str(folder), _from_git(folder.as_uri(), dest)
         _checked_manifest(folder)
         _refuse_nested_vcs(folder)
+        _refuse_links_and_bytecode(folder)
         _guard_folder_cap(folder)
         _refuse_tree_collisions(rel.as_posix() for rel, _path in loader._counted_files(folder))
         try:
             shutil.copytree(folder, dest, symlinks=True, ignore=COPY_IGNORE)
         except OSError as exc:
             raise ValueError(f"Não consegui copiar a pasta do plugin ({type(exc).__name__}).") from exc
-        _refuse_links(dest)
+        _refuse_links_and_bytecode(dest)
         return str(folder), None
     if not GIT_URL_RE.fullmatch(raw):
         raise ValueError("--source tem que ser uma pasta local ou uma URL git (https://… ou git@host:caminho).")

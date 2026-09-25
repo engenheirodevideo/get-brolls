@@ -404,20 +404,25 @@ python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
   "muitos arquivos, diff omitido" — o `--expect` continua obrigatório.
 - `--yes` grava um **pin de hash**: um sha256 sobre todo arquivo da pasta do
   plugin, exceto lixo de SO (`.DS_Store`, `Thumbs.db`, `desktop.ini`) e a pasta
-  `.git` **de topo** — só essas ficam fora da conta. Qualquer outra mudança no
-  conteúdo da pasta — mesmo um arquivo que não é código, `__pycache__` e
+  `.git` **de topo** — só essas ficam fora da conta, e por isso o código do
+  plugin **não pode ler nem executar** nada com esses nomes nem de dentro do
+  `.git` de topo. O `install` nunca grava esses nomes em `plugins/`. Qualquer
+  outra mudança no conteúdo da pasta — mesmo um arquivo que não é código,
   `.hg`/`.svn` de topo inclusos — deixa o plugin `suspended` até um novo
   `enable`. Uma pasta de controle de versão aninhada (`vendor/.hg`,
-  `sub/.svn`, `sub/.git`) deixa o plugin `invalid`: seria conteúdo que o plugin
-  lê fora do hash.
+  `sub/.svn`, `sub/.git`), um link simbólico ou bytecode Python
+  (`__pycache__/`, `*.pyc`, `*.pyo`) em qualquer lugar da pasta deixam o
+  plugin `invalid` (nunca carrega): seria conteúdo fora do hash ou código
+  diferente da fonte revisada. O `install`/`update` recusa os mesmos casos,
+  vindos de uma pasta ou de um repositório git.
 - O hash é lido em pedaços, com teto de 200 MB por arquivo e 400 MB no total:
   passou disso (um cache largado ao lado do `__file__`, por exemplo), o plugin
   fica `suspended` com o motivo, e o `enable` recusa. Guarde estado em
   `api.data_dir`.
-- O arquivo de entrada é sempre executado a partir da fonte (`.py`); bytecode
-  (`.pyc`/`__pycache__`) nunca é lido para rodar o plugin, mas continua
-  contando no hash como qualquer outro arquivo (só o lixo de SO e o `.git` de
-  topo ficam de fora).
+- O arquivo de entrada é sempre executado a partir da fonte (`.py`), e o core
+  desliga a escrita de bytecode antes de carregar plugins. Bytecode na pasta
+  (`__pycache__`/`.pyc`/`.pyo`) nunca é lido para rodar o plugin porque a pasta
+  que o tiver fica `invalid` — apague-o e habilite de novo.
 - `GB_PLUGINS=id1,id2` seleciona plugins habilitados sem depender do pin de
   hash — pensado para CI/testes, não para uso diário. `GB_PLUGINS=off`
   desliga todos os plugins, mesmo os habilitados em `plugins.json`. Com a

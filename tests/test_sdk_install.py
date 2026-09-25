@@ -130,8 +130,7 @@ class InstallTestCase(LoaderTestCase):
 class FolderInstallTests(InstallTestCase):
     def test_install_from_a_folder_is_two_steps(self):
         source = write_plugin(self.work / "demo_src")
-        (source / "__pycache__").mkdir()
-        (source / "__pycache__" / "plugin.cpython-311.pyc").write_bytes(b"bytecode velho")
+        # Bytecode na origem agora é recusado (B-03, test_sdk_pin_integrity); aqui só o caminho feliz.
         preview = run_cli("plugins", "--action", "install", "--source", source, env=self.env())
         self.assertFalse(preview["installed"])
         self.assertEqual("demo", preview["plugin"]["id"])

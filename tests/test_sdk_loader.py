@@ -248,7 +248,7 @@ class PluginApiTests(LoaderTestCase):
 class HashPinTamperTests(LoaderTestCase):
     """Fix round 1 / Finding 1: `.pyc` plantado não pode driblar o pin de hash."""
 
-    def test_planted_pycache_bytecode_suspends_instead_of_running(self):
+    def test_planted_pycache_bytecode_blocks_instead_of_running(self):
         folder = self.install()
         self.assertTrue(loader.enable("demo", confirm=True)["enabled"])
         self.assertIn("demo", get_registry().provider_names())
@@ -258,7 +258,8 @@ class HashPinTamperTests(LoaderTestCase):
         (pycache / "plugin.cpython-311.pyc").write_bytes(b"not real bytecode")
 
         reset_registry()
-        self.assertEqual("suspended", loader.inventory()[0]["status"])
+        # B-03: bytecode ao lado da fonte deixa o plugin `invalid` (antes: `suspended`).
+        self.assertEqual("invalid", loader.inventory()[0]["status"])
         self.assertNotIn("demo", get_registry().provider_names())
         self.assertIn("youtube", get_registry().provider_names())
 

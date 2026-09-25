@@ -47,12 +47,17 @@ def state_path():
     return home_dir() / "plugins.json"
 
 
-# Arquivo de lixo de SO que aparece sozinho (Finder/Explorer abriram a pasta) e nunca
-# é lido para rodar o plugin: contá-lo no hash suspende o plugin por um arquivo que
-# ninguém escreveu de propósito. `__pycache__`/`.pyc`, ao contrário, continuam
-# contando — são o vetor do Finding 1 (round 1): um bytecode plantado tem que mudar
-# o hash, mesmo nunca sendo lido, porque `_import` sempre compila a fonte na hora.
+# Arquivo de lixo de SO que aparece sozinho (Finder/Explorer abriram a pasta): contá-lo
+# no hash suspenderia o plugin por um arquivo que ninguém escreveu de propósito. Fica
+# fora do hash — e por isso o `install` nunca o materializa (B-01): código do plugin
+# não pode ler nem executar esses nomes, nem o `.git` de topo (docs/SDK.md).
 JUNK_FILENAMES = frozenset({".DS_Store", "Thumbs.db", "desktop.ini"})
+# Bytecode ao lado da fonte: o `import` de um módulo irmão lê um `.pyc` de
+# `__pycache__` (um `.pyc` com hash não conferido nem olha a fonte), então o código
+# que roda deixaria de ser o que a pessoa revisou (B-03). Pasta com bytecode, ou com
+# link simbólico (conteúdo fora do hash, B-02), fica `invalid` e nunca carrega.
+BYTECODE_DIRNAME = "__pycache__"
+BYTECODE_SUFFIXES = (".pyc", ".pyo")
 # Pastas de VCS. Só o `.git` DE TOPO (o de um `git pull`/clone da própria pasta do
 # plugin) fica fora do hash: é metadado do controle de versão, não conteúdo que
 # `_import` executa. Qualquer pasta de VCS em outro lugar (`vendor/.hg`, `.svn`
@@ -100,6 +105,51 @@ def nested_vcs(folder):
     return None
 
 
+def _is_link(path):
+    """Link simbólico — ou junction do NTFS, que não é `is_symlink()` (3.12+)."""
+    if path.is_symlink():
+        return True
+    is_junction = getattr(path, "is_junction", None)
+    return bool(is_junction is not None and is_junction())
+
+
+def is_bytecode_name(name, is_dir):
+    folded = name.casefold()
+    return folded == BYTECODE_DIRNAME if is_dir else folded.endswith(BYTECODE_SUFFIXES)
+
+
+def content_problem(folder):
+    """`("link" | "bytecode", caminho relativo)` do primeiro item que torna a pasta
+    inválida, ou `None`. O `.git` de topo não é percorrido (é metadado de VCS, fora
+    do hash); um link com esse nome ainda conta como link."""
+    for current, dirs, files in os.walk(folder):
+        here = Path(current)
+        rel = here.relative_to(folder)
+        for name in sorted([*dirs, *files]):
+            path = here / name
+            if _is_link(path):
+                return "link", (rel / name).as_posix()
+            if is_bytecode_name(name, name in dirs):
+                return "bytecode", (rel / name).as_posix()
+        if not rel.parts and TOP_LEVEL_VCS in dirs:
+            dirs.remove(TOP_LEVEL_VCS)
+    return None
+
+
+def content_reason(problem, fix):
+    """Motivo legível de `content_problem`; `fix` diz o que fazer depois de limpar a pasta."""
+    kind, rel = problem
+    if kind == "link":
+        return (
+            f"O plugin tem link simbólico ({rel}); o conteúdo apontado fica fora do hash do pin. "
+            f"Copie os arquivos reais para a pasta e {fix}."
+        )
+    return (
+        f"O plugin tem bytecode Python ({rel}); o Python pode rodá-lo no lugar da fonte revisada. "
+        f"Apague __pycache__/.pyc/.pyo da pasta do plugin e {fix}."
+    )
+
+
 # Tetos do hash da pasta (RT-11): o `folder_digest` roda a cada comando, para cada
 # plugin habilitado. Um arquivo enorme largado na pasta (um plugin que faz cache ao
 # lado do `__file__`) não pode custar a memória/tempo dele a cada comando: passou do
@@ -143,8 +193,8 @@ def _hash_file(path, budget, *into):
 
 def folder_digest(folder):
     """Hash de todo arquivo da pasta, exceto lixo de SO (`JUNK_FILENAMES`) e o
-    metadado de dentro de uma pasta de VCS (`VCS_DIRNAMES`) — o resto, incluindo
-    `__pycache__`/`.pyc`, conta sem exceção (ver comentário de `JUNK_FILENAMES`).
+    `.git` de topo — o resto conta sem exceção. Link simbólico e bytecode nem
+    chegam aqui: tornam o plugin `invalid` antes (`content_problem`).
 
     Lê em pedaços, com teto por arquivo e total (`DigestLimitError`, um
     `ValueError`, quando passa): nunca carrega um arquivo inteiro na memória."""
@@ -325,14 +375,18 @@ def entries():
             continue
         try:
             nested = nested_vcs(folder)
+            problem = None if nested is not None else content_problem(folder)
         except OSError as exc:
-            nested = f"({type(exc).__name__})"
+            nested, problem = f"({type(exc).__name__})", None
         if nested is not None:
             reason = (
                 f"O plugin tem uma pasta de controle de versão aninhada ({nested}), fora do hash do pin; "
                 "tire-a da pasta do plugin e habilite de novo."
             )
             result.append((_invalid_row(manifest["id"], reason), folder, None))
+            continue
+        if problem is not None:
+            result.append((_invalid_row(manifest["id"], content_reason(problem, "habilite de novo")), folder, None))
             continue
         try:
             status, reason = _status(manifest, folder, selection, state)
