@@ -495,6 +495,38 @@ def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):  
     }
 
 
+# Assinaturas dos formatos que as fontes publicam, lidas do começo do arquivo. O
+# arquivo baixado chega sem extensão útil (`source.bin`, `download-….part`), e a
+# URL nem sempre diz o que o servidor entregou.
+_SIGNATURES = (
+    (0, b"\xff\xd8\xff", ".jpg"),
+    (0, b"\x89PNG\r\n\x1a\n", ".png"),
+    (0, b"GIF87a", ".gif"),
+    (0, b"GIF89a", ".gif"),
+    (0, b"II*\x00", ".tif"),
+    (0, b"MM\x00*", ".tif"),
+    (0, b"BM", ".bmp"),
+    (0, b"\x1a\x45\xdf\xa3", ".webm"),
+    (0, b"OggS", ".ogv"),
+    (4, b"ftyp", ".mp4"),
+)
+
+
+def sniff_suffix(path, default):
+    """Extensão pelo conteúdo real do arquivo; `default` quando nenhuma assinatura bate."""
+    try:
+        with Path(path).open("rb") as stream:
+            head = stream.read(16)
+    except OSError:
+        return default
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return ".webp"
+    for offset, magic, suffix in _SIGNATURES:
+        if head[offset : offset + len(magic)] == magic:
+            return suffix
+    return default
+
+
 def image_preview(src, directory, stem):
     directory = Path(directory)
     rel = "previews/" + stem + "-poster.jpg"

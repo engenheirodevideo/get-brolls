@@ -7,6 +7,7 @@ import os
 import tempfile
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from . import logs
 from .ledger import digest
@@ -152,7 +153,7 @@ def cache_direct_media(ledger, candidate, refresh=True):
         download(url, target)
         info = probe(target)
         sha = digest(target)
-        final = cache / (id_stem(candidate["id"]) + "-" + sha + ".mp4")
+        final = cache / (id_stem(candidate["id"]) + "-" + sha + _cached_suffix(candidate, target, url))
         if not final.exists():
             target.replace(final)
             final.chmod(0o600)
@@ -188,6 +189,34 @@ def cache_direct_media(ledger, candidate, refresh=True):
     )
     _save_index(cache, index)
     return final
+
+
+def _cached_suffix(candidate, path, url):
+    """Extensão da cópia no cache: a foto guarda a dela, que `fetch` leva até `clips/`."""
+    if (candidate.get("media") or {}).get("kind") != "image":
+        return ".mp4"
+    from .media import sniff_suffix
+
+    return sniff_suffix(path, Path(urlsplit(url).path).suffix.lower() or ".bin")
+
+
+def prepare_image_source(ledger, candidate):
+    """Traz a foto remota inteira para o cache privado: é ela a mídia de trabalho.
+
+    Imagem estática não tem intervalo; a prévia é o cartaz da própria foto, e o
+    `fetch` depois copia exatamente os bytes que a pessoa viu e aprovou (o hash entra
+    na assinatura da aprovação por `local_sha256`).
+    """
+    c = candidate
+    path = c.get("local_path")
+    if path and Path(path).is_file():
+        if digest(path) != c["local_sha256"]:
+            raise ValueError("Fonte de trabalho alterada; importe novamente antes de revisar.")
+        return
+    final = cache_direct_media(ledger, c)
+    info = probe(final)
+    c.update(local_path=str(Path(final).resolve()), local_sha256=digest(final))
+    c["media"].update(width=info["width"], height=info["height"])
 
 
 def prepare_source(ledger, candidate, start, end, tolerant=False):  # noqa: C901, PLR0915 - existing size; walks every source-readiness state (local/remote, cache hit/miss, tolerant)

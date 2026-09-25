@@ -198,5 +198,36 @@ class CommonsImageFetchTests(RemoteImageFlowBase):
         self.assertEqual(self.jpeg, (self.project / "brolls" / fetched["output"]["path"]).read_bytes())
 
 
+class RemoteImagePreviewTests(RemoteImageFlowBase):
+    """BUG-01: `preview` de imagem remota sem intervalo morria em `TypeError`."""
+
+    def assert_static_preview(self, provider, preset):
+        item = self.found(provider)
+        shown = self.gb("preview", "--candidate", item["id"])
+        self.assertEqual("awaiting_approval", shown["state"])
+        poster = shown["files"]["poster"]
+        self.assertTrue(poster and Path(poster).is_file(), shown["files"])
+        # A mídia de trabalho é a própria foto, no cache privado, com a extensão dela.
+        self.assertTrue(shown["local_path"].endswith(".jpg"), shown["local_path"])
+        self.assertEqual(64, shown["media"]["width"])
+        # Aprovar o que foi visto e coletar entrega exatamente esses bytes.
+        self.approve_and_permit(item["id"], preset)
+        fetched = self.gb("fetch", "--candidate", item["id"])
+        self.assertTrue(fetched["output"]["path"].endswith(".jpg"), fetched["output"])
+        self.assertEqual(self.jpeg, (self.project / "brolls" / fetched["output"]["path"]).read_bytes())
+
+    def test_a_nasa_image_gets_a_static_preview_without_a_range(self):
+        self.assert_static_preview("nasa", "nasa")
+
+    def test_a_commons_image_gets_a_static_preview_without_a_range(self):
+        self.assert_static_preview("commons", "commons")
+
+    def test_a_range_on_a_remote_image_is_still_refused(self):
+        item = self.found("nasa")
+        with self.assertRaises(Exception) as caught:
+            self.gb("preview", "--candidate", item["id"], "--start", "0", "--end", "1")
+        self.assertIn("Imagem estática não precisa de intervalo", str(caught.exception))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

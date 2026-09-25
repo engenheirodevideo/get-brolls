@@ -47,9 +47,9 @@ Escreva o `BRIEF.md` com `python3 "scripts/gb.py" init-brief --project <projeto>
 
 `python3 "scripts/gb.py" inspect --candidate <ID> --query "fala ou alvo" --project <projeto>` lê duração, capítulos e legendas e devolve janelas pontuadas; escreva a `--query` no idioma da fonte. Escolha `--start/--end` a partir delas, nunca de palpite.
 
-Depois, `python3 "scripts/gb.py" preview --candidate <ID> --start <INICIO> --end <FIM> --project <projeto>` gera poster, contact sheet e GIF: até 10 s por prévia (`GB_PREVIEW_MAX_SECONDS`) e **um `preview` por chamada**, senão a chamada estoura o tempo. A resposta traz `files.contact_sheet` (no `status` e no manifesto, `preview.contact_sheet_path`, relativo a `brolls/`) e `preview.frame_times_s`. **Abra e olhe antes de seguir.** Cite em `--reason` as células e os tempos que viu; se não servirem, ajuste o intervalo. Nunca descreva quadro que não conferiu.
+Depois, `python3 "scripts/gb.py" preview --candidate <ID> --start <INICIO> --end <FIM> --project <projeto>` gera poster, contact sheet e GIF: até 10 s por prévia (`GB_PREVIEW_MAX_SECONDS`) e **um `preview` por chamada**. A resposta traz `files.contact_sheet` (no `status` e no manifesto, `preview.contact_sheet_path`, relativo a `brolls/`) e `preview.frame_times_s`. **Abra e olhe antes de seguir.** Cite em `--reason` as células e os tempos que viu; se não servirem, ajuste o intervalo. Nunca descreva quadro que não conferiu.
 
-Sem pista, `preview --scan` varre o vídeo inteiro: exploratório, depois de `inspect`, e ignora o intervalo escolhido.
+Sem pista, `preview --scan` varre o vídeo inteiro, depois do `inspect`. Foto não tem trecho: `preview` sem `--start/--end`, e sem `inspect`.
 
 ## Passo 5 — Revisão humana
 

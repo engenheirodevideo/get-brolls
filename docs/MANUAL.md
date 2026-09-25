@@ -237,6 +237,11 @@ python3 scripts/gb.py browser-plan --url "URL_DA_PAGINA" --project /caminho/meu-
 # VOCÊ RECEBE: GIF, pôster e folha de quadros em brolls/previews/.
 python3 scripts/gb.py preview --candidate "<ID>" --start 10 --end 15 --narration "Fala exata do roteiro" --reason "Motivo da escolha" --project /caminho/meu-video
 
+# ── preview (foto) ──────────────────────────────────────────
+# O QUE FAZ: foto da NASA, do Commons ou do seu computador não tem trecho.
+#            Rode sem --start/--end: a prévia é a própria imagem, parada.
+python3 scripts/gb.py preview --candidate "<ID>" --project /caminho/meu-video
+
 # ── preview --scan ──────────────────────────────────────────
 # O QUE FAZ: gera uma folha com quadros do vídeo inteiro, cada um com o tempo.
 # QUANDO USAR: pra achar o in/out certo e depois gerar o GIF só dele.

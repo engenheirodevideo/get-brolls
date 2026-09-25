@@ -1936,7 +1936,13 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
         mark_rejected(c, getattr(args, "reason", None))
     elif cmd == "preview":
         context_before = signature(c)
-        if not args.reference_only and c["provider"] != "local":
+        if not args.reference_only and c["provider"] != "local" and c.get("media", {}).get("kind") == "image":
+            # Foto remota (NASA, Commons): sem intervalo nem teto de segundos. A prévia
+            # é o cartaz da própria foto, baixada uma vez para o cache privado.
+            from .acquisition import prepare_image_source
+
+            prepare_image_source(ledger, c)
+        elif not args.reference_only and c["provider"] != "local":
             # Vídeo sem --start/--end já parou antes, no guard de `preview`/`approve`.
             asked = args.end - args.start  # pyright: ignore[reportOptionalOperand]
             if asked > float(config["max_seconds"]) + CAP_EPSILON:
