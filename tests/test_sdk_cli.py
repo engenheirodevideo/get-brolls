@@ -1,12 +1,16 @@
 """`gb plugins`: inventário sem executar código, enable em dois passos, check de pasta."""
 
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _cli import run_cli
+from _paths import CLI
 from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
@@ -116,18 +120,30 @@ class PluginsCommandTests(LoaderTestCase):
         )
         self.assertEqual("permitted", result["rights"]["status"])
         env_file.write_text("GB_PLUGINS=off\n", encoding="utf-8")
-        run_cli(
-            "--env-file",
-            str(env_file),
-            "permit",
-            "--candidate",
-            candidate,
-            "--preset",
-            "demo",
-            project=project,
-            expect=2,
-            env=self.env(),
+        # Fora da seleção, o nome vira erro de uso (A M1): sai do argparse, antes do projeto.
+        done = subprocess.run(
+            [
+                sys.executable,
+                str(CLI),
+                "--env-file",
+                str(env_file),
+                "permit",
+                "--candidate",
+                candidate,
+                "--preset",
+                "demo",
+                "--project",
+                str(project),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env={**os.environ, **self.env()},
+            check=False,
+            timeout=120,
         )
+        self.assertEqual(2, done.returncode)
+        self.assertIn("invalid choice: 'demo'", done.stderr)
 
 
 if __name__ == "__main__":

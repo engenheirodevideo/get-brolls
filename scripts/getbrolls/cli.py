@@ -69,6 +69,23 @@ FORMAT_GATE_SUBCOMMANDS = (
 )
 
 
+# Subparsers da última `build_parser()`: um erro de uso validado depois do parse
+# (ex.: `permit --preset`) sai no mesmo formato do argparse daquele subcomando.
+_SUBPARSERS: dict[str, argparse.ArgumentParser] = {}
+
+
+def _check_preset_name(args):
+    """`permit --preset <nome>` desconhecido é erro de uso, como no 2.5.0 (A M1): sai
+    antes de abrir, travar ou registrar o projeto — nenhum `brolls/` é criado. Nome
+    embutido nem olha plugin; os de plugin vêm do manifesto (sem rodar código)."""
+    name = getattr(args, "preset", None) if args.command == "permit" else None
+    if not name or name in presets.PERMIT_PRESETS:
+        return
+    valid = presets.names()
+    if name not in valid and "permit" in _SUBPARSERS:
+        _SUBPARSERS["permit"].error(f"argument --preset: invalid choice: {name!r} (choose from {', '.join(valid)})")
+
+
 def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse builder with one branch per subcommand/flag
     parser = argparse.ArgumentParser(
         description="Get B-rolls — pesquisar, revisar e coletar trechos por fonte.",
@@ -84,6 +101,7 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("providers", "doctor", "plugins", "x"):
         p = sub.add_parser(name, help=SUMMARIES[name], description=SUMMARIES[name])
+        _SUBPARSERS[name] = p
         if name == "doctor":
             # O SKILL.md diz que `--project` vai em todo comando, e a primeira chamada
             # do fluxo é o `doctor`: recusá-lo ali é contradizer a instrução logo na
@@ -169,6 +187,7 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
         "deliver",
     ):
         p = sub.add_parser(name, help=SUMMARIES[name], description=SUMMARIES[name])
+        _SUBPARSERS[name] = p
         p.add_argument(
             "--project",
             required=True,
@@ -342,9 +361,9 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
                 "--preset",
                 # Sem `choices=`: isso exigiria hashear a pasta de todo plugin instalado
                 # (`presets.names()` -> `loader.declared`) a cada comando, `--help`
-                # incluso, e travaria de cara um preset só habilitado por `GB_PLUGINS`
-                # num `--env-file` (lido depois do parser, em `execute()`). `execute()`
-                # valida com `presets.get(name)`, que lista os nomes válidos na mensagem.
+                # incluso, e ignoraria o `GB_PLUGINS`/`GB_HOME` de um `--env-file` (lido
+                # depois do parser). `main()` valida logo depois do `.env`, antes de
+                # abrir o projeto (`_check_preset_name`), com a mensagem do argparse.
                 help=(
                     "Condições genéricas da fonte, sempre com o pedido de conferir a "
                     "página original. Nomes embutidos: " + ", ".join(sorted(presets.PERMIT_PRESETS)) + "; "
@@ -550,6 +569,7 @@ def main(argv=None):
     # .env here is silently skipped and raised properly by execute() itself.
     with contextlib.suppress(ValueError):
         load_env(args.env_file or Path(__file__).resolve().parents[2] / ".env")
+    _check_preset_name(args)
     logs.configure(project, read_only=read_only)
 
     try:
