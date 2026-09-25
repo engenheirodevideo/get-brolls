@@ -1,5 +1,6 @@
 """Plano de cena: componentes, beats com id fixo por lado, âncoras e impressão digital."""
 
+import json
 import shutil
 import tempfile
 import unittest
@@ -163,6 +164,97 @@ class AspectTests(unittest.TestCase):
         problems = roteiro_plan.aspect_problems(META, {"video_format": "reels"}, brief)
         self.assertEqual(len(problems), 1)
         self.assertIn('"video.delivery.format" para "reels"', problems[0])
+
+
+class SplitPresenterTests(unittest.TestCase):
+    """Fix round 1: lados de SPLIT com apresentador, takes por lado e takes reservados."""
+
+    # Mesmos auxiliares, sem herdar (herdar rodaria os testes de ScenePlanTests duas vezes).
+    setUp = ScenePlanTests.setUp
+    put = ScenePlanTests.put
+    doc = ScenePlanTests.doc
+    plan = ScenePlanTests.plan
+
+    def test_two_presenter_sides_get_side_and_distinct_files(self):
+        self.put("aroll/c03.mp4")
+        plan = self.plan("## S <!-- c03 -->\n[SPLIT: A-ROLL | UGC: moça no café]\nOi.\n")
+        rows = plan["scenes"][0]["components"]
+        self.assertEqual(
+            [(r["side"], r["name"], r["status"], r["prompt"]) for r in rows],
+            [("a", "c03-a", "pending", None), ("b", "c03-b", "pending", "moça no café")],
+        )
+        self.assertEqual(plan["beats"], [])
+
+    def test_both_sides_with_takes(self):
+        rows = self.plan("## S <!-- c03 -->\n[SPLIT: A-ROLL: t2 | A-ROLL: t3]\n")["scenes"][0]["components"]
+        self.assertEqual([(r["side"], r["name"]) for r in rows], [("a", "c03-a-t2"), ("b", "c03-b-t3")])
+
+    def test_single_presenter_side_keeps_scene_name(self):
+        self.put("aroll/c03.mov")
+        rows = self.plan("## S <!-- c03 -->\n[SPLIT: tela | A-ROLL]\n")["scenes"][0]["components"]
+        self.assertEqual([(r["side"], r["name"], r["status"]) for r in rows], [("b", "c03", "found")])
+
+    def test_non_split_presenter_rows_have_side_none(self):
+        for body in ("[A-ROLL]", "[A-ROLL: t2]", "[UGC: moça abrindo a caixa]"):
+            with self.subTest(body=body):
+                row = self.plan(f"## A <!-- c01 -->\n{body}\n")["scenes"][0]["components"][0]
+                self.assertIn("side", row)
+                self.assertIsNone(row["side"])
+
+    def test_invalid_split_side_take_is_a_problem_not_a_file(self):
+        self.put("aroll/c04-take 2.mp4")
+        plan = self.plan("## S <!-- c04 -->\n[SPLIT: mapa | A-ROLL: Take 2]\n")
+        row = plan["scenes"][0]["components"][0]
+        self.assertEqual((row["status"], row["path"], row["line"], row["side"]), ("invalid", None, 8, "b"))
+        self.assertEqual(len(plan["problems"]), 1)
+        self.assertIn("linha 8", plan["problems"][0])
+        self.assertIn("take", plan["problems"][0])
+        self.assertEqual([b["id"] for b in plan["beats"]], ["c04-a"])
+
+    def test_reserved_take_on_split_side_is_invalid(self):
+        for take in ("a", "B"):
+            with self.subTest(take=take):
+                plan = self.plan(f"## S <!-- c04 -->\n[SPLIT: mapa | A-ROLL: {take}]\n")
+                self.assertEqual(plan["scenes"][0]["components"][0]["status"], "invalid")
+                self.assertIn("reservado", plan["problems"][0])
+
+    def test_reserved_take_on_layout_is_rejected(self):
+        for take in ("a", "b", "A"):
+            with self.subTest(take=take):
+                with self.assertRaises(roteiro.RoteiroError) as caught:
+                    self.doc(f"## A <!-- c01 -->\n[A-ROLL: {take}]\n")
+                self.assertIn("linha 8", str(caught.exception))
+                self.assertIn(f'take "{take.lower()}" é reservado para o lado do SPLIT', str(caught.exception))
+
+    def test_end_anchor_is_exposed(self):
+        scene = self.plan("## A <!-- c01 -->\n[A-ROLL]\nUm dois.\n[SFX: whoosh]\n")["scenes"][0]
+        self.assertEqual(scene["anchors"], [{"directive": "SFX", "line": 10, "anchor": "fim", "word_offset": 2}])
+
+    def test_plan_is_json_stable_across_runs(self):
+        self.put("assets/sfx/whoosh.wav")
+        body = (
+            "## A <!-- c01 -->\n[SPLIT: A-ROLL | UGC: moça]\n[hf:zoom-in: 1.2]\nFala [risos].\n[SFX: whoosh]\n"
+            "## B\n[BROLL: cidade]\nOutra.\n"
+        )
+        first = json.dumps(self.plan(body), sort_keys=True, ensure_ascii=False)
+        second = json.dumps(self.plan(body), sort_keys=True, ensure_ascii=False)
+        self.assertEqual(first, second)
+        self.assertEqual(json.loads(first), self.plan(body))
+
+
+class AspectMissingTests(unittest.TestCase):
+    def test_missing_format_says_not_defined(self):
+        for rules, brief in (
+            (None, None),
+            ({}, None),
+            ({"video_format": "reels"}, {}),
+            ({"video_format": "reels"}, {"video": {}}),
+        ):
+            with self.subTest(rules=rules, brief=brief):
+                problems = roteiro_plan.aspect_problems(META, rules, brief)
+                self.assertEqual(len(problems), 1)
+                self.assertNotIn("None", problems[0])
+                self.assertIn("não definido", problems[0])
 
 
 if __name__ == "__main__":

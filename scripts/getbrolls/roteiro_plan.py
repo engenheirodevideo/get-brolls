@@ -11,7 +11,7 @@ import hashlib
 import json
 
 from . import assets
-from .roteiro import ASPECT_TO_FORMAT, canonical, fold
+from .roteiro import ASPECT_TO_FORMAT, canonical, fold, take_problem
 
 BRAND_WORDS = ("logo", "marca", "cta")
 # Lado esquerdo do SPLIT é sempre `-a`, o direito sempre `-b`: o id não muda quando
@@ -43,14 +43,18 @@ def scene_fingerprint(scene):
 
 
 def _presenter(side):
-    """(é apresentador, take, descrição) de um lado de SPLIT: `A-ROLL[: take]` ou `UGC: descrição`."""
+    """(é apresentador, take, descrição, erro do take) de um lado de SPLIT: `A-ROLL[: take]` ou `UGC: descrição`.
+
+    O take do lado passa pela mesma gramática do take do layout (`roteiro.take_problem`).
+    """
     head, _, rest = side.partition(":")
     kind = canonical(head)
     if kind == "A-ROLL":
-        return True, fold(rest) or None, None
+        take = fold(rest) or None
+        return True, take, None, take_problem(take) if take else None
     if kind == "UGC":
-        return True, None, rest.strip() or None
-    return False, None, None
+        return True, None, rest.strip() or None, None
+    return False, None, None, None
 
 
 def _is_brand(project, target):
@@ -65,18 +69,26 @@ def _is_brand(project, target):
         return True  # existe arquivo de marca com esse nome, ambíguo ou fora da pasta: a linha do componente explica
 
 
-def _aroll_name(scene_id, take):
-    """`aroll/cNN.<ext>` ou `aroll/cNN-<take>.<ext>`; sem id ainda, sem nome (o sync dá o id)."""
+def _aroll_name(scene_id, take, side=None):
+    """`aroll/cNN[-lado][-take].<ext>`; sem id ainda, sem nome (o sync dá o id).
+
+    O lado só entra quando os dois lados do SPLIT são apresentador: senão os dois
+    cairiam no mesmo arquivo.
+    """
     if not scene_id:
         return None
-    return f"{scene_id}-{take}" if take else scene_id
+    return "-".join(part for part in (scene_id, side, take) if part)
 
 
-def _component(project, directive, kind, name, prompt=None):
+def _component(project, directive, kind, name, *, prompt=None, side=None, error=None):  # noqa: PLR0913 - one keyword per row field the caller knows
+    """Linha de componente; `side` ("a"/"b") só em apresentador de SPLIT, None no resto."""
     row = {
         "directive": directive.kind, "kind": kind, "name": name, "line": directive.line, "prompt": prompt,
-        "status": "pending", "path": None, "origin": None, "license": None, "warnings": [], "error": None,
+        "side": side, "status": "pending", "path": None, "origin": None, "license": None, "warnings": [],
+        "error": None,
     }  # fmt: skip
+    if error is not None:
+        return {**row, "status": "invalid", "error": error}
     if name is None:
         return row
     try:
@@ -101,12 +113,19 @@ def _layout_components(project, scene):
     if layout.kind == "UGC":
         return [_component(project, layout, "aroll", _aroll_name(scene_id, None), prompt=layout.args[0])]
     if layout.kind == "SPLIT":
-        rows = []
-        for side, quoted in zip(layout.args, layout.quoted, strict=True):
-            presenter, take, prompt = _presenter(side)
+        presenters = []
+        for slot, side, quoted in zip(SIDES, layout.args, layout.quoted, strict=True):
+            presenter, take, prompt, problem = _presenter(side)
             if presenter and not quoted:
-                rows.append(_component(project, layout, "aroll", _aroll_name(scene_id, take), prompt=prompt))
-        return rows
+                presenters.append((slot, take, prompt, problem))
+        both = len(presenters) == len(SIDES)
+        return [
+            _component(
+                project, layout, "aroll", _aroll_name(scene_id, take, slot if both else None),
+                prompt=prompt, side=slot, error=problem,
+            )
+            for slot, take, prompt, problem in presenters
+        ]  # fmt: skip
     if layout.kind == "FULL" and not layout.quoted[0] and _is_brand(project, layout.args[0]):
         return [_component(project, layout, "marca", layout.args[0])]
     return []
@@ -189,13 +208,19 @@ def scene_plan(project, doc):
         components = _components(project, scene)
         for row in components:
             if row["status"] == "invalid":
-                problems.append(f'linha {row["line"]}: {row["directive"]} "{row["name"]}": {row["error"]}')
+                subject = f'{row["directive"]} "{row["name"]}"' if row["name"] else row["directive"]
+                problems.append(f"linha {row['line']}: {subject}: {row['error']}")
             elif row["status"] == "pending" and row["kind"] != "aroll":
                 warnings.append(f'{label}: {row["directive"]} "{row["name"]}" pendente (não achei em {row["kind"]})')
             warnings.extend(f"{label}: {w}" for w in row["warnings"])
         scenes.append(_scene_row(scene, components, beat_ids))
     total = round(sum(s.duration_s for s in doc.scenes), 1)
     return {"scenes": scenes, "beats": beats, "total_s": total, "warnings": warnings, "problems": problems}
+
+
+def _format_label(value):
+    """`em "reels"`; sem valor, `com o formato não definido` (nunca "None" na mensagem)."""
+    return f'em "{value}"' if value else "com o formato não definido"
 
 
 def aspect_problems(meta, rules, brief_data=None):
@@ -205,14 +230,14 @@ def aspect_problems(meta, rules, brief_data=None):
     video_format = (rules or {}).get("video_format")
     if video_format != expected:
         problems.append(
-            f'O roteiro está em {meta["aspecto"]} ({expected}) e o RULES.md em vigor está em "{video_format}". '
+            f"O roteiro está em {meta['aspecto']} ({expected}) e o RULES.md em vigor está {_format_label(video_format)}. "
             f"Rode `init-rules --format {expected} --force --project <projeto>` ou ajuste o aspecto do roteiro."
         )
     if brief_data is not None:
         delivered = ((brief_data.get("video") or {}).get("delivery") or {}).get("format")
         if delivered != expected:
             problems.append(
-                f'O roteiro está em {meta["aspecto"]} ({expected}) e o BRIEF.md entrega em "{delivered}". '
+                f"O roteiro está em {meta['aspecto']} ({expected}) e o BRIEF.md entrega {_format_label(delivered)}. "
                 f'Troque "video.delivery.format" para "{expected}" ou ajuste o aspecto do roteiro.'
             )
     return problems

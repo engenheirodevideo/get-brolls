@@ -55,6 +55,8 @@ _WORD = re.compile(r"\w+")
 # Aspa simples só fecha o argumento quando vem antes de `|` ou do fim: `d'água` segue texto.
 _SINGLE_CLOSE = re.compile(r"\s*(?:\||$)")
 _TAKE = re.compile(r"[a-z0-9][a-z0-9_-]{0,19}")
+# "a" e "b" são os sufixos dos lados do SPLIT (`c03-a`): take com esse nome colidiria.
+RESERVED_TAKES = ("a", "b")
 _EXT = re.compile(r"^([a-z][a-z0-9_]{1,31}):([a-z0-9][a-z0-9-]*)(?::(.*))?$")
 # Chave = maiúsculas sem acento e sem nada que não seja letra ou número.
 _SYNONYMS = {
@@ -309,6 +311,15 @@ def _split_args(raw):
     return [p for p in parts if p] if any(parts) else []
 
 
+def take_problem(take):
+    """Erro do take de A-ROLL (já dobrado com `fold`), ou None; vale no layout e no lado do SPLIT."""
+    if not _TAKE.fullmatch(take):
+        return "take do A-ROLL: use letras, números, - ou _ (ex.: [A-ROLL: t2])"
+    if take in RESERVED_TAKES:
+        return f'take "{take}" é reservado para o lado do SPLIT: use outro nome'
+    return None
+
+
 def _arity_problem(kind, count):
     low, high = _ARITY[kind]
     if low <= count <= high:
@@ -365,8 +376,9 @@ def _directive(inner, number, plugins):  # noqa: PLR0911 - one return per valida
         return None, 'o texto do LETTERING vai entre aspas: [LETTERING: "texto" | estilo]', None
     if kind == "A-ROLL" and texts:
         texts = [fold(texts[0])]
-        if not _TAKE.fullmatch(texts[0]):
-            return None, "take do A-ROLL: use letras, números, - ou _ (ex.: [A-ROLL: t2])", None
+        problem = take_problem(texts[0])
+        if problem:
+            return None, problem, None
     return Directive(kind, tuple(texts), number, quoted=flags), None, None
 
 
