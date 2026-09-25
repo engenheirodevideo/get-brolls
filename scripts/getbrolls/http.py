@@ -109,11 +109,16 @@ def _strict_secret_key(name):
     return normalized in STRICT_JSON_SECRET_EXACT or normalized.endswith(STRICT_JSON_SECRET_KEY_MARKERS)
 
 
-def public_url(url, allow_signed=False):
+def public_url(url, allow_signed=False, strict=False):
     """Accept credential-free HTTPS references; drop signed URLs rather than break them.
 
     `allow_signed=True` skips only the signed-query filter (a plugin route downloading
     a presigned file); scheme, userinfo and private/loopback hosts are still refused.
+    `strict=True` (only URLs a plugin provided: guard, `PluginApi`, strict scrub) also
+    drops any query name that ends in a secret word (`runtime.SECRET_NAME_RE`); the
+    built-in paths keep the 2.5.0 filter — exact `SECRET_NAMES` plus S3/GCS
+    signatures — so a TikTok `x-signature`, an Instagram `ig_cache_key` or a
+    `page_token`/`sort_key` query from a built-in source survives as before (A I1).
     """
     if not isinstance(url, str):
         return None
@@ -126,19 +131,20 @@ def public_url(url, allow_signed=False):
     except ValueError:
         if p.hostname.lower() == "localhost" or p.hostname.lower().endswith(".local"):
             return None
-    signed = not allow_signed and any(_secret_query_name(key) for key, _ in urllib.parse.parse_qsl(p.query))
+    signed = not allow_signed and any(_secret_query_name(key, strict) for key, _ in urllib.parse.parse_qsl(p.query))
     return None if signed else url
 
 
-def _secret_query_name(key):
-    """Nome de query que carrega credencial: os nomes exatos de sempre, os prefixos
-    de assinatura S3/GCS e qualquer nome que termine numa palavra secreta
-    (`password`, `hmac`, `jwt`, `client_secret`, `auth_token`, Akamai `__token__`/
-    `hdnts`/`hdnea`, CloudFront `Policy`/`Key-Pair-Id` — ver `runtime.SECRET_NAME_RE`).
-    URL pública de fonte embutida (Pexels, Pixabay, Commons, NASA, YouTube) não
-    usa nenhum desses nomes, então continua passando igual."""
+def _secret_query_name(key, strict=False):
+    """Nome de query que carrega credencial: os nomes exatos de sempre e os prefixos
+    de assinatura S3/GCS; com `strict` (URL de plugin), também qualquer nome que
+    termine numa palavra secreta (`password`, `hmac`, `jwt`, `client_secret`,
+    `auth_token`, Akamai `__token__`/`hdnts`/`hdnea`, CloudFront `Policy`/
+    `Key-Pair-Id` — ver `runtime.SECRET_NAME_RE`)."""
     lowered = key.lower()
-    return lowered in SECRET_NAMES or lowered.startswith(("x-amz-", "x-goog-")) or secret_name(key)
+    if lowered in SECRET_NAMES or lowered.startswith(("x-amz-", "x-goog-")):
+        return True
+    return strict and secret_name(key)
 
 
 # Characters RFC 3986 lets a URL path carry unescaped. "%" joins them so a path that
@@ -260,9 +266,11 @@ def _scrub(value, keep_signed=False, strict=False):
         parsed = urllib.parse.urlsplit(value)
         if parsed.scheme == "http" and parsed.netloc == "images-assets.nasa.gov":
             value = urllib.parse.urlunsplit(parsed._replace(scheme="https"))
-        return public_url(value, allow_signed=keep_signed)
+        return public_url(value, allow_signed=keep_signed, strict=strict)
     if strict and not keep_signed:
-        return _EMBEDDED_URL.sub(lambda m: m.group(0) if public_url(m.group(0)) else "[URL omitida]", value)
+        return _EMBEDDED_URL.sub(
+            lambda m: m.group(0) if public_url(m.group(0), strict=True) else "[URL omitida]", value
+        )
     return value
 
 

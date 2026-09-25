@@ -88,4 +88,7 @@ def get(name):
     from .http import public_url
     from .sdk.guard import PRESET_EVIDENCE_LABEL, plugin_evidence
 
-    return {"url": public_url(preset.url), "text": plugin_evidence(PRESET_EVIDENCE_LABEL, owner, preset.text)}
+    return {
+        "url": public_url(preset.url, strict=True),
+        "text": plugin_evidence(PRESET_EVIDENCE_LABEL, owner, preset.text),
+    }

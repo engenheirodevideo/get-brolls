@@ -142,7 +142,7 @@ class PluginApi:
     def candidate(self, provider, source_id, title, source_url=None):
         if provider not in self._manifest["contributes"]["providers"]:
             raise ApiError(f"Plugin {self.plugin_id}: candidato de fonte não declarada {provider!r}.")
-        return core_candidate(provider, str(source_id), title, public_url(source_url))
+        return core_candidate(provider, str(source_id), title, public_url(source_url, strict=True))
 
     def env(self, key):
         if key not in self._manifest["permissions"]["env"]:

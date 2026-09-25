@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 from . import __version__, logs
+from .acquisition import candidate_arg
 from .config import CAP_EPSILON
 from .guidance import blocked_beats_question, next_action
 from .ledger import Ledger, digest
@@ -2168,7 +2169,7 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
             if not url:
                 raise ValueError(
                     "Esta fonte não disponibilizou arquivo por transporte permitido; "
-                    f"execute antes: preview --candidate {c['id']} --start ... --end ..."
+                    f"execute antes: preview --candidate {candidate_arg(c)} --start ... --end ..."
                 )
             from getbrolls.http import download
 
@@ -2508,7 +2509,7 @@ def inspect_source(ledger, args, config=None):
         if (c.get("media") or {}).get("kind") == "image":
             raise ValueError(
                 "Imagem estática não tem duração nem trecho para analisar: gere a prévia "
-                f"dela direto com `preview --candidate {c['id']}`, sem `--start/--end`."
+                f"dela direto com `preview --candidate {candidate_arg(c)}`, sem `--start/--end`."
             )
         url = c.get("source_url")
         if not url and not direct_media(c):
@@ -2696,7 +2697,7 @@ def scan_candidate(ledger, c, config):  # noqa: C901 - existing size; contact-sh
     if c.get("media", {}).get("kind") == "image":
         raise ValueError(
             "Imagem estática não tem o que varrer: gere a prévia dela com "
-            f"`preview --candidate {c['id']}`, sem `--start/--end`."
+            f"`preview --candidate {candidate_arg(c)}`, sem `--start/--end`."
         )
     duration = c["media"].get("duration_s")
     if not duration and c["provider"] != "local":

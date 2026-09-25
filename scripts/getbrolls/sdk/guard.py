@@ -3,7 +3,7 @@
 Plugin sugere candidatos; quem aprova, assina condições de uso e publica é gente.
 Por isso aprovação, direitos, saída e estado são sempre reescritos aqui, campos
 de topo (e de dentro de `preview`/`rights`/`acquisition`) fora do allowlist
-caem, e URLs passam pelo mesmo `public_url` do core. Todo valor que sai de um
+caem, e URLs passam pelo `public_url` do core no modo estrito. Todo valor que sai de um
 plugin passa primeiro por um round-trip de JSON: um objeto de terceiro com
 `__eq__`/`__deepcopy__`/`.get` hostil não chega a rodar dentro da sanitização.
 """
@@ -20,7 +20,8 @@ import unicodedata
 from typing import Any, NamedTuple
 
 from .. import logs
-from ..http import ProviderError, public_url
+from ..http import ProviderError
+from ..http import public_url as _core_public_url
 from ..models import empty_output
 from ..runtime import redact
 from .contracts import PluginError, RouteResult
@@ -28,6 +29,12 @@ from .jsonschema import errors
 from .schemas import load
 
 _log = logs.get("sdk")
+
+
+def public_url(url):
+    """URL que veio de plugin: o filtro estrito de query secreta (A I1)."""
+    return _core_public_url(url, strict=True)
+
 
 # Identificador Python simples (usado só para validar o que `safe_type_name`
 # devolve — nunca para nomear nada em si).
@@ -257,6 +264,9 @@ ACQUISITION_STATUSES = ("available", "unavailable")
 ACQUISITION_METHODS = (None, "https", "yt-dlp")
 UNAVAILABLE_ACQUISITION = {"status": "unavailable", "method": None, "evidence": []}
 LICENSE_MAX_CHARS = 500
+# `source_id` de plugin (B-06): vira parte do id do candidato, que aparece em
+# comandos sugeridos e no ledger compartilhado. Só caracteres seguros num shell.
+SOURCE_ID_RE = re.compile(r"[A-Za-z0-9._:-]{1,128}")
 PENDING_SEGMENT = {"start_s": None, "end_s": None, "revision": 0}
 PENDING_APPROVAL = {"status": "pending", "by": None, "at": None, "revision": None}
 
@@ -333,6 +343,15 @@ def plugin_candidate(item, provider, owner, download=True, route=None, *, route_
     item = _normalize(item, owner)
     if not isinstance(item, dict):
         raise ProviderError(f"Plugin {owner}: {provider} devolveu um candidato que não é objeto.")
+    source_id = item.get("source_id")
+    if type(source_id) is not str or not SOURCE_ID_RE.fullmatch(source_id):
+        logs.event(
+            _log, logging.WARNING, "plugin_candidate_refused", plugin=owner, provider=provider, reason="source_id"
+        )
+        raise ProviderError(
+            f"Plugin {owner}: source_id inválido em {provider}; use de 1 a 128 caracteres entre letras sem "
+            "acento, números, '.', '_', ':' e '-'."
+        )
 
     tampered = sorted(k for k in item if k not in ALLOWED_TOP)
 

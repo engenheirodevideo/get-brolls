@@ -212,12 +212,13 @@ SIGNED_URLS = (
 
 
 class PublicUrlTests(unittest.TestCase):
-    """RT-08: `public_url` também recusa query com nome de segredo; URLs reais dos built-ins passam."""
+    """RT-08: `public_url` estrito (URL de plugin) também recusa query com nome de segredo;
+    URLs reais dos built-ins passam. A I1: o filtro amplo vale só no modo estrito."""
 
     def test_secret_query_names_are_dropped(self):
         for url in SIGNED_URLS:
             with self.subTest(url=url):
-                self.assertIsNone(http.public_url(url))
+                self.assertIsNone(http.public_url(url, strict=True))
 
     def test_real_builtin_url_shapes_are_unaffected(self):
         for url in REAL_BUILTIN_URLS:

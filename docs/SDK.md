@@ -240,11 +240,15 @@ Qualquer campo de topo ou subcampo fora dessas listas é descartado em
 silêncio (do ponto de vista do retorno da CLI) e registrado no log estruturado
 `plugin_candidate_sanitized`, com os nomes dos campos removidos. `media_url`,
 `source_url`, `preview.poster_url`/`embed_url`, `creator.url` e
-`rights.license_url` sempre passam pelo mesmo `public_url()` que valida URLs do
-core: só HTTPS público, e URL com parâmetro de credencial na query (`key`,
+`rights.license_url` sempre passam pelo `public_url()` do core no modo
+estrito: só HTTPS público, e URL com parâmetro de credencial na query (`key`,
 `token`, `signature`, `password`, `hmac`, `jwt`, `client_secret`, `*_token`,
 Akamai `__token__`/`hdnts`/`hdnea`, CloudFront `Policy`/`Key-Pair-Id`, `X-Amz-*`,
-`X-Goog-*`) vira `None`.
+`X-Goog-*`) vira `None`. As fontes embutidas seguem o filtro de sempre (só os
+nomes exatos e as assinaturas S3/GCS). O `source_id` de `api.candidate` tem que
+ter de 1 a 128 caracteres entre `A-Z`, `a-z`, `0-9`, `.`, `_`, `:` e `-`: ele
+vira parte do id do candidato, que aparece em comandos sugeridos; qualquer
+outro caractere recusa o candidato (evento `plugin_candidate_refused` no log).
 
 O registro de proveniência que a pessoa lê para decidir (`ORIGEM.md`,
 `credits.md`, Storyboard) não aceita texto do plugin como decisão:

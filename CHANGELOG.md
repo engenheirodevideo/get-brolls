@@ -10,6 +10,8 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- SDK (segurança): `source_id` de plugin só aceita `[A-Za-z0-9._:-]` (1 a 128) — outro caractere recusa o candidato, com registro no log —, e comando sugerido com id de candidato de plugin vai citado com `shlex.quote` quando preciso.
+- Core: `public_url` das fontes embutidas volta ao filtro do 2.5.0 (nomes exatos + assinaturas S3/GCS): URLs com `x-signature`, `ig_cache_key`, `page_token` ou `sort_key` voltam a passar em `resolve --source-url`, review e import-review. O filtro amplo de query secreta vale só para URL que veio de plugin.
 - SDK (segurança): texto de plugin que vira evidência (texto de preset e `RouteResult.license`) sai numa linha, sem caracteres de controle/bidi, até 300 caracteres, prefixado ("Condições informadas pelo plugin <id>:" / "Licença registrada pelo plugin <id>:") e sem `;`/`|` — não forja outro item nem uma declaração em ORIGEM/credits.
 - SDK: o `.env` (e `--env-file`) aceita as variáveis de `permissions.env` dos plugins instalados, como o README do `banco_http` e o `brief` já mandavam; nome que nenhum plugin declara continua sendo erro.
 - SDK (segurança): `GB_PLUGINS` só filtra — escolhe, entre os plugins já habilitados com pin válido, os da sessão (`off` desliga todos); nunca carrega plugin sem pin, nunca habilitado ou com conteúdo mudado.

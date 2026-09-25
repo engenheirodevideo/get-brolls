@@ -5,6 +5,7 @@ import copy
 import json
 import logging
 import os
+import shlex
 import tempfile
 import time
 import uuid
@@ -138,13 +139,22 @@ def route_name(candidate):
     return None
 
 
+def candidate_arg(candidate):
+    """Id do candidato pronto para um comando sugerido (B-06): candidato de plugin vai
+    por `shlex.quote` quando tem caractere inseguro; fonte embutida sai como sempre."""
+    from .providers import BUILTIN_CAPABILITIES
+
+    ident = str(candidate.get("id"))
+    return ident if candidate.get("provider") in BUILTIN_CAPABILITIES else shlex.quote(ident)
+
+
 def fetch_stage_message(candidate):
     # Foto não tem trecho: a prévia de referência dela vai sem `--start/--end`.
     span = "" if (candidate.get("media") or {}).get("kind") == "image" else " --start <INICIO> --end <FIM>"
     return (
         f"A fonte {candidate.get('provider')} só entrega o arquivo no `fetch`, depois da aprovação e do "
         "permit (baixar consome licença ou cota). Para revisar agora, use "
-        f"`preview --candidate {candidate.get('id')}{span} --reference-only`; "
+        f"`preview --candidate {candidate_arg(candidate)}{span} --reference-only`; "
         "depois approve, permit e fetch."
     )
 
