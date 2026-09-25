@@ -49,6 +49,7 @@ class FrontmatterTests(unittest.TestCase):
             "genero: vsl": "genero",
             'aspecto: "4:5"': "aspecto",
             "duracao_alvo_s: 3": "duracao_alvo_s",
+            "duracao_alvo_s: ²": "duracao_alvo_s",
             "legenda: talvez": "legenda",
             "tags: x": "desconhecida",
             "  - item": "lista",

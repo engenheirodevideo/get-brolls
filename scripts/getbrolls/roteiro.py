@@ -71,7 +71,7 @@ def _field(key, value, quoted, meta):  # noqa: C901, PLR0911 - one return per fi
         meta[key] = value
         return None
     if key == "duracao_alvo_s":
-        if quoted or not value.isdigit() or not 5 <= int(value) <= 600:  # noqa: PLR2004 - spec bounds
+        if quoted or not (value.isascii() and value.isdigit()) or not 5 <= int(value) <= 600:  # noqa: PLR2004 - spec bounds
             return '"duracao_alvo_s" tem que ser um inteiro de 5 a 600'
         meta[key] = int(value)
         return None
@@ -91,7 +91,7 @@ def _field(key, value, quoted, meta):  # noqa: C901, PLR0911 - one return per fi
     return None
 
 
-def parse_frontmatter(lines):  # noqa: C901 - existing size; one check per frontmatter line kind
+def parse_frontmatter(lines):  # noqa: C901 - one branch per grammar rule
     """Devolve (meta, índice da primeira linha do corpo, erros)."""
     if not lines or lines[0].strip() != "---":
         return {}, 0, [(1, 'o roteiro começa com o frontmatter entre linhas "---"')]
