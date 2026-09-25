@@ -174,10 +174,13 @@ class PluginApiRouteTests(LoaderTestCase):
         self.assertEqual("Diz olá", cast("CommandSpec", spec).help)
 
     def test_route_name_follows_the_prefix_rule(self):
-        code = route_code().replace('class Copia:\n    name = "demo"', 'class Copia:\n    name = "alheia"')
-        self.assertNotEqual(route_code(), code)
+        # D T2-1: a capability aponta de fato para a rota `alheia` (antes o `.replace`
+        # de `route=ROUTE_NAME` não achava nada — `route_code()` já tinha trocado o nome).
+        code = route_code('"alheia"').replace('class Copia:\n    name = "demo"', 'class Copia:\n    name = "alheia"')
+        self.assertNotEqual(route_code('"alheia"'), code)
+        self.assertIn('route="alheia"', code)
         manifest = {**ROUTE_MANIFEST, "contributes": {**ROUTE_MANIFEST["contributes"], "routes": ["alheia"]}}
-        reg = self.load(manifest, code.replace("route=ROUTE_NAME", 'route="alheia"'))
+        reg = self.load(manifest, code)
         self.assertEqual("failed", reg.plugins["demo"]["status"])
         self.assertIn("começar por demo_", reg.plugins["demo"]["reason"])
 

@@ -8,6 +8,7 @@ from pathlib import Path
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_video
+from _offline import OFFLINE_YTDLP
 from _paths import ROOT
 
 from getbrolls import providers
@@ -102,7 +103,13 @@ class CandidateSchemaContractTests(unittest.TestCase):
             run_cli("permit", *base, "--evidence", "Vídeo sintético de teste", project=root)
             run_cli("fetch", *base, project=root)
             yt = run_cli(
-                "resolve", "--url", "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "--shot", "fecho", project=root
+                "resolve",
+                "--url",
+                "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                "--shot",
+                "fecho",
+                project=root,
+                env=OFFLINE_YTDLP,
             )
             run_cli("reject", "--candidate", yt["id"], project=root)
             run_cli("deliver", project=root)

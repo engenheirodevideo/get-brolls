@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _cli import run_cli
+from _offline import OFFLINE_YTDLP
 from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
@@ -65,7 +66,13 @@ class PluginCommandCliTests(LoaderTestCase):
         )
 
     def test_command_returns_json_and_reads_the_project_by_copy(self):
-        run_cli("resolve", "--url", "https://www.youtube.com/watch?v=dQw4w9WgXcQ", project=self.project, env=self.env())
+        run_cli(
+            "resolve",
+            "--url",
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            project=self.project,
+            env={**self.env(), **OFFLINE_YTDLP},
+        )
         out = run_cli("x", "demo", "contar", "--arg", "nome=Bruno", project=self.project, env=self.env())
         self.assertEqual("demo", out["plugin"])
         self.assertEqual({"plugin": "demo", "candidatos": 1, "args": {"nome": "Bruno"}, "brief": None}, out["result"])
