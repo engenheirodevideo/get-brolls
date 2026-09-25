@@ -554,6 +554,8 @@ def _load_one(row, folder, manifest, pinned, registry):
         presets=",".join(manifest["contributes"]["presets"]) or "-",
         routes=len(owned["route"]),
         commands=len(owned["command"]),
+        exporters=len(owned["exporter"]),
+        resolvers=len(owned["resolver"]),
     )
     return row
 

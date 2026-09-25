@@ -20,6 +20,7 @@ CONTRIBUTION_KINDS = (
     "routes",
     "commands",
     "exporters",
+    "resolvers",
     "rules",
     "hooks",
     "themes",
@@ -27,7 +28,7 @@ CONTRIBUTION_KINDS = (
     "eval_rubrics",
 )
 # Tipos que esta versão do SDK sabe carregar; os outros ficam para versões futuras.
-SUPPORTED_KINDS = ("providers", "presets", "routes", "commands")
+SUPPORTED_KINDS = ("providers", "presets", "routes", "commands", "exporters", "resolvers")
 TOP_LEVEL = frozenset(
     {
         "id",

@@ -16,7 +16,7 @@ from ..http import ProviderError, get_json, public_url
 from ..models import candidate as core_candidate
 from ..rules import home_dir
 from . import guard
-from .contracts import CommandSpec
+from .contracts import CommandSpec, ExporterSpec, ResolverSpec
 
 _log = logs.get("sdk")
 
@@ -151,7 +151,14 @@ class PluginApi:
         self.plugin_id = manifest["id"]
         self._manifest = manifest
         self._registry = registry
-        self._registered = {"providers": set(), "presets": set(), "routes": set(), "commands": set()}
+        self._registered = {
+            "providers": set(),
+            "presets": set(),
+            "routes": set(),
+            "commands": set(),
+            "exporters": set(),
+            "resolvers": set(),
+        }
         guard.remember_env(self.plugin_id, manifest["permissions"]["env"])
 
     def _own(self, kind, name):
@@ -185,6 +192,27 @@ class PluginApi:
             raise ApiError(f"Plugin {self.plugin_id}: comando {name!r} não está declarado em contributes.commands.")
         self._registry.add_command(CommandSpec(name, help, handler), owner=self.plugin_id)
         self._registered["commands"].add(name)
+
+    def exporter(self, name, export, description):
+        """Registra um exportador (experimental): `export(plan, options) -> ExportResult`."""
+        self._own("exporters", name)
+        self._registry.add_exporter(ExporterSpec(name, description, export), owner=self.plugin_id)
+        self._registered["exporters"].add(name)
+
+    def resolver(self, name, resolve, kinds):
+        """Registra um resolvedor (experimental): `resolve(kind, name) -> ResolverHit | None`.
+
+        As raízes são as de `permissions.paths` que valem neste sistema, conferidas
+        como em `api.local_file` e guardadas no registro junto com o resolvedor."""
+        self._own("resolvers", name)
+        try:
+            roots = tuple(str(root) for root in self._roots())
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise ApiError(
+                f"Plugin {self.plugin_id}: permissions.paths não pôde ser resolvido ({type(exc).__name__})."
+            ) from None
+        self._registry.add_resolver(ResolverSpec(name, kinds, resolve), owner=self.plugin_id, roots=roots)
+        self._registered["resolvers"].add(name)
 
     def candidate(self, provider, source_id, title, source_url=None):
         if provider not in self._manifest["contributes"]["providers"]:
@@ -442,7 +470,7 @@ class PluginApi:
 
     def finish(self):
         for kind, names in self._registered.items():
-            missing = set(self._manifest["contributes"][kind]) - names
+            missing = set(self._manifest["contributes"].get(kind, [])) - names
             if missing:
                 raise ApiError(
                     f"Plugin {self.plugin_id}: declarado em contributes.{kind} e não registrado: {', '.join(sorted(missing))}."

@@ -68,11 +68,15 @@ Campos de `getbrolls-plugin.json`:
 | `permissions` | objeto | não (padrão `{}`) | `network` (hosts liberados para `get_json`/`download`), `env` (variáveis liberadas para `env`) e `paths` (pastas liberadas para `local_file`); cada chave ausente vale lista vazia. |
 
 `contributes` aceita as chaves `providers`, `presets`, `routes`, `commands`,
-`exporters`, `rules`, `hooks`, `themes`, `brief_templates` e `eval_rubrics`,
-mas **só `providers`, `presets`, `routes` e `commands` são suportados nesta
-versão do SDK** — declarar qualquer nome nas outras chaves faz o manifesto ser
-recusado. Nomes de provider, preset e rota têm que ser iguais ao `id` do plugin
-ou começar por `<id>_`; nomes de comando só seguem a regra de nome
+`exporters`, `resolvers`, `rules`, `hooks`, `themes`, `brief_templates` e
+`eval_rubrics`, mas **só `providers`, `presets`, `routes`, `commands`,
+`exporters` e `resolvers` são suportados nesta versão do SDK** — declarar
+qualquer nome nas outras chaves faz o manifesto ser recusado. `exporters` e
+`resolvers` são experimentais e, por enquanto, só existem como tipos: o plugin
+os registra (veja [PluginApi](#pluginapi)), mas nenhum comando do Get B-rolls os
+chama ainda; as seções completas chegam na próxima etapa do SDK. Nomes de
+provider, preset, rota, exportador e resolvedor têm que ser iguais ao `id` do
+plugin ou começar por `<id>_`; nomes de comando só seguem a regra de nome
 (`a-z0-9_`), porque `gb x <plugin> <comando>` já dá o espaço de nomes. Tudo o
 que é declarado precisa ser efetivamente registrado em `register(api)`
 (conferido por `api.finish()`).
@@ -244,6 +248,8 @@ Rota `stage="fetch"` consome licença ou cota **uma vez só**:
   Chave de JSON com nome de credencial some. O nome é normalizado antes de comparar — minúsculo, sem `-`/`_`/espaço, então `access_token`, `accessToken` e `X-Api-Key` contam como o mesmo nome — e é comparado por igualdade ou por **terminar** num destes marcadores fortes: `access_token`, `refresh_token`, `id_token`, `auth_token`, `session_token`, `security_token`, `bearer_token`, `api_key`, `api_token`, `api_secret`, `client_secret`, `secret_key`, `secret_access_key`, `private_key`, `signing_key`, `encryption_key`, `password`, `passwd`, `credentials`, `jwt`, `secret` — mais `pwd` e `hmac`, só como nome inteiro (curtos demais para valer como sufixo) — mais `key`, `token`, `authorization`, `signature` e `sig` (esses cinco já saem para todo mundo, plugin ou não, e são nome exato, não normalizado). Isso cobre chave composta de verdade (`aws_secret_access_key`, `x-api-key`, `x-amz-security-token`) sem depender de snake_case exato. **Chave de paginação/id sobrevive**: `next_page_token`, `nextPageToken`, `page_token`, `continuation_token`, `sort_key`, `cursor_key`, `cursor`... nenhuma delas termina nos marcadores acima — de propósito: uma versão mais ampla dessa checagem (o mesmo regex usado para nome de parâmetro de URL) derrubava qualquer chave só por terminar em `key`/`token`/`policy` sozinho, o que sumia com paginação de API real. Se o seu plugin usa um nome de credencial fora dessa lista, a resposta da API não é reescrita antes do scrub — a chave sai como veio; ou trate a URL assinada com `keep_signed`.
 - `api.route(route)` — registra uma `Route`; o `name` tem que estar em `contributes.routes`.
 - `api.command(name, handler, help)` — registra um comando; `name` tem que estar em `contributes.commands`, `help` é a frase que `x --list` mostra.
+- `api.exporter(name, export, description)` — experimental: registra um exportador; `name` tem que estar em `contributes.exporters`, `export(plan, options)` devolve um `ExportResult(files, media=[], notes=[])` e `description` tem de 1 a 200 caracteres. Ainda não há comando que rode exportadores.
+- `api.resolver(name, resolve, kinds)` — experimental: registra um resolvedor; `name` tem que estar em `contributes.resolvers`, `resolve(kind, name)` devolve um `ResolverHit(path, license=None)` ou `None`, e `kinds` é uma lista não vazia, sem repetição, com `"sfx"` e/ou `"musica"` (`RESOLVER_KINDS`). As pastas em que ele pode achar arquivo são as de `permissions.paths`, conferidas como em `api.local_file`. Ainda não há comando que rode resolvedores.
 - `api.download(url, name, headers=None)` — só dentro de `Route.prepare`: baixa `url` (https, host em `permissions.network`, IP público, sem redirect, teto de 512 MB) para `workdir/name` e devolve o caminho. Aceita URL assinada (ex.: um link S3 que o próprio plugin assinou) e headers como `Authorization`; nenhum dos dois vai para log ou mensagem de erro. `name` é só nome de arquivo (`[A-Za-z0-9._-]`, sem `/` nem `..`).
 - `api.local_file(path)` — só dentro de `Route.prepare`: copia um arquivo que esteja dentro de `permissions.paths` (resolvido, com link simbólico seguido) para o `workdir`. Sempre cópia, nunca hardlink — o original da pessoa não muda. O arquivo é aberto sem seguir link (`O_NOFOLLOW`) nem travar numa FIFO (`O_NONBLOCK`), conferido pelo próprio descritor (arquivo regular, até 512 MB) e copiado dele com o teto contado nos bytes lidos; o destino é criado exclusivo, sem seguir link plantado. A recusa nomeia o arquivo que o plugin pediu, nunca o alvo resolvido. No Windows, onde `O_NOFOLLOW` não existe, vale a resolução + conferência de raiz (link simbólico lá exige privilégio de administrador).
 - `api.data_dir` — `$GB_HOME/plugin-data/<id>/` (0700), criado na primeira leitura: estado e cache do plugin. Fica fora da pasta do plugin, então escrever ali não muda o pin de hash.
@@ -577,7 +583,7 @@ ignorada, e num candidato do `manifest.json` uma chave fora do schema não é
 recusada. Candidato que vem de plugin é diferente: o guarda-corpo descarta todo
 campo fora do allowlist, `ext` incluso (veja [Guarda-corpos](#guarda-corpos)).
 Também nas próximas versões: suporte aos demais tipos de `contributes`
-(`exporters`, `rules`, `hooks`, `themes`, `brief_templates`, `eval_rubrics`) e
+(`rules`, `hooks`, `themes`, `brief_templates`, `eval_rubrics`) e
 um caminho para promover um campo nascido em `ext.<id>` de um plugin para o
 schema do core, quando fizer sentido para todo mundo. Nada disso está
 disponível nesta versão.

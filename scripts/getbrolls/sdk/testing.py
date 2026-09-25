@@ -79,6 +79,9 @@ def check_registry(registry, owner):
         "presets": owned["preset"],
         "routes": owned["route"],
         "commands": [key.split(":", 1)[1] for key in owned["command"]],
+        # Exportadores e resolvedores já passaram pelas checagens do registro.
+        "exporters": owned["exporter"],
+        "resolvers": owned["resolver"],
     }
 
 

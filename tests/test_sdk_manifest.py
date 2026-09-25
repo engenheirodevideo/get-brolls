@@ -59,11 +59,24 @@ class ManifestTests(unittest.TestCase):
                     read_manifest(folder, require_folder_match=False)
 
     def test_unsupported_kinds_are_refused(self):
-        manifest = {**BASE, "contributes": {"exporters": ["acme_sheet"]}}
+        manifest = {**BASE, "contributes": {"hooks": ["acme_sheet"]}}
         with tempfile.TemporaryDirectory() as tmp, self.assertRaises(ManifestError) as caught:
             read_manifest(write_plugin(tmp, manifest))
-        self.assertIn("exporters", str(caught.exception))
+        self.assertIn("hooks", str(caught.exception))
         self.assertIn("ainda não é suportado", str(caught.exception))
+
+    def test_exporters_and_resolvers_are_supported(self):
+        manifest = {**BASE, "contributes": {"exporters": ["acme_drive_html"], "resolvers": ["acme_drive"]}}
+        with tempfile.TemporaryDirectory() as tmp:
+            data = read_manifest(write_plugin(tmp, manifest))
+        self.assertEqual(["acme_drive_html"], data["contributes"]["exporters"])
+        self.assertEqual(["acme_drive"], data["contributes"]["resolvers"])
+
+    def test_asset_kinds_is_still_an_unknown_kind(self):
+        manifest = {**BASE, "contributes": {"asset_kinds": ["acme_drive"]}}
+        with tempfile.TemporaryDirectory() as tmp, self.assertRaises(ManifestError) as caught:
+            read_manifest(write_plugin(tmp, manifest))
+        self.assertIn("contributes só aceita", str(caught.exception))
 
     def test_folder_must_match_id_when_installed(self):
         with tempfile.TemporaryDirectory() as tmp, self.assertRaises(ManifestError):

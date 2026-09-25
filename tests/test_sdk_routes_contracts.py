@@ -120,7 +120,8 @@ class RegistryRouteTests(unittest.TestCase):
         reg.add_route(FakeRoute("demo"), owner="demo")
         reg.add_command(CommandSpec("ola", "Diz olá", lambda a, c: {}), owner="demo")
         self.assertEqual(
-            {"provider": [], "preset": [], "route": ["demo"], "command": ["demo:ola"]}, reg.owned_by("demo")
+            {"provider": [], "preset": [], "route": ["demo"], "command": ["demo:ola"], "exporter": [], "resolver": []},
+            reg.owned_by("demo"),
         )
         reg.remove_owner("demo")
         self.assertEqual((), reg.route_names())

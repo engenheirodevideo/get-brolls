@@ -9,15 +9,18 @@ from .contracts import (
     MATCH_KINDS,
     MEDIA_KINDS,
     NAME_RE,
+    RESOLVER_KINDS,
     ROUTE_STAGES,
     CommandSpec,
+    ExporterSpec,
     Preset,
     Provider,
     ProviderCapabilities,
+    ResolverSpec,
     Route,
 )
 
-KINDS = ("provider", "preset", "route", "command")
+KINDS = ("provider", "preset", "route", "command", "exporter", "resolver")
 HELP_MAX_CHARS = 200
 
 
@@ -122,6 +125,8 @@ class Registry:
         # Estágio lido uma vez no registro: o core decide pelo que foi registrado,
         # sem voltar a ler atributo de objeto de plugin fora do guarda-corpo.
         self._stages: dict[str, str] = {}
+        # Raízes de `permissions.paths` do dono de cada resolvedor, resolvidas no registro.
+        self._roots: dict[str, tuple[str, ...]] = {}
         # id do plugin → linha de inventário (status, motivo); preenchido pelo loader.
         self.plugins: dict[str, dict] = {}
 
@@ -224,6 +229,64 @@ class Registry:
     def command_keys(self) -> tuple[tuple[str, str], ...]:
         return tuple(tuple(key.split(":", 1)) for key in self._items["command"])  # type: ignore[return-value]
 
+    def add_exporter(self, spec: ExporterSpec, owner: str) -> None:
+        if not isinstance(spec, ExporterSpec):
+            raise RegistryError("Exportador tem que ser ExporterSpec.")
+        name, description, export = spec.name, spec.description, spec.export
+        _check_name("exportador", name)
+        if type(description) is not str or not 0 < len(description.strip()) <= HELP_MAX_CHARS:
+            raise RegistryError(f"Exportador {name!r}: description é obrigatória, com até {HELP_MAX_CHARS} caracteres.")
+        if not callable(export):
+            raise RegistryError(f"Exportador {name!r}: export tem que ser chamável.")
+        # Cópia simples: o core nunca mais lê atributo do objeto que o plugin entregou.
+        spec = ExporterSpec(name, description, export)
+        self._claim("exporter", name, owner)
+        self._items["exporter"][name] = spec
+        self._owners["exporter"][name] = owner
+
+    def exporter(self, name: str) -> ExporterSpec | None:
+        return self._items["exporter"].get(name)  # type: ignore[return-value]
+
+    def exporter_names(self) -> tuple[str, ...]:
+        return tuple(self._items["exporter"])
+
+    def add_resolver(self, spec: ResolverSpec, owner: str, roots: tuple[str, ...]) -> None:
+        if not isinstance(spec, ResolverSpec):
+            raise RegistryError("Resolvedor tem que ser ResolverSpec.")
+        name, kinds, resolve = spec.name, spec.kinds, spec.resolve
+        _check_name("resolvedor", name)
+        items = _texts(kinds)
+        if not items or len(set(items)) != len(items) or not set(items) <= set(RESOLVER_KINDS):
+            raise RegistryError(
+                f"Resolvedor {name!r}: kinds tem que ser uma lista não vazia, sem repetição, "
+                f"só com {', '.join(RESOLVER_KINDS)}."
+            )
+        if not callable(resolve):
+            raise RegistryError(f"Resolvedor {name!r}: resolve tem que ser chamável.")
+        if type(roots) is not tuple or any(type(root) is not str or not root for root in roots):
+            raise RegistryError(f"Resolvedor {name!r}: roots tem que ser uma tupla de caminhos.")
+        spec = ResolverSpec(name, items, resolve)
+        self._claim("resolver", name, owner)
+        self._items["resolver"][name] = spec
+        self._owners["resolver"][name] = owner
+        self._roots[name] = roots
+
+    def resolver(self, name: str) -> ResolverSpec | None:
+        return self._items["resolver"].get(name)  # type: ignore[return-value]
+
+    def resolver_roots(self, name: str) -> tuple[str, ...]:
+        return self._roots.get(name, ())
+
+    def resolvers_for(self, kind: str) -> list[tuple[str, ResolverSpec]]:
+        """`(dono, spec)` dos resolvedores de `kind`: por id do dono e, dentro dele, na
+        ordem de registro (`sorted` é estável) — a mesma ordem em toda execução."""
+        found = [
+            (self._owners["resolver"][name], cast("ResolverSpec", spec))
+            for name, spec in self._items["resolver"].items()
+            if kind in cast("ResolverSpec", spec).kinds
+        ]
+        return sorted(found, key=lambda pair: pair[0])
+
     def owned_by(self, owner: str) -> dict[str, list[str]]:
         """Nomes (chaves, no caso de comando) registrados por `owner`, por tipo."""
         return {kind: [name for name, who in self._owners[kind].items() if who == owner] for kind in KINDS}
@@ -238,6 +301,7 @@ class Registry:
                 del self._items[kind][name]
         self._hosts = {host: name for host, name in self._hosts.items() if name in self._items["provider"]}
         self._stages = {name: stage for name, stage in self._stages.items() if name in self._items["route"]}
+        self._roots = {name: roots for name, roots in self._roots.items() if name in self._items["resolver"]}
 
 
 _STATE: dict[str, Registry | None] = {"registry": None}

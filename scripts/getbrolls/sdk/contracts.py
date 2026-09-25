@@ -3,7 +3,7 @@
 import copy
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
@@ -19,6 +19,9 @@ MEDIA_KINDS = ("video", "image")
 # "preview": a rota pode trazer mídia de trabalho para revisão. "fetch": trazer o
 # arquivo consome licença ou cota, então só roda no `fetch`, depois de aprovação e permit.
 ROUTE_STAGES = ("preview", "fetch")
+# Tipos de mídia que um resolvedor de plugin pode achar. Nunca "aroll" (a gravação
+# é da pessoa) nem "marca" (marca e beat são decididos só pelas raízes do core).
+RESOLVER_KINDS = ("sfx", "musica")
 
 
 class PluginError(ProviderError):
@@ -108,3 +111,50 @@ class CommandSpec:
     name: str
     help: str
     handler: Callable[[dict, CommandContext], dict]
+
+
+@dataclass(frozen=True)
+class MediaRequest:
+    """Mídia que o export precisa: o core resolve `media_id` e grava em `dest`."""
+
+    media_id: str  # id lógico da tabela de mídia do plano, nunca um caminho
+    dest: str  # caminho POSIX relativo, dentro de "assets/"
+
+
+@dataclass(frozen=True)
+class ExportResult:
+    """O que um exportador devolve: texto e pedidos de mídia; quem escreve é o core."""
+
+    files: dict[str, str]  # caminho relativo -> texto UTF-8
+    media: list[MediaRequest] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ResolverHit:
+    """Arquivo que um resolvedor achou dentro de `permissions.paths`."""
+
+    path: str | Path  # absoluto, dentro de permissions.paths
+    license: str | None = None  # só informativa: nunca vale como permit
+
+
+class Exporter(Protocol):
+    def __call__(self, plan: dict, options: dict) -> ExportResult: ...
+
+
+class Resolver(Protocol):
+    def __call__(self, kind: str, name: str) -> ResolverHit | None: ...
+
+
+@dataclass(frozen=True)
+class ExporterSpec:
+    name: str
+    description: str
+    export: Callable[[dict, dict], ExportResult]
+
+
+@dataclass(frozen=True)
+class ResolverSpec:
+    name: str
+    kinds: tuple[str, ...]
+    resolve: Callable[[str, str], ResolverHit | None]
