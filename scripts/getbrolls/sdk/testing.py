@@ -6,9 +6,18 @@ que o `register(api)` registra, sem instalar nada.
 """
 
 import inspect
+import json
 from pathlib import Path
 
-from .contracts import NAME_RE, ROUTE_STAGES, CommandSpec, ProviderCapabilities
+from .contracts import (
+    NAME_RE,
+    RESOLVER_KINDS,
+    ROUTE_STAGES,
+    CommandSpec,
+    ExporterSpec,
+    ProviderCapabilities,
+    ResolverSpec,
+)
 
 
 def _fail(message):
@@ -65,6 +74,44 @@ def check_command(spec):
         _fail(f"Comando {spec.name}: o handler tem que aceitar (args, ctx).")
 
 
+def check_exporter(spec):
+    """Forma do exportador e, depois, uma exportação de verdade com o plano mínimo
+    (`exporters.MINIMAL_PLAN`), conferida pelo MESMO validador do core."""
+    from .exporters import MINIMAL_PLAN, ExportValidationError, validate_export_result
+
+    if not isinstance(spec, ExporterSpec):
+        _fail("Exportador: registre com api.exporter(nome, export, description).")
+    _named("Exportador", spec)
+    if not isinstance(spec.description, str) or not spec.description.strip():
+        _fail(f"Exportador {spec.name}: description não pode ser vazia.")
+    if not callable(spec.export) or not _accepts(spec.export, 2):
+        _fail(f"Exportador {spec.name}: export tem que aceitar (plan, options).")
+    plan = json.loads(json.dumps(MINIMAL_PLAN))
+    result = spec.export(plan, {"args": {}})
+    try:
+        validate_export_result(result)
+    except ExportValidationError as exc:
+        _fail(f"Exportador {spec.name}: com o plano mínimo, {exc}")
+
+
+def check_resolver(spec):
+    if not isinstance(spec, ResolverSpec):
+        _fail("Resolvedor: registre com api.resolver(nome, resolve, kinds).")
+    _named("Resolvedor", spec)
+    kinds = spec.kinds
+    if (
+        not kinds
+        or not isinstance(kinds, tuple)
+        or not set(kinds) <= set(RESOLVER_KINDS)
+        or len(set(kinds)) != len(kinds)
+    ):
+        _fail(
+            f"Resolvedor {spec.name}: kinds tem que ser uma lista não vazia, sem repetição, de {', '.join(RESOLVER_KINDS)}."
+        )
+    if not callable(spec.resolve) or not _accepts(spec.resolve, 2):
+        _fail(f"Resolvedor {spec.name}: resolve tem que aceitar (kind, name).")
+
+
 def check_registry(registry, owner):
     """Roda as checagens em tudo o que `owner` registrou; devolve os nomes conferidos."""
     owned = registry.owned_by(owner)
@@ -74,12 +121,15 @@ def check_registry(registry, owner):
         check_route(registry.route(name))
     for key in owned["command"]:
         check_command(registry.command(*key.split(":", 1)))
+    for name in owned["exporter"]:
+        check_exporter(registry.exporter(name))
+    for name in owned["resolver"]:
+        check_resolver(registry.resolver(name))
     return {
         "providers": owned["provider"],
         "presets": owned["preset"],
         "routes": owned["route"],
         "commands": [key.split(":", 1)[1] for key in owned["command"]],
-        # Exportadores e resolvedores já passaram pelas checagens do registro.
         "exporters": owned["exporter"],
         "resolvers": owned["resolver"],
     }
