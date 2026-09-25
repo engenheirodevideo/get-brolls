@@ -191,12 +191,19 @@ def cache_direct_media(ledger, candidate, refresh=True):
     return final
 
 
+# Contêineres de vídeo que as fontes de arquivo direto publicam (o Commons serve webm/ogv).
+_VIDEO_SUFFIXES = (".mp4", ".webm", ".ogv")
+
+
 def _cached_suffix(candidate, path, url):
-    """Extensão da cópia no cache: a foto guarda a dela, que `fetch` leva até `clips/`."""
-    if (candidate.get("media") or {}).get("kind") != "image":
-        return ".mp4"
+    """Extensão da cópia no cache, pelo conteúdo: a foto guarda a dela, que `fetch`
+    leva até `clips/`; o vídeo só deixa de chamar webm de `.mp4` (o corte final
+    continua saindo em `.mp4` pelo FFmpeg)."""
     from .media import sniff_suffix
 
+    if (candidate.get("media") or {}).get("kind") != "image":
+        found = sniff_suffix(path, ".mp4")
+        return found if found in _VIDEO_SUFFIXES else ".mp4"
     return sniff_suffix(path, Path(urlsplit(url).path).suffix.lower() or ".bin")
 
 
@@ -265,6 +272,7 @@ def prepare_source(ledger, candidate, start, end, tolerant=False):  # noqa: C901
     started = time.monotonic()
     with tempfile.TemporaryDirectory(dir=cache) as work:
         target = Path(work) / "source.mp4"
+        suffix = ".mp4"
         if c["acquisition"].get("method") == "yt-dlp":
             from .social import download_segment
 
@@ -278,6 +286,7 @@ def prepare_source(ledger, candidate, start, end, tolerant=False):  # noqa: C901
             if not fresh.get("media_url"):
                 raise ValueError("Arquivo do provedor não está mais disponível.")
             download(fresh["media_url"], target)
+            suffix = _cached_suffix(c, target, fresh["media_url"])
             offset = 0
         else:
             method = c["acquisition"].get("method")
@@ -286,7 +295,7 @@ def prepare_source(ledger, candidate, start, end, tolerant=False):  # noqa: C901
         if end - offset > info["duration_s"] + 0.1 and not tolerant:
             raise ValueError("Original não contém o intervalo solicitado.")
         sha = digest(target)
-        final = cache / (id_stem(c["id"]) + "-" + sha + ".mp4")
+        final = cache / (id_stem(c["id"]) + "-" + sha + suffix)
         if not final.exists():
             target.replace(final)
             final.chmod(0o600)

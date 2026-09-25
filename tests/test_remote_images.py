@@ -11,6 +11,7 @@ dublados; o arquivo servido é uma imagem de verdade gerada pelo FFmpeg.
 import io
 import shlex
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -299,6 +300,34 @@ class RemoteImageGuidanceTests(RemoteImageFlowBase):
         message = str(caught.exception)
         self.assertIn("preview --candidate", message)
         self.assertIn("sem `--start/--end`", message)
+
+
+def _vp8_available():
+    if not shutil.which("ffmpeg"):
+        return False
+    listed = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True, check=False)
+    return "libvpx" in listed.stdout
+
+
+@unittest.skipUnless(_vp8_available(), "FFmpeg com libvpx necessário")
+class CommonsWebmCacheSuffixTests(RemoteImageFlowBase):
+    """Cosmético: o webm do Commons ficava no cache privado como `.mp4`."""
+
+    WEBM = "https://upload.wikimedia.org/wikipedia/commons/f/f0/Moon.webm"
+
+    def test_the_cached_working_copy_keeps_the_webm_extension(self):
+        source = self.project.parent / (self.project.name + "-moon.webm")
+        self.addCleanup(source.unlink, True)
+        lavfi = "testsrc=size=64x48:duration=2:rate=5"
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", lavfi, "-c:v", "libvpx", str(source)], check=True)
+        self.files[self.WEBM] = source.read_bytes()
+        payload = _commons(url=self.WEBM, mime="video/webm")
+        with patch.object(providers, "get_json", return_value=payload):
+            item = self.gb("search", "--provider", "commons", "--query", "moon", "--media", "video", "--limit", "1")[
+                "items"
+            ][0]
+            shown = self.gb("preview", "--candidate", item["id"], "--start", "0", "--end", "1")
+        self.assertTrue(shown["local_path"].endswith(".webm"), shown["local_path"])
 
 
 if __name__ == "__main__":  # pragma: no cover
