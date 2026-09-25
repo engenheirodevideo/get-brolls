@@ -38,8 +38,10 @@ baixar a prévia gastaria a licença antes da decisão humana.
 
 ```sh
 python3 scripts/gb.py plugins --action install --source examples/plugins/banco_http
-python3 scripts/gb.py plugins --action install --source examples/plugins/banco_http --yes
+python3 scripts/gb.py plugins --action install --source examples/plugins/banco_http --yes --expect <sha256-da-prévia>
 ```
 
-O primeiro comando só mostra manifesto, permissões e origem; o segundo instala
-e habilita. Configure `BANCO_HTTP_TOKEN` no `.env` ou no ambiente.
+O primeiro comando só mostra manifesto, permissões, origem e o `sha256` do
+conteúdo; repita com `--yes --expect <sha256>` — o mesmo valor que a prévia
+mostrou — para instalar e habilitar de fato. Configure `BANCO_HTTP_TOKEN` no
+`.env` ou no ambiente.

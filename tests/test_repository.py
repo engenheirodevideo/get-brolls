@@ -43,6 +43,39 @@ def github_slug(heading):
     return value.replace(" ", "-")
 
 
+def _logical_units(text):
+    """Linhas de bloco de código ```` ``` ```` ficam separadas (um comando por
+    linha); parágrafos de prosa têm a própria quebra de linha suave (o
+    `--yes`/`--expect` de uma frase que o autor embrulhou em três linhas)
+    juntada de volta numa unidade só — o mesmo jeito que o Markdown renderiza
+    um parágrafo. Sem isso, uma checagem "mesma linha" passaria por cima de
+    uma frase em prosa onde `--yes` caiu numa linha e `--expect` (ou a falta
+    dele) em outra."""
+    units = []
+    paragraph = []
+    in_fence = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            if paragraph:
+                units.append(" ".join(paragraph))
+                paragraph = []
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            units.append(line)
+            continue
+        if not stripped:
+            if paragraph:
+                units.append(" ".join(paragraph))
+                paragraph = []
+            continue
+        paragraph.append(stripped)
+    if paragraph:
+        units.append(" ".join(paragraph))
+    return units
+
+
 # Destinos que o hub de AGENTS.md precisa rotear: um por público/finalidade.
 HUB_TARGETS = (
     "SKILL.md",
@@ -259,6 +292,24 @@ class RepositoryDocumentationTests(unittest.TestCase):
             "Sem telemetria",
         ):
             self.assertIn(marker, security, marker)
+
+    def test_plugin_install_update_yes_always_pairs_with_expect(self):
+        """Finding SDK Task 10 fix round 1 / 1: `--yes` sozinho não instala nada em
+        `plugins --action install|update` (precisa de `--expect <sha256>` — ver
+        `getbrolls.sdk.install._check_expect`); um exemplo documentado sem `--expect`
+        é um comando que falha exatamente como escrito."""
+        action_re = re.compile(r"--action\s+(install|update)\b")
+        yes_re = re.compile(r"--yes\b")
+        for relative in (
+            "docs/SDK.md",
+            "docs/GUIDE.md",
+            "examples/plugins/banco_http/README.md",
+            "examples/plugins/pasta_local/README.md",
+        ):
+            path = ROOT / relative
+            for unit in _logical_units(path.read_text(encoding="utf-8")):
+                if action_re.search(unit) and yes_re.search(unit):
+                    self.assertIn("--expect", unit, f"{relative}: {unit!r}")
 
     def test_installers_name_the_validated_python_range(self):
         shell = (ROOT / "scripts/install.sh").read_text(encoding="utf-8")

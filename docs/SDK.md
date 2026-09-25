@@ -238,24 +238,36 @@ api.command("recentes", recentes, "Lista os vídeos mais recentes da pasta")
 
 ```sh
 python3 scripts/gb.py plugins --action install --source <pasta-ou-url-git>
-python3 scripts/gb.py plugins --action install --source <pasta-ou-url-git> --yes
+python3 scripts/gb.py plugins --action install --source <pasta-ou-url-git> --yes --expect <sha256>
 python3 scripts/gb.py plugins --action update --id <id>
-python3 scripts/gb.py plugins --action update --id <id> --yes
+python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
 ```
 
 - `--source` aceita uma pasta local (copiada sem `.git`/`__pycache__`), uma
   pasta que é repositório git ou uma URL git (`https://…` sem usuário/senha, ou
-  `git@host:caminho`). Repositório passa por `git clone --depth 1` com
-  `GIT_TERMINAL_PROMPT=0` — só o que está commitado entra.
+  `git@host:caminho`). Um repositório nunca é `checkout`ado: o clone usa
+  `--no-checkout` e o conteúdo é materializado por nós, um blob por vez, direto
+  de `git ls-tree`/`git cat-file blob` — comandos que nunca aplicam filtro
+  `clean`/`smudge` nem hook, ao contrário de um `checkout` de verdade — com
+  `GIT_TERMINAL_PROMPT=0`; só o que está commitado entra. É recusado: link
+  simbólico, submódulo (gitlink), qualquer caminho com um componente
+  equivalente a `.git`, colisão de maiúsculas/minúsculas entre dois caminhos,
+  mais de 2000 arquivos e mais de 200 MB (no total ou num arquivo só).
 - Sem `--yes`, nada fica instalado: a resposta mostra id, versão, permissões
-  (`network`, `env`, `paths`), contribuições, origem e commit para revisão.
-  Com `--yes`, a pasta vai para `plugins/<id>`, o plugin é habilitado com pin
-  de hash e a origem/commit ficam em `plugins.json` (`sources`).
+  (`network`, `env`, `paths`), contribuições, origem, commit e o `sha256` do
+  conteúdo já materializado, para revisão.
+- `--yes` sozinho não basta: precisa vir junto com `--expect <sha256>`, igual
+  ao `sha256` que a prévia (sem `--yes`) mostrou — confirma que a pessoa está
+  aprovando o mesmo conteúdo que viu, não um que mudou na origem entre a
+  prévia e o `--yes`. Sem `--expect`, ou com um valor que não bate com o
+  `sha256` atual, o comando é recusado e pede para rodar a prévia de novo (sem
+  `--yes`) e reapresentar o valor atualizado. Batendo, `install` move a pasta
+  para `plugins/<id>`, habilita com pin de hash e grava origem/commit em
+  `plugins.json` (`sources`); `update --id` troca a pasta e refaz o pin.
 - `update --id` exige a origem gravada pelo `install`; sem `--yes` mostra a
   diferença de versão, de permissões e de arquivos (adicionados, removidos,
-  alterados); com `--yes` troca a pasta e refaz o pin. Nenhum código do plugin
-  roda durante install/update.
-- Link simbólico dentro do plugin é recusado.
+  alterados) contra a origem gravada. Nenhum código do plugin roda durante
+  install/update — só o manifesto é lido.
 
 ## Opt-in e confiança
 

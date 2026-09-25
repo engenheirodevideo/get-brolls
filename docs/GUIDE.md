@@ -370,8 +370,8 @@ explícito. O comando `plugins` gerencia esse ciclo:
 - `plugins --action enable --id <id>` — mostra o manifesto e as permissões declaradas, sem habilitar; rode de novo com `--yes` para confirmar e gravar o pin de hash da pasta.
 - `plugins --action disable --id <id>` — desliga um plugin habilitado.
 - `plugins --action check --path <pasta>` — valida o manifesto, roda `register()` contra um registro descartável e confere o contrato de cada contribuição, sem instalar nada.
-- `plugins --action install --source <pasta-ou-url-git>` — mostra id, versão, permissões, origem e commit; com `--yes` instala em `plugins/<id>`, habilita com pin de hash e grava a origem.
-- `plugins --action update --id <id>` — mostra a diferença de versão, permissões e arquivos contra a origem gravada; com `--yes` troca a pasta e refaz o pin.
+- `plugins --action install --source <pasta-ou-url-git>` — mostra id, versão, permissões, origem, commit e o `sha256` do conteúdo materializado; com `--yes --expect <sha256>` (o mesmo valor da prévia) instala em `plugins/<id>`, habilita com pin de hash e grava a origem.
+- `plugins --action update --id <id>` — mostra a diferença de versão, permissões e arquivos contra a origem gravada; com `--yes --expect <sha256>` troca a pasta e refaz o pin.
 - `plugins --action new --id <id> --kind provider|route|command [--path <pasta>]` — gera um plugin mínimo que já passa no próprio teste e no `check`.
 
 Fonte de plugin aparece em `providers` com `plugin` (e `route`, quando o

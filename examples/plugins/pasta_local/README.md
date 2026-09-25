@@ -34,8 +34,9 @@ cp -r examples/plugins/pasta_local ~/.getbrolls/plugins/
 ```
 
 Ou deixe o `plugins --action install --source examples/plugins/pasta_local`
-copiar e registrar a origem (sem `--yes` ele só mostra o que chegaria; com
-`--yes` já instala e habilita, dispensando o `enable` abaixo).
+copiar e registrar a origem (sem `--yes` ele só mostra o que chegaria,
+inclusive o `sha256` do conteúdo; com `--yes --expect <sha256>` — o mesmo
+valor da prévia — já instala e habilita, dispensando o `enable` abaixo).
 
 Habilite em dois passos. O primeiro só mostra o manifesto e as permissões
 declaradas — confira com a pessoa antes de continuar:
