@@ -30,7 +30,7 @@ from datetime import date
 from pathlib import Path
 
 from . import logs
-from .runtime import record_warning
+from .runtime import one_line, record_warning
 
 log = logs.get("delivery")
 
@@ -298,23 +298,26 @@ def render_origin(c, media_name, created=None, method="hardlink"):
     rights = c.get("rights") or {}
     approval = c.get("approval") or {}
     lines = _frontmatter("delivery-origin", created, ["get-brolls", "entrega"])
+    # Todo valor vindo do candidato passa por `one_line`: um título/licença/evidência
+    # com quebra de linha (plugin ou ledger editado à mão) nunca forja outra linha
+    # "- Direitos:"/"- Aprovado por:" neste registro. Texto normal sai idêntico.
     lines += [
-        f"# Origem de {media_name}",
+        f"# Origem de {one_line(media_name)}",
         "",
-        f"- Arquivo: `{media_name}`",
-        f"- Candidato: `{c['id']}`",
-        f"- Título na fonte: {c.get('title') or 'não informado'}",
-        f"- Fonte: {c.get('source_url') or 'original local'}",
-        f"- Autor: {_author(c)}",
+        f"- Arquivo: `{one_line(media_name)}`",
+        f"- Candidato: `{one_line(c['id'])}`",
+        f"- Título na fonte: {one_line(c.get('title') or 'não informado')}",
+        f"- Fonte: {one_line(c.get('source_url') or 'original local')}",
+        f"- Autor: {one_line(_author(c))}",
         f"- Trecho usado: {_segment_label(c)}",
-        f"- Direitos: {rights.get('status') or 'unknown'}",
-        f"- Licença: {rights.get('license_name') or 'ver evidência'}",
-        f"- Licença URL: {rights.get('license_url') or 'não informada'}",
-        "- Evidência: " + ("; ".join(rights.get("evidence") or []) or "não registrada"),
-        f"- Aprovado por: {approval.get('by') or 'não registrado'}"
-        + (f" ({approval.get('channel')})" if approval.get("channel") else ""),
-        f"- sha256 do arquivo coletado: `{(c.get('output') or {}).get('sha256') or 'não calculado'}`",
-        f"- Original canônico: `brolls/{(c.get('output') or {}).get('path')}`",
+        f"- Direitos: {one_line(rights.get('status') or 'unknown')}",
+        f"- Licença: {one_line(rights.get('license_name') or 'ver evidência')}",
+        f"- Licença URL: {one_line(rights.get('license_url') or 'não informada')}",
+        "- Evidência: " + one_line("; ".join(rights.get("evidence") or []) or "não registrada"),
+        f"- Aprovado por: {one_line(approval.get('by') or 'não registrado')}"
+        + (f" ({one_line(approval.get('channel'))})" if approval.get("channel") else ""),
+        f"- sha256 do arquivo coletado: `{one_line((c.get('output') or {}).get('sha256') or 'não calculado')}`",
+        f"- Original canônico: `brolls/{one_line((c.get('output') or {}).get('path'))}`",
         "",
         EDIT_WARNING if method in ("hardlink", "symlink") else COPY_NOTE,
         "",

@@ -18,7 +18,7 @@ from pathlib import Path
 
 from . import __version__, logs
 from .config import cache_root
-from .runtime import record_warning, redact, stderr_tail
+from .runtime import record_warning, redact, secret_name, stderr_tail
 
 _logger = logs.get("http")
 
@@ -64,11 +64,19 @@ def public_url(url, allow_signed=False):
     except ValueError:
         if p.hostname.lower() == "localhost" or p.hostname.lower().endswith(".local"):
             return None
-    signed = not allow_signed and any(
-        key.lower() in SECRET_NAMES or key.lower().startswith(("x-amz-", "x-goog-"))
-        for key, _ in urllib.parse.parse_qsl(p.query)
-    )
+    signed = not allow_signed and any(_secret_query_name(key) for key, _ in urllib.parse.parse_qsl(p.query))
     return None if signed else url
+
+
+def _secret_query_name(key):
+    """Nome de query que carrega credencial: os nomes exatos de sempre, os prefixos
+    de assinatura S3/GCS e qualquer nome que termine numa palavra secreta
+    (`password`, `hmac`, `jwt`, `client_secret`, `auth_token`, Akamai `__token__`/
+    `hdnts`/`hdnea`, CloudFront `Policy`/`Key-Pair-Id` — ver `runtime.SECRET_NAME_RE`).
+    URL pública de fonte embutida (Pexels, Pixabay, Commons, NASA, YouTube) não
+    usa nenhum desses nomes, então continua passando igual."""
+    lowered = key.lower()
+    return lowered in SECRET_NAMES or lowered.startswith(("x-amz-", "x-goog-")) or secret_name(key)
 
 
 # Characters RFC 3986 lets a URL path carry unescaped. "%" joins them so a path that
@@ -160,16 +168,35 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         raise ProviderError("Redirecionamento de API não permitido")
 
 
-def _scrub(value, keep_signed=False):
+_EMBEDDED_URL = re.compile(r"(?i)https?://[^\s\"'<>]+")
+
+
+def _scrub(value, keep_signed=False, strict=False):
+    """Limpa a resposta JSON: chave de segredo some, URL assinada/insegura vira `None`.
+
+    `strict=True` (só o caminho de plugin, `PluginApi.get_json`) vai além, sem mudar
+    nada para os built-ins: casa o esquema sem diferenciar maiúsculas (`HTTPS://`),
+    troca por "[URL omitida]" uma URL assinada que venha no meio de um texto e
+    descarta toda chave cujo nome parece segredo (`runtime.SECRET_NAME_RE`:
+    `refresh_token`, `client_secret`, `password`...), não só os nomes exatos."""
     if isinstance(value, dict):
-        return {k: _scrub(v, keep_signed) for k, v in value.items() if k.lower() not in SECRET_NAMES}
+        return {
+            k: _scrub(v, keep_signed, strict)
+            for k, v in value.items()
+            if k.lower() not in SECRET_NAMES and not (strict and secret_name(k))
+        }
     if isinstance(value, list):
-        return [_scrub(v, keep_signed) for v in value]
-    if isinstance(value, str) and value.startswith(("http://", "https://")):
+        return [_scrub(v, keep_signed, strict) for v in value]
+    if not isinstance(value, str):
+        return value
+    prefix = value[:8].lower() if strict else value[:8]
+    if prefix.startswith(("http://", "https://")):
         parsed = urllib.parse.urlsplit(value)
         if parsed.scheme == "http" and parsed.netloc == "images-assets.nasa.gov":
             value = urllib.parse.urlunsplit(parsed._replace(scheme="https"))
         return public_url(value, allow_signed=keep_signed)
+    if strict and not keep_signed:
+        return _EMBEDDED_URL.sub(lambda m: m.group(0) if public_url(m.group(0)) else "[URL omitida]", value)
     return value
 
 
@@ -202,12 +229,13 @@ def _retry_after_seconds(value, cap: int | None = RETRY_AFTER_CAP_S):
     return limit(max(0, int(delta + 0.999)))
 
 
-def get_json(url, params=None, headers=None, cache_ttl=0, keep_signed=False, quiet_errors=False):  # noqa: C901, PLR0912, PLR0913, PLR0915, PLR0917 - existing size; request/cache/retry/error handling for one endpoint call; quiet_errors is a 6th caller-facing knob, not incidental complexity
+def get_json(url, params=None, headers=None, cache_ttl=0, keep_signed=False, quiet_errors=False, strict_scrub=False):  # noqa: C901, PLR0912, PLR0913, PLR0915, PLR0917 - existing size; request/cache/retry/error handling for one endpoint call; quiet_errors/strict_scrub are caller-facing knobs set only by the SDK, not incidental complexity
     """`quiet_errors=True` drops the HTTPError response body from the message (the
     SDK sets this on every plugin call; built-in providers never set it, so their
     error messages are unchanged even when they pass `headers`, e.g. Pexels'
     Authorization). `keep_signed=True` implies it: a signed URL kept in the
     response is exactly the kind of call whose error body might reflect it back.
+    `strict_scrub=True` (also SDK-only) applies `_scrub(strict=True)`.
     """
     if keep_signed and cache_ttl:
         raise ProviderError("keep_signed exige cache desligado (cache_ttl=0): URL assinada não vai para o disco.")
@@ -263,7 +291,7 @@ def get_json(url, params=None, headers=None, cache_ttl=0, keep_signed=False, qui
                     raise ProviderError("Resposta excede limite de 8 MB")
                 status_code = getattr(response, "status", None)
                 raw_len = len(raw)
-                data = _scrub(json.loads(raw), keep_signed)
+                data = _scrub(json.loads(raw), keep_signed, strict_scrub)
                 break
         except urllib.error.HTTPError as error:
             code = error.code

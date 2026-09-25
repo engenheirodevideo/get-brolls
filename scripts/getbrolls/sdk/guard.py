@@ -116,20 +116,26 @@ def _trusted_types():
     return (PluginError, ProviderError, ApiError, ManifestError, RegistryError)
 
 
+def plain_line(text, limit=MESSAGE_MAX_CHARS):
+    """Uma linha só, sem caractere de controle/formatação (categoria Unicode `C*`,
+    separadores de linha/parágrafo), espaços colapsados, até `limit` caracteres."""
+    text = "".join(
+        " " if unicodedata.category(char)[0] == "C" or unicodedata.category(char) in ("Zl", "Zp") else char
+        for char in text
+    )
+    text = " ".join(text.split())
+    if len(text) > limit:
+        text = text[: limit - 1].rstrip() + "…"
+    return text
+
+
 def sanitize_text(owner, text):
     """Uma linha, sem caractere de controle/formatação, sem segredo, até 300 caracteres."""
     for key in _ENV_KEYS.get(owner, ()):
         value = os.environ.get(key)
         if value:
             text = text.replace(value, "[REDACTED]")
-    text = "".join(
-        " " if unicodedata.category(char)[0] == "C" or unicodedata.category(char) in ("Zl", "Zp") else char
-        for char in text
-    )
-    text = redact(" ".join(text.split()))
-    if len(text) > MESSAGE_MAX_CHARS:
-        text = text[: MESSAGE_MAX_CHARS - 1].rstrip() + "…"
-    return text
+    return plain_line(redact(plain_line(text, limit=len(text) + 1)))
 
 
 def plugin_text(owner, exc, *, builtin=False):
@@ -284,6 +290,13 @@ def _normalize(value, owner):
     return isolated(owner, lambda: json.loads(json.dumps(value, allow_nan=False)), on_failure=failed)
 
 
+def _display_text(value):
+    """Campo de texto que o core exibe (ORIGEM.md, credits.md, review): uma linha só,
+    sem controle, até 300 caracteres (RT-04). Não-texto passa como veio — o schema
+    do candidato recusa o tipo errado logo depois."""
+    return plain_line(value) if isinstance(value, str) else value
+
+
 def _kept(raw, allowed):
     """Só as chaves de `allowed` presentes em `raw`, mais a lista (ordenada) do
     que foi descartado — usado tanto para montar o candidato limpo quanto para
@@ -303,8 +316,15 @@ def plugin_candidate(item, provider, owner, download=True, route=None):  # noqa:
 
     creator, dropped = _kept(item.get("creator"), CREATOR_KEYS)
     tampered += [f"creator.{k}" for k in dropped]
+    for key in ("name", "handle"):
+        if key in creator:
+            creator[key] = _display_text(creator[key])
+    if "url" in creator:
+        creator["url"] = public_url(creator["url"])
     match, dropped = _kept(item.get("match"), MATCH_KEYS)
     tampered += [f"match.{k}" for k in dropped]
+    if "reason" in match:
+        match["reason"] = _display_text(match["reason"])
     media, dropped = _kept(item.get("media"), MEDIA_KEYS)
     tampered += [f"media.{k}" for k in dropped]
 
@@ -326,13 +346,17 @@ def plugin_candidate(item, provider, owner, download=True, route=None):  # noqa:
     tampered += [f"rights.{k}" for k in dropped]
     if raw_rights.get("status", "unknown") != "unknown":
         tampered.append("rights.status")
-    raw_evidence = raw_rights.get("evidence")
+    if raw_rights.get("evidence") not in (None, []):
+        # Evidência é o registro que a pessoa lê em ORIGEM.md/credits.md para decidir
+        # se pode usar: só o permit humano (e a licença que o CORE registra depois dele,
+        # "Licença registrada pelo plugin ...") escreve ali, nunca o candidato (RT-04).
+        tampered.append("rights.evidence")
     rights = {
         "status": "unknown",
-        "license_name": raw_rights.get("license_name"),
-        "license_url": raw_rights.get("license_url"),
-        "evidence": [v for v in raw_evidence if isinstance(v, str)] if isinstance(raw_evidence, list) else [],
-        "attribution": raw_rights.get("attribution"),
+        "license_name": _display_text(raw_rights.get("license_name")),
+        "license_url": public_url(raw_rights.get("license_url")),
+        "evidence": [],
+        "attribution": _display_text(raw_rights.get("attribution")),
     }
 
     raw_acq, dropped = _kept(item.get("acquisition"), ACQUISITION_KEYS)
@@ -395,7 +419,7 @@ def plugin_candidate(item, provider, owner, download=True, route=None):  # noqa:
         "provider": item.get("provider"),
         "source_id": item.get("source_id"),
         "source_url": public_url(item.get("source_url")),
-        "title": item.get("title"),
+        "title": _display_text(item.get("title")),
         "creator": creator,
         "query": item.get("query"),
         "collected_at": item.get("collected_at"),

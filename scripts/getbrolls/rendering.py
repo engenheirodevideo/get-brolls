@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .models import signature
 from .review import review_epoch
+from .runtime import one_line
 
 
 def safe_preview_url(value):
@@ -258,14 +259,15 @@ def render(ledger):
             }
         )
         if out:
+            # `one_line`: nenhum valor do candidato quebra a linha e forja outro campo.
             credits_lines += [
-                f"## {c['id']}",
-                f"- Arquivo: {out}",
-                f"- Fonte: {c['source_url'] or 'original local'}",
-                f"- Autor: {c['creator'].get('name') or 'não informado'}",
-                f"- Licença: {c['rights'].get('license_name') or 'ver evidência'}",
-                f"- Licença URL: {c['rights'].get('license_url') or 'não informada'}",
-                f"- Evidência: {'; '.join(c['rights']['evidence'])}",
+                f"## {one_line(c['id'])}",
+                f"- Arquivo: {one_line(out)}",
+                f"- Fonte: {one_line(c['source_url'] or 'original local')}",
+                f"- Autor: {one_line(c['creator'].get('name') or 'não informado')}",
+                f"- Licença: {one_line(c['rights'].get('license_name') or 'ver evidência')}",
+                f"- Licença URL: {one_line(c['rights'].get('license_url') or 'não informada')}",
+                f"- Evidência: {one_line('; '.join(c['rights']['evidence']))}",
                 "",
             ]
     from .ledger import atomic_write

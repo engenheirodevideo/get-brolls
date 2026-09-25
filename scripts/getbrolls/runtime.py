@@ -113,6 +113,36 @@ _QUERY_SECRET_PATTERN = re.compile(
 )
 
 
+# Nome de parâmetro/chave com cara de segredo, casado com o nome INTEIRO
+# (`fullmatch`): a palavra secreta fecha o nome — `auth_token`, `client_secret`,
+# `X-Amz-Signature` casam; `oauth2_token_id`, `monkey`, `profile_id` não. Os nomes
+# soltos do fim cobrem assinaturas de CDN (Akamai `__token__`/`hdnts`/`hdnea`,
+# CloudFront `Key-Pair-Id`) e os prefixos de assinatura S3/GCS.
+SECRET_NAME_RE = re.compile(
+    r"(?i)(?:[a-z0-9_.-]{0,40}[_.-])?"
+    r"(?:api_?key|apikey|access_?token|key|token|secret|signature|sig|password|passwd|pwd|hmac|jwt"
+    r"|credentials?|policy|authorization)"
+    r"|__token__|hdnts|hdnea|key-pair-id|x-amz-[a-z0-9-]*|x-goog-[a-z0-9-]*"
+)
+
+
+def secret_name(name):
+    """`True` quando `name` (chave de JSON ou de query string) parece guardar um segredo."""
+    return isinstance(name, str) and SECRET_NAME_RE.fullmatch(name) is not None
+
+
+# Quebra de linha ou caractere de controle: o que deixa um valor "fugir" da linha
+# dele num Markdown gerado (ORIGEM.md, credits.md) e forjar outra linha.
+_LINE_BREAKING = re.compile(r"[\x00-\x1f\x7f\x85\u2028\u2029]+")
+
+
+def one_line(value):
+    """`value` como texto de uma linha só: controle/quebra de linha viram espaço.
+
+    Texto normal (sem controle) volta idêntico — a saída dos built-ins não muda."""
+    return _LINE_BREAKING.sub(" ", str(value))
+
+
 def scrub_home(text):
     """Replace the user's home directory prefix with `~`. Never raises.
 

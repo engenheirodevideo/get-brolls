@@ -202,15 +202,19 @@ class PluginApi:
             cleaned[name] = value
         return cleaned
 
-    def get_json(self, url, params=None, headers=None, cache_ttl=0, keep_signed=False):
+    def get_json(self, url, params=None, headers=None, cache_ttl=0, keep_signed=False):  # noqa: ARG002 - `cache_ttl` fica na assinatura pública por compatibilidade; plugin nunca grava cache (ver abaixo)
         self._check_host(url)
         headers = self._validate_headers(headers)
-        if keep_signed:
-            cache_ttl = 0
+        # Resposta de plugin NUNCA vai para o cache em disco (RT-09): ela pode trazer
+        # URL assinada ou campo secreto que a limpeza não reconhece, e o cache é
+        # compartilhado por todo o processo. `cache_ttl` é aceito e ignorado.
         # `quiet_errors=True` always: a plugin's error body is never assumed safe to
         # echo, unlike a built-in provider's (which never sets this and keeps its
-        # exact previous message — "sem plugins, saída idêntica").
-        return get_json(url, params, headers, cache_ttl=cache_ttl, keep_signed=keep_signed, quiet_errors=True)
+        # exact previous message — "sem plugins, saída idêntica"). `strict_scrub`
+        # casa esquema sem caixa, URL no meio do texto e chave com nome de segredo.
+        return get_json(
+            url, params, headers, cache_ttl=0, keep_signed=keep_signed, quiet_errors=True, strict_scrub=True
+        )
 
     def _workdir(self, operation):
         active = _ACTIVE_ROUTE.get()
