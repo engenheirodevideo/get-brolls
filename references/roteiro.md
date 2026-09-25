@@ -10,27 +10,31 @@ tags: [get-brolls, roteiro, reels, componentes]
 
 Use quando a pessoa pede o conteúdo pronto (um reels com cenas e fala), não só b-roll. O `ROTEIRO.md` é dela: você redige, ela revisa. Com roteiro no projeto, os beats do `BRIEF.md` nascem do roteiro; ninguém os escreve à mão.
 
+Só conta como roteiro do get-brolls o `ROTEIRO.md` cujo frontmatter tem `type: roteiro` (o `new` já escreve assim). Um `ROTEIRO.md` que a pessoa já tinha, sem esse frontmatter, é só um arquivo dela: o brief segue a entrevista completa e exige pelo menos um beat.
+
+> **Caminhos.** Os exemplos escrevem `scripts/gb.py` por brevidade. Rode sempre pelo **caminho absoluto da instalação da skill** (no plugin, `${CLAUDE_PLUGIN_ROOT}/scripts/gb.py`) e passe `--project` com a pasta absoluta do usuário em todo comando. No Windows, use `python` no lugar de `python3`.
+
 ## Fluxo
 
 1. Pergunte gênero (hoje só `reels`), tema, público e duração — uma pergunta por mensagem.
 2. `python3 "scripts/gb.py" roteiro --action new --genero reels --tema "..." --project <projeto>` cria o esqueleto (Gancho, Problema, Prova, CTA) e as pastas `aroll/` e `assets/`. Se o `ROTEIRO.md` já existe, edite o que está lá; `--force` recomeça do esqueleto e guarda o anterior em `ROTEIRO.md.bak` (ou `ROTEIRO.md.<data>.bak`, quando já há um `.bak`).
 3. Só agora, com o `ROTEIRO.md` criado, conduza a entrevista de `/get-brolls-brief`: ela pergunta só vídeo, fontes e direitos e escreve `"beats": []`. Alinhe o aspecto: `"video.delivery.format": "reels"` no brief e `init-rules --format reels --force --project <projeto>`.
 4. Escreva a fala de cada cena seguindo [`generos/reels.md`](generos/reels.md). Troque todo `<placeholder>` do esqueleto. Não invente dado, número, nome ou promessa.
-5. `roteiro --action check --project <projeto>` até sair sem erro. Leia os avisos: componente pendente, licença não registrada, nota de cena, duração.
+5. `roteiro --action check --project <projeto>` até sair sem erro e sem aviso de placeholder (o esqueleto intocado passa no `check`, só com avisos). Leia os outros avisos: componente pendente, licença não registrada, nota de cena, duração. Gravação de `A-ROLL`/`UGC` que ainda não está em `aroll/` não gera aviso: confira com a pessoa o que falta gravar.
 6. Mostre o roteiro inteiro à pessoa. Só com a aprovação dela, dita no chat: `roteiro --action review --by NOME --channel chat --statement "frase exata" --project <projeto>`. Nunca revise por conta própria nem edite `status:` à mão; o `review` grava `status: revisado`.
-7. `roteiro --action plan --project <projeto>` mostra o que o sync faria, sem gravar; `roteiro --action sync --project <projeto>` grava ids e beats. Daí em diante a coleta é a de sempre, beat a beat: `brief --beat cNN --project <projeto>`.
+7. `roteiro --action plan --project <projeto>` mostra o que o sync faria, sem gravar (e avisa quando o sync vai recusar por falta de revisão); `roteiro --action sync --project <projeto>` grava ids e beats. Daí em diante a coleta é a de sempre, beat a beat: `brief --beat cNN --project <projeto>`.
 
-Enquanto houver `ROTEIRO.md` e nenhum beat ativo, o `status` para no degrau `roteiro-sync` e o `brief` manda revisar e sincronizar: o que falta é a revisão e o sync, não a busca.
+Enquanto o `BRIEF.md` não refletir o roteiro — nunca houve sync, há cena sem id, ou as cenas pedem beats diferentes dos beats ativos —, o `status` para no degrau `roteiro-sync` e o `brief` manda revisar e sincronizar: o que falta é a revisão e o sync, não a busca. Roteiro já sincronizado sem nenhuma cena de b-roll não trava nada: `status` e `brief` dizem que o roteiro não pede b-roll e seguem.
 
 ## Formato
 
 Frontmatter, uma linha `chave: valor` cada: `type: roteiro`, `genero` e `tema` (obrigatórios); `aspecto` (`"9:16"` ou `"16:9"`; o padrão vem do gênero), `duracao_alvo_s` (inteiro de 5 a 600), `legenda` (`true`/`false`) e `status` (quem muda é o `review`). Lista, bloco e comentário no fim da linha são recusados.
 
-- **Cena**: `## Título`. O sync acrescenta `<!-- cNN -->` no fim do título; no modo de leitura ele não aparece. Ao duplicar uma cena, **não copie o comentário** (id repetido é erro). Nenhum outro comentário HTML vale, em lugar nenhum: texto escondido não passa pela revisão.
+- **Cena**: `## Título`. O sync acrescenta `<!-- cNN -->` no fim do título; no modo de leitura ele não aparece. Ao duplicar uma cena, **não copie o comentário** (id repetido é erro). Nenhum outro comentário HTML vale, em lugar nenhum, nem comentário do Obsidian (`%%...%%`) depois do frontmatter: texto escondido não passa pela revisão.
 - **Diretiva**: `[...]` sozinho na linha inteira. Acento, caixa e sinônimos comuns (`[MÚSICA]`, `[TRILHA]`, `[APRESENTADOR]`) são aceitos.
-- **Layout**, exatamente um por cena: `[A-ROLL]` ou `[A-ROLL: take]`, `[BROLL: alvo]`, `[SPLIT: esquerda | direita]`, `[FULL: alvo]`, `[UGC: descrição]`. Take: letras, números, `-` ou `_`; `a` e `b` são reservados aos lados do `SPLIT`.
+- **Layout**, exatamente um por cena: `[A-ROLL]` ou `[A-ROLL: take]`, `[BROLL: alvo]`, `[SPLIT: esquerda | direita]`, `[FULL: alvo]`, `[UGC: descrição]`. Take: letras, números, `-` ou `_`; `a` e `b`, e take que começa com `a-` ou `b-`, são reservados aos lados do `SPLIT`.
 - **SPLIT**: cada lado é um alvo de b-roll, `A-ROLL[: take]`, `UGC: descrição` ou texto entre aspas. Lado de b-roll vira o beat `cNN-a` (esquerda) ou `cNN-b` (direita), sempre pela posição.
-- **FULL**: o alvo vira o beat `cNN`. `logo`, `marca`, `cta` ou um arquivo de `assets/marca/` é componente de marca, sem beat.
+- **FULL**: o alvo vira o beat `cNN`. `logo`, `marca`, `cta` ou um arquivo de `assets/marca/` (do projeto ou da biblioteca pessoal) é componente de marca, sem beat. Pôr ou tirar esse arquivo troca beat por marca: a revisão cai, e o sync avisa que o `FULL` virou componente de marca.
 - Texto entre aspas num lado do `SPLIT` ou no `FULL` é cartela: não vira busca nem beat.
 - **Camadas**: `[LETTERING: "texto" | estilo]` (texto sempre entre aspas, estilo opcional), `[SFX: nome]`, `[MUSICA: nome]`, `[COMP: nome]`. A linha da camada marca onde ela entra: antes da linha de fala seguinte (âncora) ou no fim da cena.
 - **Plugin**: `[<plugin>:<nome>]` só de plugin habilitado (`plugins --action list`); prefixo de plugin desligado é erro.
@@ -63,14 +67,14 @@ Quem monta o vídeo aponta para os clipes em `brolls/clips/`, nunca para `entreg
 
 - **Ids duráveis.** Cada cena ganha `cNN` no primeiro sync, e um id nunca volta para outra cena, nem depois de apagado: `brolls/roteiro-state.json`, o `BRIEF.md` e o manifesto guardam o que já foi usado.
 - **Comentário perdido.** Cena sem id que casa exatamente (título, layout e alvo) com uma cena que sumiu recebe o id de volta. Na dúvida, o sync recusa e diz o que fazer: devolver o `<!-- cNN -->` ao título certo ou, se a cena antiga saiu de propósito, dar à nova o id livre que a mensagem sugere.
-- **Alvo mudou** num beat com aprovação (ou um id já usado voltou à mão com material no manifesto): o sync para. Explique que essas aprovações voltam a pendente; só com o sim da pessoa, repita com `--confirm-target-change`. O `plan` mostra antes quais seriam, em `affected_approvals`.
+- **Alvo mudou** num beat com aprovação (ou um id já usado voltou à mão com material no manifesto): o sync para. Explique que essas aprovações voltam a pendente; só com o sim da pessoa, repita com `--confirm-target-change`. O `plan` mostra antes quais seriam, em `affected_approvals`. `queries` e `notes` do beat continuam da pessoa e ficam como estão: quando existem, o aviso diz que ainda são do alvo antigo — revise antes de buscar.
 - **Fala mudou**: só aviso, sem portão. Confira se o clipe ainda serve.
-- **Cena removida**: o beat fica no `BRIEF.md` com `"retired": true`. `brief`, `status`, busca e `deliver` o ignoram; candidatos e clipes ficam, e o `deliver` lista os clipes dele em `retired`. Se a cena volta com o mesmo id, o beat volta a valer.
+- **Cena removida**: o beat fica no `BRIEF.md` com `"retired": true`, e a próxima cena nova ganha id novo sem esbarrar nele. `brief`, `status`, busca e `deliver` o ignoram; candidatos e clipes ficam, e o `deliver` lista os clipes dele em `retired`. Se a cena volta com o mesmo id, o beat volta a valer.
 - **Ordem mudou**: aviso; o próximo `deliver` renumera as pastas de `entrega/`.
-- **Revisão vencida**: trocar palavra da fala, alvo ou lugar de camada exige novo `review`. Linha em branco, espaço sobrando e o comentário de id não contam.
+- **Revisão vencida**: trocar título, palavra da fala, nota de cena, alvo, lugar de camada, qualquer campo do frontmatter (menos `status`) ou o papel de um `FULL` (beat ou marca) exige novo `review`: mostre o roteiro de novo à pessoa. Linha em branco, espaço sobrando e o comentário de id não contam.
 - **Aspecto**: `aspecto` diferente do `video_format` do `RULES.md` ou do `video.delivery.format` do `BRIEF.md` faz `check` e `sync` recusarem. Alinhe antes.
 - **O que o sync grava**: nos beats `cNN`, só `target`, `narration` e `duration_hint_s`; beat escrito à mão fica como está. Antes de gravar, copia `ROTEIRO.md` e `BRIEF.md` para `ROTEIRO.md.sync.bak` e `BRIEF.md.sync.bak`.
-- **Links**: `ROTEIRO.md` pode ser link simbólico; o sync e o `review` gravam no arquivo de verdade e o link continua link. `BRIEF.md` não pode: link, ou `GB_BRIEF_FILE` apontando para fora da pasta do projeto, é recusado.
+- **Links**: `ROTEIRO.md` pode ser link simbólico; o sync e o `review` gravam no arquivo de verdade e o link continua link. `BRIEF.md` não pode: link, ou `GB_BRIEF_FILE` apontando para qualquer arquivo que não seja o `BRIEF.md` da pasta do projeto, é recusado.
 - **Gravação interrompida** (`brolls/.pending-transaction.json`): `check` e `plan` só leem e recusam; um comando que grava conclui a recuperação.
 
 Resumo para a pessoa: [GUIDE — Roteiro e componentes](../docs/GUIDE.md#roteiro-e-componentes).

@@ -26,9 +26,11 @@ Para quando o projeto ainda não tem `BRIEF.md` e alguém pediu b-roll. O objeti
 - Pare no teto de **sete perguntas**, sempre.
 - **Dois "tanto faz" / "faz aí" / "confia" seguidos**: pare de perguntar, aplique os defaults, escreva o arquivo e **mostre o que você assumiu** em três a cinco linhas, pedindo só correção. Não repita a pergunta com outras palavras.
 
-## Se já houver ROTEIRO.md
+## Se já houver ROTEIRO.md do get-brolls
 
-O roteiro é dono dos beats. Pule as perguntas 3 e 4 (fala e alvo vêm das cenas), faça só 1, 2, 5, 6 e 7, pare quando 1 e 7 estiverem respondidas e escreva `"beats": []` no BRIEF.md. O `brief --validate` aceita a lista vazia porque o projeto tem `ROTEIRO.md`; os beats entram com `roteiro --action sync` depois da revisão da pessoa. Não copie cena para beat à mão: o sync criaria beat repetido.
+Vale só para o `ROTEIRO.md` cujo frontmatter tem `type: roteiro` (o que `roteiro --action new` cria). Um roteiro que a pessoa escreveu por conta própria, sem esse frontmatter, não muda nada: siga a entrevista completa, com pelo menos um beat.
+
+O roteiro é dono dos beats. Pule as perguntas 3 e 4 (fala e alvo vêm das cenas), faça só 1, 2, 5, 6 e 7, pare quando 1 e 7 estiverem respondidas e escreva `"beats": []` no BRIEF.md. O `brief --validate` aceita a lista vazia porque o projeto tem o roteiro do get-brolls; os beats entram com `roteiro --action sync` depois da revisão da pessoa. Não copie cena para beat à mão: o sync criaria beat repetido.
 
 ## Defaults quando a pessoa não decide
 

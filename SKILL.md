@@ -27,7 +27,7 @@ Você planeja fontes literais, mostra o trecho à pessoa, recebe a decisão dela
 
 ## Passo 1 — Entreviste antes de buscar
 
-Pediram roteiro ou conteúdo pronto? Comece por [`references/roteiro.md`](references/roteiro.md). Sem `BRIEF.md` na pasta do projeto, conduza a entrevista de `/get-brolls-brief` ([`references/interview.md`](references/interview.md)): uma pergunta por mensagem, teto de sete — pare quando 1, 3 e 7 estiverem respondidas. Dois "tanto faz" viram defaults, visíveis na resposta. Nunca invente narração, alvo, link ou responsável.
+Pediram para escrever o conteúdo (cenas e fala), não só b-roll? Siga [`references/roteiro.md`](references/roteiro.md). Roteiro já pronto da pessoa segue a entrevista. Sem `BRIEF.md` na pasta do projeto, conduza a entrevista de `/get-brolls-brief` ([`references/interview.md`](references/interview.md)): uma pergunta por mensagem, teto de sete — pare quando 1, 3 e 7 estiverem respondidas. Dois "tanto faz" viram defaults, visíveis na resposta. Nunca invente narração, alvo, link ou responsável.
 
 ## Passo 2 — Confirme o brief
 
@@ -45,7 +45,7 @@ Escreva o `BRIEF.md` com `python3 "scripts/gb.py" init-brief --project <projeto>
 
 ## Passo 4 — Analise e pré-visualize
 
-`python3 "scripts/gb.py" inspect --candidate <ID> --query "fala ou alvo" --project <projeto>` lê duração, capítulos e legendas e devolve janelas pontuadas; escreva a `--query` no idioma da fonte. Escolha `--start/--end` a partir delas, nunca de palpite.
+`python3 "scripts/gb.py" inspect --candidate <ID> --query "fala ou alvo" --project <projeto>` devolve janelas pontuadas (duração, capítulos, legendas); escreva a `--query` no idioma da fonte. Escolha `--start/--end` a partir delas, nunca de palpite.
 
 Depois, `python3 "scripts/gb.py" preview --candidate <ID> --start <INICIO> --end <FIM> --project <projeto>` gera poster, contact sheet e GIF: até 10 s por prévia (`GB_PREVIEW_MAX_SECONDS`) e **um `preview` por chamada**, senão estoura o tempo. A resposta traz `files.contact_sheet` (no `status` e no manifesto, `preview.contact_sheet_path`, relativo a `brolls/`) e `preview.frame_times_s`. **Abra e olhe antes de seguir.** Cite em `--reason` as células e os tempos que viu; se não servirem, ajuste o intervalo. Nunca descreva quadro que não conferiu.
 
@@ -65,7 +65,7 @@ Mudança de intervalo ou de contexto invalida aprovação. A copy pronta das dua
 
 ## Passo 6 — Direitos, corte e entrega
 
-Registre as condições com `permit` (`--evidence`, `--preset` ou `--declared-by/--declaration-text`), depois `fetch`, `verify` e `deliver`. As três rotas estão em [`references/rights.md`](references/rights.md). Não invente licença. `deliver` monta `entrega/`, uma pasta por beat, com `ORIGEM.md`.
+Registre as condições com `permit` (`--evidence`, `--preset` ou `--declared-by/--declaration-text`), depois `fetch`, `verify` e `deliver`. As três rotas estão em [`references/rights.md`](references/rights.md). Não invente licença. `deliver` monta `entrega/` com `ORIGEM.md` por beat.
 
 ## Relate o status
 
@@ -77,7 +77,7 @@ Diga o que tentou e por quê. Pergunte se a pessoa tem material próprio ou um l
 
 ## Ambiente
 
-`python3 "scripts/gb.py" doctor` diz o que está pronto e o que falta. No Windows, use `python` no lugar de `python3`. Faltando algo, peça `/get-brolls-setup`. Versão diferente da deste arquivo: leia o [CHANGELOG](CHANGELOG.md).
+`python3 "scripts/gb.py" doctor` diz o que está pronto e o que falta. No Windows, use `python` no lugar de `python3`. Faltando algo, peça `/get-brolls-setup`. Versão diferente? Leia o [CHANGELOG](CHANGELOG.md).
 
 ## Índice de references
 
@@ -87,4 +87,4 @@ Diga o que tentou e por quê. Pergunte se a pessoa tem material próprio ou um l
 - [`references/rights.md`](references/rights.md) — condições de uso e `permit`.
 - [`references/templates-de-resposta.md`](references/templates-de-resposta.md) — copy pronta.
 - [`references/glossario.md`](references/glossario.md) — termos.
-- [`docs/GUIDE.md`](docs/GUIDE.md) — detalhe técnico por provedor.
+- [`docs/GUIDE.md`](docs/GUIDE.md) — detalhe técnico.

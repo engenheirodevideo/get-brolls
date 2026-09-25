@@ -145,6 +145,23 @@ class DocsAndSchemaTests(unittest.TestCase):
                 body = path.read_text(encoding="utf-8")
                 self.assertIn("ROTEIRO.md", body)
                 self.assertIn('"beats": []', body)
+                self.assertIn("type: roteiro", body)
+
+    def test_roteiro_guide_and_manual_match_the_behaviour(self):
+        guide = (ROOT / "references" / "roteiro.md").read_text(encoding="utf-8")
+        for fragment in ("**Caminhos.**", "sem aviso de placeholder", "%%", "`a-` ou `b-`", "type: roteiro",
+                         "não pede b-roll", "qualquer arquivo que não seja o `BRIEF.md` da pasta do projeto"):  # fmt: skip
+            with self.subTest(fragment=fragment):
+                self.assertIn(fragment, guide)
+        manual = (ROOT / "docs" / "MANUAL.md").read_text(encoding="utf-8")
+        self.assertNotIn("BRIEF é o roteiro", manual)
+        self.assertNotIn("o roteiro de B-rolls", manual)
+        for command in ("roteiro --action new", "roteiro --action sync", "assets --action where"):
+            with self.subTest(command=command):
+                self.assertIn(command, manual)
+        for path in (ROOT / "docs" / "GUIDE.md", ROOT / "CHANGELOG.md"):
+            with self.subTest(path=path.name):
+                self.assertNotIn("até o primeiro sync", path.read_text(encoding="utf-8").lower())
 
 
 CLI = ROOT / "scripts" / "gb.py"

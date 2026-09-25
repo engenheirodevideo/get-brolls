@@ -135,7 +135,7 @@ python3 scripts/gb.py status --project /caminho/meu-video
 
 ## 2 📝 Planejar (opcional, mas recomendado)
 
-> Pensa como a **pré-produção**: RULES é o padrão do canal, BRIEF é o roteiro deste vídeo.
+> Pensa como a **pré-produção**: RULES é o padrão do canal, BRIEF é o plano do vídeo (o que cada trecho precisa mostrar).
 > 💬 **No chat:** `/get-brolls-brief` faz uma entrevista de até 7 perguntas e escreve o BRIEF por você.
 
 ```bash
@@ -439,6 +439,38 @@ python3 scripts/gb.py queue --action mark --id "<ID_DA_FILA>" --skipped --reason
 python3 scripts/gb.py queue --action status --project /caminho/meu-video
 ```
 
+## 🎬 Roteiro e componentes (opcional)
+
+> Para quem quer o conteúdo pronto (reels 9:16): o `ROTEIRO.md` descreve o vídeo por cenas, e os beats do BRIEF nascem dele. Só vale o `ROTEIRO.md` criado pelo `roteiro --action new` (frontmatter `type: roteiro`); um roteiro seu, escrito à parte, não muda nada. Detalhes em [GUIDE.md](GUIDE.md#roteiro-e-componentes).
+
+```bash
+# ── roteiro --action new ────────────────────────────────────
+# O QUE FAZ: cria o ROTEIRO.md com o esqueleto do gênero e as pastas aroll/ e assets/.
+# --force recomeça do esqueleto e guarda o anterior em ROTEIRO.md.bak.
+python3 scripts/gb.py roteiro --action new --genero reels --tema "Seu tema" --project /caminho/meu-video
+
+# ── roteiro --action check ──────────────────────────────────
+# O QUE FAZ: valida o roteiro e mostra o plano de cena (componentes, duração). Só lê.
+python3 scripts/gb.py roteiro --action check --project /caminho/meu-video
+
+# ── roteiro --action review ─────────────────────────────────
+# O QUE FAZ: registra que VOCÊ revisou o texto atual. Mudou o conteúdo? Revise de novo.
+python3 scripts/gb.py roteiro --action review --by "Seu Nome" --channel chat --statement "pode seguir" --project /caminho/meu-video
+
+# ── roteiro --action plan / sync ────────────────────────────
+# O QUE FAZ: plan mostra o que o sync mudaria no BRIEF.md, sem gravar;
+#            sync grava os ids de cena e os beats cNN (só com revisão válida).
+# ATENÇÃO: alvo novo num beat já aprovado pede --confirm-target-change.
+python3 scripts/gb.py roteiro --action plan --project /caminho/meu-video
+python3 scripts/gb.py roteiro --action sync --project /caminho/meu-video
+
+# ── assets --action list / where ────────────────────────────
+# O QUE FAZ: mostra os componentes (marca, lettering, sfx, musica, composicoes)
+#            e onde cada nome resolve: projeto ou biblioteca pessoal. Só lê.
+python3 scripts/gb.py assets --action list --project /caminho/meu-video
+python3 scripts/gb.py assets --action where --kind sfx --name whoosh --project /caminho/meu-video
+```
+
 ## 🧩 Plugins do SDK (experimental)
 
 > Plugins acrescentam fontes, rotas de download e comandos próprios, instalados em `~/.getbrolls/plugins`. Não é o plugin do Claude Code. Experimental: o contrato (`sdk_api` 1) pode mudar em versão minor. Detalhes em [SDK.md](SDK.md).
@@ -533,7 +565,7 @@ Todo comando responde em **JSON**. Pensa como o **relatório de render**: um tex
 
 Dois arquivos na pasta do projeto guardam as suas escolhas. Os dois são Markdown com **um bloco JSON dentro**. **Edite só o bloco JSON.**
 
-## BRIEF.md: o roteiro de B-rolls deste vídeo
+## BRIEF.md: o plano de B-rolls deste vídeo
 
 Criado pelo `init-brief` ou pela entrevista do `/get-brolls-brief`.
 
