@@ -10,6 +10,7 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- **Entrega com título que tem barra.** Quando o beat não tinha `target`, a pasta da `entrega/` usava o título do candidato como veio, e um título como "AC/DC ao vivo" (barra ou `..`) derrubava o `deliver` do projeto inteiro. O nome da pasta agora sai do slug do texto (`01-show-ac-dc-ao-vivo`); o título de verdade continua no `ORIGEM.md`, e títulos sem esses caracteres geram a mesma pasta de antes.
 - **Recusa do `fetch` sem direitos.** A mensagem citava só `permit --evidence`; agora nomeia as três rotas do `permit`: `--evidence`, `--preset` da fonte e `--declared-by`/`--declaration-text`.
 - **Modelo do brief intocado.** `init-brief` seguido de `brief --validate` sem editar nada respondia "válido" com o título "Troque pelo nome real do vídeo". Agora cada campo que ainda traz o texto de exemplo do modelo (`video.title`, `video.objective`, `narration` e `target` dos beats) entra em `summary.problems`, e o brief só é chamado de válido depois de preenchido, como o `docs/BRIEF.md` já prometia.
 - **`inspect` pronto no `status`.** Quando o próximo passo era `inspect` de um candidato ligado a um beat do `BRIEF.md`, `summary.do.command` saía com `--query NARRACAO_OU_ALVO`, e rodá-lo como veio buscava o próprio marcador. Agora a `--query` já vem com a narração do beat (ou o alvo, sem narração); sem beat, o marcador continua para quem conhece a frase preencher.
