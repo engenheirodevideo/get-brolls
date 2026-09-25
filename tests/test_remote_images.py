@@ -8,7 +8,9 @@ num item que não tem duração nenhuma para descobrir. Aqui a API e o download 
 dublados; o arquivo servido é uma imagem de verdade gerada pelo FFmpeg.
 """
 
+import hashlib
 import io
+import json
 import shlex
 import shutil
 import subprocess
@@ -27,6 +29,7 @@ from getbrolls import cli, http, providers
 from getbrolls.commands import _flow_state
 from getbrolls.guidance import next_action
 from getbrolls.ledger import Ledger
+from getbrolls.models import id_stem
 
 NASA_ID = "as11-40-5903"
 NASA_MEDIA = f"https://images-assets.nasa.gov/image/{NASA_ID}/{NASA_ID}~medium.jpg"
@@ -262,6 +265,83 @@ class RemoteImageExtensionTests(RemoteImageFlowBase):
         self.files[NASA_MEDIA] = self.png
         fetched = self.collect_reference_only()
         self.assertTrue(fetched["output"]["path"].endswith(".png"), fetched["output"])
+
+
+class UnknownImageFormatTests(RemoteImageFlowBase):
+    """Extensão de foto só sai de assinatura conhecida; conteúdo estranho não herda a da URL."""
+
+    UNKNOWN = "Formato de imagem não reconhecido"
+
+    def serve_ppm(self):
+        ppm = self.project.parent / (self.project.name + ".ppm")
+        self.addCleanup(ppm.unlink, True)
+        synth_image(ppm, color="red", size="64x48")
+        self.files[NASA_MEDIA] = ppm.read_bytes()
+
+    def test_a_static_preview_of_unrecognized_content_is_refused(self):
+        # PPM decodifica no FFmpeg, mas não tem assinatura conhecida: antes virava `.jpg`.
+        self.serve_ppm()
+        item = self.found("nasa")
+        with self.assertRaises(Exception) as caught:
+            self.gb("preview", "--candidate", item["id"])
+        self.assertIn(self.UNKNOWN, str(caught.exception))
+        cache = self.project / ".getbrolls-sources"
+        self.assertEqual([], [p.name for p in cache.glob("*") if p.suffix in (".jpg", ".bin", ".mp4")])
+
+    def test_a_fetch_of_an_image_that_sniffs_as_a_video_container_is_refused(self):
+        # AVIF/HEIC também começam com `ftyp`: nunca podem sair como `.mp4`.
+        self.files[NASA_MEDIA] = b"\x00\x00\x00\x1cftypavif" + b"\x00" * 64
+        item = self.found("nasa")
+        self.gb("preview", "--candidate", item["id"], "--reference-only")
+        self.approve_and_permit(item["id"], "nasa")
+        with self.assertRaises(Exception) as caught:
+            self.gb("fetch", "--candidate", item["id"])
+        self.assertIn(self.UNKNOWN, str(caught.exception))
+        brolls = self.project / "brolls"
+        self.assertFalse(list((brolls / "clips").glob("*")) if (brolls / "clips").exists() else [])
+        self.assertEqual([], list((brolls / "previews").glob("*.part")))
+
+
+class ApprovedPhotoBytesTests(RemoteImageFlowBase):
+    """O que o CHANGELOG promete: `fetch` copia os bytes aprovados, e só eles."""
+
+    def previewed_and_permitted(self):
+        item = self.found("nasa")
+        shown = self.gb("preview", "--candidate", item["id"])
+        self.approve_and_permit(item["id"], "nasa")
+        return item["id"], Path(shown["local_path"])
+
+    def test_fetch_copies_the_approved_bytes_without_network_even_if_the_remote_changed(self):
+        cid, _cached = self.previewed_and_permitted()
+        self.files[NASA_MEDIA] = self.png
+        with patch.object(http, "_opener", side_effect=AssertionError("fetch não pode ir à rede")):
+            fetched = self.gb("fetch", "--candidate", cid)
+        self.assertTrue(fetched["output"]["path"].endswith(".jpg"), fetched["output"])
+        self.assertEqual(self.jpeg, (self.project / "brolls" / fetched["output"]["path"]).read_bytes())
+
+    def test_a_tampered_working_copy_is_refused(self):
+        cid, cached = self.previewed_and_permitted()
+        cached.write_bytes(self.png)
+        with self.assertRaises(Exception) as caught:
+            self.gb("fetch", "--candidate", cid)
+        self.assertIn("Original local mudou", str(caught.exception))
+
+    def test_a_photo_cached_as_mp4_by_2_5_0_is_collected_as_jpg(self):
+        item = self.found("nasa")
+        cache = self.project / ".getbrolls-sources"
+        cache.mkdir(mode=0o700)
+        sha = hashlib.sha256(self.jpeg).hexdigest()
+        legacy = cache / f"{id_stem(item['id'])}-{sha}.mp4"
+        legacy.write_bytes(self.jpeg)
+        entry = {"path": str(legacy.resolve()), "sha": sha, "start": 0, "duration": 0.0}
+        (cache / "index.json").write_text(json.dumps({item["id"]: [entry]}), encoding="utf-8")
+        with patch.object(http, "_opener", side_effect=AssertionError("cópia do cache basta")):
+            shown = self.gb("preview", "--candidate", item["id"])
+        self.assertEqual(str(legacy.resolve()), shown["local_path"])
+        self.approve_and_permit(item["id"], "nasa")
+        fetched = self.gb("fetch", "--candidate", item["id"])
+        self.assertTrue(fetched["output"]["path"].endswith(".jpg"), fetched["output"])
+        self.assertEqual(self.jpeg, (self.project / "brolls" / fetched["output"]["path"]).read_bytes())
 
 
 class RemoteImageGuidanceTests(RemoteImageFlowBase):

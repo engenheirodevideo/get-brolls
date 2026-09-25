@@ -7,7 +7,6 @@ import os
 import tempfile
 import time
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from . import logs
 from .ledger import digest
@@ -151,9 +150,11 @@ def cache_direct_media(ledger, candidate, refresh=True):
     with tempfile.TemporaryDirectory(dir=cache) as work:
         target = Path(work) / "source.bin"
         download(url, target)
+        # Antes do ffprobe: foto de formato desconhecido é recusada com a razão certa.
+        suffix = _cached_suffix(candidate, target)
         info = probe(target)
         sha = digest(target)
-        final = cache / (id_stem(candidate["id"]) + "-" + sha + _cached_suffix(candidate, target, url))
+        final = cache / (id_stem(candidate["id"]) + "-" + sha + suffix)
         if not final.exists():
             target.replace(final)
             final.chmod(0o600)
@@ -195,16 +196,16 @@ def cache_direct_media(ledger, candidate, refresh=True):
 _VIDEO_SUFFIXES = (".mp4", ".webm", ".ogv")
 
 
-def _cached_suffix(candidate, path, url):
+def _cached_suffix(candidate, path):
     """Extensão da cópia no cache, pelo conteúdo: a foto guarda a dela, que `fetch`
-    leva até `clips/`; o vídeo só deixa de chamar webm de `.mp4` (o corte final
-    continua saindo em `.mp4` pelo FFmpeg)."""
-    from .media import sniff_suffix
+    leva até `clips/`, e formato de foto desconhecido é recusado; o vídeo só deixa
+    de chamar webm de `.mp4` (o corte final continua saindo em `.mp4` pelo FFmpeg)."""
+    from .media import image_suffix, sniff_suffix
 
     if (candidate.get("media") or {}).get("kind") != "image":
         found = sniff_suffix(path, ".mp4")
         return found if found in _VIDEO_SUFFIXES else ".mp4"
-    return sniff_suffix(path, Path(urlsplit(url).path).suffix.lower() or ".bin")
+    return image_suffix(path)
 
 
 def prepare_image_source(ledger, candidate):
@@ -286,7 +287,7 @@ def prepare_source(ledger, candidate, start, end, tolerant=False):  # noqa: C901
             if not fresh.get("media_url"):
                 raise ValueError("Arquivo do provedor não está mais disponível.")
             download(fresh["media_url"], target)
-            suffix = _cached_suffix(c, target, fresh["media_url"])
+            suffix = _cached_suffix(c, target)
             offset = 0
         else:
             method = c["acquisition"].get("method")

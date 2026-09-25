@@ -530,6 +530,26 @@ def sniff_suffix(path, default):
     return default
 
 
+# Fotos que eu reconheço pela assinatura: só estas ganham extensão em `clips/`.
+SNIFFED_IMAGE_SUFFIXES = (".jpg", ".png", ".webp", ".gif", ".tif", ".bmp")
+
+
+def image_suffix(path):
+    """Extensão da foto pelo conteúdo, só de formato conhecido; o resto é recusado.
+
+    A extensão da URL não entra: um PPM servido como `.jpg`, ou um AVIF/HEIC (que
+    começa com `ftyp`, como o MP4), sairia com um nome que mente sobre o arquivo.
+    """
+    found = sniff_suffix(path, None)
+    if found not in SNIFFED_IMAGE_SUFFIXES:
+        raise ValueError(
+            "Formato de imagem não reconhecido: o arquivo que a fonte entregou não é "
+            "JPG, PNG, WebP, GIF, TIFF nem BMP, e eu não gravo foto com extensão "
+            "inventada. Escolha outro arquivo ou outro candidato da fonte."
+        )
+    return found
+
+
 def image_preview(src, directory, stem):
     directory = Path(directory)
     rel = "previews/" + stem + "-poster.jpg"
