@@ -11,7 +11,7 @@ import hashlib
 import json
 
 from . import assets
-from .roteiro import ASPECT_TO_FORMAT, canonical, fold, take_problem
+from .roteiro import ASPECT_TO_FORMAT, canonical, fold, spoken_words, take_problem
 
 BRAND_WORDS = ("logo", "marca", "cta")
 # Lado esquerdo do SPLIT é sempre `-a`, o direito sempre `-b`: o id não muda quando
@@ -19,9 +19,12 @@ BRAND_WORDS = ("logo", "marca", "cta")
 SIDES = ("a", "b")
 _LAYER_KIND = {"SFX": "sfx", "MUSICA": "musica", "COMP": "composicao"}
 # Versão da forma do plano (exporters) e da entrada dos hashes: mudar a forma sobe o número.
-PLAN_VERSION = 1
+# A forma 2 acrescenta `words`, `layout.full_role` e `layout.slots`; o hash não muda.
+PLAN_VERSION = 2
 HASH_VERSION = 1
-META_KEYS = ("aspecto", "legenda", "duracao_alvo_s", "genero")
+META_KEYS = ("aspecto", "legenda", "duracao_alvo_s", "genero", "tema")
+# Papel da vaga única de `[FULL: x]` por `full_role`.
+_FULL_SLOT = {"beat": "broll", "marca": "brand", "cartela": "card"}
 
 
 def digest(value):
@@ -180,6 +183,51 @@ def _beat_targets(project, scene):
     return []
 
 
+def _slot(slot, role, text, **extra):
+    """Uma vaga do layout: onde a mídia entra, e o que a preenche (beat, apresentador ou componente)."""
+    row = {"slot": slot, "role": role, "text": text, "beat_id": None, "take": None, "prompt": None, "component": None}
+    return {**row, **extra}
+
+
+def _presenter_slot(slot, text, rows):
+    """Vaga de apresentador; `component` = índice da linha `aroll` do mesmo lado em `components`."""
+    _, take, prompt, _ = _presenter(text)
+    side = slot if slot in SIDES else None
+    index = next((i for i, r in enumerate(rows) if r["kind"] == "aroll" and r["side"] == side), None)
+    return _slot(slot, "presenter", text, take=take, prompt=prompt, component=index)
+
+
+def slots(project, scene, components):
+    """Vagas de mídia do layout: `a`/`b` no SPLIT (esquerda/topo, direita/baixo), `main` no resto.
+
+    Mesma regra de `_beat_targets`: lado entre aspas é cartela, apresentador é
+    `presenter`, o resto é b-roll com o beat `cNN-a|b`. `component` aponta a linha de
+    `components` que preenche a vaga (apresentador ou marca); None no resto.
+    """
+    layout, scene_id = scene.layout, scene.scene_id
+    kind = layout.kind
+    if kind == "SPLIT":
+        rows = []
+        for slot, side, quoted in zip(SIDES, layout.args, layout.quoted, strict=True):
+            if quoted:
+                rows.append(_slot(slot, "card", side))
+            elif _presenter(side)[0]:
+                rows.append(_presenter_slot(slot, side, components))
+            else:
+                rows.append(_slot(slot, "broll", side, beat_id=f"{scene_id}-{slot}" if scene_id else None))
+        return rows
+    if kind == "A-ROLL":
+        text = f"A-ROLL: {layout.args[0]}" if layout.args else "A-ROLL"
+        return [_presenter_slot("main", text, components)]
+    if kind == "UGC":
+        return [_slot("main", "presenter", f"UGC: {layout.args[0]}", prompt=layout.args[0], component=0)]
+    if kind == "BROLL":
+        return [_slot("main", "broll", layout.args[0], beat_id=scene_id)]
+    role = _FULL_SLOT[full_role(project, layout) or "beat"]  # só FULL chega aqui: o papel nunca é None
+    extra = {"beat_id": scene_id} if role == "broll" else {"component": 0} if role == "brand" else {}
+    return [_slot("main", role, layout.args[0], **extra)]
+
+
 def _placed(directive):
     label = f"{directive.plugin}:{directive.name}" if directive.kind == "EXT" else directive.kind
     return {
@@ -191,11 +239,18 @@ def _placed(directive):
 
 
 def _scene_row(project, scene, components, beat_ids):
+    layout = scene.layout
     return {
         "id": scene.scene_id,
         "title": scene.title,
         "line": scene.line,
-        "layout": {"kind": scene.layout.kind, "args": list(scene.layout.args), "quoted": list(scene.layout.quoted)},
+        "layout": {
+            "kind": layout.kind,
+            "args": list(layout.args),
+            "quoted": list(layout.quoted),
+            "full_role": full_role(project, layout),
+            "slots": slots(project, scene, components),
+        },
         "layers": [
             {"kind": d.kind, "args": list(d.args), "quoted": list(d.quoted), **_placed(d)} for d in scene.layers
         ],
@@ -208,6 +263,7 @@ def _scene_row(project, scene, components, beat_ids):
         "speech_clean": scene.speech_clean,
         "notes": list(scene.notes),
         "duration_s": scene.duration_s,
+        "words": spoken_words(scene.speech),
         "content_hash": digest(scene_fingerprint(scene, project)),
         "components": components,
         "beats": beat_ids,

@@ -314,13 +314,14 @@ def inline_notes(line):
     return [m.strip() for m in _NOTE.findall(rest) if m.strip()]
 
 
-def _spoken_words(text):
+def spoken_words(text):
+    """Palavras faladas de um trecho (notas `[...]` fora): o mesmo contador de `word_offset`."""
     return len(_WORD.findall("\n".join(strip_notes(line) for line in text.split("\n"))))
 
 
 def estimate(speech):
     """Segundos falados (~150 palavras/min em pt-BR); notas `[...]` não contam."""
-    words = _spoken_words(speech)
+    words = spoken_words(speech)
     if not words:
         return SILENT_SCENE_S, False
     seconds = round(max(MIN_SPOKEN_S, words / WORDS_PER_S), 1)
