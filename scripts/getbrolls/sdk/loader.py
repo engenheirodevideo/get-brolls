@@ -382,8 +382,14 @@ def _no_bytecode():
 def load_enabled(registry):
     """Monta o registro de plugins habilitados; nunca deixa um `plugins.json`
     corrompido ou uma pasta ilegível derrubar os built-ins — o pior caso é
-    carregar nenhum plugin, registrado como `plugin_failed` com `plugin="-"`."""
-    _no_bytecode()
+    carregar nenhum plugin, registrado como `plugin_failed` com `plugin="-"`.
+
+    `_no_bytecode()` só roda quando existe de fato uma linha `enabled` para
+    carregar (na borda do primeiro `_load_one` que vai importar) — não no topo
+    daqui incondicionalmente: numa instalação sem plugin nenhum,
+    `providers`/`search`/`doctor` (que montam o registro assim mesmo) não
+    tinham motivo pra desligar o cache de `.pyc` dos módulos do próprio core,
+    importados de leve (lazy) depois (M2)."""
     try:
         rows = entries()
     except (ValueError, OSError) as exc:
@@ -400,6 +406,8 @@ def load_enabled(registry):
             return
 
     for row, folder, manifest in rows:
+        if row["status"] == "enabled":
+            _no_bytecode()
         stored_row = _load_one(row, folder, manifest, pinned, registry)
         registry.plugins[stored_row["id"]] = stored_row
 

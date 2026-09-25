@@ -208,6 +208,31 @@ class BytecodeTests(InstallTestCase):
         self.assertEqual("enabled", loader.inventory()[0]["status"])
 
 
+class BytecodeOnlyWhenPluginLoadsTests(InstallTestCase):
+    """M2: `_no_bytecode()` só mexe em `sys.dont_write_bytecode` quando existe uma
+    linha `enabled` para carregar — antes rodava no topo de `load_enabled` mesmo
+    sem plugin nenhum, desligando o cache de `.pyc` para os módulos do próprio
+    core que `providers`/`search`/`doctor` importam de leve (lazy) depois, numa
+    instalação sem plugin."""
+
+    def test_no_enabled_plugin_leaves_the_flag_untouched(self):
+        previous = sys.dont_write_bytecode
+        sys.dont_write_bytecode = False
+        self.addCleanup(setattr, sys, "dont_write_bytecode", previous)
+        get_registry()
+        self.assertFalse(sys.dont_write_bytecode)
+
+    def test_an_enabled_plugin_still_turns_it_on(self):
+        self.install(code=PLUGIN_CODE)
+        loader.enable("demo", confirm=True)
+        reset_registry()
+        previous = sys.dont_write_bytecode
+        sys.dont_write_bytecode = False
+        self.addCleanup(setattr, sys, "dont_write_bytecode", previous)
+        get_registry()
+        self.assertTrue(sys.dont_write_bytecode)
+
+
 @unittest.skipUnless(HAS_GIT, "git required")
 class GitTestHelperIsolationTests(InstallTestCase):
     """Minor 13: o helper `git()` dos testes ignora gpgsign e hooks do config de quem roda."""
