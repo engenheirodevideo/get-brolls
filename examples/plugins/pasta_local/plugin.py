@@ -5,12 +5,13 @@ Aponte a pasta em PASTA_LOCAL_DIR; ela tem que ficar dentro de uma das raízes d
 `pasta_local` (stage="preview") copia o arquivo escolhido para a pasta de trabalho
 do core com `api.local_file` — `preview --start/--end` funciona sem `resolve --file`.
 O comando `recentes` lista os vídeos mais novos da pasta (`gb x pasta_local recentes`).
+Mensagens para quem usa saem em `PluginError` (o core mostra só o tipo das outras).
 """
 
 import hashlib
 from pathlib import Path
 
-from getbrolls.sdk import ProviderCapabilities, RouteResult
+from getbrolls.sdk import PluginError, ProviderCapabilities, RouteResult
 
 VIDEO_SUFFIXES = (".mp4", ".mov", ".m4v", ".webm")
 DEFAULT_RECENT = 5
@@ -31,7 +32,7 @@ class PastaLocal:
     def _folder(self):
         raw = self.api.env("PASTA_LOCAL_DIR")
         if not raw or not Path(raw).is_dir():
-            raise ValueError("Configure PASTA_LOCAL_DIR com a pasta dos seus B-rolls.")
+            raise PluginError("Configure PASTA_LOCAL_DIR com a pasta dos seus B-rolls.")
         return Path(raw)
 
     def videos(self):
@@ -52,8 +53,8 @@ class PastaLocal:
         """`gb x pasta_local recentes [--arg limite=N] [--project P]`: só leitura."""
         try:
             limit = min(max(int(args.get("limite", DEFAULT_RECENT)), 1), MAX_RECENT)
-        except ValueError as exc:
-            raise ValueError("--arg limite=N espera um número inteiro.") from exc
+        except ValueError:
+            raise PluginError("--arg limite=N espera um número inteiro.") from None
         newest = sorted(self.videos(), key=lambda p: p.stat().st_mtime, reverse=True)[:limit]
         in_project = sum(1 for item in ctx.candidates() if item.get("provider") == self.name)
         return {"arquivos": [p.name for p in newest], "candidatos_no_projeto": in_project}
@@ -73,7 +74,7 @@ class CopiaDaPasta:
         for path in self.fonte.videos():
             if _ident(path) == item["source_id"]:
                 return RouteResult(self.api.local_file(path))
-        raise ValueError("O arquivo não está mais na pasta; rode a busca de novo.")
+        raise PluginError("O arquivo não está mais na pasta; rode a busca de novo.")
 
 
 def register(api):

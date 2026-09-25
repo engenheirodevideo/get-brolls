@@ -42,7 +42,7 @@ A busca devolve metadados; a rota `__ID__` só baixa o arquivo no `fetch`, depoi
 da aprovação e do permit, com o token de `__ENV__` no header.
 """
 
-from getbrolls.sdk import ProviderCapabilities, RouteResult
+from getbrolls.sdk import PluginError, ProviderCapabilities, RouteResult
 
 API = "https://api.example.com/v1"
 
@@ -74,7 +74,8 @@ class Download:
     def prepare(self, item, workdir):
         token = self.api.env("__ENV__")
         if not token:
-            raise ValueError("Configure __ENV__ com o token da sua conta.")
+            # PluginError: a única exceção cujo texto chega a quem usa (as outras, só o tipo).
+            raise PluginError("Configure __ENV__ com o token da sua conta.")
         url = f"{API}/files/{item['source_id']}"
         path = self.api.download(url, "original.mp4", headers={"Authorization": f"Bearer {token}"})
         return RouteResult(path, license=None)

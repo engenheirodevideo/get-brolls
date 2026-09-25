@@ -5,9 +5,12 @@ consome licença da conta, então a rota `banco_http` tem `stage="fetch"`: o cor
 a chama no `fetch`, depois da aprovação humana e do `permit`. A rota registra a
 licença que a API devolve (vira evidência extra em `rights.evidence`) e baixa o
 arquivo com `api.download`, com o token no header — nunca na URL nem no log.
+
+Orientação para quem usa vai em `PluginError`: é a única exceção cujo texto o core
+mostra (`Plugin banco_http: ...`); qualquer outra aparece só pelo tipo.
 """
 
-from getbrolls.sdk import ProviderCapabilities, RouteResult
+from getbrolls.sdk import PluginError, ProviderCapabilities, RouteResult
 
 API = "https://api.banco.example/v1"
 
@@ -24,7 +27,7 @@ class BancoHttp:
     def headers(self):
         token = self.api.env("BANCO_HTTP_TOKEN")
         if not token:
-            raise ValueError("Configure BANCO_HTTP_TOKEN com o token da sua conta no banco.")
+            raise PluginError("Configure BANCO_HTTP_TOKEN com o token da sua conta no banco.")
         return {"Authorization": f"Bearer {token}"}
 
     def search(self, query, limit, media):  # noqa: ARG002 - assinatura fixa de Provider.search; este banco só tem vídeo

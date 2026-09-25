@@ -204,6 +204,40 @@ a CLI: ela vira `ProviderError` com a mensagem `Plugin <id>: ...`, e a busca
 continua com as outras fontes. `refresh` só pode mudar `media_url` — qualquer
 outra diferença entre o candidato atual e o que o plugin devolveu é ignorada.
 
+## Mensagens de erro: `PluginError`
+
+Para dizer à pessoa o que fazer (configurar um token, rodar a busca de novo),
+levante `PluginError` — é a **única** exceção de plugin cujo texto chega a quem
+usa:
+
+```python
+from getbrolls.sdk import PluginError
+
+token = api.env("MEU_BANCO_TOKEN")
+if not token:
+    raise PluginError("Configure MEU_BANCO_TOKEN com o token da sua conta.")
+```
+
+- O core mostra `Plugin <id>: <mensagem>` em `search`, `resolve`, `refresh`,
+  rotas, comandos (`gb x`) e no motivo de um `register()` que falhou.
+- A mensagem é saneada antes: vira uma linha só, sem caractere de controle,
+  passa por `redact()` (URLs, headers e chaves conhecidas somem), o valor de
+  cada variável declarada em `permissions.env` vira `[REDACTED]` e o texto é
+  cortado em 300 caracteres.
+- Vale só a própria classe, com um único argumento de texto: uma subclasse de
+  `PluginError` (ou `PluginError(123)`) aparece só pelo tipo.
+- Qualquer outra exceção (`ValueError`, `KeyError`, `requests`-like, uma
+  `BaseException` custom, `SystemExit`) aparece **só pelo tipo**, ex.:
+  `Plugin <id>: falha em <fonte> (ValueError).` O texto dela nunca chega à
+  mensagem, ao traceback de `diagnostics.jsonl` nem ao log: é assim que um
+  token colado numa exceção por engano não vaza.
+- Recusas do próprio core (host fora de `permissions.network`, arquivo fora de
+  `permissions.paths`, nome não declarado em `contributes`) também aparecem
+  por inteiro, com o mesmo saneamento.
+- `plugins --action check` é a exceção a essa regra: como roda a pasta que
+  você mesmo apontou, ele também mostra o texto de uma exceção embutida do
+  Python (ex.: `RuntimeError('boom')`), para facilitar a depuração.
+
 Eventos do log estruturado relacionados a plugins:
 `plugin_loaded`, `plugin_skipped`, `plugin_failed`, `plugin_enabled`,
 `plugin_disabled`, `plugin_installed`, `plugin_updated`,
@@ -232,7 +266,9 @@ api.command("recentes", recentes, "Lista os vídeos mais recentes da pasta")
   Comando **só lê** o projeto: não há como gravar no ledger, e `x` não toma a
   trava exclusiva nem cria `brolls/`.
 - O retorno tem que ser um objeto JSON (dict). Exceção no handler vira erro
-  `Plugin <id>: o comando <nome> falhou (...)`, exit 2.
+  `Plugin <id>: o comando <nome> falhou (<tipo>)`, exit 2; com `PluginError`,
+  a mensagem é `Plugin <id>: <texto>` (veja
+  [Mensagens de erro](#mensagens-de-erro-pluginerror)).
 
 ## Instalar e atualizar
 
