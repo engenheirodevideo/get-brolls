@@ -251,7 +251,7 @@ Rota `stage="fetch"` consome licença ou cota **uma vez só**:
 - `api.exporter(name, export, description)` — experimental: registra um exportador; `name` tem que estar em `contributes.exporters`, `export(plan, options)` devolve um `ExportResult(files, media=[], notes=[])` e `description` tem de 1 a 200 caracteres. Veja [Exportadores](#exportadores).
 - `api.resolver(name, resolve, kinds)` — experimental: registra um resolvedor; `name` tem que estar em `contributes.resolvers`, `resolve(kind, name)` devolve um `ResolverHit(path, license=None)` ou `None`, e `kinds` é uma lista não vazia, sem repetição, com `"sfx"` e/ou `"musica"` (`RESOLVER_KINDS`). As pastas em que ele pode achar arquivo são as de `permissions.paths`, conferidas como em `api.local_file`. Veja [Resolvedores](#resolvedores).
 - `api.download(url, name, headers=None)` — só dentro de `Route.prepare`: baixa `url` (https, host em `permissions.network`, IP público, sem redirect, teto de 512 MB) para `workdir/name` e devolve o caminho. Aceita URL assinada (ex.: um link S3 que o próprio plugin assinou) e headers como `Authorization`; nenhum dos dois vai para log ou mensagem de erro. `name` é só nome de arquivo (`[A-Za-z0-9._-]`, sem `/` nem `..`).
-- `api.local_file(path)` — só dentro de `Route.prepare`: copia um arquivo que esteja dentro de `permissions.paths` (resolvido, com link simbólico seguido) para o `workdir`. Sempre cópia, nunca hardlink — o original da pessoa não muda. O arquivo é aberto sem seguir link (`O_NOFOLLOW`) nem travar numa FIFO (`O_NONBLOCK`), conferido pelo próprio descritor (arquivo regular, até 512 MB) e copiado dele com o teto contado nos bytes lidos; o destino é criado exclusivo, sem seguir link plantado. A recusa nomeia o arquivo que o plugin pediu, nunca o alvo resolvido. No Windows, onde `O_NOFOLLOW` não existe, vale a resolução + conferência de raiz (link simbólico lá exige privilégio de administrador).
+- `api.local_file(path)` — só dentro de `Route.prepare`: copia um arquivo que esteja dentro de `permissions.paths` (resolvido, com link simbólico seguido) para o `workdir`. Sempre cópia, nunca hardlink — o original da pessoa não muda. O arquivo é aberto sem seguir link (`O_NOFOLLOW`) nem travar numa FIFO (`O_NONBLOCK`), conferido pelo próprio descritor (arquivo regular, até 512 MB; o caminho, resolvido de novo, ainda fica dentro da raiz e aponta para o arquivo aberto) e copiado dele com o teto contado nos bytes lidos; o destino é criado exclusivo, sem seguir link plantado. A recusa nomeia o arquivo que o plugin pediu, nunca o alvo resolvido. No Windows, onde `O_NOFOLLOW` não existe, vale a resolução + conferência de raiz (link simbólico lá exige privilégio de administrador).
 - `api.data_dir` — `$GB_HOME/plugin-data/<id>/` (0700), criado na primeira leitura: estado e cache do plugin. Fica fora da pasta do plugin, então escrever ali não muda o pin de hash.
 - `api.config()` — lê `data_dir/settings.json` como dicionário (`{}` sem arquivo); JSON inválido ou que não é objeto vira erro com o caminho relativo.
 - `api.finish()` — chamado automaticamente pelo loader depois de `register()`; confere se tudo declarado em `contributes` foi mesmo registrado e se cada `capabilities.route` aponta para uma rota registrada pelo próprio plugin.
@@ -434,12 +434,17 @@ O que o core confere no `ExportResult` (tipos exatos; subclasse é recusada):
 | Regra | Valor |
 |---|---|
 | Tipos | `files` é um `dict` de texto para texto; `media`, uma `list` de `MediaRequest(media_id, dest)`; `notes`, uma `list` de texto. |
-| Caminhos | Relativos, com `/` (nunca `\`), até 240 caracteres e 6 níveis. Cada parte usa letras, números, `.`, `_` ou `-`, não começa por `.`, não é `..`, não termina em `.` e não é nome reservado do Windows (`CON`, `NUL`, `COM1`…). |
+| Caminhos | Relativos, com `/` (nunca `\`), até 240 caracteres e 6 níveis. Cada parte usa letras, números, `.`, `_` ou `-`, não começa por `.`, não é `..`, não termina em `.` e não é nome reservado do Windows (`CON`, `NUL`, `COM0`–`COM9`, `LPT0`–`LPT9`…). |
 | Colisões | Nenhum caminho repetido ignorando maiúsculas, em `files`, em `media` e entre os dois; nenhum arquivo pode ser a pasta de outro (`a.html` e `a.html/b.css`). |
 | `assets/` | Reservado à mídia: nenhum arquivo de `files` fica ali, e todo `media[].dest` fica dentro dela (`assets/<arquivo>`). |
 | Extensões | `files` só em `.html`, `.json`, `.css`, `.js`, `.md` ou `.txt`, em minúsculas. |
 | Texto | Sem o caractere NUL e em UTF-8 válido. |
 | Tetos | Até 200 arquivos, 2 MB por arquivo e 8 MB no total; até 500 pedidos de mídia, com `media_id` de até 200 caracteres; até 50 notas, cada uma saneada para uma linha de até 300 caracteres. |
+
+As notas saem numa linha, mas com a marcação como o plugin escreveu: quem as
+mostra (o `gb export`, por exemplo) passa cada uma por `delivery.inert`, com
+`getbrolls.sdk.exporters.note_line(owner, texto)`, que devolve a linha já inerte
+e com o prefixo "Nota do plugin <id>:".
 
 O `plugins --action check` (e `sdk.testing.check_exporter`) roda o exportador
 com o plano mínimo de `getbrolls.sdk.exporters.MINIMAL_PLAN` e passa o resultado
@@ -476,15 +481,21 @@ do projeto e da pessoa não acharem nada.
   vira um aviso `Plugin <id>: …` e o próximo é consultado.
 - **Raízes.** As mesmas de `api.local_file`: as pastas de `permissions.paths`
   que valem no sistema atual, conferidas quando o plugin carrega; uma raiz ampla
-  demais fica ignorada.
+  demais fica ignorada. "Dentro da raiz" é conferido pela pasta de verdade, não
+  pelo texto: num disco que não diferencia maiúsculas, `.../SONS/porta.wav` fica
+  dentro da raiz `.../Sons`.
 - **O que o core confere.** `ResolverHit` exato, com caminho absoluto; o caminho
   não é link simbólico nem junction; resolvido, fica dentro de uma raiz; é um
   arquivo regular com um só nome no disco (hardlink é recusado); é aberto sem
-  seguir link e sem travar numa FIFO; tem uma extensão aceita para o tipo; e tem
-  até 512 MB.
+  seguir link e sem travar numa FIFO; depois de aberto, o caminho resolvido de
+  novo ainda fica dentro da raiz e aponta para o mesmo arquivo (uma pasta do meio
+  trocada por link nesse intervalo é recusada); tem uma extensão aceita para o
+  tipo, comparada sem diferenciar maiúsculas (`PORTA.WAV` vale como `.wav`); e
+  tem até 512 MB.
 - **Sempre cópia.** O arquivo é da pessoa: o core nunca faz hardlink nem muda a
   permissão dele. Na hora de copiar, o core abre de novo, confere que dispositivo,
-  inode e tamanho são os mesmos do acerto e copia desse descritor.
+  inode e tamanho são os mesmos do acerto e que o caminho segue dentro da raiz, e
+  copia desse descritor.
 - **Loja.** O acerto fica registrado com `store` igual ao id do plugin; o plugin
   não escolhe esse valor.
 - **Licença informativa.** `license` é texto de até 500 caracteres, mostrado
