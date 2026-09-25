@@ -10,6 +10,7 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- SDK: o `.env` (e `--env-file`) aceita as variáveis de `permissions.env` dos plugins instalados, como o README do `banco_http` e o `brief` já mandavam; nome que nenhum plugin declara continua sendo erro.
 - SDK (segurança): `GB_PLUGINS` só filtra — escolhe, entre os plugins já habilitados com pin válido, os da sessão (`off` desliga todos); nunca carrega plugin sem pin, nunca habilitado ou com conteúdo mudado.
 - SDK (segurança): um `getbrolls-plugin.json` acima de 64 KB ou aninhado demais deixa só aquela linha `invalid`; `plugins list`, `doctor` e `x --list` não caem mais com INTERNAL_ERROR.
 - SDK (segurança): a instalação por git nunca grava lixo de SO (`.DS_Store`, `Thumbs.db`, `desktop.ini`, fora do hash); install/update recusam link simbólico e bytecode (`__pycache__`, `*.pyc`, `*.pyo`), e um plugin com qualquer um deles na pasta fica `invalid` e não carrega.

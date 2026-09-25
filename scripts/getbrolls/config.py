@@ -68,10 +68,35 @@ TOOL_PATH_KEYS = {
 PATH_KEYS = (*TOOL_PATH_KEYS.values(), "GB_VENV_PATH")
 
 
-def load_env(path):
-    path = Path(path)
-    if not path.is_file():
-        return
+# Nomes que um plugin pode declarar em `permissions.env` mas que o `.env` nunca
+# aceita em nome dele: mexeriam no core, no git ou no carregamento de processos.
+_PLUGIN_ENV_REFUSED_PREFIXES = ("GB_", "GETBROLLS_", "GIT_", "PYTHON", "LD_", "DYLD_")
+_PLUGIN_ENV_REFUSED = frozenset({"PATH", "HOME", "SHELL", "TMPDIR", "TEMP", "TMP", "USER", "LANG"})
+
+
+def plugin_env_keys():
+    """Nomes de `permissions.env` dos plugins INSTALADOS em `plugins/` — lidos só do
+    manifesto, sem rodar código de plugin —, que o `.env` passa a aceitar (C H-1)."""
+    from .sdk import loader
+    from .sdk.manifest import read_manifest
+
+    root = loader.plugins_root()
+    try:
+        folders = [p for p in root.iterdir() if p.is_dir() and not p.name.startswith((".", "_"))]
+    except OSError:
+        return frozenset()
+    keys = set()
+    for folder in folders:
+        try:
+            keys.update(read_manifest(folder)["permissions"]["env"])
+        except (ValueError, OSError):
+            continue
+    return frozenset(
+        key for key in keys if key not in _PLUGIN_ENV_REFUSED and not key.startswith(_PLUGIN_ENV_REFUSED_PREFIXES)
+    )
+
+
+def _parse_env(path):
     for number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         line = raw_line.strip()
         if not line or line.startswith("#"):
@@ -81,14 +106,33 @@ def load_env(path):
         key, value = line.split("=", 1)
         key = key.strip()
         value = value.strip()
-        if key not in KEYS:
-            raise ValueError(
-                f".env: variável desconhecida na linha {number}: {key}. Aceitas: " + ", ".join(sorted(KEYS)) + "."
-            )
         if value[:1] in ('"', "'"):
             if len(value) < 2 or value[-1] != value[0]:  # noqa: PLR2004 - a pair of quotes: opening + closing
                 raise ValueError(f".env: aspas inválidas na linha {number}.")
             value = value[1:-1]
+        yield number, key, value
+
+
+def load_env(path):
+    """Lê o `.env`: chaves do core (`KEYS`) e as de `permissions.env` de plugins
+    instalados. As do core entram primeiro — `GB_HOME` no próprio `.env` decide em
+    qual `plugins/` procurar os manifestos. Chave que ninguém declara é erro."""
+    path = Path(path)
+    if not path.is_file():
+        return
+    entries = list(_parse_env(path))
+    for _number, key, value in entries:
+        if key in KEYS:
+            os.environ.setdefault(key, value)
+    unknown = [entry for entry in entries if entry[1] not in KEYS]
+    if not unknown:
+        return
+    declared = plugin_env_keys()
+    for number, key, value in unknown:
+        if key not in declared:
+            raise ValueError(
+                f".env: variável desconhecida na linha {number}: {key}. Aceitas: " + ", ".join(sorted(KEYS)) + "."
+            )
         os.environ.setdefault(key, value)
 
 
