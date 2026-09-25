@@ -82,6 +82,11 @@ class Route(Protocol):
     def prepare(self, item: dict, workdir: Path) -> RouteResult: ...
 
 
+def _has_text_id(beat: object) -> bool:
+    """Beat é objeto com `id` de texto: só esse pode estar num conjunto de ids aposentados."""
+    return isinstance(beat, dict) and isinstance(beat.get("id"), str)
+
+
 class CommandContext:
     """O que um comando de plugin enxerga do projeto: sempre cópias, nunca o ledger."""
 
@@ -112,7 +117,8 @@ class CommandContext:
         beats = data.get("beats") if isinstance(data, dict) else None
         retired = set(self.retired_beat_ids())
         if isinstance(beats, list) and retired:
-            data["beats"] = [b for b in beats if not (isinstance(b, dict) and b.get("id") in retired)]
+            # Id que não é texto (lista, objeto, número) nunca é aposentado e nunca derruba a leitura.
+            data["beats"] = [b for b in beats if not (_has_text_id(b) and b["id"] in retired)]
         return data
 
     def retired_beat_ids(self) -> list[str]:
@@ -125,7 +131,7 @@ class CommandContext:
         if not retired:
             return []
         beats = load_brief(self.project).get("beats") or []
-        ordered = [b["id"] for b in beats if isinstance(b, dict) and b.get("id") in retired]
+        ordered = [b["id"] for b in beats if _has_text_id(b) and b["id"] in retired]
         return list(dict.fromkeys(ordered))
 
 
