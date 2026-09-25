@@ -255,13 +255,19 @@ def _commons_item(row, info):
         field("Attribution") or field("Artist"),
     )
     mime = str(info.get("mime") or "")
+    duration = None
     if mime.startswith("image/"):
         item["media"]["kind"] = "image"
         item["asset_type"] = "image"
     elif mime.startswith("video/"):
         item["media"]["kind"] = "video"
+        # `iiprop=size` já traz a duração do vídeo: com ela, `inspect` não precisa
+        # baixar o arquivo inteiro só para descobrir quanto tempo ele tem.
+        raw = info.get("duration")
+        if isinstance(raw, (int, float)) and not isinstance(raw, bool) and raw > 0:
+            duration = float(raw)
     _poster(item, info.get("thumburl"))
-    return _media(item, info.get("url"), info.get("width"), info.get("height"))
+    return _media(item, info.get("url"), info.get("width"), info.get("height"), duration)
 
 
 def _commons_file(title):

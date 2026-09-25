@@ -2331,10 +2331,10 @@ def inspect_source(ledger, args, config=None):
     """O que a fonte já conta sobre si, antes de escolher intervalo.
 
     Na rota normal (página que o yt-dlp lê) nada de mídia é pedido: só metadados e
-    legenda. Numa fonte de arquivo direto (NASA, Commons, bancos) não existe metadado
-    para pedir: a duração só sai do arquivo, então o `inspect` **baixa o arquivo
-    inteiro** uma vez para o cache privado — e diz isso, com o tamanho, no resumo e
-    em `warnings[]`.
+    legenda. Numa fonte de arquivo direto (NASA, Commons, bancos), a duração que a
+    própria fonte publicou vale e nada é baixado. Sem ela (vídeo da NASA), a duração
+    só sai do arquivo, então o `inspect` **baixa o arquivo inteiro** uma vez para o
+    cache privado — e diz isso, com o tamanho, no resumo e em `warnings[]`.
 
     Somente leitura sobre decisão e intervalo em qualquer rota: com `--candidate`, o
     único campo que passa a existir no projeto é `media.duration_s` — nada de
@@ -2405,10 +2405,29 @@ def probe_direct(ledger, source, url=None):
     """O mesmo contrato de `social.probe_remote`, lido do arquivo direto da fonte.
 
     Sem capítulo e sem legenda: um mp4 servido por URL não traz nenhum dos dois. O
-    que ele traz é a duração real, que é o que separa a janela do palpite.
+    que ele traz é a duração real, que é o que separa a janela do palpite. Quando a
+    fonte já publicou a duração (Commons, bancos), ela vale e nada é baixado; só a
+    fonte sem esse metadado (vídeo da NASA) custa o download do arquivo inteiro.
     """
     from .acquisition import cache_direct_media
 
+    known = (source.get("media") or {}).get("duration_s")
+    if isinstance(known, (int, float)) and not isinstance(known, bool) and known > 0:
+        # A fonte já publicou a duração nos metadados (o Commons manda no `imageinfo`):
+        # baixar o arquivo inteiro só para medir o que já se sabe custava dezenas de MB
+        # antes de a pessoa confirmar qualquer coisa.
+        return {
+            "downloaded_bytes": 0,
+            "url": url or source.get("source_url") or source.get("media_url"),
+            "title": source.get("title"),
+            "duration_s": float(known),
+            "chapters": [],
+            "subtitle_langs": [],
+            "subtitle_langs_total": 0,
+            "description": "",
+            "tags": [],
+            "subtitles": {},
+        }
     path = cache_direct_media(ledger, source)
     info = probe(path)
     duration = info.get("duration_s")
