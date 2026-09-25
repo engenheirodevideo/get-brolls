@@ -80,11 +80,14 @@ STRICT_JSON_SECRET_KEY_MARKERS = (
     "securitytoken",
     "bearertoken",
     "apikey",
+    "apitoken",
     "apisecret",
     "clientsecret",
     "secretkey",
     "secretaccesskey",
     "privatekey",
+    "signingkey",
+    "encryptionkey",
     "password",
     "passwd",
     "credentials",
@@ -93,8 +96,17 @@ STRICT_JSON_SECRET_KEY_MARKERS = (
 )
 
 
+# Nomes curtos demais para valer como sufixo (`pwd` acabaria em qualquer coisa que
+# termine assim; `hmac` em `sha256hmac`, legítimo ou não): só o nome normalizado
+# INTEIRO conta (re-review, observação 1).
+STRICT_JSON_SECRET_EXACT = frozenset({"pwd", "hmac"})
+
+
 def _strict_secret_key(name):
-    return isinstance(name, str) and _normalize_key(name).endswith(STRICT_JSON_SECRET_KEY_MARKERS)
+    if not isinstance(name, str):
+        return False
+    normalized = _normalize_key(name)
+    return normalized in STRICT_JSON_SECRET_EXACT or normalized.endswith(STRICT_JSON_SECRET_KEY_MARKERS)
 
 
 def public_url(url, allow_signed=False):

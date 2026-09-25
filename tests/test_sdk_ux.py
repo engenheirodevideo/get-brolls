@@ -583,3 +583,55 @@ class StatusNextAgreesWithDoTests(FetchRouteCase):
         self.assertIn("--reference-only", summary["do"]["command"])
         self.assertIn("--reference-only", summary["next"])
         self.assertNotIn("Gere prévias com preview para os candidatos ainda sem quadro", summary["next"])
+
+
+class StrictScrubResidualNamesTests(LoaderTestCase):
+    """Re-review, observação 1: `api_token`/`apiToken`, `pwd`, `hmac`, `signing_key` e
+    `encryption_key` também caem no scrub estrito; chaves de paginação sobrevivem."""
+
+    def test_residual_credential_names_drop(self):
+        from getbrolls.http import _scrub
+
+        payload = dict.fromkeys(
+            (
+                "api_token",
+                "apiToken",
+                "API-Token",
+                "pwd",
+                "PWD",
+                "hmac",
+                "HMAC",
+                "signing_key",
+                "signingKey",
+                "encryption_key",
+                "encryptionKey",
+            ),
+            "SEGREDO",
+        )
+        self.assertEqual({}, _scrub(payload, strict=True))
+
+    def test_pagination_and_lookalike_keys_survive(self):
+        from getbrolls.http import _scrub
+
+        keep = (
+            "next_page_token",
+            "nextPageToken",
+            "page_token",
+            "continuation_token",
+            "sort_key",
+            "cursor_key",
+            "cursor",
+            "hmac_algorithm",
+            "pwd_policy",
+            "signing_key_id",
+            "encryption_key_id",
+            "api_token_expires_at",
+        )
+        payload = dict.fromkeys(keep, "v")
+        self.assertEqual(payload, _scrub(payload, strict=True))
+
+    def test_builtin_path_is_unchanged(self):
+        from getbrolls.http import _scrub
+
+        payload = {"api_token": "v", "pwd": "v", "hmac": "v", "signing_key": "v"}
+        self.assertEqual(payload, _scrub(payload))

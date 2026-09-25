@@ -10,6 +10,7 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- SDK: o scrub estrito de `api.get_json` também descarta `api_token`/`apiToken`, `signing_key` e `encryption_key` (como sufixo normalizado) e `pwd`/`hmac` (só como nome inteiro); chaves de paginação (`next_page_token`, `sort_key`, `cursor`…) continuam passando, e o caminho das fontes embutidas não muda.
 - SDK: `inspect` num candidato cujo arquivo veio por rota de plugin diz que a análise usou a cópia local trazida pela rota (com o tamanho em KB abaixo de 0,1 MB), em vez de "exigiu baixar o arquivo inteiro (0.0 MB)". Fontes embutidas iguais.
 - SDK: `ORIGEM.md` e `credits.md` de candidato de plugin dizem "Fonte: plugin <id> (<URL> ou arquivo local)", e `credits.md` ganha o título na fonte (ex.: nome do arquivo da pasta local); para fontes embutidas as linhas não mudam.
 - CLI: o `--help` de `search --provider` cita fontes de plugin habilitado e manda rodar `providers` para listá-las.
