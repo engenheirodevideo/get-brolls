@@ -9,6 +9,7 @@ import shutil
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from . import __version__, logs
 from .config import CAP_EPSILON
@@ -1991,6 +1992,7 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
         require_fetch(c)
         src = c.get("local_path")
         temp = None
+        url = None
         if src:
             if digest(src) != c["local_sha256"]:
                 raise ValueError("Original local mudou: importe novamente e aprove a nova versão.")
@@ -2009,13 +2011,23 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
             download(url, temp)
             src = temp
         if c.get("media", {}).get("kind") == "image":
-            rel = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}" + Path(src).suffix.lower()
-            dest = ledger.root / rel
-            if dest.exists():
-                raise ValueError(_already_collected(rel))
-            from .media import copy_image
+            from .media import IMAGE_SUFFIXES, copy_image, sniff_suffix
 
-            copy_image(src, dest)
+            # O download chega como `.part` (e cópia antiga do cache como `.mp4`): a
+            # extensão de `clips/` — e, dela, a de `entrega/` — sai do conteúdo real.
+            # Arquivo local com extensão de imagem conhecida fica como a pessoa nomeou.
+            suffix = Path(src).suffix.lower()
+            if suffix not in IMAGE_SUFFIXES:
+                suffix = sniff_suffix(src, _url_suffix(url) if temp else suffix)
+            rel = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}" + suffix
+            dest = ledger.root / rel
+            try:
+                if dest.exists():
+                    raise ValueError(_already_collected(rel))
+                copy_image(src, dest)
+            finally:
+                if temp:
+                    temp.unlink(missing_ok=True)
             c["output"] = {"path": rel, "sha256": digest(dest), "verified": True}
             c["state"] = "verified"
             ledger.save(cmd, c)
@@ -2167,6 +2179,11 @@ def reference_poster(ledger, c):
             temp.unlink(missing_ok=True)
     c["preview"]["poster_path"] = result["poster_path"]
     return result["poster_path"]
+
+
+def _url_suffix(url):
+    """Extensão do caminho da URL, ou `.bin` quando ela não diz nada."""
+    return Path(urlsplit(url or "").path).suffix.lower() or ".bin"
 
 
 def _already_collected(rel):

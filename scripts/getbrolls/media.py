@@ -495,6 +495,9 @@ def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):  
     }
 
 
+# Extensões que já dizem que o arquivo é uma imagem estática.
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff", ".gif")
+
 # Assinaturas dos formatos que as fontes publicam, lidas do começo do arquivo. O
 # arquivo baixado chega sem extensão útil (`source.bin`, `download-….part`), e a
 # URL nem sempre diz o que o servidor entregou.

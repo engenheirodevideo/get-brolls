@@ -229,5 +229,34 @@ class RemoteImagePreviewTests(RemoteImageFlowBase):
         self.assertIn("Imagem estática não precisa de intervalo", str(caught.exception))
 
 
+class RemoteImageExtensionTests(RemoteImageFlowBase):
+    """BUG-03: a foto coletada sem prévia local saía como `.part` em `clips/` e `entrega/`."""
+
+    def collect_reference_only(self, provider="nasa"):
+        item = self.found(provider)
+        self.gb("preview", "--candidate", item["id"], "--reference-only")
+        self.approve_and_permit(item["id"], provider)
+        return self.gb("fetch", "--candidate", item["id"])
+
+    def test_the_collected_photo_and_its_delivery_keep_the_real_extension(self):
+        fetched = self.collect_reference_only()
+        rel = fetched["output"]["path"]
+        self.assertTrue(rel.endswith(".jpg"), rel)
+        self.assertEqual(self.jpeg, (self.project / "brolls" / rel).read_bytes())
+        # O arquivo temporário do download não fica para trás em `previews/`.
+        self.assertEqual([], list((self.project / "brolls" / "previews").glob("*.part")))
+        self.gb("verify")
+        self.gb("deliver")
+        delivered = [p.name for p in (self.project / "entrega").rglob("*") if p.is_file() and p.suffix != ".md"]
+        self.assertTrue(any(name.endswith(".jpg") for name in delivered), delivered)
+        self.assertFalse(any(name.endswith(".part") for name in delivered), delivered)
+
+    def test_the_extension_follows_the_content_not_the_url(self):
+        # A URL diz `.jpg`, mas o servidor entregou PNG: o arquivo é o que ele é.
+        self.files[NASA_MEDIA] = self.png
+        fetched = self.collect_reference_only()
+        self.assertTrue(fetched["output"]["path"].endswith(".png"), fetched["output"])
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
