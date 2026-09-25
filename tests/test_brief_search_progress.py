@@ -18,6 +18,7 @@ from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys
 from test_brief import VALID, write_brief
 
 from getbrolls import cli, providers
+from getbrolls.cli import build_parser
 from getbrolls.ledger import Ledger
 
 
@@ -197,6 +198,42 @@ class SourcesWithoutKeyAreSkipped(unittest.TestCase):
             one_beat_brief(tmp, ["pexels"], stock=True)
             add_approved_item(tmp)
             self.assertEqual("permit", status_do(tmp)["step"])
+
+
+class BeatsWithoutApiSearch(unittest.TestCase):
+    """Beat só de Instagram/TikTok/material próprio: o passo é trazer o link ou o arquivo."""
+
+    def _do(self, sources, **extra):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {"PEXELS_API_KEY": ""}):
+            one_beat_brief(tmp, sources, **extra)
+            return status_do(tmp)
+
+    def test_an_instagram_only_beat_asks_for_the_url_with_resolve(self):
+        action = self._do(["instagram"])
+        self.assertEqual("brief-resolve", action["step"])
+        self.assertTrue(action["blocking_human"])
+        self.assertIn(" resolve ", action["command"])
+        self.assertIn("--url URL_PUBLICA", action["command"])
+        self.assertIn("--shot abertura", action["command"])
+        self.assertNotIn("TERMOS_DA_BUSCA", action["command"])
+        self.assertNotIn(" search ", action["command"])
+        build_parser().parse_args(shlex.split(action["command"])[2:])
+
+    def test_a_local_only_beat_asks_for_the_file_with_resolve(self):
+        action = self._do(["local"])
+        self.assertEqual("brief-resolve", action["step"])
+        self.assertIn("--file ARQUIVO", action["command"])
+        self.assertIn("--shot abertura", action["command"])
+        self.assertIn("arquivo", action["for_human"])
+
+    def test_a_mixed_keyless_beat_does_not_claim_earlier_searches(self):
+        """Pexels sem chave + Instagram: nada foi buscado, e o link continua sendo uma saída."""
+        action = self._do(["pexels", "instagram"], stock=True)
+        self.assertEqual("brief-unavailable", action["step"])
+        self.assertIsNone(action["command"])
+        self.assertIn("PEXELS_API_KEY", action["for_human"])
+        self.assertNotIn("já voltaram vazias", action["for_human"])
+        self.assertIn("resolve --url", action["for_human"])
 
 
 class EmptySearchRecord(unittest.TestCase):

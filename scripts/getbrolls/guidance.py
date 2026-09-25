@@ -345,6 +345,29 @@ def _exhausted_action(state, beat):
     )
 
 
+def _resolve_action(state, beat):
+    """Beat sem fonte com busca por API: a pessoa traz o link ou o arquivo, e eu registro."""
+    if beat.get("allowed_sources") == ["local"]:
+        ask = (
+            f'O beat "{beat["id"]}" só aceita o seu próprio material: me mande o arquivo '
+            "(o caminho dele no computador) e eu registro com `resolve --file`."
+        )
+    else:
+        sources = ", ".join(beat.get("allowed_sources") or [])
+        ask = (
+            f'O beat "{beat["id"]}" só aceita fontes que eu não consigo pesquisar ({sources}): '
+            "me mande o link público do post ou vídeo (ou o seu arquivo) e eu registro com `resolve`."
+        )
+    return _action(
+        "brief-resolve",
+        f'O beat "{beat["id"]}" não tem fonte com busca por API; o material entra por link ou arquivo.',
+        ask,
+        state,
+        blocking_human=True,
+        command=beat["resolve"],
+    )
+
+
 def _unavailable_action(state, beat):
     """Beat que só sobra em fonte sem chave de API: diz qual chave, sem comando que falharia."""
     keys = ", ".join(dict.fromkeys(entry["env_key"] for entry in beat["unavailable"]))
@@ -468,15 +491,18 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
     # ele vira só entra depois da cadeia dos aprovados (ver `_exhausted_action`).
     # O mesmo vale para o beat cujas fontes restantes só respondem com chave de API:
     # o `search` genérico que sobraria ali volta com erro e prende a escada do mesmo jeito.
-    stuck = [entry for entry in missing if entry.get("exhausted") or entry.get("unavailable")]
     busy = _approved_work(state, counts)
     for entry in missing:
-        # Na ordem do brief: o beat esgotado espera a cadeia dos aprovados, e o beat
-        # parado por chave só passa na frente enquanto nenhum aprovado estiver a caminho.
-        if entry.get("exhausted") or (entry.get("unavailable") and busy):
+        # Na ordem do brief: o beat esgotado espera a cadeia dos aprovados, e o beat que
+        # depende da pessoa (chave de API, link ou arquivo) só passa na frente enquanto
+        # nenhum aprovado estiver a caminho da entrega.
+        waits_for_person = entry.get("unavailable") or entry.get("resolve")
+        if entry.get("exhausted") or (waits_for_person and busy):
             continue
         if entry.get("unavailable"):
             return _unavailable_action(state, entry)
+        if entry.get("resolve"):
+            return _resolve_action(state, entry)
         return _action(
             "brief-search",
             f'O beat "{entry["id"]}" do brief ainda não tem candidato registrado.',
@@ -484,9 +510,9 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
             state,
             command=entry.get("search") or command_for("search", state["project"]),
         )
-    if stuck and not busy:
-        first = stuck[0]
-        return _exhausted_action(state, first) if first.get("exhausted") else _unavailable_action(state, first)
+    exhausted = [entry for entry in missing if entry.get("exhausted")]
+    if exhausted and not busy:
+        return _exhausted_action(state, exhausted[0])
     if not counts["candidates"]:
         warning = f" Antes disso, resolva: {conflicts[0]}" if conflicts else ""
         return _action(

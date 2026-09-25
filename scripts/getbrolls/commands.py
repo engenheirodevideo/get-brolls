@@ -440,6 +440,7 @@ def brief_report(args):
         brief_path,
         load_brief,
         provider_warnings,
+        search_plan,
         template_leftovers,
         validate_brief,
     )
@@ -555,7 +556,13 @@ def brief_report(args):
                         "beats": len(listed),
                         "covered": covered,
                         "missing": [
-                            missing_beat_entry(entry["id"], entry["resolved"], entry["commands"]) for entry in missing
+                            missing_beat_entry(
+                                entry["id"],
+                                entry["resolved"],
+                                entry["commands"],
+                                search_plan(entry["resolved"], tried_searches(manifest, entry["id"])),
+                            )
+                            for entry in missing
                         ],
                         "blocked": blocked,
                         "conflicts": conflicts,
@@ -975,25 +982,26 @@ def tried_searches(data, shot):
     }
 
 
-def missing_beat_entry(beat_id, resolved, commands):
+def missing_beat_entry(beat_id, resolved, commands, plan):
     """Beat sem candidato como a escada lê, igual em `status` e em `brief`."""
-    from getbrolls.brief import missing_provider_keys, provider_unavailable
-
+    state = plan["state"]
     return {
         "id": beat_id,
         "search": commands.get("search"),
         # Todas as fontes e buscas já voltaram vazias: pergunta para a pessoa.
-        "exhausted": commands.get("exhausted") or [],
-        "queries": commands.get("exhausted_queries") or [],
+        "exhausted": plan["sources"] if state == "exhausted" else [],
+        "queries": plan["queries"] if state == "exhausted" else [],
         # A frase para a pessoa muda quando o beat não tem alvo literal: prometer
         # busca ali contradiz a guarda "literal primeiro, nada de preenchimento".
         "intent": resolved.get("intent"),
         "target": resolved.get("target"),
         # Toda fonte que sobra depende de uma chave que falta aqui: o degrau vira
         # pedido de configuração, não pergunta sobre o conteúdo do trecho.
-        "unavailable": commands.get("needs_keys")
-        or (missing_provider_keys(resolved) if provider_unavailable(resolved) else []),
-        "unavailable_note": commands.get("note") if commands.get("needs_keys") else None,
+        "unavailable": plan["needs_keys"] if state in ("unavailable", "needs_keys") else [],
+        "unavailable_note": plan["note"] if state == "needs_keys" else None,
+        # Nenhuma fonte com busca por API: o passo é a pessoa trazer o link ou o arquivo.
+        "resolve": commands.get("resolve") if state == "resolve_only" else None,
+        "allowed_sources": list(resolved.get("allowed_sources") or []),
     }
 
 
@@ -1008,6 +1016,7 @@ def brief_state(project, rules, items, data=None):
         beat_progress,
         brief_path,
         load_brief,
+        search_plan,
         validate_brief,
     )
 
@@ -1029,13 +1038,13 @@ def brief_state(project, rules, items, data=None):
     blocked = blocked_entries(beats)
     stuck = {entry["id"] for entry in blocked}
 
-    missing = [
-        missing_beat_entry(
-            b["id"], b["resolved"], beat_commands(project, b["resolved"], tried_searches(manifest, b["id"]))
-        )
-        for b in beats
-        if b["id"] not in stuck and not progress[b["id"]]
-    ]
+    missing = []
+    for b in beats:
+        if b["id"] in stuck or progress[b["id"]]:
+            continue
+        tried = tried_searches(manifest, b["id"])
+        commands = beat_commands(project, b["resolved"], tried)
+        missing.append(missing_beat_entry(b["id"], b["resolved"], commands, search_plan(b["resolved"], tried)))
     return {
         "beats": len(beats),
         "covered": len(beats) - len(missing) - len(blocked),
