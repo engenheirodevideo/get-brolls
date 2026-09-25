@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-17
+updated: 2026-09-25
 tags: [get-brolls, documentation]
 ---
 
@@ -20,6 +20,12 @@ Testes automatizados usam mídia sintética e mocks, sem segredos ou conteúdo p
 python3 -m unittest discover -s tests -v
 python3 scripts/gb.py doctor
 ```
+
+Para rodar um arquivo de teste só, use o mesmo `discover` com `-p`:
+`python3 -m unittest discover -s tests -p "test_x.py"`. A forma
+`python3 -m unittest tests.test_x` falha no import (`_isolation`), porque os
+módulos de `tests/` se importam pelo nome, com `tests/` no `sys.path` — o que
+o `discover -s tests` faz.
 
 Mudanças na revisão visual exigem conferir aprovação/ajuste/sugestão, exportação/importação, impressão e largura móvel conforme o impacto. Revisões apenas documentais precisam validar frontmatter, links e exemplos de CLI, sem refazer downloads desnecessariamente.
 

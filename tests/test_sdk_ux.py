@@ -635,3 +635,65 @@ class StrictScrubResidualNamesTests(LoaderTestCase):
 
         payload = {"api_token": "v", "pwd": "v", "hmac": "v", "signing_key": "v"}
         self.assertEqual(payload, _scrub(payload))
+
+
+class PluginsEnvelopeTests(LoaderTestCase):
+    """G12: erro de uso em `plugins`/`x` sai sem traceback nem a dica de recovery_pending."""
+
+    def test_plugins_and_x_user_errors_have_no_traceback_or_recovery_hint(self):
+        env = {"GB_HOME": str(self.home)}
+        for args in (("plugins", "--action", "enable"), ("x", "nao_existe", "cmd")):
+            with self.subTest(args=args):
+                err = run_cli(*args, expect=2, env=env)
+                self.assertNotIn("traceback", err)
+                self.assertNotIn("hint", err)
+                self.assertTrue(err["error"])
+
+    def test_other_commands_keep_the_full_envelope(self):
+        import tempfile
+
+        project = tempfile.mkdtemp(prefix="gb-project-", dir=self.home)
+        err = run_cli("inspect", "--url", " ", project=project, expect=2, env={"GB_HOME": str(self.home)})
+        self.assertIn("traceback", err)
+        self.assertIn("hint", err)
+
+
+class DocsGapsTests(LoaderTestCase):
+    """G2–G10: o que o agente lê primeiro diz o comando que funciona."""
+
+    @staticmethod
+    def read(relative):
+        from _paths import ROOT
+
+        return (ROOT / relative).read_text(encoding="utf-8")
+
+    def test_skill_names_expect_for_plugin_install_and_suspended_enable(self):
+        for relative in ("SKILL.md", "skills/get-brolls/SKILL.md"):
+            text = self.read(relative)
+            self.assertIn("--yes --expect <sha256>", text, relative)
+            self.assertIn("plugin suspenso", text, relative)
+
+    def test_guide_and_sdk_cover_reenable_gb_plugins_and_live(self):
+        for relative in ("docs/GUIDE.md", "docs/SDK.md"):
+            text = self.read(relative)
+            with self.subTest(relative=relative):
+                self.assertIn("desligado por GB_PLUGINS", text)
+                self.assertIn("no_media_url (fonte", text)
+                self.assertIn('refresh: "route"', text)
+                self.assertIn("diff", text)
+        self.assertIn("`enable` × `install`/`update`", self.read("docs/SDK.md"))
+
+    def test_pasta_local_readme_is_gb_home_aware_and_explains_search_vs_preview(self):
+        text = self.read("examples/plugins/pasta_local/README.md")
+        self.assertIn("GB_HOME", text)
+        self.assertNotIn("cp -r examples/plugins/pasta_local ~/.getbrolls/plugins/", text)
+        self.assertIn("a **busca funciona**", text)
+        self.assertIn("a **prévia é recusada**", text)
+
+    def test_scaffold_readme_says_to_run_tests_from_the_plugin_folder(self):
+        from getbrolls.sdk.scaffold import README
+
+        self.assertIn("diretório atual", README)
+
+    def test_contributing_shows_how_to_run_one_test_file(self):
+        self.assertIn('discover -s tests -p "test_x.py"', self.read("CONTRIBUTING.md"))

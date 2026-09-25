@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-23
-updated: 2026-09-24
+updated: 2026-09-25
 tags: [get-brolls, sdk, plugins]
 ---
 
@@ -381,6 +381,20 @@ python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
 - Habilitar é sempre em dois passos: `plugins --action enable --id <id>` sem
   `--yes` só mostra o manifesto e as permissões declaradas, para revisão
   humana; `--yes` de fato habilita.
+- `enable` × `install`/`update`: o `install` já habilita (com pin) o que
+  trouxe da origem; para trazer uma versão nova de um plugin instalado assim,
+  use `update --id`, que compara com a origem gravada. O `enable` é para
+  plugin copiado à mão para `plugins/` e para religar um plugin que você
+  desligou com `disable`.
+- **Re-enable de plugin `suspended`.** Quando o conteúdo mudou desde o pin, a
+  prévia do `enable` (sem `--yes`) traz o `diff`: versão e arquivos
+  adicionados, removidos e alterados, comparados com o sha256 por arquivo que
+  o pin guarda em `plugins.json` (`enabled.<id>.files`). Confirmar exige
+  `--yes --expect <sha256>`, o mesmo valor da prévia — `--yes` sozinho é
+  recusado, como no install/update. Um `plugins.json` de antes desta versão
+  (pin sem `files`) continua válido; a prévia só avisa que o diff é
+  desconhecido e pede para conferir a pasta. O primeiro `enable` de um plugin
+  nunca pinado segue só com `--yes`.
 - `--yes` grava um **pin de hash**: um sha256 sobre todo arquivo da pasta do
   plugin, exceto lixo de SO (`.DS_Store`, `Thumbs.db`, `desktop.ini`) e a pasta
   `.git` **de topo** — só essas ficam fora da conta. Qualquer outra mudança no
@@ -399,7 +413,19 @@ python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
   topo ficam de fora).
 - `GB_PLUGINS=id1,id2` seleciona plugins habilitados sem depender do pin de
   hash — pensado para CI/testes, não para uso diário. `GB_PLUGINS=off`
-  desliga todos os plugins, mesmo os habilitados em `plugins.json`.
+  desliga todos os plugins, mesmo os habilitados em `plugins.json`. Com a
+  variável no ambiente, `plugins --action list` traz `"selection":
+  "GB_PLUGINS"` e cada plugin fora dela sai `disabled` com o motivo
+  "desligado por GB_PLUGINS"; a busca por uma fonte dele manda ajustar
+  `GB_PLUGINS`, porque `enable` não muda essa seleção.
+- `doctor` mostra o resultado real do carregamento em `plugins[]` e, quando
+  algum plugin está `failed`/`suspended`/`invalid`/`incompatible`, uma linha
+  `plugins` no `summary`. `doctor --live` também busca (limite 1) em cada
+  fonte de plugin habilitada: fonte só-metadados (a busca não traz
+  `media_url`) sai `search_ok` com `refresh: "no_media_url (fonte
+  só-metadados)"`; fonte com rota sai `refresh: "route"` (quem traz o arquivo
+  é a rota, e o refresh nem é chamado); um `PluginError` ("Configure
+  PASTA_LOCAL_DIR…") aparece saneado no `detail`.
 - Um plugin que falha ao carregar (manifesto inválido, exceção em
   `register()`, hash divergente) fica marcado como `failed`/`suspended` e o
   resto do Get B-rolls — built-ins inclusive — continua funcionando normalmente.

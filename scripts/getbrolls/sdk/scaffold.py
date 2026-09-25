@@ -124,8 +124,10 @@ README = """# __ID__
 Plugin gerado por `plugins --action new --kind __KIND__`. Antes de usar:
 
 1. Edite `getbrolls-plugin.json` (nome, descrição, `permissions`) e `plugin.py`.
-2. Teste: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=<pasta da skill>/scripts python3 -m unittest discover -s tests`
-   (sem o `PYTHONDONTWRITEBYTECODE`, o `__pycache__` criado pelo teste muda o hash do plugin).
+2. Teste, **com esta pasta como diretório atual** (`cd <esta pasta>`; o `-s tests` é relativo a ela):
+   `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=<pasta da skill>/scripts python3 -m unittest discover -s tests`
+   (de outra pasta, use `-s <esta pasta>/tests`; sem o `PYTHONDONTWRITEBYTECODE`, o `__pycache__`
+   criado pelo teste muda o hash do plugin).
 3. Confira: `python3 scripts/gb.py plugins --action check --path <esta pasta>`.
 4. Instale em dois passos: `python3 scripts/gb.py plugins --action install --source <esta pasta>` mostra a
    prévia com o `sha256`; com o ok, repita com `--yes --expect <sha256 da prévia>`.

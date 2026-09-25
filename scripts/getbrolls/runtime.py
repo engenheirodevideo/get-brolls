@@ -302,6 +302,10 @@ _PLUGIN_ERROR_RE = re.compile(r"Plugin [A-Za-z0-9_-]+: |Fonte \S+ é do plugin "
 PLUGIN_ERROR_HINT = "Veja plugins --action list / doctor e docs/SDK.md."
 
 
+# Comandos cujo erro de uso sai sem traceback nem dica de recovery (G12).
+QUIET_ERROR_COMMANDS = ("plugins", "x")
+
+
 def provider_error_message(text):
     """Mensagem de `ProviderError` para a pessoa: built-in segue com o " Confira
     docs/RULES.md." de sempre; erro de plugin ganha dica de plugin (ou nenhuma,
@@ -372,14 +376,19 @@ def audited(args, execute):  # noqa: C901, PLR0912, PLR0915 - existing size; wra
             else:
                 event["error_code"] = "IO_ERROR" if isinstance(exc, OSError) else "INVALID_DATA"
                 event["message"] = redact(exc)
-        failure = OperationError(
-            {
-                **event,
-                "hint": "Se recovery_pending=true, o próximo comando retoma a gravação. Se state_committed=true e não houver pendência, execute review para regenerar a página. Caso contrário, corrija o erro e repita.",
-                "log": str(log) if log else None,
-                "app_log": str(app_log_path) if app_log_path and app_log_path.is_file() else None,
-            }
-        )
+        payload = {
+            **event,
+            "hint": "Se recovery_pending=true, o próximo comando retoma a gravação. Se state_committed=true e não houver pendência, execute review para regenerar a página. Caso contrário, corrija o erro e repita.",
+            "log": str(log) if log else None,
+            "app_log": str(app_log_path) if app_log_path and app_log_path.is_file() else None,
+        }
+        if args.command in QUIET_ERROR_COMMANDS and event["error_code"] != "INTERNAL_ERROR":
+            # `plugins`/`x` não gravam no projeto: erro de uso ali (flag faltando, plugin
+            # inexistente) é só a mensagem — traceback e a dica de recovery/review eram
+            # ruído (G12). `diagnostics.jsonl` (quando há projeto) guarda tudo igual.
+            for key in ("traceback", "repr", "hint"):
+                payload.pop(key, None)
+        failure = OperationError(payload)
         raise failure from None
     except KeyboardInterrupt:
         event["status"] = "interrupted"

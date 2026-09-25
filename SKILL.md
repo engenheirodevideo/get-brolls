@@ -39,7 +39,7 @@ Escreva o `BRIEF.md` com `python3 "scripts/gb.py" init-brief --project <projeto>
 
 ## Passo 3 — Busque fonte literal
 
-`python3 "scripts/gb.py" brief --beat <ID> --project <projeto>` devolve o comando pronto do beat. Todo material entra com `--shot <beat.id>`. Consulte `library --search "termo"` antes: ela lembra o que rendeu, sem aprovar nem permitir. Fontes (inclusive de plugin), presets, lotes e biblioteca estão em [`references/providers.md`](references/providers.md). **Reel do Instagram: leia [`references/instagram.md`](references/instagram.md) antes de tocar no navegador** — é a rota que quebra primeiro.
+`python3 "scripts/gb.py" brief --beat <ID> --project <projeto>` devolve o comando pronto do beat. Todo material entra com `--shot <beat.id>`. Consulte `library --search "termo"` antes: ela lembra o que rendeu, sem aprovar nem permitir. Fontes (inclusive de plugin), presets, lotes e biblioteca estão em [`references/providers.md`](references/providers.md); `plugins --action install|update` (e `enable` de plugin suspenso) exige `--yes --expect <sha256>` da prévia. **Reel do Instagram: leia [`references/instagram.md`](references/instagram.md) antes de tocar no navegador** — é a rota que quebra primeiro.
 
 **Checkpoint C2.** Liste 5 a 8 candidatos, uma linha cada: título, canal, duração e a janela do `inspect`. Feche com "sigo com estes?".
 
@@ -57,7 +57,7 @@ Duas rotas, e você para nas duas.
 
 **Board**, quando quem revisa é outra pessoa: `python3 "scripts/gb.py" review --project <projeto>`, depois `serve --background --project <projeto>`. Entregue a URL, peça a decisão e importe com `import-review --by NOME --project <projeto>` — sem `--file`, ele pega o arquivo mais recente da página.
 
-Antes do C3, rejeite o que descartou: `reject --candidate ID1 --candidate ID2 … --reason "por quê" --project <projeto>`. Assim o status reflete a conversa.
+Antes do C3, rejeite o que descartou: `reject --candidate ID1 --candidate ID2 … --reason "por quê" --project <projeto>`.
 
 **Chat**, quando a pessoa está aqui. **Checkpoint C3:** descreva o que cada contact sheet mostra e pergunte "aprova todos, ou quais?". Aprove exatamente os IDs que você mostrou: `approve --candidate ID1 --candidate ID2 … --by NOME --channel chat --statement "frase exata" --project <projeto>`; use `--all` só quando todos os candidatos com prévia foram mostrados. No canal chat, `--statement` é obrigatório.
 
@@ -83,8 +83,8 @@ Diga o que tentou e por quê. Pergunte se a pessoa tem material próprio ou um l
 
 - [`references/interview.md`](references/interview.md) — as sete perguntas do brief.
 - [`references/providers.md`](references/providers.md) — fontes, ordem, biblioteca e lotes.
-- [`references/instagram.md`](references/instagram.md) — o procedimento dos dois streams.
+- [`references/instagram.md`](references/instagram.md) — dois streams.
 - [`references/rights.md`](references/rights.md) — condições de uso e `permit`.
 - [`references/templates-de-resposta.md`](references/templates-de-resposta.md) — copy pronta.
-- [`references/glossario.md`](references/glossario.md) — o que cada termo quer dizer.
+- [`references/glossario.md`](references/glossario.md) — termos.
 - [`docs/GUIDE.md`](docs/GUIDE.md) — detalhe técnico por provedor.

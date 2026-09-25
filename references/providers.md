@@ -2,7 +2,7 @@
 type: reference
 status: current
 created: 2026-09-17
-updated: 2026-09-17
+updated: 2026-09-25
 tags: [get-brolls, fontes, provedores]
 ---
 
@@ -159,7 +159,7 @@ python3 scripts/gb.py permit --candidate <ID> --evidence "condições reais" --p
 python3 scripts/gb.py fetch --candidate <ID> --project <projeto>
 ```
 
-A licença que a rota registrar aparece em `rights.evidence` como evidência a mais; o `permit` humano continua obrigatório. Plugins também trazem rotinas próprias: `x --list` mostra quais, e `x <plugin> <comando> --project <projeto> [--arg chave=valor]` roda uma — elas só leem o projeto. Instalar, habilitar ou atualizar plugin é decisão da pessoa: mostre o preview de `plugins --action install|enable|update` e só rode com `--yes` depois do ok dela — `install`/`update` também pedem `--expect <sha256>`, igual ao valor que a prévia mostrou.
+A licença que a rota registrar aparece em `rights.evidence` como evidência a mais; o `permit` humano continua obrigatório. Plugins também trazem rotinas próprias: `x --list` mostra quais, e `x <plugin> <comando> --project <projeto> [--arg chave=valor]` roda uma — elas só leem o projeto. Instalar, habilitar ou atualizar plugin é decisão da pessoa: mostre o preview de `plugins --action install|enable|update` e só rode com `--yes` depois do ok dela — `install`/`update` (e o `enable` de um plugin `suspended`, cuja prévia mostra o que mudou) também pedem `--expect <sha256>`, igual ao valor que a prévia mostrou.
 
 ## Quando não há fonte
 

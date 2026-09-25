@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-23
+updated: 2026-09-25
 tags: [get-brolls, guide, installation, providers, storyboard]
 ---
 
@@ -366,8 +366,8 @@ comandos e presets de licença via plugins locais, instalados em
 `$GB_HOME/plugins/<id>/` (por padrão, `~/.getbrolls/plugins/`) com opt-in
 explícito. O comando `plugins` gerencia esse ciclo:
 
-- `plugins --action list` — inventário dos plugins instalados, com status (`disabled`, `enabled`, `suspended`, `incompatible`) e o que cada um contribui.
-- `plugins --action enable --id <id>` — mostra o manifesto e as permissões declaradas, sem habilitar; rode de novo com `--yes` para confirmar e gravar o pin de hash da pasta.
+- `plugins --action list` — inventário dos plugins instalados, com status (`disabled`, `enabled`, `suspended`, `incompatible`, `invalid`), o motivo (`reason`) e o que cada um contribui. Com `GB_PLUGINS` no ambiente (`off` ou uma lista de ids), quem ficou de fora aparece `disabled` com o motivo "desligado por GB_PLUGINS": o `enable` não muda isso, a variável é que escolhe os plugins da sessão. O status do `list` é pré-carga (manifesto + pin); o resultado real do `register()` sai no `doctor`.
+- `plugins --action enable --id <id>` — mostra o manifesto e as permissões declaradas, sem habilitar; rode de novo com `--yes` para confirmar e gravar o pin de hash da pasta (com o sha256 de cada arquivo). Plugin `suspended` porque o conteúdo mudou desde o pin: a prévia do `enable` traz o `diff` (arquivos adicionados, removidos e alterados) e confirmar exige `--yes --expect <sha256>` com o valor da prévia, como no install/update. Plugin instalado por `install`: prefira `update`, que compara com a origem.
 - `plugins --action disable --id <id>` — desliga um plugin habilitado.
 - `plugins --action check --path <pasta>` — valida o manifesto, roda `register()` contra um registro descartável e confere o contrato de cada contribuição, sem instalar nada.
 - `plugins --action install --source <pasta-ou-url-git>` — mostra id, versão, permissões, origem, commit e o `sha256` do conteúdo materializado; com `--yes --expect <sha256>` (o mesmo valor da prévia) instala em `plugins/<id>`, habilita com pin de hash e grava a origem.
@@ -380,6 +380,13 @@ para revisar antes, use `preview --candidate ID --start ... --end ...
 --reference-only`, depois `approve`, `permit` e `fetch`. Comandos de plugin
 rodam com `x --list` e `x <plugin> <comando> --project <projeto> [--arg
 chave=valor]`; eles só leem o projeto.
+
+`doctor` lista cada plugin em `plugins[]` com status e motivo, e o `summary`
+ganha a linha `plugins` quando algum está `failed`, `suspended`, `invalid` ou
+`incompatible`. `doctor --live` também testa as fontes de plugin: fonte
+só-metadados sai `search_ok` com `refresh: "no_media_url (fonte só-metadados)"`,
+fonte com rota sai `refresh: "route"`, e o texto de um `PluginError` (ex.:
+"Configure PASTA_LOCAL_DIR…") aparece no `detail`.
 
 Escrever ou revisar um plugin é assunto do [SDK.md](SDK.md) — manifesto,
 contrato de `Provider`/`Route`, `PluginApi`, o que o core reescreve nos

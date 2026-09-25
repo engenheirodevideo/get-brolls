@@ -27,10 +27,11 @@ python3 scripts/gb.py x pasta_local recentes --arg limite=5 --project <projeto>
 
 ## Instalação
 
-Copie a pasta para dentro da sua instalação pessoal do Get B-rolls:
+Copie a pasta para dentro da sua instalação pessoal do Get B-rolls — a pasta
+`plugins/` fica em `$GB_HOME` (por padrão, `~/.getbrolls`):
 
 ```sh
-cp -r examples/plugins/pasta_local ~/.getbrolls/plugins/
+cp -r examples/plugins/pasta_local "${GB_HOME:-$HOME/.getbrolls}/plugins/"
 ```
 
 Ou deixe o `plugins --action install --source examples/plugins/pasta_local`
@@ -54,6 +55,10 @@ suspende o plugin até um novo `enable`):
 python3 scripts/gb.py plugins --action enable --id pasta_local --yes
 ```
 
+Se o plugin ficar `suspended` porque a pasta mudou, o `enable` sem `--yes`
+mostra o que mudou (arquivos adicionados, removidos e alterados) e o novo
+`sha256`; para religar, confirme com `--yes --expect <sha256>` desse valor.
+
 ## Variável de ambiente e raízes
 
 - `PASTA_LOCAL_DIR`: caminho absoluto da pasta com os vídeos a buscar. Sem essa
@@ -62,7 +67,12 @@ python3 scripts/gb.py plugins --action enable --id pasta_local --yes
 - `permissions.paths` no manifesto vem com `["~/Movies"]`. Se a sua pasta de
   B-rolls fica em outro lugar (um NAS, outro disco), edite essa lista **antes**
   do `enable`/`install` — o pin de hash cobre o manifesto. `PASTA_LOCAL_DIR`
-  tem que ficar dentro de uma dessas raízes; fora delas a prévia é recusada.
+  tem que ficar dentro de uma dessas raízes para a prévia funcionar.
+- Fora das raízes, a **busca funciona** (ela só lê nomes de arquivo com o
+  código do próprio plugin), mas a **prévia é recusada**: quem copia o arquivo
+  é o `api.local_file` do core, e ele só aceita caminhos dentro de
+  `permissions.paths`. Achou o candidato e a prévia falhou com "fora de
+  permissions.paths"? Ajuste a lista (e habilite de novo) ou mova os vídeos.
 
 ## Testar antes de habilitar
 

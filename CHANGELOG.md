@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-24
+updated: 2026-09-25
 tags: [get-brolls]
 ---
 
@@ -10,6 +10,8 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- CLI: erro de uso em `plugins` e `x` (flag faltando, plugin inexistente) sai só com a mensagem, sem `traceback`/`repr` nem a dica de `recovery_pending`/`review`; os outros comandos não mudam.
+- Docs: SKILL.md cita `--yes --expect <sha256>` para install/update e o re-enable de plugin suspenso; GUIDE "Plugins" e SDK.md explicam `enable` × install/update, o diff do re-enable, `GB_PLUGINS` no `plugins list` e `doctor --live` com fonte só-metadados/rota; o README do `pasta_local` usa `$GB_HOME` e explica que a busca funciona fora de `permissions.paths` mas a prévia é recusada; o README do scaffold diz rodar o teste com a pasta do plugin como diretório atual; CONTRIBUTING mostra como rodar um arquivo de teste só (`discover -s tests -p "test_x.py"`).
 - SDK: o scrub estrito de `api.get_json` também descarta `api_token`/`apiToken`, `signing_key` e `encryption_key` (como sufixo normalizado) e `pwd`/`hmac` (só como nome inteiro); chaves de paginação (`next_page_token`, `sort_key`, `cursor`…) continuam passando, e o caminho das fontes embutidas não muda.
 - SDK: `inspect` num candidato cujo arquivo veio por rota de plugin diz que a análise usou a cópia local trazida pela rota (com o tamanho em KB abaixo de 0,1 MB), em vez de "exigiu baixar o arquivo inteiro (0.0 MB)". Fontes embutidas iguais.
 - SDK: `ORIGEM.md` e `credits.md` de candidato de plugin dizem "Fonte: plugin <id> (<URL> ou arquivo local)", e `credits.md` ganha o título na fonte (ex.: nome do arquivo da pasta local); para fontes embutidas as linhas não mudam.
