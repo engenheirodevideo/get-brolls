@@ -280,6 +280,9 @@ def _cache_suffix(path):
     return ".bin"
 
 
+_CACHE_NAME_RE = re.compile(r"[A-Za-z0-9._-]+")
+
+
 def _fetched_in_cache(cache, raw):
     """Arquivo de uma entrada de `fetch` dentro da pasta de cache DESTE projeto.
 
@@ -290,9 +293,14 @@ def _fetched_in_cache(cache, raw):
     if not isinstance(raw, str) or not raw:
         return None
     name = re.split(r"[\\/]", raw)[-1]
-    if name in ("", ".", ".."):
+    # Só o formato de nome que o próprio core grava (`<stem>-fetch-<sha><ext>`): nada de
+    # `C:x.mp4`, `.`/`..` ou outro caractere; e nunca um link simbólico plantado no cache.
+    if name in (".", "..") or not _CACHE_NAME_RE.fullmatch(name):
         return None
-    return cache / name
+    path = cache / name
+    if path.is_symlink():
+        return None
+    return path
 
 
 def _reuse_fetched(cache, candidate):

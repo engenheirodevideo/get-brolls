@@ -3,6 +3,7 @@ projeto movido reaproveita o próprio arquivo, e uma cópia nunca lê o cache do
 projeto original (nem por uma entrada antiga com caminho absoluto)."""
 
 import json
+import os
 import shutil
 import unittest
 
@@ -84,6 +85,46 @@ class FetchCacheLocationTests(FetchRouteCase):
         self.approve_range(ident, 1, 2)
         self.assertTrue(self.gb("fetch", "--candidate", ident)["output"]["verified"])
         self.assertEqual(["demo:1"], self.calls_made())
+
+    def refetch_after(self, ident, rewrite):
+        """Reescreve cada entrada de fetch do índice com `rewrite(cache, entry)` e tenta
+        um novo intervalo: sem arquivo válido no cache, o fetch é recusado."""
+        cache = self.project / ".getbrolls-sources"
+        data = json.loads(self.index(self.project).read_text(encoding="utf-8"))
+        for entries in data.values():
+            for entry in entries:
+                if isinstance(entry, dict) and entry.get("path"):
+                    rewrite(cache, entry)
+        self.index(self.project).write_text(json.dumps(data), encoding="utf-8")
+        self.approve_range(ident, 1, 2)
+        with self.assertRaises(OperationError) as caught:
+            self.gb("fetch", "--candidate", ident)
+        self.assertIn("--reacquire", str(caught.exception))
+        self.assertEqual(["demo:1"], self.calls_made())
+
+    def test_drive_relative_name_is_not_accepted(self):
+        ident = self.first_fetch()
+
+        def drive_relative(cache, entry):
+            name = entry["path"]
+            (cache / name).rename(cache / ("C:" + name))
+            entry["path"] = "C:" + name
+
+        self.refetch_after(ident, drive_relative)
+
+    @unittest.skipIf(os.name == "nt", "symlink exige privilégio no Windows")
+    def test_symlink_planted_in_the_cache_is_not_followed(self):
+        ident = self.first_fetch()
+        outside = self.project.parent / (self.project.name + "-fora.bin")
+        self.addCleanup(outside.unlink, missing_ok=True)
+
+        def plant_link(cache, entry):
+            real = cache / entry["path"]
+            outside.write_bytes(real.read_bytes())
+            real.unlink()
+            real.symlink_to(outside)
+
+        self.refetch_after(ident, plant_link)
 
 
 if __name__ == "__main__":
