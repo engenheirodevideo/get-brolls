@@ -30,7 +30,7 @@ from .. import logs
 from ..runtime import force_rmtree, stderr_tail
 from . import loader
 from .contracts import NAME_RE
-from .manifest import MANIFEST_NAME, compatibility_problem, read_manifest
+from .manifest import MANIFEST_MAX_BYTES, MANIFEST_NAME, compatibility_problem, read_manifest
 
 _log = logs.get("sdk")
 
@@ -382,8 +382,11 @@ def _peek_entry_name(dest):
     logo a seguir): um manifesto ilegível aqui só significa que não dá pra
     adiantar o `entry`, e a validação de verdade falha do jeito certo depois."""
     try:
-        raw = json.loads((dest / MANIFEST_NAME).read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, ValueError):
+        path = dest / MANIFEST_NAME
+        if path.stat().st_size > MANIFEST_MAX_BYTES:
+            return None
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError, RecursionError, MemoryError):
         return None
     entry = raw.get("entry") if isinstance(raw, dict) else None
     return entry if isinstance(entry, str) else None

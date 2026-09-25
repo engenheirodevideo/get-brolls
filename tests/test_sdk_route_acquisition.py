@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _media import skip_unless_ffmpeg, synth_image, synth_video
+from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
 from getbrolls import acquisition, cli, providers
@@ -127,6 +128,7 @@ class RouteAcquisitionTests(LoaderTestCase):
 
     def enable(self, code=ROUTE_PLUGIN):
         self.install(ROUTE_MANIFEST, code=code)
+        pin_plugins("demo")
         env = {
             "GB_PLUGINS": "demo",
             "DEMO_SOURCE": str(self.source),
@@ -198,6 +200,7 @@ class RouteAcquisitionTests(LoaderTestCase):
         for label, code in cases.items():
             with self.subTest(label):
                 self.install(ROUTE_MANIFEST, code=code)
+                pin_plugins("demo")
                 reset_registry()
                 ledger = Ledger(self.project)
                 with (

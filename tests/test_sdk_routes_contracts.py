@@ -8,6 +8,7 @@ from typing import Any, cast
 from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
 from test_sdk_manifest import BASE, write_plugin
 
@@ -159,6 +160,7 @@ class ManifestRouteTests(unittest.TestCase):
 class PluginApiRouteTests(LoaderTestCase):
     def load(self, manifest=ROUTE_MANIFEST, code=None):
         self.install(manifest, code=code or route_code())
+        pin_plugins("demo")
         with patch.dict(os.environ, {"GB_PLUGINS": "demo"}):
             return get_registry()
 

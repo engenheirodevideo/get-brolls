@@ -37,6 +37,11 @@ EXPECT_NOTE = (
 # Respostas de sucesso: nada para rodar de novo.
 DONE_NOTE = "Pronto. " + NOT_SANDBOX
 GB_PLUGINS_REASON = "desligado por GB_PLUGINS (a variável escolhe os plugins desta sessão, sem mexer no plugins.json)"
+# `GB_PLUGINS` só FILTRA (B-07): escolhe, entre os plugins habilitados com pin válido,
+# os desta sessão. Nunca carrega um plugin sem pin, nunca habilitado ou adulterado.
+GB_PLUGINS_UNPINNED_REASON = (
+    "GB_PLUGINS só escolhe entre plugins já habilitados; habilite com plugins --action enable --id {id}."
+)
 
 
 def plugins_root():
@@ -342,13 +347,14 @@ def _status(manifest, folder, selection, state):
     problem = compatibility_problem(manifest)
     if problem:
         return "incompatible", problem
-    if selection is not None:
-        return ("enabled", None) if manifest["id"] in selection else ("disabled", GB_PLUGINS_REASON)
     pinned = state.get(manifest["id"])
     if not pinned:
-        return "disabled", None
+        chosen = selection is not None and manifest["id"] in selection
+        return "disabled", GB_PLUGINS_UNPINNED_REASON.format(id=manifest["id"]) if chosen else None
     if pinned.get("sha256") != folder_digest(folder):
         return "suspended", "O conteúdo do plugin mudou desde o enable; revise e habilite de novo."
+    if selection is not None and manifest["id"] not in selection:
+        return "disabled", GB_PLUGINS_REASON
     return "enabled", None
 
 
@@ -361,7 +367,7 @@ def entries():
     if not root.is_dir():
         return []
     selection = env_selection()
-    state = read_state()["enabled"] if selection is None else {}
+    state = read_state()["enabled"]
     result = []
     for folder in sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith((".", "_"))):
         try:
@@ -477,10 +483,9 @@ def _load_one(row, folder, manifest, pinned, registry):
         return row
 
     def load():
-        if pinned is not None:
-            reason = _pin_mismatch_reason(row, folder, pinned)
-            if reason is not None:
-                return reason
+        reason = _pin_mismatch_reason(row, folder, pinned)
+        if reason is not None:
+            return reason
         _register(folder, manifest, registry)
         return None
 
@@ -539,14 +544,11 @@ def load_enabled(registry):
         logs.event(_log, logging.WARNING, "plugin_failed", plugin="-", error=type(exc).__name__)
         return
 
-    selection = env_selection()
-    pinned = None
-    if selection is None:
-        try:
-            pinned = read_state()["enabled"]
-        except (ValueError, OSError) as exc:
-            logs.event(_log, logging.WARNING, "plugin_failed", plugin="-", error=type(exc).__name__)
-            return
+    try:
+        pinned = read_state()["enabled"]
+    except (ValueError, OSError) as exc:
+        logs.event(_log, logging.WARNING, "plugin_failed", plugin="-", error=type(exc).__name__)
+        return
 
     for row, folder, manifest in rows:
         if row["status"] == "enabled":

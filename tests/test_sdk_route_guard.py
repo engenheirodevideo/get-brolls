@@ -8,6 +8,7 @@ from typing import Any, cast
 from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, PLUGIN_CODE, LoaderTestCase
 from test_sdk_routes_contracts import ROUTE_MANIFEST, route_code
 
@@ -40,6 +41,7 @@ assert route_code() != ROUTE_OVERRIDDEN
 class RouteAcquisitionTests(LoaderTestCase):
     def enable(self, manifest, code):
         self.install(manifest, code=code)
+        pin_plugins("demo")
         patcher = patch.dict(os.environ, {"GB_PLUGINS": "demo"})
         patcher.start()
         self.addCleanup(patcher.stop)

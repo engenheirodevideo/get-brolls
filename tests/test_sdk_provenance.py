@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _media import skip_unless_ffmpeg, synth_video
+from _plugin_pins import pin_plugins
 from test_delivery import fetched, project
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
@@ -86,6 +87,7 @@ class GuardProvenanceTests(LoaderTestCase):
     def setUp(self):
         super().setUp()
         self.install(ROUTE_MANIFEST, code=FORGING_PLUGIN)
+        pin_plugins("demo")
         patcher = patch.dict(os.environ, {"GB_PLUGINS": "demo"})
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -160,6 +162,7 @@ class ForgedProvenanceFlowTests(LoaderTestCase):
         proj = work / "projeto"
         proj.mkdir()
         self.install(ROUTE_MANIFEST, code=FORGING_PLUGIN)
+        pin_plugins("demo")
         with patch.dict(os.environ, {"GB_PLUGINS": "demo", "DEMO_SOURCE": str(source)}):
             p = str(proj)
             ident = cli.main(["search", "--project", p, "--provider", "demo", "--query", "mar"])["items"][0]["id"]
@@ -257,6 +260,7 @@ class PluginUrlFlowTests(LoaderTestCase):
         self.install({**MANIFEST, "contributes": {"providers": ["demo"]}}, code=LEAKY_URLS_PLUGIN)
         proj = Path(tempfile.mkdtemp(prefix="gb-rt08-"))
         self.addCleanup(shutil.rmtree, proj, ignore_errors=True)
+        pin_plugins("demo")
         with patch.dict(os.environ, {"GB_PLUGINS": "demo"}):
             out = cli.main(["search", "--project", str(proj), "--provider", "demo", "--query", "mar"])
             cli.main(["review", "--project", str(proj)])

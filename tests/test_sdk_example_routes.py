@@ -12,6 +12,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_video
 from _paths import ROOT
+from _plugin_pins import pin_plugins
 from test_sdk_loader import LoaderTestCase
 
 from getbrolls import cli, http
@@ -80,6 +81,7 @@ class BancoHttpExampleTests(LoaderTestCase):
         self.project = work / "projeto"
         self.project.mkdir()
         shutil.copytree(EXAMPLES / "banco_http", self.home / "plugins" / "banco_http")
+        pin_plugins("banco_http")
         env = patch.dict(os.environ, {"GB_PLUGINS": "banco_http", "BANCO_HTTP_TOKEN": TOKEN})
         env.start()
         self.addCleanup(env.stop)
@@ -133,6 +135,7 @@ class PastaLocalExampleTests(LoaderTestCase):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         manifest["permissions"]["paths"] = [str(root) for root in roots]
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        pin_plugins("pasta_local")
         env = patch.dict(os.environ, {"GB_PLUGINS": "pasta_local", "PASTA_LOCAL_DIR": str(self.media)})
         env.start()
         self.addCleanup(env.stop)
@@ -166,6 +169,7 @@ class PastaLocalExampleTests(LoaderTestCase):
         for name in ("a.mp4", "b.mov", "nota.txt"):
             (self.media / name).write_bytes(b"\x00")
         self.install_example([self.media])
+        pin_plugins("pasta_local")
         env = {"GB_HOME": str(self.home), "GB_PLUGINS": "pasta_local", "PASTA_LOCAL_DIR": str(self.media)}
         listed = run_cli("x", "--list", env=env)
         self.assertIn("x pasta_local recentes", [row["run"] for row in listed["commands"]])

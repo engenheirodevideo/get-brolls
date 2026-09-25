@@ -17,6 +17,7 @@ from unittest.mock import patch
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_image, synth_video
+from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
 from getbrolls import acquisition, cli, http
@@ -121,6 +122,7 @@ class FetchRouteCase(LoaderTestCase):
 
     def enable(self, code=FETCH_PLUGIN, source=None, duration="30"):
         self.install(ROUTE_MANIFEST, code=code)
+        pin_plugins("demo")
         self.env = {
             "GB_HOME": str(self.home),
             "GB_PLUGINS": "demo",

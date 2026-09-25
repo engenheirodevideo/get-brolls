@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _plugin_pins import pin_plugins
 
 from getbrolls.sdk import loader
 from getbrolls.sdk.registry import get_registry, reset_registry
@@ -108,13 +109,28 @@ class DiscoveryTests(LoaderTestCase):
         loader.disable("demo")
         self.assertEqual("disabled", loader.inventory()[0]["status"])
 
-    def test_gb_plugins_env_overrides_state_without_pin(self):
-        self.install()
+    def test_gb_plugins_only_filters_pinned_plugins(self):
+        """B-07: `GB_PLUGINS` escolhe entre os habilitados com pin; nunca carrega sem pin."""
+        folder = self.install()
+        with patch.dict(os.environ, {"GB_PLUGINS": "demo"}):
+            row = loader.inventory()[0]
+            self.assertEqual("disabled", row["status"])
+            self.assertIn("enable", row["reason"])
+            self.assertNotIn("demo", get_registry().provider_names())
+        loader.enable("demo", confirm=True)
+        reset_registry()
         with patch.dict(os.environ, {"GB_PLUGINS": "demo"}):
             self.assertEqual("enabled", loader.inventory()[0]["status"])
+            self.assertIn("demo", get_registry().provider_names())
+        reset_registry()
         with patch.dict(os.environ, {"GB_PLUGINS": "off"}):
-            loader.enable("demo", confirm=True)
             self.assertEqual("disabled", loader.inventory()[0]["status"])
+            self.assertNotIn("demo", get_registry().provider_names())
+        reset_registry()
+        (folder / "plugin.py").write_text(PLUGIN_CODE + "\n# adulterado\n", encoding="utf-8")
+        with patch.dict(os.environ, {"GB_PLUGINS": "demo"}):
+            self.assertEqual("suspended", loader.inventory()[0]["status"])
+            self.assertNotIn("demo", get_registry().provider_names())
 
     def test_invalid_and_incompatible_plugins_are_listed_not_loaded(self):
         self.install({**MANIFEST, "id": "velho", "requires_getbrolls": ">=9"})
@@ -131,6 +147,7 @@ class FailureIsolationTests(LoaderTestCase):
         code = PLUGIN_CODE.replace("    api.preset(", "    raise RuntimeError('boom')\n    api.preset(")
         assert code != PLUGIN_CODE  # replace() sem alvo encontrado devolveria o original e esvaziaria o teste
         self.install(code=code)
+        pin_plugins("demo")
         with patch.dict(os.environ, {"GB_PLUGINS": "demo"}):
             reg = get_registry()
         self.assertEqual("failed", reg.plugins["demo"]["status"])
@@ -140,6 +157,7 @@ class FailureIsolationTests(LoaderTestCase):
 
     def test_undeclared_contribution_fails_the_plugin(self):
         self.install({**MANIFEST, "contributes": {"providers": ["demo"]}})
+        pin_plugins("demo")
         with patch.dict(os.environ, {"GB_PLUGINS": "demo"}):
             reg = get_registry()
         self.assertEqual("failed", reg.plugins["demo"]["status"])
@@ -149,6 +167,7 @@ class FailureIsolationTests(LoaderTestCase):
         code = PLUGIN_CODE.replace('name = "demo"', 'name = "youtube"')
         assert code != PLUGIN_CODE  # replace() sem alvo encontrado devolveria o original e esvaziaria o teste
         self.install({**MANIFEST, "contributes": {"providers": ["youtube"], "presets": ["demo"]}}, code=code)
+        pin_plugins("demo")
         with patch.dict(os.environ, {"GB_PLUGINS": "demo"}):
             reg = get_registry()
         self.assertEqual("failed", reg.plugins["demo"]["status"])
@@ -158,6 +177,7 @@ class FailureIsolationTests(LoaderTestCase):
         """Finding 2: `sys.exit(0)` no import do plugin é `SystemExit`, não `Exception` —
         sem captura explícita ele atravessa o loader e derruba o processo com exit 0."""
         self.install(code="import sys\n\nsys.exit(0)\n")
+        pin_plugins("demo")
         with patch.dict(os.environ, {"GB_PLUGINS": "demo"}):
             reg = get_registry()
         self.assertEqual("failed", reg.plugins["demo"]["status"])
@@ -169,6 +189,7 @@ class FailureIsolationTests(LoaderTestCase):
 class LoaderLoggingTests(LoaderTestCase):
     def test_load_and_failure_are_logged_without_secrets(self):
         self.install()
+        pin_plugins("demo")
         with (
             patch.dict(os.environ, {"GB_PLUGINS": "demo", "DEMO_TOKEN": "segredo"}),
             self.assertLogs("getbrolls.sdk", level="DEBUG") as cm,
@@ -181,6 +202,7 @@ class LoaderLoggingTests(LoaderTestCase):
 
     def test_failed_plugin_logs_warning_with_error_class(self):
         self.install(code="def register(api):\n    raise RuntimeError('detalhe interno')\n")
+        pin_plugins("demo")
         with patch.dict(os.environ, {"GB_PLUGINS": "demo"}), self.assertLogs("getbrolls.sdk", level="WARNING") as cm:
             get_registry()
         joined = "\n".join(cm.output)

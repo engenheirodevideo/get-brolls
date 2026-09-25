@@ -17,6 +17,7 @@ from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _cli import run_cli
+from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
 from getbrolls import providers, rules
@@ -112,6 +113,7 @@ class RegisterIsolationTests(LoaderTestCase):
     def load(self, register_body, helpers=HOSTILE_HELPERS):
         code = helpers + "\n\ndef register(api):\n" + register_body
         self.install(PROVIDER_MANIFEST, code=code)
+        pin_plugins("demo")
         with patch.dict(os.environ, {"GB_PLUGINS": "demo"}):
             return get_registry()
 
@@ -144,6 +146,7 @@ class RegisterIsolationTests(LoaderTestCase):
 
     def test_a_failure_while_building_the_registry_never_breaks_builtins(self):
         self.install(PROVIDER_MANIFEST, code=BASE_CODE)
+        pin_plugins("demo")
         with (
             patch.dict(os.environ, {"GB_PLUGINS": "demo"}),
             patch.object(loader, "entries", side_effect=MemoryError()),
@@ -155,6 +158,7 @@ class RegisterIsolationTests(LoaderTestCase):
 
 class RegisterIsolationCliTests(LoaderTestCase):
     def env(self):
+        pin_plugins("demo")
         return {"GB_HOME": str(self.home), "GB_PLUGINS": "demo"}
 
     def test_builtin_commands_survive_a_hostile_register(self):
@@ -184,6 +188,7 @@ class CapabilitySnapshotTests(LoaderTestCase):
         )
         assert code != BASE_CODE
         self.install(PROVIDER_MANIFEST, code=code)
+        pin_plugins("demo")
         with patch.dict(os.environ, {"GB_PLUGINS": "demo"}):
             return get_registry()
 
@@ -233,6 +238,7 @@ class CallIsolationTests(LoaderTestCase):
 
     def enable(self, code):
         self.install(PROVIDER_MANIFEST, code=HOSTILE_HELPERS + code)
+        pin_plugins("demo")
         patcher = patch.dict(os.environ, {"GB_PLUGINS": "demo", "DEMO_TOKEN": SECRET})
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -303,6 +309,7 @@ class ResolveLeakCliTests(LoaderTestCase):
         self.install(PROVIDER_MANIFEST, code=code)
         project = Path(tempfile.mkdtemp(prefix="gb-project-"))
         self.addCleanup(shutil.rmtree, project, ignore_errors=True)
+        pin_plugins("demo")
         env = {"GB_HOME": str(self.home), "GB_PLUGINS": "demo", "DEMO_TOKEN": SECRET}
         err = run_cli("resolve", "--url", "https://demo.example/v/1", project=project, expect=2, env=env)
         self.assertNotIn(SECRET, json.dumps(err))

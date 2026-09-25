@@ -173,14 +173,28 @@ def _description(ident, raw):
     return value
 
 
+# Teto do manifesto (B-08): ele é relido a cada comando, para todo plugin da pasta.
+# Um arquivo gigante ou com aninhamento absurdo vira `invalid` naquela linha — nunca
+# um INTERNAL_ERROR de `plugins list`/`doctor`/`x --list`.
+MANIFEST_MAX_BYTES = 64 * 1024
+
+
+def _load_json(folder_name, path):
+    if path.stat().st_size > MANIFEST_MAX_BYTES:
+        _fail(folder_name, f"{MANIFEST_NAME} passa de {MANIFEST_MAX_BYTES // 1024} KB.")
+    try:
+        return json.loads(path.read_bytes()[: MANIFEST_MAX_BYTES + 1].decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        _fail(folder_name, f"{MANIFEST_NAME} não é JSON válido em UTF-8.")
+    except (RecursionError, MemoryError):
+        _fail(folder_name, f"{MANIFEST_NAME} tem aninhamento fundo demais.")
+
+
 def read_manifest(folder: Path, require_folder_match: bool = True) -> dict:
     path = folder / MANIFEST_NAME
     if not path.is_file():
         _fail(folder.name, f"{MANIFEST_NAME} não encontrado.")
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        _fail(folder.name, f"{MANIFEST_NAME} não é JSON válido em UTF-8.")
+    raw = _load_json(folder.name, path)
     if not isinstance(raw, dict):
         _fail(folder.name, "o manifesto tem que ser um objeto JSON.")
     unknown = set(raw) - TOP_LEVEL

@@ -10,6 +10,8 @@ tags: [get-brolls]
 
 ## Unreleased
 
+- SDK (segurança): `GB_PLUGINS` só filtra — escolhe, entre os plugins já habilitados com pin válido, os da sessão (`off` desliga todos); nunca carrega plugin sem pin, nunca habilitado ou com conteúdo mudado.
+- SDK (segurança): um `getbrolls-plugin.json` acima de 64 KB ou aninhado demais deixa só aquela linha `invalid`; `plugins list`, `doctor` e `x --list` não caem mais com INTERNAL_ERROR.
 - SDK (segurança): a instalação por git nunca grava lixo de SO (`.DS_Store`, `Thumbs.db`, `desktop.ini`, fora do hash); install/update recusam link simbólico e bytecode (`__pycache__`, `*.pyc`, `*.pyo`), e um plugin com qualquer um deles na pasta fica `invalid` e não carrega.
 - CLI: erro de uso em `plugins` e `x` (flag faltando, plugin inexistente) sai só com a mensagem, sem `traceback`/`repr` nem a dica de `recovery_pending`/`review`; os outros comandos não mudam.
 - Docs: SKILL.md cita `--yes --expect <sha256>` para install/update e o re-enable de plugin suspenso; GUIDE "Plugins" e SDK.md explicam `enable` × install/update, o diff do re-enable, `GB_PLUGINS` no `plugins list` e `doctor --live` com fonte só-metadados/rota; o README do `pasta_local` usa `$GB_HOME` (com `mkdir -p` antes do `cp`, que numa pasta pessoal nova espalhava os arquivos em `plugins/`) e explica que a busca funciona fora de `permissions.paths` mas a prévia é recusada; o README do scaffold diz rodar o teste com a pasta do plugin como diretório atual; CONTRIBUTING mostra como rodar um arquivo de teste só (`discover -s tests -p "test_x.py"`).

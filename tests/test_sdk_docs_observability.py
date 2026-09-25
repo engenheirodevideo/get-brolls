@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _paths import ROOT
+from _plugin_pins import pin_plugins
 from test_sdk_loader import LoaderTestCase
 from test_sdk_routes_contracts import ROUTE_MANIFEST, route_code
 
@@ -17,6 +18,7 @@ SDK_DOC = ROOT / "docs" / "SDK.md"
 class PluginLoadedLogTests(LoaderTestCase):
     def test_plugin_loaded_counts_routes_and_commands(self):
         self.install(ROUTE_MANIFEST, code=route_code())
+        pin_plugins("demo")
         with patch.dict(os.environ, {"GB_PLUGINS": "demo"}), self.assertLogs("getbrolls.sdk", level="INFO") as cm:
             get_registry()
         line = next(entry for entry in cm.output if "event=plugin_loaded" in entry)

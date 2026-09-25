@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _cli import run_cli
+from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
 from getbrolls.sdk import plugin_commands
@@ -52,6 +53,7 @@ class PluginCommandCliTests(LoaderTestCase):
         self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
 
     def env(self):
+        pin_plugins("demo")
         return {"GB_HOME": str(self.home), "GB_PLUGINS": "demo"}
 
     def test_list_reads_the_manifest_without_running_code(self):
@@ -91,6 +93,7 @@ class PluginCommandCliTests(LoaderTestCase):
     def test_unknown_command_and_disabled_plugin_are_named(self):
         err = run_cli("x", "demo", "nao_existe", expect=2, env=self.env())
         self.assertIn("x --list", err["error"])
+        run_cli("plugins", "--action", "disable", "--id", "demo", env={"GB_HOME": str(self.home)})
         err = run_cli("x", "demo", "contar", expect=2, env={"GB_HOME": str(self.home)})
         self.assertIn("disabled", err["error"])
 
@@ -107,6 +110,7 @@ class PluginCommandLoggingTests(LoaderTestCase):
 
     def test_success_and_failure_are_logged_without_values(self):
         self.install(COMMAND_MANIFEST, code=COMMAND_CODE)
+        pin_plugins("demo")
         with (
             patch.dict(os.environ, {"GB_PLUGINS": "demo"}),
             self.assertLogs("getbrolls.sdk", level="INFO") as cm,
@@ -346,6 +350,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         return SimpleNamespace(list=False, plugin_id="isola", plugin_command=name, project=None, arg=None)
 
     def test_hostile_str_never_runs_and_message_carries_only_the_type(self):
+        pin_plugins("isola")
         with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
             plugin_commands.run(self.args("hostil"))
         message = str(ctx.exception)
@@ -354,6 +359,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         self.assertNotIn("segredo-que-nao-deveria-aparecer", message)
 
     def test_system_exit_from_handler_is_isolated_and_logged(self):
+        pin_plugins("isola")
         with (
             patch.dict(os.environ, {"GB_PLUGINS": "isola"}),
             self.assertLogs("getbrolls.sdk", level="WARNING") as cm,
@@ -367,11 +373,13 @@ class PluginFailureIsolationTests(LoaderTestCase):
         self.assertNotIn("saiu-do-plugin", joined)
 
     def test_generator_result_is_refused_as_not_json(self):
+        pin_plugins("isola")
         with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
             plugin_commands.run(self.args("gerador"))
         self.assertIn("objeto JSON", str(ctx.exception))
 
     def test_nan_result_is_refused_as_not_json(self):
+        pin_plugins("isola")
         with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
             plugin_commands.run(self.args("nan"))
         self.assertIn("objeto JSON", str(ctx.exception))
@@ -380,12 +388,14 @@ class PluginFailureIsolationTests(LoaderTestCase):
         # Fix round 2, item A: o round-trip de JSON (não só a chamada do handler)
         # também precisa isolar BaseException de código de terceiro — aqui, o
         # `.items()` de um dict de terceiro rodando durante `json.dumps`.
+        pin_plugins("isola")
         with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
             plugin_commands.run(self.args("dict_exit"))
         self.assertIn("objeto JSON", str(ctx.exception))
 
     def test_dict_result_raising_runtime_error_during_serialization_hides_the_message(self):
         # Fix round 2, item A: a mensagem nunca ecoa o texto da exceção de terceiro.
+        pin_plugins("isola")
         with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
             plugin_commands.run(self.args("dict_runtime"))
         message = str(ctx.exception)
@@ -398,6 +408,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         # descritor cru de `type` — nunca invoca a property hostil, então o
         # `SystemExit` dela nunca dispara, e o nome verdadeiro (não a mensagem
         # do plugin) ainda é seguro de mostrar.
+        pin_plugins("isola")
         with (
             patch.dict(os.environ, {"GB_PLUGINS": "isola"}),
             self.assertLogs("getbrolls.sdk", level="WARNING") as cm,
@@ -417,6 +428,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         # Fix round 2, item B: a leitura segura nunca invoca a property da
         # metaclasse — o texto arbitrário que ela devolveria ("SEGREDO3") nunca
         # chega à mensagem; o nome verdadeiro do tipo aparece em vez dele.
+        pin_plugins("isola")
         with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
             plugin_commands.run(self.args("meta_leak"))
         message = str(ctx.exception)
@@ -426,6 +438,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
     def test_base_exception_subclass_never_escapes_raw(self):
         # Fix round 2, item C: uma classe que herda BaseException direto (não
         # Exception, não SystemExit) não pode escapar como traceback cru.
+        pin_plugins("isola")
         with (
             patch.dict(os.environ, {"GB_PLUGINS": "isola"}),
             self.assertLogs("getbrolls.sdk", level="WARNING") as cm,
@@ -445,6 +458,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         # teto de JSON é recusado, não escrito por inteiro em stdout/diagnostics
         # — e a mensagem é a exata (a conta antiga `1_000_000 // (1024*1024)`
         # dava "> 0 MB"; o teto agora é um múltiplo exato de 1024*1024).
+        pin_plugins("isola")
         with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
             plugin_commands.run(self.args("grande"))
         self.assertEqual(
@@ -457,6 +471,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         # cabe fácil sob o teto de tamanho compacto, mas explodiria ao ser
         # indentado (o que a CLI de fato escreve) — o teto de profundidade
         # recusa isso rápido, sem nunca montar a saída grande.
+        pin_plugins("isola")
         with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
             plugin_commands.run(self.args("fundo"))
         self.assertEqual(
@@ -470,6 +485,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         # subclasse hostil sobrescrevendo __format__ não pode disparar (exit 0
         # silencioso) nem ser repetida: `type(name) is not str` cai no fallback
         # ANTES de qualquer formatação tocar no objeto hostil.
+        pin_plugins("isola")
         with (
             patch.dict(os.environ, {"GB_PLUGINS": "isola"}),
             self.assertLogs("getbrolls.sdk", level="WARNING") as cm,
@@ -489,6 +505,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         # Fix round 3, item B: mesma proteção quando o __format__ hostil não
         # levanta, só devolve texto diferente ("SEGREDO7") — também nunca chega
         # à mensagem/log; o fallback seguro aparece em vez dele.
+        pin_plugins("isola")
         with patch.dict(os.environ, {"GB_PLUGINS": "isola"}), self.assertRaises(ValueError) as ctx:
             plugin_commands.run(self.args("weird_name_leak"))
         message = str(ctx.exception)
@@ -499,6 +516,7 @@ class PluginFailureIsolationTests(LoaderTestCase):
         # Fix round 3, item E: só KeyboardInterrupt continua propagando;
         # GeneratorExit de um handler (que não é chamado como gerador aqui)
         # também vira ValueError, não um traceback cru.
+        pin_plugins("isola")
         with (
             patch.dict(os.environ, {"GB_PLUGINS": "isola"}),
             self.assertLogs("getbrolls.sdk", level="WARNING") as cm,

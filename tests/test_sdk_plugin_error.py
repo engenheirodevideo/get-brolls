@@ -11,6 +11,7 @@ from unittest.mock import patch
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _cli import run_cli
 from _paths import ROOT
+from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
 from getbrolls import cli, providers
@@ -68,6 +69,7 @@ class PluginErrorFlowTests(LoaderTestCase):
     def enable(self, raised):
         code = PLUGIN.replace("RAISED", raised)
         self.install(PLUGIN_MANIFEST, code=code)
+        pin_plugins("demo")
         patcher = patch.dict(os.environ, {"GB_PLUGINS": "demo", "DEMO_TOKEN": SECRET})
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -96,6 +98,7 @@ class PluginErrorFlowTests(LoaderTestCase):
 
     def test_command_plugin_error_text_reaches_gb_x(self):
         self.enable("PluginError('Faltou --arg pasta=...')")
+        pin_plugins("demo")
         env = {"GB_HOME": str(self.home), "GB_PLUGINS": "demo"}
         err = run_cli("x", "demo", "ola", expect=2, env=env)
         self.assertIn("Plugin demo: Faltou --arg pasta=...", err["error"])
@@ -122,6 +125,7 @@ class ExampleGuidanceTests(LoaderTestCase):
 
     def test_banco_http_without_token_says_what_to_configure(self):
         self.copy_example("banco_http")
+        pin_plugins("banco_http")
         with patch.dict(os.environ, {"GB_PLUGINS": "banco_http"}):
             os.environ.pop("BANCO_HTTP_TOKEN", None)
             with self.assertRaises(OperationError) as caught:
@@ -130,11 +134,13 @@ class ExampleGuidanceTests(LoaderTestCase):
 
     def test_pasta_local_guidance_reaches_search_and_gb_x(self):
         self.copy_example("pasta_local", [str(self.media)])
+        pin_plugins("pasta_local")
         with patch.dict(os.environ, {"GB_PLUGINS": "pasta_local"}):
             os.environ.pop("PASTA_LOCAL_DIR", None)
             with self.assertRaises(OperationError) as caught:
                 cli.main(["search", "--project", str(self.project), "--provider", "pasta_local", "--query", "praia"])
         self.assertIn("Configure PASTA_LOCAL_DIR", str(caught.exception))
+        pin_plugins("pasta_local")
         env = {"GB_HOME": str(self.home), "GB_PLUGINS": "pasta_local", "PASTA_LOCAL_DIR": str(self.media)}
         err = run_cli("x", "pasta_local", "recentes", "--arg", "limite=abc", project=self.project, expect=2, env=env)
         self.assertIn("--arg limite=N espera um número inteiro", err["error"])

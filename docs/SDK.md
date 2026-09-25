@@ -423,8 +423,11 @@ python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
   desliga a escrita de bytecode antes de carregar plugins. Bytecode na pasta
   (`__pycache__`/`.pyc`/`.pyo`) nunca é lido para rodar o plugin porque a pasta
   que o tiver fica `invalid` — apague-o e habilite de novo.
-- `GB_PLUGINS=id1,id2` seleciona plugins habilitados sem depender do pin de
-  hash — pensado para CI/testes, não para uso diário. `GB_PLUGINS=off`
+- `GB_PLUGINS=id1,id2` só **filtra**: escolhe, entre os plugins já
+  habilitados com pin válido em `plugins.json`, os que esta sessão carrega.
+  Nunca carrega um plugin sem pin, nunca habilitado ou com conteúdo mudado
+  (esse continua `suspended`); um id da lista que nunca foi habilitado sai
+  `disabled` com o motivo pedindo o `enable`. `GB_PLUGINS=off`
   desliga todos os plugins, mesmo os habilitados em `plugins.json`. Com a
   variável no ambiente, `plugins --action list` traz `"selection":
   "GB_PLUGINS"` e cada plugin fora dela sai `disabled` com o motivo

@@ -52,7 +52,9 @@ copiando. `permissions.paths` e `permissions.network` aparecem no preview do
 para o cache em disco. Comandos de plugin (`gb x`) só leem o projeto, por
 cópias. `install`/`update` clonam com `GIT_TERMINAL_PROMPT=0`, recusam URL com
 credencial, link simbólico e pasta de controle de versão fora do topo, e não
-executam código do plugin. `GB_PLUGINS=off` desliga tudo.
+executam código do plugin. `GB_PLUGINS=off` desliga tudo; `GB_PLUGINS=id1,id2`
+só escolhe entre os plugins já habilitados com pin válido — nunca carrega um
+plugin não habilitado nem um com conteúdo mudado desde o `enable`.
 
 Exceção levantada por código de plugin aparece só pelo tipo — o texto dela
 (que pode carregar um token) não chega à mensagem, ao `diagnostics.jsonl` nem

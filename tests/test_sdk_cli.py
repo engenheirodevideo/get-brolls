@@ -7,6 +7,7 @@ from pathlib import Path
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _cli import run_cli
+from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
 
@@ -72,6 +73,7 @@ class PluginsCommandTests(LoaderTestCase):
         """Finding 2: `sys.exit(0)` no import do plugin não pode sair do processo com
         stdout vazio — `providers`/`doctor` continuam respondendo com os built-ins."""
         self.install(code="import sys\n\nsys.exit(0)\n")
+        pin_plugins("demo")
         env = {**self.env(), "GB_PLUGINS": "demo"}
         out = run_cli("providers", env=env)
         self.assertIn("youtube", out)
@@ -83,39 +85,49 @@ class PluginsCommandTests(LoaderTestCase):
         """Finding 1: `plugins.json` marca o plugin habilitado (pré-carga: "enabled"), mas o
         register() dele estoura — o doctor tem que mostrar o resultado real do carregamento."""
         self.install(code="def register(api):\n    raise RuntimeError('boom')\n")
+        pin_plugins("demo")
         doctor = run_cli("doctor", env={**self.env(), "GB_PLUGINS": "demo"})
         self.assertEqual("failed", doctor["plugins"][0]["status"])
         self.assertIn("RuntimeError", doctor["plugins"][0]["reason"])
 
-    def test_preset_enabled_only_via_env_file_is_accepted(self):
-        """Finding 4: `--preset` não pode travar em `choices=` calculado ANTES do `.env`
-        ser lido — um preset só habilitado por `GB_PLUGINS` num `--env-file` tem que
-        passar pelo argparse e ser validado depois, por `presets.get()`."""
+    def test_preset_selected_via_env_file_is_accepted(self):
+        """Finding 4 + B-07: `--preset` não trava em `choices=` calculado ANTES do `.env`
+        ser lido; `GB_PLUGINS` num `--env-file` só filtra plugins já habilitados (com pin).
+        Offline: o candidato vem da busca do próprio plugin de teste, nunca do YouTube."""
         self.install()
+        pin_plugins("demo")
         project = Path(tempfile.mkdtemp(prefix="gb-project-"))
         self.addCleanup(__import__("shutil").rmtree, project, ignore_errors=True)
         env_file = project / "plugins.env"
         env_file.write_text("GB_PLUGINS=demo\n", encoding="utf-8")
 
-        candidate = run_cli(
-            "resolve",
-            "--url",
-            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            project=project,
-            env=self.env(),
-        )
+        found = run_cli("search", "--provider", "demo", "--query", "mar", project=project, env=self.env())
+        candidate = found["items"][0]["id"]
         result = run_cli(
             "--env-file",
             str(env_file),
             "permit",
             "--candidate",
-            candidate["id"],
+            candidate,
             "--preset",
             "demo",
             project=project,
             env=self.env(),
         )
         self.assertEqual("permitted", result["rights"]["status"])
+        env_file.write_text("GB_PLUGINS=off\n", encoding="utf-8")
+        run_cli(
+            "--env-file",
+            str(env_file),
+            "permit",
+            "--candidate",
+            candidate,
+            "--preset",
+            "demo",
+            project=project,
+            expect=2,
+            env=self.env(),
+        )
 
 
 if __name__ == "__main__":

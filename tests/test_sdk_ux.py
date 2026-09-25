@@ -191,6 +191,7 @@ class GbPluginsSelectionTests(LoaderTestCase):
 
     def test_cli_list_under_gb_plugins_off(self):
         self.install()
+        loader.enable("demo", confirm=True)  # B-07: GB_PLUGINS só filtra plugins habilitados
         out = run_cli("plugins", "--action", "list", env={"GB_HOME": str(self.home), "GB_PLUGINS": "off"})
         self.assertIn("desligado por GB_PLUGINS", out["plugins"][0]["reason"])
 

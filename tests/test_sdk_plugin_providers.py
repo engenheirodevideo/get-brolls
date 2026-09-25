@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, PLUGIN_CODE, LoaderTestCase  # noqa: F401  (MANIFEST reexportado)
 
 from getbrolls import presets, providers
@@ -124,6 +125,7 @@ assert NO_DOWNLOAD_FAKES_ACQUISITION != PLUGIN_CODE
 class PluginTestCase(LoaderTestCase):
     def enable(self, code=PLUGIN_CODE):
         self.install(code=code)
+        pin_plugins("demo")
         patcher = patch.dict(os.environ, {"GB_PLUGINS": "demo"})
         patcher.start()
         self.addCleanup(patcher.stop)

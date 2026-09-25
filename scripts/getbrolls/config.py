@@ -17,8 +17,8 @@ KEYS = {
     "GB_HOME",
     # `off` desliga leitura e escrita da biblioteca global.
     "GB_LIBRARY",
-    # Lista de ids de plugin separados por vírgula; substitui o plugins.json
-    # (sem pin de hash — uso em CI/teste). `off` desliga todos os plugins.
+    # Lista de ids de plugin separados por vírgula: só filtra os habilitados com
+    # pin válido em plugins.json (nunca carrega sem pin). `off` desliga todos.
     "GB_PLUGINS",
     "PEXELS_API_KEY",
     "PIXABAY_API_KEY",
