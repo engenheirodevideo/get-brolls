@@ -284,13 +284,15 @@ O registro de proveniência que a pessoa lê para decidir (`ORIGEM.md`,
   "Direitos:"/"Aprovado por:" no `ORIGEM.md`. O próprio `ORIGEM.md`/`credits.md`
   também escreve cada valor numa linha só (texto normal sai idêntico).
 - Num candidato de plugin, `ORIGEM.md`, `credits.md` e a tabela de
-  `entrega/README.md` escapam com barra invertida toda pontuação ASCII que o
-  CommonMark deixa escapar no título, autor, licença, URL da licença, URL da
-  fonte e no texto da licença/preset registrado pelo plugin: um `<img>`, um
-  `[link](url)`, um `**negrito**`, `%%comentário%%`/`==realce==` do Obsidian,
-  `~~riscado~~`, `#tag`, `$matemática$` ou um endereço solto (`https\://`,
-  `www\.`) sai como texto, nunca como imagem remota, link, ênfase ou marcação.
-  Fonte embutida sai como sempre.
+  `entrega/README.md` escapam com barra invertida os caracteres que abrem
+  marcação dentro de uma linha (`` \ ` * _ [ ] ( ) < > ! | % ~ = # $ { } ``) no
+  título, autor, licença, URL da licença, URL da fonte e no texto da
+  licença/preset registrado pelo plugin, e quebram só o gatilho do autolink
+  (`https\://`, `www\.`): um `<img>`, um `[link](url)`, um `**negrito**`,
+  `%%comentário%%`/`==realce==` do Obsidian, `~~riscado~~`, `#tag`,
+  `$matemática$` ou um endereço solto sai como texto. Ponto, vírgula, hífen e
+  dois-pontos ficam como estão, então um título comum sai idêntico. Fonte
+  embutida sai como sempre.
 
 Uma exceção levantada dentro de `search`, `resolve`, `refresh` ou `Route.prepare` nunca derruba
 a CLI: ela vira `ProviderError` com a mensagem `Plugin <id>: ...`, e a busca

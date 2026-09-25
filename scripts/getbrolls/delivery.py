@@ -309,10 +309,14 @@ def plugin_label(c):
     return row["id"] if row else provider
 
 
-# Toda pontuação ASCII que o CommonMark deixa escapar com barra invertida: além de
-# `<img>`, `[link](url)` e `**ênfase**`, cobre `%%comentário%%` e `==realce==` do
-# Obsidian, `~~riscado~~`, `#tag`, `$matemática$` e o autolink de `https://`/`www.`.
-_MARKDOWN_SIGNIFICANT = re.compile(r"([!-/:-@\[-`{-~])")
+# Só os caracteres que abrem marcação dentro de uma linha: `<img>`, `[link](url)`,
+# `**ênfase**`, `` `código` ``, `|` de tabela, `%%comentário%%` e `==realce==` do
+# Obsidian, `~~riscado~~`, `#tag`, `$matemática$`, `{atributo}`. Ponto, vírgula, hífen e
+# dois-pontos ficam como estão: o texto continua legível colado numa descrição.
+_MARKDOWN_SIGNIFICANT = re.compile(r"([\\`*_\[\]()<>!|%~=#${}])")
+# Autolink sem `<>`: só o gatilho é quebrado (`https\://`, `www\.`).
+_AUTOLINK_SCHEME = re.compile(r"://")
+_AUTOLINK_WWW = re.compile(r"(?i)\b(www)\.")
 # Prefixos que o core escreve na frente de um texto de plugin guardado como evidência.
 _PLUGIN_EVIDENCE_PREFIXES = ("Licença registrada pelo plugin ", "Condições informadas pelo plugin ")
 
@@ -323,7 +327,11 @@ def inert(value, plugin):
     `<img>`, `[link](url)` ou `**negrito**` sai como texto em ORIGEM.md/credits.md, nunca
     como imagem remota, link ou ênfase. Fonte embutida: só `one_line`, texto idêntico."""
     text = one_line(value)
-    return text if plugin is None else _MARKDOWN_SIGNIFICANT.sub(r"\\\1", text)
+    if plugin is None:
+        return text
+    text = _MARKDOWN_SIGNIFICANT.sub(r"\\\1", text)
+    text = _AUTOLINK_SCHEME.sub(r"\\://", text)
+    return _AUTOLINK_WWW.sub(r"\1\\.", text)
 
 
 def evidence_line(evidence, plugin):

@@ -92,8 +92,8 @@ class PluginEvidenceTextTests(unittest.TestCase):
         self.assertEqual(1, len(evidence_lines))
         items = evidence_lines[0][len("- Evidência: ") :].split("; ")
         self.assertEqual(2, len(items))
-        # Em ORIGEM.md a parte do plugin sai com a pontuação escapada (Markdown inerte).
-        self.assertTrue(items[1].startswith("Licença registrada pelo plugin demo: Standard License \\#42\\,"))
+        # Em ORIGEM.md a parte do plugin sai com `#` escapado (seria uma #tag no Obsidian).
+        self.assertTrue(items[1].startswith("Licença registrada pelo plugin demo: Standard License \\#42,"))
         self.assertFalse(any(item.startswith("Declaração do usuário") for item in items))
         self.assertEqual(1, sum(1 for line in origin.splitlines() if line.startswith("- Aprovado por:")))
 
