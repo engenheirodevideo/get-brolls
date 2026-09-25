@@ -487,20 +487,30 @@ def template_leftovers(data):
     return found
 
 
-def retired_beat_ids(project, rules=None):
-    """Ids dos beats aposentados (`"retired": true`) de um BRIEF.md válido.
+def retired_beat_ids(project):
+    """Ids dos beats aposentados (`"retired": true`) lidos do bloco json cru do BRIEF.md.
 
-    Vazio quando o brief falta ou não valida: aí ninguém é aposentado e todo clipe
-    segue a regra de antes. `deliver` e `status` usam isto para deixar esses clipes
-    fora de `entrega/` sem tratá-los como pendência; `search --shot` passa `rules`
-    para validar o brief como a busca valida.
+    Não depende da validação completa nem do RULES.md: um brief que a postura de
+    direitos deixa inválido continua com os aposentados fora de `entrega/`, da busca e
+    do `resolve`. Vazio quando o brief falta ou o json não é legível; id fora do
+    formato de beat não conta. `deliver` e `status` usam isto para deixar esses clipes
+    fora de `entrega/` sem tratá-los como pendência.
     """
     try:
         raw = load_brief(project)
-        validate_brief(raw, rules, project=project)
     except (ValueError, OSError):
         return frozenset()
-    return frozenset(b["id"] for b in raw["beats"] if b.get("retired") is True)
+    beats = raw.get("beats") if isinstance(raw, dict) else None
+    if not isinstance(beats, list):
+        return frozenset()
+    return frozenset(
+        b["id"]
+        for b in beats
+        if isinstance(b, dict)
+        and b.get("retired") is True
+        and isinstance(b.get("id"), str)
+        and BEAT_ID_RE.fullmatch(b["id"])
+    )
 
 
 def search_query(beat, limit=QUERY_MAX_TOKENS):

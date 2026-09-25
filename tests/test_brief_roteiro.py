@@ -352,6 +352,87 @@ class SearchRetiredShotTests(unittest.TestCase):
         self.assertEqual(_beat_search_names(str(project), "c01", None, "youtube", ["youtube"]), ["youtube"])
 
 
+class RetiredWithoutFullValidationTests(unittest.TestCase):
+    """O aposentado vale mesmo quando o brief não passa na validação completa (postura, RULES.md)."""
+
+    def setUp(self):
+        self.project = Path(tempfile.mkdtemp(prefix="gb-brief-rot-"))
+        self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
+        run_cli(self, "init-rules", "--project", self.project)
+
+    def declaration_brief(self):
+        data = copy.deepcopy(BASE)
+        # RULES.md padrão não tem nome nem declaração: a validação completa recusa.
+        data["rights"]["posture"] = "user_declaration"
+        write_brief_at(self.project, data)
+        with self.assertRaises(ValueError):
+            brief.validate_brief(brief.load_brief(self.project), load_rules(str(self.project)), project=self.project)
+
+    def test_user_declaration_posture_still_keeps_retired_clip_out_of_entrega(self):
+        self.declaration_brief()
+        _, retired, _ = store_at(self.project, [fetched("a", "Titulo c01", "c01"), fetched("b", "Titulo c02", "c02"),
+                                               fetched("c", "Titulo manual", "manual-1")])  # fmt: skip
+        self.assertEqual(brief.retired_beat_ids(self.project), frozenset({"c02"}))
+        report = delivery.build_delivery(str(self.project))
+        self.assertEqual(report["retired"], [{"id": retired["id"], "shot": "c02", "reason": RETIRED_REASON}])
+        entrega = self.project / "entrega"
+        folders = sorted(p.name for p in entrega.iterdir() if p.is_dir())
+        self.assertEqual(len(folders), 2)
+        self.assertFalse(any("c02" in name for name in folders))
+        status = run_cli(self, "status", "--project", self.project)
+        self.assertNotEqual(status["summary"]["do"]["step"], "deliver")
+        self.assertNotIn("entrega/ com deliver", status["summary"]["next"])
+
+    def test_raw_reading_ignores_bad_ids_and_unreadable_json(self):
+        data = copy.deepcopy(BASE)
+        data["beats"].append({"id": "Cena 9", "target": "x", "retired": True})
+        data["beats"].append({"id": "c09", "target": "x", "retired": "sim"})
+        write_brief_at(self.project, data)
+        self.assertEqual(brief.retired_beat_ids(self.project), frozenset({"c02"}))
+        (self.project / "BRIEF.md").write_text("# Brief\n\n```json\n{ quebrado\n```\n", encoding="utf-8")
+        self.assertEqual(brief.retired_beat_ids(self.project), frozenset())
+        (self.project / "BRIEF.md").unlink()
+        self.assertEqual(brief.retired_beat_ids(self.project), frozenset())
+
+
+class RetiredShotEverywhereTests(unittest.TestCase):
+    """`resolve --shot` e `brief --beat` num beat aposentado dizem o motivo, sem comando de busca."""
+
+    def setUp(self):
+        self.project = Path(tempfile.mkdtemp(prefix="gb-brief-rot-"))
+        self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
+        run_cli(self, "init-rules", "--project", self.project)
+        write_brief_at(self.project, BASE)
+
+    def failed(self, *args):
+        done = subprocess.run(
+            [sys.executable, str(CLI), *map(str, args), "--project", str(self.project)],
+            capture_output=True, text=True, encoding="utf-8", check=False,
+        )  # fmt: skip
+        self.assertNotEqual(done.returncode, 0)
+        return json.loads(done.stderr or done.stdout)
+
+    def test_resolve_on_a_retired_beat_is_refused_like_search(self):
+        clip = self.project / "clipe.mp4"
+        clip.write_bytes(b"nao e video")
+        resolved = self.failed("resolve", "--file", clip, "--shot", "c02")
+        searched = self.failed("search", "--query", "mapa", "--shot", "c02", "--provider", "youtube")
+        self.assertIn('O beat "c02" foi aposentado pelo roteiro', resolved["error"])
+        self.assertEqual(resolved["error"], searched["error"])
+        self.assertFalse(resolved["state_committed"])
+        manifest = self.project / "brolls" / "manifest.json"
+        items = json.loads(manifest.read_text(encoding="utf-8"))["items"] if manifest.is_file() else []
+        self.assertEqual(items, [])
+
+    def test_brief_beat_on_a_retired_beat_says_it_was_retired(self):
+        error = self.failed("brief", "--beat", "c02")["error"]
+        self.assertIn('O beat "c02" foi aposentado pelo roteiro', error)
+        self.assertNotIn("search --", error)
+        with self.assertRaises(ValueError) as ctx:
+            brief_report(types.SimpleNamespace(project=str(self.project), validate=False, beat="nenhum"))
+        self.assertIn("não tem o beat", str(ctx.exception))
+
+
 class ZeroBeatsWithRoteiroTests(unittest.TestCase):
     """Com ROTEIRO.md e nenhum beat ativo, todo comando aponta para o sync do roteiro."""
 

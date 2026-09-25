@@ -505,6 +505,7 @@ def brief_report(args):
         brief_path,
         load_brief,
         provider_warnings,
+        retired_beat_ids,
         search_plan,
         template_leftovers,
         validate_brief,
@@ -572,6 +573,11 @@ def brief_report(args):
     beats = data["beats"]
     if getattr(args, "beat", None):
         chosen = [b for b in beats if b["id"] == args.beat]
+        if not chosen and args.beat in retired_beat_ids(args.project):
+            # Aposentado não tem comando de busca: a frase diz por quê e lista os ativos.
+            raise ValueError(
+                retired_beat_message(args.beat) + " Os ids ativos são: " + ", ".join(b["id"] for b in beats) + "."
+            )
         if not chosen:
             raise ValueError(
                 f'O BRIEF.md não tem o beat "{args.beat}". Os ids disponíveis são: '
@@ -990,6 +996,24 @@ def blocked_entries(beats):
     ]
 
 
+def retired_beat_message(shot):
+    """Frase de recusa para um beat aposentado pelo roteiro, igual em search, resolve e brief."""
+    return (
+        f'O beat "{shot}" foi aposentado pelo roteiro ("retired": true no BRIEF.md): a cena '
+        "saiu do ROTEIRO.md, então não busco material para ele. Se a cena voltou, ajuste o "
+        "ROTEIRO.md e rode `roteiro --action sync --project ...`; `status --project ...` "
+        "mostra os beats ativos."
+    )
+
+
+def _refuse_retired_shot(project, shot):
+    """`--shot` de beat aposentado não liga material novo a ele: recusa antes de buscar ou baixar."""
+    from getbrolls.brief import retired_beat_ids
+
+    if shot in retired_beat_ids(project):
+        raise ValueError(retired_beat_message(shot))
+
+
 def _beat_search_names(project, shot, rules, provider, names):
     """Fontes que `search --shot` pode consultar: as que o beat do BRIEF.md permite.
 
@@ -998,16 +1022,10 @@ def _beat_search_names(project, shot, rules, provider, names):
     `allowed_sources` é recusada com a lista certa, em vez de virar candidato ligado
     ao beat como se a pessoa tivesse permitido aquela origem.
     """
-    from getbrolls.brief import beat_sources, retired_beat_ids
+    from getbrolls.brief import beat_sources
     from getbrolls.brief import searchable as searchable_sources
 
-    if shot in retired_beat_ids(project, rules):
-        raise ValueError(
-            f'O beat "{shot}" foi aposentado pelo roteiro ("retired": true no BRIEF.md): a cena '
-            "saiu do ROTEIRO.md, então não busco material para ele. Se a cena voltou, ajuste o "
-            "ROTEIRO.md e rode `roteiro --action sync --project ...`; `status --project ...` "
-            "mostra os beats ativos."
-        )
+    _refuse_retired_shot(project, shot)
     allowed = beat_sources(project, shot, rules)
     if allowed is None:
         return names
@@ -1968,6 +1986,9 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
         for flag, value in (("--file", args.file), ("--url", args.url)):
             if value is not None and not value.strip():
                 raise ValueError(f"{flag} não pode ser vazio: informe o caminho ou a URL real.")
+        if args.shot:
+            # Antes de ler o arquivo ou a URL: nada novo entra num beat aposentado.
+            _refuse_retired_shot(args.project, args.shot)
         if args.file:
             path = Path(args.file).expanduser().resolve()
             if not path.is_file():
