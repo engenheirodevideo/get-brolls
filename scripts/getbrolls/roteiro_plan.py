@@ -18,6 +18,10 @@ BRAND_WORDS = ("logo", "marca", "cta")
 # um lado vira apresentador ou volta a ser b-roll.
 SIDES = ("a", "b")
 _LAYER_KIND = {"SFX": "sfx", "MUSICA": "musica", "COMP": "composicao"}
+# Versão da forma do plano (exporters) e da entrada dos hashes: mudar a forma sobe o número.
+PLAN_VERSION = 1
+HASH_VERSION = 1
+META_KEYS = ("aspecto", "legenda", "duracao_alvo_s", "genero")
 
 
 def digest(value):
@@ -26,19 +30,26 @@ def digest(value):
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def scene_fingerprint(scene):
-    """O que a pessoa revisou numa cena, sem id nem formatação: título, diretivas, fala e notas."""
+def scene_fingerprint(scene, project):
+    """O que a pessoa revisou numa cena, sem id nem formatação: título, diretivas, fala e notas.
+
+    Entra também o papel do `[FULL: x]` (`full_role`): ele depende de `assets/marca`,
+    fora do texto, e trocar beat por marca aposenta um beat — a revisão tem que cair.
+    """
     return {
+        "v": HASH_VERSION,
         "title": " ".join(scene.title.split()),
         "layout": {"kind": scene.layout.kind, "args": list(scene.layout.args), "quoted": list(scene.layout.quoted)},
         "layers": [
             {"kind": d.kind, "args": list(d.args), "quoted": list(d.quoted), "at": d.word_offset} for d in scene.layers
         ],
         "extensions": [
-            {"plugin": d.plugin, "name": d.name, "args": list(d.args), "at": d.word_offset} for d in scene.extensions
+            {"plugin": d.plugin, "name": d.name, "args": list(d.args), "quoted": list(d.quoted), "at": d.word_offset}
+            for d in scene.extensions
         ],
         "speech": " ".join(scene.speech.split()),
         "notes": list(scene.notes),
+        "full": full_role(project, scene.layout),
     }
 
 
@@ -69,6 +80,15 @@ def _is_brand(project, target):
         return True  # existe arquivo de marca com esse nome, ambíguo ou fora da pasta: a linha do componente explica
 
 
+def full_role(project, layout):
+    """Papel de `[FULL: x]`: "cartela" (texto entre aspas), "marca" (componente, sem beat) ou "beat"; None fora de FULL."""
+    if layout.kind != "FULL":
+        return None
+    if layout.quoted[0]:
+        return "cartela"
+    return "marca" if _is_brand(project, layout.args[0]) else "beat"
+
+
 def _aroll_name(scene_id, take, side=None):
     """`aroll/cNN[-lado][-take].<ext>`; sem id ainda, sem nome (o sync dá o id).
 
@@ -80,12 +100,12 @@ def _aroll_name(scene_id, take, side=None):
     return "-".join(part for part in (scene_id, side, take) if part)
 
 
-def _component(project, directive, kind, name, *, prompt=None, side=None, error=None):  # noqa: PLR0913 - one keyword per row field the caller knows
-    """Linha de componente; `side` ("a"/"b") só em apresentador de SPLIT, None no resto."""
+def _component(project, directive, kind, name, *, prompt=None, side=None, take=None, error=None):  # noqa: PLR0913 - one keyword per row field the caller knows
+    """Linha de componente; `side` ("a"/"b") só em apresentador de SPLIT e `take` só em A-ROLL; None no resto."""
     row = {
         "directive": directive.kind, "kind": kind, "name": name, "line": directive.line, "prompt": prompt,
-        "side": side, "status": "pending", "path": None, "origin": None, "license": None, "warnings": [],
-        "error": None,
+        "side": side, "take": take, "status": "pending", "path": None, "origin": None, "license": None,
+        "warnings": [], "error": None,
     }  # fmt: skip
     if error is not None:
         return {**row, "status": "invalid", "error": error}
@@ -109,7 +129,7 @@ def _layout_components(project, scene):
     layout, scene_id = scene.layout, scene.scene_id
     if layout.kind == "A-ROLL":
         take = layout.args[0] if layout.args else None
-        return [_component(project, layout, "aroll", _aroll_name(scene_id, take))]
+        return [_component(project, layout, "aroll", _aroll_name(scene_id, take), take=take)]
     if layout.kind == "UGC":
         return [_component(project, layout, "aroll", _aroll_name(scene_id, None), prompt=layout.args[0])]
     if layout.kind == "SPLIT":
@@ -122,11 +142,11 @@ def _layout_components(project, scene):
         return [
             _component(
                 project, layout, "aroll", _aroll_name(scene_id, take, slot if both else None),
-                prompt=prompt, side=slot, error=problem,
+                prompt=prompt, side=slot, take=take, error=problem,
             )
             for slot, take, prompt, problem in presenters
         ]  # fmt: skip
-    if layout.kind == "FULL" and not layout.quoted[0] and _is_brand(project, layout.args[0]):
+    if full_role(project, layout) == "marca":
         return [_component(project, layout, "marca", layout.args[0])]
     return []
 
@@ -148,7 +168,7 @@ def _beat_targets(project, scene):
     if layout.kind == "BROLL":
         return [(scene_id, layout.args[0])]
     if layout.kind == "FULL":
-        if layout.quoted[0] or _is_brand(project, layout.args[0]):
+        if full_role(project, layout) != "beat":
             return []  # cartela de texto ou marca: componente, não busca
         return [(scene_id, layout.args[0])]
     if layout.kind == "SPLIT":
@@ -170,7 +190,7 @@ def _placed(directive):
     }
 
 
-def _scene_row(scene, components, beat_ids):
+def _scene_row(project, scene, components, beat_ids):
     return {
         "id": scene.scene_id,
         "title": scene.title,
@@ -180,21 +200,22 @@ def _scene_row(scene, components, beat_ids):
             {"kind": d.kind, "args": list(d.args), "quoted": list(d.quoted), **_placed(d)} for d in scene.layers
         ],
         "extensions": [
-            {"plugin": d.plugin, "name": d.name, "args": list(d.args), **_placed(d)} for d in scene.extensions
+            {"plugin": d.plugin, "name": d.name, "args": list(d.args), "quoted": list(d.quoted), **_placed(d)}
+            for d in scene.extensions
         ],
         "anchors": sorted((_placed(d) for d in (*scene.layers, *scene.extensions)), key=lambda row: row["line"]),
         "speech": scene.speech,
         "speech_clean": scene.speech_clean,
         "notes": list(scene.notes),
         "duration_s": scene.duration_s,
-        "content_hash": digest(scene_fingerprint(scene)),
+        "content_hash": digest(scene_fingerprint(scene, project)),
         "components": components,
         "beats": beat_ids,
     }
 
 
 def scene_plan(project, doc):
-    """Plano completo: cenas, beats (na ordem das cenas), duração total, avisos e problemas."""
+    """Plano completo: versão, meta, cenas, beats (na ordem das cenas), duração total, avisos e problemas."""
     scenes, beats, problems, warnings = [], [], [], list(doc.warnings)
     for scene in doc.scenes:
         label = scene.scene_id or f"linha {scene.line}"
@@ -213,9 +234,12 @@ def scene_plan(project, doc):
             elif row["status"] == "pending" and row["kind"] != "aroll":
                 warnings.append(f'{label}: {row["directive"]} "{row["name"]}" pendente (não achei em {row["kind"]})')
             warnings.extend(f"{label}: {w}" for w in row["warnings"])
-        scenes.append(_scene_row(scene, components, beat_ids))
+        scenes.append(_scene_row(project, scene, components, beat_ids))
     total = round(sum(s.duration_s for s in doc.scenes), 1)
-    return {"scenes": scenes, "beats": beats, "total_s": total, "warnings": warnings, "problems": problems}
+    return {
+        "plan_version": PLAN_VERSION, "meta": {key: doc.meta.get(key) for key in META_KEYS},
+        "scenes": scenes, "beats": beats, "total_s": total, "warnings": warnings, "problems": problems,
+    }  # fmt: skip
 
 
 def _format_label(value):

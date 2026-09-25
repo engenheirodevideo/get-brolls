@@ -131,11 +131,16 @@ def _review(args):
     }
 
 
+# O plano roda sem revisão; o sync não: o resumo avisa antes de alguém tentar.
+UNREVIEWED = " Sem revisão válida, o sync vai recusar: falta a revisão da pessoa (ou o roteiro mudou depois dela)."
+
+
 def _sync(args, write):
     result = roteiro_sync.run(args.project, write=write, confirm=getattr(args, "confirm_target_change", False))
+    unreviewed = "" if result["reviewed"] else UNREVIEWED
     if result["refusal"]:
         # Só o plano chega aqui (o sync levanta): recusado não comparou beats, nunca "0 beats".
-        return {**result, "summary": {"line": f"Plano recusado: {result['refusal']}"}}
+        return {**result, "summary": {"line": f"Plano recusado: {result['refusal']}{unreviewed}"}}
     counts = (
         f"{len(result['new'])} beat(s) novo(s), {len(result['target_changed'])} com alvo novo, "
         f"{len(result['speech_changed'])} com fala nova, {len(result['retired'])} aposentado(s)"
@@ -153,7 +158,7 @@ def _sync(args, write):
         extra = f" Voltariam a pendente com --confirm-target-change: {listed}."
     if result["problems"]:
         extra += f" {len(result['problems'])} problema(s) a resolver antes do sync."
-    return {**result, "summary": {"line": f"Plano: {counts}.{extra}"}}
+    return {**result, "summary": {"line": f"Plano: {counts}.{extra}{unreviewed}"}}
 
 
 def _assets(args):

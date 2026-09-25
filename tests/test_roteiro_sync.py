@@ -729,5 +729,64 @@ class StatusDriftTests(SyncCase):
         self.assertNotEqual(self.status()["do"]["step"], "roteiro-sync")
 
 
+class PlanSafetyTests(SyncCase):
+    """O que muda sem trocar o texto também anula a revisão e aparece no plano."""
+
+    def test_brand_file_retiring_a_reviewed_beat_voids_the_review_and_warns(self):
+        self.write(ROTEIRO + "\n## Fim\n[FULL: praia]\nTchau.\n")
+        self.review()
+        self.assertIn("c04", self.sync()["beats"])
+        candidate = self.approved("c04")
+        (self.project / "assets" / "marca").mkdir(parents=True)
+        (self.project / "assets" / "marca" / "praia.png").write_bytes(b"x")
+        self.assertFalse(self.plan()["reviewed"])
+        with self.assertRaises(ValueError) as ctx:
+            self.sync()
+        self.assertIn("revisão humana", str(ctx.exception))
+        self.review()
+        planned = self.plan()
+        report = self.sync()
+        self.assertEqual(report["retired"], ["c04"])
+        for warnings in (planned["warnings"], report["warnings"]):
+            joined = " ".join(warnings)
+            self.assertIn('FULL "praia" virou componente de marca porque assets/marca/praia existe', joined)
+            self.assertNotIn("c04 saiu do roteiro", joined)
+        self.assertEqual(self.approval(candidate), "approved")
+
+    def test_target_change_names_the_stale_queries(self):
+        self.review()
+        self.sync()
+        data = json.loads(self.text("BRIEF.md").split("```json\n")[1].split("\n```")[0])
+        data["beats"][0]["queries"] = ["timeline cheia de cortes"]
+        data["beats"][0]["notes"] = "cortes rápidos"
+        self.write_brief(data)
+        self.edit("[BROLL: timeline cheia]", "[BROLL: mesa de edição]")
+        self.review()
+        stale = (
+            "alvo mudou em c02: as buscas (queries) e as notas (notes) ainda são do alvo antigo — "
+            "revise antes de buscar"
+        )
+        self.assertIn(stale, self.plan()["warnings"])
+        self.assertIn(stale, self.sync()["warnings"])
+        self.assertEqual(self.beats()[0]["queries"], ["timeline cheia de cortes"])
+
+    def test_target_change_without_queries_keeps_the_short_warning(self):
+        self.review()
+        self.sync()
+        self.edit("[BROLL: timeline cheia]", "[BROLL: mesa de edição]")
+        self.review()
+        self.assertNotIn("queries", " ".join(self.plan()["warnings"]))
+
+    def test_plan_summary_says_the_sync_will_refuse_without_review(self):
+        import types
+
+        from getbrolls import roteiro_commands
+
+        args = types.SimpleNamespace(command="roteiro", action="plan", project=str(self.project))
+        self.assertIn("o sync vai recusar: falta a revisão da pessoa", roteiro_commands.run(args)["summary"]["line"])
+        self.review()
+        self.assertNotIn("vai recusar", roteiro_commands.run(args)["summary"]["line"])
+
+
 if __name__ == "__main__":
     unittest.main()

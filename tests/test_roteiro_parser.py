@@ -183,3 +183,47 @@ class EstimateTests(unittest.TestCase):
         text = " ".join(doc.warnings)
         self.assertIn("divida a cena", text)
         self.assertIn("duracao_alvo_s", text)
+
+
+class ObsidianCommentTests(unittest.TestCase):
+    """`%%comentário%%` some no modo leitura do Obsidian: a revisão não veria o texto que viraria fala."""
+
+    MESSAGE = "comentário do Obsidian (%%) esconde texto da revisão"
+
+    def test_percent_comment_anywhere_in_the_body_is_an_error(self):
+        cases = {
+            "\n## A\n[A-ROLL]\nOi %%escondido%% tchau.\n": 12,
+            "\n## A\n[A-ROLL]\n%%\nescondido\n%%\n": 12,
+            "\n## A %%x%%\n[A-ROLL]\nOi.\n": 10,
+            "\n# Título %%x%%\n## A\n[A-ROLL]\n": 10,
+        }
+        for body, line in cases.items():
+            with self.subTest(body=body):
+                with self.assertRaises(roteiro.RoteiroError) as ctx:
+                    roteiro.parse(_doc(body), plugins=frozenset())
+                self.assertIn(f"linha {line}: {self.MESSAGE}", str(ctx.exception))
+
+    def test_percent_in_the_frontmatter_is_not_a_comment(self):
+        text = "\n".join(VALID_HEAD).replace("editando reels #1", "100%% certo") + "\n\n## A\n[A-ROLL]\nOi.\n"
+        self.assertEqual(roteiro.parse(text, plugins=frozenset()).meta["tema"], "IA: 100%% certo")
+
+
+class TakePrefixTests(unittest.TestCase):
+    """Take que começa com `a-`/`b-` colidiria com o nome do lado do SPLIT (`c03-a-t2`)."""
+
+    def test_take_starting_with_a_side_prefix_is_rejected(self):
+        for take in ("a-1", "B-final"):
+            with self.subTest(take=take):
+                with self.assertRaises(roteiro.RoteiroError) as ctx:
+                    roteiro.parse(_doc(f"\n## A\n[A-ROLL: {take}]\n"), plugins=frozenset())
+                self.assertIn(f'take "{take.lower()}" começa com "a-" ou "b-"', str(ctx.exception))
+        self.assertIsNotNone(roteiro.take_problem("a-1"))
+        self.assertIsNone(roteiro.take_problem("ab-1"))
+        self.assertIsNone(roteiro.take_problem("t-a"))
+
+
+class ExtensionQuotedTests(unittest.TestCase):
+    def test_extension_arguments_keep_their_quoted_flags(self):
+        text = _doc('\n## A\n[A-ROLL]\n[hf:zoom-in: "1.2" | forte]\nOi.\n')
+        ext = roteiro.parse(text, plugins=frozenset({"hf"})).scenes[0].extensions[0]
+        self.assertEqual((ext.args, ext.quoted), (("1.2", "forte"), (True, False)))

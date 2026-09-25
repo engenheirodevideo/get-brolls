@@ -3,8 +3,8 @@
 O arquivo é da pessoa. Este módulo só lê e valida; quem grava ids e status é
 `roteiro_sync`. O frontmatter aceita um subconjunto fechado de YAML (uma linha
 `chave: valor`, aspas opcionais): tudo o que o YAML aceita além disso é recusado
-com a linha, nunca "interpretado". Texto escondido (comentário HTML) é erro: a
-revisão humana tem que ver tudo o que vira beat.
+com a linha, nunca "interpretado". Texto escondido (comentário HTML ou `%%` do
+Obsidian) é erro: a revisão humana tem que ver tudo o que vira beat.
 """
 
 import difflib
@@ -55,8 +55,10 @@ _WORD = re.compile(r"\w+")
 # Aspa simples só fecha o argumento quando vem antes de `|` ou do fim: `d'água` segue texto.
 _SINGLE_CLOSE = re.compile(r"\s*(?:\||$)")
 _TAKE = re.compile(r"[a-z0-9][a-z0-9_-]{0,19}")
-# "a" e "b" são os sufixos dos lados do SPLIT (`c03-a`): take com esse nome colidiria.
+# "a" e "b" são os sufixos dos lados do SPLIT (`c03-a`): take com esse nome, ou que
+# comece com "a-"/"b-" (`c03-a-t2` é o take t2 do lado a), colidiria.
 RESERVED_TAKES = ("a", "b")
+SIDE_PREFIXES = ("a-", "b-")
 _EXT = re.compile(r"^([a-z][a-z0-9_]{1,31}):([a-z0-9][a-z0-9-]*)(?::(.*))?$")
 # Chave = maiúsculas sem acento e sem nada que não seja letra ou número.
 _SYNONYMS = {
@@ -365,6 +367,8 @@ def take_problem(take):
         return "take do A-ROLL: use letras, números, - ou _ (ex.: [A-ROLL: t2])"
     if take in RESERVED_TAKES:
         return f'take "{take}" é reservado para o lado do SPLIT: use outro nome'
+    if take.startswith(SIDE_PREFIXES):
+        return f'take "{take}" começa com "a-" ou "b-", que são os nomes dos lados do SPLIT: use outro nome'
     return None
 
 
@@ -391,8 +395,9 @@ def _extension(match, inner, number, plugins):
             else "; habilite o plugin (plugins --action list) ou tire a diretiva"
         )
         return None, f'"[{inner}]": o plugin "{prefix}" não está habilitado{hint}', None
-    args = tuple(_unquote(a)[0] for a in _split_args(match.group(3) or ""))
-    return Directive("EXT", args, number, plugin=prefix, name=name), None, None
+    pairs = [_unquote(a) for a in _split_args(match.group(3) or "")]
+    args, flags = tuple(text for text, _ in pairs), tuple(quoted for _, quoted in pairs)
+    return Directive("EXT", args, number, plugin=prefix, name=name, quoted=flags), None, None
 
 
 def _guess(head):
@@ -484,6 +489,8 @@ def _spoken_count(scene):
 
 
 _HIDDEN = "comentário HTML esconde texto da revisão: apague o <!-- ... --> (só o id no fim do título vale)"
+# `%%texto%%` some no modo leitura do Obsidian: a pessoa revisaria sem ver o que vira fala.
+_OBSIDIAN = "comentário do Obsidian (%%) esconde texto da revisão: apague os %% (ou o trecho inteiro)"
 
 
 def _body_line(scene, line, number, plugins, found):
@@ -577,6 +584,8 @@ def parse(text, plugins=None):
     for index in range(start, len(lines)):
         number = index + 1
         line = lines[index]
+        if "%%" in line:
+            errors.append((number, _OBSIDIAN))  # título, H1, diretiva ou fala: qualquer linha do corpo
         heading = _heading(line)
         if heading is not None:
             scene = _close(current, errors)

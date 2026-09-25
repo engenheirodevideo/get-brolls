@@ -23,7 +23,8 @@ def read(text):
 
 
 def digest(text):
-    return roteiro_review.review_hash(read(text))
+    # Sem [FULL: x] no texto, a pasta do projeto não muda o hash: nenhuma é lida.
+    return roteiro_review.review_hash(read(text), "/nenhum-projeto")
 
 
 class ReviewHashTests(unittest.TestCase):

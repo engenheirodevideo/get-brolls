@@ -18,11 +18,13 @@ from . import roteiro, roteiro_ids
 from .brief import brief_path, read_json_block, validate_brief
 from .ledger import Ledger, atomic_write
 from .models import invalidate_approval
-from .roteiro_plan import aspect_problems, scene_plan
+from .roteiro_plan import aspect_problems, full_role, scene_plan
 from .roteiro_review import review_state
 from .rules import load_rules
 
 OWNED = ("target", "narration", "duration_hint_s")
+# Campos da pessoa que descrevem o alvo: continuam dela depois do sync, mas ficam velhos quando o alvo muda.
+STALE_FIELDS = (("queries", "as buscas (queries)"), ("notes", "as notas (notes)"))
 PENDING = ".pending-transaction.json"
 # Cópia do sync; `ROTEIRO.md.bak`/`BRIEF.md.bak` são de `roteiro new --force` e nunca mudam aqui.
 SYNC_BAK = ".sync.bak"
@@ -170,21 +172,50 @@ def _replace_block(raw, data):
     return raw[: match.start(1)] + json.dumps(data, ensure_ascii=False, indent=2) + raw[match.end(1) :]
 
 
-def _warnings(plan, merge, gated_beats, with_material):
-    """Tudo o que muda sem portão fica visível: troca de comentário de id mantém a revisão válida."""
+def _stale(old_beats, merge):
+    """{beat: frase} dos beats com alvo novo que ainda guardam `queries`/`notes` do alvo antigo."""
+    by_id = {b.get("id"): b for b in old_beats}
+    stale = {}
+    for i in merge["target_changed"]:
+        labels = [label for key, label in STALE_FIELDS if (by_id.get(i) or {}).get(key)]
+        if labels:
+            stale[i] = " e ".join(labels)
+    return stale
+
+
+def _brand_flips(project, doc):
+    """{id da cena: alvo} dos `[FULL: x]` que hoje são componente de marca (e por isso não geram beat)."""
+    return {s.scene_id: s.layout.args[0] for s in doc.scenes if s.scene_id and full_role(project, s.layout) == "marca"}
+
+
+def _warnings(plan, merge, gated_beats, with_material, extra):
+    """Tudo o que muda sem portão fica visível: troca de comentário de id mantém a revisão válida.
+
+    `extra` = {"stale": {beat: campos velhos}, "brand": {beat: alvo do FULL que virou marca}}.
+    """
     warnings = list(plan["warnings"])
     for i in merge["target_changed"]:
         if i in gated_beats:
             warnings.append(f"alvo mudou em {i}: as aprovações deste beat voltam a pendente")
         else:
             warnings.append(f"alvo mudou em {i}: candidatos antigos deste beat podem não servir mais")
+        if i in extra["stale"]:
+            warnings.append(f"alvo mudou em {i}: {extra['stale'][i]} ainda são do alvo antigo — revise antes de buscar")
     warnings += [
         f"{i} já tem candidatos no manifesto de antes: confira se ainda servem ao alvo novo"
         for i in with_material
         if i not in gated_beats
     ]
     warnings += [f"fala mudou em {i}: confira se o clipe ainda serve" for i in merge["speech_changed"]]
-    warnings += [f"{i} saiu do roteiro: beat aposentado; candidatos e clipes ficam" for i in merge["retired"]]
+    for i in merge["retired"]:
+        if i in extra["brand"]:
+            target = extra["brand"][i]
+            warnings.append(
+                f'FULL "{target}" virou componente de marca porque assets/marca/{target} existe: '
+                f"beat {i} aposentado; candidatos e clipes ficam"
+            )
+        else:
+            warnings.append(f"{i} saiu do roteiro: beat aposentado; candidatos e clipes ficam")
     if merge["order_changed"]:
         warnings.append("a ordem dos beats mudou: o próximo deliver renumera as pastas de entrega/")
     return warnings
@@ -271,7 +302,8 @@ def run(project, write=False, confirm=False, plugins=None):
     validate_brief(new_data, ctx["rules"], project=project)
     items = ctx["ledger"].data["items"] if ctx["ledger"] else []
     hits = _gated(merge, items)
-    warnings = _warnings(plan, merge, {c["shot"] for c in hits}, _with_material(merge, items))
+    extra = {"stale": _stale(ctx["old_beats"], merge), "brand": _brand_flips(project, doc)}
+    warnings = _warnings(plan, merge, {c["shot"] for c in hits}, _with_material(merge, items), extra)
     result = {
         **base, **merge, "problems": problems, "warnings": warnings,
         "affected_approvals": [{"candidate": c["id"], "beat": c["shot"]} for c in hits],

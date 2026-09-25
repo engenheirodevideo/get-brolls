@@ -257,5 +257,60 @@ class AspectMissingTests(unittest.TestCase):
                 self.assertIn("não definido", problems[0])
 
 
+class PlanContractTests(unittest.TestCase):
+    """Forma do plano que os exporters leem: versão, meta, take explícito, aspas das extensões e hash versionado."""
+
+    setUp = ScenePlanTests.setUp
+    put = ScenePlanTests.put
+    doc = ScenePlanTests.doc
+    plan = ScenePlanTests.plan
+
+    def test_plan_has_version_and_meta(self):
+        plan = self.plan("## A <!-- c01 -->\n[A-ROLL]\nOi.\n")
+        self.assertEqual(plan["plan_version"], 1)
+        self.assertEqual(plan["meta"], {"aspecto": "9:16", "legenda": True, "duracao_alvo_s": 45, "genero": "reels"})
+        bare = roteiro.parse('---\ntype: roteiro\ngenero: reels\ntema: "t"\n---\n', plugins=frozenset())
+        self.assertIsNone(roteiro_plan.scene_plan(self.project, bare)["meta"]["duracao_alvo_s"])
+
+    def test_aroll_rows_expose_the_take(self):
+        cases = {
+            "[A-ROLL: t2]": [("aroll", "t2")],
+            "[A-ROLL]": [("aroll", None)],
+            "[UGC: moça]": [("aroll", None)],
+            "[SPLIT: mapa | A-ROLL: t3]": [("aroll", "t3")],
+            "[SPLIT: A-ROLL: t2 | A-ROLL]": [("aroll", "t2"), ("aroll", None)],
+        }
+        for directive, expected in cases.items():
+            with self.subTest(directive=directive):
+                rows = self.plan(f"## A <!-- c01 -->\n{directive}\n")["scenes"][0]["components"]
+                self.assertEqual([(r["kind"], r["take"]) for r in rows], expected)
+        rows = self.plan("## A <!-- c01 -->\n[A-ROLL]\n[SFX: whoosh]\n")["scenes"][0]["components"]
+        self.assertIsNone(rows[1]["take"])
+
+    def test_extension_rows_carry_quoted_and_change_the_hash(self):
+        quoted = self.plan('## A <!-- c01 -->\n[A-ROLL]\n[hf:zoom-in: "1.2"]\n')["scenes"][0]
+        plain = self.plan("## A <!-- c01 -->\n[A-ROLL]\n[hf:zoom-in: 1.2]\n")["scenes"][0]
+        self.assertEqual((quoted["extensions"][0]["quoted"], plain["extensions"][0]["quoted"]), ([True], [False]))
+        self.assertNotEqual(quoted["content_hash"], plain["content_hash"])
+
+    def test_hash_inputs_carry_a_version_marker(self):
+        from getbrolls import roteiro_review
+
+        body = "## A <!-- c01 -->\n[BROLL: praia]\nOi.\n"
+        doc = self.doc(body)
+        fingerprint = roteiro_plan.scene_fingerprint(doc.scenes[0], self.project)
+        self.assertEqual(fingerprint["v"], 1)
+        self.assertEqual(self.plan(body)["scenes"][0]["content_hash"], roteiro_plan.digest(fingerprint))
+        meta = {k: v for k, v in doc.meta.items() if k != "status"}
+        expected = roteiro_plan.digest({"v": 1, "meta": meta, "scenes": [fingerprint]})
+        self.assertEqual(roteiro_review.review_hash(doc, self.project), expected)
+
+    def test_full_turning_into_brand_changes_the_hash(self):
+        body = "## F <!-- c04 -->\n[FULL: praia]\nTchau.\n"
+        before = self.plan(body)["scenes"][0]["content_hash"]
+        self.put("assets/marca/praia.png")
+        self.assertNotEqual(before, self.plan(body)["scenes"][0]["content_hash"])
+
+
 if __name__ == "__main__":
     unittest.main()
