@@ -439,10 +439,7 @@ def brief_report(args):
         beat_progress,
         brief_path,
         load_brief,
-        missing_provider_keys,
-        provider_unavailable,
         provider_warnings,
-        search_query,
         template_leftovers,
         validate_brief,
     )
@@ -517,7 +514,7 @@ def brief_report(args):
             "commands": beat_commands(
                 args.project,
                 b["resolved"],
-                tried=tried_sources(manifest, b["id"], search_query(b["resolved"])),
+                tried=tried_searches(manifest, b["id"]),
             ),
             "candidates": progress[b["id"]],
         }
@@ -558,20 +555,7 @@ def brief_report(args):
                         "beats": len(listed),
                         "covered": covered,
                         "missing": [
-                            {
-                                "id": entry["id"],
-                                "search": entry["commands"].get("search"),
-                                "exhausted": entry["commands"].get("exhausted") or [],
-                                "query": search_query(entry["resolved"]),
-                                "intent": entry["resolved"].get("intent"),
-                                "target": entry["resolved"].get("target"),
-                                "unavailable": (
-                                    missing_provider_keys(entry["resolved"])
-                                    if provider_unavailable(entry["resolved"])
-                                    else []
-                                ),
-                            }
-                            for entry in missing
+                            missing_beat_entry(entry["id"], entry["resolved"], entry["commands"]) for entry in missing
                         ],
                         "blocked": blocked,
                         "conflicts": conflicts,
@@ -958,27 +942,58 @@ def _beat_search_names(project, shot, rules, provider, names):
 MAX_EMPTY_SEARCHES = 500
 
 
+def _empty_log(data):
+    """`empty_searches` do manifesto, só com entradas legíveis; lixo vira lista vazia."""
+    log = (data or {}).get("empty_searches") if isinstance(data, dict) else None
+    if not isinstance(log, list):
+        return []
+    return [e for e in log if isinstance(e, dict)]
+
+
 def record_empty_searches(ledger, shot, empty):
     """Guarda no manifesto que `search --shot` voltou vazio nesta fonte, com esta query.
 
     É o que tira o degrau `brief-search` do laço: sem registro, a escada sugeria a
     mesma fonte e a mesma query para sempre, sem nunca tentar a próxima permitida.
+    Um registro ilegível (editado à mão) é refeito, nunca derruba a busca.
     """
-    log = ledger.data.setdefault("empty_searches", [])
+    log = _empty_log(ledger.data)
     for provider, query in empty:
         entry = {"shot": shot, "provider": provider, "query": query}
         if not any({k: e.get(k) for k in entry} == entry for e in log):
             log.append({**entry, "at": now()})
-    del log[:-MAX_EMPTY_SEARCHES]
-    ledger.save("search")
+    ledger.data["empty_searches"] = log[-MAX_EMPTY_SEARCHES:]
+    ledger.save("search-empty")
 
 
-def tried_sources(data, shot, query):
-    """Fontes em que a busca sugerida deste beat, com esta query, já voltou vazia."""
+def tried_searches(data, shot):
+    """Pares (fonte, query) em que a busca deste beat já voltou vazia."""
     return {
-        e.get("provider")
-        for e in (data or {}).get("empty_searches") or []
-        if isinstance(e, dict) and e.get("shot") == shot and e.get("query") == query
+        (e.get("provider"), e.get("query"))
+        for e in _empty_log(data)
+        if e.get("shot") == shot and isinstance(e.get("provider"), str) and isinstance(e.get("query"), str)
+    }
+
+
+def missing_beat_entry(beat_id, resolved, commands):
+    """Beat sem candidato como a escada lê, igual em `status` e em `brief`."""
+    from getbrolls.brief import missing_provider_keys, provider_unavailable
+
+    return {
+        "id": beat_id,
+        "search": commands.get("search"),
+        # Todas as fontes e buscas já voltaram vazias: pergunta para a pessoa.
+        "exhausted": commands.get("exhausted") or [],
+        "queries": commands.get("exhausted_queries") or [],
+        # A frase para a pessoa muda quando o beat não tem alvo literal: prometer
+        # busca ali contradiz a guarda "literal primeiro, nada de preenchimento".
+        "intent": resolved.get("intent"),
+        "target": resolved.get("target"),
+        # Toda fonte que sobra depende de uma chave que falta aqui: o degrau vira
+        # pedido de configuração, não pergunta sobre o conteúdo do trecho.
+        "unavailable": commands.get("needs_keys")
+        or (missing_provider_keys(resolved) if provider_unavailable(resolved) else []),
+        "unavailable_note": commands.get("note") if commands.get("needs_keys") else None,
     }
 
 
@@ -993,9 +1008,6 @@ def brief_state(project, rules, items, data=None):
         beat_progress,
         brief_path,
         load_brief,
-        missing_provider_keys,
-        provider_unavailable,
-        search_query,
         validate_brief,
     )
 
@@ -1017,25 +1029,10 @@ def brief_state(project, rules, items, data=None):
     blocked = blocked_entries(beats)
     stuck = {entry["id"] for entry in blocked}
 
-    def commands_for(beat):
-        query = search_query(beat["resolved"])
-        return beat_commands(project, beat["resolved"], tried=tried_sources(manifest, beat["id"], query))
-
     missing = [
-        {
-            "id": b["id"],
-            "search": commands_for(b).get("search"),
-            # Todas as fontes permitidas já voltaram vazias: pergunta para a pessoa.
-            "exhausted": commands_for(b).get("exhausted") or [],
-            "query": search_query(b["resolved"]),
-            # A frase para a pessoa muda quando o beat não tem alvo literal: prometer
-            # busca ali contradiz a guarda "literal primeiro, nada de preenchimento".
-            "intent": b["resolved"].get("intent"),
-            "target": b["resolved"].get("target"),
-            # Toda fonte permitida depende de uma chave que falta aqui: o degrau vira
-            # pedido de configuração, não pergunta sobre o conteúdo do trecho.
-            "unavailable": (missing_provider_keys(b["resolved"]) if provider_unavailable(b["resolved"]) else []),
-        }
+        missing_beat_entry(
+            b["id"], b["resolved"], beat_commands(project, b["resolved"], tried_searches(manifest, b["id"]))
+        )
         for b in beats
         if b["id"] not in stuck and not progress[b["id"]]
     ]
@@ -1716,9 +1713,12 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
             }
             query_used = short
         # Fonte que respondeu sem nada para este beat: a escada não sugere de novo.
-        empty = [(name, query) for name, query, kept in answered if not kept]
-        if shot and empty and not dry_run:
-            record_empty_searches(ledger, shot, empty)
+        # Só o resultado final conta: se o encurtamento achou algo, a busca não foi vazia.
+        # O registro leva a query pedida, que é a que a escada sugere de novo.
+        if shot and not items and not dry_run:
+            empty = [(name, args.query) for name, _query, _kept in answered]
+            if empty:
+                record_empty_searches(ledger, shot, empty)
         if not items and errors:
             raise ValueError("; ".join(f"{e['provider']}: {e['error']}" for e in errors))
         items.sort(key=lambda c: not domain_matches(c.get("source_url"), rules["preferred_domains"]))

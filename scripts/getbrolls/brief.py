@@ -478,15 +478,33 @@ def _cli_prefix():
     return f'python3 "{CLI}"'
 
 
-def exhausted_phrase(beat_id, sources, query):
-    """Todas as fontes do beat já voltaram vazias para esta busca: a pessoa decide o que muda."""
+def exhausted_phrase(beat_id, sources, queries):
+    """Todas as fontes do beat já voltaram vazias para todas as buscas: a pessoa decide o que muda."""
+    asked = " / ".join(f'"{query}"' for query in queries)
     return (
         f'Busquei o beat "{beat_id}" em todas as fontes que o BRIEF.md permite para ele '
-        f'({", ".join(sources)}) com "{query}", e nenhuma trouxe nada. Repetir a mesma busca '
+        f"({', '.join(sources)}) com {asked}, e nenhuma trouxe nada. Repetir a mesma busca "
         "não vai mudar isso. Me diga como seguir: outra forma de dizer o que precisa aparecer "
-        '(entra em "queries" do beat), mais fontes em allowed_sources, ou o seu próprio '
-        "material para esse trecho."
+        '(acrescente em "queries" do beat — eu tento cada busca nova que ainda não voltou '
+        "vazia), mais fontes em allowed_sources, o seu próprio material para esse trecho, "
+        "ou remova o beat do BRIEF.md (ou siga sem ele)."
     )
+
+
+def remaining_keys_phrase(entries):
+    """As fontes que ainda não tentei só respondem com chave de API: diga qual configurar."""
+    names = " e ".join(dict.fromkeys(entry["provider"] for entry in entries))
+    keys = " e ".join(dict.fromkeys(entry["env_key"] for entry in entries))
+    return (
+        f"As outras fontes deste trecho já voltaram vazias; falta tentar {names}, que só "
+        f"responde com chave de API. Coloque {keys} no arquivo `.env` da skill (ou no "
+        "ambiente) e eu busco na hora — ou me diga outra forma de buscar esse trecho."
+    )
+
+
+def search_queries(beat):
+    """Buscas do beat, na ordem: as `queries` da pessoa, ou a derivada do `target`."""
+    return list(beat.get("queries") or []) or [search_query(beat)]
 
 
 def beat_commands(project, beat, tried=()):
@@ -494,9 +512,10 @@ def beat_commands(project, beat, tried=()):
 
     Beat sem fonte pesquisável por API (só instagram/tiktok/local) não ganha `search`:
     no lugar dele vai um `note` explicando que o caminho é `resolve --url/--file`.
-    `tried` são as fontes em que a busca sugerida deste beat já voltou vazia: o
-    `search` passa para a próxima fonte permitida e, sem nenhuma sobrando, some e dá
-    lugar a `exhausted` — repetir um comando que já voltou vazio seria andar em círculo.
+    `tried` são os pares (fonte, query) em que a busca deste beat já voltou vazia: o
+    `search` passa para a próxima fonte permitida (pulando a que falta chave) e depois
+    para a próxima query de `queries`; sem nenhum par sobrando, some e dá lugar a
+    `exhausted` — repetir um comando que já voltou vazio seria andar em círculo.
     """
     project = shlex.quote(str(Path(project).expanduser().resolve()))
     prefix = f"{_cli_prefix()} "
@@ -509,8 +528,10 @@ def beat_commands(project, beat, tried=()):
             + [s for s in beat["allowed_sources"] if s in SEARCHABLE]
         )
     )
-    provider = next((s for s in ordered if s not in tried), None)
-    query = search_query(beat)
+    queries = search_queries(beat)
+    keyless = {entry["provider"] for entry in missing_provider_keys(beat)}
+    pending = [(source, query) for query in queries for source in ordered if (source, query) not in tried]
+    provider, query = next(((s, q) for s, q in pending if s not in keyless), (None, queries[0]))
     origin = "--file ARQUIVO" if beat["allowed_sources"] == ["local"] else "--url URL_PUBLICA"
     narration = f" --narration {shlex.quote(beat['narration'])}" if beat.get("narration") else ""
     commands = {}
@@ -534,9 +555,19 @@ def beat_commands(project, beat, tried=()):
         + shlex.quote(beat.get("narration") or beat["target"])
     )
     commands["preview"] = prefix + f"preview --project {project} --candidate ID" + narration
-    if not provider and ordered:
+    absent = missing_provider_keys(beat)
+    waiting_keys = [entry for entry in absent if any(source == entry["provider"] for source, _q in pending)]
+    if absent and provider_unavailable(beat):
+        # Problema de ambiente, não de brief: nenhuma fonte responde sem chave, e a
+        # nota diz o que de fato destrava o trecho.
+        commands["note"] = unavailable_phrase(absent)
+    elif not provider and waiting_keys:
+        commands["needs_keys"] = waiting_keys
+        commands["note"] = remaining_keys_phrase(waiting_keys)
+    elif not provider and ordered:
         commands["exhausted"] = ordered
-        commands["note"] = exhausted_phrase(beat["id"], ordered, query)
+        commands["exhausted_queries"] = queries
+        commands["note"] = exhausted_phrase(beat["id"], ordered, queries)
     elif not provider:
         # Instagram, TikTok e material próprio não têm busca por API: entram por URL/arquivo.
         commands["note"] = (
@@ -544,12 +575,6 @@ def beat_commands(project, beat, tried=()):
             + ", ".join(beat["allowed_sources"])
             + "): descubra a URL no navegador e registre com o resolve acima."
         )
-    absent = missing_provider_keys(beat)
-    if absent and provider_unavailable(beat):
-        # Problema de ambiente, não de brief: some com o `search` que só daria erro e
-        # troca a nota por aquela que diz o que de fato destrava o trecho.
-        commands.pop("search", None)
-        commands["note"] = unavailable_phrase(absent)
     return commands
 
 

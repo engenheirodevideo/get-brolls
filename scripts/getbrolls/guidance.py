@@ -191,6 +191,9 @@ def _missing_beat_phrase(beat):
     """
     name = beat["id"]
     unavailable = list(beat.get("unavailable") or [])
+    if unavailable and beat.get("unavailable_note"):
+        # As fontes sem chave são as únicas que sobraram depois das buscas vazias.
+        return f'O beat "{name}" está parado por configuração. ' + beat["unavailable_note"]
     if unavailable:
         # Nada aqui é dúvida sobre o trecho: falta chave de API nesta máquina. Pedir
         # "a empresa, a data" mandaria a pessoa responder uma pergunta que não é a dela.
@@ -315,6 +318,33 @@ def _approve_action(state, pending=0):
     )
 
 
+def _approved_work(state, counts):
+    """Há item aprovado ainda a caminho de `entrega/` (permit, fetch, verify, deliver)?"""
+    approved = counts["approved"]
+    return bool(approved) and (
+        counts["permitted"] < approved
+        or counts["delivered"] < counts["permitted"]
+        or counts["verified"] < counts["delivered"]
+        or bool(state.get("undelivered"))
+    )
+
+
+def _exhausted_action(state, beat):
+    """Beat com todas as fontes e buscas vazias: pergunta para a pessoa, sem comando."""
+    from .brief import exhausted_phrase
+
+    sources = list(beat["exhausted"])
+    return _action(
+        "brief-exhausted",
+        f'O beat "{beat["id"]}" já foi buscado em todas as fontes permitidas '
+        f"({', '.join(sources)}) sem nenhum resultado.",
+        exhausted_phrase(beat["id"], sources, beat.get("queries") or []),
+        state,
+        blocking_human=True,
+        command=None,
+    )
+
+
 def _done_action(state, counts):
     """Fim de fluxo: o que sobrou sem decisão entra como aparte, nunca como tarefa."""
     aside = leftover_aside(leftovers(state, counts))
@@ -421,22 +451,10 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
             command=None,
         )
     # Beat com todas as fontes já vazias sai da fila de busca: sugerir de novo o mesmo
-    # comando é o laço que prendia o `status` num beat sem resultado.
+    # comando é o laço que prendia o `status` num beat sem resultado. A pergunta que
+    # ele vira só entra depois da cadeia dos aprovados (ver `_exhausted_action`).
     searchable = [entry for entry in missing if not entry.get("exhausted")]
-    if missing and not searchable:
-        first = missing[0]
-        from .brief import exhausted_phrase
-
-        sources = list(first["exhausted"])
-        return _action(
-            "brief-exhausted",
-            f'O beat "{first["id"]}" já foi buscado em todas as fontes permitidas '
-            f"({', '.join(sources)}) sem nenhum resultado.",
-            exhausted_phrase(first["id"], sources, first.get("query") or ""),
-            state,
-            blocking_human=True,
-            command=None,
-        )
+    exhausted = [entry for entry in missing if entry.get("exhausted")]
     if searchable:
         first = searchable[0]
         return _action(
@@ -446,6 +464,8 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
             state,
             command=first.get("search") or command_for("search", state["project"]),
         )
+    if exhausted and not _approved_work(state, counts):
+        return _exhausted_action(state, exhausted[0])
     if not counts["candidates"]:
         warning = f" Antes disso, resolva: {conflicts[0]}" if conflicts else ""
         return _action(
