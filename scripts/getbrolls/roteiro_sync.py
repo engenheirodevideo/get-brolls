@@ -45,6 +45,7 @@ def _empty_report():
 
 
 def _project_dir(project):
+    """Caminho absoluto do projeto."""
     return Path(project).expanduser().resolve()
 
 
@@ -59,6 +60,7 @@ def ensure_no_pending(project):
 
 
 def is_scene_beat(beat_id):
+    """True quando `beat_id` é um id de cena (`cNN` ou `cNN-a`/`cNN-b`), não um beat manual."""
     return isinstance(beat_id, str) and roteiro.SCENE_BEAT_RE.fullmatch(beat_id) is not None
 
 
@@ -277,23 +279,24 @@ def _commit(project, ctx, hits, new_text, new_data):
     return written
 
 
-def run(project, write=False, confirm=False, plugins=None):
-    """`plan` (write=False) ou `sync` (write=True); devolve o relatório do que muda."""
-    plugins = roteiro.enabled_plugins() if plugins is None else plugins
-    ctx = _prepare(project, write, plugins)
+def _base_report(ctx):
+    """Campos do relatório de `run` que valem tanto com recusa de id quanto sem ela."""
     ids = ctx["ids"]
-    base = {
+    return {
         **_empty_report(), "written": [], "reviewed": ctx["reviewed"], "refusal": ids["refusal"],
         "ids_to_assign": {str(line): i for line, i in ids["assign"].items()},
         "readopted": {str(line): i for line, i in ids["readopted"].items()},
     }  # fmt: skip
-    if ids["refusal"]:
-        if write:
-            raise ValueError(ids["refusal"])
+
+
+def _plan_report(project, ctx, plugins):
+    """(relatório, dados para gravar) do plano; o segundo vem None quando há recusa de id (nada para comparar)."""
+    base = _base_report(ctx)
+    if ctx["ids"]["refusal"]:
         # Recusado, o plano não comparou beats: None, nunca "zero beats" / "0 s".
-        return {**base, "beats": None, "total_s": None}
+        return {**base, "beats": None, "total_s": None}, None
     # `apply_ids` recebe o texto de `load_text` (sem BOM, `\n`); o doc reparseado já tem os ids novos.
-    new_text = roteiro_ids.apply_ids(ctx["text"], ids["assign"])
+    new_text = roteiro_ids.apply_ids(ctx["text"], ctx["ids"]["assign"])
     doc = roteiro.parse(new_text, plugins)
     plan = scene_plan(project, doc)
     problems = plan["problems"] + aspect_problems(doc.meta, ctx["rules"], ctx["brief_data"])
@@ -302,27 +305,48 @@ def run(project, write=False, confirm=False, plugins=None):
     validate_brief(new_data, ctx["rules"], project=project)
     items = ctx["ledger"].data["items"] if ctx["ledger"] else []
     hits = _gated(merge, items)
-    extra = {"stale": _stale(ctx["old_beats"], merge), "brand": _brand_flips(project, doc)}
-    warnings = _warnings(plan, merge, {c["shot"] for c in hits}, _with_material(merge, items), extra)
+    warnings = _warnings(
+        plan, merge, {c["shot"] for c in hits}, _with_material(merge, items),
+        {"stale": _stale(ctx["old_beats"], merge), "brand": _brand_flips(project, doc)},
+    )  # fmt: skip
     result = {
         **base, **merge, "problems": problems, "warnings": warnings,
         "affected_approvals": [{"candidate": c["id"], "beat": c["shot"]} for c in hits],
         "invalidated": [], "beats": _active(merged), "total_s": plan["total_s"],
     }  # fmt: skip
-    if not write:
-        return result
+    return result, {"new_text": new_text, "doc": doc, "hits": hits, "new_data": new_data}
+
+
+def _finish_write(project, ctx, result, write_ctx, confirm):
+    """Continuação do `sync` depois do plano: confere os portões e grava (manifesto, ROTEIRO.md, BRIEF.md, estado)."""
+    problems = result["problems"]
     if problems:
         raise ValueError("O roteiro ainda tem problema; o sync não grava nada:\n" + "\n".join(problems))
+    hits = write_ctx["hits"]
     if hits and not confirm:
         listed = ", ".join(f"{c['id']} ({c['shot']})" for c in hits)
         raise ValueError(
             f"O roteiro muda o alvo de beat com aprovação já dada: {listed}. Explique à pessoa que essas "
             "aprovações voltam a pendente; com o sim dela, repita com --confirm-target-change."
         )
-    written = _commit(project, ctx, hits, new_text, new_data)
-    new_state = roteiro_ids.next_state(ctx["state"], doc, ids["next_id"])
+    written = _commit(project, ctx, hits, write_ctx["new_text"], write_ctx["new_data"])
+    new_state = roteiro_ids.next_state(ctx["state"], write_ctx["doc"], ctx["ids"]["next_id"])
     # Sem o arquivo, o `status` acharia que o sync nunca rodou (roteiro sem cena nenhuma).
     if new_state != ctx["state"] or not roteiro_ids.state_path(project).is_file():
         roteiro_ids.write_state(project, new_state)
         written.append(f"brolls/{roteiro_ids.STATE_FILE}")
     return {**result, "written": written, "invalidated": [c["id"] for c in hits]}
+
+
+def run(project, write=False, confirm=False, plugins=None):
+    """`plan` (write=False) ou `sync` (write=True); devolve o relatório do que muda."""
+    plugins = roteiro.enabled_plugins() if plugins is None else plugins
+    ctx = _prepare(project, write, plugins)
+    result, write_ctx = _plan_report(project, ctx, plugins)
+    if write_ctx is None:
+        if write:
+            raise ValueError(result["refusal"])
+        return result
+    if not write:
+        return result
+    return _finish_write(project, ctx, result, write_ctx, confirm)
