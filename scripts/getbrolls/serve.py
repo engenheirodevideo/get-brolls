@@ -7,6 +7,12 @@ qualquer revisão local. Não cria a árvore do projeto nem toma a trava exclusi
 cedo com uma mensagem clara em vez de servir um diretório vazio.
 """
 
+# pylint: disable=missing-function-docstring,invalid-name,too-many-return-statements
+# pylint: disable=redefined-builtin,too-many-locals,consider-using-with
+# Legado: ocorrências pré-existentes (corpo idêntico à origin/main); `invalid-name`
+# e `redefined-builtin` vêm da API do `http.server` (`do_POST`, `log_message(...,
+# format, ...)`), que não muda.
+
 from __future__ import annotations
 
 import contextlib
@@ -176,7 +182,7 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         origin = self.headers.get("Origin")
         return not (origin and origin != f"http://{host}")
 
-    def do_POST(self):  # noqa: PLR0911 - existing size; one route per POST endpoint, one early return per refusal/response
+    def do_POST(self):  # noqa: PLR0911 - existing size; one early return per refusal/response
         if not self._local_request():
             self._refuse(403, "Pedido de outra origem; este servidor só atende esta máquina.")
             return
@@ -631,7 +637,9 @@ def _tail(output: str, lines: int = 20) -> str:
     return f"\n\nÚltimas linhas do log:\n{text}" if text else ""
 
 
-def start_background(project, port: int = DEFAULT_PORT):  # noqa: C901 - existing size; spawns, waits for and validates the detached server across platforms
+def start_background(  # noqa: C901 - existing size; spawns, waits for and validates the detached server
+    project, port: int = DEFAULT_PORT
+):
     """Sobe o servidor num processo solto e devolve as URLs quando ele já responde.
 
     Um subprocesso (nunca `fork`) mantém o mesmo comportamento no Windows: o filho
