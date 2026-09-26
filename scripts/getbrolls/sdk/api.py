@@ -442,7 +442,9 @@ class PluginApi:
         """Copia um arquivo de dentro de `permissions.paths` para a pasta de trabalho.
 
         O caminho é resolvido (links simbólicos seguidos) antes de conferir a raiz:
-        um link dentro da pasta apontando para fora é recusado. Depois, o arquivo é
+        um link dentro da pasta apontando para fora é recusado. No POSIX, a abertura
+        desce da raiz uma pasta por vez, sem seguir link: uma pasta do meio trocada por
+        link depois dessa conferência nunca leva a um arquivo de fora. O arquivo é
         aberto com `O_NOFOLLOW` (um link trocado ali entre a conferência e a abertura
         não é seguido) e `O_NONBLOCK` (uma FIFO não trava), conferido pelo próprio
         descritor (`fstat`: arquivo regular, dentro do teto) e copiado dele com teto
@@ -482,8 +484,8 @@ class PluginApi:
         try:
             # Sem exigir um nome só no disco (`single_link=False`): a rota sempre aceitou
             # hardlink dentro da raiz, e a cópia nunca mexe no original. `open_under`
-            # confere de novo, com o arquivo aberto, que o caminho segue dentro da raiz
-            # (uma pasta do meio trocada por link depois da conferência é recusada).
+            # abre descendo da raiz uma pasta por vez, sem seguir link (uma pasta do
+            # meio trocada por link depois da conferência é recusada).
             source_fd, info = safe_copy.open_under(source, roots, single_link=False)
         except safe_copy.UnsafeFileError as exc:
             if exc.reason == safe_copy.OUTSIDE:

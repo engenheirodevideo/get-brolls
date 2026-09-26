@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
+from test_sdk_safe_copy import swap_before_open
 
 from getbrolls import http
 from getbrolls.sdk import PluginError, ResolverHit, ResolverSpec, safe_copy, testing
@@ -228,14 +229,8 @@ class SwapTests(ResolverTestCase):
 
     @unittest.skipUnless(POSIX, "symlink exige privilégio no Windows")
     def test_folder_swapped_before_the_open_is_refused(self):
-        real_open = safe_copy.open_regular
-
-        def swapping_open(path, **kwargs):
-            self.swap_sub_for_a_link()
-            return real_open(path, **kwargs)
-
         self.returns(ResolverHit(self.root / "sub" / "eco.wav"))
-        with patch.object(safe_copy, "open_regular", swapping_open):
+        with swap_before_open(self.swap_sub_for_a_link):
             self.refused("fora de permissions.paths")
 
     @unittest.skipUnless(POSIX, "symlink exige privilégio no Windows")

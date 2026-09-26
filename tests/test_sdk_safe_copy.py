@@ -1,5 +1,6 @@
 """Abrir e copiar arquivo da pessoa pelo descritor, sem seguir link (`sdk.safe_copy`)."""
 
+import contextlib
 import os
 import shutil
 import tempfile
@@ -19,6 +20,39 @@ from getbrolls.sdk.registry import Registry
 from getbrolls.sdk.safe_copy import UnsafeFileError
 
 POSIX = os.name != "nt"
+BY_COMPONENT = safe_copy._BY_COMPONENT
+FD_DIR = Path("/dev/fd")
+
+
+@contextlib.contextmanager
+def swap_before_open(swap):
+    """Roda `swap` uma vez, logo antes da primeira abertura de `open_under`: a da raiz,
+    na descida por `dir_fd` (POSIX), ou a de `open_regular` onde ela não existe."""
+    done = []
+
+    def once():
+        if not done:
+            done.append(True)
+            swap()
+
+    if BY_COMPONENT:
+        real_open_at = safe_copy._open_at
+
+        def opening_at(name, flags, dir_fd=None):
+            once()
+            return real_open_at(name, flags, dir_fd)
+
+        with patch.object(safe_copy, "_open_at", opening_at):
+            yield
+    else:
+        real_open_regular = safe_copy.open_regular
+
+        def opening_regular(path, **kwargs):
+            once()
+            return real_open_regular(path, **kwargs)
+
+        with patch.object(safe_copy, "open_regular", opening_regular):
+            yield
 
 
 class SafeCopyTestCase(unittest.TestCase):
@@ -164,33 +198,222 @@ class RootTests(SafeCopyTestCase):
         self.refused(safe_copy.OUTSIDE, safe_copy.still_under, self.inner, [self.root], fd)
 
 
-class LocalFileSwapTests(LoaderTestCase):
-    @unittest.skipUnless(POSIX, "symlink exige privilégio no Windows")
-    def test_folder_swapped_before_the_open_is_refused(self):
-        base = Path(tempfile.mkdtemp(prefix="gb-swap-")).resolve()
-        self.addCleanup(shutil.rmtree, base, ignore_errors=True)
-        root, outside, work = base / "acervo", base / "fora", base / "work"
-        for folder in (root / "sub", outside / "sub", work):
-            folder.mkdir(parents=True)
-        (root / "sub" / "praia.mp4").write_bytes(b"de dentro")
-        (outside / "sub" / "praia.mp4").write_bytes(b"de fora")
-        manifest = {**MANIFEST, "permissions": {**MANIFEST["permissions"], "paths": [str(root)]}}
-        api = PluginApi(read_manifest(self.install(manifest)), Registry())
+class DescentTestCase(SafeCopyTestCase):
+    """Raiz com `sub/eco.wav` dentro e uma `sub/eco.wav` de fora, para trocar a pasta do meio."""
+
+    def setUp(self):
+        super().setUp()
+        self.base = self.base.resolve()
+        self.root = self.base / "acervo"
+        (self.root / "sub").mkdir(parents=True)
+        self.inner = self.root / "sub" / "eco.wav"
+        self.inner.write_bytes(b"eco")
+        self.outside = self.base / "fora"
+        (self.outside / "sub").mkdir(parents=True)
+        (self.outside / "sub" / "eco.wav").write_bytes(b"de fora")
+
+    def swap_to_link(self):
+        """A pasta `sub` da raiz vira um link para a `sub` de fora."""
+        (self.root / "sub").rename(self.base / "sub-original")
+        (self.root / "sub").symlink_to(self.outside / "sub")
+
+    def swap_back(self):
+        (self.root / "sub").unlink()
+        (self.base / "sub-original").rename(self.root / "sub")
+
+
+class DescentTests(DescentTestCase):
+    """`open_under` no POSIX: desce da raiz uma pasta por vez, sem seguir link."""
+
+    @unittest.skipUnless(BY_COMPONENT, "a descida por dir_fd é do POSIX")
+    def test_triple_swap_between_component_opens_is_refused(self):
+        real_open = safe_copy._open_at
+        opened = []
+
+        def swapping_open(name, flags, dir_fd=None):
+            opened.append(str(name))
+            if name == "sub":
+                self.swap_to_link()  # 1: a pasta do meio vira link logo antes de abrir
+                try:
+                    return real_open(name, flags, dir_fd)
+                finally:
+                    self.swap_back()  # 2: volta a ser pasta antes de qualquer conferência
+                    self.swap_to_link()  # 3: e vira link de novo antes do arquivo
+            return real_open(name, flags, dir_fd)
+
+        with patch.object(safe_copy, "_open_at", swapping_open):
+            self.refused(safe_copy.OUTSIDE, safe_copy.open_under, self.inner, [self.root])
+        self.assertIn("sub", opened)
+        self.assertNotIn("eco.wav", opened)
+
+    @unittest.skipUnless(BY_COMPONENT, "a descida por dir_fd é do POSIX")
+    def test_a_folder_swapped_after_it_was_opened_never_leads_outside(self):
+        real_open = safe_copy._open_at
+
+        def swapping_open(name, flags, dir_fd=None):
+            if name == "eco.wav":
+                self.swap_to_link()  # a pasta aberta já está presa pelo descritor
+            return real_open(name, flags, dir_fd)
+
+        with patch.object(safe_copy, "_open_at", swapping_open):
+            fd, _ = safe_copy.open_under(self.inner, [self.root])
+        self.addCleanup(os.close, fd)
+        self.assertEqual(b"eco", os.read(fd, 100))
+
+    @unittest.skipUnless(BY_COMPONENT, "a descida por dir_fd é do POSIX")
+    def test_a_root_replaced_before_it_is_opened_is_refused(self):
+        real_open = safe_copy._open_at
+
+        def other_root(name, flags, dir_fd=None):
+            if dir_fd is None:
+                return real_open(self.outside, flags)
+            return real_open(name, flags, dir_fd)
+
+        with patch.object(safe_copy, "_open_at", other_root):
+            self.refused(safe_copy.CHANGED, safe_copy.open_under, self.inner, [self.root])
+
+    def test_the_legacy_check_still_refuses_a_single_swap(self):
         real_open = safe_copy.open_regular
 
         def swapping_open(path, **kwargs):
-            (root / "sub").rename(base / "sub-original")
-            (root / "sub").symlink_to(outside / "sub")
+            self.swap_to_link()
             return real_open(path, **kwargs)
 
+        if not POSIX:
+            self.skipTest("symlink exige privilégio no Windows")
         with (
-            route_scope("demo", work),
+            patch.object(safe_copy, "_BY_COMPONENT", False),
             patch.object(safe_copy, "open_regular", swapping_open),
-            self.assertRaises(ProviderError) as caught,
         ):
-            api.local_file(root / "sub" / "praia.mp4")
+            self.refused(safe_copy.OUTSIDE, safe_copy.open_under, self.inner, [self.root])
+
+
+@unittest.skipUnless(BY_COMPONENT and FD_DIR.is_dir(), "conta descritores por /dev/fd, na descida do POSIX")
+class DescriptorLeakTests(DescentTestCase):
+    """Nenhum ramo de `open_under` deixa descritor aberto (fora o que ele devolve)."""
+
+    def open_fds(self):
+        return len(list(FD_DIR.iterdir()))
+
+    def assert_no_leak(self, run):
+        before = self.open_fds()
+        try:
+            fd, _ = run()
+        except safe_copy.UnsafeFileError:
+            pass
+        else:
+            os.close(fd)
+        self.assertEqual(before, self.open_fds())
+
+    def test_every_refusal_and_the_success_close_what_they_opened(self):
+        (self.root / "sub" / "pasta.wav").mkdir()
+        (self.root / "sub" / "atalho.wav").symlink_to(self.inner)
+        os.link(self.root / "sub" / "eco.wav", self.root / "outro-nome.wav")
+        cases = {
+            "success": (self.inner, {"single_link": False}),
+            "linked": (self.inner, {}),
+            "outside": (self.outside / "sub" / "eco.wav", {}),
+            "missing_file": (self.root / "sub" / "nada.wav", {}),
+            "missing_folder": (self.root / "nada" / "eco.wav", {}),
+            "final_link": (self.root / "sub" / "atalho.wav", {}),
+            "not_regular": (self.root / "sub" / "pasta.wav", {}),
+        }
+        for label, (path, kwargs) in cases.items():
+            with self.subTest(label):
+                self.assert_no_leak(lambda path=path, kwargs=kwargs: safe_copy.open_under(path, [self.root], **kwargs))
+
+    @staticmethod
+    def failing_at(call):
+        """`_open_at` que recusa a `call`-ésima abertura (1 = raiz, 2 = `sub`, 3 = arquivo)."""
+        real_open = safe_copy._open_at
+        calls = []
+
+        def flaky_open(name, flags, dir_fd=None):
+            calls.append(name)
+            if len(calls) == call:
+                raise PermissionError("negado")
+            return real_open(name, flags, dir_fd)
+
+        return flaky_open
+
+    def test_a_failure_at_any_open_closes_the_folders_already_open(self):
+        for call in (1, 2, 3):
+            with self.subTest(call=call), patch.object(safe_copy, "_open_at", self.failing_at(call)):
+                self.assert_no_leak(lambda: safe_copy.open_under(self.inner, [self.root]))
+
+    def test_swaps_and_a_replaced_root_close_what_they_opened(self):
+        real_open = safe_copy._open_at
+
+        def swapping_open(name, flags, dir_fd=None):
+            if name == "sub":
+                self.swap_to_link()
+            return real_open(name, flags, dir_fd)
+
+        def other_root(name, flags, dir_fd=None):
+            return real_open(self.outside if dir_fd is None else name, flags, dir_fd)
+
+        with patch.object(safe_copy, "_open_at", swapping_open):
+            self.assert_no_leak(lambda: safe_copy.open_under(self.inner, [self.root]))
+        self.swap_back()
+        with patch.object(safe_copy, "_open_at", other_root):
+            self.assert_no_leak(lambda: safe_copy.open_under(self.inner, [self.root]))
+
+    def test_a_check_that_raises_after_the_open_closes_the_file(self):
+        with patch.object(safe_copy, "_check_fd", side_effect=RuntimeError("falhou")):
+            before = self.open_fds()
+            with self.assertRaises(RuntimeError):
+                safe_copy.open_under(self.inner, [self.root])
+            self.assertEqual(before, self.open_fds())
+
+
+class LocalFileSwapTests(LoaderTestCase):
+    def setUp(self):
+        super().setUp()
+        self.base = Path(tempfile.mkdtemp(prefix="gb-swap-")).resolve()
+        self.addCleanup(shutil.rmtree, self.base, ignore_errors=True)
+        self.root, self.outside, self.work = self.base / "acervo", self.base / "fora", self.base / "work"
+        for folder in (self.root / "sub", self.outside / "sub", self.work):
+            folder.mkdir(parents=True)
+        (self.root / "sub" / "praia.mp4").write_bytes(b"de dentro")
+        (self.outside / "sub" / "praia.mp4").write_bytes(b"de fora")
+        manifest = {**MANIFEST, "permissions": {**MANIFEST["permissions"], "paths": [str(self.root)]}}
+        self.api = PluginApi(read_manifest(self.install(manifest)), Registry())
+
+    def swap_to_link(self):
+        (self.root / "sub").rename(self.base / "sub-original")
+        (self.root / "sub").symlink_to(self.outside / "sub")
+
+    def swap_back(self):
+        (self.root / "sub").unlink()
+        (self.base / "sub-original").rename(self.root / "sub")
+
+    def assert_refused_outside(self):
+        with route_scope("demo", self.work), self.assertRaises(ProviderError) as caught:
+            self.api.local_file(self.root / "sub" / "praia.mp4")
         self.assertIn("praia.mp4 está fora de permissions.paths", str(caught.exception))
-        self.assertEqual([], list(work.iterdir()))
+        self.assertEqual([], list(self.work.iterdir()))
+
+    @unittest.skipUnless(POSIX, "symlink exige privilégio no Windows")
+    def test_folder_swapped_before_the_open_is_refused(self):
+        with swap_before_open(self.swap_to_link):
+            self.assert_refused_outside()
+
+    @unittest.skipUnless(BY_COMPONENT, "a descida por dir_fd é do POSIX")
+    def test_triple_swap_during_the_open_is_refused(self):
+        real_open = safe_copy._open_at
+
+        def swapping_open(name, flags, dir_fd=None):
+            if name != "sub":
+                return real_open(name, flags, dir_fd)
+            self.swap_to_link()  # 1: a pasta do meio vira link logo antes de abrir
+            try:
+                return real_open(name, flags, dir_fd)
+            finally:
+                self.swap_back()  # 2: volta a ser pasta para qualquer conferência depois
+                self.swap_to_link()  # 3: e vira link de novo antes do arquivo
+
+        with patch.object(safe_copy, "_open_at", swapping_open):
+            self.assert_refused_outside()
 
 
 if __name__ == "__main__":
