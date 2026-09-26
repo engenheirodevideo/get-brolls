@@ -1,3 +1,7 @@
+# pylint: disable=missing-module-docstring,missing-function-docstring
+# Legado: ocorrências pré-existentes em `now`, `candidate`, `signature` e
+# `id_stem` (corpo idêntico à origin/main); módulo já não tinha docstring.
+
 import hashlib
 import json
 import math
@@ -6,6 +10,11 @@ from datetime import UTC, datetime
 
 def now():
     return datetime.now(UTC).isoformat()
+
+
+def pending_approval():
+    """Devolve o bloco `approval` zerado, à espera de decisão humana."""
+    return {"status": "pending", "by": None, "at": None, "revision": None}
 
 
 def candidate(provider, source_id, title, source_url=None):
@@ -98,6 +107,7 @@ def invalidate_approval(c, bump_revision=False):
 
 
 def set_segment(c, start, end):
+    """Grava o intervalo escolhido no candidato, invalidando a aprovação se ele mudou."""
     if not all(math.isfinite(x) for x in (start, end)) or start < 0 or end <= start:
         raise ValueError("Intervalo inválido: use segundos finitos, 0 <= início < fim.")
     duration = c["media"].get("duration_s")
@@ -146,6 +156,7 @@ def approve(c, by, channel="storyboard", statement=None):
 
 
 def require_fetch(c):
+    """Recusa `fetch` sem aprovação humana válida ou sem condições de uso registradas."""
     if c["approval"]["status"] != "approved" or c["approval"].get("signature") != signature(c):
         raise ValueError("Aprovação humana ausente ou inválida para esta fonte e intervalo.")
     if c["rights"]["status"] != "permitted" or not c["rights"]["evidence"]:
