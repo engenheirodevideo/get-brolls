@@ -430,6 +430,11 @@ class LayerTests(ExportPlanTestCase):
                 sources[music["media_id"]]["st_ino"],
             ),
         )
+        # A cópia reabre o acerto nas raízes deste resolvedor, não nas de outro do mesmo plugin.
+        self.assertEqual(
+            ("hyperframes", "hyperframes_media"),
+            (sources[music["media_id"]]["store"], sources[music["media_id"]]["resolver"]),
+        )
         self.assertIsNone(scenes["c05"]["layers"][0]["media_id"])
         self.assertIn("c05: Plugin hyperframes: sfx pop não achado", plan["warnings"])
         self.assertIn('c05: SFX "pop" pendente (não achei em sfx)', plan["warnings"])

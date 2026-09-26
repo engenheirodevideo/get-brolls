@@ -26,7 +26,7 @@ from test_roteiro_sync import SyncCase
 from getbrolls import __version__, export, export_folder, models
 from getbrolls.ledger import Ledger
 from getbrolls.runtime import project_lock
-from getbrolls.sdk.exporters import MINIMAL_PLAN, run_exporter
+from getbrolls.sdk.exporters import MINIMAL_PLAN, ValidatedExport, run_exporter
 from getbrolls.sdk.jsonschema import errors
 from getbrolls.sdk.registry import get_registry, reset_registry
 
@@ -62,13 +62,13 @@ def register(api):
     api.exporter("demo_export", export, "Exporter de teste")
     api.resolver("demo_export_media", resolve, ["sfx", "musica"])
 """
-# Exporter que escreve um caminho local num arquivo: o core recusa antes de gravar.
-LEAKY_CODE = """
+# Exporter que copia a fala do roteiro para o arquivo, como todo exporter de verdade faz.
+SPEECH_CODE = """
 from getbrolls.sdk import ExportResult
 
 
 def export(plan, options):
-    return ExportResult(files={{"index.html": "<video src='/tmp/gb/aroll/c01.mp4'></video>\\n"}})
+    return ExportResult(files={{"index.html": "\\n".join(s["speech_clean"] for s in plan["scenes"]) + "\\n"}})
 
 
 def resolve(kind, name):
@@ -323,17 +323,27 @@ class ExportRefusalTests(ExportCase):
         self.assertNotIn("traceback", out)
         self.assertFalse((self.project / "exports").exists())
 
+    def test_dry_run_with_forced_copies_predicts_copy_for_clips(self):
+        self.install()
+        out = run_cli("export", "--to", "demo_export", "--dry-run", project=self.project, env={"GB_DELIVERY_COPY": "1"})
+        clip_dest = f"assets/clip-{self.clip_id.replace(':', '-')}.mp4"
+        self.assertEqual("copy", {m["dest"]: m["method"] for m in out["media"]}[clip_dest])
+
     def test_bad_exporter_name_is_refused_before_loading_plugins(self):
         out = run_cli("export", "--to", "../x", project=self.project, expect=2)
         self.assertIn("--to espera o nome de um exporter", out["message"])
 
-    def test_files_with_a_local_path_are_refused_and_nothing_is_written(self):
-        self.install(code=LEAKY_CODE)
-        out = self.export(expect=2)
-        self.assertIn("caminho local", out["message"])
-        self.assertIn("index.html", out["message"])
-        self.assertNotIn("/tmp/gb", out["message"])
-        self.assertFalse((self.project / "exports").exists())
+    def test_path_like_speech_exports_with_one_warning(self):
+        self.install(code=SPEECH_CODE)
+        self.edit("Todo mundo trava.", "Todo mundo trava. Salve em ~/Movies/aula.")
+        self.review()
+        self.sync()
+        out = self.export()
+        self.assertIn("~/Movies/aula.", (self.folder("001") / "index.html").read_text(encoding="utf-8"))
+        flagged = [w for w in out["warnings"] if "cara de caminho" in w]
+        self.assertEqual(1, len(flagged), out["warnings"])
+        self.assertIn("index.html", flagged[0])
+        self.assertNotIn("Plugin demo_export", flagged[0])
 
     def test_paths_equal_but_for_case_are_a_clear_refusal(self):
         self.install(code=CASE_CODE)
@@ -394,7 +404,7 @@ class ExportWriteGuardTests(ExportCase):
         registry = get_registry()
         row = {
             "path": str(track), "st_dev": info.st_dev, "st_ino": info.st_ino, "st_mtime_ns": None,
-            "st_size": info.st_size + 1, "method": "plugin", "store": "demo_export",
+            "st_size": info.st_size + 1, "method": "plugin", "store": "demo_export", "resolver": "demo_export_media",
         }  # fmt: skip
         with self.assertRaises(ValueError) as caught:
             export.copy_plugin(registry, row, dest)
@@ -403,6 +413,82 @@ class ExportWriteGuardTests(ExportCase):
         self.assertFalse(dest.exists())
         export.copy_plugin(registry, {**row, "st_size": info.st_size}, dest)
         self.assertEqual(track.read_bytes(), dest.read_bytes())
+        umask = os.umask(0)
+        os.umask(umask)
+        self.assertEqual(0o644 & ~umask, dest.stat().st_mode & 0o777)
+
+    def plugin_row(self, path):
+        info = path.lstat()
+        return {
+            "path": str(path), "st_dev": info.st_dev, "st_ino": info.st_ino, "st_mtime_ns": None,
+            "st_size": info.st_size, "method": "plugin", "store": "demo_export", "resolver": "demo_export_media",
+        }  # fmt: skip
+
+    def test_plugin_copy_refuses_a_hit_with_a_second_name_on_disk(self):
+        self.install()
+        track = self.media_dir / "lofi.mp3"
+        track.write_bytes(b"ID3" + b"\x00" * 64)
+        os.link(track, self.media_dir / "outro-nome.mp3")
+        dest = self.project / "copia.mp3"
+        with self.assertRaises(ValueError) as caught:
+            export.copy_plugin(get_registry(), self.plugin_row(track), dest)
+        self.assertIn("lofi.mp3 tem mais de um nome no disco (hardlink)", str(caught.exception))
+        self.assertFalse(dest.exists())
+
+    def test_plugin_copy_refuses_a_hit_swapped_for_a_link(self):
+        self.install()
+        track = self.media_dir / "lofi.mp3"
+        track.write_bytes(b"ID3" + b"\x00" * 64)
+        row = self.plugin_row(track)
+        other = self.media_dir / "outro.mp3"
+        other.write_bytes(b"ID3" + b"\x01" * 64)
+        track.unlink()
+        track.symlink_to(other)
+        dest = self.project / "copia.mp3"
+        with self.assertRaises(ValueError) as caught:
+            export.copy_plugin(get_registry(), row, dest)
+        self.assertIn("lofi.mp3 mudou durante o export", str(caught.exception))
+        self.assertNotIn(str(self.media_dir), str(caught.exception))
+        self.assertFalse(dest.exists())
+
+    def validated(self, files=None, notes=()):
+        return ValidatedExport(files or {"index.html": "<p>ok</p>\n"}, (), tuple(notes))
+
+    def test_real_machine_paths_in_files_are_refused(self):
+        self.install()
+        voice = self.project / "aroll" / "c01.mp4"
+        machine = {
+            "projeto": str(self.project.resolve()),
+            "projeto sem resolver": str(self.project),
+            "pasta pessoal": str(Path.home()) + "/Movies",
+            "GB_HOME": str(self.home),
+            "permissions.paths": str(self.media_dir),
+            "fonte": str(voice.resolve()),
+        }
+        for label, text in machine.items():
+            with self.subTest(label):
+                files = {"index.html": f"<video src='{text}/x.mp4'></video>\n"}
+                with (
+                    mock.patch.object(export, "run_exporter", return_value=self.validated(files)),
+                    self.assertRaises(ValueError) as caught,
+                ):
+                    export.run(self.args())
+                message = str(caught.exception)
+                self.assertIn("caminho desta máquina", message)
+                self.assertIn("index.html", message)
+                self.assertNotIn(text, message)
+                self.assertFalse((self.project / "exports").exists())
+
+    def test_notes_never_show_a_machine_path(self):
+        self.install()
+        note = f"Abra {self.project.resolve()}/exports e {self.home}/plugins"
+        with mock.patch.object(export, "run_exporter", return_value=self.validated(notes=[note])):
+            out = export.run(self.args(dry_run=True))
+        # Sem os escapes de Markdown do `note_line` (`_` vira `\_`), que esconderiam o caminho.
+        shown = " ".join(out["notes"]).replace("\\", "")
+        for text in (str(self.project.resolve()), str(self.project), str(self.home)):
+            self.assertNotIn(text, shown)
+        self.assertIn("Nota do plugin demo_export:", shown)
 
     def test_plugin_copy_refuses_a_file_outside_the_plugin_paths(self):
         self.install()
@@ -412,12 +498,47 @@ class ExportWriteGuardTests(ExportCase):
         dest = self.project / "copia.mp3"
         row = {
             "path": str(outside), "st_dev": info.st_dev, "st_ino": info.st_ino, "st_mtime_ns": None,
-            "st_size": info.st_size, "method": "plugin", "store": "demo_export",
+            "st_size": info.st_size, "method": "plugin", "store": "demo_export", "resolver": "demo_export_media",
         }  # fmt: skip
         with self.assertRaises(ValueError) as caught:
             export.copy_plugin(get_registry(), row, dest)
         self.assertIn("fora de permissions.paths do plugin demo_export", str(caught.exception))
         self.assertFalse(dest.exists())
+
+
+class ExportTextTests(unittest.TestCase):
+    """Texto que o export mostra: resumo e erro do sistema."""
+
+    def test_summary_says_up_to_when_a_clone_ran_and_exact_otherwise(self):
+        cloned = {"number": "001", "media": [{"method": "clone"}], "copied_bytes": 2_500_000}
+        linked = {"number": "001", "media": [{"method": "hardlink"}, {"method": "copy"}], "copied_bytes": 1_000_000}
+        self.assertIn("(até 2,5 MB copiados)", export._summary("exports/x/001", {"index.html": ""}, cloned))
+        self.assertIn("(1,0 MB copiados de fato)", export._summary("exports/x/001", {"index.html": ""}, linked))
+
+    def test_summary_points_at_export_md_only_when_it_was_written(self):
+        written = {"number": "001", "media": [], "copied_bytes": 0}
+        self.assertNotIn("EXPORT.md", export._summary("exports/x/001", {"index.html": ""}, written))
+        self.assertIn("Abra exports/x/001/EXPORT.md.", export._summary("exports/x/001", {"EXPORT.md": ""}, written))
+
+    def test_os_errors_are_pt_br_without_errno_type_or_absolute_path(self):
+        project = Path(tempfile.mkdtemp(prefix="gb-export-oserr-")).resolve()
+        self.addCleanup(shutil.rmtree, project, ignore_errors=True)
+        inside = str(project / "exports" / "x" / "001")
+        cases = (
+            (FileExistsError(errno.EEXIST, "File exists", inside), "já existe"),
+            (FileNotFoundError(errno.ENOENT, "No such file or directory", inside), "não existe"),
+            (NotADirectoryError(errno.ENOTDIR, "Not a directory", inside), "não é uma pasta"),
+            (OSError(errno.EIO, "Input/output error", inside), "erro do sistema: Input/output error"),
+            (OSError("sem detalhe"), "erro do sistema"),
+        )
+        for exc, fragment in cases:
+            with self.subTest(fragment):
+                message = str(export._os_error(exc, project))
+                self.assertIn(fragment, message)
+                self.assertNotIn(str(project), message)
+                self.assertNotIn("Errno", message)
+                self.assertNotIn("(OSError)", message)
+                self.assertIsNone(re.search(r"\((?:File exists|No such file or directory|Not a directory)\)", message))
 
 
 class MinimalPlanTests(unittest.TestCase):

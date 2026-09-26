@@ -331,7 +331,7 @@ class _Collector:
             )  # fmt: skip
             self.sources[media_id] = {
                 "path": hit["path"], "st_dev": hit["st_dev"], "st_ino": hit["st_ino"], "st_mtime_ns": None,
-                "st_size": hit["st_size"], "method": "plugin", "store": store,
+                "st_size": hit["st_size"], "method": "plugin", "store": store, "resolver": hit["resolver"],
             }  # fmt: skip
         return media_id
 

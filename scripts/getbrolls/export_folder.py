@@ -360,7 +360,9 @@ def _write_latest(root, number):
 
 
 def write_export(root, number, content, marker_base, place):
-    """Grava um export novo e devolve `{"number", "media", "copied_bytes", "warnings"}`.
+    """Grava um export novo e devolve `{"number", "media", "copied_bytes", "warnings", "latest"}`.
+
+    `latest` diz se `LATEST` passou a apontar para ele (falha ali é só aviso).
 
     `content` = `{"files": {relpath: texto}, "placements": [(media_id, dest, fonte)]}`;
     `place(fonte, destino_absoluto) -> (método, bytes copiados)` põe cada mídia.
@@ -400,5 +402,9 @@ def write_export(root, number, content, marker_base, place):
             # Se nem isso der, o staging fica com o marcador e o próximo export real o varre.
             with contextlib.suppress(OSError):
                 remove_staging(staging, sources_by_rel)
-    warnings += moved + _write_latest(root, number)
-    return {"number": folder_name(number), "media": placed, "copied_bytes": copied, "warnings": warnings}
+    latest = _write_latest(root, number)
+    warnings += moved + latest
+    return {
+        "number": folder_name(number), "media": placed, "copied_bytes": copied, "warnings": warnings,
+        "latest": not latest,
+    }  # fmt: skip

@@ -71,6 +71,7 @@ class NumberingTests(FolderTestCase):
         result = self.export()
         folder = self.project / "exports" / "hyperframes" / "001"
         self.assertEqual("001", result["number"])
+        self.assertTrue(result["latest"])
         self.assertEqual("001\n", (folder.parent / "LATEST").read_text(encoding="utf-8"))
         self.assertEqual("<html></html>\n", (folder / "index.html").read_text(encoding="utf-8"))
         marker = json.loads((folder / export_folder.MARKER).read_text(encoding="utf-8"))
@@ -452,6 +453,7 @@ class LatestAndMarkerTests(FolderTestCase):
             result = self.export()
         root = self.root()
         self.assertEqual("001", result["number"])
+        self.assertFalse(result["latest"])
         self.assertTrue((root / "001" / "index.html").is_file())
         warning = next(w for w in result["warnings"] if "LATEST" in w)
         self.assertTrue(warning.endswith(": não mexi nele"), warning)
@@ -471,6 +473,7 @@ class LatestAndMarkerTests(FolderTestCase):
             self.skipTest("este sistema não cria symlink")
         result = self.export()
         self.assertEqual("002", result["number"])
+        self.assertFalse(result["latest"])
         self.assertIn("exports/hyperframes/LATEST não é um arquivo: não mexi nele", result["warnings"])
         self.assertTrue(latest.is_symlink())
         self.assertEqual("001\n", target.read_text(encoding="utf-8"))
