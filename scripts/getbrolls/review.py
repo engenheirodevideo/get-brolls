@@ -1,5 +1,9 @@
 """Storyboard review exchange. Human decisions never grant media usage rights."""
 
+# pylint: disable=missing-function-docstring,too-many-locals,broad-exception-caught
+# pylint: disable=too-many-branches,too-many-statements
+# Legado: ocorrências pré-existentes (corpo idêntico à origin/main).
+
 import copy
 import hashlib
 import json
@@ -8,7 +12,7 @@ import re
 from pathlib import Path
 
 from . import logs
-from .models import approve, empty_output, now, signature
+from .models import approve, empty_output, now, pending_approval, signature
 
 _log = logs.get(__name__.rsplit(".", 1)[-1])
 
@@ -119,7 +123,9 @@ def _import_review_result(review_state):
     return "pending"
 
 
-def import_review(ledger, file, by, rules=None):  # noqa: C901, PLR0912, PLR0915 - existing size; validates the saved decision file then applies it item by item
+def import_review(  # noqa: C901, PLR0912, PLR0915 - existing size; validates the saved decision file item by item
+    ledger, file, by, rules=None
+):
     if not by.strip():
         raise ValueError('Diga quem revisou: acrescente --by "seu nome" ao comando.')
     file_source = "explicit" if file is not None else "latest"
@@ -276,12 +282,7 @@ def import_review(ledger, file, by, rules=None):  # noqa: C901, PLR0912, PLR0915
             # stop counting as delivered/verified once rejected here too.
             c["output"] = empty_output()
         else:
-            c["approval"] = {
-                "status": "pending",
-                "by": None,
-                "at": None,
-                "revision": None,
-            }
+            c["approval"] = pending_approval()
             c["state"] = "awaiting_approval"
         item_log.append((c["id"], state))
         changes.append(c)
