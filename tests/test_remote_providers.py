@@ -6,10 +6,12 @@ import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
-from typing import Any, cast
+
+# Any só aparece citado em cast("Any", ...); o pyright resolve a string, o pylint não.
+from typing import Any, cast  # pylint: disable=unused-import
 from unittest.mock import MagicMock, patch
 
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import http, providers
 

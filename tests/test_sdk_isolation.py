@@ -14,7 +14,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
@@ -338,7 +338,8 @@ class TrialLoadIsolationTests(LoaderTestCase):
     def test_contract_check_that_runs_plugin_code_is_isolated(self):
         code = BASE_CODE.replace(
             "    def search(self, query, limit, media):\n",
-            "    @property\n    def search(self):\n        raise SystemExit(0)\n\n    def _old(self, query, limit, media):\n",
+            "    @property\n    def search(self):\n        raise SystemExit(0)\n\n"
+            "    def _old(self, query, limit, media):\n",
         )
         with self.assertRaises(ValueError) as caught:
             loader.trial_load(self.folder(code))

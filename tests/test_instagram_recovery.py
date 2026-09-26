@@ -8,7 +8,7 @@ from typing import Any
 from unittest.mock import patch
 
 from _media import synth_audio
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import instagram_pairs as ig
 

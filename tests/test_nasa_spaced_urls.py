@@ -17,9 +17,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import synth_video
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import cli, http, providers
 
@@ -80,7 +80,8 @@ class _Response(io.BytesIO):
 class NasaSpacedUrlFlow(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls._tmp = tempfile.TemporaryDirectory()
+        # Ciclo de vida cobre o teste (ou a classe) inteiro; a limpeza já é feita via addCleanup/tearDownClass.
+        cls._tmp = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
         source = Path(cls._tmp.name) / "fixture.mp4"
         synth_video(source, size="320x180", duration=6, rate=10)
         cls.media_bytes = source.read_bytes()

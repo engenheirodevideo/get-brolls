@@ -7,7 +7,7 @@ import os
 import shutil
 import unittest
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import skip_unless_ffmpeg
 from test_sdk_route_fetch import FetchRouteCase
 

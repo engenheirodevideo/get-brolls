@@ -12,7 +12,7 @@ from html.parser import HTMLParser
 from pathlib import PurePosixPath
 from unittest import mock
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT
 
 from getbrolls.sdk import ExportResult, MediaRequest
@@ -27,7 +27,8 @@ def load_plugin():
     module = types.ModuleType("getbrolls_example_hyperframes")
     module.__file__ = str(PLUGIN)
     code = compile(PLUGIN.read_bytes(), str(PLUGIN), "exec", dont_inherit=True)
-    exec(code, module.__dict__)  # noqa: S102 - runs the repository's own example plugin, the same way the loader does
+    # Roda o exemplo do próprio repositório, do jeito que o loader real faz.
+    exec(code, module.__dict__)  # noqa: S102  # pylint: disable=exec-used
     return module
 
 
@@ -270,8 +271,9 @@ class MediaTests(unittest.TestCase):
 
     def test_export_returns_sdk_types(self):
         result = hf.export(fixture(), {"args": {}})
-        self.assertIs(type(result), ExportResult)
-        self.assertTrue(all(type(m) is MediaRequest for m in result.media))
+        # type(x) is, de propósito: contrato do SDK é o tipo exato, não uma subclasse.
+        self.assertIs(type(result), ExportResult)  # pylint: disable=unidiomatic-typecheck
+        self.assertTrue(all(type(m) is MediaRequest for m in result.media))  # pylint: disable=unidiomatic-typecheck
         self.assertEqual(generate()["files"], result.files)
 
 
@@ -681,7 +683,8 @@ class PendingTests(unittest.TestCase):
         plan = fixture()
         plan["warnings"] = []
         self.assertIn(
-            "c08: MARCA pendente — ponha o arquivo em assets/marca/logo.\\<png\\|svg\\|webp\\|jpg\\|jpeg\\|mp4\\|mov\\>",
+            "c08: MARCA pendente — ponha o arquivo em assets/marca/logo."
+            "\\<png\\|svg\\|webp\\|jpg\\|jpeg\\|mp4\\|mov\\>",
             self.pending(plan),
         )
         self.assertNotIn("c05: MARCA", self.pending(plan))

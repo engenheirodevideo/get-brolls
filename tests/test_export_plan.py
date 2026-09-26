@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import skip_unless_ffmpeg, synth_video
 from _paths import ROOT
 from _schemas import strict
@@ -614,7 +614,10 @@ class LongNameTests(ExportPlanTestCase):
         project = Project(self.root)
         project.write(f"assets/marca/{self.CJK}.png")
         project.write(f"assets/sfx/{self.GREEK}.wav")
-        text = f'---\ntype: roteiro\ngenero: reels\ntema: "x"\n---\n\n## Marca <!-- c01 -->\n[FULL: {self.CJK}]\n[SFX: {self.GREEK}]\n'
+        text = (
+            f'---\ntype: roteiro\ngenero: reels\ntema: "x"\n---\n\n'
+            f"## Marca <!-- c01 -->\n[FULL: {self.CJK}]\n[SFX: {self.GREEK}]\n"
+        )
         plan = project.plan(text)
         with mock.patch.object(export_plan, "probe_voice", fake_probe):
             result, sources = export_plan.build(self.root, plan, [], "exports/hyperframes/001")

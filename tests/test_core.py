@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls.media import cut, preview, probe
 from getbrolls.models import approve, candidate, require_fetch, set_segment

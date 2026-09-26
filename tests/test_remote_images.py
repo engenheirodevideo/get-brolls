@@ -21,9 +21,9 @@ from typing import ClassVar
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import skip_unless_ffmpeg, synth_image
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import cli, http, providers
 from getbrolls.commands import _flow_state
@@ -126,7 +126,8 @@ def opener_for(files):
 class RemoteImageFlowBase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls._tmp = tempfile.TemporaryDirectory()
+        # Ciclo de vida cobre o teste (ou a classe) inteiro; a limpeza já é feita via addCleanup/tearDownClass.
+        cls._tmp = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
         root = Path(cls._tmp.name)
         synth_image(root / "photo.jpg", color="blue", size="64x48")
         synth_image(root / "photo.png", color="green", size="64x48")

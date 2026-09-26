@@ -9,7 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from test_sdk_loader import MANIFEST, PLUGIN_CODE, LoaderTestCase
 from test_sdk_manifest import BASE, write_plugin
 

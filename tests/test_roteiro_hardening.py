@@ -8,8 +8,8 @@ from pathlib import Path
 from unittest import mock
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import roteiro
 
@@ -64,7 +64,16 @@ class EncodingTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
 
     def test_bom_crlf_and_trailing_spaces_on_fence(self):
-        raw = "\N{ZERO WIDTH NO-BREAK SPACE}---   \r\ntype: roteiro\r\ngenero: reels\r\ntema: t\r\n---  \r\n## A\r\n[A-ROLL]\r\nOi.\r\n"
+        raw = (
+            "\N{ZERO WIDTH NO-BREAK SPACE}---   \r\n"
+            "type: roteiro\r\n"
+            "genero: reels\r\n"
+            "tema: t\r\n"
+            "---  \r\n"
+            "## A\r\n"
+            "[A-ROLL]\r\n"
+            "Oi.\r\n"
+        )
         (self.project / "ROTEIRO.md").write_bytes(raw.encode("utf-8"))
         text = roteiro.load_text(self.project)
         self.assertFalse(text.startswith("\N{ZERO WIDTH NO-BREAK SPACE}"))

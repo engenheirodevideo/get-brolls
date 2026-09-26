@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _offline import OFFLINE_YTDLP
 from _plugin_pins import pin_plugins
@@ -339,8 +339,14 @@ def register(api):
     api.command("meta_leak", meta_leak, "Levanta exceção cuja metaclasse __name__ devolve texto arbitrário")
     api.command("escapa_base", escapa_base, "Levanta BaseException direto (não Exception, não SystemExit)")
     api.command("grande", grande, "Devolve um resultado maior que o teto de JSON")
-    api.command("weird_name_exit", weird_name_exit, "Nome de classe é subclasse de str cujo __format__ sai via SystemExit")
-    api.command("weird_name_leak", weird_name_leak, "Nome de classe é subclasse de str cujo __format__ devolve texto arbitrário")
+    api.command(
+        "weird_name_exit", weird_name_exit, "Nome de classe é subclasse de str cujo __format__ sai via SystemExit"
+    )
+    api.command(
+        "weird_name_leak",
+        weird_name_leak,
+        "Nome de classe é subclasse de str cujo __format__ devolve texto arbitrário",
+    )
     api.command("genexit", genexit, "Levanta GeneratorExit direto")
     api.command("fundo", fundo, "Devolve resultado com aninhamento além do teto de profundidade")
 """

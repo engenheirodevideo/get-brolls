@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import skip_unless_ffmpeg, synth_video
 from _plugin_pins import pin_plugins
 from test_delivery import fetched, project
@@ -181,9 +181,9 @@ class ForgedProvenanceFlowTests(LoaderTestCase):
 REAL_BUILTIN_URLS = (
     "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
     "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
-    "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg?sqp=-oaymwEjCNACELwBSFryq4qpAxUIARUAAAAAGAElAADIQj0AgKJDeAE=&rs=AOn4CLBf",
+    "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg?sqp=-oaymwEjCNACELwBSFryq4qpAxUIARUAAAAAGAElAADIQj0AgKJDeAE=&rs=AOn4CLBf",  # pylint: disable=line-too-long  # URL literal
     "https://videos.pexels.com/video-files/3571264/3571264-hd_1920_1080_30fps.mp4",
-    "https://player.vimeo.com/external/342571552.hd.mp4?s=6aa6f164de3812abadff3dde86d19f7a074a8a66&profile_id=175&oauth2_token_id=57447761",
+    "https://player.vimeo.com/external/342571552.hd.mp4?s=6aa6f164de3812abadff3dde86d19f7a074a8a66&profile_id=175&oauth2_token_id=57447761",  # pylint: disable=line-too-long  # URL literal
     "https://images.pexels.com/videos/3571264/free-video-3571264.jpg?auto=compress&cs=tinysrgb&fit=crop&h=630&w=1200",
     "https://www.pexels.com/video/3571264/",
     "https://cdn.pixabay.com/video/2024/03/15/204306-923909642_large.mp4",

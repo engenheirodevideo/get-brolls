@@ -1,8 +1,9 @@
 """Nenhum teste lê ou escreve a pasta pessoal real.
 
 `GB_HOME` aponta para um temporário por rodada, criado no primeiro import e
-apagado na saída; o cache local (`GB_CACHE_DIR`) fica dentro dele. Quem já exportou `GB_HOME` no ambiente continua mandando —
-mas aí a pasta é dele, não a `~/.getbrolls` de verdade.
+apagado na saída; o cache local (`GB_CACHE_DIR`) fica dentro dele. Quem já
+exportou `GB_HOME` no ambiente continua mandando — mas aí a pasta é dele, não
+a `~/.getbrolls` de verdade.
 
 `discover -s tests` não importa `tests/__init__.py`, então cada módulo que
 toca a biblioteca (direta ou indiretamente, por `next_action`/`search`)

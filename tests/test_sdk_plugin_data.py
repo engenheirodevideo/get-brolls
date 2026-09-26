@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from test_sdk_loader import LoaderTestCase
 
 from getbrolls.sdk import loader

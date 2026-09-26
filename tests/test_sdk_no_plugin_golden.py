@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from test_sdk_install import InstallTestCase, write_plugin
 from test_sdk_loader import MANIFEST, LoaderTestCase

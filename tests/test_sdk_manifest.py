@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls.sdk.manifest import ManifestError, compatibility_problem, read_manifest, satisfies
 
@@ -97,7 +97,8 @@ class ManifestTests(unittest.TestCase):
 
     def test_compatibility_problem_names_the_reason(self):
         self.assertIsNone(compatibility_problem({**BASE}, version="2.5.0"))
-        self.assertIn("sdk_api", compatibility_problem({**BASE, "sdk_api": 2}, version="2.5.0"))  # type: ignore[arg-type]
+        problem = compatibility_problem({**BASE, "sdk_api": 2}, version="2.5.0")  # type: ignore[arg-type]
+        self.assertIn("sdk_api", problem)  # type: ignore[arg-type]
         self.assertIn(">=2.5,<3", compatibility_problem({**BASE}, version="3.0.0"))  # type: ignore[arg-type]
 
 

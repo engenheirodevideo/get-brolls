@@ -9,8 +9,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import export_folder, export_place
 
@@ -192,7 +192,8 @@ class FailureAndSweepTests(FolderTestCase):
         self.assertFalse(ours.exists())
         self.assertEqual("meu", (theirs / "meu.txt").read_text(encoding="utf-8"))
         self.assertIn(
-            "exports/hyperframes/.staging-bbbb2222 não tem o marcador do get-brolls: ficou onde está (apague se for seu)",
+            "exports/hyperframes/.staging-bbbb2222 não tem o marcador do get-brolls: "
+            "ficou onde está (apague se for seu)",
             result["warnings"],
         )
 

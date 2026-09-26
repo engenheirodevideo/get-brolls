@@ -5,7 +5,7 @@ import re
 import tempfile
 import unittest
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from test_delivery import fetched, project
 
 from getbrolls import delivery

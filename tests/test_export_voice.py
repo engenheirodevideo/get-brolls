@@ -9,9 +9,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import skip_unless_ffmpeg, synth_video
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import export_voice
 
@@ -152,7 +152,8 @@ class TimedWordsTests(unittest.TestCase):
                 found, warnings = self.run_words()
                 self.assertIsNone(found)
                 self.assertEqual(
-                    ["c03: aroll/c03.transcript.json inválido (item 0 com tempo inválido): legenda estimada"], warnings
+                    ["c03: aroll/c03.transcript.json inválido (item 0 com tempo inválido): legenda estimada"],
+                    warnings,
                 )
 
     def test_empty_sidecar_is_an_estimate_with_a_warning(self):

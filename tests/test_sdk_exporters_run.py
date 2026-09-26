@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _plugin_pins import pin_plugins
 from test_sdk_exporters_resolvers import EXPORT_CODE
 from test_sdk_loader import MANIFEST, LoaderTestCase
@@ -172,7 +172,8 @@ def export_registry(export, status="enabled"):
 
 
 class RunExporterTests(unittest.TestCase):
-    def run_with(self, export, plan=PLAN, status="enabled"):
+    # PLAN nunca é mutado; serve só de fixture padrão compartilhada e somente leitura.
+    def run_with(self, export, plan=PLAN, status="enabled"):  # pylint: disable=dangerous-default-value
         return run_exporter(export_registry(export, status), "demo_html", plan, {"args": {}})
 
     def failure(self, export):
@@ -373,7 +374,8 @@ class CheckExporterTests(unittest.TestCase):
 
 BAD_DEST_CODE = EXPORT_CODE.replace(
     'return ExportResult({"index.html": "<p>ok</p>"})',
-    'from getbrolls.sdk import MediaRequest\n    return ExportResult({"index.html": "x"}, [MediaRequest("m1", "media/a.wav")])',
+    "from getbrolls.sdk import MediaRequest\n"
+    '    return ExportResult({"index.html": "x"}, [MediaRequest("m1", "media/a.wav")])',
 )
 
 

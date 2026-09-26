@@ -24,10 +24,12 @@ from typing import ClassVar
 from unittest.mock import patch
 
 # The skill's personal folder goes to a temp dir: no test touches ~/.getbrolls.
-import _isolation  # noqa: F401  (import side effect: defines GB_HOME)
+import _isolation  # noqa: F401  (import side effect: defines GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_video
-from _paths import ROOT  # noqa: F401  (import side effect: inserts scripts/ into sys.path)
+
+# import side effect: inserts scripts/ into sys.path
+from _paths import ROOT  # noqa: F401  # pylint: disable=unused-import
 
 from getbrolls import cli, http, providers
 from getbrolls.ledger import Ledger

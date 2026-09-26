@@ -5,7 +5,7 @@ import os
 from unittest import mock
 
 from _isolation import GB_HOME  # efeito de import: define GB_HOME (e o teste o compara antes e depois)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 from test_roteiro_sync import BRIEF, SyncCase, tree, write_rules
 
 from getbrolls import export_gates, roteiro_sync

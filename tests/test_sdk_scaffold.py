@@ -7,9 +7,11 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any, cast
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+# Any só aparece citado em cast("Any", ...); o pyright resolve a string, o pylint não.
+from typing import Any, cast  # pylint: disable=unused-import
+
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _paths import ROOT
 from test_sdk_loader import LoaderTestCase
@@ -60,7 +62,9 @@ class ContractCheckTests(unittest.TestCase):
             stage = "sempre"
 
         class PrepareCurto(_Route):
-            def prepare(self, item):
+            # Assinatura curta de propósito: é o próprio contrato quebrado que o
+            # teste espera que check_route detecte.
+            def prepare(self, item):  # pylint: disable=arguments-differ
                 return None
 
         cases = (

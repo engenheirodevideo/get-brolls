@@ -3,8 +3,8 @@
 import unittest
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import roteiro
 
@@ -60,7 +60,7 @@ class FrontmatterTests(unittest.TestCase):
             with self.subTest(line=line):
                 # Tira a linha válida da mesma chave: o erro tem que vir da regra do campo,
                 # não de "chave repetida".
-                key = line.split(":")[0].strip()
+                key = line.split(":", maxsplit=1)[0].strip()
                 head = [x for x in VALID_HEAD[:-1] if not x.startswith(key + ":")] + [line, "---"]
                 _, _, errors = roteiro.parse_frontmatter(head)
                 self.assertTrue(errors, line)

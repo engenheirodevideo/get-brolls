@@ -40,7 +40,7 @@ import uuid
 from pathlib import Path
 from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from test_sdk_loader import MANIFEST, PLUGIN_CODE, LoaderTestCase
 
@@ -51,7 +51,8 @@ from getbrolls.sdk import loader
 HAS_GIT = shutil.which("git") is not None
 
 
-def write_plugin(folder, manifest=MANIFEST, code=PLUGIN_CODE):
+# MANIFEST/PLUGIN_CODE nunca são mutados; servem só de fixture padrão compartilhada.
+def write_plugin(folder, manifest=MANIFEST, code=PLUGIN_CODE):  # pylint: disable=dangerous-default-value
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "getbrolls-plugin.json").write_text(json.dumps(manifest), encoding="utf-8")
     (folder / "plugin.py").write_text(code, encoding="utf-8")
@@ -300,7 +301,8 @@ class FolderInstallTests(InstallTestCase):
         stale_install.mkdir()
         (stale_install / "resto.txt").write_text("x", encoding="utf-8")
         stale_old = self.home / "plugins" / f".old-{old_epoch}-outroplugin-{uuid.uuid4().hex}"
-        stale_old.mkdir()  # vazio, sem manifesto: não é um plugin de verdade, então a varredura apaga (não restaura)
+        # Vazio, sem manifesto: não é um plugin de verdade, então a varredura apaga (não restaura).
+        stale_old.mkdir()
 
         preview = install_mod.install(str(source), confirm=False)
         install_mod.install(str(source), confirm=True, expect=preview["plugin"]["sha256"])
@@ -432,7 +434,9 @@ class FolderInstallTests(InstallTestCase):
 
         def spy(args, **kwargs):
             recorded["args"] = args
-            return real_run(args, **kwargs)
+            # Repassa kwargs tal como veio: fixar check aqui mudaria o comportamento
+            # de quem chama subprocess.run sem check de propósito.
+            return real_run(args, **kwargs)  # pylint: disable=subprocess-run-check
 
         with patch.object(install_mod.subprocess, "run", side_effect=spy):
             install_mod._has_core_ssh_command(dict(os.environ))

@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import skip_unless_ffmpeg, synth_image, synth_video
 from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
@@ -126,7 +126,8 @@ assert IMAGE_FETCH_PLUGIN != FETCH_PLUGIN
 class RouteAcquisitionTests(LoaderTestCase):
     @classmethod
     def setUpClass(cls):
-        cls._media = tempfile.TemporaryDirectory()
+        # Ciclo de vida cobre o teste (ou a classe) inteiro; a limpeza já é feita via addCleanup/tearDownClass.
+        cls._media = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
         cls.source = Path(cls._media.name) / "fonte.mp4"
         synth_video(cls.source, duration=6)
         cls.image_source = Path(cls._media.name) / "foto.png"

@@ -4,10 +4,12 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any, cast
+
+# Any só aparece citado em cast("Any", ...); o pyright resolve a string, o pylint não.
+from typing import Any, cast  # pylint: disable=unused-import
 from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
 from test_sdk_manifest import BASE, write_plugin
@@ -159,7 +161,8 @@ class ManifestRouteTests(unittest.TestCase):
 
 
 class PluginApiRouteTests(LoaderTestCase):
-    def load(self, manifest=ROUTE_MANIFEST, code=None):
+    # ROUTE_MANIFEST nunca é mutado; serve só de fixture padrão compartilhada.
+    def load(self, manifest=ROUTE_MANIFEST, code=None):  # pylint: disable=dangerous-default-value
         self.install(manifest, code=code or route_code())
         pin_plugins("demo")
         with patch.dict(os.environ, {"GB_PLUGINS": "demo"}):

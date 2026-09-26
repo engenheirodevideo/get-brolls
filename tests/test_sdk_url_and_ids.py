@@ -4,8 +4,8 @@ caracteres seguros, e o id de candidato de plugin vai citado em comando sugerido
 
 import unittest
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import acquisition, http
 from getbrolls.http import ProviderError

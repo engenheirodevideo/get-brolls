@@ -12,7 +12,7 @@ import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import http, queue, social
 from getbrolls import instagram_pairs as ig
