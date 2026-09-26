@@ -48,6 +48,7 @@ SUMMARIES = {
     "deliver": "Organizar os trechos coletados em entrega/, uma pasta por beat",
     "roteiro": "Criar, validar, revisar e sincronizar o ROTEIRO.md com os beats do BRIEF.md",
     "assets": "Listar componentes do projeto (marca, lettering, sfx, música, composições, A-ROLL) e resolver nomes",
+    "export": "Transformar o roteiro revisado num projeto de edição (--to hyperframes) numa pasta nova em exports/",
 }
 
 # Subcomandos que `execute()` (commands.py) de fato leva até
@@ -198,6 +199,7 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
         "deliver",
         "roteiro",
         "assets",
+        "export",
     ):
         p = sub.add_parser(name, help=SUMMARIES[name], description=SUMMARIES[name])
         _SUBPARSERS[name] = p
@@ -206,8 +208,8 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
             required=True,
             help="Pasta do projeto que guarda brolls/, fora da instalação da skill",
         )
-        # `roteiro` e `assets` nascem sem a flag: eles nunca chegam a `sync_formats`.
-        if name not in ("status", "roteiro", "assets"):
+        # `roteiro`, `assets` e `export` nascem sem a flag: eles nunca chegam a `sync_formats`.
+        if name not in ("status", "roteiro", "assets", "export"):
             # Mudar o formato-alvo derruba aprovações humanas; qualquer comando que
             # sincronize formato precisa deste sim explícito antes de apagá-las. Mas
             # `execute()` só chega a `sync_formats` (commands.py) depois de passar
@@ -261,6 +263,15 @@ def build_parser():  # noqa: C901, PLR0912, PLR0915 - existing size; argparse bu
             )
             p.add_argument("--kind", choices=sorted(ASSET_KINDS), help="Tipo de componente")
             p.add_argument("--name", help="Nome do componente, sem extensão (where)")
+        if name == "export":
+            p.add_argument(
+                "--to", required=True, help="Exporter de destino, de um plugin habilitado (ex.: hyperframes)"
+            )
+            p.add_argument(
+                "--dry-run",
+                action="store_true",
+                help="Mostrar a pasta, os arquivos e a mídia que o export gravaria, sem gravar nada",
+            )
         if name == "serve":
             g = p.add_mutually_exclusive_group()
             g.add_argument(

@@ -421,6 +421,60 @@
         }
       ]
     },
+    "export": {
+      "help": "Transformar o roteiro revisado num projeto de edição (--to hyperframes) numa pasta nova em exports/",
+      "options": [
+        {
+          "action": "_HelpAction",
+          "choices": null,
+          "default": "==SUPPRESS==",
+          "dest": "help",
+          "help": "show this help message and exit",
+          "nargs": 0,
+          "option_strings": [
+            "--help",
+            "-h"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "project",
+          "help": "Pasta do projeto que guarda brolls/, fora da instalação da skill",
+          "nargs": null,
+          "option_strings": [
+            "--project"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "to",
+          "help": "Exporter de destino, de um plugin habilitado (ex.: hyperframes)",
+          "nargs": null,
+          "option_strings": [
+            "--to"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreTrueAction",
+          "choices": null,
+          "default": false,
+          "dest": "dry_run",
+          "help": "Mostrar a pasta, os arquivos e a mídia que o export gravaria, sem gravar nada",
+          "nargs": 0,
+          "option_strings": [
+            "--dry-run"
+          ],
+          "required": false
+        }
+      ]
+    },
     "fetch": {
       "help": "Produzir o corte final aprovado e permitido em clips/",
       "options": [

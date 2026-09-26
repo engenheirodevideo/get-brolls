@@ -21,6 +21,8 @@ BRIEF_OUTSIDE = (
     "(ou troque o link por um arquivo) e repita."
 )
 OUT_OF_SYNC = "O BRIEF.md não reflete o roteiro: rode `roteiro --action plan` e `roteiro --action sync` e repita."
+# O sync simulado recusou (BRIEF.md inválido depois do sync, por exemplo): o texto dele vai junto.
+SYNC_CHECK_FAILED = "O export não conseguiu conferir o BRIEF.md contra o roteiro: {} Conserte e repita o export."
 # Qualquer um destes no plano do sync (sem gravar) quer dizer que o BRIEF.md ainda não é o roteiro de agora.
 _PENDING_LISTS = ("new", "target_changed", "speech_changed", "retired", "reactivated")
 _PENDING_MAPS = ("ids_to_assign", "readopted")
@@ -39,7 +41,10 @@ def _brief_file(project):
 def _in_sync(project, plugins):
     if not roteiro_ids.state_path(project).is_file():
         return False
-    report = roteiro_sync.run(project, write=False, plugins=plugins)
+    try:
+        report = roteiro_sync.run(project, write=False, plugins=plugins)
+    except ValueError as exc:
+        raise ValueError(SYNC_CHECK_FAILED.format(str(exc).rstrip())) from exc
     if report["refusal"] or report["order_changed"]:
         return False
     return not any(report[key] for key in (*_PENDING_LISTS, *_PENDING_MAPS))

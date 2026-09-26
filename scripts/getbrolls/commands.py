@@ -1848,6 +1848,12 @@ def execute(args):  # noqa: C901, PLR0911, PLR0912, PLR0915 - existing size; shr
         from getbrolls import roteiro_commands
 
         return roteiro_commands.run(args)
+    if cmd == "export":
+        # Roteiro revisado → pasta numerada do exporter: sem portão de formato, sem
+        # `sync_formats`, sem recuperar o manifesto (os portões recusam gravação pendente).
+        from getbrolls import export
+
+        return export.run(args)
     rules = load_rules(args.project)
     if cmd == "rules":
         return rules

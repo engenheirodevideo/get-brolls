@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from typing import NamedTuple
 
-from .. import logs
+from .. import __version__, logs
 from . import guard
 from .api import _bad_file_name
 from .contracts import CORE, NAME_RE, ExportResult, MediaRequest
@@ -29,9 +29,14 @@ MEDIA_ID_MAX_CHARS = 200
 NOTES_MAX = 50
 ASSETS_DIR = "assets"
 
-# Plano mínimo que `sdk.testing.check_exporter` entrega ao exportador. O formato
-# completo do plano é o do comando que exporta; este é só o esqueleto garantido.
-MINIMAL_PLAN = {"version": 1, "title": "Exemplo", "out_dir": "exports/exemplo/001", "scenes": [], "media": []}
+# Plano mínimo que `sdk.testing.check_exporter` entrega ao exportador: um plano válido
+# pelo `schemas/export_plan.schema.json`, sem cena e sem mídia.
+MINIMAL_PLAN = {
+    "export_version": 1, "exporter": "exemplo", "out_dir": "exports/exemplo/001",
+    "generated_at": "2026-01-01T00:00:00Z", "getbrolls_version": __version__, "plan_version": 2,
+    "meta": {"aspecto": "9:16", "legenda": False, "duracao_alvo_s": None, "genero": "reels", "tema": "Exemplo"},
+    "total_s": 0, "timing": "estimate", "scenes": [], "media": {}, "warnings": [],
+}  # fmt: skip
 
 
 class ValidatedExport(NamedTuple):

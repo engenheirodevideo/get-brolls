@@ -311,7 +311,7 @@ PLUGIN_ERROR_HINT = "Veja plugins --action list / doctor e docs/SDK.md."
 
 
 # Comandos cujo erro de uso sai sem traceback nem dica de recovery.
-QUIET_ERROR_COMMANDS = ("plugins", "x")
+QUIET_ERROR_COMMANDS = ("plugins", "x", "export")
 
 
 def provider_error_message(text):
@@ -393,7 +393,8 @@ def audited(args, execute):  # noqa: C901, PLR0912, PLR0915 - existing size; wra
         if args.command in QUIET_ERROR_COMMANDS and event["error_code"] != "INTERNAL_ERROR":
             # `plugins`/`x` não gravam no projeto: erro de uso ali (flag faltando, plugin
             # inexistente) é só a mensagem — traceback e a dica de recovery/review eram
-            # ruído. `diagnostics.jsonl` (quando há projeto) guarda tudo igual.
+            # ruído. `export` grava só numa pasta nova, sem journal: a dica de recovery
+            # também não vale lá. `diagnostics.jsonl` (quando há projeto) guarda tudo igual.
             for key in ("traceback", "repr", "hint"):
                 payload.pop(key, None)
         failure = OperationError(payload)
