@@ -16,7 +16,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _media import skip_unless_ffmpeg, synth_image
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import cli, http, providers
+from getbrolls import acquisition, cli, http, providers
 from getbrolls.ledger import Ledger
 from getbrolls.models import approve, candidate
 
@@ -179,10 +179,6 @@ class SizeCapFallsBackToASmallerRendition(unittest.TestCase):
     def test_static_preview_of_a_nasa_photo_uses_the_smaller_rendition_over_the_cap(self):
         """A prévia estática da foto (`cache_direct_media`) segue as mesmas versões do
         `fetch`: a `~orig` acima do teto cai para a `~large`, em vez de falhar."""
-        from getbrolls import acquisition, http
-        from getbrolls.ledger import Ledger
-        from getbrolls.models import candidate
-
         with tempfile.TemporaryDirectory() as tmp:
             jpg = Path(tmp) / "large.jpg"
             synth_image(jpg, size="96x64")
