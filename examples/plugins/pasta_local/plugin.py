@@ -23,6 +23,8 @@ def _ident(path):
 
 
 class PastaLocal:
+    """Provider da pasta local: busca vídeos pelo nome do arquivo e lista os mais recentes."""
+
     name = "pasta_local"
     capabilities = ProviderCapabilities(search=True, transport="local", seek="local", route="pasta_local")
 
@@ -36,17 +38,21 @@ class PastaLocal:
         return Path(raw)
 
     def videos(self):
+        """Vídeos da pasta configurada, em ordem estável, pelas extensões de `VIDEO_SUFFIXES`."""
         return [p for p in sorted(self._folder().rglob("*")) if p.is_file() and p.suffix.lower() in VIDEO_SUFFIXES]
 
-    def search(self, query, limit, media):  # noqa: ARG002 - assinatura fixa de Provider.search; esta fonte só tem vídeo
+    def search(self, query, limit, media):  # pylint: disable=unused-argument  # noqa: ARG002 - assinatura fixa de Provider.search; esta fonte só tem vídeo
+        """Candidatos cujo nome do arquivo contém todas as palavras de `query`."""
         words = [w for w in query.lower().split() if w]
         found = [path for path in self.videos() if all(w in path.stem.lower() for w in words)]
         return [self.api.candidate(self.name, _ident(path), path.stem) for path in found[:limit]]
 
-    def resolve(self, url):  # noqa: ARG002 - assinatura fixa de Provider.resolve; esta fonte não reconhece URL
-        return None
+    def resolve(self, url):  # pylint: disable=unused-argument  # noqa: ARG002 - assinatura fixa de Provider.resolve; esta fonte não reconhece URL
+        """Esta fonte não reconhece URL colada por fora: sempre `None`."""
+        return
 
     def refresh(self, item):
+        """Devolve `item` sem mudança: esta fonte não precisa atualizar metadados depois."""
         return item
 
     def recentes(self, args, ctx):
@@ -60,7 +66,7 @@ class PastaLocal:
         return {"arquivos": [p.name for p in newest], "candidatos_no_projeto": in_project}
 
 
-class CopiaDaPasta:
+class CopiaDaPasta:  # pylint: disable=too-few-public-methods  # contrato do SDK: rota é só um `prepare`
     """Rota de prévia: acha o arquivo pelo id da busca e pede ao core uma cópia de trabalho."""
 
     name = "pasta_local"
@@ -70,7 +76,8 @@ class CopiaDaPasta:
         self.fonte = fonte
         self.api = api
 
-    def prepare(self, item, workdir):  # noqa: ARG002 - o core cuida do workdir; api.local_file grava nele
+    def prepare(self, item, workdir):  # pylint: disable=unused-argument  # noqa: ARG002 - o core cuida do workdir; api.local_file grava nele
+        """Copia o arquivo já achado na busca para a pasta de trabalho do core."""
         for path in self.fonte.videos():
             if _ident(path) == item["source_id"]:
                 return RouteResult(self.api.local_file(path))
@@ -78,6 +85,7 @@ class CopiaDaPasta:
 
 
 def register(api):
+    """Ponto de entrada do SDK: registra o provider `pasta_local`, a rota de prévia e o comando `recentes`."""
     fonte = PastaLocal(api)
     api.provider(fonte)
     api.route(CopiaDaPasta(fonte, api))
