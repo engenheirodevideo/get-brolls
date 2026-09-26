@@ -81,6 +81,44 @@ class PublishedSchemaTests(unittest.TestCase):
                 self.assertTrue(any("campo_futuro: campo não previsto" in item for item in found), found)
 
 
+class MetaReservationTests(unittest.TestCase):
+    """`meta` reserva ids e base de tempo: sempre presentes, `null` enquanto não houver valor."""
+
+    META = ("projeto_id", "cliente", "direcao", "fps", "canvas")
+
+    def meta_errors(self, **values):
+        plan = example_plan()
+        plan["meta"].update(values)
+        return errors(plan, strict())
+
+    def test_meta_fields_are_required_and_nullable(self):
+        meta = published()["properties"]["meta"]
+        for name in self.META:
+            with self.subTest(name=name):
+                self.assertIn(name, meta["required"])
+                self.assertIn("null", meta["properties"][name]["type"])
+                self.assertTrue(meta["properties"][name].get("description"))
+        self.assertEqual([], self.meta_errors(**dict.fromkeys(self.META)))
+
+    def test_fps_is_a_fraction_and_canvas_is_width_by_height(self):
+        self.assertEqual([], self.meta_errors(fps={"num": 30000, "den": 1001}, canvas={"width": 1080, "height": 1920}))
+        for values in (
+            {"fps": {"num": 0, "den": 1}},
+            {"fps": 30},
+            {"fps": {"num": 30}},
+            {"canvas": {"width": 1080}},
+            {"canvas": {"width": 1080, "height": 1920, "dpi": 72}},
+        ):
+            with self.subTest(values=values):
+                self.assertTrue(self.meta_errors(**values))
+
+    def test_client_and_direction_are_slugs(self):
+        self.assertEqual([], self.meta_errors(cliente="acme-corp", direcao="rampa-e-whip"))
+        for value in ("Acme Corp", "acme_corp", "-acme", ""):
+            with self.subTest(value=value):
+                self.assertTrue(self.meta_errors(cliente=value))
+
+
 class ExamplePlanTests(unittest.TestCase):
     def test_example_plan_follows_the_strict_schema(self):
         plan = example_plan()

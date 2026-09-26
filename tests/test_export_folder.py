@@ -502,8 +502,17 @@ class LatestAndMarkerTests(FolderTestCase):
         self.assertEqual(("getbrolls-export", "complete", "001"), (marker["marker"], marker["state"], marker["number"]))
         self.assertIn("assets/clips/c02-main.mp4", marker["media"])
 
+    def test_plan_is_written_next_to_the_marker(self):
+        root = self.root()
+        content = {"files": FILES, "plan": '{"out_dir": "exports/hyperframes/001"}\n', "placements": []}
+        export_folder.write_export(root, 1, content, BASE, export_place.place)
+        saved = root / "001" / export_folder.PLAN_FILE
+        self.assertEqual("getbrolls-plan.json", export_folder.PLAN_FILE)
+        self.assertEqual(content["plan"], saved.read_text(encoding="utf-8"))
+
     def test_marker_names_are_reserved(self):
-        for name in (export_folder.MARKER, f"{export_folder.MARKER}.tmp", ".GETBROLLS-EXPORT.json"):
+        names = (export_folder.MARKER, f"{export_folder.MARKER}.tmp", ".GETBROLLS-EXPORT.json")
+        for name in (*names, export_folder.PLAN_FILE, "GetBrolls-Plan.JSON"):
             with self.subTest(name=name), self.assertRaisesRegex(ValueError, "nome reservado do get-brolls"):
                 self.export(files={**FILES, name: "{}"}, placements=[])
         self.assertEqual([], sorted(p.name for p in self.root().iterdir()))

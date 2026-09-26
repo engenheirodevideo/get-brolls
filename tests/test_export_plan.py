@@ -724,6 +724,41 @@ class CreditTests(ExportPlanTestCase):
         self.assertNotIn("\\", json.dumps([row["credit"] for row in media.values()], ensure_ascii=False))
 
 
+class MetaIdentityTests(ExportPlanTestCase):
+    """`meta` nomeia projeto, cliente, direção, fps e quadro; só o id do projeto vem preenchido."""
+
+    def test_meta_names_the_project_and_reserves_the_rest(self):
+        plan, items = min_project(self.root)
+        with mock.patch.object(export_plan, "probe_voice", fake_probe):
+            result, _ = export_plan.build(self.root, plan, items, "exports/hyperframes/001", project_id="id-do-projeto")
+        self.assertEqual(
+            [
+                "aspecto",
+                "legenda",
+                "duracao_alvo_s",
+                "genero",
+                "tema",
+                "projeto_id",
+                "cliente",
+                "direcao",
+                "fps",
+                "canvas",
+            ],
+            list(result["meta"]),
+        )
+        meta = result["meta"]
+        self.assertEqual(
+            ("id-do-projeto", None, None, None, None),
+            (meta["projeto_id"], meta["cliente"], meta["direcao"], meta["fps"], meta["canvas"]),
+        )
+        self.assertEqual([], errors(result, SCHEMA))
+
+    def test_without_a_project_id_it_stays_null(self):
+        plan, _ = build(self.root, min_project)
+        self.assertIsNone(plan["meta"]["projeto_id"])
+        self.assertEqual([], errors(plan, SCHEMA))
+
+
 class FixtureTests(ExportPlanTestCase):
     """As fixtures do plugin HyperFrames saem deste builder: congeladas, e conferidas a cada rodada."""
 

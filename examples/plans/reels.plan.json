@@ -10,7 +10,12 @@
     "legenda": true,
     "duracao_alvo_s": null,
     "genero": "reels",
-    "tema": "Como achar b-roll sem perder a tarde"
+    "tema": "Como achar b-roll sem perder a tarde",
+    "projeto_id": "5f1c2d3e-8a9b-4c7d-9e0f-123456789abc",
+    "cliente": null,
+    "direcao": null,
+    "fps": null,
+    "canvas": null
   },
   "total_s": 12.8,
   "timing": "mixed",

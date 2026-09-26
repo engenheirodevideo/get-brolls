@@ -27,7 +27,7 @@ from test_roteiro_sync import SyncCase
 from getbrolls import __version__, export, export_folder, models
 from getbrolls.ledger import Ledger
 from getbrolls.runtime import project_lock
-from getbrolls.sdk.exporters import ValidatedExport, run_exporter, sample_plan
+from getbrolls.sdk.exporters import ValidatedExport, find_local_paths, run_exporter, sample_plan
 from getbrolls.sdk.jsonschema import errors
 from getbrolls.sdk.registry import get_registry, reset_registry
 
@@ -104,6 +104,27 @@ from getbrolls.sdk import ExportResult
 
 def export(plan, options):
     return ExportResult(files={{"index.html": "a\\n", "INDEX.html": "b\\n"}})
+
+
+def resolve(kind, name):
+    return None
+
+
+def register(api):
+    api.exporter("demo_export", export, "Exporter de teste")
+    api.resolver("demo_export_media", resolve, ["sfx", "musica"])
+"""
+
+
+# Exporter que guarda uma cópia do plano que recebeu: o `getbrolls-plan.json` tem que ser igual.
+PLAN_COPY_CODE = """
+import json
+
+from getbrolls.sdk import ExportResult
+
+
+def export(plan, options):
+    return ExportResult(files={{"plan-copy.json": json.dumps(plan, ensure_ascii=False)}})
 
 
 def resolve(kind, name):
@@ -384,6 +405,77 @@ class ExportRefusalTests(ExportCase):
 
         text = build_parser().parse_args(["export", "--project", "p", "--to", "x"])
         self.assertEqual(("export", "x", False), (text.command, text.to, text.dry_run))
+
+
+class ExportPlanFileTests(ExportCase):
+    """Cada export guarda o plano que o exporter recebeu, e a pasta sabe de que projeto veio."""
+
+    def saved(self, number="001"):
+        return json.loads((self.folder(number) / export_folder.PLAN_FILE).read_text(encoding="utf-8"))
+
+    def test_the_folder_keeps_the_exact_plan_given_to_the_exporter(self):
+        self.install(code=PLAN_COPY_CODE)
+        out = self.export()
+        given = json.loads((self.folder("001") / "plan-copy.json").read_text(encoding="utf-8"))
+        saved = self.saved()
+        self.assertEqual(given, saved)
+        self.assertEqual("exports/demo_export/001", saved["out_dir"])
+        self.assertEqual(["plan-copy.json"], out["files"])
+        text = (self.folder("001") / export_folder.PLAN_FILE).read_text(encoding="utf-8")
+        self.assertEqual([], find_local_paths(saved))
+        for path in (str(self.project), str(self.project.resolve()), str(self.home), str(Path.home())):
+            self.assertNotIn(path, text)
+
+    def test_plan_and_marker_carry_the_project_id(self):
+        self.install()
+        self.export()
+        project_id = Ledger(self.project, recover=False).data["project_id"]
+        meta = self.saved()["meta"]
+        self.assertEqual(
+            (project_id, None, None, None, None),
+            (meta["projeto_id"], meta["cliente"], meta["direcao"], meta["fps"], meta["canvas"]),
+        )
+        marker = json.loads((self.folder("001") / export_folder.MARKER).read_text(encoding="utf-8"))
+        self.assertEqual((project_id, None, None), (marker["projeto_id"], marker["cliente"], marker["direcao"]))
+        self.export()
+        self.assertEqual(project_id, self.saved("002")["meta"]["projeto_id"])
+
+    def test_an_existing_project_id_is_reused(self):
+        self.install()
+        ledger = Ledger(self.project, recover=False)
+        ledger.data["project_id"] = "id-que-ja-existia"
+        ledger.save("test")
+        self.export()
+        self.assertEqual("id-que-ja-existia", self.saved()["meta"]["projeto_id"])
+
+    def test_the_exporter_cannot_write_the_plan_file(self):
+        self.install()
+        for name in (export_folder.PLAN_FILE, "GETBROLLS-PLAN.json"):
+            files = {"index.html": "<p>ok</p>\n", name: "{}"}
+            with (
+                self.subTest(name=name),
+                mock.patch.object(export, "run_exporter", return_value=ValidatedExport(files, (), ())),
+                self.assertRaises(ValueError) as caught,
+            ):
+                export.run(self.args())
+            self.assertIn(f"{name}, nome reservado do get-brolls", str(caught.exception))
+        self.assertFalse((self.project / "exports").exists())
+
+    def test_a_machine_path_in_the_plan_is_refused_even_if_no_file_has_it(self):
+        self.install(code=SPEECH_CODE.replace('s["speech_clean"]', '"cena"'))
+        real_build = export.export_plan.build
+
+        def build(*args, **kwargs):
+            plan, sources = real_build(*args, **kwargs)
+            plan["meta"]["tema"] = f"Salve em {self.project.resolve()}/x"
+            return plan, sources
+
+        with mock.patch.object(export.export_plan, "build", side_effect=build), self.assertRaises(ValueError) as caught:
+            export.run(self.args())
+        message = str(caught.exception)
+        self.assertIn("caminho desta máquina", message)
+        self.assertIn(export_folder.PLAN_FILE, message)
+        self.assertFalse((self.project / "exports").exists())
 
 
 class ExportWriteGuardTests(ExportCase):

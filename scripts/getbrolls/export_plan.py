@@ -470,11 +470,21 @@ def check_refs(plan):
     return problems
 
 
-def build(project, plan, items, out_dir, resolve_media=None):
+def _meta(plan, project_id):
+    """`meta` do plano de cena mais os ids e a base de tempo: nomeados já, `null` enquanto não houver valor."""
+    meta = plan["meta"]
+    return {
+        **meta, "projeto_id": project_id, "cliente": meta.get("cliente"), "direcao": meta.get("direcao"),
+        "fps": None, "canvas": None,
+    }  # fmt: skip
+
+
+def build(project, plan, items, out_dir, resolve_media=None, *, project_id=None):  # noqa: PLR0913 - keyword-only project id on top of the build inputs
     """(plano de export, fontes do core) para a pasta numerada `out_dir` (`exports/<exporter>/<NNN>`).
 
     `plan` é o `scene_plan` de um roteiro revisado e sincronizado (toda cena com id);
-    `items` são os candidatos do manifesto (lidos sem recuperação).
+    `items` são os candidatos do manifesto (lidos sem recuperação); `project_id` é o
+    id do projeto (`brolls/manifest.json`), ou None.
     """
     match = OUT_DIR_RE.fullmatch(out_dir or "")
     if match is None:
@@ -490,7 +500,7 @@ def build(project, plan, items, out_dir, resolve_media=None):
     result = {
         "export_version": EXPORT_VERSION, "exporter": exporter, "out_dir": out_dir,
         "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), "getbrolls_version": __version__,
-        "plan_version": PLAN_VERSION, "meta": dict(plan["meta"]), "total_s": cursor, "timing": _timing(scenes),
+        "plan_version": PLAN_VERSION, "meta": _meta(plan, project_id), "total_s": cursor, "timing": _timing(scenes),
         "scenes": scenes, "media": collector.media, "warnings": list(dict.fromkeys(collector.warnings)),
     }  # fmt: skip
     result = json.loads(json.dumps(result, ensure_ascii=False))

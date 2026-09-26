@@ -10,7 +10,12 @@
     "legenda": true,
     "duracao_alvo_s": null,
     "genero": "reels",
-    "tema": "Reels mínimo"
+    "tema": "Reels mínimo",
+    "projeto_id": null,
+    "cliente": null,
+    "direcao": null,
+    "fps": null,
+    "canvas": null
   },
   "total_s": 6.0,
   "timing": "mixed",

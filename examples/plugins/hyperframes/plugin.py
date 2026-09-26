@@ -177,6 +177,11 @@ class _Export:
         self.plan = plan
         self.aspect = plan["meta"]["aspecto"] if plan["meta"]["aspecto"] in CANVAS else "9:16"
         self.width, self.height, self.resolution = CANVAS[self.aspect]
+        # Quadro e fps do plano quando vierem; `null` (ou ausente) fica com o padrão do plugin.
+        canvas, fps = plan["meta"].get("canvas"), plan["meta"].get("fps")
+        if canvas:
+            self.width, self.height = canvas["width"], canvas["height"]
+        self.fps = num(fps["num"] / fps["den"]) if fps else str(FPS)
         self.media = plan["media"]
         self.dests = {}
         self.order = []
@@ -710,7 +715,7 @@ def _index(export, scenes_html):
 {captions_css}    </style>
   </head>
   <body>
-    <div id="root" data-composition-id="main" data-start="0" data-duration="{total}" data-fps="{FPS}" data-width="{w}" data-height="{h}">
+    <div id="root" data-composition-id="main" data-start="0" data-duration="{total}" data-fps="{export.fps}" data-width="{w}" data-height="{h}">
       {body}
     </div>
     <script>

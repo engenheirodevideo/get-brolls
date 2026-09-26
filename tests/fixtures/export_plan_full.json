@@ -10,7 +10,12 @@
     "legenda": true,
     "duracao_alvo_s": null,
     "genero": "reels",
-    "tema": "IA <editando> reels"
+    "tema": "IA <editando> reels",
+    "projeto_id": null,
+    "cliente": null,
+    "direcao": null,
+    "fps": null,
+    "canvas": null
   },
   "total_s": 22.1,
   "timing": "mixed",

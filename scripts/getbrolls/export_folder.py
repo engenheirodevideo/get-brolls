@@ -3,7 +3,8 @@
 Cada `gb export` grava uma pasta nova. O core nunca apaga, substitui nem mescla uma
 pasta numerada: render, transcrição, Studio e edição à mão dentro dela são da pessoa.
 A escrita acontece em `exports/<exporter>/.staging-<uuid8>/` (mesmo volume), com o
-marcador do core como primeiro arquivo; no fim, `os.rename` para o próximo número e
+marcador do core como primeiro arquivo e o plano entregue ao exporter
+(`getbrolls-plan.json`) logo depois; no fim, `os.rename` para o próximo número e
 `LATEST` passa a apontar para ela. Falha no meio remove só o staging desta execução.
 """
 
@@ -23,11 +24,13 @@ from .sdk import loader
 EXPORTS_DIR = "exports"
 MARKER = ".getbrolls-export.json"
 MARKER_ID = "getbrolls-export"
+# O plano exato entregue ao exporter, gravado pelo core em toda pasta numerada.
+PLAN_FILE = "getbrolls-plan.json"
 LATEST = "LATEST"
 STAGING_PREFIX = ".staging-"
 NUMBER_RE = re.compile(r"[0-9]{3,}")
 LATEST_TMP_RE = re.compile(r"LATEST\.tmp-[0-9a-f]{8}")
-RESERVED_NAMES = (MARKER.casefold(), f"{MARKER}.tmp".casefold())
+RESERVED_NAMES = (MARKER.casefold(), f"{MARKER}.tmp".casefold(), PLAN_FILE.casefold())
 RENAME_ATTEMPTS = 5
 # Pasta em uso (preview, antivírus, indexador): tenta o mesmo número de novo antes de desistir.
 BUSY_ATTEMPTS = 3
@@ -364,7 +367,8 @@ def write_export(root, number, content, marker_base, place):
 
     `latest` diz se `LATEST` passou a apontar para ele (falha ali é só aviso).
 
-    `content` = `{"files": {relpath: texto}, "placements": [(media_id, dest, fonte)]}`;
+    `content` = `{"files": {relpath: texto}, "plan": texto | None, "placements": [(media_id, dest, fonte)]}`;
+    `plan` vira `getbrolls-plan.json`, logo depois do marcador;
     `place(fonte, destino_absoluto) -> (método, bytes copiados)` põe cada mídia.
     """
     warnings = sweep_abandoned(root)
@@ -374,6 +378,8 @@ def write_export(root, number, content, marker_base, place):
     sources_by_rel = {}
     try:
         _write_new(staging / MARKER, _marker_bytes(marker_base, "staging", number, {}))
+        if content.get("plan") is not None:
+            _write_new(staging / PLAN_FILE, _utf8(content["plan"], "O plano do export"))
         for relative, text in content["files"].items():
             target = _inside(staging, relative)
             data = _utf8(text, f"O texto de {relative}")

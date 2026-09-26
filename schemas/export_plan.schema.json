@@ -14,13 +14,36 @@
     "plan_version": { "const": 2 },
     "meta": {
       "type": "object",
-      "required": ["aspecto", "legenda", "duracao_alvo_s", "genero", "tema"],
+      "required": ["aspecto", "legenda", "duracao_alvo_s", "genero", "tema", "projeto_id", "cliente", "direcao", "fps", "canvas"],
       "properties": {
         "aspecto": { "enum": ["9:16", "16:9"] },
         "legenda": { "type": "boolean" },
         "duracao_alvo_s": { "type": ["integer", "null"] },
         "genero": { "type": "string" },
-        "tema": { "type": "string" }
+        "tema": { "type": "string" },
+        "projeto_id": { "type": ["string", "null"], "maxLength": 64, "description": "Id do projeto, o mesmo project_id de brolls/manifest.json; continua o mesmo quando a pasta é copiada. null só no --dry-run de um projeto que ainda não tem id." },
+        "cliente": { "type": ["string", "null"], "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64, "description": "Slug do cliente, vindo do frontmatter do roteiro; null quando o roteiro não diz." },
+        "direcao": { "type": ["string", "null"], "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64, "description": "Slug do estilo de direção, vindo do frontmatter do roteiro; null quando o roteiro não diz. Reservado: nenhum exporter o aplica ainda." },
+        "fps": {
+          "type": ["object", "null"],
+          "description": "Base de tempo como fração de quadros por segundo: 30 é {num: 30, den: 1}, 29,97 é {num: 30000, den: 1001}. null = o exporter usa o padrão dele.",
+          "additionalProperties": false,
+          "required": ["num", "den"],
+          "properties": {
+            "num": { "type": "integer", "minimum": 1 },
+            "den": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "canvas": {
+          "type": ["object", "null"],
+          "description": "Tamanho do quadro em pixels. null = o exporter decide pelo aspecto.",
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 }
+          }
+        }
       }
     },
     "total_s": { "type": "number", "minimum": 0 },

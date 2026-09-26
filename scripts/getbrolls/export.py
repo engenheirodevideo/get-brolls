@@ -4,13 +4,15 @@ Fluxo: portões (`export_gates`) → exporter do registro (só plugin habilitado
 plano de export (`export_plan.build`, com os resolvedores de plugin injetados) →
 `run_exporter` do SDK (valida o que o plugin devolveu) → pedidos de mídia conferidos
 contra o plano → `--dry-run` para aqui; senão a pasta numerada nova é gravada
-(`export_folder.write_export`, mídia por `export_place.place`). Nada passa por
+(`export_folder.write_export`, mídia por `export_place.place`), com o plano entregue
+ao exporter em `getbrolls-plan.json` e o id do projeto no marcador. Nada passa por
 `sync_formats`, `recover` ou `entrega/`.
 """
 
 import contextlib
 import errno
 import functools
+import json
 import os
 import re
 from pathlib import Path
@@ -162,16 +164,24 @@ def _scrub(text, machine):
     return text
 
 
-def _check_output(owner, name, validated, marker_base, machine):
+def _check_output(owner, name, validated, core_files, machine):
     """O que vai para o disco: nenhum nome do core entre os arquivos do plugin e nenhum caminho
-    desta máquina (recusa); texto só com cara de caminho vira um aviso (costuma vir do roteiro)."""
+    desta máquina (recusa); texto só com cara de caminho vira um aviso (costuma vir do roteiro).
+
+    `core_files` = `(marcador, plano)`: o que o core grava ao lado passa pela mesma conferência."""
+    marker_base, plan = core_files
     reserved = sorted(path for path in validated.files if path.casefold() in export_folder.RESERVED_NAMES)
     if reserved:
         raise ValueError(
             f"Plugin {owner}: o exportador {name} devolveu {', '.join(reserved)}, nome reservado do get-brolls "
             "na pasta do export. Nada foi gravado."
         )
-    hits = _machine_hits(validated.files, machine, "files") + _machine_hits(marker_base, machine, "marcador")
+    plan_label = export_folder.PLAN_FILE
+    hits = (
+        _machine_hits(validated.files, machine, "files")
+        + _machine_hits(marker_base, machine, "marcador")
+        + _machine_hits(plan, machine, plan_label)
+    )
     if hits:
         labels = ", ".join(dict.fromkeys(label for _, label in hits))
         positions = ", ".join(dict.fromkeys(position for position, _ in hits[:5]))
@@ -180,7 +190,11 @@ def _check_output(owner, name, validated, marker_base, machine):
             "compartilhar e não leva caminho do disco: se o caminho está no roteiro, tire-o do texto; senão, "
             f"quem o escreveu foi o exportador {name} (plugin {owner}). Nada foi gravado."
         )
-    looks = find_local_paths(validated.files, "files") + find_local_paths(marker_base, "marcador")
+    looks = (
+        find_local_paths(validated.files, "files")
+        + find_local_paths(marker_base, "marcador")
+        + find_local_paths(plan, plan_label)
+    )
     if not looks:
         return []
     warning = (
@@ -235,6 +249,20 @@ def run(args):
         raise _os_error(exc, project) from exc
 
 
+def _project_id(project, dry_run):
+    """Id do projeto: o `project_id` de `brolls/manifest.json`, o mesmo do review. O export
+    que grava cria o id quando ainda não existe; o ensaio só lê e, sem id, fica com None."""
+    from .ledger import Ledger
+    from .review import project_id
+
+    ledger = Ledger(project, recover=False)
+    return ledger.data.get("project_id") if dry_run else project_id(ledger)
+
+
+def _plan_text(plan):
+    return json.dumps(plan, ensure_ascii=False, indent=2) + "\n"
+
+
 def _run(args, name, project):
     ready = export_gates.check(project)
     registry = get_registry()
@@ -245,7 +273,14 @@ def _run(args, name, project):
     number = export_folder.next_number(root)
     out_dir = f"{export_folder.EXPORTS_DIR}/{name}/{export_folder.folder_name(number)}"
     resolve_media = functools.partial(resolve_with_plugins, registry)
-    plan, sources = export_plan.build(project, ready["plan"], ready["items"], out_dir, resolve_media=resolve_media)
+    plan, sources = export_plan.build(
+        project,
+        ready["plan"],
+        ready["items"],
+        out_dir,
+        resolve_media=resolve_media,
+        project_id=_project_id(project, args.dry_run),
+    )
     machine = _machine_paths(project, registry, sources)
     # Aviso escrito por resolvedor de plugin pode trazer caminho desta máquina: sai com a marca, não recusa.
     plan["warnings"] = list(dict.fromkeys(_scrub(warning, machine) for warning in plan["warnings"]))
@@ -257,8 +292,10 @@ def _run(args, name, project):
     marker_base = {
         "export_version": plan["export_version"], "exporter": name, "plugin": owner,
         "plugin_version": row.get("version"), "getbrolls_version": __version__, "created": plan["generated_at"],
+        "projeto_id": plan["meta"]["projeto_id"], "cliente": plan["meta"]["cliente"],
+        "direcao": plan["meta"]["direcao"],
     }  # fmt: skip
-    warnings += _check_output(owner, name, validated, marker_base, machine)
+    warnings += _check_output(owner, name, validated, (marker_base, plan), machine)
     envelope = {
         "exporter": name, "plugin": owner, "out": out_dir, "number": export_folder.folder_name(number),
         "latest": False, "files": sorted(validated.files), "media": [],
@@ -273,7 +310,11 @@ def _run(args, name, project):
         return {**envelope, "media": media, "summary": {"line": line}}
     # O código do plugin rodou desde a primeira conferência: `exports/` pode ter virado link.
     root = export_folder.exporter_root(project, name)
-    content = {"files": validated.files, "placements": [(m, d, sources[m]) for m, d in checked]}
+    content = {
+        "files": validated.files,
+        "plan": _plan_text(plan),
+        "placements": [(m, d, sources[m]) for m, d in checked],
+    }
     place = functools.partial(export_place.place, copy_plugin=functools.partial(copy_plugin, registry))
     written = export_folder.write_export(root, number, content, marker_base, place)
     out = f"{export_folder.EXPORTS_DIR}/{name}/{written['number']}"

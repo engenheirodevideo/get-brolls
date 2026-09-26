@@ -125,6 +125,25 @@ class RootTests(unittest.TestCase):
                 root = page.all("div")[0]
                 self.assertEqual((str(w), str(h), "30"), (root["data-width"], root["data-height"], root["data-fps"]))
 
+    def test_fps_and_canvas_come_from_the_plan_when_it_has_them(self):
+        for fps, canvas, expected in (
+            ({"num": 25, "den": 1}, {"width": 720, "height": 1280}, ("720", "1280", "25")),
+            ({"num": 30000, "den": 1001}, None, ("1080", "1920", "29.97")),
+        ):
+            with self.subTest(fps=fps):
+                plan = fixture()
+                plan["meta"]["fps"], plan["meta"]["canvas"] = fps, canvas
+                root = Elements(generate(plan)["files"]["index.html"]).all("div")[0]
+                self.assertEqual(expected, (root["data-width"], root["data-height"], root["data-fps"]))
+
+    def test_null_fps_and_canvas_keep_the_same_bytes(self):
+        plan = fixture()
+        self.assertEqual((None, None), (plan["meta"]["fps"], plan["meta"]["canvas"]))
+        bare = copy.deepcopy(plan)
+        for key in ("projeto_id", "cliente", "direcao", "fps", "canvas"):
+            del bare["meta"][key]
+        self.assertEqual(generate(bare), generate(plan))
+
     def test_root_duration_is_total_and_hosts_use_global_time(self):
         plan = fixture()
         page = Elements(generate(plan)["files"]["index.html"])
