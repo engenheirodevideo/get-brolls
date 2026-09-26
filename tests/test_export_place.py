@@ -80,6 +80,16 @@ class PersonMediaTests(PlaceTestCase):
         else:
             self.assertEqual(0o644, stat.S_IMODE(voice.stat().st_mode))
 
+    def test_clone_is_only_attempted_where_a_cp_can_clone(self):
+        cases = (("darwin", None, True), ("linux", "/usr/bin/cp", True), ("linux", None, False), ("win32", None, False))
+        for platform, cp, expected in cases:
+            with (
+                self.subTest(platform=platform, cp=cp),
+                mock.patch.object(export_place.sys, "platform", platform),
+                mock.patch.object(export_place.shutil, "which", return_value=cp),
+            ):
+                self.assertEqual(expected, export_place.can_clone())
+
     def test_failed_clone_removes_the_partial_and_copies(self):
         voice = self.file("aroll/c01.mov")
         dest = self.staging / "c01.mov"

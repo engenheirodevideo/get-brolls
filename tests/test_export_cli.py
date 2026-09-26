@@ -347,6 +347,15 @@ class ExportRefusalTests(ExportCase):
         clip_dest = f"assets/clip-{self.clip_id.replace(':', '-')}.mp4"
         self.assertEqual("copy", {m["dest"]: m["method"] for m in out["media"]}[clip_dest])
 
+    def test_dry_run_on_windows_predicts_copy_for_person_media(self):
+        # No Windows não há `cp` que clone: o `place` copia, e o ensaio tem de dizer o mesmo.
+        self.install()
+        with mock.patch.object(export.export_place.sys, "platform", "win32"):
+            out = export.run(self.args(dry_run=True))
+        methods = {m["media_id"]: m["method"] for m in out["media"]}
+        self.assertEqual("copy", methods["aroll:c01"])
+        self.assertEqual("hardlink", methods[f"clip:{self.clip_id}"])
+
     def test_bad_exporter_name_is_refused_before_loading_plugins(self):
         out = run_cli("export", "--to", "../x", project=self.project, expect=2)
         self.assertIn("--to espera o nome de um exporter", out["message"])
@@ -570,6 +579,13 @@ class ExportTextTests(unittest.TestCase):
         written = {"number": "001", "media": [], "copied_bytes": 0}
         self.assertNotIn("EXPORT.md", export._summary("exports/x/001", {"index.html": ""}, written))
         self.assertIn("Abra exports/x/001/EXPORT.md.", export._summary("exports/x/001", {"EXPORT.md": ""}, written))
+
+    def test_predicted_method_follows_the_platform(self):
+        for platform, expected in (("darwin", "clone"), ("win32", "copy")):
+            with self.subTest(platform=platform), mock.patch.object(export.export_place.sys, "platform", platform):
+                self.assertEqual(expected, export._predicted({"method": "clone"}))
+                self.assertEqual("hardlink", export._predicted({"method": "hardlink"}))
+                self.assertEqual("copy", export._predicted({"method": "plugin"}))
 
     def test_os_errors_are_pt_br_without_errno_type_or_absolute_path(self):
         project = Path(tempfile.mkdtemp(prefix="gb-export-oserr-")).resolve()

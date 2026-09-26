@@ -82,6 +82,11 @@ def verify_source(source):
     return info
 
 
+def can_clone():
+    """True onde `clone_or_copy` tenta o clone (macOS; Linux com `cp`); no Windows é sempre cópia."""
+    return sys.platform == "darwin" or (sys.platform.startswith("linux") and shutil.which("cp") is not None)
+
+
 def _clone_command(src, dest):
     """(argv, método) do clone do sistema, ou None onde não há (Windows, `cp` ausente)."""
     if sys.platform == "darwin":

@@ -206,6 +206,8 @@ def _os_error(exc, project):
 def _predicted(source):
     if source["method"] == "hardlink" and copies_forced():
         return "copy"
+    if source["method"] == "clone" and not export_place.can_clone():
+        return "copy"  # o mesmo que o `place` fará (Windows, Linux sem `cp`)
     return _PREDICTED[source["method"]]
 
 
