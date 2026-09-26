@@ -1,3 +1,8 @@
+# pylint: disable=too-many-lines
+# Plugin de exemplo autossuficiente: o loader do SDK compila e roda só o arquivo do `entry`
+# (nunca via import), e o sha256 do pin de segurança cobre exatamente esse arquivo — dividir
+# em módulos vizinhos tiraria o código de fora dessa checagem. Um único arquivo grande é o
+# preço certo por isso, não descontrole real.
 """Exporter HyperFrames do get-brolls: um roteiro revisado vira um projeto HyperFrames editável.
 
 Registra dois contratos do SDK (experimentais): o exporter `hyperframes` e o
@@ -170,35 +175,51 @@ def _clean(value):
 # --- contexto -------------------------------------------------------------------
 
 
+class _Canvas:  # pylint: disable=too-few-public-methods  # só agrupa dados; não precisa de mais métodos
+    """Aspecto do roteiro e o quadro que ele implica: largura, altura e resolução (`CANVAS`)."""
+
+    def __init__(self, aspect):
+        self.aspect = aspect
+        self.width, self.height, self.resolution = CANVAS[aspect]
+
+
+class _Report:  # pylint: disable=too-few-public-methods  # só agrupa dados; não precisa de mais métodos
+    """Notas, pendências, blocos e composições juntados durante a geração, para o `EXPORT.md`."""
+
+    def __init__(self):
+        self.notes = []
+        self.pending = []
+        self.comps = []
+        self.blocks = []
+
+
 class _Export:
     """Estado de uma geração: plano, tela, destinos de mídia pedidos e notas."""
 
     def __init__(self, plan):
         self.plan = plan
         # Aspecto, e `canvas` quando vem, já conferidos por `_check_supported`: o quadro é o do aspecto.
-        self.aspect = plan["meta"]["aspecto"]
-        self.width, self.height, self.resolution = CANVAS[self.aspect]
+        self.canvas = _Canvas(plan["meta"]["aspecto"])
         # fps do plano quando vier; `null` (ou ausente) fica com o padrão do plugin.
         fps = plan["meta"].get("fps")
         self.fps = num(fps["num"] / fps["den"]) if fps else str(FPS)
         self.media = plan["media"]
         self.dests = {}
         self.order = []
-        self.notes = []
-        self.pending = []
-        self.comps = []
-        self.blocks = []
+        self.report = _Report()
 
     def note(self, text):
-        self.notes.append(text)
+        """Anota `text` no EXPORT.md como nota e, quando aplicável, como pendência."""
+        self.report.notes.append(text)
         self.pend(text)
 
     def pend(self, text, *covered_by):
         """Pendência do EXPORT.md, a menos que um aviso do core já trate dela (começa por `covered_by`)."""
         if not any(warning.startswith(covered_by or (text,)) for warning in self.plan["warnings"]):
-            self.pending.append(text)
+            self.report.pending.append(text)
 
     def usable(self, media_id):
+        """A linha de mídia de `media_id` quando ela existe e está disponível; senão `None`."""
         row = self.media.get(media_id) if media_id else None
         return row if row and row["available"] else None
 
@@ -225,10 +246,11 @@ class _Export:
         return candidate
 
     def requests(self):
+        """Lista `{"media_id", "dest"}` de toda mídia pedida, na ordem em que foi pedida."""
         return [{"media_id": m, "dest": self.dests[m]} for m in self.order]
 
 
-def _presenter_title(export, media_id, scene_id):
+def _presenter_title(export, media_id, scene_id):  # pylint: disable=redefined-outer-name  # nome fixo: testes do SDK importam `export`
     """O que fazer com o A-ROLL que falta: gravar, trocar o arquivo ilegível ou o link."""
     row = export.media.get(media_id or "") or {}
     name = _name_of(media_id) if media_id else scene_id
@@ -252,7 +274,7 @@ def _name_of(media_id):
 class _Scene:
     """Uma sub-composição: elementos com tempo local e a timeline da cena."""
 
-    def __init__(self, export, scene):
+    def __init__(self, export, scene):  # pylint: disable=redefined-outer-name  # nome fixo: testes do SDK importam `export`
         self.export = export
         self.scene = scene
         self.cid = f"scene-{scene['id']}"
@@ -262,29 +284,31 @@ class _Scene:
         self.counter = 0
 
     def new_id(self, key):
+        """Novo id de elemento único na cena, prefixado por `key` (contador crescente)."""
         self.counter += 1
         return f"{self.cid}-{key}{self.counter}"
 
     def regions(self):
         """{vaga: (x, y, w, h)} — SPLIT: `a` em cima/esquerda, `b` embaixo/direita; senão `main`."""
-        w, h = self.export.width, self.export.height
+        w, h = self.export.canvas.width, self.export.canvas.height
         if self.scene["layout"]["kind"] != "SPLIT":
             return {"main": (0, 0, w, h)}
-        if self.export.aspect == "9:16":
+        if self.export.canvas.aspect == "9:16":
             return {"a": (0, 0, w, h // 2), "b": (0, h // 2, w, h // 2)}
         return {"a": (0, 0, w // 2, h), "b": (w // 2, 0, w // 2, h)}
 
     def zoom(self, target, start, duration):
         """Escala lenta 1 → 1,04: nada fica parado mais de 3 s (`sweep_static`)."""
         self.tweens.append(
-            f'tl.fromTo("#{target}", {{ scale: 1 }}, {{ scale: 1.04, duration: {num(duration)}, ease: "none" }}, {num(start)});'
+            f'tl.fromTo("#{target}", {{ scale: 1 }}, {{ scale: 1.04, duration: {num(duration)}, '
+            f'ease: "none" }}, {num(start)});'
         )
 
     def card(self, slot, region, lines, window):
         """Cartela: fundo escuro na vaga e bloco de texto no terço superior do quadro (ou da metade)."""
         start, duration = window
         x, y, w, h = region
-        center = CARD_Y[self.export.aspect] if slot == "main" else y + h // 3
+        center = CARD_Y[self.export.canvas.aspect] if slot == "main" else y + h // 3
         card_id = self.new_id(f"{slot}-card")
         rows = "".join(f'<p class="{cls}">{esc(text)}</p>' for cls, text in lines if text)
         self.elements.append(
@@ -295,30 +319,37 @@ class _Scene:
         )
         self.zoom(f"{card_id}-text", start, duration)
 
+    def _media_tag(self, row, zoom_id, src, timing, contain):
+        """Tag `<img>` ou `<video>` mudo do wrapper de zoom, conforme o tipo da mídia."""
+        fit = "contain" if contain else "cover"
+        if row["kind"] == "image":
+            return (
+                f'<img id="{zoom_id}-img" class="clip" src="{esc(src)}" alt="" {timing} data-track-index="0" '
+                f'style="object-fit:{fit};">'
+            )
+        return (
+            f'<video id="{zoom_id}-video" src="{esc(src)}" muted playsinline {timing} data-media-start="0" '
+            f'data-hf-media-start-basis="local" data-track-index="0" style="object-fit:{fit};"></video>'
+        )
+
+    def _slot_html(self, zoom_id, region, inner):
+        """Wrapper de zoom posicionado na vaga (x, y, w, h), com o miolo `inner` sem tempo próprio."""
+        x, y, w, h = region
+        return (
+            f'<div id="{zoom_id}" class="slot" style="left:{x}px;top:{y}px;width:{w}px;height:{h}px;">'
+            f'<div id="{zoom_id}-in" class="slot-zoom" data-layout-allow-overflow>{inner}</div></div>'
+        )
+
     def visual(self, slot, region, media_id, window, contain=False):
         """Vídeo mudo ou imagem numa vaga, dentro de um wrapper sem tempo que dá a escala lenta."""
         start, duration = window
         row = self.export.media[media_id]
-        x, y, w, h = region
         src = self.export.dest(media_id, self.stem(slot, media_id))
         zoom_id = self.new_id(f"{slot}-z")
-        fit = "contain" if contain else "cover"
         timing = f'data-start="{num(start)}" data-duration="{num(duration)}"'
-        if row["kind"] == "image":
-            inner = (
-                f'<img id="{zoom_id}-img" class="clip" src="{esc(src)}" alt="" {timing} data-track-index="0" '
-                f'style="object-fit:{fit};">'
-            )
-        else:
-            inner = (
-                f'<video id="{zoom_id}-video" src="{esc(src)}" muted playsinline {timing} data-media-start="0" '
-                f'data-hf-media-start-basis="local" data-track-index="0" style="object-fit:{fit};"></video>'
-            )
+        inner = self._media_tag(row, zoom_id, src, timing, contain)
         # A escala lenta vai num miolo sem tempo: a vaga (overflow: hidden) fica do tamanho da metade.
-        self.elements.append(
-            f'<div id="{zoom_id}" class="slot" style="left:{x}px;top:{y}px;width:{w}px;height:{h}px;">'
-            f'<div id="{zoom_id}-in" class="slot-zoom" data-layout-allow-overflow>{inner}</div></div>'
-        )
+        self.elements.append(self._slot_html(zoom_id, region, inner))
         self.zoom(f"{zoom_id}-in", start, duration)
 
     def stem(self, slot, media_id):
@@ -328,6 +359,7 @@ class _Scene:
     # vagas
 
     def broll(self, slot, region):
+        """Encadeia o clipe e os extras da vaga até cobrir a cena; sobra vira cartela "B-ROLL"."""
         label = self.scene["id"]
         chain = [m for m in [slot["media_id"], *slot["extra_media_ids"]] if self.export.usable(m)]
         cursor = 0.0
@@ -343,12 +375,14 @@ class _Scene:
                 self.export.note(f"{label}: b-roll cobre {secs(cursor)} de {secs(self.duration)}")
             else:
                 self.export.pend(
-                    f'{label}: b-roll sem clipe — alvo "{slot["text"]}": `brief --beat {slot["beat_id"]} --project <projeto>`'
+                    f'{label}: b-roll sem clipe — alvo "{slot["text"]}": '
+                    f"`brief --beat {slot['beat_id']} --project <projeto>`"
                 )
             lines = [("card-title", f"B-ROLL: {slot['text']}")]
             self.card(slot["slot"], region, lines, (cursor, round(self.duration - cursor, 3)))
 
     def presenter(self, slot, region):
+        """A-ROLL do apresentador na vaga; falta ou sobra de tempo vira cartela de aviso."""
         label = self.scene["id"]
         media_id = slot["media_id"]
         row = self.export.usable(media_id)
@@ -363,10 +397,12 @@ class _Scene:
             self.card(slot["slot"], region, [("card-title", slot["text"])], (span, round(self.duration - span, 3)))
 
     def missing_presenter(self, slot):
+        """Linhas da cartela que substitui o A-ROLL do apresentador quando ele falta."""
         title = _presenter_title(self.export, slot["media_id"], self.scene["id"])
         return [("card-title", title), ("card-prompt", slot["prompt"]), ("card-speech", self.scene["speech_clean"])]
 
     def brand(self, slot, region):
+        """Logo/marca na vaga quando disponível; senão cartela de aviso e, se souber onde, a pendência."""
         if self.export.usable(slot["media_id"]):
             self.visual(slot["slot"], region, slot["media_id"], (0, self.duration), contain=True)
             return
@@ -377,6 +413,7 @@ class _Scene:
         self.card(slot["slot"], region, [("card-title", f"MARCA: {slot['text']}")], (0, self.duration))
 
     def lettering(self, layer):
+        """Camada LETTERING: texto grande com entrada suave, do `at_s` até o fim da cena."""
         start = max(0.0, round(layer["at_s"] - self.scene["start_s"], 3))
         if self.duration - start < MIN_LETTERING_S:
             start = max(0.0, round(self.duration - MIN_LETTERING_S, 3))
@@ -384,15 +421,18 @@ class _Scene:
         style = f" lettering--{slug(layer['name'])}" if layer["name"] else ""
         el_id = self.new_id("lettering")
         self.elements.append(
-            f'<div id="{el_id}" class="clip lettering{style}" data-start="{num(start)}" data-duration="{num(duration)}" '
-            f'data-track-index="2" style="top:{LETTERING_Y[self.export.aspect] - 90}px;">'
+            f'<div id="{el_id}" class="clip lettering{style}" data-start="{num(start)}" '
+            f'data-duration="{num(duration)}" '
+            f'data-track-index="2" style="top:{LETTERING_Y[self.export.canvas.aspect] - 90}px;">'
             f'<div id="{el_id}-text" class="lettering-text">{esc(layer["text"])}</div></div>'
         )
         self.tweens.append(
-            f'tl.fromTo("#{el_id}-text", {{ opacity: 0, y: 40 }}, {{ opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }}, {num(start)});'
+            f'tl.fromTo("#{el_id}-text", {{ opacity: 0, y: 40 }}, '
+            f'{{ opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }}, {num(start)});'
         )
 
     def build(self):
+        """Monta as vagas, o LETTERING e os blocos da cena, e devolve o HTML da sub-composição."""
         regions = self.regions()
         for slot in self.scene["layout"]["slots"]:
             region = regions[slot["slot"]]
@@ -413,14 +453,16 @@ class _Scene:
                 local = round(ext["at_s"] - self.scene["start_s"], 3)
                 args = " ".join(ext["args"])
                 self.elements.append(f"<!-- hyperframes:{comment(ext['name'])} {comment(args)} em {num(local)}s -->")
-                self.export.blocks.append((self.scene["id"], ext["name"], args, ext["at_s"]))
+                self.export.report.blocks.append((self.scene["id"], ext["name"], args, ext["at_s"]))
         return self.html()
 
     def html(self):
-        w, h = self.export.width, self.export.height
+        """Documento `<template>` da sub-composição da cena, com estilo e timeline GSAP embutidos."""
+        w, h = self.export.canvas.width, self.export.canvas.height
         body = "\n      ".join(self.elements)
         tweens = "\n        ".join(self.tweens)
-        return f"""<!doctype html>
+        return (
+            f"""<!doctype html>
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8">
@@ -434,7 +476,8 @@ class _Scene:
         .slot video, .slot img {{ position: absolute; left: 0; top: 0; width: 100%; height: 100%; }}
         .card {{ position: absolute; overflow: hidden; background: {BG}; z-index: {CARD_Z}; }}
         .card-text {{ position: absolute; left: 6%; width: 88%; height: 520px; display: flex; flex-direction: column;
-          align-items: center; justify-content: center; text-align: center; color: {FG}; font-family: Inter, sans-serif; }}
+          align-items: center; justify-content: center; text-align: center; color: """
+            f"""{FG}; font-family: Inter, sans-serif; }}
         .card-title {{ margin: 0 0 24px; font-size: 64px; font-weight: 800; line-height: 1.1; }}
         .card-prompt {{ margin: 0 0 16px; font-size: 40px; font-weight: 600; line-height: 1.2; }}
         .card-speech {{ margin: 0; font-size: 36px; font-weight: 400; line-height: 1.3; }}
@@ -443,7 +486,8 @@ class _Scene:
           color: {FG}; font-family: Inter, sans-serif; font-size: 88px; font-weight: 900; text-align: center;
           text-shadow: 0 6px 24px rgba(0, 0, 0, 0.9); }}
       </style>
-      <div id="root" data-composition-id="{self.cid}" data-start="0" data-duration="{num(self.duration)}" data-width="{w}" data-height="{h}">
+      <div id="root" data-composition-id="{self.cid}" data-start="0" data-duration="{num(self.duration)}" """
+            f"""data-width="{w}" data-height="{h}">
       {body}
       </div>
       <script>
@@ -455,12 +499,13 @@ class _Scene:
   </body>
 </html>
 """
+        )
 
 
 # --- raiz, áudio e legendas ---------------------------------------------------------
 
 
-def _voice_windows(export):
+def _voice_windows(export):  # pylint: disable=redefined-outer-name  # nome fixo: testes do SDK importam `export`
     """Janelas globais `[início, fim)` em que há voz de verdade (disponível e com trilha de áudio)."""
     windows = []
     for scene in export.plan["scenes"]:
@@ -499,7 +544,7 @@ def ducking(start, length, windows):
     return [{"t": t, "v": v} for t, v in clean[:MAX_AUTOMATION_POINTS]]
 
 
-def _missing_voice(export, scene, voice):
+def _missing_voice(export, scene, voice):  # pylint: disable=redefined-outer-name  # nome fixo: testes do SDK importam `export`
     """Pendência da voz que falta: A-ROLL do apresentador (a cartela diz o que gravar) ou narração."""
     sid = scene["id"]
     if (export.media.get(voice) or {}).get("problem") == "no_ffprobe":
@@ -519,7 +564,7 @@ def _missing_voice(export, scene, voice):
     export.pend(f"{sid}: fala sem narração gravada — grave {expected}", f"{sid}: fala sem narração gravada")
 
 
-def _voice_audio(export):
+def _voice_audio(export):  # pylint: disable=redefined-outer-name  # nome fixo: testes do SDK importam `export`
     """`<audio>` da voz de cada cena: só a voz que toca, disponível e com trilha de áudio."""
     lines = []
     for scene in export.plan["scenes"]:
@@ -535,12 +580,13 @@ def _voice_audio(export):
         span = min(row["duration_s"] or scene["duration_s"], scene["duration_s"])
         lines.append(
             f'<audio id="voice-{scene["id"]}" src="{esc(src)}" data-start="{num(scene["start_s"])}" '
-            f'data-duration="{num(span)}" data-media-start="0" data-track-index="{TRACK_VOICE}" data-volume="1"></audio>'
+            f'data-duration="{num(span)}" data-media-start="0" '
+            f'data-track-index="{TRACK_VOICE}" data-volume="1"></audio>'
         )
     return lines
 
 
-def _music_audio(export, layers):
+def _music_audio(export, layers):  # pylint: disable=redefined-outer-name  # nome fixo: testes do SDK importam `export`
     """`<audio>` de cada MUSICA: do `at_s` até a próxima MUSICA ou o fim, com a faixa de ducking."""
     total = export.plan["total_s"]
     music = [(scene, layer) for scene, layer in layers if layer["kind"] == "MUSICA"]
@@ -558,21 +604,22 @@ def _music_audio(export, layers):
         src = export.dest(layer["media_id"], _name_of(layer["media_id"]))
         lane = {"version": 1, "lanes": [{"target": "volume", "points": ducking(layer["at_s"], length, windows)}]}
         lines.append(
-            f'<audio id="music-{index}" src="{esc(src)}" data-start="{num(layer["at_s"])}" data-duration="{num(length)}" '
+            f'<audio id="music-{index}" src="{esc(src)}" data-start="{num(layer["at_s"])}" '
+            f'data-duration="{num(length)}" '
             f'data-media-start="0" data-track-index="{TRACK_MUSIC}" data-volume="{MUSIC_BASE}" '
             f'data-automation="{esc(json.dumps(lane, separators=(",", ":")))}"></audio>'
         )
     return lines
 
 
-def _sfx_and_comps(export, layers):
+def _sfx_and_comps(export, layers):  # pylint: disable=redefined-outer-name  # nome fixo: testes do SDK importam `export`
     """`<audio>` de cada SFX em trilhos alternados e o comentário de cada COMP (ligado depois, na skill)."""
     total = export.plan["total_s"]
     lines, count = [], 0
     for scene, layer in layers:
         if layer["kind"] == "COMP":
             lines.append(f'<!-- getbrolls COMP "{comment(layer["name"])}" em {num(layer["at_s"])}s ({scene["id"]}) -->')
-            export.comps.append((scene["id"], layer["name"], layer["at_s"]))
+            export.report.comps.append((scene["id"], layer["name"], layer["at_s"]))
             continue
         if layer["kind"] != "SFX":
             continue
@@ -591,7 +638,7 @@ def _sfx_and_comps(export, layers):
     return lines
 
 
-def _audio(export):
+def _audio(export):  # pylint: disable=redefined-outer-name  # nome fixo: testes do SDK importam `export`
     """`<audio>` da raiz, sempre com id e tempo global: voz, música e SFX (e os COMP como comentário)."""
     layers = [(scene, layer) for scene in export.plan["scenes"] for layer in scene["layers"]]
     return _voice_audio(export) + _music_audio(export, layers) + _sfx_and_comps(export, layers)
@@ -622,14 +669,15 @@ def _windows(plan, predicate):
     ]
 
 
-def _captions(export):
+def _captions(export):  # pylint: disable=redefined-outer-name  # nome fixo: testes do SDK importam `export`
     plan = export.plan
-    split = _windows(plan, lambda s: s["layout"]["kind"] == "SPLIT") if export.aspect == "9:16" else []
+    split = _windows(plan, lambda s: s["layout"]["kind"] == "SPLIT") if export.canvas.aspect == "9:16" else []
     cards = _windows(
         plan, lambda s: s["layout"]["slots"][0]["slot"] == "main" and s["layout"]["slots"][0]["role"] == "card"
     )
-    w, h = export.width, export.height
-    return f"""<!doctype html>
+    w, h = export.canvas.width, export.canvas.height
+    return (
+        f"""<!doctype html>
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8">
@@ -638,21 +686,23 @@ def _captions(export):
     <template id="captions-template">
       <style>
         #root {{ position: absolute; inset: 0; pointer-events: none; z-index: {CAPTIONS_Z}; }}
-        .captions-group {{ position: absolute; z-index: {CAPTIONS_Z}; left: 0; width: 100%; height: 220px; padding: 0 {(w - CAPTION_MAX_WIDTH[export.aspect]) // 2}px;
+        .captions-group {{ position: absolute; z-index: {CAPTIONS_Z}; left: 0; width: 100%; height: 220px; """
+        f"""padding: 0 {(w - CAPTION_MAX_WIDTH[export.canvas.aspect]) // 2}px;
           box-sizing: border-box; display: flex; align-items: center; justify-content: center; text-align: center;
           color: {FG}; font-family: Inter, sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1;
           text-shadow: 0 4px 16px rgba(0, 0, 0, 0.85); opacity: 0; }}
       </style>
-      <div id="root" data-composition-id="captions" data-start="0" data-duration="{num(plan["total_s"])}" data-width="{w}" data-height="{h}">
+      <div id="root" data-composition-id="captions" data-start="0" """
+        f"""data-duration="{num(plan["total_s"])}" data-width="{w}" data-height="{h}">
         <div id="captions-layer"></div>
       </div>
       <script>
         const TRANSCRIPT = {js(_transcript(plan))};
         const SPLIT_WINDOWS = {js(split)};
         const CARD_WINDOWS = {js(cards)};
-        const BASE_Y = {CAPTION_Y[export.aspect]};
+        const BASE_Y = {CAPTION_Y[export.canvas.aspect]};
         const SPLIT_Y = {SPLIT_CAPTION_Y};
-        const MAX_WIDTH = {CAPTION_MAX_WIDTH[export.aspect]};
+        const MAX_WIDTH = {CAPTION_MAX_WIDTH[export.canvas.aspect]};
         const inside = (t, windows) => windows.some((w) => t >= w[0] && t < w[1]);
         {CAPTION_GROUPING_JS}
         const groups = groupWords(TRANSCRIPT, CARD_WINDOWS);
@@ -666,11 +716,13 @@ def _captions(export):
           const y = inside(group.start, SPLIT_WINDOWS) ? SPLIT_Y : BASE_Y;
           el.style.top = y - 110 + "px";
           const fit = window.__hyperframes && window.__hyperframes.fitTextFontSize
-            ? window.__hyperframes.fitTextFontSize(group.text, {{ fontFamily: "Inter", fontWeight: 800, maxWidth: MAX_WIDTH }})
+            ? window.__hyperframes.fitTextFontSize(group.text, """
+        f"""{{ fontFamily: "Inter", fontWeight: 800, maxWidth: MAX_WIDTH }})
             : null;
           if (fit && fit.fontSize) el.style.fontSize = fit.fontSize + "px";
           layer.appendChild(el);
-          tl.fromTo(el, {{ opacity: 0, y: 12 }}, {{ opacity: 1, y: 0, duration: 0.12, ease: "power2.out" }}, group.start);
+          tl.fromTo(el, {{ opacity: 0, y: 12 }}, """
+        f"""{{ opacity: 1, y: 0, duration: 0.12, ease: "power2.out" }}, group.start);
           tl.set(el, {{ opacity: 0, visibility: "hidden" }}, group.end);
         }});
         window.__timelines["captions"] = tl;
@@ -679,30 +731,34 @@ def _captions(export):
   </body>
 </html>
 """
+    )
 
 
-def _index(export, scenes_html):
+def _index(export, scenes_html):  # pylint: disable=redefined-outer-name  # nome fixo: testes do SDK importam `export`
     plan = export.plan
-    w, h = export.width, export.height
+    w, h = export.canvas.width, export.canvas.height
     total = num(plan["total_s"])
     hosts = [
         f'<div id="el-scene-{s["id"]}" class="clip" data-composition-id="scene-{s["id"]}" '
         f'data-composition-src="compositions/scene-{s["id"]}.html" data-start="{num(s["start_s"])}" '
-        f'data-duration="{num(s["duration_s"])}" data-track-index="{TRACK_SCENES}" data-width="{w}" data-height="{h}"></div>'
+        f'data-duration="{num(s["duration_s"])}" data-track-index="{TRACK_SCENES}" '
+        f'data-width="{w}" data-height="{h}"></div>'
         for s in plan["scenes"]
         if s["id"] in scenes_html
     ]
     if plan["meta"]["legenda"]:
         hosts.append(
-            f'<div id="el-captions" class="clip" data-composition-id="captions" data-composition-src="compositions/captions.html" '
+            f'<div id="el-captions" class="clip" data-composition-id="captions" '
+            f'data-composition-src="compositions/captions.html" '
             f'data-track-kind="captions" data-start="0" data-duration="{total}" data-track-index="{TRACK_CAPTIONS}" '
             f'data-width="{w}" data-height="{h}"></div>'
         )
     body = "\n      ".join(hosts + _audio(export))
     # A legenda fica acima das cartelas das cenas.
     captions_css = f"      #el-captions {{ z-index: {CAPTIONS_Z}; }}\n" if plan["meta"]["legenda"] else ""
-    return f"""<!doctype html>
-<html lang="pt-BR" data-resolution="{export.resolution}">
+    return (
+        f"""<!doctype html>
+<html lang="pt-BR" data-resolution="{export.canvas.resolution}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width={w}, height={h}">
@@ -714,7 +770,8 @@ def _index(export, scenes_html):
 {captions_css}    </style>
   </head>
   <body>
-    <div id="root" data-composition-id="main" data-start="0" data-duration="{total}" data-fps="{export.fps}" data-width="{w}" data-height="{h}">
+    <div id="root" data-composition-id="main" data-start="0" data-duration="{total}" """
+        f"""data-fps="{export.fps}" data-width="{w}" data-height="{h}">
       {body}
     </div>
     <script>
@@ -724,6 +781,7 @@ def _index(export, scenes_html):
   </body>
 </html>
 """
+    )
 
 
 # --- arquivos do projeto ------------------------------------------------------------
@@ -751,11 +809,15 @@ def _project_files(plan):
             "render": f"{NPX} render . -o ../../../renders/{exporter}-{number}.mp4",
         },
     }
-    dump = lambda value: json.dumps(value, ensure_ascii=False, indent=2) + "\n"  # noqa: E731 - one-line formatter shared by three files
+
+    def dump(value):
+        """JSON com indentação de 2 espaços e quebra de linha final, para os três arquivos do projeto."""
+        return json.dumps(value, ensure_ascii=False, indent=2) + "\n"
+
     return {"hyperframes.json": dump(config), "meta.json": dump(meta), "package.json": dump(package)}
 
 
-def _media_cell(export, scene):
+def _media_cell(export, scene):  # pylint: disable=redefined-outer-name  # nome fixo: testes do SDK importam `export`
     ids = [m for slot in scene["layout"]["slots"] for m in [slot["media_id"], *slot["extra_media_ids"]] if m]
     ids += [m for m in scene["voice_media_ids"] if m]
     missing = [m for m in dict.fromkeys(ids) if not export.usable(m)]
@@ -767,7 +829,81 @@ def _credit(row):
     return md(row["credit"])
 
 
-def _export_md(export):
+def _scene_row(export, scene):  # pylint: disable=redefined-outer-name  # nome fixo: testes do SDK importam `export`
+    """Linha da tabela de cenas do EXPORT.md: id, tempos, fonte de tempo/legenda, layout e mídia."""
+    source = "A-ROLL" if scene["duration_source"] == "aroll" else "estimado"
+    caption = "transcrição" if scene["words_source"] == "transcript" else "estimada"
+    return (
+        f"| {scene['id']} — {md(scene['title'])} | {secs(scene['start_s'])} | {secs(scene['duration_s'])} | "
+        f"{source} | {caption} | {md(scene['layout']['kind'])} | {_media_cell(export, scene)} |"
+    )
+
+
+def _pending_lines(export):  # pylint: disable=redefined-outer-name  # nome fixo: testes do SDK importam `export`
+    """Pendências do EXPORT.md: avisos do core, do exporter e mídia em formato que o Studio não toca."""
+    pending = [md(w) for w in export.plan["warnings"]] + [md(p) for p in dict.fromkeys(export.report.pending)]
+    for media_id in export.order:
+        ext = export.media[media_id]["ext"]
+        if ext in UNPLAYABLE_AUDIO:
+            pending.append(
+                f"`{export.dests[media_id]}` está em {md(ext)}, que o Chrome do Studio não toca: "
+                "converta para .wav ou .mp3"
+            )
+    return [f"- {p}" for p in dict.fromkeys(pending)] or ["- Nenhuma."]
+
+
+def _blocks_lines(export, out):  # pylint: disable=redefined-outer-name  # nome fixo: testes do SDK importam `export`
+    """Seção "Blocos e composições" do EXPORT.md, ou `[]` quando a cena não usou nenhum."""
+    if not (export.report.blocks or export.report.comps):
+        return []
+    lines = ["", "## Blocos e composições", ""]
+    for scene_id, name, args, at_s in export.report.blocks:
+        extra = f" (args: {md(args)})" if args else ""
+        lines.append(
+            f"- {scene_id}: `{NPX} add {slug(name, fallback='bloco')} --dir {out}` em {secs(at_s)}{extra}; "
+            "ligue com a skill `/hyperframes-registry`."
+        )
+    for scene_id, name, at_s in export.report.comps:
+        lines.append(f'- {scene_id}: COMP "{md(name)}" em {secs(at_s)}: ligue com a skill `/hyperframes`.')
+    return lines
+
+
+def _next_steps_lines(plan, out):
+    """Seção "Próximos passos" do EXPORT.md: comandos da CLI e avisos fixos para quem for editar."""
+    return [
+        "",
+        "## Próximos passos",
+        "",
+        "Rode sempre da raiz do projeto (a pasta do `ROTEIRO.md`), sem trocar de pasta:",
+        "",
+        "```bash",
+        f"{NPX} lint {out} --json",
+        f"{NPX} check {out} --json   # 1ª vez baixa GSAP (jsdelivr) e a fonte Inter (Google Fonts)",
+        f"{NPX} preview {out}",
+        "mkdir -p renders",
+        f'{NPX} render {out} --quality draft -o "$PWD/renders/{plan["exporter"]}-{_number(plan)}-rascunho.mp4"',
+        "```",
+        "",
+        "- Render **fora** do export: sempre `-o` para `renders/` do projeto.",
+        (
+            "- Legendas mais precisas: gere `aroll/<cena>.transcript.json` (comando em `references/roteiro.md`) "
+            "e rode `gb export` de novo; sai uma pasta nova."
+        ),
+        (
+            "- Acabamento (motion, blocos, `COMP`) acontece na pasta numerada que você escolher, com a skill "
+            "`/hyperframes`. Um novo `gb export` cria a próxima pasta e **nunca** mexe nesta; `LATEST` aponta "
+            "a mais nova criada pelo core, não a que você está editando. Pastas antigas são suas: apague quando quiser."
+        ),
+        "- `assets/clips/` compartilha o arquivo com `brolls/clips/`: não edite esses clipes no lugar.",
+        (
+            "- Take contínuo (uma gravação para o vídeo todo) não é suportado na v1: grave um arquivo por cena "
+            "em `aroll/`."
+        ),
+    ]
+
+
+def _export_md(export):  # pylint: disable=redefined-outer-name  # nome fixo: testes do SDK importam `export`
+    """`EXPORT.md`: resumo do export, tabela de cenas, pendências, créditos e próximos passos."""
     plan = export.plan
     out = plan["out_dir"]
     timing = {"estimate": "estimado", "aroll": "A-ROLL real", "mixed": "misto (A-ROLL real + estimativa)"}[
@@ -784,7 +920,7 @@ def _export_md(export):
         "| Campo | Valor |",
         "|---|---|",
         f"| Tema | {md(plan['meta']['tema'])} |",
-        f"| Aspecto | {md(plan['meta']['aspecto'])} ({export.width}×{export.height}) |",
+        f"| Aspecto | {md(plan['meta']['aspecto'])} ({export.canvas.width}×{export.canvas.height}) |",
         f"| Duração | {secs(plan['total_s'])} |",
         f"| Tempo | {timing} |",
         f"| Pasta | `{out}` |",
@@ -794,56 +930,16 @@ def _export_md(export):
         "| Cena | Início | Duração | Tempo | Legenda | Layout | Mídia |",
         "|---|---|---|---|---|---|---|",
     ]
-    for scene in plan["scenes"]:
-        source = "A-ROLL" if scene["duration_source"] == "aroll" else "estimado"
-        caption = "transcrição" if scene["words_source"] == "transcript" else "estimada"
-        lines.append(
-            f"| {scene['id']} — {md(scene['title'])} | {secs(scene['start_s'])} | {secs(scene['duration_s'])} | "
-            f"{source} | {caption} | {md(scene['layout']['kind'])} | {_media_cell(export, scene)} |"
-        )
-    pending = [md(w) for w in plan["warnings"]] + [md(p) for p in dict.fromkeys(export.pending)]
-    for media_id in export.order:
-        ext = export.media[media_id]["ext"]
-        if ext in UNPLAYABLE_AUDIO:
-            pending.append(
-                f"`{export.dests[media_id]}` está em {md(ext)}, que o Chrome do Studio não toca: converta para .wav ou .mp3"
-            )
+    lines += [_scene_row(export, scene) for scene in plan["scenes"]]
     lines += ["", "## Pendências", ""]
-    lines += [f"- {p}" for p in dict.fromkeys(pending)] or ["- Nenhuma."]
+    lines += _pending_lines(export)
     lines += ["", "## Créditos", ""]
     credit_lines = [
         f"- `{export.dests[m]}`: {_credit(export.media[m])}" for m in export.order if export.media[m]["credit"]
     ]
     lines += credit_lines or ["- Nenhum crédito registrado."]
-    lines += [
-        "",
-        "## Próximos passos",
-        "",
-        "Rode sempre da raiz do projeto (a pasta do `ROTEIRO.md`), sem trocar de pasta:",
-        "",
-        "```bash",
-        f"{NPX} lint {out} --json",
-        f"{NPX} check {out} --json   # 1ª vez baixa GSAP (jsdelivr) e a fonte Inter (Google Fonts)",
-        f"{NPX} preview {out}",
-        "mkdir -p renders",
-        f'{NPX} render {out} --quality draft -o "$PWD/renders/{plan["exporter"]}-{_number(plan)}-rascunho.mp4"',
-        "```",
-        "",
-        "- Render **fora** do export: sempre `-o` para `renders/` do projeto.",
-        "- Legendas mais precisas: gere `aroll/<cena>.transcript.json` (comando em `references/roteiro.md`) e rode `gb export` de novo; sai uma pasta nova.",
-        "- Acabamento (motion, blocos, `COMP`) acontece na pasta numerada que você escolher, com a skill `/hyperframes`. Um novo `gb export` cria a próxima pasta e **nunca** mexe nesta; `LATEST` aponta a mais nova criada pelo core, não a que você está editando. Pastas antigas são suas: apague quando quiser.",
-        "- `assets/clips/` compartilha o arquivo com `brolls/clips/`: não edite esses clipes no lugar.",
-        "- Take contínuo (uma gravação para o vídeo todo) não é suportado na v1: grave um arquivo por cena em `aroll/`.",
-    ]
-    if export.blocks or export.comps:
-        lines += ["", "## Blocos e composições", ""]
-        for scene_id, name, args, at_s in export.blocks:
-            extra = f" (args: {md(args)})" if args else ""
-            lines.append(
-                f"- {scene_id}: `{NPX} add {slug(name, fallback='bloco')} --dir {out}` em {secs(at_s)}{extra}; ligue com a skill `/hyperframes-registry`."
-            )
-        for scene_id, name, at_s in export.comps:
-            lines.append(f'- {scene_id}: COMP "{md(name)}" em {secs(at_s)}: ligue com a skill `/hyperframes`.')
+    lines += _next_steps_lines(plan, out)
+    lines += _blocks_lines(export, out)
     return "\n".join(lines) + "\n"
 
 
@@ -899,7 +995,7 @@ def generate(plan):
     """`{"files": {caminho: texto}, "media": [{"media_id", "dest"}], "notes": [texto]}` a partir do plano."""
     plan = cast("dict", _clean(plan))
     _check_supported(plan)
-    export = _Export(plan)
+    export = _Export(plan)  # pylint: disable=redefined-outer-name  # nome fixo: testes do SDK importam `export`
     scenes = {}
     for scene in plan["scenes"]:
         scenes[scene["id"]] = _Scene(export, scene).build()
@@ -910,7 +1006,7 @@ def generate(plan):
         files["compositions/captions.html"] = _captions(export)
     files.update(_project_files(plan))
     files["EXPORT.md"] = _export_md(export)
-    return {"files": files, "media": export.requests(), "notes": list(dict.fromkeys(export.notes))[:MAX_NOTES]}
+    return {"files": files, "media": export.requests(), "notes": list(dict.fromkeys(export.report.notes))[:MAX_NOTES]}
 
 
 def export(plan, options):
@@ -1069,7 +1165,7 @@ def _allowed_roots():
     return [Path(p).expanduser().resolve() for p in paths if isinstance(p, str)]
 
 
-class MediaUseResolver:
+class MediaUseResolver:  # pylint: disable=too-few-public-methods  # contrato do SDK: resolvedor é só um `__call__`
     """`resolve(kind, name)`: projetos do `media-use` (`media_projects` no settings.json) e depois o acervo global."""
 
     def __init__(self, api):
@@ -1121,6 +1217,7 @@ class MediaUseResolver:
 
 
 def register(api):
+    """Ponto de entrada do SDK: registra o exporter `hyperframes` e o resolvedor do media-use."""
     api.exporter(
         "hyperframes",
         export,
