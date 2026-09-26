@@ -93,9 +93,11 @@ Experimental. Com o roteiro revisado e sincronizado, `python3 "scripts/gb.py" ex
 
   ```bash
   tmp="$(mktemp -d)"
-  npx --yes hyperframes@0.8.73 transcribe aroll/c03.mov -d "$tmp" --engine whisper --model small --language pt --json
+  HYPERFRAMES_NO_TELEMETRY=1 npx --yes hyperframes@0.8.73 transcribe aroll/c03.mov -d "$tmp" --engine whisper --model small --language pt --json
   cp "$tmp/transcript.json" aroll/c03.transcript.json
   ```
+
+  A CLI HyperFrames envia telemetria de uso por padrão; `HYPERFRAMES_NO_TELEMETRY=1` desliga (no PowerShell, `$env:HYPERFRAMES_NO_TELEMETRY = "1"` antes do comando), inclusive nos comandos do `EXPORT.md`. O `npx` baixa e executa a CLI e as dependências dela (inclusive scripts de instalação); rode num ambiente em que você confia.
 
   Vídeo `.m4v` não passa direto pelo whisper ("Unsupported file type: .m4v"): extraia o som antes, com `ffmpeg -i aroll/cNN.m4v -vn -ac 1 -ar 16000 "$tmp/cNN.wav"`, e transcreva esse `.wav` com as mesmas opções; o sidecar continua `aroll/cNN.transcript.json`. Avise a pessoa antes do primeiro `transcribe`: ele pode instalar o whisper-cpp e baixar o modelo (cerca de 470 MB no `small`).
 

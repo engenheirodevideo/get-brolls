@@ -24,6 +24,8 @@ A revisão não autentica quem clicou: importação exige atribuição humana co
 
 Sem telemetria: a skill não envia dados a nenhum serviço próprio. Não há endpoint do autor, coleta de uso ou relatório automático de erro; todo tráfego sai para a fonte que você escolheu ou para os registros oficiais de dependências.
 
+**Export HyperFrames.** O `EXPORT.md` e o `package.json` do export mandam rodar `npx hyperframes@0.8.73`. O `npx` baixa e executa a CLI e as dependências dela (inclusive scripts de instalação); rode num ambiente em que você confia. A CLI HyperFrames, que não é do get-brolls, envia telemetria de uso (PostHog) por padrão: `HYPERFRAMES_NO_TELEMETRY=1` desliga (no PowerShell, `$env:HYPERFRAMES_NO_TELEMETRY = "1"`). O `EXPORT.md` já traz essa linha antes dos comandos; os scripts do `package.json` não trazem, porque `VAR=1 comando` não funciona no `cmd` do Windows. O projeto gerado busca o GSAP no jsdelivr e a fonte Inter no Google Fonts, e o `transcribe` pode baixar o modelo do whisper.
+
 ## Plugins
 
 Plugins do SDK (`docs/SDK.md`) são opt-in por id: nada em `$GB_HOME/plugins/`

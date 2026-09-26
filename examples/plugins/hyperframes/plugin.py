@@ -40,6 +40,10 @@ HYPERFRAMES_VERSION = "0.8.73"
 GSAP_URL = "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"
 FPS = 30
 NPX = f"npx --yes hyperframes@{HYPERFRAMES_VERSION}"
+# Opt-out da telemetria (PostHog) que a CLI manda por padrão, conferido no `dist/cli.js` da versão fixada.
+NO_TELEMETRY = "HYPERFRAMES_NO_TELEMETRY"
+# Id de cena da gramática do core (c01…c999, nunca c00): entra cru em id, seletor e nome de arquivo.
+SCENE_ID_RE = re.compile(r"c(?!0+$)[0-9]{2,3}")
 # (largura, altura, data-resolution) por aspecto do roteiro.
 CANVAS = {"9:16": (1080, 1920, "portrait"), "16:9": (1920, 1080, "landscape")}
 # Centro vertical da cartela (terço superior), da legenda e do LETTERING, por aspecto.
@@ -468,7 +472,7 @@ class _Scene:
     <meta charset="utf-8">
   </head>
   <body>
-    <template id="{self.cid}-template">
+    <template id="{esc(self.cid)}-template">
       <style>
         #root {{ position: absolute; inset: 0; overflow: hidden; background: {BG}; }}
         .slot {{ position: absolute; overflow: hidden; }}
@@ -486,14 +490,14 @@ class _Scene:
           color: {FG}; font-family: Inter, sans-serif; font-size: 88px; font-weight: 900; text-align: center;
           text-shadow: 0 6px 24px rgba(0, 0, 0, 0.9); }}
       </style>
-      <div id="root" data-composition-id="{self.cid}" data-start="0" data-duration="{num(self.duration)}" """
+      <div id="root" data-composition-id="{esc(self.cid)}" data-start="0" data-duration="{num(self.duration)}" """
             f"""data-width="{w}" data-height="{h}">
       {body}
       </div>
       <script>
         const tl = gsap.timeline({{ paused: true }});
         {tweens}
-        window.__timelines["{self.cid}"] = tl;
+        window.__timelines[{js(self.cid)}] = tl;
       </script>
     </template>
   </body>
@@ -579,7 +583,7 @@ def _voice_audio(export):  # pylint: disable=redefined-outer-name  # nome fixo: 
         src = export.dest(voice, _name_of(voice))
         span = min(row["duration_s"] or scene["duration_s"], scene["duration_s"])
         lines.append(
-            f'<audio id="voice-{scene["id"]}" src="{esc(src)}" data-start="{num(scene["start_s"])}" '
+            f'<audio id="voice-{esc(scene["id"])}" src="{esc(src)}" data-start="{num(scene["start_s"])}" '
             f'data-duration="{num(span)}" data-media-start="0" '
             f'data-track-index="{TRACK_VOICE}" data-volume="1"></audio>'
         )
@@ -632,7 +636,7 @@ def _sfx_and_comps(export, layers):  # pylint: disable=redefined-outer-name  # n
         count += 1
         src = export.dest(layer["media_id"], _name_of(layer["media_id"]))
         lines.append(
-            f'<audio id="sfx-{scene["id"]}-{count}" src="{esc(src)}" data-start="{num(layer["at_s"])}" '
+            f'<audio id="sfx-{esc(scene["id"])}-{count}" src="{esc(src)}" data-start="{num(layer["at_s"])}" '
             f'data-track-index="{TRACK_SFX + (count - 1) % 2}" data-volume="{SFX_VOLUME}"></audio>'
         )
     return lines
@@ -739,8 +743,8 @@ def _index(export, scenes_html):  # pylint: disable=redefined-outer-name  # nome
     w, h = export.canvas.width, export.canvas.height
     total = num(plan["total_s"])
     hosts = [
-        f'<div id="el-scene-{s["id"]}" class="clip" data-composition-id="scene-{s["id"]}" '
-        f'data-composition-src="compositions/scene-{s["id"]}.html" data-start="{num(s["start_s"])}" '
+        f'<div id="el-scene-{esc(s["id"])}" class="clip" data-composition-id="scene-{esc(s["id"])}" '
+        f'data-composition-src="compositions/scene-{esc(s["id"])}.html" data-start="{num(s["start_s"])}" '
         f'data-duration="{num(s["duration_s"])}" data-track-index="{TRACK_SCENES}" '
         f'data-width="{w}" data-height="{h}"></div>'
         for s in plan["scenes"]
@@ -876,7 +880,15 @@ def _next_steps_lines(plan, out):
         "",
         "Rode sempre da raiz do projeto (a pasta do `ROTEIRO.md`), sem trocar de pasta:",
         "",
+        (
+            "A CLI HyperFrames envia telemetria de uso por padrão: a primeira linha abaixo desliga "
+            f'(`{NO_TELEMETRY}=1`; no PowerShell, `$env:{NO_TELEMETRY} = "1"`). '
+            "O `npx` baixa e executa a CLI e as dependências dela (inclusive scripts de instalação); "
+            "rode num ambiente em que você confia."
+        ),
+        "",
         "```bash",
+        f"export {NO_TELEMETRY}=1",
         f"{NPX} lint {out} --json",
         f"{NPX} check {out} --json   # 1ª vez baixa GSAP (jsdelivr) e a fonte Inter (Google Fonts)",
         f"{NPX} preview {out}",
@@ -968,6 +980,10 @@ def _check_supported(plan):
         raise PluginError(
             f"export_version {shown} não é suportado por esta versão do exporter hyperframes: atualize o plugin."
         )
+    for scene in plan["scenes"]:
+        if not (isinstance(scene["id"], str) and SCENE_ID_RE.fullmatch(scene["id"])):
+            shown = str(scene["id"])[:20]
+            raise PluginError(f'id de cena "{shown}" não é suportado por esta versão do exporter hyperframes.')
     found = [("aspecto", plan["meta"]["aspecto"]), ("timing", plan["timing"])]
     found += [("mídia", row["kind"]) for row in plan["media"].values()]
     for scene in plan["scenes"]:

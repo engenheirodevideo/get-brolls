@@ -805,6 +805,35 @@ class ExportDocTests(unittest.TestCase):
         ):
             self.assertIn(fixed, text)
 
+    def test_export_md_turns_telemetry_off_and_warns_about_npx(self):
+        text = generate(fixture())["files"]["EXPORT.md"]
+        block = text.split("```bash\n", 1)[1].split("```", 1)[0]
+        self.assertEqual("export HYPERFRAMES_NO_TELEMETRY=1", block.splitlines()[0])
+        self.assertIn('$env:HYPERFRAMES_NO_TELEMETRY = "1"', text)
+        self.assertIn("envia telemetria", text)
+        self.assertIn(
+            "O `npx` baixa e executa a CLI e as dependências dela (inclusive scripts de instalação); "
+            "rode num ambiente em que você confia.",
+            text,
+        )
+
+    def test_package_json_pins_exact_versions(self):
+        package = json.loads(generate(fixture())["files"]["package.json"])
+        for section in ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies"):
+            for name, version in (package.get(section) or {}).items():
+                self.assertRegex(version, r"^[0-9]+\.[0-9]+\.[0-9]+$", f"{section}.{name}")
+        for script in package["scripts"].values():
+            self.assertRegex(script, rf"hyperframes@{re.escape(hf.HYPERFRAMES_VERSION)} ")
+            self.assertNotRegex(script, r"@[~^]")
+
+    def test_docs_turn_telemetry_off_where_they_run_the_cli(self):
+        for path in (ROOT / "references" / "roteiro.md", ROOT / "docs" / "SECURITY.md"):
+            with self.subTest(path=path.name):
+                text = path.read_text(encoding="utf-8")
+                self.assertIn("HYPERFRAMES_NO_TELEMETRY=1", text)
+        security = (ROOT / "docs" / "SECURITY.md").read_text(encoding="utf-8")
+        self.assertIn("rode num ambiente em que você confia", security)
+
     def test_pinned_cli_is_the_tested_one_everywhere(self):
         # A versão fixada é a que rodou lint/check de verdade; os docs mandam rodar a mesma.
         self.assertEqual("0.8.73", hf.HYPERFRAMES_VERSION)
@@ -862,6 +891,16 @@ class PlanEvolutionTests(unittest.TestCase):
                 with self.assertRaises(hf.PluginError) as caught:
                     generate(plan)
                 self.assertIn(field, str(caught.exception))
+                self.assertIn("não é suportado", str(caught.exception))
+
+    def test_a_scene_id_outside_the_core_grammar_is_not_supported(self):
+        for bad in ('c01"><script>alert(1)</script>', "c1", "c0001", "C01", "c01-a", ""):
+            with self.subTest(bad=bad):
+                plan = fixture()
+                plan["scenes"][0]["id"] = bad
+                with self.assertRaises(hf.PluginError) as caught:
+                    generate(plan)
+                self.assertIn("id de cena", str(caught.exception))
                 self.assertIn("não é suportado", str(caught.exception))
 
     def test_an_unknown_export_version_is_refused(self):
