@@ -85,7 +85,7 @@ def _word_problem(word, index, previous_start):
     text = word.get("text")
     if not isinstance(text, str) or not text.strip():
         return f"item {index} sem texto"
-    if len(text) > MAX_WORD_CHARS or any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in text):  # noqa: PLR2004 - control characters
+    if len(text) > MAX_WORD_CHARS or any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in text):  # noqa: PLR2004 - control characters  # pylint: disable=line-too-long
         return f"item {index} com texto longo demais ou em mais de uma linha"
     start, end = _time(word.get("start")), _time(word.get("end"))
     if start is None or end is None or not 0 <= start < end:
