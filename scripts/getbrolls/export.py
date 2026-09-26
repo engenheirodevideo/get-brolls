@@ -15,6 +15,8 @@ import functools
 import json
 import os
 import re
+import unicodedata
+import urllib.parse
 from pathlib import Path
 
 from . import __version__, export_folder, export_gates, export_place, export_plan
@@ -143,9 +145,64 @@ def _path_re(path):
     return re.compile(r"(?<![\w~-])" + re.escape(path) + r"(?![\w-]|\.\w)", re.IGNORECASE)
 
 
+# Percent-encoding decodificado até estabilizar, no máximo esta quantidade de vezes (`%252F` → `%2F` → `/`).
+_UNQUOTE_ROUNDS = 3
+_REPEATED_SLASHES = re.compile(r"/{2,}")
+
+
+def _spellings(text):
+    """O texto cru e as grafias normalizadas dele, cada passo sobre o anterior: `\\/` → `/`; `\\\\` e `\\` → `/`;
+    percent-decode repetido; NFC; barras repetidas colapsadas. Só para comparar: nada disso vai para o disco."""
+    forms = [text]
+    current = text.replace("\\/", "/")
+    forms.append(current)
+    current = current.replace("\\\\", "/").replace("\\", "/")
+    forms.append(current)
+    for _ in range(_UNQUOTE_ROUNDS):
+        decoded = urllib.parse.unquote(current)
+        if decoded == current:
+            break
+        current = decoded.replace("\\", "/")  # `%5C` decodificado também vira barra
+    forms.append(current)
+    current = unicodedata.normalize("NFC", current)
+    forms.append(current)
+    forms.append(_REPEATED_SLASHES.sub("/", current))
+    return list(dict.fromkeys(forms))
+
+
+# `re.IGNORECASE` iguala İ e ı ao i; o filtro rápido de `_first_label` precisa igualar também.
+_DOTTED_I = str.maketrans({"\u0130": "i", "\u0131": "i"})
+
+
+def _fold(text):
+    """Chave do filtro rápido: sem caixa. Mais frouxa que o `re.IGNORECASE`, nunca mais estrita."""
+    return text.translate(_DOTTED_I).casefold()
+
+
+def _patterns(machine):
+    """`[(regex, rótulo, marca, chave)]` de cada grafia de cada caminho conhecido, na ordem de `machine`
+    (o mais longo primeiro)."""
+    patterns = []
+    for path, (label, tag) in machine.items():
+        patterns.extend((_path_re(form), label, tag, _fold(form)) for form in _spellings(path) if len(form) > 1)
+    return patterns
+
+
+def _first_label(text, patterns):
+    """Rótulo do primeiro caminho conhecido que aparece em qualquer grafia de `text`, ou None.
+
+    A regex (com a fronteira) só roda onde a busca de substring, bem mais barata, já achou o caminho."""
+    forms = [(form, _fold(form)) for form in _spellings(text)]
+    for pattern, label, _, key in patterns:
+        if any(key in folded and pattern.search(form) for form, folded in forms):
+            return label
+    return None
+
+
 def _machine_hits(value, machine, where):
-    """`[(posição, rótulo)]` de cada texto de `value` que contém um caminho de `machine` (inteiro, sem caixa)."""
-    patterns = [(_path_re(path), label) for path, (label, _) in machine.items()]
+    """`[(posição, rótulo)]` de cada texto de `value` que contém um caminho de `machine` (inteiro, sem caixa),
+    na grafia crua ou em qualquer grafia normalizada (`_spellings`)."""
+    patterns = _patterns(machine)
     hits = []
     stack = [(where, value)]
     while stack:
@@ -157,17 +214,26 @@ def _machine_hits(value, machine, where):
         elif type(item) in (list, tuple):
             stack.extend((f"{position}[{index}]", child) for index, child in enumerate(item))
         elif type(item) is str:
-            label = next((label for pattern, label in patterns if pattern.search(item)), None)
+            label = _first_label(item, patterns)
             if label is not None:
                 hits.append((position, label))
     return sorted(hits)
 
 
 def _scrub(text, machine):
-    """Troca cada caminho concreto desta máquina pela marca dele (`<projeto>`, `<pasta pessoal>`…)."""
+    """Troca cada caminho concreto desta máquina pela marca dele (`<projeto>`, `<pasta pessoal>`…).
+
+    Sobrou caminho numa grafia alternativa (URI, percent-encoded, NFD, `\\`): o texto sai na grafia
+    normalizada, com a marca no lugar do caminho."""
     for path, (_, tag) in machine.items():
         text = _path_re(path).sub(tag, text)
-    return text
+    patterns = _patterns(machine)
+    if _first_label(text, patterns) is None:
+        return text
+    normalized = _spellings(text)[-1]
+    for pattern, _, tag, _ in patterns:
+        normalized = pattern.sub(tag, normalized)
+    return normalized
 
 
 def _check_output(owner, name, validated, core_files, machine):

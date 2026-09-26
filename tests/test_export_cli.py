@@ -13,7 +13,9 @@ import re
 import shutil
 import stat
 import tempfile
+import unicodedata
 import unittest
+import urllib.parse
 from pathlib import Path
 from unittest import mock
 
@@ -770,6 +772,56 @@ class MachinePathMatchTests(unittest.TestCase):
         text = f"../..{self.AN}/x"
         self.assertEqual([("files['index.html']", "a pasta pessoal")], self.hits(text, self.AN))
         self.assertNotIn(self.AN.casefold(), export._scrub(text, self.machine(self.AN)).casefold())
+
+
+class MachinePathSpellingTests(unittest.TestCase):
+    """Outra grafia do mesmo caminho (URI, percent-encoded, NFD, `//`, `\\/`, Windows) também é recusada."""
+
+    # Montados em tempo de execução: o guarda do repositório recusa caminho de máquina escrito no código.
+    POSIX = "/".join(("", "home", "ana maria"))
+    ACCENT = "/".join(("", "home", "jo\u00e3o"))
+    WINDOWS = "\\".join(("C:", "Users", "Ana Maria"))
+
+    def machine(self, *paths):
+        return dict.fromkeys(paths, ("a pasta pessoal", "<pasta pessoal>"))
+
+    def assert_refused_and_scrubbed(self, text, path):
+        machine = self.machine(path)
+        self.assertEqual(
+            [("files['index.html']", "a pasta pessoal")], export._machine_hits({"index.html": text}, machine, "files")
+        )
+        scrubbed = export._scrub(text, machine)
+        self.assertIn("<pasta pessoal>", scrubbed)
+        self.assertEqual([], export._machine_hits({"index.html": scrubbed}, machine, "files"))
+
+    def test_each_alternative_spelling_is_refused(self):
+        cases = {
+            "file URI com espaço": (Path(self.POSIX).as_posix().replace(" ", "%20"), self.POSIX),
+            "file:// URI": ("file://" + self.POSIX.replace(" ", "%20") + "/x.mp4", self.POSIX),
+            "percent-encoded inteiro": (urllib.parse.quote(self.POSIX + "/x.mp4", safe=""), self.POSIX),
+            "percent-encoded duas vezes": (
+                urllib.parse.quote(urllib.parse.quote(self.POSIX, safe=""), safe=""),
+                self.POSIX,
+            ),
+            "acento em %XX": (urllib.parse.quote(self.ACCENT) + "/x.mp4", self.ACCENT),
+            "NFD": (unicodedata.normalize("NFD", self.ACCENT) + "/x.mp4", self.ACCENT),
+            "barra dupla": (self.POSIX.replace("/", "//") + "//x.mp4", self.POSIX),
+            "JSON com \\/": (json.dumps({"src": self.POSIX + "/x.mp4"}).replace("/", "\\/"), self.POSIX),
+            "Windows com /": ("C:/Users/Ana Maria/x.mp4", self.WINDOWS),
+            "Windows file URI": ("file:///C:/Users/Ana%20Maria/x.mp4", self.WINDOWS),
+            "Windows com \\\\ (JSON)": (json.dumps(self.WINDOWS + "\\x.mp4"), self.WINDOWS),
+            "Windows em outra caixa": ("c:/users/ana maria/x.mp4", self.WINDOWS),
+        }
+        for label, (text, path) in cases.items():
+            with self.subTest(label, text=text):
+                self.assert_refused_and_scrubbed(text, path)
+
+    def test_normalizing_does_not_turn_a_longer_name_into_a_hit(self):
+        for text in ("https://site.com/home/ana maria2/x", "/home/ana%20mariana/x", "C:/Users/Ana Mariana/x"):
+            with self.subTest(text=text):
+                machine = self.machine(self.POSIX, self.WINDOWS)
+                self.assertEqual([], export._machine_hits({"index.html": text}, machine, "files"))
+                self.assertEqual(text, export._scrub(text, machine))
 
 
 class SamplePlanTests(unittest.TestCase):

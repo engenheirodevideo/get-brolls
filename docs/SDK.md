@@ -485,8 +485,10 @@ api.exporter("meu_banco_html", exporta, "Exporta o plano como página HTML")
   pastas: não escreva um em `files`. A mídia entra só por `media`. O `gb export`
   recusa, sem gravar nada, arquivo que contém um caminho real desta máquina (a
   pasta do projeto, a pasta pessoal, `GB_HOME`, o caminho de uma mídia, uma
-  pasta de `permissions.paths`); texto que só tem cara de caminho (vindo da fala do
-  roteiro, por exemplo) sai como está, com um aviso.
+  pasta de `permissions.paths`), em qualquer grafia: sem caixa, com `\` ou `\\`
+  no lugar de `/` (`C:/Users/…`), `\/` de JSON, percent-encoded (`file:///…%20…`,
+  até três vezes), NFD ou com barras repetidas. Texto que só tem cara de caminho
+  (vindo da fala do roteiro, por exemplo) sai como está, com um aviso.
 - **Falha.** Exceção no exportador vira erro `Plugin <id>: …` (exit 2): o texto
   de um `PluginError`, ou só o tipo de qualquer outra exceção. Um resultado fora
   das regras abaixo também vira erro, que diz qual regra quebrou.
