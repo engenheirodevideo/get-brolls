@@ -91,7 +91,13 @@ _ARITY = {
 
 
 @dataclass(frozen=True)
+# Contrato testado campo a campo fora desta frente (`.plugin`/`.name`/`.anchor`/`.word_offset`
+# em tests/test_roteiro_hardening.py e tests/test_roteiro_parser.py): agrupar os campos
+# quebraria essas asserções, que não são desta frente para mudar.
+# pylint: disable=too-many-instance-attributes
 class Directive:
+    """Diretiva `[KIND: args]` (ou nota) de uma linha do roteiro, já com a âncora de tempo."""
+
     kind: str
     args: tuple[str, ...]
     line: int
@@ -106,7 +112,12 @@ class Directive:
 
 
 @dataclass(frozen=True)
+# Contrato lido por vários módulos (e testado campo a campo fora desta frente): agrupar
+# os campos quebraria `roteiro_plan`/`export_plan` e as asserções de teste por nome.
+# pylint: disable=too-many-instance-attributes
 class Scene:
+    """Cena lida do roteiro: título, layout, camadas, extensões, fala e as métricas de tempo dela."""
+
     title: str
     scene_id: str | None
     line: int
@@ -122,6 +133,8 @@ class Scene:
 
 @dataclass(frozen=True)
 class Roteiro:
+    """Roteiro inteiro já lido e validado: metadados do frontmatter, cenas e avisos."""
+
     meta: dict
     scenes: tuple[Scene, ...]
     warnings: tuple[str, ...]
@@ -144,6 +157,7 @@ def fold(text):
 
 
 def roteiro_path(project):
+    """Caminho absoluto do `ROTEIRO.md` do projeto."""
     return Path(project).expanduser().resolve() / ROTEIRO_FILE
 
 
@@ -222,7 +236,9 @@ def _unquote(value):
     return value.replace('\\"', '"'), False
 
 
-def _field(key, value, quoted, meta):  # noqa: C901, PLR0911, PLR0912 - one branch and return per field rule
+def _field(  # noqa: C901, PLR0911, PLR0912 - one branch and return per field rule
+    key, value, quoted, meta
+):  # pylint: disable=too-many-return-statements,too-many-branches  # one branch and return per field rule
     if key == "type":
         return None if value == "roteiro" else '"type" tem que ser roteiro'
     if key == "genero":
@@ -236,7 +252,7 @@ def _field(key, value, quoted, meta):  # noqa: C901, PLR0911, PLR0912 - one bran
         meta[key] = value
         return None
     if key == "duracao_alvo_s":
-        if quoted or not (value.isascii() and value.isdigit()) or not 5 <= int(value) <= 600:  # noqa: PLR2004 - spec bounds
+        if quoted or not (value.isascii() and value.isdigit()) or not 5 <= int(value) <= 600:  # noqa: PLR2004 - spec bounds  # pylint: disable=line-too-long
             return '"duracao_alvo_s" tem que ser um inteiro de 5 a 600'
         meta[key] = int(value)
         return None
@@ -285,6 +301,7 @@ def _foreign_key_problem(line):
 
 
 def parse_frontmatter(lines):  # noqa: C901, PLR0912 - one branch per grammar rule
+    # pylint: disable=too-many-branches  # one branch per grammar rule
     """Devolve (meta, índice da primeira linha do corpo, erros)."""
     if not lines or lines[0].strip() != "---":
         return {}, 0, [(1, 'o roteiro começa com o frontmatter entre linhas "---"')]
@@ -339,6 +356,7 @@ def parse_frontmatter(lines):  # noqa: C901, PLR0912 - one branch per grammar ru
 
 
 def canonical(keyword):
+    """Nome canônico da diretiva (`A-ROLL`, `BROLL`…) para um sinônimo aceito; None quando não é diretiva."""
     key = re.sub(r"[^A-Z0-9]", "", fold(keyword).upper())
     return _SYNONYMS.get(key)
 
@@ -452,18 +470,27 @@ def _guess(head):
     return _SYNONYMS[match[0]] if match else None
 
 
+def _reserved_directive(head):
+    """Nome de diretiva de direção reservada em `head` (com ou sem os dois-pontos), ou None (nota de cena)."""
+    head_key = re.sub(r"[^A-Z0-9]", "", fold(head).upper())
+    if head_key in RESERVED_DIRECTIVES:
+        return head_key
+    # Nome reservado sem os dois-pontos (`[RITMO — rápido]`): nome mais um valor de uma palavra.
+    # Frase mais longa (`[ritmo acelerado aqui]`) continua nota de cena.
+    words = [word.upper() for word in re.findall(r"\w+", fold(head))]
+    if words and words[0] in RESERVED_DIRECTIVES and len(words) <= 2:  # noqa: PLR2004 - nome + valor  # pylint: disable=line-too-long
+        return words[0]
+    return None
+
+
 def _directive(inner, number, plugins):  # noqa: PLR0911 - one return per validation rule
+    # pylint: disable=too-many-return-statements  # one return per validation rule
     """(Directive, erro, nota) para o miolo de `[...]` numa linha inteira; só um dos três vem preenchido."""
     head = inner.partition(":")[0]
-    head_key = re.sub(r"[^A-Z0-9]", "", fold(head).upper())
-    # Nome reservado com ou sem os dois-pontos (`[TRANSIÇÃO whip]`, `[RITMO — rápido]`): nome mais um
-    # valor de uma palavra. Frase mais longa (`[ritmo acelerado aqui]`) continua nota de cena.
-    words = [word.upper() for word in re.findall(r"\w+", fold(head))]
-    reserved = head_key if head_key in RESERVED_DIRECTIVES else None
-    if reserved is None and words and words[0] in RESERVED_DIRECTIVES and len(words) <= 2:  # noqa: PLR2004 - nome + valor
-        reserved = words[0]
+    reserved = _reserved_directive(head)
     if reserved:
-        return None, f'"[{inner}]": {reserved} é reservado para a próxima versão do get-brolls; tire a diretiva', None
+        message = f'"[{inner}]": {reserved} é reservado para a próxima versão do get-brolls; tire a diretiva'
+        return None, message, None
     ext = _EXT.match(inner.strip())
     if ext and NAME_RE.fullmatch(ext.group(1)) and canonical(ext.group(1)) is None:
         return _extension(ext, inner, number, plugins)
@@ -565,7 +592,7 @@ def _body_line(scene, line, number, plugins, found):
                 scene["layout_error"] = True
         elif note is not None:
             scene["notes"].append(note)
-            warnings.append(f'linha {number}: "[{note}]" não é diretiva: tratei como nota de cena (fica fora da fala)')
+            warnings.append(f'linha {number}: "[{note}]" não é diretiva: tratei como nota de cena (fica fora da fala)')  # pylint: disable=line-too-long
         else:
             scene["directives"].append((directive, _spoken_count(scene)))
         return
@@ -626,15 +653,8 @@ def _close(scene, errors):
     )
 
 
-def parse(text, plugins=None):
-    """Lê o roteiro inteiro; todos os erros de uma vez (`RoteiroError`), avisos em `warnings`.
-
-    `plugins`: ids de plugin aceitos em `[plugin:nome]`; None = os habilitados agora.
-    """
-    if plugins is None:
-        plugins = enabled_plugins()
-    lines = text.removeprefix("\N{ZERO WIDTH NO-BREAK SPACE}").replace("\r\n", "\n").split("\n")
-    meta, start, errors = parse_frontmatter(lines)
+def _parse_body(lines, start, plugins, errors):
+    """Cenas e avisos do corpo do roteiro (depois do frontmatter); erros de layout entram em `errors`."""
     scenes, warnings, current, ids = [], [], None, {}
     for index in range(start, len(lines)):
         number = index + 1
@@ -652,10 +672,25 @@ def parse(text, plugins=None):
     scene = _close(current, errors)
     if scene:
         scenes.append(scene)
+    return scenes, warnings
+
+
+def parse(text, plugins=None):
+    """Lê o roteiro inteiro; todos os erros de uma vez (`RoteiroError`), avisos em `warnings`.
+
+    `plugins`: ids de plugin aceitos em `[plugin:nome]`; None = os habilitados agora.
+    """
+    if plugins is None:
+        plugins = enabled_plugins()
+    lines = text.removeprefix("\N{ZERO WIDTH NO-BREAK SPACE}").replace("\r\n", "\n").split("\n")
+    meta, start, errors = parse_frontmatter(lines)
+    scenes, warnings = _parse_body(lines, start, plugins, errors)
     if errors:
         raise RoteiroError(sorted(errors))
     warnings += [
-        f'linha {s.line}: a cena "{s.title}" passa de {int(MAX_HINT_S)} s — divida a cena' for s in scenes if s.over_cap
+        f'linha {s.line}: a cena "{s.title}" passa de {int(MAX_HINT_S)} s — divida a cena'
+        for s in scenes
+        if s.over_cap  # pylint: disable=line-too-long  # mensagem em pt-BR; ruff format só quebra a linha com o comentário
     ]
     total = round(sum(s.duration_s for s in scenes), 1)
     target = meta.get("duracao_alvo_s")
