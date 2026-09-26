@@ -1,0 +1,237 @@
+{
+  "export_version": 1,
+  "exporter": "hyperframes",
+  "out_dir": "exports/hyperframes/003",
+  "generated_at": "2026-09-25T18:00:00Z",
+  "getbrolls_version": "2.5.0",
+  "plan_version": 2,
+  "meta": {
+    "aspecto": "9:16",
+    "legenda": true,
+    "duracao_alvo_s": null,
+    "genero": "reels",
+    "tema": "Reels mínimo"
+  },
+  "total_s": 6.0,
+  "timing": "mixed",
+  "scenes": [
+    {
+      "id": "c01",
+      "title": "Gancho",
+      "line": 7,
+      "start_s": 0.0,
+      "duration_s": 2.5,
+      "duration_source": "aroll",
+      "estimate_s": 2.8,
+      "words": 7,
+      "layout": {
+        "kind": "A-ROLL",
+        "args": [],
+        "quoted": [],
+        "full_role": null,
+        "slots": [
+          {
+            "slot": "main",
+            "role": "presenter",
+            "text": "A-ROLL",
+            "beat_id": null,
+            "take": null,
+            "prompt": null,
+            "media_id": "aroll:c01",
+            "extra_media_ids": []
+          }
+        ]
+      },
+      "voice_media_ids": [
+        "aroll:c01"
+      ],
+      "words_source": "transcript",
+      "words_timed": [
+        {
+          "text": "Eu",
+          "start": 0.1,
+          "end": 0.3
+        },
+        {
+          "text": "digo",
+          "start": 0.3,
+          "end": 0.6
+        }
+      ],
+      "layers": [
+        {
+          "kind": "SFX",
+          "args": [
+            "whoosh"
+          ],
+          "quoted": [
+            false
+          ],
+          "line": 10,
+          "anchor": 1,
+          "word_offset": 4,
+          "at_s": 1.429,
+          "text": null,
+          "name": "whoosh",
+          "media_id": "asset:sfx:whoosh",
+          "component_status": "found"
+        }
+      ],
+      "extensions": [],
+      "speech_clean": "Eu digo o tema.\nE ele acha.",
+      "notes": [],
+      "content_hash": "ab9fe9b46128b82a5139cdf61596a5c7ecba27cacbd7275767c583da30d53aaa"
+    },
+    {
+      "id": "c02",
+      "title": "Problema",
+      "line": 13,
+      "start_s": 2.5,
+      "duration_s": 1.5,
+      "duration_source": "estimate",
+      "estimate_s": 1.5,
+      "words": 2,
+      "layout": {
+        "kind": "BROLL",
+        "args": [
+          "timeline cheia"
+        ],
+        "quoted": [
+          false
+        ],
+        "full_role": null,
+        "slots": [
+          {
+            "slot": "main",
+            "role": "broll",
+            "text": "timeline cheia",
+            "beat_id": "c02",
+            "take": null,
+            "prompt": null,
+            "media_id": "clip:pexels:123",
+            "extra_media_ids": []
+          }
+        ]
+      },
+      "voice_media_ids": [
+        "aroll:c02"
+      ],
+      "words_source": "estimate",
+      "words_timed": null,
+      "layers": [],
+      "extensions": [],
+      "speech_clean": "Horas cortando.",
+      "notes": [],
+      "content_hash": "b1bcb0a5d8cfa7835350b66d371b46619d815192cb092e408e89364aab797954"
+    },
+    {
+      "id": "c03",
+      "title": "Cartela",
+      "line": 17,
+      "start_s": 4.0,
+      "duration_s": 2.0,
+      "duration_source": "estimate",
+      "estimate_s": 2.0,
+      "words": 0,
+      "layout": {
+        "kind": "FULL",
+        "args": [
+          "Comenta BROLL"
+        ],
+        "quoted": [
+          true
+        ],
+        "full_role": "cartela",
+        "slots": [
+          {
+            "slot": "main",
+            "role": "card",
+            "text": "Comenta BROLL",
+            "beat_id": null,
+            "take": null,
+            "prompt": null,
+            "media_id": null,
+            "extra_media_ids": []
+          }
+        ]
+      },
+      "voice_media_ids": [],
+      "words_source": "estimate",
+      "words_timed": null,
+      "layers": [],
+      "extensions": [],
+      "speech_clean": "",
+      "notes": [],
+      "content_hash": "69a20c133e32adc63853ac0a8aa8398feb327beb0fec70da54534aea00786041"
+    }
+  ],
+  "media": {
+    "clip:pexels:123": {
+      "kind": "video",
+      "source": "clip",
+      "store": "getbrolls",
+      "origin": null,
+      "ext": ".mp4",
+      "available": true,
+      "problem": null,
+      "has_audio": null,
+      "sha256": "abababababababababababababababababababababababababababababababab",
+      "duration_s": 4.5,
+      "width": 1080,
+      "height": 1920,
+      "credit": "Clipe pexels:123 — pexels (https://example.com/123)",
+      "expected": null
+    },
+    "aroll:c01": {
+      "kind": "video",
+      "source": "aroll",
+      "store": "getbrolls",
+      "origin": "project",
+      "ext": ".mov",
+      "available": true,
+      "problem": null,
+      "has_audio": true,
+      "sha256": null,
+      "duration_s": 2.5,
+      "width": 1080,
+      "height": 1920,
+      "credit": null,
+      "expected": null
+    },
+    "asset:sfx:whoosh": {
+      "kind": "audio",
+      "source": "asset",
+      "store": "getbrolls",
+      "origin": "project",
+      "ext": ".wav",
+      "available": true,
+      "problem": null,
+      "has_audio": true,
+      "sha256": null,
+      "duration_s": null,
+      "width": null,
+      "height": null,
+      "credit": "Whoosh — CC0 (freesound)",
+      "expected": null
+    },
+    "aroll:c02": {
+      "kind": "video",
+      "source": "aroll",
+      "store": "getbrolls",
+      "origin": null,
+      "ext": null,
+      "available": false,
+      "problem": "missing",
+      "has_audio": null,
+      "sha256": null,
+      "duration_s": null,
+      "width": null,
+      "height": null,
+      "credit": null,
+      "expected": "aroll/c02.(mp4|mov|m4v)"
+    }
+  },
+  "warnings": [
+    "c02: fala sem narração gravada (grave aroll/c02.mp4|mov|m4v)"
+  ]
+}

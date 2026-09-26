@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Get B-rolls export plan v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/main/schemas/export_plan.schema.json",
+  "description": "O que o core entrega a um exporter. Documental e testado: a gramática dos ids de mídia e as referências cruzadas (toda mídia citada existe em media) são conferidas em código (export_plan.check_refs), porque este subconjunto de JSON Schema não tem propertyNames nem patternProperties. Todo texto é dado não confiável: o exporter escapa no formato dele. Nenhum valor é caminho absoluto.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["export_version", "exporter", "out_dir", "generated_at", "getbrolls_version", "plan_version", "meta", "total_s", "timing", "scenes", "media", "warnings"],
+  "properties": {
+    "export_version": { "const": 1 },
+    "exporter": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$" },
+    "out_dir": { "type": "string", "pattern": "^exports/[a-z][a-z0-9_]{1,31}/[0-9]{3,}$" },
+    "generated_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" },
+    "getbrolls_version": { "type": "string", "minLength": 1 },
+    "plan_version": { "const": 2 },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aspecto", "legenda", "duracao_alvo_s", "genero", "tema"],
+      "properties": {
+        "aspecto": { "enum": ["9:16", "16:9"] },
+        "legenda": { "type": "boolean" },
+        "duracao_alvo_s": { "type": ["integer", "null"] },
+        "genero": { "type": "string" },
+        "tema": { "type": "string" }
+      }
+    },
+    "total_s": { "type": "number", "minimum": 0 },
+    "timing": { "enum": ["estimate", "aroll", "mixed"] },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "line", "start_s", "duration_s", "duration_source", "estimate_s", "words", "layout", "voice_media_ids", "words_source", "words_timed", "layers", "extensions", "speech_clean", "notes", "content_hash"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^c[0-9]{2,3}$" },
+          "title": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "start_s": { "type": "number", "minimum": 0 },
+          "duration_s": { "type": "number", "minimum": 0 },
+          "duration_source": { "enum": ["aroll", "estimate"] },
+          "estimate_s": { "type": "number", "minimum": 0 },
+          "words": { "type": "integer", "minimum": 0 },
+          "layout": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "args", "quoted", "full_role", "slots"],
+            "properties": {
+              "kind": { "enum": ["A-ROLL", "BROLL", "SPLIT", "FULL", "UGC"] },
+              "args": { "type": "array", "items": { "type": "string" } },
+              "quoted": { "type": "array", "items": { "type": "boolean" } },
+              "full_role": { "enum": ["cartela", "marca", "beat", null] },
+              "slots": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 2,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["slot", "role", "text", "beat_id", "take", "prompt", "media_id", "extra_media_ids"],
+                  "properties": {
+                    "slot": { "enum": ["a", "b", "main"] },
+                    "role": { "enum": ["broll", "presenter", "card", "brand"] },
+                    "text": { "type": "string" },
+                    "beat_id": { "type": ["string", "null"] },
+                    "take": { "type": ["string", "null"] },
+                    "prompt": { "type": ["string", "null"] },
+                    "media_id": { "type": ["string", "null"], "maxLength": 200 },
+                    "extra_media_ids": { "type": "array", "items": { "type": "string", "maxLength": 200 } }
+                  }
+                }
+              }
+            }
+          },
+          "voice_media_ids": { "type": "array", "maxItems": 1, "items": { "type": "string" } },
+          "words_source": { "enum": ["transcript", "estimate"] },
+          "words_timed": {
+            "type": ["array", "null"],
+            "maxItems": 5000,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["text", "start", "end"],
+              "properties": {
+                "text": { "type": "string", "minLength": 1, "maxLength": 100 },
+                "start": { "type": "number", "minimum": 0 },
+                "end": { "type": "number", "minimum": 0 }
+              }
+            }
+          },
+          "layers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "args", "quoted", "line", "anchor", "word_offset", "at_s", "text", "name", "media_id", "component_status"],
+              "properties": {
+                "kind": { "enum": ["LETTERING", "SFX", "MUSICA", "COMP"] },
+                "args": { "type": "array", "items": { "type": "string" } },
+                "quoted": { "type": "array", "items": { "type": "boolean" } },
+                "line": { "type": "integer", "minimum": 1 },
+                "anchor": { "type": ["integer", "string"] },
+                "word_offset": { "type": "integer", "minimum": 0 },
+                "at_s": { "type": "number", "minimum": 0 },
+                "text": { "type": ["string", "null"] },
+                "name": { "type": ["string", "null"] },
+                "media_id": { "type": ["string", "null"], "maxLength": 200 },
+                "component_status": { "enum": ["found", "pending", "invalid", null] }
+              }
+            }
+          },
+          "extensions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["plugin", "name", "args", "quoted", "line", "anchor", "word_offset", "at_s"],
+              "properties": {
+                "plugin": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$" },
+                "name": { "type": "string" },
+                "args": { "type": "array", "items": { "type": "string" } },
+                "quoted": { "type": "array", "items": { "type": "boolean" } },
+                "line": { "type": "integer", "minimum": 1 },
+                "anchor": { "type": ["integer", "string"] },
+                "word_offset": { "type": "integer", "minimum": 0 },
+                "at_s": { "type": "number", "minimum": 0 }
+              }
+            }
+          },
+          "speech_clean": { "type": "string" },
+          "notes": { "type": "array", "items": { "type": "string" } },
+          "content_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "media": {
+      "type": "object",
+      "description": "Chave = id lógico: clip:<candidato> | aroll:<cNN[-lado][-take]> | asset:<tipo>:<nome dobrado> | plugin:<plugin_id>:<tipo>:<nome dobrado>; até 200 caracteres, sem barra, contrabarra, espaço nem controle.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "source", "store", "origin", "ext", "available", "problem", "has_audio", "sha256", "duration_s", "width", "height", "credit", "expected"],
+        "properties": {
+          "kind": { "enum": ["video", "image", "audio"] },
+          "source": { "enum": ["clip", "aroll", "asset", "plugin_store"] },
+          "store": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$" },
+          "origin": { "enum": ["project", "personal", null] },
+          "ext": { "type": ["string", "null"], "pattern": "^\\.[a-z0-9]{1,8}$" },
+          "available": { "type": "boolean" },
+          "problem": { "enum": ["missing", "unreadable", "link", "changed", null] },
+          "has_audio": { "type": ["boolean", "null"] },
+          "sha256": { "type": ["string", "null"] },
+          "duration_s": { "type": ["number", "null"], "minimum": 0 },
+          "width": { "type": ["integer", "null"] },
+          "height": { "type": ["integer", "null"] },
+          "credit": { "type": ["string", "null"], "maxLength": 300 },
+          "expected": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}
