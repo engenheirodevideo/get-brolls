@@ -1,5 +1,15 @@
 """Bounded HTTPS JSON transport. Cache is private and never part of reports."""
 
+# pylint: disable=missing-class-docstring,arguments-renamed,unused-argument,protected-access,cyclic-import
+# Legado: ocorrências pré-existentes (corpo idêntico à origin/main). `arguments-renamed`
+# e `unused-argument` vêm de `_PinnedHTTPSHandler.https_open`/`connect_pinned`, que
+# seguem a assinatura fixa de `urllib.request`/`http.client`; `protected-access` é o
+# `_create_connection` interno de `HTTPSConnection`, trocado de propósito para pinar
+# o IP resolvido sem repetir a validação de TLS/hostname. O ciclo
+# (getbrolls.http <-> getbrolls.runtime) já existe na origin/main: `runtime.py`
+# importa `http.ProviderError` tardiamente (dentro de função) exatamente para
+# quebrar esse ciclo em tempo de execução.
+
 import contextlib
 import email.utils
 import hashlib
@@ -198,7 +208,8 @@ class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
     def https_open(self, request):
         addresses = _safe_network(request.full_url)
 
-        def connect_pinned(address, timeout=30, source_address=None):  # noqa: ARG001 - matches `_create_connection`'s positional callback signature; `address` is intentionally ignored in favor of the pre-resolved `addresses`
+        # `address` é ignorado de propósito: casa a assinatura de `_create_connection`.
+        def connect_pinned(address, timeout=30, source_address=None):  # noqa: ARG001
             # Do not call create_connection(): it performs another DNS lookup.
             last_error = None
             for family, kind, protocol, _, sockaddr in addresses:
@@ -234,7 +245,9 @@ def _opener():
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ARG002, PLR0913, PLR0917 - overrides `HTTPRedirectHandler`'s fixed signature
+    # pylint: disable=too-many-arguments,too-many-positional-arguments
+    # Legado: assinatura fixa de `HTTPRedirectHandler.redirect_request` (corpo idêntico à origin/main).
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ARG002, PLR0913, PLR0917
         logs.event(_logger, logging.WARNING, "request_refused", host=_host_of(req.full_url), reason="redirect_refused")
         raise ProviderError("Redirecionamento de API não permitido")
 
@@ -306,13 +319,63 @@ def _retry_after_seconds(value, cap: int | None = RETRY_AFTER_CAP_S):
     return limit(max(0, int(delta + 0.999)))
 
 
-def get_json(url, params=None, headers=None, cache_ttl=0, keep_signed=False, quiet_errors=False, strict_scrub=False):  # noqa: C901, PLR0912, PLR0913, PLR0915, PLR0917 - existing size; request/cache/retry/error handling for one endpoint call; quiet_errors/strict_scrub are caller-facing knobs set only by the SDK, not incidental complexity
+_NO_CACHE = object()  # sentinel: distingue "sem cache utilizável" de um valor cacheado igual a None
+
+
+def _get_json_from_cache(cache_path, cache_ttl, host):
+    """Lê o cache local se ainda válido; devolve os dados, ou `_NO_CACHE` se não há cache utilizável."""
+    if not (cache_ttl and cache_path.is_file() and time.time() - cache_path.stat().st_mtime < cache_ttl):
+        return _NO_CACHE
+    cache_started = time.monotonic()
+    try:
+        text = cache_path.read_text(encoding="utf-8")
+        data = json.loads(text)
+    except (ValueError, OSError) as error:
+        record_warning(
+            "CACHE_UNAVAILABLE",
+            f"Cache local ilegível ({type(error).__name__}); ignorado, buscando na fonte.",
+        )
+        return _NO_CACHE
+    logs.event(
+        _logger,
+        logging.DEBUG,
+        "request",
+        host=host,
+        op="json",
+        status=None,
+        bytes=len(text),
+        ms=round((time.monotonic() - cache_started) * 1000),
+        cache="hit",
+        attempt=0,
+    )
+    return data
+
+
+def _get_json_request_headers(headers):
+    """Cabeçalhos padrão da requisição, com os do chamador sobrepostos por cima."""
+    request_headers = {
+        "User-Agent": f"Get-Brolls/{__version__} (video research; contact: local operator)",
+        "Accept": "application/json",
+    }
+    request_headers.update(headers or {})
+    return request_headers
+
+
+def get_json(  # noqa: C901, PLR0912, PLR0913, PLR0915, PLR0917
+    url, params=None, headers=None, cache_ttl=0, keep_signed=False, quiet_errors=False, strict_scrub=False
+):
+    # pylint: disable=too-many-arguments,too-many-branches,too-many-locals
+    # pylint: disable=too-many-positional-arguments,too-many-statements
     """`quiet_errors=True` drops the HTTPError response body from the message (the
     SDK sets this on every plugin call; built-in providers never set it, so their
     error messages are unchanged even when they pass `headers`, e.g. Pexels'
     Authorization). `keep_signed=True` implies it: a signed URL kept in the
     response is exactly the kind of call whose error body might reflect it back.
     `strict_scrub=True` (also SDK-only) applies `_scrub(strict=True)`.
+
+    Existing size (request/cache/retry/error handling for one endpoint call);
+    `quiet_errors`/`strict_scrub` are caller-facing knobs set only by the SDK,
+    not incidental complexity.
     """
     if keep_signed and cache_ttl:
         raise ProviderError("keep_signed exige cache desligado (cache_ttl=0): URL assinada não vai para o disco.")
@@ -322,35 +385,11 @@ def get_json(url, params=None, headers=None, cache_ttl=0, keep_signed=False, qui
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
     host = _host_of(url)
     cache_path = cache_root() / (hashlib.sha256(url.encode()).hexdigest() + ".json")
-    if cache_ttl and cache_path.is_file() and time.time() - cache_path.stat().st_mtime < cache_ttl:
-        cache_started = time.monotonic()
-        try:
-            text = cache_path.read_text(encoding="utf-8")
-            data = json.loads(text)
-            logs.event(
-                _logger,
-                logging.DEBUG,
-                "request",
-                host=host,
-                op="json",
-                status=None,
-                bytes=len(text),
-                ms=round((time.monotonic() - cache_started) * 1000),
-                cache="hit",
-                attempt=0,
-            )
-            return data
-        except (ValueError, OSError) as error:
-            record_warning(
-                "CACHE_UNAVAILABLE",
-                f"Cache local ilegível ({type(error).__name__}); ignorado, buscando na fonte.",
-            )
+    cached = _get_json_from_cache(cache_path, cache_ttl, host)
+    if cached is not _NO_CACHE:
+        return cached
     cache_mode = "miss" if cache_ttl else "off"
-    request_headers = {
-        "User-Agent": f"Get-Brolls/{__version__} (video research; contact: local operator)",
-        "Accept": "application/json",
-    }
-    request_headers.update(headers or {})
+    request_headers = _get_json_request_headers(headers)
     opener = _opener()
     waited_for_quota = False
     data = None
@@ -359,8 +398,10 @@ def get_json(url, params=None, headers=None, cache_ttl=0, keep_signed=False, qui
     started = time.monotonic()
     for attempt in range(3):
         try:
+            # opener guards via `_safe_network` in `https_open`
+            request = urllib.request.Request(url, headers=request_headers)  # noqa: S310
             with opener.open(
-                urllib.request.Request(url, headers=request_headers),  # noqa: S310 - opener guards via `_safe_network` in `https_open`
+                request,
                 timeout=30,
             ) as response:
                 raw = response.read(8 * 1024 * 1024 + 1)
@@ -430,7 +471,8 @@ def get_json(url, params=None, headers=None, cache_ttl=0, keep_signed=False, qui
                         f"Quota atingida (HTTP 429); o provedor pede {wait} s de espera antes de repetir"
                     ) from None
                 raise ProviderError("Quota atingida (HTTP 429); aguarde o limite do provedor") from None
-            if code < 500 or attempt == LAST_ATTEMPT_INDEX:  # noqa: PLR2004 - 500, first of the provider-side 5xx statuses
+            # 500: first of the provider-side 5xx statuses
+            if code < 500 or attempt == LAST_ATTEMPT_INDEX:  # noqa: PLR2004
                 logs.event(
                     _logger,
                     logging.WARNING,
@@ -552,7 +594,30 @@ def download_rendition(fresh, target, **kwargs):
 DOWNLOAD_MAX_BYTES = 512 * 1024 * 1024
 
 
-def download(url, target, max_bytes=DOWNLOAD_MAX_BYTES, headers=None, allow_signed=False):  # noqa: C901, PLR0912, PLR0915 - existing size; streaming download with cleanup on every failure path
+def _download_write_body(response, output, target, max_bytes, too_big):
+    """Copia a resposta para `output` em blocos, abortando se passar do teto; devolve os bytes recebidos."""
+    received = 0
+    while True:
+        chunk = response.read(min(1024 * 1024, max_bytes - received + 1))
+        if not chunk:
+            break
+        received += len(chunk)
+        if received > max_bytes:
+            raise too_big(received)
+        try:
+            output.write(chunk)
+        except OSError as error:
+            raise ProviderError(f"Falha ao gravar arquivo (errno {error.errno}): {error.filename or target}") from error
+    return received
+
+
+def download(  # noqa: C901, PLR0912, PLR0915
+    url, target, max_bytes=DOWNLOAD_MAX_BYTES, headers=None, allow_signed=False
+):
+    # pylint: disable=too-many-branches,too-many-statements,too-many-locals
+    # Legado (parcial): fluxo de erro/retry idêntico à origin/main; só os
+    # parâmetros/knobs mudaram. Existing size; streaming download with cleanup
+    # on every failure path.
     """Stream only public HTTPS to an exclusive file; remove partials on failure.
 
     `headers` (e.g. a plugin's Authorization) go only into the request: never into a
@@ -610,24 +675,10 @@ def download(url, target, max_bytes=DOWNLOAD_MAX_BYTES, headers=None, allow_sign
                 ) from error
             with output:
                 created = True
-                received = 0
-                while True:
-                    chunk = response.read(min(1024 * 1024, max_bytes - received + 1))
-                    if not chunk:
-                        break
-                    received += len(chunk)
-                    if received > max_bytes:
-                        raise too_big(received)
-                    try:
-                        output.write(chunk)
-                    except OSError as error:
-                        raise ProviderError(
-                            f"Falha ao gravar arquivo (errno {error.errno}): {error.filename or target}"
-                        ) from error
-                received_bytes = received
-                if not received:
+                received_bytes = _download_write_body(response, output, target, max_bytes, too_big)
+                if not received_bytes:
                     raise ProviderError("Mídia vazia")
-                if length and received != int(length):
+                if length and received_bytes != int(length):
                     raise ProviderError("Download incompleto")
         success = True
         logs.event(
