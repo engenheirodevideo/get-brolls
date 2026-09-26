@@ -4,6 +4,8 @@ import builtins
 import copy
 import json
 import re
+import shutil
+import subprocess
 import types
 import unittest
 from html.parser import HTMLParser
@@ -64,6 +66,48 @@ class Elements(HTMLParser):
 
     def timed(self):
         return [(tag, attrs) for tag, attrs in self.tags if "data-start" in attrs]
+
+
+class Tree(HTMLParser):
+    """Cada tag com seus atributos e a pilha de ancestrais (tag, atributos) no momento em que abriu."""
+
+    VOID = frozenset({"img", "meta", "br", "input", "link", "source", "hr"})
+
+    def __init__(self, text):
+        super().__init__(convert_charrefs=True)
+        self.nodes, self._stack = [], []
+        self.feed(text)
+
+    def handle_starttag(self, tag, attrs):
+        self.nodes.append((tag, dict(attrs), tuple(self._stack)))
+        if tag not in self.VOID:
+            self._stack.append((tag, dict(attrs)))
+
+    def handle_startendtag(self, tag, attrs):
+        self.nodes.append((tag, dict(attrs), tuple(self._stack)))
+
+    def handle_endtag(self, tag):
+        if tag in self.VOID:
+            return
+        while self._stack and self._stack.pop()[0] != tag:
+            pass
+
+    def by_id(self, element_id):
+        return next((tag, attrs, parents) for tag, attrs, parents in self.nodes if attrs.get("id") == element_id)
+
+
+def z_index(text, selector):
+    """`z-index` da regra CSS `selector { … }` no texto gerado."""
+    found = re.search(re.escape(selector) + r" \{[^}]*z-index: (\d+)", text)
+    assert found is not None, selector
+    return int(found.group(1))
+
+
+def js_const(text, name):
+    """Valor JSON da `const NAME = [...];` de um `<script>` gerado."""
+    found = re.search(rf"const {name} = (\[.*?\]);\n", text)
+    assert found is not None, name
+    return json.loads(found.group(1).replace("<\\/", "</"))
 
 
 def generate(plan=None):
@@ -237,6 +281,9 @@ class VoiceAndAudioTests(unittest.TestCase):
         points = hf.ducking(0.0, 10.0, [(1.0, 2.0), (2.3, 3.0)])
         self.assertEqual([0.5, 0.5, 0.125, 0.125, 0.5], [p["v"] for p in hf.ducking(0.0, 10.0, [(1.0, 3.0)])])
         self.assertEqual(points[0], {"t": 0.0, "v": 0.5})
+        expected = [(0.0, 0.5), (0.85, 0.5), (1.0, 0.125), (3.0, 0.125), (3.4, 0.5)]
+        self.assertEqual(expected, [(p["t"], p["v"]) for p in points])
+        self.assertEqual(expected, [(p["t"], p["v"]) for p in hf.ducking(0.0, 10.0, [(1.0, 3.0)])])
 
     def test_sfx_on_alternating_tracks_and_pending_sfx_is_a_note(self):
         result = generate()
@@ -493,6 +540,169 @@ class HostileTextTests(unittest.TestCase):
                 self.assertEqual(result.files, checked.files)
                 self.assertEqual([(m.media_id, m.dest) for m in result.media], list(checked.media))
                 self.assertEqual([], find_local_paths(result.files))
+
+
+class DuckingTests(unittest.TestCase):
+    """Música abaixa sob a voz e só volta depois dela; nunca termina subindo dentro de uma fala."""
+
+    def pairs(self, *args):
+        return [(p["t"], p["v"]) for p in hf.ducking(*args)]
+
+    def test_voice_until_the_end_holds_the_duck(self):
+        self.assertEqual(
+            [(0.0, 0.5), (0.85, 0.5), (1.0, 0.125), (4.8, 0.125), (5.0, 0.125)], self.pairs(0.0, 5.0, [(1.0, 4.8)])
+        )
+        self.assertEqual([(0.0, 0.5), (0.85, 0.5), (1.0, 0.125), (5.0, 0.125)], self.pairs(0.0, 5.0, [(1.0, 5.0)]))
+        self.assertEqual([(0.0, 0.5), (0.85, 0.5), (1.0, 0.125), (5.0, 0.125)], self.pairs(0.0, 5.0, [(1.0, 9.0)]))
+
+    def test_voice_from_the_start_and_outside_the_music(self):
+        self.assertEqual([(0.0, 0.125), (2.0, 0.125), (2.4, 0.5)], self.pairs(0.0, 5.0, [(0.0, 2.0)]))
+        self.assertEqual([(0.0, 0.125), (2.0, 0.125), (2.4, 0.5)], self.pairs(3.0, 5.0, [(1.0, 5.0)]))
+        self.assertEqual([(0.0, 0.5)], self.pairs(5.0, 5.0, [(1.0, 2.0), (10.0, 11.0)]))
+
+    def test_close_windows_merge_inside_ducking_in_any_order(self):
+        merged = [(0.0, 0.5), (0.85, 0.5), (1.0, 0.125), (3.0, 0.125), (3.4, 0.5)]
+        self.assertEqual(merged, self.pairs(0.0, 10.0, [(2.3, 3.0), (1.0, 2.0)]))
+        apart = [(0.0, 0.5), (0.85, 0.5), (1.0, 0.125), (2.0, 0.125), (2.4, 0.5), (2.85, 0.5), (3.0, 0.125)]
+        self.assertEqual([*apart, (4.0, 0.125), (4.4, 0.5)], self.pairs(0.0, 10.0, [(1.0, 2.0), (3.0, 4.0)]))
+
+    def test_full_fixture_music_lane(self):
+        plan = fixture()
+        audio = {a["id"]: a for a in Elements(generate(plan)["files"]["index.html"]).all("audio")}
+        music = audio["music-1"]
+        start = float(music["data-start"])
+        points = [(p["t"], p["v"]) for p in json.loads(music["data-automation"])["lanes"][0]["points"]]
+        # Música de 7,2 s a 22,1 s; voz em c03 + c04 (7,2–15,1 s, juntas): abaixa desde o início.
+        self.assertEqual((7.2, "14.9"), (start, music["data-duration"]))
+        self.assertEqual([(0.0, 0.125), (7.9, 0.125), (8.3, 0.5)], points)
+        voiced = [(7.2, 15.1)]
+        for t, v in points:
+            if any(a < start + t < b for a, b in voiced):
+                self.assertEqual(hf.MUSIC_DUCK, v, t)
+
+
+class StackingTests(unittest.TestCase):
+    def test_captions_sit_above_every_card_and_lettering(self):
+        files = generate()["files"]
+        scene = files["compositions/scene-c07.html"]
+        top = max(z_index(scene, ".card"), z_index(scene, ".lettering"))
+        self.assertGreater(z_index(files["index.html"], "#el-captions"), top)
+        captions = files["compositions/captions.html"]
+        self.assertGreater(z_index(captions, "#root"), top)
+        self.assertGreater(z_index(captions, ".captions-group"), top)
+
+
+class StructureTests(unittest.TestCase):
+    def test_timed_media_never_has_a_timed_ancestor(self):
+        for path, text in generate()["files"].items():
+            if not path.endswith(".html"):
+                continue
+            with self.subTest(path=path):
+                for tag, attrs, parents in Tree(text).nodes:
+                    if tag not in ("video", "audio", "img") or "data-start" not in attrs:
+                        continue
+                    timed = [p for p in parents if "data-start" in p[1] and "data-composition-id" not in p[1]]
+                    self.assertEqual([], timed, attrs.get("id"))
+
+    def test_zoom_scales_an_inner_wrapper_so_split_halves_never_overlap(self):
+        text = generate()["files"]["compositions/scene-c04.html"]  # dois apresentadores: as duas metades com vídeo
+        self.assertRegex(text, r"\.slot \{[^}]*overflow: hidden")
+        tree = Tree(text)
+        slots = [(attrs, parents) for tag, attrs, parents in tree.nodes if "slot" in attrs.get("class", "").split()]
+        self.assertEqual(
+            ["left:0px;top:0px;width:1080px;height:960px;", "left:0px;top:960px;width:1080px;height:960px;"],
+            sorted({attrs["style"] for attrs, _ in slots}),
+        )
+        targets = re.findall(r'tl\.fromTo\("#([^"]+)", \{ scale: 1 \}', text)
+        slot_ids = {attrs["id"] for attrs, _ in slots}
+        for target in targets:
+            with self.subTest(target=target):
+                self.assertNotIn(target, slot_ids)
+                _, attrs, parents = tree.by_id(target)
+                self.assertNotIn("data-start", attrs)
+                if "slot-zoom" in attrs.get("class", ""):
+                    self.assertIn(parents[-1][1]["id"], slot_ids)
+
+
+class DestTests(unittest.TestCase):
+    def test_folder_from_the_media_id_is_slugged(self):
+        plan = fixture()
+        plan["media"]["asset:../Év il:whoosh"] = plan["media"].pop("asset:sfx:whoosh")
+        plan["scenes"][0]["layers"][1]["media_id"] = "asset:../Év il:whoosh"
+        dests = {m["media_id"]: m["dest"] for m in generate(plan)["media"]}
+        self.assertEqual("assets/ev-il/whoosh.wav", dests["asset:../Év il:whoosh"])
+
+
+class PendingTests(unittest.TestCase):
+    def pending(self, plan=None):
+        text = generate(plan)["files"]["EXPORT.md"]
+        return text[text.index("## Pendências") : text.index("## Créditos")]
+
+    def test_core_warnings_are_not_repeated(self):
+        pending = self.pending()
+        for subject in ("c02: fala sem narração gravada", "c08: fala sem narração gravada", 'c05: SFX "pop" pendente'):
+            with self.subTest(subject=subject):
+                self.assertEqual(1, pending.count(subject), pending)
+
+    def test_missing_presenter_is_not_called_missing_narration(self):
+        pending = self.pending()
+        self.assertNotIn("c07: fala sem narração", pending)
+        self.assertIn("c07: A-ROLL não gravado", pending)
+        plan = fixture()
+        plan["warnings"] = []
+        pending = self.pending(plan)
+        self.assertNotIn("c07: fala sem narração", pending)
+        self.assertIn("c07: A-ROLL pendente — GRAVAR aroll/c07.\\*", pending)
+
+    def test_plugin_store_credit_is_not_escaped_twice(self):
+        plan = fixture()
+        text = generate(plan)["files"]["EXPORT.md"]
+        self.assertIn(plan["media"]["plugin:hyperframes:musica:lofi"]["credit"], text)
+        self.assertNotIn("\\\\\\[", text)
+
+
+@unittest.skipUnless(shutil.which("node"), "Node.js ausente: o agrupamento das legendas roda em JS")
+class CaptionGroupTests(unittest.TestCase):
+    """O agrupamento embutido em `captions.html`, rodado no Node: grupos de 2 a 5 palavras."""
+
+    def groups(self, words, cards=()):
+        script = (
+            hf.CAPTION_GROUPING_JS
+            + f"\nconsole.log(JSON.stringify(groupWords({json.dumps(words)}, {json.dumps(list(cards))})));"
+        )
+        done = subprocess.run(["node", "-e", script], capture_output=True, text=True, timeout=60, check=True)
+        return [g["text"].split(" ") for g in json.loads(done.stdout)]
+
+    @staticmethod
+    def words(*spec):
+        return [{"text": text, "start": start, "end": round(start + 0.3, 3)} for text, start in spec]
+
+    def test_the_grouping_in_captions_is_this_one(self):
+        self.assertIn(hf.CAPTION_GROUPING_JS, generate()["files"]["compositions/captions.html"])
+
+    def test_six_words_split_four_and_two_never_five_and_one(self):
+        words = self.words(*[(f"w{i}", i * 0.3) for i in range(6)])
+        self.assertEqual([4, 2], [len(g) for g in self.groups(words)])
+
+    def test_a_short_pause_never_leaves_a_word_alone(self):
+        words = self.words(("Oi", 0.0), ("tudo", 0.5), ("bem", 0.8), ("contigo", 1.1))
+        self.assertEqual([["Oi", "tudo", "bem", "contigo"]], self.groups(words))
+
+    def test_punctuation_ends_a_group_of_two_or_more(self):
+        words = self.words(("Eu", 0.0), ("digo.", 0.3), ("Corta", 0.6), ("e", 0.9), ("entrega.", 1.2), ("Fim", 1.5))
+        self.assertEqual([["Eu", "digo."], ["Corta", "e"], ["entrega.", "Fim"]], self.groups(words))
+
+    def test_only_a_lone_final_word_stands_alone(self):
+        self.assertEqual([["só"]], self.groups(self.words(("só", 0.0))))
+        words = self.words(("a", 0.0), ("b", 0.3), ("c", 1.0), ("d", 3.0))
+        self.assertEqual([["a", "b", "c"], ["d"]], self.groups(words, [[2.0, 2.9]]))
+
+    def test_full_fixture_groups(self):
+        plan = fixture()
+        text = generate(plan)["files"]["compositions/captions.html"]
+        sizes = [len(g) for g in self.groups(js_const(text, "TRANSCRIPT"), js_const(text, "CARD_WINDOWS"))]
+        self.assertTrue(all(n in range(2, 6) for n in sizes[:-1]), sizes)
+        self.assertIn(sizes[-1], range(1, 6))
 
 
 class ExportDocTests(unittest.TestCase):

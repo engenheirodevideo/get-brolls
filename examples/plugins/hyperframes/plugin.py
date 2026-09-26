@@ -36,6 +36,8 @@ SPLIT_CAPTION_Y = 960
 LETTERING_Y = {"9:16": 1500, "16:9": 620}
 CAPTION_MAX_WIDTH = {"9:16": 900, "16:9": 1600}
 MIN_LETTERING_S = 1.0
+# Camadas: cartela 2 e LETTERING 5 dentro da cena; legenda acima de tudo.
+CARD_Z, LETTERING_Z, CAPTIONS_Z = 2, 5, 10
 # Trilhos (só exibição no Studio): cenas, legendas, voz, música e SFX alternados.
 TRACK_SCENES, TRACK_CAPTIONS, TRACK_VOICE, TRACK_MUSIC, TRACK_SFX = 0, 1, 2, 3, 4
 MUSIC_BASE, MUSIC_DUCK, SFX_VOLUME = 0.5, 0.125, 0.35
@@ -45,6 +47,51 @@ MAX_NOTES = 50
 # O Chrome do Studio/render não toca estes formatos: pendência de conversão.
 UNPLAYABLE_AUDIO = (".aif", ".aiff", ".ogg", ".m4a")
 BG, FG = "#0b0b0b", "#ffffff"
+# Agrupamento da legenda (roda no navegador): grupos de 2 a 5 palavras; quebra em pausa
+# (0,15 s), pontuação e no limite de 5. Pausa longa ou cartela encerram o trecho, e uma
+# palavra que sobrar sozinha no fim do trecho junta-se ao grupo anterior (ou leva a última
+# palavra dele): grupo de uma palavra só quando o trecho inteiro tem uma palavra.
+CAPTION_GROUPING_JS = """function groupWords(words, cardWindows) {
+          const PAUSE = 0.8;
+          const inside = (t) => cardWindows.some((w) => t >= w[0] && t < w[1]);
+          const between = (a, b) => cardWindows.some((w) => w[0] >= a && w[0] < b);
+          const groups = [];
+          let current = [];
+          let runStart = 0;
+          let last = null;
+          const flush = () => {
+            if (current.length) groups.push(current);
+            current = [];
+          };
+          const closeRun = () => {
+            flush();
+            const tail = groups[groups.length - 1];
+            if (groups.length - runStart >= 2 && tail.length === 1) {
+              const previous = groups[groups.length - 2];
+              if (previous.length >= 3) tail.unshift(previous.pop());
+              else previous.push(groups.pop()[0]);
+            }
+            runStart = groups.length;
+          };
+          words.forEach((word) => {
+            if (inside(word.start)) {
+              closeRun();
+              last = null;
+              return;
+            }
+            if (last && (word.start - last.end >= PAUSE || between(last.end, word.start))) closeRun();
+            else if (current.length >= 5 || (current.length >= 2 && word.start - last.end >= 0.15)) flush();
+            current.push(word);
+            last = word;
+            if (/[.!?,;:]$/.test(word.text) && current.length >= 2) flush();
+          });
+          closeRun();
+          const result = groups.map((g) => ({ text: g.map((w) => w.text).join(" "), start: g[0].start, end: g[g.length - 1].end }));
+          result.forEach((group, index) => {
+            if (index + 1 < result.length) group.end = Math.min(group.end, result[index + 1].start);
+          });
+          return result;
+        }"""
 _MARKDOWN = re.compile(r"([\\`*_\[\]()<>!|%~=#${}])")
 # Surrogate solto (vira U+FFFD) e NUL (sai): o core só grava UTF-8 válido e sem NUL.
 _UNSAFE_TEXT = re.compile(r"[\ud800-\udfff]|\x00")
@@ -128,7 +175,12 @@ class _Export:
 
     def note(self, text):
         self.notes.append(text)
-        self.pending.append(text)
+        self.pend(text)
+
+    def pend(self, text, *covered_by):
+        """Pendência do EXPORT.md, a menos que um aviso do core já trate dela (começa por `covered_by`)."""
+        if not any(warning.startswith(covered_by or (text,)) for warning in self.plan["warnings"]):
+            self.pending.append(text)
 
     def usable(self, media_id):
         row = self.media.get(media_id) if media_id else None
@@ -145,7 +197,8 @@ class _Export:
         elif prefix == "aroll":
             folder = "aroll"
         else:
-            folder = rest.split(":")[-2]
+            parts = rest.split(":")
+            folder = slug(parts[-2]) if len(parts) > 1 else "midia"
         base = f"assets/{folder}/{slug(stem)}"
         taken = {d.casefold() for d in self.dests.values()}
         candidate, n = f"{base}{row['ext']}", 2
@@ -157,6 +210,17 @@ class _Export:
 
     def requests(self):
         return [{"media_id": m, "dest": self.dests[m]} for m in self.order]
+
+
+def _presenter_title(export, media_id, scene_id):
+    """O que fazer com o A-ROLL que falta: gravar, trocar o arquivo ilegível ou o link."""
+    row = export.media.get(media_id or "") or {}
+    name = _name_of(media_id) if media_id else scene_id
+    if row.get("problem") == "unreadable":
+        return f"NÃO CONSEGUI LER aroll/{name}{row.get('ext') or '.*'}"
+    if row.get("problem") == "link":
+        return f"aroll/{name}{row.get('ext') or ''} É UM LINK: troque pelo arquivo"
+    return f"GRAVAR aroll/{name}.*"
 
 
 def _name_of(media_id):
@@ -232,10 +296,12 @@ class _Scene:
                 f'<video id="{zoom_id}-video" src="{esc(src)}" muted playsinline {timing} data-media-start="0" '
                 f'data-hf-media-start-basis="local" data-track-index="0" style="object-fit:{fit};"></video>'
             )
+        # A escala lenta vai num miolo sem tempo: a vaga (overflow: hidden) fica do tamanho da metade.
         self.elements.append(
-            f'<div id="{zoom_id}" class="slot" style="left:{x}px;top:{y}px;width:{w}px;height:{h}px;">{inner}</div>'
+            f'<div id="{zoom_id}" class="slot" style="left:{x}px;top:{y}px;width:{w}px;height:{h}px;">'
+            f'<div id="{zoom_id}-in" class="slot-zoom" data-layout-allow-overflow>{inner}</div></div>'
         )
-        self.zoom(zoom_id, start, duration)
+        self.zoom(f"{zoom_id}-in", start, duration)
 
     def stem(self, slot, media_id):
         """Nome do arquivo em `assets/`: clipe = `<cena>-<vaga>` (o destino ganha `-2`, `-3`…); resto = o nome."""
@@ -258,7 +324,7 @@ class _Scene:
             if chain:
                 self.export.note(f"{label}: b-roll cobre {secs(cursor)} de {secs(self.duration)}")
             else:
-                self.export.pending.append(
+                self.export.pend(
                     f'{label}: b-roll sem clipe — alvo "{slot["text"]}": `brief --beat {slot["beat_id"]} --project <projeto>`'
                 )
             lines = [("card-title", f"B-ROLL: {slot['text']}")]
@@ -279,15 +345,7 @@ class _Scene:
             self.card(slot["slot"], region, [("card-title", slot["text"])], (span, round(self.duration - span, 3)))
 
     def missing_presenter(self, slot):
-        media_id = slot["media_id"] or ""
-        row = self.export.media.get(media_id) or {}
-        name = _name_of(media_id) if media_id else self.scene["id"]
-        if row.get("problem") == "unreadable":
-            title = f"NÃO CONSEGUI LER aroll/{name}{row.get('ext') or '.*'}"
-        elif row.get("problem") == "link":
-            title = f"aroll/{name}{row.get('ext') or ''} É UM LINK: troque pelo arquivo"
-        else:
-            title = f"GRAVAR aroll/{name}.*"
+        title = _presenter_title(self.export, slot["media_id"], self.scene["id"])
         return [("card-title", title), ("card-prompt", slot["prompt"]), ("card-speech", self.scene["speech_clean"])]
 
     def brand(self, slot, region):
@@ -350,14 +408,15 @@ class _Scene:
       <style>
         #root {{ position: absolute; inset: 0; overflow: hidden; background: {BG}; }}
         .slot {{ position: absolute; overflow: hidden; }}
+        .slot-zoom {{ position: absolute; inset: 0; }}
         .slot video, .slot img {{ position: absolute; left: 0; top: 0; width: 100%; height: 100%; }}
-        .card {{ position: absolute; overflow: hidden; background: {BG}; z-index: 2; }}
+        .card {{ position: absolute; overflow: hidden; background: {BG}; z-index: {CARD_Z}; }}
         .card-text {{ position: absolute; left: 6%; width: 88%; height: 520px; display: flex; flex-direction: column;
           align-items: center; justify-content: center; text-align: center; color: {FG}; font-family: Inter, sans-serif; }}
         .card-title {{ margin: 0 0 24px; font-size: 64px; font-weight: 800; line-height: 1.1; }}
         .card-prompt {{ margin: 0 0 16px; font-size: 40px; font-weight: 600; line-height: 1.2; }}
         .card-speech {{ margin: 0; font-size: 36px; font-weight: 400; line-height: 1.3; }}
-        .lettering {{ position: absolute; left: 0; width: 100%; height: 180px; z-index: 5; }}
+        .lettering {{ position: absolute; left: 0; width: 100%; height: 180px; z-index: {LETTERING_Z}; }}
         .lettering-text {{ display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;
           color: {FG}; font-family: Inter, sans-serif; font-size: 88px; font-weight: 900; text-align: center;
           text-shadow: 0 6px 24px rgba(0, 0, 0, 0.9); }}
@@ -387,29 +446,27 @@ def _voice_windows(export):
         row = export.usable(voice)
         if row and row["has_audio"]:
             windows.append((scene["start_s"], round(scene["start_s"] + scene["duration_s"], 3)))
-    merged = []
-    for start, end in windows:
-        if merged and start - merged[-1][1] < MERGE_GAP_S:
-            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
-        else:
-            merged.append((start, end))
-    return merged
+    return windows
 
 
 def ducking(start, length, windows):
-    """Pontos da faixa de volume (tempo local da música): base, abaixa sob a voz, volta depois."""
-    points = [(0.0, MUSIC_BASE)]
-    for w_start, w_end in windows:
-        s, e = w_start - start, w_end - start
-        if e <= 0 or s >= length:
+    """Pontos da faixa de volume (tempo local da música): base, abaixa sob a voz, volta depois.
+
+    Janelas a menos de `MERGE_GAP_S` (mais que ataque + soltura) viram uma só: as rampas
+    nunca se cruzam. Se a soltura não cabe antes do fim, o volume fica baixo até o fim."""
+    spans = []
+    for w_start, w_end in sorted(windows):
+        s, e = max(0.0, w_start - start), min(length, w_end - start)
+        if e <= s:
             continue
-        s, e = max(0.0, s), min(length, e)
-        points += [
-            (max(0.0, s - ATTACK_S), MUSIC_BASE),
-            (s, MUSIC_DUCK),
-            (e, MUSIC_DUCK),
-            (min(length, e + RELEASE_S), MUSIC_BASE),
-        ]
+        if spans and s - spans[-1][1] < MERGE_GAP_S:
+            spans[-1] = (spans[-1][0], max(spans[-1][1], e))
+        else:
+            spans.append((s, e))
+    points = [(0.0, MUSIC_BASE)]
+    for s, e in spans:
+        points += [(max(0.0, s - ATTACK_S), MUSIC_BASE), (s, MUSIC_DUCK), (e, MUSIC_DUCK)]
+        points.append((length, MUSIC_DUCK) if e + RELEASE_S >= length else (e + RELEASE_S, MUSIC_BASE))
     clean = []
     for when, value in sorted(points, key=lambda p: p[0]):
         t = round(when, 3)
@@ -420,6 +477,22 @@ def ducking(start, length, windows):
     return [{"t": t, "v": v} for t, v in clean[:MAX_AUTOMATION_POINTS]]
 
 
+def _missing_voice(export, scene, voice):
+    """Pendência da voz que falta: A-ROLL do apresentador (a cartela diz o que gravar) ou narração."""
+    sid = scene["id"]
+    if any(s["role"] == "presenter" and s["media_id"] == voice for s in scene["layout"]["slots"]):
+        title = _presenter_title(export, voice, sid)
+        export.pend(
+            f"{sid}: A-ROLL pendente — {title}",
+            f"{sid}: A-ROLL não gravado",
+            f"{sid}: não consegui ler aroll/",
+            f"{sid}: aroll/",
+        )
+        return
+    expected = export.media[voice]["expected"] or f"aroll/{_name_of(voice)}.*"
+    export.pend(f"{sid}: fala sem narração gravada — grave {expected}", f"{sid}: fala sem narração gravada")
+
+
 def _voice_audio(export):
     """`<audio>` da voz de cada cena: só a voz que toca, disponível e com trilha de áudio."""
     lines = []
@@ -428,8 +501,7 @@ def _voice_audio(export):
         row = export.usable(voice)
         if row is None:
             if voice and scene["words"] > 0:
-                expected = export.media[voice]["expected"] or f"aroll/{_name_of(voice)}.*"
-                export.pending.append(f"{scene['id']}: fala sem narração gravada — grave {expected}")
+                _missing_voice(export, scene, voice)
             continue
         if not row["has_audio"]:
             continue
@@ -539,8 +611,8 @@ def _captions(export):
   <body>
     <template id="captions-template">
       <style>
-        #root {{ position: absolute; inset: 0; pointer-events: none; }}
-        .captions-group {{ position: absolute; left: 0; width: 100%; height: 220px; padding: 0 {(w - CAPTION_MAX_WIDTH[export.aspect]) // 2}px;
+        #root {{ position: absolute; inset: 0; pointer-events: none; z-index: {CAPTIONS_Z}; }}
+        .captions-group {{ position: absolute; z-index: {CAPTIONS_Z}; left: 0; width: 100%; height: 220px; padding: 0 {(w - CAPTION_MAX_WIDTH[export.aspect]) // 2}px;
           box-sizing: border-box; display: flex; align-items: center; justify-content: center; text-align: center;
           color: {FG}; font-family: Inter, sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1;
           text-shadow: 0 4px 16px rgba(0, 0, 0, 0.85); opacity: 0; }}
@@ -556,28 +628,8 @@ def _captions(export):
         const SPLIT_Y = {SPLIT_CAPTION_Y};
         const MAX_WIDTH = {CAPTION_MAX_WIDTH[export.aspect]};
         const inside = (t, windows) => windows.some((w) => t >= w[0] && t < w[1]);
-        const groups = [];
-        let current = [];
-        const flush = () => {{
-          if (current.length) {{
-            groups.push({{ text: current.map((w) => w.text).join(" "), start: current[0].start, end: current[current.length - 1].end }});
-          }}
-          current = [];
-        }};
-        TRANSCRIPT.forEach((word) => {{
-          if (inside(word.start, CARD_WINDOWS)) {{
-            flush();
-            return;
-          }}
-          const previous = current[current.length - 1];
-          if (previous && (word.start - previous.end >= 0.15 || current.length >= 5)) flush();
-          current.push(word);
-          if (/[.!?,;:]$/.test(word.text) && current.length >= 2) flush();
-        }});
-        flush();
-        groups.forEach((group, index) => {{
-          if (index + 1 < groups.length) group.end = Math.min(group.end, groups[index + 1].start);
-        }});
+        {CAPTION_GROUPING_JS}
+        const groups = groupWords(TRANSCRIPT, CARD_WINDOWS);
         const layer = document.getElementById("captions-layer");
         const tl = gsap.timeline({{ paused: true }});
         groups.forEach((group, index) => {{
@@ -621,6 +673,8 @@ def _index(export, scenes_html):
             f'data-width="{w}" data-height="{h}"></div>'
         )
     body = "\n      ".join(hosts + _audio(export))
+    # A legenda fica acima das cartelas das cenas.
+    captions_css = f"      #el-captions {{ z-index: {CAPTIONS_Z}; }}\n" if plan["meta"]["legenda"] else ""
     return f"""<!doctype html>
 <html lang="pt-BR" data-resolution="{export.resolution}">
   <head>
@@ -631,7 +685,7 @@ def _index(export, scenes_html):
     <style>
       html, body {{ margin: 0; width: {w}px; height: {h}px; overflow: hidden; background: {BG}; }}
       #root {{ position: relative; width: 100%; height: 100%; overflow: hidden; background: {BG}; }}
-    </style>
+{captions_css}    </style>
   </head>
   <body>
     <div id="root" data-composition-id="main" data-start="0" data-duration="{total}" data-fps="{FPS}" data-width="{w}" data-height="{h}">
@@ -682,6 +736,13 @@ def _media_cell(export, scene):
     return "ok" if not missing else "faltando: " + ", ".join(md(_name_of(m)) for m in missing)
 
 
+def _credit(row):
+    """Crédito numa linha de Markdown; o de loja de plugin já chega inerte do core e não é escapado de novo."""
+    if row["source"] == "plugin_store":
+        return " ".join(str(row["credit"]).split())
+    return md(row["credit"])
+
+
 def _export_md(export):
     plan = export.plan
     out = plan["out_dir"]
@@ -727,7 +788,7 @@ def _export_md(export):
     lines += [f"- {p}" for p in dict.fromkeys(pending)] or ["- Nenhuma."]
     lines += ["", "## Créditos", ""]
     credit_lines = [
-        f"- `{export.dests[m]}`: {md(export.media[m]['credit'])}" for m in export.order if export.media[m]["credit"]
+        f"- `{export.dests[m]}`: {_credit(export.media[m])}" for m in export.order if export.media[m]["credit"]
     ]
     lines += credit_lines or ["- Nenhum crédito registrado."]
     lines += [
