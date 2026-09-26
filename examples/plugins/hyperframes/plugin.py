@@ -885,6 +885,32 @@ def _normal(value):
     return " ".join(str(value or "").strip().lower().split())
 
 
+def _read_capped(fd):
+    """Bytes de `fd` até `LEDGER_MAX_BYTES`, ou `None` quando passa do teto (sem ler o resto)."""
+    chunks, size = [], 0
+    while size <= LEDGER_MAX_BYTES:
+        chunk = os.read(fd, min(1024 * 1024, LEDGER_MAX_BYTES + 1 - size))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        size += len(chunk)
+    return None if size > LEDGER_MAX_BYTES else b"".join(chunks)
+
+
+def _before_open(ledger):
+    """Motivo para não abrir o ledger (link, pasta, FIFO), `""` quando é arquivo comum, `None` sem arquivo.
+    A pasta é vista antes de abrir: no Windows, abrir uma pasta dá `PermissionError`."""
+    try:
+        seen = os.lstat(ledger)
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+    except OSError as exc:
+        return f"não pôde ser aberto ({type(exc).__name__})"
+    if stat.S_ISLNK(seen.st_mode):
+        return "é um link"
+    return "" if stat.S_ISREG(seen.st_mode) else "não é um arquivo comum"
+
+
 def _read_ledger(ledger, shown):
     """Bytes do `manifest.jsonl`, ou `None` sem arquivo. Link, FIFO, pasta, arquivo grande
     demais ou erro de leitura viram `PluginError` com `shown` (nunca o caminho absoluto):
@@ -893,8 +919,11 @@ def _read_ledger(ledger, shown):
     def refuse(text):
         raise PluginError(f"{shown} {text}; corrija o acervo do media-use.")
 
-    if Path(ledger).is_symlink():
-        refuse("é um link")
+    problem = _before_open(ledger)
+    if problem is None:
+        return None
+    if problem:
+        refuse(problem)
     try:
         fd = os.open(ledger, _LEDGER_FLAGS)
     except (FileNotFoundError, NotADirectoryError):
@@ -904,16 +933,10 @@ def _read_ledger(ledger, shown):
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             refuse("não é um arquivo comum")
-        chunks, size = [], 0
-        while size <= LEDGER_MAX_BYTES:
-            chunk = os.read(fd, min(1024 * 1024, LEDGER_MAX_BYTES + 1 - size))
-            if not chunk:
-                break
-            chunks.append(chunk)
-            size += len(chunk)
-        if size > LEDGER_MAX_BYTES:
+        raw = _read_capped(fd)
+        if raw is None:
             refuse(f"passa de {LEDGER_MAX_BYTES // (1024 * 1024)} MB")
-        return b"".join(chunks)
+        return raw
     except OSError as exc:
         refuse(f"não pôde ser lido ({type(exc).__name__})")
     finally:
@@ -921,12 +944,13 @@ def _read_ledger(ledger, shown):
 
 
 def _records(ledger, shown):
-    """Registros do `manifest.jsonl` (objeto por linha); linha ruim é pulada, arquivo fora de UTF-8 também."""
+    """Registros do `manifest.jsonl` (objeto por linha); linha ruim é pulada. Arquivo fora de UTF-8 é
+    `PluginError`: pular calado faria o nome cair no acervo global sem ninguém saber."""
     raw = _read_ledger(ledger, shown)
     try:
         lines = raw.decode("utf-8").splitlines() if raw else []
     except UnicodeDecodeError:
-        return []
+        raise PluginError(f"{shown} não está em UTF-8; corrija o acervo do media-use.") from None
     found = []
     for line in lines:
         try:
@@ -972,7 +996,7 @@ def _pick(records, media_type, name):
 
 
 def _license(record):
-    """Uma linha informativa (o core prefixa e deixa inerte): origem, provedor e descrição."""
+    """Uma linha informativa, crua (o core prefixa; o exporter escapa): origem, provedor e descrição."""
     provenance = record.get("provenance") if isinstance(record.get("provenance"), dict) else {}
     parts = [f"media-use {record.get('source') or 'sem origem'}"]
     if provenance.get("provider"):

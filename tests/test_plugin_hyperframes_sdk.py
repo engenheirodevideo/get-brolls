@@ -199,6 +199,28 @@ class ResolverTests(HomeCase):
         (project / ".media" / "manifest.jsonl").rmdir()
         self.assertIsNotNone(self.resolve("sfx", "whoosh", {"media_projects": [str(project)]}))
 
+    def test_directory_ledger_is_not_a_regular_file_on_every_system(self):
+        # No Windows, abrir uma pasta dá PermissionError: a pasta tem de ser reconhecida antes de abrir.
+        (self.user / ".media" / "manifest.jsonl").mkdir(parents=True)
+        with (
+            mock.patch.object(hf.os, "open", side_effect=PermissionError(13, "Permission denied")),
+            self.assertRaisesRegex(PluginError, r"~/\.media/manifest\.jsonl não é um arquivo comum"),
+        ):
+            self.resolve("sfx", "whoosh")
+
+    def test_ledger_outside_utf8_is_reported_not_skipped(self):
+        global_path = self.cached("sfx_009.mp3")
+        self.media_use([self.record("sfx_009", "sfx", global_path)])
+        project = self.user / ".media" / "projetos" / "reel"
+        (project / ".media").mkdir(parents=True)
+        (project / ".media" / "manifest.jsonl").write_bytes(b'{"id": "caf\xe9"}\n')
+        message = r"projeto reel: \.media/manifest\.jsonl não está em UTF-8; corrija o acervo do media-use\."
+        with self.assertRaisesRegex(PluginError, message):
+            self.resolve("sfx", "whoosh", {"media_projects": [str(project)]})
+        (self.user / ".media" / "manifest.jsonl").write_bytes(b"\xff\xfe")
+        with self.assertRaisesRegex(PluginError, r"~/\.media/manifest\.jsonl não está em UTF-8"):
+            self.resolve("sfx", "whoosh")
+
     def test_ambiguous_level_is_a_plugin_error(self):
         first, second = self.cached("sfx_001.mp3"), self.cached("sfx_004.mp3")
         self.media_use([self.record("sfx_001", "sfx", first), self.record("sfx_004", "sfx", second)])
