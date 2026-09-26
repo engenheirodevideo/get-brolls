@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import NoReturn
 
 from .. import __version__
-from .contracts import CORE, NAME_RE, SDK_API
+from .contracts import CORE, NAME_RE, RESERVED_IDS, SDK_API
 
 MANIFEST_NAME = "getbrolls-plugin.json"
 CONTRIBUTION_KINDS = (
@@ -26,6 +26,10 @@ CONTRIBUTION_KINDS = (
     "themes",
     "brief_templates",
     "eval_rubrics",
+    "capturers",
+    "engines",
+    "catalogs",
+    "roteiro_templates",
 )
 # Tipos que esta versão do SDK sabe carregar; os outros ficam para versões futuras.
 SUPPORTED_KINDS = ("providers", "presets", "routes", "commands", "exporters", "resolvers")
@@ -41,9 +45,12 @@ TOP_LEVEL = frozenset(
         "contributes",
         "schema",
         "signed_fields",
+        "engines",
         "permissions",
     }
 )
+# Campos de topo reservados para versões futuras: ausentes ou `{}`, nunca com conteúdo.
+FUTURE_FIELDS = ("schema", "signed_fields", "engines")
 VERSION_RE = re.compile(r"\d+\.\d+\.\d+")
 ENTRY_RE = re.compile(r"[A-Za-z0-9_]{1,64}\.py")
 HOST_RE = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+")
@@ -143,7 +150,13 @@ def _identity(folder, raw):
     ident = raw.get("id")
     if not isinstance(ident, str) or not NAME_RE.fullmatch(ident) or ident == CORE:
         _fail(folder.name, "id inválido; use 2–32 caracteres a-z, 0-9 e _, começando por letra (e diferente de core).")
+    if ident in RESERVED_IDS:
+        _fail(folder.name, reserved_id_message(ident))
     return ident
+
+
+def reserved_id_message(ident):
+    return f'id "{ident}" é reservado do get-brolls ({", ".join(RESERVED_IDS)}): escolha outro.'
 
 
 def _basic_fields(ident, raw):
@@ -206,7 +219,7 @@ def read_manifest(folder: Path, require_folder_match: bool = True) -> dict:
         _fail(folder.name, f"a pasta tem que se chamar {ident}, igual ao id.")
     _basic_fields(ident, raw)
     entry = _entry_field(folder, ident, raw)
-    for field in ("schema", "signed_fields"):
+    for field in FUTURE_FIELDS:
         if raw.get(field, {}) != {}:
             _fail(ident, f"{field} ainda não é suportado nesta versão do SDK.")
     return {

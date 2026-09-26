@@ -13,6 +13,10 @@ from ..http import ProviderError
 SDK_API = 1
 # Dono dos built-ins no registro; nenhum plugin pode usar este id.
 CORE = "core"
+# Ids que nenhum plugin pode usar: o do core e os nomes que o get-brolls guarda para
+# conceitos próprios (cliente, catálogo, direção, template e projeto), para que
+# `[cliente:x]` ou `[direcao:x]` num roteiro nunca vire diretiva de um plugin.
+RESERVED_IDS = (CORE, "cliente", "catalogo", "direcao", "template", "projeto")
 NAME_RE = re.compile(r"[a-z][a-z0-9_]{1,31}")
 MATCH_KINDS = ("literal", "illustrative")
 MEDIA_KINDS = ("video", "image")

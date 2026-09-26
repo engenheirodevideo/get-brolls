@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 
 from .. import __version__
-from .contracts import CORE, NAME_RE, SDK_API
-from .manifest import MANIFEST_NAME
+from .contracts import CORE, NAME_RE, RESERVED_IDS, SDK_API
+from .manifest import MANIFEST_NAME, reserved_id_message
 
 KINDS = ("provider", "route", "command")
 
@@ -163,6 +163,8 @@ def _manifest(plugin_id, kind):
 def new(plugin_id, kind, parent=None):
     if not isinstance(plugin_id, str) or not NAME_RE.fullmatch(plugin_id) or plugin_id == CORE:
         raise ValueError("--id inválido; use 2–32 caracteres a-z, 0-9 e _, começando por letra.")
+    if plugin_id in RESERVED_IDS:
+        raise ValueError(f"--id: {reserved_id_message(plugin_id)}")
     if kind not in KINDS:
         raise ValueError(f"--kind aceita {', '.join(KINDS)}.")
     parent_dir = Path(parent or ".").expanduser().resolve()
