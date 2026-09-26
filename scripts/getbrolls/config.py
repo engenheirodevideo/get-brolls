@@ -1,5 +1,14 @@
 """Explicit .env loading: no interpolation, evaluation or secret output."""
 
+# pylint: disable=missing-function-docstring,cyclic-import
+# Legado: ocorrência pré-existente em `settings` (corpo idêntico à origin/main).
+# `cyclic-import` é novo nesta release (getbrolls.config -> getbrolls.runtime ->
+# getbrolls.http): o import de `runtime.record_warning` é tardio (dentro de
+# função) de propósito, seguindo a mesma convenção já usada em runtime.py para
+# quebrar ciclos em tempo de execução (ver "avoids a runtime<->http/logs import
+# cycle" nesse arquivo); o pylint só permite suprimir R0401 no módulo (a
+# mensagem é reportada uma vez por todo o projeto, não por linha).
+
 import os
 from pathlib import Path
 
@@ -140,6 +149,7 @@ TOOLCHAIN_ENV_KEYS = frozenset(
 
 
 def core_env_key(key):
+    """Variável reconhecida pelo core (`GB_*` ou listada em `KEYS`)."""
     return key in KEYS or key.startswith("GB_")
 
 
