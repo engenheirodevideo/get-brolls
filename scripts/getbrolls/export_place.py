@@ -22,9 +22,10 @@ from pathlib import Path, PurePosixPath
 
 from . import delivery
 
-# Método que não duplica bytes em disco: não conta nos MB copiados do resumo.
-SHARED_METHODS = ("hardlink", "clone")
-CLONE_TIMEOUT_S = 600
+# Método que com certeza não duplica bytes em disco: não conta nos MB copiados do resumo.
+# O clone (`cp -c`, `cp --reflink=auto`) conta o tamanho inteiro: num disco que não clona
+# (exFAT, HFS+, SMB) o `cp` faz cópia completa e ainda sai com 0, então o resumo diz "até N MB".
+SHARED_METHODS = ("hardlink",)
 
 
 def check_requests(requests, media, sources):
@@ -42,6 +43,8 @@ def check_requests(requests, media, sources):
             raise ValueError(f"O exporter pediu a mídia {media_id!r}, que não está no plano.")
         if not row["available"] or media_id not in sources:
             raise ValueError(f"O exporter pediu a mídia {media_id!r}, que não está disponível.")
+        if any(part in ("", ".", "..") for part in dest.split("/")):
+            raise ValueError(f"Destino de mídia com trecho vazio, '.' ou '..': {dest!r}.")
         path = PurePosixPath(dest)
         if path.parts[:1] != ("assets",) or len(path.parts) < 2:  # noqa: PLR2004 - "assets/<nome>" at least
             raise ValueError(f"Destino de mídia fora de assets/: {dest!r}.")
@@ -82,22 +85,28 @@ def verify_source(source):
 def _clone_command(src, dest):
     """(argv, método) do clone do sistema, ou None onde não há (Windows, `cp` ausente)."""
     if sys.platform == "darwin":
-        return ["/bin/cp", "-c", str(src), str(dest)], "clone"
+        return ["/bin/cp", "-c", "--", str(src), str(dest)], "clone"
     if sys.platform.startswith("linux"):
         cp = shutil.which("cp")
         if cp:
-            return [cp, "--reflink=auto", str(src), str(dest)], "reflink-auto"
+            return [cp, "--reflink=auto", "--", str(src), str(dest)], "reflink-auto"
     return None
 
 
 def clone_or_copy(src, dest):
-    """Clona quando o disco deixa (APFS, Btrfs, XFS); senão `shutil.copy2`. Nunca hardlink, nunca chmod."""
+    """Clona quando o disco deixa (APFS, Btrfs, XFS); senão `shutil.copy2`. Nunca hardlink, nunca chmod.
+
+    Sem tempo-limite: a cópia completa de um A-ROLL grande pode demorar, e matar o `cp`
+    para refazer com `copy2` dobraria o tempo.
+    """
     src, dest = Path(src), Path(dest)
+    if not (src.is_absolute() and dest.is_absolute()):
+        raise ValueError(f"Clone de mídia pede caminho absoluto: {src} → {dest}.")
     command = _clone_command(src, dest)
     if command is not None:
         argv, method = command
         try:
-            done = subprocess.run(argv, check=False, capture_output=True, timeout=CLONE_TIMEOUT_S)  # noqa: S603 - fixed argv with absolute paths, never a shell
+            done = subprocess.run(argv, check=False, capture_output=True)  # noqa: S603 - fixed cp argv, absolute paths after "--", never a shell
         except (OSError, subprocess.SubprocessError):
             done = None
         if done is not None and done.returncode == 0 and dest.is_file() and not dest.is_symlink():
@@ -139,6 +148,10 @@ def place(source, dest, copy_plugin=None):
     ficar com o tamanho do plano.
     """
     dest = Path(dest)
+    if os.path.lexists(dest):
+        raise ValueError(
+            f"{dest.name} já existe no export em montagem: não sobrescrevo nem sigo link; repita o export."
+        )
     dest.parent.mkdir(parents=True, exist_ok=True)
     kind = source["method"]
     if kind == "plugin":

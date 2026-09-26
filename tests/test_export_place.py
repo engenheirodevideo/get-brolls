@@ -92,7 +92,7 @@ class PersonMediaTests(PlaceTestCase):
             mock.patch.object(export_place.subprocess, "run", side_effect=failing) as run,
         ):
             self.assertEqual("copy", export_place.clone_or_copy(voice, dest))
-        self.assertEqual(["/usr/bin/cp", "--reflink=auto", str(voice), str(dest)], run.call_args.args[0])
+        self.assertEqual(["/usr/bin/cp", "--reflink=auto", "--", str(voice), str(dest)], run.call_args.args[0])
         self.assertEqual(b"conteudo", dest.read_bytes())
 
     def test_macos_uses_cp_c_and_missing_cp_copies(self):
@@ -104,7 +104,47 @@ class PersonMediaTests(PlaceTestCase):
             mock.patch.object(export_place.subprocess, "run", side_effect=FileNotFoundError("/bin/cp")) as run,
         ):
             self.assertEqual("copy", export_place.clone_or_copy(voice, dest))
-        self.assertEqual(["/bin/cp", "-c", str(voice), str(dest)], run.call_args.args[0])
+        self.assertEqual(["/bin/cp", "-c", "--", str(voice), str(dest)], run.call_args.args[0])
+        self.assertNotIn("timeout", run.call_args.kwargs)
+        self.assertEqual(b"conteudo", dest.read_bytes())
+
+    def test_broken_cp_falls_back_to_a_full_copy(self):
+        voice = self.file("aroll/c01.mov")
+        dest = self.staging / "c01.mov"
+        dest.parent.mkdir(parents=True)
+        with (
+            mock.patch.object(export_place.sys, "platform", "darwin"),
+            mock.patch.object(export_place.subprocess, "run", side_effect=subprocess.SubprocessError("quebrou")),
+        ):
+            self.assertEqual("copy", export_place.clone_or_copy(voice, dest))
+        self.assertEqual(b"conteudo", dest.read_bytes())
+
+    def test_relative_paths_never_reach_cp(self):
+        voice = self.file("aroll/c01.mov")
+        with (
+            mock.patch.object(export_place.sys, "platform", "darwin"),
+            mock.patch.object(export_place.subprocess, "run") as run,
+            self.assertRaisesRegex(ValueError, "caminho absoluto"),
+        ):
+            export_place.clone_or_copy(voice, Path("relativo.mov"))
+        run.assert_not_called()
+
+    def test_a_clone_counts_the_full_size_because_cp_may_have_copied(self):
+        voice = self.file("aroll/c01.mov")
+
+        def cloned(argv, **kwargs):
+            shutil.copyfile(argv[-2], argv[-1])
+            return subprocess.CompletedProcess(argv, 0)
+
+        for platform, which, method in (("darwin", None, "clone"), ("linux", "/usr/bin/cp", "reflink-auto")):
+            dest = self.staging / f"assets/aroll/{platform}.mov"
+            with (
+                self.subTest(platform=platform),
+                mock.patch.object(export_place.sys, "platform", platform),
+                mock.patch.object(export_place.shutil, "which", return_value=which),
+                mock.patch.object(export_place.subprocess, "run", side_effect=cloned),
+            ):
+                self.assertEqual((method, len(b"conteudo")), export_place.place(source_of(voice, "clone"), dest))
 
     def test_windows_copies_without_a_subprocess(self):
         voice = self.file("aroll/c01.mov")
@@ -176,6 +216,31 @@ class PluginMediaTests(PlaceTestCase):
         with self.assertRaisesRegex(ValueError, "lofi.mp3 mudou durante o export"):
             export_place.place(source, dest, copier)
         self.assertFalse(dest.exists())
+
+
+class ExistingDestTests(PlaceTestCase):
+    def test_existing_file_or_planted_link_at_the_destination_is_refused(self):
+        clip = self.file("brolls/clips/a.mp4")
+        outside = self.file("fora/alvo.mp4", b"nao mexa")
+        dest = self.staging / "assets/clips/a.mp4"
+        dest.parent.mkdir(parents=True)
+        dest.write_bytes(b"da pessoa")
+        for method in ("hardlink", "clone"):
+            with self.subTest(method=method), self.assertRaisesRegex(ValueError, "já existe no export") as caught:
+                export_place.place(source_of(clip, method), dest)
+            self.assertNotIn("deliver", str(caught.exception))
+        self.assertEqual(b"da pessoa", dest.read_bytes())
+        dest.unlink()
+        try:
+            dest.symlink_to(outside)
+        except OSError:
+            self.skipTest("este sistema não cria symlink")
+        with self.assertRaisesRegex(ValueError, "já existe no export"):
+            export_place.place(source_of(clip, "clone"), dest)
+        with self.assertRaisesRegex(ValueError, "já existe no export"):
+            export_place.place(source_of(clip, "plugin"), dest, lambda src, target: Path(target).write_bytes(b"x"))
+        self.assertTrue(dest.is_symlink())
+        self.assertEqual(b"nao mexa", outside.read_bytes())
 
 
 class RecheckTests(PlaceTestCase):
@@ -253,6 +318,7 @@ PLAN_MEDIA = {
     "aroll:c01": {"available": True, "ext": ".mov"},
     "aroll:c02": {"available": False, "ext": None},
     "clip:p:1": {"available": True, "ext": ".mp4"},
+    "clip:p:2": {"available": True, "ext": ".mp4"},
 }
 PLAN_SOURCES = {"aroll:c01": {}, "clip:p:1": {}}
 
@@ -270,12 +336,28 @@ class RequestTests(unittest.TestCase):
             "não está no plano": [("aroll:c09", "assets/aroll/c09.mov")],
             "não está disponível": [("aroll:c02", "assets/aroll/c02.mov")],
             "fora de assets/": [("aroll:c01", "aroll/c01.mov")],
+            "trecho vazio": [("aroll:c01", "assets/../c01.mov")],
             "não tem a extensão": [("aroll:c01", "assets/aroll/c01.mp4")],
             "mesmo destino": [("aroll:c01", "assets/x/A.mov"), ("aroll:c01", "assets/x/a.mov")],
         }
         for fragment, requests in cases.items():
             with self.subTest(fragment=fragment), self.assertRaisesRegex(ValueError, fragment):
                 self.check(requests)
+
+    def test_dot_dotdot_and_empty_segments_are_refused(self):
+        for dest in (
+            "assets/../c01.mov",
+            "assets/./c01.mov",
+            "assets//c01.mov",
+            "/assets/c01.mov",
+            "assets/x/../c01.mov",
+        ):
+            with self.subTest(dest=dest), self.assertRaisesRegex(ValueError, "trecho vazio, '.' ou '..'"):
+                self.check([("aroll:c01", dest)])
+
+    def test_available_in_the_plan_but_without_a_source_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "clip:p:2.*não está disponível"):
+            self.check([("clip:p:2", "assets/clips/c02.mp4")])
 
 
 class SameAsBeforeTests(PlaceTestCase):
