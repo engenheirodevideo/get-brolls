@@ -23,6 +23,7 @@ _BAD_STATE = (
 
 
 def state_path(project):
+    """Caminho absoluto de `brolls/roteiro-state.json` do projeto."""
     return Path(project).expanduser().resolve() / "brolls" / STATE_FILE
 
 
@@ -46,6 +47,7 @@ def read_state(project):
 
 
 def write_state(project, state):
+    """Grava `brolls/roteiro-state.json` (cria a pasta se faltar), de forma atômica."""
     path = state_path(project)
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write(path, json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
@@ -107,12 +109,8 @@ def _already_retired(beats):
     return {base for base, retired in status.items() if retired}
 
 
-def plan_ids(doc, beats, items, state):
-    """Decide o id de cada cena sem id: readota, recusa ou dá o próximo número nunca usado.
-
-    Devolve `{"assign": {linha: id}, "readopted": {linha: id}, "refusal": str | None,
-    "next_id": int}`. `assign` inclui as readoções; com `refusal`, `assign` vem vazio.
-    """
+def _candidates(doc, beats, items, state):
+    """Cenas sem id, ids em risco de ficar órfãos e o próximo número livre: a base da decisão de `plan_ids`."""
     present = {s.scene_id for s in doc.scenes if s.scene_id}
     known = set(state["scenes"]) | {_base(b) for b in _scene_ids(b.get("id") for b in beats)}
     shots = set(_scene_ids(c.get("shot") for c in items))
@@ -123,18 +121,35 @@ def plan_ids(doc, beats, items, state):
     remaining = [s for s in idless if s.line not in readopted]
     orphaned = [i for i in at_risk if i not in readopted.values()]
     next_id = max(state["next_id"], highest_seen(doc, beats, items, state) + 1)
-    if remaining and orphaned:
-        lines = ", ".join(str(s.line) for s in remaining)
-        fresh = (
-            f"dê a ela um id novo à mão: `<!-- c{next_id:02d} -->`."
-            if next_id <= MAX_SCENE
-            else f"não há id novo livre (o roteiro passou de c{MAX_SCENE}): divida o vídeo em dois projetos."
-        )
-        refusal = (
-            f"Cena sem id (linha {lines}) e beat com candidatos que ficaria sem cena ({', '.join(orphaned)}). "
-            f"Se é a mesma cena de antes, devolva o comentário ao título (ex.: `## Título <!-- {orphaned[0]} -->`). "
-            f"Se a cena antiga saiu de propósito e esta é nova, {fresh}"
-        )
+    return remaining, orphaned, readopted, next_id
+
+
+def _refusal(remaining, orphaned, next_id):
+    """Mensagem de recusa quando sobra cena sem id e beat com candidatos ficaria órfão; None sem conflito."""
+    if not (remaining and orphaned):
+        return None
+    lines = ", ".join(str(s.line) for s in remaining)
+    fresh = (
+        f"dê a ela um id novo à mão: `<!-- c{next_id:02d} -->`."
+        if next_id <= MAX_SCENE
+        else f"não há id novo livre (o roteiro passou de c{MAX_SCENE}): divida o vídeo em dois projetos."
+    )
+    return (
+        f"Cena sem id (linha {lines}) e beat com candidatos que ficaria sem cena ({', '.join(orphaned)}). "
+        f"Se é a mesma cena de antes, devolva o comentário ao título (ex.: `## Título <!-- {orphaned[0]} -->`). "
+        f"Se a cena antiga saiu de propósito e esta é nova, {fresh}"
+    )
+
+
+def plan_ids(doc, beats, items, state):
+    """Decide o id de cada cena sem id: readota, recusa ou dá o próximo número nunca usado.
+
+    Devolve `{"assign": {linha: id}, "readopted": {linha: id}, "refusal": str | None,
+    "next_id": int}`. `assign` inclui as readoções; com `refusal`, `assign` vem vazio.
+    """
+    remaining, orphaned, readopted, next_id = _candidates(doc, beats, items, state)
+    refusal = _refusal(remaining, orphaned, next_id)
+    if refusal:
         return {"assign": {}, "readopted": readopted, "refusal": refusal, "next_id": next_id}
     assign = dict(readopted)
     for scene in remaining:
