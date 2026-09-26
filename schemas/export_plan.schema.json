@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Get B-rolls export plan v1",
   "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/export_plan.schema.json",
-  "description": "O que o core entrega a um exporter. Documental e testado: a gramática dos ids de mídia e as referências cruzadas (toda mídia citada existe em media) são conferidas em código (export_plan.check_refs), porque este subconjunto de JSON Schema não tem propertyNames nem patternProperties. Todo texto é cru e não confiável, inclusive credit (nunca pré-escapado pelo core, de fonte nenhuma): o exporter escapa no formato dele. Nenhum valor é caminho absoluto. Evolução: topo, meta, cena, camada e entrada de mídia ficam abertos neste schema, porque podem ganhar campos. O exporter ignora chave desconhecida; valor de enum que ele não conhece é não suportado, com PluginError claro, e um problem desconhecido vale como indisponível. Campo novo opcional ou null e valor novo de enum são mudanças aditivas: não sobem export_version e aparecem no CHANGELOG. Remover, renomear ou mudar o significado de um campo sobe export_version. export_version é o contrato entre o core e o exporter; plan_version é o formato do plano de cena do roteiro, de onde vêm as cenas.",
+  "description": "O que o core entrega a um exporter. Documental e testado: a gramática dos ids de mídia e as referências cruzadas (toda mídia citada existe em media) são conferidas em código (export_plan.check_refs), porque este subconjunto de JSON Schema não tem propertyNames nem patternProperties. Todo texto é cru e não confiável, inclusive credit (nunca pré-escapado pelo core, de fonte nenhuma): o exporter escapa no formato dele. Nenhum valor é caminho absoluto. Evolução: todo objeto deste schema fica aberto, porque pode ganhar campos. O exporter ignora chave desconhecida em qualquer nível; valor de enum que ele não conhece é não suportado, com PluginError claro, e um problem desconhecido vale como indisponível. O exporter recusa export_version que não conhece, também com PluginError. Campo novo opcional ou null e valor novo de enum são mudanças aditivas: não sobem export_version e aparecem no CHANGELOG. Depois da 2.6.0, campo novo entra neste schema fora de required, para um plano gravado por uma versão anterior continuar válido; os testes do core conferem a saída com uma variante fechada, que exige todos os campos. Remover, renomear ou mudar o significado de um campo sobe export_version. export_version é o contrato entre o core e o exporter; plan_version é o formato do plano de cena do roteiro, de onde vêm as cenas.",
   "type": "object",
   "required": ["export_version", "exporter", "out_dir", "generated_at", "getbrolls_version", "plan_version", "meta", "total_s", "timing", "scenes", "media", "warnings"],
   "properties": {
@@ -27,7 +27,6 @@
         "fps": {
           "type": ["object", "null"],
           "description": "Base de tempo como fração de quadros por segundo: 30 é {num: 30, den: 1}, 29,97 é {num: 30000, den: 1001}. null = o exporter usa o padrão dele.",
-          "additionalProperties": false,
           "required": ["num", "den"],
           "properties": {
             "num": { "type": "integer", "minimum": 1 },
@@ -37,7 +36,6 @@
         "canvas": {
           "type": ["object", "null"],
           "description": "Tamanho do quadro em pixels. null = o exporter decide pelo aspecto.",
-          "additionalProperties": false,
           "required": ["width", "height"],
           "properties": {
             "width": { "type": "integer", "minimum": 1 },
@@ -65,7 +63,6 @@
           "words": { "type": "integer", "minimum": 0 },
           "layout": {
             "type": "object",
-            "additionalProperties": false,
             "required": ["kind", "args", "quoted", "full_role", "slots"],
             "properties": {
               "kind": { "enum": ["A-ROLL", "BROLL", "SPLIT", "FULL", "UGC"] },
@@ -78,7 +75,6 @@
                 "maxItems": 2,
                 "items": {
                   "type": "object",
-                  "additionalProperties": false,
                   "required": ["slot", "role", "text", "beat_id", "take", "prompt", "media_id", "extra_media_ids"],
                   "properties": {
                     "slot": { "enum": ["a", "b", "main"] },
@@ -101,7 +97,6 @@
             "maxItems": 5000,
             "items": {
               "type": "object",
-              "additionalProperties": false,
               "required": ["text", "start", "end"],
               "properties": {
                 "text": { "type": "string", "minLength": 1, "maxLength": 100 },
@@ -135,7 +130,6 @@
             "type": "array",
             "items": {
               "type": "object",
-              "additionalProperties": false,
               "required": ["plugin", "name", "args", "quoted", "line", "anchor", "word_offset", "at_s"],
               "properties": {
                 "plugin": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$" },

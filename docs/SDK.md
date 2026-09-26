@@ -415,10 +415,14 @@ api.command("recentes", recentes, "Lista os vídeos mais recentes da pasta")
 ```python
 from html import escape
 
-from getbrolls.sdk import ExportResult, MediaRequest
+from getbrolls.sdk import ExportResult, MediaRequest, PluginError
 
 
 def exporta(plan: dict, options: dict) -> ExportResult:
+    if plan["export_version"] != 1:
+        raise PluginError(
+            f"export_version {plan['export_version']} não é suportado por este exportador: atualize o plugin."
+        )
     partes = ["<h1>" + escape(plan["meta"]["tema"]) + "</h1>"]
     partes += ["<h2>" + escape(cena["title"]) + "</h2>" for cena in plan["scenes"]]
     media = [
@@ -530,17 +534,24 @@ nada é gravado.
 O plano muda de versão em versão do Get B-rolls. Estas regras dizem o que um
 exportador pode esperar:
 
-- **Chave nova não quebra.** O exportador ignora chave desconhecida, em qualquer
-  nível do plano. O schema publicado deixa abertos os objetos que podem crescer
-  (topo, `meta`, cena, camada e entrada de `media`); não feche esses objetos nos
-  testes do seu plugin.
-- **Valor de enum desconhecido é "não suportado".** Um layout, papel de vaga,
-  tipo de camada ou tipo de mídia que o exportador não conhece vira um
-  `PluginError` claro, dizendo o valor e que esta versão do plugin não o trata,
-  nunca uma saída pela metade. A exceção é `problem`: valor desconhecido vale
-  como mídia indisponível, como já é hoje.
+- **Chave nova não quebra.** O exportador ignora chave desconhecida em qualquer
+  nível do plano. Todo objeto do schema publicado fica aberto (topo, `meta`,
+  `fps`, `canvas`, cena, `layout`, vaga, palavra de `words_timed`, camada,
+  extensão e entrada de `media`); não feche esses objetos nos testes do seu
+  plugin.
+- **Valor de enum desconhecido é "não suportado".** Um aspecto, `timing`,
+  layout, papel de vaga, tipo de camada ou tipo de mídia que o exportador não
+  conhece vira um `PluginError` claro, dizendo o valor e que esta versão do
+  plugin não o trata, nunca uma saída pela metade. A exceção é `problem`: valor
+  desconhecido vale como mídia indisponível, como já é hoje.
+- **`export_version` conferido.** O exportador recusa `export_version` que não
+  conhece, com `PluginError` (como no exemplo acima): é o que protege o seu
+  código de um plano com mudança que quebra.
 - **Mudança aditiva.** Campo novo opcional ou `null` e valor novo de enum não
-  sobem `export_version` e aparecem no CHANGELOG.
+  sobem `export_version` e aparecem no CHANGELOG. Depois da 2.6.0, campo novo
+  entra no schema publicado fora de `required`, para um `getbrolls-plan.json`
+  gravado por uma versão anterior continuar válido; os campos da 2.6.0 são a
+  base e ficam obrigatórios.
 - **Mudança que quebra.** Remover, renomear ou mudar o significado de um campo
   sobe `export_version`.
 - **Duas versões.** `export_version` é o contrato entre o core e o exportador: é
@@ -550,8 +561,10 @@ exportador pode esperar:
 - **`$id` por versão.** O `$id` do schema aponta para a tag da versão
   (`.../get-brolls/v2.6.0/schemas/export_plan.schema.json`), não para a `main`.
 
-O core confere a própria saída com uma variante fechada do schema: campo novo
-só entra no plano junto com o schema, o CHANGELOG e o plano de exemplo
+Nenhum schema é aplicado em tempo de execução. Os testes do core conferem a
+saída com uma variante fechada do schema, que recusa chave fora dele e exige
+todos os campos: campo novo só entra no plano junto com o schema, o CHANGELOG e
+o plano de exemplo
 [`examples/plans/reels.plan.json`](../examples/plans/reels.plan.json).
 
 ## Resolvedores

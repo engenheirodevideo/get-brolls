@@ -3,7 +3,8 @@
 O `schemas/export_plan.schema.json` publicado deixa os objetos que podem crescer
 abertos para quem consome o plano. Os testes do core conferem a saída contra uma
 variante fechada, derivada aqui: todo objeto com `properties` ganha
-`additionalProperties: false`, então campo novo no core só passa com o schema atualizado.
+`additionalProperties: false` e exige todos os campos, então campo novo no core só passa
+com o schema atualizado, e campo que some da saída é pego mesmo fora de `required`.
 """
 
 import copy
@@ -22,8 +23,9 @@ def published():
 def _close(node):
     if not isinstance(node, dict):
         return
-    if "properties" in node and "additionalProperties" not in node:
-        node["additionalProperties"] = False
+    if "properties" in node:
+        node.setdefault("additionalProperties", False)
+        node["required"] = list(node["properties"])
     for sub in (node.get("properties") or {}).values():
         _close(sub)
     _close(node.get("items"))

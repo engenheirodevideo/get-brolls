@@ -9,7 +9,7 @@ from _paths import ROOT
 from _schemas import example_plan, published, strict
 
 from getbrolls import __version__, export_plan
-from getbrolls.sdk import ExporterSpec, ExportResult, testing
+from getbrolls.sdk import ExporterSpec, ExportResult, PluginError, testing
 from getbrolls.sdk.exporters import find_local_paths, sample_plan
 from getbrolls.sdk.jsonschema import errors
 
@@ -18,29 +18,52 @@ TAG_ID = re.compile(
 )
 
 
-def _growable(schema):
-    """Os objetos que podem crescer: topo, meta, cena, camada e entrada de mídia."""
-    scene = schema["properties"]["scenes"]["items"]
+def _objects(node, path="$"):
+    """Todo sub-schema de objeto (com `properties`) do schema, com o caminho."""
+    if not isinstance(node, dict):
+        return []
+    found = [(path, node)] if "properties" in node else []
+    for name, sub in (node.get("properties") or {}).items():
+        found += _objects(sub, f"{path}.{name}")
+    found += _objects(node.get("items"), f"{path}[]")
+    extra = node.get("additionalProperties")
+    return found + _objects(extra, f"{path}.*")
+
+
+EXTENSION = {
+    "plugin": "exemplo", "name": "zoom", "args": [], "quoted": [], "line": 1, "anchor": 0, "word_offset": 0,
+    "at_s": 0.0,
+}  # fmt: skip
+
+
+def _targets(plan):
+    """Um objeto de cada nível do plano, para receber uma chave nova."""
+    scene = plan["scenes"][0]
+    scene["extensions"].append(dict(EXTENSION))
+    plan["meta"]["fps"] = {"num": 30, "den": 1}
+    plan["meta"]["canvas"] = {"width": 1080, "height": 1920}
     return {
-        "topo": schema,
-        "meta": schema["properties"]["meta"],
+        "topo": plan,
+        "meta": plan["meta"],
+        "fps": plan["meta"]["fps"],
+        "canvas": plan["meta"]["canvas"],
         "cena": scene,
-        "camada": scene["properties"]["layers"]["items"],
-        "mídia": schema["properties"]["media"]["additionalProperties"],
+        "layout": scene["layout"],
+        "vaga": scene["layout"]["slots"][0],
+        "palavra": next(s for s in plan["scenes"] if s["words_timed"])["words_timed"][0],
+        "camada": scene["layers"][0],
+        "extensão": scene["extensions"][-1],
+        "mídia": next(iter(plan["media"].values())),
     }
 
 
-def _with_extra(plan, where):
-    plan = json.loads(json.dumps(plan))
-    target = {
-        "topo": plan,
-        "meta": plan["meta"],
-        "cena": plan["scenes"][0],
-        "camada": plan["scenes"][0]["layers"][0],
-        "mídia": next(iter(plan["media"].values())),
-    }[where]
-    target["campo_futuro"] = None
+def _with_extra(where):
+    plan = example_plan()
+    _targets(plan)[where]["campo_futuro"] = None
     return plan
+
+
+LEVELS = tuple(_targets(example_plan()))
 
 
 class PublishedSchemaTests(unittest.TestCase):
@@ -59,25 +82,33 @@ class PublishedSchemaTests(unittest.TestCase):
 
     def test_description_states_the_evolution_policy(self):
         text = published()["description"]
-        for fragment in ("ignora chave desconhecida", "PluginError", "export_version", "plan_version", "aditiv"):
+        for fragment in (
+            "ignora chave desconhecida",
+            "em qualquer nível",
+            "PluginError",
+            "recusa export_version que não conhece",
+            "plan_version",
+            "aditiv",
+            "fora de required",
+        ):
             self.assertIn(fragment, text)
 
-    def test_growable_objects_are_open_for_consumers(self):
-        for where, node in _growable(published()).items():
-            with self.subTest(where=where):
+    def test_every_object_is_open_for_consumers(self):
+        objects = _objects(published())
+        self.assertGreaterEqual(len(objects), 11)
+        for path, node in objects:
+            with self.subTest(path=path):
                 self.assertNotIn("additionalProperties", node)
-                self.assertEqual([], errors(_with_extra(example_plan(), where), published()))
 
-    def test_fixed_objects_stay_closed(self):
-        scene = published()["properties"]["scenes"]["items"]["properties"]
-        layout = scene["layout"]
-        for node in (layout, layout["properties"]["slots"]["items"], scene["extensions"]["items"]):
-            self.assertIs(False, node["additionalProperties"])
+    def test_an_unknown_key_passes_the_published_schema_at_any_level(self):
+        for where in LEVELS:
+            with self.subTest(where=where):
+                self.assertEqual([], errors(_with_extra(where), published()))
 
     def test_the_strict_variant_refuses_any_unknown_key(self):
-        for where in _growable(published()):
+        for where in LEVELS:
             with self.subTest(where=where):
-                found = errors(_with_extra(example_plan(), where), strict())
+                found = errors(_with_extra(where), strict())
                 self.assertTrue(any("campo_futuro: campo não previsto" in item for item in found), found)
 
 
@@ -184,13 +215,34 @@ class ExamplePlanTests(unittest.TestCase):
 
 
 class EvolutionDocTests(unittest.TestCase):
+    def doc_exporter(self):
+        """A função `exporta` do exemplo de Exportadores do SDK.md, executada como está."""
+        text = (ROOT / "docs" / "SDK.md").read_text(encoding="utf-8")
+        code = text.split("## Exportadores", 1)[1].split("```python\n", 1)[1].split("```", 1)[0]
+        code = code.replace('api.exporter("meu_banco_html", exporta, "Exporta o plano como página HTML")', "")
+        namespace = {}
+        exec(compile(code, "SDK.md", "exec"), namespace)  # noqa: S102 - runs the doc's own example
+        return namespace["exporta"]
+
+    def test_the_doc_example_refuses_an_unknown_export_version(self):
+        exporta = self.doc_exporter()
+        self.assertEqual([], errors(sample_plan(), strict()))
+        testing.check_exporter(ExporterSpec("demo_html", "Exporta", exporta))
+        with self.assertRaises(PluginError) as caught:
+            exporta({**sample_plan(), "export_version": 2}, {"args": {}})
+        self.assertIn("export_version 2 não é suportado", str(caught.exception))
+
     def test_sdk_doc_states_the_policy(self):
         text = (ROOT / "docs" / "SDK.md").read_text(encoding="utf-8")
         self.assertIn("### Evolução do plano de export", text)
-        section = text.split("### Evolução do plano de export", 1)[1].split("\n## ", 1)[0]
+        section = " ".join(text.split("### Evolução do plano de export", 1)[1].split("\n## ", 1)[0].split())
         for fragment in (
             "ignora chave desconhecida",
+            "em qualquer nível",
             "PluginError",
+            "recusa `export_version` que não conhece",
+            "fora de `required`",
+            "Os testes do core",
             "export_version",
             "plan_version",
             "CHANGELOG",
