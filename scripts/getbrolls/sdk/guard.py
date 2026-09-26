@@ -69,9 +69,11 @@ def safe_type_name(exc):
     coisa com ela — inclusive antes do regex abaixo, que só roda depois desse
     curto-circuito (`or`), então nunca toca num objeto de tipo não confiável.
     """
+    # A própria leitura do nome não pode falhar por conta do plugin: isolamento
+    # deliberado, sem propósito de continuar processando nada além do fallback.
     try:
-        name = type.__dict__["__name__"].__get__(type(exc))
-    except BaseException:  # noqa: BLE001 - a própria leitura do nome não pode falhar por conta do plugin; isolamento deliberado, sem propósito de continuar processando nada além do fallback abaixo
+        name = type.__dict__["__name__"].__get__(type(exc))  # pylint: disable=unnecessary-dunder-call  # descritor cru
+    except BaseException:  # noqa: BLE001  # pylint: disable=broad-exception-caught  # isolamento deliberado
         return "Exception"
     if type(name) is not str or not _TYPE_NAME_RE.fullmatch(name):
         return "Exception"
@@ -205,7 +207,8 @@ def plugin_text(owner, exc, *, builtin=False):
     allowed = _trusted_types() + (_BUILTIN_EXCEPTIONS if builtin else ())
     if not any(cls is candidate for candidate in allowed):
         return None
-    args = BaseException.__dict__["args"].__get__(exc)
+    # Descritor cru de `BaseException.args`: nunca uma property `args` do plugin.
+    args = BaseException.__dict__["args"].__get__(exc)  # pylint: disable=unnecessary-dunder-call  # descritor cru
     if type(args) is not tuple or len(args) != 1 or type(args[0]) is not str:
         return None
     return sanitize_text(owner, args[0]) or None
@@ -226,14 +229,14 @@ def attempt(owner, fn, *args, builtin_text=False) -> Outcome:
     stdout da CLI é só o envelope JSON que o agente lê."""
     try:
         with contextlib.redirect_stdout(sys.stderr):
-            return Outcome(fn(*args), None)
-    except BaseException as exc:  # isolamento deliberado de código de plugin de terceiro; ver o bloco acima
+            value = fn(*args)
+    except BaseException as exc:  # pylint: disable=broad-exception-caught  # isolamento deliberado; ver o bloco acima
         # Só o Ctrl+C de verdade atravessa: uma SUBCLASSE de KeyboardInterrupt
         # levantada pelo plugin é falha dele, não interrupção da pessoa.
         if type(exc) is KeyboardInterrupt:
             raise
-        failure = Failure(safe_type_name(exc), plugin_text(owner, exc, builtin=builtin_text))
-    return Outcome(None, failure)
+        return Outcome(None, Failure(safe_type_name(exc), plugin_text(owner, exc, builtin=builtin_text)))
+    return Outcome(value, None)
 
 
 def isolated(owner, fn, *args, on_failure, log_fields=None) -> Any:
@@ -375,14 +378,16 @@ def _kept(raw, allowed):
     return kept, dropped
 
 
-def plugin_candidate(item, provider, owner, download=True, route=None, *, route_stage=None):  # noqa: C901, PLR0912, PLR0913, PLR0915 - route_stage (keyword) grava o estágio da rota na prévia; um campo guardado por seção do candidato
-    """O candidato do plugin reescrito pelo core: allowlist, URLs estritas, direitos e aprovação pendentes.
+def _section(item, key, allowed, tampered):
+    """A seção `key` do candidato só com as chaves de `allowed`; as outras entram em
+    `tampered` como `<key>.<campo>`."""
+    kept, dropped = _kept(item.get(key), allowed)
+    tampered.extend(f"{key}.{k}" for k in dropped)
+    return kept
 
-    O que o plugin tentou preencher fora do permitido cai e aparece no log
-    `plugin_candidate_sanitized`; o resultado tem que passar no schema do candidato."""
-    item = _normalize(item, owner)
-    if not isinstance(item, dict):
-        raise ProviderError(f"Plugin {owner}: {provider} devolveu um candidato que não é objeto.")
+
+def _check_source_id(item, provider, owner):
+    """Recusa `source_id` fora do charset seguro num shell (vira parte do id do candidato)."""
     source_id = item.get("source_id")
     if type(source_id) is not str or not SOURCE_ID_RE.fullmatch(source_id):
         logs.event(
@@ -393,24 +398,34 @@ def plugin_candidate(item, provider, owner, download=True, route=None, *, route_
             "acento, números, '.', '_', ':' e '-'."
         )
 
-    tampered = sorted(k for k in item if k not in ALLOWED_TOP)
 
-    creator, dropped = _kept(item.get("creator"), CREATOR_KEYS)
-    tampered += [f"creator.{k}" for k in dropped]
+def _clean_creator(item, tampered):
+    """`creator` com nome e handle numa linha e URL no filtro estrito."""
+    creator = _section(item, "creator", CREATOR_KEYS, tampered)
     for key in ("name", "handle"):
         if key in creator:
             creator[key] = _display_text(creator[key])
     if "url" in creator:
         creator["url"] = public_url(creator["url"])
-    match, dropped = _kept(item.get("match"), MATCH_KEYS)
-    tampered += [f"match.{k}" for k in dropped]
+    return creator
+
+
+def _clean_match(item, tampered):
+    """`match` com o motivo numa linha."""
+    match = _section(item, "match", MATCH_KEYS, tampered)
     if "reason" in match:
         match["reason"] = _display_text(match["reason"])
-    media, dropped = _kept(item.get("media"), MEDIA_KEYS)
-    tampered += [f"media.{k}" for k in dropped]
+    return match
 
-    raw_preview, dropped = _kept(item.get("preview"), PREVIEW_KEYS)
-    tampered += [f"preview.{k}" for k in dropped]
+
+def _clean_preview(item, tampered, fetch_route):
+    """`preview` sem caminho local (só o core grava) e com URLs no filtro estrito.
+
+    `fetch_route`: o estágio registrado da rota é `fetch`. Gravado pelo core, a partir
+    do registro: `status`/guidance leem isto para nunca sugerir `inspect`/prévia com
+    intervalo de uma fonte que só entrega o arquivo no `fetch` (sem montar o registro
+    nem rodar plugin)."""
+    raw_preview = _section(item, "preview", PREVIEW_KEYS, tampered)
     if raw_preview.get("poster_path") is not None:
         tampered.append("preview.poster_path")
     if raw_preview.get("contact_sheet_path") is not None:
@@ -422,14 +437,14 @@ def plugin_candidate(item, provider, owner, download=True, route=None, *, route_
         "embed_url": public_url(raw_preview.get("embed_url")),
         "seek_mode": raw_preview.get("seek_mode", "unknown"),
     }
-    if route is not None and route_stage == "fetch":
-        # Gravado pelo core, a partir do estágio registrado da rota: `status`/guidance
-        # leem isto para nunca sugerir `inspect`/prévia com intervalo de uma fonte que
-        # só entrega o arquivo no `fetch` (sem montar o registro nem rodar plugin).
+    if fetch_route:
         preview["route_stage"] = "fetch"
+    return preview
 
-    raw_rights, dropped = _kept(item.get("rights"), RIGHTS_KEYS)
-    tampered += [f"rights.{k}" for k in dropped]
+
+def _clean_rights(item, tampered):
+    """`rights` sempre `unknown` e sem evidência: só o permit humano escreve ali."""
+    raw_rights = _section(item, "rights", RIGHTS_KEYS, tampered)
     if raw_rights.get("status", "unknown") != "unknown":
         tampered.append("rights.status")
     if raw_rights.get("evidence") not in (None, []):
@@ -437,7 +452,7 @@ def plugin_candidate(item, provider, owner, download=True, route=None, *, route_
         # se pode usar: só o permit humano (e a licença que o CORE registra depois dele,
         # "Licença registrada pelo plugin ...") escreve ali, nunca o candidato.
         tampered.append("rights.evidence")
-    rights = {
+    return {
         "status": "unknown",
         "license_name": _display_text(raw_rights.get("license_name")),
         "license_url": public_url(raw_rights.get("license_url")),
@@ -445,39 +460,43 @@ def plugin_candidate(item, provider, owner, download=True, route=None, *, route_
         "attribution": _display_text(raw_rights.get("attribution")),
     }
 
-    raw_acq, dropped = _kept(item.get("acquisition"), ACQUISITION_KEYS)
-    tampered += [f"acquisition.{k}" for k in dropped]
+
+def _clean_acquisition(item, tampered, download, route):
+    """`acquisition` escrito pelo core: a rota da capability ou o que o plugin declarou, conferido."""
+    raw_acq = _section(item, "acquisition", ACQUISITION_KEYS, tampered)
     if route is not None:
         # capabilities.route: quem escreve a rota é o core, a partir da capability
         # (conferida no `api.finish()` como rota do mesmo plugin) — nunca o candidato.
         acquisition = {"status": "available", "method": f"plugin:{route}", "evidence": []}
         if raw_acq not in ({}, UNAVAILABLE_ACQUISITION, acquisition):
             tampered.append("acquisition.route")
-    else:
-        raw_status = raw_acq.get("status")
-        raw_method = raw_acq.get("method")
-        acq_status = raw_status if raw_status in ACQUISITION_STATUSES else "unavailable"
-        acq_method = raw_method if raw_method in ACQUISITION_METHODS else None
-        if acq_method != raw_method:
-            tampered.append("acquisition.method")
-            acq_status = "unavailable"
-        if acq_status != raw_status:
-            tampered.append("acquisition.status")
-        raw_acq_evidence = raw_acq.get("evidence")
-        acquisition = {
-            "status": acq_status,
-            "method": acq_method,
-            "evidence": [v for v in raw_acq_evidence if isinstance(v, str)]
-            if isinstance(raw_acq_evidence, list)
-            else [],
-        }
-        if not download and acquisition != UNAVAILABLE_ACQUISITION:
-            # Fonte só-metadados (capabilities.download=False, sem rota): o core nunca
-            # vai baixar por ela, então "available" aqui seria promessa que ninguém
-            # cumpre. Vence a capability, não o que o plugin tentou escrever.
-            tampered.append("acquisition.download")
-            acquisition = copy.deepcopy(UNAVAILABLE_ACQUISITION)
+        return acquisition
+    raw_status = raw_acq.get("status")
+    raw_method = raw_acq.get("method")
+    acq_status = raw_status if raw_status in ACQUISITION_STATUSES else "unavailable"
+    acq_method = raw_method if raw_method in ACQUISITION_METHODS else None
+    if acq_method != raw_method:
+        tampered.append("acquisition.method")
+        acq_status = "unavailable"
+    if acq_status != raw_status:
+        tampered.append("acquisition.status")
+    raw_acq_evidence = raw_acq.get("evidence")
+    acquisition = {
+        "status": acq_status,
+        "method": acq_method,
+        "evidence": [v for v in raw_acq_evidence if isinstance(v, str)] if isinstance(raw_acq_evidence, list) else [],
+    }
+    if not download and acquisition != UNAVAILABLE_ACQUISITION:
+        # Fonte só-metadados (capabilities.download=False, sem rota): o core nunca
+        # vai baixar por ela, então "available" aqui seria promessa que ninguém
+        # cumpre. Vence a capability, não o que o plugin tentou escrever.
+        tampered.append("acquisition.download")
+        acquisition = copy.deepcopy(UNAVAILABLE_ACQUISITION)
+    return acquisition
 
+
+def _flag_core_fields(item, tampered):
+    """Anota em `tampered` os campos que só o core escreve e que o plugin tentou preencher."""
     if item.get("segment") not in (None, PENDING_SEGMENT):
         tampered.append("segment")
     if item.get("approval") not in (None, PENDING_APPROVAL):
@@ -488,6 +507,36 @@ def plugin_candidate(item, provider, owner, download=True, route=None, *, route_
         tampered.append("state")
     if item.get("errors") not in (None, []):
         tampered.append("errors")
+
+
+# Seis parâmetros: é a assinatura que o core (providers) chama; `route_stage` (keyword)
+# grava o estágio da rota na prévia.
+def plugin_candidate(  # noqa: PLR0913  # pylint: disable=too-many-arguments  # assinatura chamada pelo core
+    item,
+    provider,
+    owner,
+    download=True,
+    route=None,
+    *,
+    route_stage=None,
+):
+    """O candidato do plugin reescrito pelo core: allowlist, URLs estritas, direitos e aprovação pendentes.
+
+    O que o plugin tentou preencher fora do permitido cai e aparece no log
+    `plugin_candidate_sanitized`; o resultado tem que passar no schema do candidato."""
+    item = _normalize(item, owner)
+    if not isinstance(item, dict):
+        raise ProviderError(f"Plugin {owner}: {provider} devolveu um candidato que não é objeto.")
+    _check_source_id(item, provider, owner)
+
+    tampered = sorted(k for k in item if k not in ALLOWED_TOP)
+    creator = _clean_creator(item, tampered)
+    match = _clean_match(item, tampered)
+    media = _section(item, "media", MEDIA_KEYS, tampered)
+    preview = _clean_preview(item, tampered, route is not None and route_stage == "fetch")
+    rights = _clean_rights(item, tampered)
+    acquisition = _clean_acquisition(item, tampered, download, route)
+    _flag_core_fields(item, tampered)
 
     if tampered:
         logs.event(

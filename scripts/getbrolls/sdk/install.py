@@ -24,6 +24,7 @@ import subprocess
 import time
 import uuid
 from pathlib import Path
+from typing import NamedTuple
 from urllib.parse import urlsplit
 
 from .. import logs
@@ -40,7 +41,14 @@ GIT_TIMEOUT_S = 120
 # Cópia de pasta local: sem metadado de VCS de topo (VCS aninhado é recusado antes,
 # em `_refuse_nested_vcs`) e sem lixo de SO (`files.JUNK_FILENAMES`), que fica fora
 # do hash. Bytecode e link simbólico não são ignorados: são recusados.
-COPY_IGNORE = shutil.ignore_patterns(".git", ".hg", ".svn", *sorted(JUNK_FILENAMES))
+_COPY_IGNORED = (".git", ".hg", ".svn", *sorted(JUNK_FILENAMES))
+
+
+def _copy_ignore(directory, names):
+    """`ignore=` do `shutil.copytree`: os nomes de `_COPY_IGNORED` (VCS de topo e lixo de SO)."""
+    return shutil.ignore_patterns(*_COPY_IGNORED)(directory, names)
+
+
 # Quantos nomes de arquivo a prévia do install/update lista (o total vem sempre).
 PREVIEW_FILES_MAX = 50
 
@@ -257,7 +265,8 @@ def _refuse_git_path_component(path):
         folded = part.casefold()
         if folded.rstrip(". ") in loader.VCS_DIRNAMES or folded in _VCS_SHORT_ALIASES:
             raise ValueError(
-                f"Caminho não pode ter um componente de controle de versão (.git, .hg, .svn) no histórico git: {path!r}."
+                "Caminho não pode ter um componente de controle de versão (.git, .hg, .svn) no histórico git: "
+                f"{path!r}."
             )
 
 
@@ -437,7 +446,7 @@ def _file_list(folder):
 def _guard_folder_cap(folder):
     """Teto de árvore antes de copiar, no caminho de pasta comum: mesmo recorte de `folder_digest`
     (`files.counted_files`), então o que conta aqui é exatamente o que seria
-    materializado por `shutil.copytree` com `COPY_IGNORE`."""
+    materializado por `shutil.copytree` com `_copy_ignore`."""
     total_bytes = 0
     for total_files, (_rel, path) in enumerate(counted_files(folder), start=1):
         if total_files > MAX_FILES:
@@ -471,7 +480,7 @@ def _materialize(source, dest):
         _guard_folder_cap(folder)
         _refuse_tree_collisions(rel.as_posix() for rel, _path in counted_files(folder))
         try:
-            shutil.copytree(folder, dest, symlinks=True, ignore=COPY_IGNORE)
+            shutil.copytree(folder, dest, symlinks=True, ignore=_copy_ignore)
         except OSError as exc:
             raise ValueError(f"Não consegui copiar a pasta do plugin ({type(exc).__name__}).") from exc
         _refuse_links_and_bytecode(dest)
@@ -608,11 +617,7 @@ def _checked_manifest(folder):
 def _summary(manifest, origin, commit, sha256, files):
     warnings = loader.permission_warnings(manifest)
     summary = {
-        "id": manifest["id"],
-        "name": manifest["name"],
-        "version": manifest["version"],
-        "contributes": {k: v for k, v in manifest["contributes"].items() if v},
-        "permissions": manifest["permissions"],
+        **loader.manifest_summary(manifest),
         "source": origin,
         "commit": commit,
         "sha256": sha256,
@@ -668,6 +673,50 @@ def _diff(old_folder, old_manifest, new_folder, new_manifest):
     }
 
 
+class _Staged(NamedTuple):
+    """O que o `update` materializou no staging e conferiu, antes de trocar a pasta."""
+
+    source: str
+    commit: str | None
+    manifest: dict
+    digests: tuple[str, dict]
+    preview: dict
+    diff: dict
+
+
+def _stage_update(plugin_id, origin, staging, folder, current):
+    """Materializa a origem em `staging`, confere o manifesto e monta a prévia com o diff."""
+    source, commit = _materialize(origin["source"], staging)
+    manifest = _checked_manifest(staging)
+    if manifest["id"] != plugin_id:
+        raise ValueError(f"A origem agora traz o plugin {manifest['id']}, não {plugin_id}; nada foi trocado.")
+    sha, files = loader.pin_digests(staging)
+    preview = _summary(manifest, source, commit, sha, _file_list(staging))
+    diff = _diff(folder, current, staging, manifest)
+    return _Staged(source, commit, manifest, (sha, files), preview, diff)
+
+
+def _swap_in(plugin_id, folder, staging):
+    """Troca a pasta instalada `folder` pelo conteúdo de `staging`."""
+    retired = folder.with_name(_new_old_staging_name(plugin_id))
+    os.replace(folder, retired)
+    try:
+        os.replace(staging, folder)
+    except OSError as exc:
+        # A troca de verdade falhou no meio — devolve o conteúdo antigo
+        # ao lugar em vez de deixar o plugin sem pasta nenhuma.
+        try:
+            os.replace(retired, folder)
+        except OSError as rollback_exc:
+            raise ValueError(
+                f"A troca de {plugin_id} falhou ({type(exc).__name__}) e desfazê-la também falhou "
+                f"({type(rollback_exc).__name__}); o conteúdo anterior pode estar em {retired}, não em "
+                f"{folder}. Confira as duas pastas manualmente antes de tentar de novo."
+            ) from rollback_exc
+        raise
+    force_rmtree(retired)
+
+
 def update(plugin_id, confirm, expect=None):
     """Prévia (com o diff) ou troca de um plugin instalado pela versão atual da origem.
 
@@ -683,39 +732,18 @@ def update(plugin_id, confirm, expect=None):
     _, folder, current = loader.find(plugin_id)
     staging = _staging()
     try:
-        source, commit = _materialize(origin["source"], staging)
-        manifest = _checked_manifest(staging)
-        if manifest["id"] != plugin_id:
-            raise ValueError(f"A origem agora traz o plugin {manifest['id']}, não {plugin_id}; nada foi trocado.")
-        sha, files = loader.pin_digests(staging)
-        preview = _summary(manifest, source, commit, sha, _file_list(staging))
-        diff = _diff(folder, current, staging, manifest)
+        staged = _stage_update(plugin_id, origin, staging, folder, current)
         if not confirm:
-            return {"updated": False, "plugin": preview, "diff": diff, "note": loader.EXPECT_NOTE}
-        _check_expect(expect, sha)
-        retired = folder.with_name(_new_old_staging_name(plugin_id))
-        os.replace(folder, retired)
-        try:
-            os.replace(staging, folder)
-        except OSError as exc:
-            # A troca de verdade falhou no meio — devolve o conteúdo antigo
-            # ao lugar em vez de deixar o plugin sem pasta nenhuma.
-            try:
-                os.replace(retired, folder)
-            except OSError as rollback_exc:
-                raise ValueError(
-                    f"A troca de {plugin_id} falhou ({type(exc).__name__}) e desfazê-la também falhou "
-                    f"({type(rollback_exc).__name__}); o conteúdo anterior pode estar em {retired}, não em "
-                    f"{folder}. Confira as duas pastas manualmente antes de tentar de novo."
-                ) from rollback_exc
-            raise
-        force_rmtree(retired)
+            return {"updated": False, "plugin": staged.preview, "diff": staged.diff, "note": loader.EXPECT_NOTE}
+        _check_expect(expect, staged.digests[0])
+        _swap_in(plugin_id, folder, staging)
     finally:
         force_rmtree(staging)
+    manifest, commit = staged.manifest, staged.commit
     # Atualizar o conteúdo não liga de volta um plugin que estava desabilitado —
     # só quem já estava habilitado sai daqui com pin novo (senão o pin some).
     sha_after = loader.pin(
-        manifest, folder, {"source": source, "commit": commit}, enable=was_enabled, digests=(sha, files)
+        manifest, folder, {"source": staged.source, "commit": commit}, enabled=was_enabled, digests=staged.digests
     )
     logs.event(
         _log,
@@ -727,8 +755,8 @@ def update(plugin_id, confirm, expect=None):
     )
     result = {
         "updated": True,
-        "plugin": {**preview, "sha256": sha_after},
-        "diff": diff,
+        "plugin": {**staged.preview, "sha256": sha_after},
+        "diff": staged.diff,
         "enabled": was_enabled,
         "note": loader.DONE_NOTE,
     }

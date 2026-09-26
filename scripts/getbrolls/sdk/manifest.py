@@ -56,6 +56,8 @@ ENTRY_RE = re.compile(r"[A-Za-z0-9_]{1,64}\.py")
 HOST_RE = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+")
 ENV_RE = re.compile(r"[A-Z][A-Z0-9_]{1,63}")
 PATH_MAX_CHARS = 4096
+NAME_MAX_CHARS = 80
+DESCRIPTION_MAX_CHARS = 500
 CLAUSE_RE = re.compile(r"\s*(>=|<=|==|>|<)\s*(\d+(?:\.\d+){0,2})\s*")
 
 
@@ -97,7 +99,7 @@ def _is_home(raw):
     return os.path.normcase(os.path.normpath(raw)) == os.path.normcase(os.path.normpath(str(home)))
 
 
-def _root_ok(raw):  # noqa: PLR0911 - uma saída por forma de raiz recusada
+def _root_ok(raw):
     """Raiz de `permissions.paths`: uma PASTA específica — absoluta (POSIX `/...` ou
     Windows `C:\\...`, conferida sem depender do sistema em que o manifesto é lido)
     ou `~/...`; nunca com `..`.
@@ -110,10 +112,21 @@ def _root_ok(raw):  # noqa: PLR0911 - uma saída por forma de raiz recusada
     if not isinstance(raw, str) or not raw.strip() or "\0" in raw or len(raw) > PATH_MAX_CHARS:
         return False
     if raw.startswith("~"):
-        if not raw.startswith(("~/", "~\\")):
-            return False  # `~` sozinho ou `~outro`
-        parts = [part for part in _SEPARATORS_RE.split(raw[2:]) if part not in ("", ".")]
-        return bool(parts) and ".." not in parts
+        return _home_root_ok(raw)
+    return _absolute_root_ok(raw)
+
+
+def _home_root_ok(raw):
+    """`~/pasta`: nunca `~` sozinho, `~/`, `~/.`, `~outro` nem com `..`."""
+    if not raw.startswith(("~/", "~\\")):
+        return False  # `~` sozinho ou `~outro`
+    parts = [part for part in _SEPARATORS_RE.split(raw[2:]) if part not in ("", ".")]
+    return bool(parts) and ".." not in parts
+
+
+def _absolute_root_ok(raw):
+    """Pasta absoluta (POSIX ou Windows) que não é a raiz do sistema ou da unidade,
+    não tem `..` e não é a própria pasta pessoal."""
     posix, windows = PurePosixPath(raw), PureWindowsPath(raw)
     if windows.drive and not windows.root:
         return False  # `C:` / `C:pasta`: relativo à pasta corrente da unidade
@@ -161,7 +174,7 @@ def reserved_id_message(ident):
 
 
 def _basic_fields(ident, raw):
-    if not isinstance(raw.get("name"), str) or not 0 < len(raw["name"].strip()) <= 80:  # noqa: PLR2004 - "até 80 caracteres" na mensagem
+    if not isinstance(raw.get("name"), str) or not 0 < len(raw["name"].strip()) <= NAME_MAX_CHARS:
         _fail(ident, "name é obrigatório, com até 80 caracteres.")
     if not isinstance(raw.get("version"), str) or not VERSION_RE.fullmatch(raw["version"]):
         _fail(ident, "version tem que ser X.Y.Z.")
@@ -183,7 +196,7 @@ def _description(ident, raw):
     value = raw.get("description")
     if value is None:
         return None
-    if not isinstance(value, str) or len(value.strip()) > 500:  # noqa: PLR2004 - "até 500 caracteres" na mensagem
+    if not isinstance(value, str) or len(value.strip()) > DESCRIPTION_MAX_CHARS:
         _fail(ident, "description tem que ser texto, com até 500 caracteres.")
     return value
 

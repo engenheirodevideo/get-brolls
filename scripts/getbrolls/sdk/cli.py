@@ -5,7 +5,7 @@ from pathlib import Path
 from . import loader
 
 
-def _list(args):  # noqa: ARG001 - mesma assinatura das outras ações
+def _list(_args):  # mesma assinatura das outras ações
     return {
         "plugins_dir": str(loader.plugins_root()),
         "selection": "GB_PLUGINS" if loader.env_selection() is not None else "plugins.json",

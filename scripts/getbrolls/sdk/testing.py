@@ -156,7 +156,8 @@ def check_resolver(spec: object) -> None:
         or len(set(kinds)) != len(kinds)
     ):
         _fail(
-            f"Resolvedor {spec.name}: kinds tem que ser uma lista não vazia, sem repetição, de {', '.join(RESOLVER_KINDS)}."
+            f"Resolvedor {spec.name}: kinds tem que ser uma lista não vazia, sem repetição, "
+            f"de {', '.join(RESOLVER_KINDS)}."
         )
     if not callable(spec.resolve) or not _accepts(spec.resolve, 2):
         _fail(f"Resolvedor {spec.name}: resolve tem que aceitar (kind, name).")
@@ -197,6 +198,36 @@ def check_registry(registry: "Registry", owner: str) -> dict[str, list[str]]:
     }
 
 
+def _checked_folder(folder):
+    """Manifesto de `folder`, recusando o que o `install` recusaria: plugin incompatível,
+    VCS aninhado, link simbólico e bytecode."""
+    from . import loader
+    from .manifest import compatibility_problem, read_manifest
+
+    manifest = read_manifest(folder, require_folder_match=False)
+    problem = compatibility_problem(manifest)
+    if problem:
+        raise ValueError(f"Plugin {manifest['id']}: {problem}")
+    nested = loader.nested_vcs(folder)
+    if nested is not None:
+        raise ValueError(f"Plugin {manifest['id']}: pasta de controle de versão aninhada ({nested}); tire-a da pasta.")
+    content = loader.content_problem(folder)
+    if content is not None:
+        raise ValueError(f"Plugin {manifest['id']}: {loader.content_reason(content, 'rode o check de novo')}")
+    return manifest
+
+
+def _builtins_registry():
+    """Registro descartável só com os built-ins, para pegar colisão de nome."""
+    from .. import presets, providers
+    from .registry import Registry
+
+    registry = Registry()
+    providers.register_builtins(registry)
+    presets.register_builtins(registry)
+    return registry
+
+
 def check_plugin(folder: str | os.PathLike[str]) -> dict:
     """Manifesto + `register(api)` num registro descartável + as checagens acima.
 
@@ -216,26 +247,12 @@ def check_plugin(folder: str | os.PathLike[str]) -> dict:
         ValueError: plugin incompatível, com conteúdo que o `install` recusaria, que
             falhou no `register()` ou na checagem de contrato.
     """
-    from .. import presets, providers
     from . import guard, loader
-    from .manifest import MANIFEST_NAME, compatibility_problem, read_manifest
-    from .registry import Registry
+    from .manifest import MANIFEST_NAME
 
     folder = Path(folder).resolve()
-    manifest = read_manifest(folder, require_folder_match=False)
-    problem = compatibility_problem(manifest)
-    if problem:
-        raise ValueError(f"Plugin {manifest['id']}: {problem}")
-    # O mesmo que o `install` recusaria: VCS aninhado, link simbólico e bytecode.
-    nested = loader.nested_vcs(folder)
-    if nested is not None:
-        raise ValueError(f"Plugin {manifest['id']}: pasta de controle de versão aninhada ({nested}); tire-a da pasta.")
-    content = loader.content_problem(folder)
-    if content is not None:
-        raise ValueError(f"Plugin {manifest['id']}: {loader.content_reason(content, 'rode o check de novo')}")
-    registry = Registry()
-    providers.register_builtins(registry)
-    presets.register_builtins(registry)
+    manifest = _checked_folder(folder)
+    registry = _builtins_registry()
     plugin_id = manifest["id"]
     loader.disable_bytecode()
     # Mesmo isolamento do carregamento (BaseException, tipo seguro, sem cadeia). Aqui,

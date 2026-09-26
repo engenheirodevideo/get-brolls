@@ -234,9 +234,9 @@ def pin_entry(manifest, sha, files):
     return entry
 
 
-def _pinned_files(pin):
+def _pinned_files(entry):
     """Mapa por arquivo guardado no pin, ou `None` num pin antigo (ou malformado)."""
-    files = pin.get("files")
+    files = entry.get("files")
     if isinstance(files, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in files.items()):
         return files
     return None
@@ -276,6 +276,22 @@ def _valid_origin(entry):
     )
 
 
+def _valid_map(value, valid_entry):
+    """`value` é um dict cujas entradas passam todas em `valid_entry`?"""
+    return isinstance(value, dict) and all(valid_entry(entry) for entry in value.values())
+
+
+def _valid_state(data):
+    """`enabled` obrigatório; `last_pins` (o pin guardado pelo `disable`) e `sources`
+    (origem/commit gravados pelo `plugins install`) são opcionais: um plugins.json de
+    antes dessas versões continua válido sem eles."""
+    return (
+        _valid_map(data.get("enabled"), _valid_pin)
+        and _valid_map(data.get("last_pins", {}), _valid_pin)
+        and _valid_map(data.get("sources", {}), _valid_origin)
+    )
+
+
 def read_state():
     """`plugins.json` como dict (`{"enabled": {}}` sem arquivo); inválido vira `ValueError`."""
     path = state_path()
@@ -285,22 +301,8 @@ def read_state():
         data = json.loads(path.read_bytes().decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError, OSError):
         data = None
-    if isinstance(data, dict):
-        enabled = data.get("enabled")
-        # `sources` (origem/commit gravados pelo `plugins install`) é opcional: um
-        # plugins.json de antes desta versão continua válido sem ela.
-        sources = data.get("sources", {})
-        # `last_pins` (o pin guardado pelo `disable`) também é opcional.
-        last_pins = data.get("last_pins", {})
-        if (
-            isinstance(enabled, dict)
-            and all(_valid_pin(entry) for entry in enabled.values())
-            and isinstance(last_pins, dict)
-            and all(_valid_pin(entry) for entry in last_pins.values())
-            and isinstance(sources, dict)
-            and all(_valid_origin(entry) for entry in sources.values())
-        ):
-            return data
+    if isinstance(data, dict) and _valid_state(data):
+        return data
     raise ValueError(f"plugins.json inválido em {path}. Corrija ou apague o arquivo para recomeçar sem plugins.")
 
 
@@ -424,7 +426,9 @@ def _import(folder, manifest):
     sys.modules[name] = module
     try:
         code = compile(source, str(entry_path), "exec", dont_inherit=True)
-        exec(code, module.__dict__)  # noqa: S102 - rodar o plugin é o propósito do loader; só chega aqui com status "enabled" (opt-in explícito) e hash conferido na hora
+        # Rodar o plugin é o propósito do loader; só chega aqui com status "enabled"
+        # (opt-in explícito) e hash conferido na hora.
+        exec(code, module.__dict__)  # noqa: S102  # pylint: disable=exec-used  # rodar o plugin é o propósito do loader
     except BaseException:
         sys.modules.pop(name, None)
         raise
@@ -434,7 +438,10 @@ def _import(folder, manifest):
 def register_plugin(folder, manifest, registry):
     """Roda a fonte do plugin e o `register(api)` dele contra `registry`, e confere o que ele registrou."""
     module = _import(folder, manifest)
-    register = getattr(module, "register", None)
+    try:
+        register = module.register
+    except AttributeError:
+        register = None
     if not callable(register):
         raise ManifestError(f"Plugin {manifest['id']}: {manifest['entry']} não define register(api).")
     api = PluginApi(manifest, registry)
@@ -452,8 +459,8 @@ def _pin_mismatch_reason(row, folder, pinned):
         return str(exc)
     except OSError as exc:
         return f"Não consegui reconferir o conteúdo do plugin antes de carregar: {type(exc).__name__}."
-    pin = pinned.get(row["id"]) or {}
-    if pin.get("sha256") != current:
+    entry = pinned.get(row["id"]) or {}
+    if entry.get("sha256") != current:
         return "O conteúdo do plugin mudou desde o enable; revise e habilite de novo."
     return None
 
@@ -648,20 +655,50 @@ def permission_warnings(manifest):
     return warnings
 
 
-def plugin_preview(manifest, folder, sha=None):
-    """O que a prévia de `enable`/`check` mostra: manifesto, permissões, sha256 e avisos."""
-    preview = {
+def manifest_summary(manifest):
+    """Id, nome, versão, contribuições não vazias e permissões: o começo de toda prévia."""
+    return {
         "id": manifest["id"],
         "name": manifest["name"],
         "version": manifest["version"],
         "contributes": {k: v for k, v in manifest["contributes"].items() if v},
         "permissions": manifest["permissions"],
-        "sha256": sha if sha is not None else folder_digest(folder),
     }
+
+
+def plugin_preview(manifest, folder, sha=None):
+    """O que a prévia de `enable`/`check` mostra: manifesto, permissões, sha256 e avisos."""
+    preview = {**manifest_summary(manifest), "sha256": sha if sha is not None else folder_digest(folder)}
     warnings = permission_warnings(manifest)
     if warnings:
         preview["warnings"] = warnings
     return preview
+
+
+def _pin_diff(pinned, manifest, files):
+    """O `diff` da prévia de `enable` de um conteúdo que mudou desde o pin `pinned`:
+    versão, permissões e arquivos, com uma nota quando o pin antigo não guardou algo."""
+    before = _pinned_files(pinned)
+    too_many = pinned.get("files_omitted") is True or len(files) > PIN_MAP_MAX_FILES
+    previous = pinned.get("permissions")
+    diff = {
+        "version": {"from": pinned.get("version"), "to": manifest["version"]},
+        "permissions": permissions_diff(previous if isinstance(previous, dict) else None, manifest["permissions"]),
+        "files": files_diff(before, files) if before is not None and not too_many else None,
+    }
+    if too_many:
+        diff["note"] = MAP_OMITTED_NOTE.format(limit=PIN_MAP_MAX_FILES)
+    elif before is None:
+        diff["note"] = (
+            "O pin anterior não guardou a lista de arquivos (versão antiga); confira a pasta do plugin "
+            "antes de confirmar."
+        )
+    elif not isinstance(previous, dict):
+        diff["note"] = (
+            "O pin anterior não guardou as permissões (versão antiga); confira permissions nesta prévia "
+            "antes de confirmar."
+        )
+    return diff
 
 
 def enable(plugin_id, confirm, expect=None):
@@ -691,28 +728,7 @@ def enable(plugin_id, confirm, expect=None):
     # a pasta não pode virar atalho para re-pinar às cegas só com `--yes`.
     pinned = state["enabled"].get(plugin_id) or state.get("last_pins", {}).get(plugin_id)
     changed = pinned is not None and pinned.get("sha256") != sha
-    extra = {}
-    if pinned is not None and changed:
-        before = _pinned_files(pinned)
-        too_many = pinned.get("files_omitted") is True or len(files) > PIN_MAP_MAX_FILES
-        previous = pinned.get("permissions")
-        extra["diff"] = {
-            "version": {"from": pinned.get("version"), "to": manifest["version"]},
-            "permissions": permissions_diff(previous if isinstance(previous, dict) else None, manifest["permissions"]),
-            "files": files_diff(before, files) if before is not None and not too_many else None,
-        }
-        if too_many:
-            extra["diff"]["note"] = MAP_OMITTED_NOTE.format(limit=PIN_MAP_MAX_FILES)
-        elif before is None:
-            extra["diff"]["note"] = (
-                "O pin anterior não guardou a lista de arquivos (versão antiga); confira a pasta do plugin "
-                "antes de confirmar."
-            )
-        elif not isinstance(previous, dict):
-            extra["diff"]["note"] = (
-                "O pin anterior não guardou as permissões (versão antiga); confira permissions nesta prévia "
-                "antes de confirmar."
-            )
+    extra = {"diff": _pin_diff(pinned, manifest, files)} if pinned is not None and changed else {}
     if not confirm:
         return {"enabled": False, "plugin": preview, **extra, "note": EXPECT_NOTE if changed else SANDBOX_NOTE}
     if changed or expect:
@@ -725,11 +741,11 @@ def enable(plugin_id, confirm, expect=None):
     return {"enabled": True, "plugin": preview, **extra, "note": DONE_NOTE}
 
 
-def pin(manifest, folder, origin=None, enable=True, digests=None):
+def pin(manifest, folder, origin=None, enabled=True, digests=None):
     """Grava o pin de hash de `folder` como o plugin `manifest["id"]` e, vindo do
     `install`/`update`, a origem (`{"source", "commit"}`) em `plugins.json`.
 
-    `enable=False` (usado pelo `update` de um plugin que já estava desabilitado)
+    `enabled=False` (usado pelo `update` de um plugin que já estava desabilitado)
     só atualiza `sources`, sem criar/mudar a entrada em `enabled` — atualizar o
     conteúdo não liga de volta um plugin que a pessoa desligou de propósito. O
     `last_pins` dele, se houver, passa a ser este conteúdo: a pessoa já o aprovou
@@ -743,7 +759,7 @@ def pin(manifest, folder, origin=None, enable=True, digests=None):
     state = read_state()
     entry = pin_entry(manifest, sha, files)
     last_pins = state.get("last_pins", {})
-    if enable:
+    if enabled:
         state["enabled"][plugin_id] = entry
         last_pins.pop(plugin_id, None)
     elif plugin_id in last_pins:

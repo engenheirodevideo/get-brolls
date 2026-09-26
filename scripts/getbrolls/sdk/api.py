@@ -160,11 +160,12 @@ class PluginApi:
         self._registry.add_route(route, owner=self.plugin_id)
         self._registered["routes"].add(name)
 
+    # `help` é o nome do campo no contrato público (CommandSpec) e a keyword desta API.
     def command(
         self,
         name: str,
         handler: Callable[[dict, CommandContext], dict],
-        help: str,  # noqa: A002 - `help` é o nome do campo no contrato público (CommandSpec)
+        help: str,  # noqa: A002  # pylint: disable=redefined-builtin  # keyword pública da API
     ) -> None:
         """Registra um comando declarado em `contributes.commands`.
 
@@ -327,7 +328,7 @@ class PluginApi:
         url: str,
         params: dict | None = None,
         headers: dict[str, str] | None = None,
-        cache_ttl: int = 0,  # noqa: ARG002
+        cache_ttl: int = 0,  # noqa: ARG002  # pylint: disable=unused-argument  # keyword pública, aceita e ignorada
         keep_signed: bool = False,
     ) -> Any:
         """GET de JSON num host de `permissions.network`; a resposta nunca vai para o cache em disco.
@@ -575,7 +576,8 @@ class PluginApi:
             missing = set(self._manifest["contributes"].get(kind, [])) - names
             if missing:
                 raise ApiError(
-                    f"Plugin {self.plugin_id}: declarado em contributes.{kind} e não registrado: {', '.join(sorted(missing))}."
+                    f"Plugin {self.plugin_id}: declarado em contributes.{kind} e não registrado: "
+                    f"{', '.join(sorted(missing))}."
                 )
         for name in sorted(self._registered["providers"]):
             # `name` só entra em `_registered` depois que `add_provider` o aceitou.

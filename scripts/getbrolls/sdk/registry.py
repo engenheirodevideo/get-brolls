@@ -118,7 +118,7 @@ class PluginProvider:
         return {"search": self._search, "resolve": self._resolve, "refresh": self._refresh}.get(method)
 
 
-class Registry:
+class Registry:  # pylint: disable=too-many-public-methods  # um par registrar/consultar por tipo de extensão
     """Fontes, presets, rotas, comandos, exportadores e resolvedores registrados, com o dono de cada um.
 
     O core registra primeiro; um nome (ou host) já tomado recusa o registro seguinte."""
@@ -345,11 +345,10 @@ def get_registry() -> Registry:
         from . import loader
 
         registry = _builtins_only()
+        # Montar o registro de plugins nunca derruba os built-ins (providers/doctor/rules/search).
         try:
             loader.load_enabled(registry)
-        except (
-            BaseException
-        ) as exc:  # montar o registro de plugins nunca derruba os built-ins (providers/doctor/rules/search)
+        except BaseException as exc:  # pylint: disable=broad-exception-caught  # isolamento deliberado de plugins
             if type(exc) is KeyboardInterrupt:
                 raise
             from .. import logs

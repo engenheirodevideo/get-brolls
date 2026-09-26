@@ -49,7 +49,9 @@ class _RefusedError(Exception):
 
 def _checked_file(owner, raw, roots, extensions):
     """Confere o arquivo no disco (nada de código do plugin roda aqui) e devolve
-    `(caminho resolvido, stat)`; o descritor aberto para conferir já sai fechado."""
+    `(caminho resolvido, stat)`; o descritor aberto para conferir já sai fechado.
+    `roots` são as raízes guardadas com o resolvedor, como texto."""
+    roots = [Path(root) for root in roots]
     shown = guard.plain_line(Path(raw).name or "arquivo", limit=120)
     if not roots:
         raise _RefusedError("nenhuma pasta de permissions.paths vale neste sistema.")
@@ -85,6 +87,14 @@ def _checked_file(owner, raw, roots, extensions):
     return resolved, info
 
 
+def _failure_warning(owner, spec, failure):
+    """Registra `plugin_call_failed` e devolve o aviso de um resolvedor que falhou."""
+    logs.event(_log, logging.WARNING, "plugin_call_failed", plugin=owner, resolver=spec.name, error=failure.type_name)
+    if failure.text:
+        return guard.prefixed(owner, failure.text)
+    return f"Plugin {owner}: o resolvedor {spec.name} falhou ({failure.type_name})."
+
+
 def resolve_with_plugins(registry, kind, name, extensions):
     """`(acerto, avisos)`: o primeiro arquivo válido que um resolvedor achou para
     `name`, ou `None`; cada resolvedor que falhou ou devolveu algo inválido vira um
@@ -102,22 +112,13 @@ def resolve_with_plugins(registry, kind, name, extensions):
     for owner, spec in registry.resolvers_for(kind):
         outcome = guard.attempt(owner, lambda spec=spec: _plain_hit(spec.resolve(kind, name)))
         if outcome.failure is not None:
-            failure = outcome.failure
-            logs.event(
-                _log, logging.WARNING, "plugin_call_failed", plugin=owner, resolver=spec.name, error=failure.type_name
-            )
-            warnings.append(
-                guard.prefixed(owner, failure.text)
-                if failure.text
-                else f"Plugin {owner}: o resolvedor {spec.name} falhou ({failure.type_name})."
-            )
+            warnings.append(_failure_warning(owner, spec, outcome.failure))
             continue
         if outcome.value is None:
             continue
         raw, license_text = outcome.value
-        roots = [Path(root) for root in registry.resolver_roots(spec.name)]
         try:
-            resolved, info = _checked_file(owner, raw, roots, wanted)
+            resolved, info = _checked_file(owner, raw, registry.resolver_roots(spec.name), wanted)
         except _RefusedError as exc:
             warnings.append(f"Plugin {owner}: o resolvedor {spec.name} foi ignorado: {exc}")
             continue

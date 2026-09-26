@@ -42,7 +42,7 @@ class PluginError(ProviderError):
 
 
 @dataclass(frozen=True)
-class ProviderCapabilities:
+class ProviderCapabilities:  # pylint: disable=too-many-instance-attributes  # contrato público: um campo por capacidade
     """O que uma fonte sabe fazer: busca, URL, tipos de mídia, transporte, hosts e rota.
 
     Attributes:
@@ -155,7 +155,7 @@ class RouteResult:
     license: str | None = None
 
 
-class Route(Protocol):
+class Route(Protocol):  # pylint: disable=too-few-public-methods  # Protocol do contrato público
     """Traz o arquivo de um candidato para a pasta de trabalho, no estágio `stage`.
 
     Attributes:
@@ -315,7 +315,7 @@ class ResolverHit:
     license: str | None = None  # só informativa: nunca vale como permit
 
 
-class Exporter(Protocol):
+class Exporter(Protocol):  # pylint: disable=too-few-public-methods  # Protocol do contrato público
     """Função que transforma um plano em arquivos de texto e pedidos de mídia."""
 
     def __call__(self, plan: dict, options: dict) -> ExportResult:
@@ -334,7 +334,7 @@ class Exporter(Protocol):
         ...
 
 
-class Resolver(Protocol):
+class Resolver(Protocol):  # pylint: disable=too-few-public-methods  # Protocol do contrato público
     """Função que acha um arquivo de som ou música por nome dentro de `permissions.paths`."""
 
     def __call__(self, kind: str, name: str) -> ResolverHit | None:
