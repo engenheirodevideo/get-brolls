@@ -5,8 +5,9 @@ O arquivo é da pessoa. Este módulo só lê e valida; quem grava ids e status �
 fechado de YAML (uma linha `chave: valor`, aspas opcionais): o resto do YAML nelas é
 recusado com a linha, nunca "interpretado". Chave de outra ferramenta (as
 propriedades do Obsidian, como `tags`, `aliases` e `created`) é ignorada, junto com
-as linhas de lista ou bloco que vêm abaixo dela. Texto escondido (comentário HTML ou
-`%%` do Obsidian) é erro: a revisão humana tem que ver tudo o que vira beat.
+as linhas de lista ou bloco que vêm abaixo dela. Texto escondido (comentário HTML,
+elemento HTML, `%%` do Obsidian, caractere invisível ou de direção de texto, CR solto)
+é erro: a revisão humana tem que ver tudo o que vira beat.
 """
 
 import difflib
@@ -26,10 +27,10 @@ GENRES = {
     "reels": {
         "aspecto": "9:16",
         "cenas": (
-            ("Gancho", "[A-ROLL]", "<gancho: a frase que segura nos 3 primeiros segundos>"),
-            ("Problema", "[BROLL: <o que a pessoa vê enquanto você fala>]", "<a dor, em uma frase>"),
-            ("Prova", "[SPLIT: <tela ou b-roll> | A-ROLL]", "<o que prova que funciona>"),
-            ("CTA", "[FULL: logo]", "<o que a pessoa faz agora>"),
+            ("Gancho", "[A-ROLL]", "{gancho: a frase que segura nos 3 primeiros segundos}"),
+            ("Problema", "[BROLL: {o que a pessoa vê enquanto você fala}]", "{a dor, em uma frase}"),
+            ("Prova", "[SPLIT: {tela ou b-roll} | A-ROLL]", "{o que prova que funciona}"),
+            ("CTA", "[FULL: logo]", "{o que a pessoa faz agora}"),
         ),
     },
 }
@@ -61,7 +62,15 @@ _WHOLE = re.compile(r"^\[([^\[\]]+)\]$")
 # (`[[x]]`) nem checkbox; sem quantificador aninhado (linear em linha longa).
 _NOTE = re.compile(r"(?<!\[)\[([^\[\]\n]+)\](?![\](])")
 _CHECKBOX = re.compile(r"^\s*[-*+]\s+\[[ xX]\]\s*")
-_PLACEHOLDER = re.compile(r"<[^<>\n]{1,200}>")
+_PLACEHOLDER = re.compile(r"\{[^{}\n]{1,200}\}")
+# `<` seguido de letra (com `/`, `!` ou `?` no meio) abre elemento HTML, que o Obsidian
+# renderiza e pode esconder; `<3` e `a < b` continuam texto.
+_HTML_TAG = re.compile(r"<[/!?]?[^\W\d_]")
+# Invisíveis e controles de direção que escondem ou reordenam texto na tela. ZWJ (U+200D)
+# e ZWNJ (U+200C) ficam: compõem emoji e escritas como o devanágari.
+_INVISIBLE = frozenset(
+    "\u200b\u2060\ufeff" + "".join(map(chr, range(0x202A, 0x202F))) + "".join(map(chr, range(0x2066, 0x206A)))
+)
 _WORD = re.compile(r"\w+")
 # Aspa simples só fecha o argumento quando vem antes de `|` ou do fim: `d'água` segue texto.
 _SINGLE_CLOSE = re.compile(r"\s*(?:\||$)")
@@ -570,6 +579,8 @@ def _spoken_count(scene):
     return sum(1 for line in scene["speech"] if strip_notes(line))
 
 
+_HTML = "HTML no roteiro pode esconder texto da revisão; escreva em texto puro"
+_LONE_CR = "retorno de carro (CR) solto esconde texto da revisão: salve o arquivo com fim de linha LF ou CRLF"
 _HIDDEN = "comentário HTML esconde texto da revisão: apague o <!-- ... --> (só o id no fim do título vale)"
 # `%%texto%%` some no modo leitura do Obsidian: a pessoa revisaria sem ver o que vira fala.
 _OBSIDIAN = "comentário do Obsidian (%%) esconde texto da revisão: apague os %% (ou o trecho inteiro)"
@@ -661,6 +672,8 @@ def _parse_body(lines, start, plugins, errors):
         line = lines[index]
         if "%%" in line:
             errors.append((number, _OBSIDIAN))  # título, H1, diretiva ou fala: qualquer linha do corpo
+        if _HTML_TAG.search(line):
+            errors.append((number, _HTML))
         heading = _heading(line)
         if heading is not None:
             scene = _close(current, errors)
@@ -675,6 +688,18 @@ def _parse_body(lines, start, plugins, errors):
     return scenes, warnings
 
 
+def _invisible_problems(lines):
+    """Erros de caractere invisível, de controle de direção e de CR solto, em qualquer linha (frontmatter também)."""
+    errors = []
+    for index, line in enumerate(lines):
+        for ch in dict.fromkeys(ch for ch in line if ch in _INVISIBLE):
+            name = f"{unicodedata.name(ch)} (U+{ord(ch):04X})"
+            errors.append((index + 1, f"caractere invisível {name} esconde texto da revisão: apague-o"))
+        if "\r" in line:
+            errors.append((index + 1, _LONE_CR))
+    return errors
+
+
 def parse(text, plugins=None):
     """Lê o roteiro inteiro; todos os erros de uma vez (`RoteiroError`), avisos em `warnings`.
 
@@ -684,6 +709,7 @@ def parse(text, plugins=None):
         plugins = enabled_plugins()
     lines = text.removeprefix("\N{ZERO WIDTH NO-BREAK SPACE}").replace("\r\n", "\n").split("\n")
     meta, start, errors = parse_frontmatter(lines)
+    errors += _invisible_problems(lines)
     scenes, warnings = _parse_body(lines, start, plugins, errors)
     if errors:
         raise RoteiroError(sorted(errors))

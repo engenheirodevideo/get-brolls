@@ -22,7 +22,7 @@
   "scenes": [
     {
       "id": "c01",
-      "title": "Gancho <script>alert(1)</script>",
+      "title": "Gancho < script >alert(1)< /script >",
       "line": 7,
       "start_s": 0.0,
       "duration_s": 5.2,
@@ -67,7 +67,7 @@
         {
           "kind": "LETTERING",
           "args": [
-            "3x mais <rápido>",
+            "3x mais <3 rápido>",
             "destaque"
           ],
           "quoted": [
@@ -78,7 +78,7 @@
           "anchor": 1,
           "word_offset": 8,
           "at_s": 3.782,
-          "text": "3x mais <rápido>",
+          "text": "3x mais <3 rápido>",
           "name": "destaque",
           "media_id": null,
           "component_status": "pending",
@@ -105,9 +105,9 @@
       ],
       "extensions": [],
       "direction": [],
-      "speech_clean": "Eu digo o tema </script> e ele acha.\nCorta e entrega.",
+      "speech_clean": "Eu digo o tema < /script> e ele acha.\nCorta e entrega.",
       "notes": [],
-      "content_hash": "3090c8a0c8e508cd97b920fb2dcc50a0870d3f312a2558868331aaa0c5e46a8f"
+      "content_hash": "82d492cdacf74ff53c6dc9a117ccf91d03f9614fb4ba589ff864131dbd5ea7d1"
     },
     {
       "id": "c02",

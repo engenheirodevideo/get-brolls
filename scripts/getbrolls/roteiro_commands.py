@@ -20,7 +20,7 @@ BACKUP_SUFFIX = ".bak"
 
 
 def skeleton(genero, tema):
-    """Esqueleto do gênero: frontmatter + uma cena por etapa, com `<placeholders>` que o `check` aponta."""
+    """Esqueleto do gênero: frontmatter + uma cena por etapa, com `{placeholders}` que o `check` aponta."""
     if genero not in roteiro.GENRES:
         raise ValueError(f'Gênero desconhecido "{genero}"; use: {", ".join(roteiro.GENRES)}.')
     if not (tema or "").strip() or any(ch in tema for ch in "\r\n"):

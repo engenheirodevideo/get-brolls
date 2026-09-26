@@ -46,16 +46,17 @@ Horas cortando.
 [FULL: "Comenta BROLL"]
 """
 
+# Entrada hostil sem elemento HTML (o roteiro recusa `<` seguido de letra): `<`, `>` e `/` soltos.
 FULL_ROTEIRO = """---
 type: roteiro
 genero: reels
 tema: "IA <editando> reels"
 ---
 
-## Gancho <script>alert(1)</script> <!-- c01 -->
+## Gancho < script >alert(1)< /script > <!-- c01 -->
 [A-ROLL]
-Eu digo o tema </script> e ele acha.
-[LETTERING: "3x mais <rápido>" | destaque]
+Eu digo o tema < /script> e ele acha.
+[LETTERING: "3x mais <3 rápido>" | destaque]
 Corta e entrega.
 [SFX: whoosh]
 
@@ -387,10 +388,10 @@ class LayerTests(ExportPlanTestCase):
         c01 = scenes["c01"]
         lettering, sfx = c01["layers"]
         self.assertEqual(
-            ("LETTERING", "3x mais <rápido>", "destaque", None),
+            ("LETTERING", "3x mais <3 rápido>", "destaque", None),
             (lettering["kind"], lettering["text"], lettering["name"], lettering["media_id"]),
         )
-        # 11 palavras na cena (o "script" de </script> conta), 8 antes da camada, voz real de 5,2 s.
+        # 11 palavras na cena (o "script" de < /script> conta), 8 antes da camada, voz real de 5,2 s.
         self.assertEqual(11, c01["words"])
         self.assertEqual(round(5.2 * 8 / 11, 3), lettering["at_s"])
         self.assertEqual(

@@ -462,7 +462,12 @@ class CaptionTests(unittest.TestCase):
 class SafetyTests(unittest.TestCase):
     def test_untrusted_text_is_escaped_in_html_js_and_markdown(self):
         plan = fixture()
-        plan["scenes"][0]["words_timed"] = None  # a fala com </script> vai para o TRANSCRIPT
+        # O roteiro recusa HTML, mas o exporter trata todo texto do plano como não confiável.
+        scene = plan["scenes"][0]
+        scene["title"] = "Gancho <script>alert(1)</script>"
+        scene["speech_clean"] = "Eu digo o tema </script> e ele acha.\nCorta e entrega."
+        scene["layers"][0]["text"] = scene["layers"][0]["args"][0] = "3x mais <rápido>"
+        scene["words_timed"] = None  # a fala com </script> vai para o TRANSCRIPT
         files = generate(plan)["files"]
         self.assertNotIn("<script>alert(1)", files["index.html"] + files["compositions/scene-c01.html"])
         self.assertIn("IA &lt;editando&gt; reels", files["index.html"])

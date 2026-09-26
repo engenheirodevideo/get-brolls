@@ -50,12 +50,12 @@ class CliCase(unittest.TestCase):
         path = path or self.project / "ROTEIRO.md"
         text = path.read_text(encoding="utf-8")
         for old, new in (
-            ("<gancho: a frase que segura nos 3 primeiros segundos>", "Você não precisa editar 4 horas."),
-            ("<o que a pessoa vê enquanto você fala>", "timeline cheia"),
-            ("<a dor, em uma frase>", "Todo mundo trava."),
-            ("<tela ou b-roll>", "tela do app"),
-            ("<o que prova que funciona>", "Ele acha e corta."),
-            ("<o que a pessoa faz agora>", "Comenta BROLL."),
+            ("{gancho: a frase que segura nos 3 primeiros segundos}", "Você não precisa editar 4 horas."),
+            ("{o que a pessoa vê enquanto você fala}", "timeline cheia"),
+            ("{a dor, em uma frase}", "Todo mundo trava."),
+            ("{tela ou b-roll}", "tela do app"),
+            ("{o que prova que funciona}", "Ele acha e corta."),
+            ("{o que a pessoa faz agora}", "Comenta BROLL."),
         ):
             text = text.replace(old, new)
         path.write_text(text, encoding="utf-8")

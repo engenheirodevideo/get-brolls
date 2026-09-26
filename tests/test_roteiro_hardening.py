@@ -232,10 +232,81 @@ class AnchorTests(unittest.TestCase):
         self.assertEqual((scene.layers[0].anchor, scene.layers[0].word_offset), (1, 1))
 
     def test_placeholder_left_from_skeleton_warns(self):
-        doc = parse("## A\n[BROLL: <o que aparece>]\n<a dor>\n")
+        doc = parse("## A\n[BROLL: {o que aparece}]\n{a dor}\n")
         text = " ".join(doc.warnings)
-        self.assertIn("linha 7: <o que aparece> parece texto do esqueleto", text)
-        self.assertIn("linha 8: <a dor>", text)
+        self.assertIn("linha 7: {o que aparece} parece texto do esqueleto", text)
+        self.assertIn("linha 8: {a dor}", text)
+
+
+HTML_ERROR = "HTML no roteiro pode esconder texto da revisão; escreva em texto puro"
+
+
+class HtmlAndInvisibleTests(unittest.TestCase):
+    def test_hidden_div_with_a_lettering_inside_is_refused(self):
+        body = '## Gancho\n[A-ROLL]\n<div hidden>\n\n[LETTERING: "COMPRE JÁ"]\n</div>\nfala visível\n'
+        found = errors_of(body)
+        self.assertEqual(found, [(8, HTML_ERROR), (11, HTML_ERROR)])
+
+    def test_any_tag_in_the_body_is_refused_with_its_line(self):
+        cases = {
+            '<span style="display:none">texto escondido</span> fala visível': 8,
+            "Fala com quebra<br/>no meio": 8,
+            "</b> fechando": 8,
+            "[BROLL: <o que aparece>]": 8,
+            "<!DOCTYPE html>": 8,
+            "<ação escondida>": 8,
+        }
+        for line, number in cases.items():
+            with self.subTest(line=line):
+                self.assertIn((number, HTML_ERROR), errors_of(f"## A\n[A-ROLL]\n{line}\n"))
+
+    def test_tag_in_a_heading_or_before_the_first_scene_is_refused(self):
+        self.assertIn((6, HTML_ERROR), errors_of("# Título <b>x</b>\n## A\n[A-ROLL]\nOi.\n"))
+        self.assertIn((6, HTML_ERROR), errors_of("## A <i>x</i>\n[A-ROLL]\nOi.\n"))
+
+    def test_less_than_that_is_not_a_tag_stays_valid(self):
+        doc = parse("## A\n[A-ROLL]\nEu <3 edição.\nSe a < b, corta.\nx <= 2 e 1<2.\n")
+        self.assertEqual(doc.scenes[0].speech_clean, "Eu <3 edição.\nSe a < b, corta.\nx <= 2 e 1<2.")
+
+    def test_invisible_and_bidi_controls_are_refused_with_line_and_name(self):
+        cases = {
+            "\u200b": "ZERO WIDTH SPACE",
+            "\u2060": "WORD JOINER",
+            "\ufeff": "ZERO WIDTH NO-BREAK SPACE",
+            "\u202a": "LEFT-TO-RIGHT EMBEDDING",
+            "\u202e": "RIGHT-TO-LEFT OVERRIDE",
+            "\u2066": "LEFT-TO-RIGHT ISOLATE",
+            "\u2069": "POP DIRECTIONAL ISOLATE",
+        }
+        for char, name in cases.items():
+            with self.subTest(name=name):
+                found = errors_of(f"## A\n[BROLL: gato{char} fofo]\nOi.\n")
+                self.assertEqual([n for n, _ in found], [7])
+                self.assertIn(name, found[0][1])
+                self.assertIn(f"U+{ord(char):04X}", found[0][1])
+
+    def test_invisible_control_in_the_frontmatter_is_refused(self):
+        text = '---\ntype: roteiro\ngenero: reels\ntema: "t\u200bema"\n---\n## A\n[A-ROLL]\nOi.\n'
+        with self.assertRaises(roteiro.RoteiroError) as ctx:
+            roteiro.parse(text, plugins=frozenset())
+        self.assertEqual([n for n, _ in ctx.exception.errors], [4])
+        self.assertIn("ZERO WIDTH SPACE", ctx.exception.errors[0][1])
+
+    def test_bom_only_at_the_start_of_the_file(self):
+        doc = roteiro.parse("\ufeff" + HEAD + "## A\n[A-ROLL]\nOi.\n", plugins=frozenset())
+        self.assertEqual(doc.scenes[0].speech, "Oi.")
+
+    def test_zero_width_joiners_stay_valid(self):
+        doc = parse("## A\n[A-ROLL]\nFamília 👨\u200d👩\u200d👧 e नमस्\u200cते.\n")
+        self.assertIn("\u200d", doc.scenes[0].speech)
+        self.assertIn("\u200c", doc.scenes[0].speech)
+
+    def test_lone_carriage_return_is_refused_but_crlf_is_not(self):
+        found = errors_of("## A\n[A-ROLL]\nFala\rescondida\n")
+        self.assertEqual([n for n, _ in found], [8])
+        self.assertIn("CR", found[0][1])
+        doc = parse("## A\r\n[A-ROLL]\r\nOi.\r\n")
+        self.assertEqual(doc.scenes[0].speech, "Oi.")
 
 
 if __name__ == "__main__":
