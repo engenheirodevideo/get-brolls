@@ -221,9 +221,31 @@ class DescentTestCase(SafeCopyTestCase):
         (self.root / "sub").unlink()
         (self.base / "sub-original").rename(self.root / "sub")
 
+    def swap_root_to_link(self):
+        """A própria raiz vira um link para a pasta de fora (que também tem `sub/eco.wav`)."""
+        self.root.rename(self.base / "acervo-original")
+        self.root.symlink_to(self.outside)
+
 
 class DescentTests(DescentTestCase):
     """`open_under` no POSIX: desce da raiz uma pasta por vez, sem seguir link."""
+
+    @unittest.skipUnless(BY_COMPONENT, "a descida por dir_fd é do POSIX")
+    def test_a_root_swapped_for_a_link_before_the_call_is_refused(self):
+        self.swap_root_to_link()
+        self.refused(safe_copy.OUTSIDE, safe_copy.open_under, self.inner, [self.root])
+
+    @unittest.skipUnless(BY_COMPONENT, "a descida por dir_fd é do POSIX")
+    def test_a_root_swapped_for_a_link_right_before_it_is_opened_is_refused(self):
+        real_open = safe_copy._open_at
+
+        def swapping_open(name, flags, dir_fd=None):
+            if dir_fd is None:
+                self.swap_root_to_link()  # depois da escolha da raiz, antes de abri-la
+            return real_open(name, flags, dir_fd)
+
+        with patch.object(safe_copy, "_open_at", swapping_open):
+            self.refused(safe_copy.OUTSIDE, safe_copy.open_under, self.inner, [self.root])
 
     @unittest.skipUnless(BY_COMPONENT, "a descida por dir_fd é do POSIX")
     def test_triple_swap_between_component_opens_is_refused(self):
@@ -357,6 +379,18 @@ class DescriptorLeakTests(DescentTestCase):
         self.swap_back()
         with patch.object(safe_copy, "_open_at", other_root):
             self.assert_no_leak(lambda: safe_copy.open_under(self.inner, [self.root]))
+
+    def test_a_root_swapped_for_a_link_closes_what_it_opened(self):
+        real_open = safe_copy._open_at
+
+        def swapping_open(name, flags, dir_fd=None):
+            if dir_fd is None:
+                self.swap_root_to_link()
+            return real_open(name, flags, dir_fd)
+
+        with patch.object(safe_copy, "_open_at", swapping_open):
+            self.assert_no_leak(lambda: safe_copy.open_under(self.inner, [self.root]))
+        self.assert_no_leak(lambda: safe_copy.open_under(self.inner, [self.root]))
 
     def test_a_check_that_raises_after_the_open_closes_the_file(self):
         with patch.object(safe_copy, "_check_fd", side_effect=RuntimeError("falhou")):

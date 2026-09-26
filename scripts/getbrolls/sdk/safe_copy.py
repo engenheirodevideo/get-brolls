@@ -147,7 +147,9 @@ def _root_and_parts(path, roots):
 
     Resolve só a pasta de `path` (um link no último pedaço continua recusado na
     abertura, como no `O_NOFOLLOW`) e escolhe a raiz que a contém comparando
-    dispositivo + inode de cada pasta acima dele, como `within_roots`."""
+    dispositivo + inode de cada pasta acima dele, como `within_roots`. A raiz é lida
+    com `lstat`: ela já foi resolvida no registro, então uma raiz que agora é um link
+    (trocada depois) não vale e o caminho fica `OUTSIDE`."""
     target = Path(path)
     try:
         resolved = target.parent.resolve(strict=True) / target.name
@@ -161,8 +163,10 @@ def _root_and_parts(path, roots):
             continue
     for root in roots:
         try:
-            root_info = Path(root).stat()
+            root_info = os.lstat(root)
         except OSError:
+            continue
+        if stat.S_ISLNK(root_info.st_mode):
             continue
         for parent, info in ancestors:
             if _same(root_info, info):
@@ -171,8 +175,8 @@ def _root_and_parts(path, roots):
 
 
 def _refused_folder(dir_fd, name, exc):
-    """Recusa de uma pasta do meio que não abriu: um link no lugar dela é `OUTSIDE` (o
-    caminho sairia da raiz por ali); qualquer outra falha é `OPEN_FAILED`."""
+    """Recusa de uma pasta (a raiz ou uma do meio) que não abriu: um link no lugar dela é
+    `OUTSIDE` (o caminho sairia da raiz por ali); qualquer outra falha é `OPEN_FAILED`."""
     try:
         info = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
     except OSError:
@@ -183,7 +187,8 @@ def _refused_folder(dir_fd, name, exc):
 
 
 def _open_folder_at(dir_fd, name):
-    """Descritor da pasta `name` dentro de `dir_fd`, com `O_DIRECTORY|O_NOFOLLOW`."""
+    """Descritor da pasta `name` dentro de `dir_fd` (ou do caminho `name`, sem ela),
+    com `O_DIRECTORY|O_NOFOLLOW`."""
     try:
         return _open_at(name, _WALK_FLAGS, dir_fd)
     except OSError as exc:
@@ -201,18 +206,16 @@ def _open_file_at(dir_fd, name):
 def _open_by_component(path, roots, single_link):
     """`open_under` no POSIX: desce da raiz uma pasta por vez, pelo descritor.
 
-    A raiz é aberta pelo caminho e conferida pelo descritor (mesmo dispositivo +
-    inode da raiz escolhida); cada pasta do meio é aberta com `O_DIRECTORY|O_NOFOLLOW`
-    relativa à anterior, e o arquivo com as flags de `open_regular` relativas à
+    A raiz é aberta pelo caminho, também com `O_DIRECTORY|O_NOFOLLOW` (ela já foi
+    resolvida no registro: se agora é um link, é `OUTSIDE`), e conferida pelo descritor
+    (mesmo dispositivo + inode do `lstat` da raiz escolhida); cada pasta do meio é
+    aberta com `O_DIRECTORY|O_NOFOLLOW` relativa à anterior, e o arquivo com as flags de `open_regular` relativas à
     última. Nenhum link é seguido depois da escolha da raiz: trocar uma pasta do meio
     por um link — uma vez ou várias, antes ou durante a abertura — nunca leva a um
     arquivo de fora dela. Toda pasta aberta na descida é fechada; numa recusa o
     arquivo também sai fechado."""
     root, root_info, parts = _root_and_parts(path, roots)
-    try:
-        dir_fd = _open_at(root, _DIR_FLAGS)
-    except OSError as exc:
-        raise UnsafeFileError(OPEN_FAILED, type(exc).__name__) from None
+    dir_fd = _open_folder_at(None, root)
     try:
         if not _same(os.stat(dir_fd), root_info):  # noqa: PTH116 - stat do descritor aberto (o mesmo que fstat)
             raise UnsafeFileError(CHANGED)
