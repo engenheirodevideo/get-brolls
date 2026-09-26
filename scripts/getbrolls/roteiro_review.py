@@ -45,6 +45,7 @@ def set_status(text, status):
 
 
 def reviews_path(project):
+    """Caminho absoluto de `brolls/roteiro-reviews.jsonl` do projeto."""
     return Path(project).expanduser().resolve() / "brolls" / REVIEWS_FILE
 
 
