@@ -98,6 +98,21 @@ ignore = ["E501", "RUF001", "RUF002", "RUF003", "PLC0415"]
 [tool.ruff.lint.isort]
 known-first-party = ["getbrolls"]
 
+[tool.pylint.main]
+py-version = "3.11"
+
+[tool.pylint.format]
+max-line-length = 120
+
+[tool.pylint."messages control"]
+disable = [
+    # Imports tardios são convenção de inicialização da CLI e de isolamento de
+    # testes (o mesmo motivo do PLC0415 desligado em ruff, acima).
+    "import-outside-toplevel",
+    # `type(x) is` rejeita `bool` e subclasses de propósito na validação de JSON.
+    "unidiomatic-typecheck",
+]
+
 [tool.pyright]
 typeCheckingMode = "basic"
 pythonVersion = "3.11"

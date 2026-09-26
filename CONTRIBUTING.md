@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-25
+updated: 2026-09-26
 tags: [get-brolls, documentation]
 ---
 
@@ -39,6 +39,13 @@ bash scripts/check.sh
 ```
 
 No Windows, `./scripts/check.ps1` roda a mesma bateria. Os dois executam, em ordem, `ruff check`, `ruff format --check`, `pyright`, `python3 scripts/gen_skill_mirror.py --check` (o espelho da skill em `skills/get-brolls/SKILL.md` é gerado a partir do `SKILL.md` da raiz — nunca edite o espelho à mão), `python3 scripts/check_anchors.py` e a suíte de testes — o mesmo que o CI cobre: o job `quality` roda `ruff` e `pyright` no Ubuntu, e a matriz `Tests` roda a suíte (que inclui a conferência de âncoras) e o `--check` do espelho nos três sistemas.
+
+`pylint` também está pinado em `requirements-dev.txt` (régua em `pyproject.toml`, seção `[tool.pylint]`, e `tests/pylintrc` para os testes), mas ainda **não** faz parte de `scripts/check.sh`/`check.ps1` nem do CI: a régua existe antes da correção dos achados. Rode manualmente, à parte:
+
+```sh
+pylint scripts examples
+PYTHONPATH=scripts:tests pylint --rcfile tests/pylintrc tests
+```
 
 ## Dependências e releases
 

@@ -2,3 +2,8 @@
 # continua sem dependência: nada aqui é importado pelo código de produção.
 ruff==0.16.8
 pyright==1.1.414
+pylint==4.0.9
+# pylint ainda não entra em scripts/check.sh nem no CI (régua sem correção
+# ainda aplicada). Rode manualmente com:
+#   pylint scripts examples
+#   PYTHONPATH=scripts:tests pylint --rcfile tests/pylintrc tests
