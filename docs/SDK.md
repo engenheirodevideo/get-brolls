@@ -482,9 +482,12 @@ mostra (o `gb export`, por exemplo) passa cada uma por `delivery.inert`, com
 e com o prefixo "Nota do plugin <id>:".
 
 O `plugins --action check` (e `sdk.testing.check_exporter`) roda o exportador
-com o plano mínimo de `getbrolls.sdk.exporters.MINIMAL_PLAN` (sem cena e sem
-mídia) e passa o resultado pelo mesmo validador: a regra quebrada aparece antes
-de qualquer export.
+com o plano de exemplo
+[`examples/plans/reels.plan.json`](../examples/plans/reels.plan.json)
+(`getbrolls.sdk.exporters.sample_plan()`: quatro cenas de layouts diferentes,
+clipe, A-ROLL, componentes, legenda, camadas e mídia faltando) e passa o
+resultado pelo mesmo validador: a regra quebrada aparece antes de qualquer
+export. Use o mesmo arquivo nos testes do seu exportador.
 
 Depois do validador, o `gb export` confere cada pedido de mídia contra o plano:
 o `media_id` existe em `plan["media"]` com `available: true`; o `dest` fica em
@@ -495,6 +498,35 @@ Passando tudo, o core grava os `files` e põe cada mídia numa pasta nova
 pessoa, cópia para acerto de resolvedor), e nunca apaga nem sobrescreve uma
 pasta de export. Com `--dry-run`, o exportador roda, o resultado é conferido e
 nada é gravado.
+
+### Evolução do plano de export
+
+O plano muda de versão em versão do Get B-rolls. Estas regras dizem o que um
+exportador pode esperar:
+
+- **Chave nova não quebra.** O exportador ignora chave desconhecida, em qualquer
+  nível do plano. O schema publicado deixa abertos os objetos que podem crescer
+  (topo, `meta`, cena, camada e entrada de `media`); não feche esses objetos nos
+  testes do seu plugin.
+- **Valor de enum desconhecido é "não suportado".** Um layout, papel de vaga,
+  tipo de camada ou tipo de mídia que o exportador não conhece vira um
+  `PluginError` claro, dizendo o valor e que esta versão do plugin não o trata,
+  nunca uma saída pela metade. A exceção é `problem`: valor desconhecido vale
+  como mídia indisponível, como já é hoje.
+- **Mudança aditiva.** Campo novo opcional ou `null` e valor novo de enum não
+  sobem `export_version` e aparecem no CHANGELOG.
+- **Mudança que quebra.** Remover, renomear ou mudar o significado de um campo
+  sobe `export_version`.
+- **Duas versões.** `export_version` é o contrato entre o core e o exportador: é
+  ele que diz se o seu código entende o plano. `plan_version` é o formato do
+  plano de cena do roteiro (`roteiro --action plan`), de onde vêm as cenas; ele
+  pode subir sem mudar nada para o exportador.
+- **`$id` por versão.** O `$id` do schema aponta para a tag da versão
+  (`.../get-brolls/v2.6.0/schemas/export_plan.schema.json`), não para a `main`.
+
+O core confere a própria saída com uma variante fechada do schema: campo novo
+só entra no plano junto com o schema, o CHANGELOG e o plano de exemplo
+[`examples/plans/reels.plan.json`](../examples/plans/reels.plan.json).
 
 ## Resolvedores
 

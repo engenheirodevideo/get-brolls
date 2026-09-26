@@ -1,10 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Get B-rolls export plan v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/main/schemas/export_plan.schema.json",
-  "description": "O que o core entrega a um exporter. Documental e testado: a gramática dos ids de mídia e as referências cruzadas (toda mídia citada existe em media) são conferidas em código (export_plan.check_refs), porque este subconjunto de JSON Schema não tem propertyNames nem patternProperties. Todo texto é cru e não confiável, inclusive credit (nunca pré-escapado pelo core, de fonte nenhuma): o exporter escapa no formato dele. Nenhum valor é caminho absoluto.",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/export_plan.schema.json",
+  "description": "O que o core entrega a um exporter. Documental e testado: a gramática dos ids de mídia e as referências cruzadas (toda mídia citada existe em media) são conferidas em código (export_plan.check_refs), porque este subconjunto de JSON Schema não tem propertyNames nem patternProperties. Todo texto é cru e não confiável, inclusive credit (nunca pré-escapado pelo core, de fonte nenhuma): o exporter escapa no formato dele. Nenhum valor é caminho absoluto. Evolução: topo, meta, cena, camada e entrada de mídia ficam abertos neste schema, porque podem ganhar campos. O exporter ignora chave desconhecida; valor de enum que ele não conhece é não suportado, com PluginError claro, e um problem desconhecido vale como indisponível. Campo novo opcional ou null e valor novo de enum são mudanças aditivas: não sobem export_version e aparecem no CHANGELOG. Remover, renomear ou mudar o significado de um campo sobe export_version. export_version é o contrato entre o core e o exporter; plan_version é o formato do plano de cena do roteiro, de onde vêm as cenas.",
   "type": "object",
-  "additionalProperties": false,
   "required": ["export_version", "exporter", "out_dir", "generated_at", "getbrolls_version", "plan_version", "meta", "total_s", "timing", "scenes", "media", "warnings"],
   "properties": {
     "export_version": { "const": 1 },
@@ -15,7 +14,6 @@
     "plan_version": { "const": 2 },
     "meta": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["aspecto", "legenda", "duracao_alvo_s", "genero", "tema"],
       "properties": {
         "aspecto": { "enum": ["9:16", "16:9"] },
@@ -32,7 +30,6 @@
       "type": "array",
       "items": {
         "type": "object",
-        "additionalProperties": false,
         "required": ["id", "title", "line", "start_s", "duration_s", "duration_source", "estimate_s", "words", "layout", "voice_media_ids", "words_source", "words_timed", "layers", "extensions", "speech_clean", "notes", "content_hash"],
         "properties": {
           "id": { "type": "string", "pattern": "^c[0-9]{2,3}$" },
@@ -94,7 +91,6 @@
             "type": "array",
             "items": {
               "type": "object",
-              "additionalProperties": false,
               "required": ["kind", "args", "quoted", "line", "anchor", "word_offset", "at_s", "text", "name", "media_id", "component_status"],
               "properties": {
                 "kind": { "enum": ["LETTERING", "SFX", "MUSICA", "COMP"] },
@@ -140,7 +136,6 @@
       "description": "Chave = id lógico: clip:<candidato> | aroll:<cNN[-lado][-take]> | asset:<tipo>:<nome dobrado> | plugin:<plugin_id>:<tipo>:<nome dobrado>; até 200 caracteres, sem barra, contrabarra, espaço nem controle.",
       "additionalProperties": {
         "type": "object",
-        "additionalProperties": false,
         "required": ["kind", "source", "store", "origin", "ext", "available", "problem", "has_audio", "sha256", "duration_s", "width", "height", "credit", "expected"],
         "properties": {
           "kind": { "enum": ["video", "image", "audio"] },

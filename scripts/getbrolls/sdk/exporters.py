@@ -29,14 +29,16 @@ MEDIA_ID_MAX_CHARS = 200
 NOTES_MAX = 50
 ASSETS_DIR = "assets"
 
-# Plano mínimo que `sdk.testing.check_exporter` entrega ao exportador: um plano válido
-# pelo `schemas/export_plan.schema.json`, sem cena e sem mídia.
-MINIMAL_PLAN = {
-    "export_version": 1, "exporter": "exemplo", "out_dir": "exports/exemplo/001",
-    "generated_at": "2026-01-01T00:00:00Z", "getbrolls_version": __version__, "plan_version": 2,
-    "meta": {"aspecto": "9:16", "legenda": False, "duracao_alvo_s": None, "genero": "reels", "tema": "Exemplo"},
-    "total_s": 0, "timing": "estimate", "scenes": [], "media": {}, "warnings": [],
-}  # fmt: skip
+# Plano de exemplo que `sdk.testing.check_exporter` entrega ao exportador: cenas de
+# vários layouts, mídia de clipe, A-ROLL e componente, legenda e camadas, válido pelo
+# `schemas/export_plan.schema.json`. É o mesmo arquivo que a doc mostra a quem escreve plugin.
+SAMPLE_PLAN = Path(__file__).resolve().parents[3] / "examples" / "plans" / "reels.plan.json"
+
+
+def sample_plan():
+    """Cópia nova do plano de exemplo, com a versão instalada em `getbrolls_version`."""
+    plan = json.loads(SAMPLE_PLAN.read_text(encoding="utf-8"))
+    return {**plan, "getbrolls_version": __version__}
 
 
 class ValidatedExport(NamedTuple):

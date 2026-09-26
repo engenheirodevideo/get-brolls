@@ -16,7 +16,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _paths import ROOT
 
 from getbrolls.sdk import ExportResult, MediaRequest
-from getbrolls.sdk.exporters import find_local_paths, validate_export_result
+from getbrolls.sdk.exporters import find_local_paths, sample_plan, validate_export_result
 
 PLUGIN = ROOT / "examples" / "plugins" / "hyperframes" / "plugin.py"
 FIXTURES = ROOT / "tests" / "fixtures"
@@ -790,6 +790,42 @@ class ExportDocTests(unittest.TestCase):
              "compositions/captions.html", "hyperframes.json", "meta.json", "package.json", "EXPORT.md"},
             set(result["files"]),
         )  # fmt: skip
+
+
+class PlanEvolutionTests(unittest.TestCase):
+    """O exporter segue a política de evolução do plano: chave nova passa, enum novo é recusado."""
+
+    def test_unknown_keys_are_ignored(self):
+        before = generate(fixture())
+        plan = fixture()
+        plan["campo_futuro"] = {"x": 1}
+        plan["meta"]["campo_futuro"] = None
+        plan["scenes"][0]["campo_futuro"] = []
+        plan["scenes"][0]["layers"][0]["campo_futuro"] = "x"
+        next(iter(plan["media"].values()))["campo_futuro"] = 1
+        self.assertEqual(before, generate(plan))
+
+    def test_unknown_enum_value_is_not_supported(self):
+        cases = (
+            ("layout", lambda plan: plan["scenes"][0]["layout"].update(kind="ZOOM")),
+            ("papel", lambda plan: plan["scenes"][0]["layout"]["slots"][0].update(role="host")),
+            ("camada", lambda plan: plan["scenes"][0]["layers"][0].update(kind="TRANSICAO")),
+            ("mídia", lambda plan: next(iter(plan["media"].values())).update(kind="3d")),
+        )
+        for field, change in cases:
+            with self.subTest(field=field):
+                plan = fixture()
+                change(plan)
+                with self.assertRaises(hf.PluginError) as caught:
+                    generate(plan)
+                self.assertIn(field, str(caught.exception))
+                self.assertIn("não é suportado", str(caught.exception))
+
+    def test_example_plan_exports_cleanly(self):
+        result = hf.export(sample_plan(), {"args": {}})
+        checked = validate_export_result(result, "hyperframes")
+        self.assertIn("index.html", checked.files)
+        self.assertEqual([], find_local_paths(checked.files))
 
 
 if __name__ == "__main__":

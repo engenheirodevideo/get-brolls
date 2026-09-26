@@ -12,13 +12,15 @@ from unittest import mock
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _media import skip_unless_ffmpeg, synth_video
 from _paths import ROOT
+from _schemas import strict
 
 from getbrolls import assets, export_plan, export_voice, roteiro, roteiro_plan
 from getbrolls.sdk.exporters import find_local_paths
 from getbrolls.sdk.jsonschema import errors
 
 FIXTURES = ROOT / "tests" / "fixtures"
-SCHEMA = json.loads((ROOT / "schemas" / "export_plan.schema.json").read_text(encoding="utf-8"))
+# Variante fechada do schema publicado: campo novo no plano só passa com o schema atualizado.
+SCHEMA = strict()
 PLUGINS = frozenset({"hyperframes", "outro"})
 UPDATE = os.environ.get("GB_UPDATE_EXPORT_FIXTURES") == "1"
 # Campos que mudam a cada rodada ou versão: fora da comparação com a fixture.

@@ -6,7 +6,6 @@ que o `register(api)` registra, sem instalar nada.
 """
 
 import inspect
-import json
 from pathlib import Path
 
 from .contracts import (
@@ -75,9 +74,9 @@ def check_command(spec):
 
 
 def check_exporter(spec):
-    """Forma do exportador e, depois, uma exportação de verdade com o plano mínimo
-    (`exporters.MINIMAL_PLAN`), conferida pelo MESMO validador do core."""
-    from .exporters import MINIMAL_PLAN, ExportValidationError, validate_export_result
+    """Forma do exportador e, depois, uma exportação de verdade com o plano de exemplo
+    (`exporters.sample_plan()`), conferida pelo MESMO validador do core."""
+    from .exporters import ExportValidationError, sample_plan, validate_export_result
 
     if not isinstance(spec, ExporterSpec):
         _fail("Exportador: registre com api.exporter(nome, export, description).")
@@ -86,12 +85,12 @@ def check_exporter(spec):
         _fail(f"Exportador {spec.name}: description não pode ser vazia.")
     if not callable(spec.export) or not _accepts(spec.export, 2):
         _fail(f"Exportador {spec.name}: export tem que aceitar (plan, options).")
-    plan = json.loads(json.dumps(MINIMAL_PLAN))
+    plan = sample_plan()
     result = spec.export(plan, {"args": {}})
     try:
         validate_export_result(result)
     except ExportValidationError as exc:
-        _fail(f"Exportador {spec.name}: com o plano mínimo, {exc}")
+        _fail(f"Exportador {spec.name}: com o plano de exemplo, {exc}")
 
 
 def check_resolver(spec):

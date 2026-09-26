@@ -1,0 +1,421 @@
+{
+  "export_version": 1,
+  "exporter": "exemplo",
+  "out_dir": "exports/exemplo/001",
+  "generated_at": "2026-01-01T00:00:00Z",
+  "getbrolls_version": "2.6.0",
+  "plan_version": 2,
+  "meta": {
+    "aspecto": "9:16",
+    "legenda": true,
+    "duracao_alvo_s": null,
+    "genero": "reels",
+    "tema": "Como achar b-roll sem perder a tarde"
+  },
+  "total_s": 12.8,
+  "timing": "mixed",
+  "scenes": [
+    {
+      "id": "c01",
+      "title": "Gancho",
+      "line": 7,
+      "start_s": 0.0,
+      "duration_s": 4.8,
+      "duration_source": "aroll",
+      "estimate_s": 5.2,
+      "words": 13,
+      "layout": {
+        "kind": "A-ROLL",
+        "args": [],
+        "quoted": [],
+        "full_role": null,
+        "slots": [
+          {
+            "slot": "main",
+            "role": "presenter",
+            "text": "A-ROLL",
+            "beat_id": null,
+            "take": null,
+            "prompt": null,
+            "media_id": "aroll:c01",
+            "extra_media_ids": []
+          }
+        ]
+      },
+      "voice_media_ids": [
+        "aroll:c01"
+      ],
+      "words_source": "transcript",
+      "words_timed": [
+        {
+          "text": "Você",
+          "start": 0.0,
+          "end": 0.3
+        },
+        {
+          "text": "grava",
+          "start": 0.3,
+          "end": 0.7
+        },
+        {
+          "text": "a",
+          "start": 0.7,
+          "end": 0.8
+        },
+        {
+          "text": "fala",
+          "start": 0.8,
+          "end": 1.2
+        }
+      ],
+      "layers": [
+        {
+          "kind": "LETTERING",
+          "args": [
+            "3 minutos",
+            "destaque"
+          ],
+          "quoted": [
+            true,
+            false
+          ],
+          "line": 10,
+          "anchor": 1,
+          "word_offset": 8,
+          "at_s": 2.954,
+          "text": "3 minutos",
+          "name": "destaque",
+          "media_id": null,
+          "component_status": "pending"
+        },
+        {
+          "kind": "SFX",
+          "args": [
+            "whoosh"
+          ],
+          "quoted": [
+            false
+          ],
+          "line": 11,
+          "anchor": 1,
+          "word_offset": 8,
+          "at_s": 2.954,
+          "text": null,
+          "name": "whoosh",
+          "media_id": "asset:sfx:whoosh",
+          "component_status": "found"
+        }
+      ],
+      "extensions": [],
+      "speech_clean": "Você grava a fala e o resto aparece.\nSem abrir banco de imagem.",
+      "notes": [],
+      "content_hash": "5ada5889cd83c1cb2f6432a1ebe0a2b6156bfe769ca3826e949f2e6edf9d8513"
+    },
+    {
+      "id": "c02",
+      "title": "Problema",
+      "line": 14,
+      "start_s": 4.8,
+      "duration_s": 2.0,
+      "duration_source": "estimate",
+      "estimate_s": 2.0,
+      "words": 5,
+      "layout": {
+        "kind": "BROLL",
+        "args": [
+          "timeline cheia de cortes"
+        ],
+        "quoted": [
+          false
+        ],
+        "full_role": null,
+        "slots": [
+          {
+            "slot": "main",
+            "role": "broll",
+            "text": "timeline cheia de cortes",
+            "beat_id": "c02",
+            "take": null,
+            "prompt": null,
+            "media_id": "clip:pexels:123",
+            "extra_media_ids": []
+          }
+        ]
+      },
+      "voice_media_ids": [
+        "aroll:c02"
+      ],
+      "words_source": "estimate",
+      "words_timed": null,
+      "layers": [
+        {
+          "kind": "MUSICA",
+          "args": [
+            "lofi"
+          ],
+          "quoted": [
+            false
+          ],
+          "line": 17,
+          "anchor": "fim",
+          "word_offset": 5,
+          "at_s": 6.8,
+          "text": null,
+          "name": "lofi",
+          "media_id": "asset:musica:lofi",
+          "component_status": "found"
+        }
+      ],
+      "extensions": [],
+      "speech_clean": "Horas procurando o plano certo.",
+      "notes": [],
+      "content_hash": "87dbc3fd48cce564b01245974037912255576be1b9ebfb667cd626347e863e85"
+    },
+    {
+      "id": "c03",
+      "title": "Prova",
+      "line": 19,
+      "start_s": 6.8,
+      "duration_s": 3.6,
+      "duration_source": "aroll",
+      "estimate_s": 2.8,
+      "words": 7,
+      "layout": {
+        "kind": "SPLIT",
+        "args": [
+          "tela do get-brolls",
+          "A-ROLL"
+        ],
+        "quoted": [
+          false,
+          false
+        ],
+        "full_role": null,
+        "slots": [
+          {
+            "slot": "a",
+            "role": "broll",
+            "text": "tela do get-brolls",
+            "beat_id": "c03-a",
+            "take": null,
+            "prompt": null,
+            "media_id": "clip:pixabay:456",
+            "extra_media_ids": []
+          },
+          {
+            "slot": "b",
+            "role": "presenter",
+            "text": "A-ROLL",
+            "beat_id": null,
+            "take": null,
+            "prompt": null,
+            "media_id": "aroll:c03",
+            "extra_media_ids": []
+          }
+        ]
+      },
+      "voice_media_ids": [
+        "aroll:c03"
+      ],
+      "words_source": "estimate",
+      "words_timed": null,
+      "layers": [],
+      "extensions": [],
+      "speech_clean": "Ele busca, corta e organiza por cena.",
+      "notes": [],
+      "content_hash": "3d7c519bbed4ff42a8c1c8ff3a15c2bb533ee03c5df573701a8ab7efc2c78dd3"
+    },
+    {
+      "id": "c04",
+      "title": "CTA",
+      "line": 23,
+      "start_s": 10.4,
+      "duration_s": 2.4,
+      "duration_source": "estimate",
+      "estimate_s": 2.4,
+      "words": 6,
+      "layout": {
+        "kind": "FULL",
+        "args": [
+          "logo"
+        ],
+        "quoted": [
+          false
+        ],
+        "full_role": "marca",
+        "slots": [
+          {
+            "slot": "main",
+            "role": "brand",
+            "text": "logo",
+            "beat_id": null,
+            "take": null,
+            "prompt": null,
+            "media_id": "asset:marca:logo",
+            "extra_media_ids": []
+          }
+        ]
+      },
+      "voice_media_ids": [
+        "aroll:c04"
+      ],
+      "words_source": "estimate",
+      "words_timed": null,
+      "layers": [],
+      "extensions": [],
+      "speech_clean": "Comenta BROLL que eu te mando.",
+      "notes": [],
+      "content_hash": "d573b9bf46d0dbd88cd1d690ba6e3de775891298b3c6681e842519f39ee476a7"
+    }
+  ],
+  "media": {
+    "clip:pexels:123": {
+      "kind": "video",
+      "source": "clip",
+      "store": "getbrolls",
+      "origin": null,
+      "ext": ".mp4",
+      "available": true,
+      "problem": null,
+      "has_audio": null,
+      "sha256": "abababababababababababababababababababababababababababababababab",
+      "duration_s": 4.5,
+      "width": 1080,
+      "height": 1920,
+      "credit": "Editor cortando na timeline — pexels (https://example.com/123)",
+      "expected": null
+    },
+    "clip:pixabay:456": {
+      "kind": "video",
+      "source": "clip",
+      "store": "getbrolls",
+      "origin": null,
+      "ext": ".mp4",
+      "available": true,
+      "problem": null,
+      "has_audio": null,
+      "sha256": "abababababababababababababababababababababababababababababababab",
+      "duration_s": 4.5,
+      "width": 1080,
+      "height": 1920,
+      "credit": "Tela de busca de vídeos — pixabay (https://example.com/456)",
+      "expected": null
+    },
+    "aroll:c01": {
+      "kind": "video",
+      "source": "aroll",
+      "store": "getbrolls",
+      "origin": "project",
+      "ext": ".mp4",
+      "available": true,
+      "problem": null,
+      "has_audio": true,
+      "sha256": null,
+      "duration_s": 4.8,
+      "width": 1080,
+      "height": 1920,
+      "credit": null,
+      "expected": null
+    },
+    "asset:sfx:whoosh": {
+      "kind": "audio",
+      "source": "asset",
+      "store": "getbrolls",
+      "origin": "project",
+      "ext": ".wav",
+      "available": true,
+      "problem": null,
+      "has_audio": true,
+      "sha256": null,
+      "duration_s": null,
+      "width": null,
+      "height": null,
+      "credit": "Whoosh — CC0 (freesound)",
+      "expected": null
+    },
+    "aroll:c02": {
+      "kind": "video",
+      "source": "aroll",
+      "store": "getbrolls",
+      "origin": null,
+      "ext": null,
+      "available": false,
+      "problem": "missing",
+      "has_audio": null,
+      "sha256": null,
+      "duration_s": null,
+      "width": null,
+      "height": null,
+      "credit": null,
+      "expected": "aroll/c02.(mp4|mov|m4v)"
+    },
+    "asset:musica:lofi": {
+      "kind": "audio",
+      "source": "asset",
+      "store": "getbrolls",
+      "origin": "project",
+      "ext": ".mp3",
+      "available": true,
+      "problem": null,
+      "has_audio": true,
+      "sha256": null,
+      "duration_s": null,
+      "width": null,
+      "height": null,
+      "credit": "Lofi — CC0 (freesound)",
+      "expected": null
+    },
+    "aroll:c03": {
+      "kind": "video",
+      "source": "aroll",
+      "store": "getbrolls",
+      "origin": "project",
+      "ext": ".mp4",
+      "available": true,
+      "problem": null,
+      "has_audio": true,
+      "sha256": null,
+      "duration_s": 3.6,
+      "width": 1080,
+      "height": 1920,
+      "credit": null,
+      "expected": null
+    },
+    "asset:marca:logo": {
+      "kind": "image",
+      "source": "asset",
+      "store": "getbrolls",
+      "origin": "project",
+      "ext": ".png",
+      "available": true,
+      "problem": null,
+      "has_audio": null,
+      "sha256": null,
+      "duration_s": null,
+      "width": null,
+      "height": null,
+      "credit": "Logo — CC0 (freesound)",
+      "expected": null
+    },
+    "aroll:c04": {
+      "kind": "video",
+      "source": "aroll",
+      "store": "getbrolls",
+      "origin": null,
+      "ext": null,
+      "available": false,
+      "problem": "missing",
+      "has_audio": null,
+      "sha256": null,
+      "duration_s": null,
+      "width": null,
+      "height": null,
+      "credit": null,
+      "expected": "aroll/c04.(mp4|mov|m4v)"
+    }
+  },
+  "warnings": [
+    "c02: fala sem narração gravada (grave aroll/c02.mp4|mov|m4v)",
+    "c04: fala sem narração gravada (grave aroll/c04.mp4|mov|m4v)"
+  ]
+}

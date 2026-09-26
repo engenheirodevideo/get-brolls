@@ -20,14 +20,14 @@ from unittest import mock
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_video
-from _paths import ROOT
 from _plugin_pins import pin_plugins
+from _schemas import strict
 from test_roteiro_sync import SyncCase
 
 from getbrolls import __version__, export, export_folder, models
 from getbrolls.ledger import Ledger
 from getbrolls.runtime import project_lock
-from getbrolls.sdk.exporters import MINIMAL_PLAN, ValidatedExport, run_exporter
+from getbrolls.sdk.exporters import ValidatedExport, run_exporter, sample_plan
 from getbrolls.sdk.jsonschema import errors
 from getbrolls.sdk.registry import get_registry, reset_registry
 
@@ -662,11 +662,11 @@ class MachinePathMatchTests(unittest.TestCase):
         self.assertNotIn(self.AN.casefold(), export._scrub(text, self.machine(self.AN)).casefold())
 
 
-class MinimalPlanTests(unittest.TestCase):
-    def test_minimal_plan_follows_the_export_plan_schema(self):
-        schema = json.loads((ROOT / "schemas" / "export_plan.schema.json").read_text(encoding="utf-8"))
-        self.assertEqual([], errors(MINIMAL_PLAN, schema))
-        self.assertEqual(__version__, MINIMAL_PLAN["getbrolls_version"])
+class SamplePlanTests(unittest.TestCase):
+    def test_sample_plan_follows_the_strict_export_plan_schema(self):
+        plan = sample_plan()
+        self.assertEqual([], errors(plan, strict()))
+        self.assertEqual(__version__, plan["getbrolls_version"])
 
 
 if __name__ == "__main__":

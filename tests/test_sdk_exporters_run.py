@@ -16,11 +16,11 @@ from test_sdk_loader import MANIFEST, LoaderTestCase
 from getbrolls.sdk import ExporterSpec, ExportResult, MediaRequest, PluginError, exporters, loader, testing
 from getbrolls.sdk.exporters import (
     FILE_MAX_BYTES,
-    MINIMAL_PLAN,
     ExportValidationError,
     ValidatedExport,
     find_local_paths,
     run_exporter,
+    sample_plan,
     validate_export_result,
 )
 from getbrolls.sdk.registry import Registry, get_registry, reset_registry
@@ -347,17 +347,17 @@ class LocalPathScanTests(unittest.TestCase):
         checked = run_exporter(export_registry(export), "demo_html", PLAN, {"args": {}})
         self.assertEqual([], find_local_paths(PLAN))
         self.assertEqual([], find_local_paths(checked.files))
-        self.assertEqual([], find_local_paths(MINIMAL_PLAN))
+        self.assertEqual([], find_local_paths(sample_plan()))
 
 
 class CheckExporterTests(unittest.TestCase):
-    def test_check_runs_the_minimal_plan_through_the_same_validator(self):
+    def test_check_runs_the_example_plan_through_the_same_validator(self):
         testing.check_exporter(ExporterSpec("demo_html", "Exporta", lambda plan, options: good()))
         with self.assertRaises(AssertionError) as caught:
             testing.check_exporter(
                 ExporterSpec("demo_html", "Exporta", lambda plan, options: good(media=[MediaRequest("m", "a.wav")]))
             )
-        self.assertIn("plano mínimo", str(caught.exception))
+        self.assertIn("plano de exemplo", str(caught.exception))
         self.assertIn("assets/", str(caught.exception))
 
     def test_check_reads_the_shape_first(self):

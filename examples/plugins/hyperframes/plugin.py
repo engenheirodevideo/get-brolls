@@ -843,9 +843,37 @@ def _export_md(export):
     return "\n".join(lines) + "\n"
 
 
+# Valores de enum que este exporter trata. Chave nova no plano é ignorada; valor novo
+# de enum é "não suportado" (política de evolução do plano, docs/SDK.md).
+SUPPORTED = {
+    "layout": ("A-ROLL", "BROLL", "SPLIT", "FULL", "UGC"),
+    "vaga": ("a", "b", "main"),
+    "papel": ("broll", "presenter", "card", "brand"),
+    "camada": ("LETTERING", "SFX", "MUSICA", "COMP"),
+    "mídia": ("video", "image", "audio"),
+}
+
+
+def _check_supported(plan):
+    """`PluginError` no primeiro valor de enum que esta versão do exporter não conhece."""
+    found = [("mídia", row["kind"]) for row in plan["media"].values()]
+    for scene in plan["scenes"]:
+        found.append(("layout", scene["layout"]["kind"]))
+        for slot in scene["layout"]["slots"]:
+            found += [("vaga", slot["slot"]), ("papel", slot["role"])]
+        found += [("camada", layer["kind"]) for layer in scene["layers"]]
+    for field, value in found:
+        if value not in SUPPORTED[field]:
+            shown = str(value)[:40]
+            raise PluginError(
+                f'{field} "{shown}" não é suportado por esta versão do exporter hyperframes: atualize o plugin.'
+            )
+
+
 def generate(plan):
     """`{"files": {caminho: texto}, "media": [{"media_id", "dest"}], "notes": [texto]}` a partir do plano."""
     plan = cast("dict", _clean(plan))
+    _check_supported(plan)
     export = _Export(plan)
     scenes = {}
     for scene in plan["scenes"]:
