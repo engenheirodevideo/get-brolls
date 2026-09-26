@@ -6,6 +6,9 @@ devolve texto e comando. Quando só o humano tem o valor (nome de quem aprova, f
 dita, evidência real), o comando traz o lugar em MAIÚSCULAS para ele preencher.
 """
 
+# pylint: disable=too-many-arguments,too-many-positional-arguments
+# Legado: ocorrências pré-existentes em `_action` (corpo idêntico à origin/main).
+
 import shlex
 from pathlib import Path
 
@@ -154,7 +157,15 @@ def step_candidate(state, step):
     return chosen or state.get("candidate")
 
 
-def _action(step, why, for_human, state, url=None, blocking_human=False, command=None):  # noqa: PLR0913, PLR0917 - existing size; one field per key of the returned guidance-step dict
+def _action(  # noqa: PLR0913, PLR0917 - existing size; one field per key of the returned guidance-step dict
+    step,
+    why,
+    for_human,
+    state,
+    url=None,
+    blocking_human=False,
+    command=None,
+):
     return {
         "step": step,
         "why": why,
@@ -436,28 +447,20 @@ def _init_brief_action(state, counts):
     )
 
 
-def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one branch/return per project state deciding the single next step
-    """Único passo que faz sentido agora, com a frase para repassar sem parafrasear.
-
-    `state` = {project, counts, format_pending, brief, review_page, board_url,
-    rights_mode, candidate, duration_unknown, inspect_candidate}. `board_url` só
-    vem preenchido quando o servidor do Storyboard está no ar. `brief` é None quando o arquivo nem existe, `{"error": "..."}` quando
-    existe mas não passa na validação, e {beats, covered, missing[{id, search}],
-    conflicts[]} quando está válido.
-    """
-    counts = _counts(state)
+def _brief_status(state, counts):
+    """Resolve o brief do estado: devolve (brief, conflicts, ação antecipada ou None)."""
     brief = state.get("brief")
     conflicts = list((brief or {}).get("conflicts") or [])
     if brief is None:
         if _brief_still_helps(counts):
-            return _init_brief_action(state, counts)
+            return {}, conflicts, _init_brief_action(state, counts)
         # Sem brief e com a escolha já feita: o plano não muda mais nada, e repetir
         # "antes de buscar" depois da entrega diria à pessoa que nada aconteceu.
         # A escada segue pelo estado real, sem beats a cobrir.
-        brief = {}
+        return {}, conflicts, None
     if brief.get("error"):
         # Arquivo existe e está errado: corrigir é diferente de começar do zero.
-        return _action(
+        action = _action(
             "brief-invalid",
             f"O BRIEF.md existe mas não passou na validação: {brief['error']}",
             "O BRIEF.md do projeto tem um problema que preciso que você resolva antes "
@@ -465,20 +468,53 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
             "corrigir.",
             state,
         )
+        return brief, conflicts, action
+    return brief, conflicts, None
+
+
+def _format_pending_action(state, counts, conflicts):
+    """Degrau `format`: regras/brief mudaram o formato-alvo de itens já decididos."""
     # `review` só faz sentido quando existe algo decidido para revisar de novo; num
     # projeto vazio o conflito de formato vira um aviso colado no degrau de busca.
-    if state.get("format_pending") or (conflicts and counts["approved"]):
-        detail = f" Além disso: {conflicts[0]}" if conflicts else ""
+    if not (state.get("format_pending") or (conflicts and counts["approved"])):
+        return None
+    detail = f" Além disso: {conflicts[0]}" if conflicts else ""
+    return _action(
+        "format",
+        "As regras editoriais (ou o brief) mudaram o formato-alvo dos itens já decididos.",
+        "O formato-alvo mudou, então as aprovações antigas não valem mais para o "
+        "corte novo: gere a prévia e o Storyboard de novo e me diga a decisão antes "
+        "de coletar." + detail,
+        state,
+        blocking_human=True,
+    )
+
+
+def _missing_beat_action(state, missing, busy):
+    """Primeiro beat do brief ainda sem candidato (pulando esgotado/dependente-de-pessoa ocupado)."""
+    for entry in missing:
+        # Na ordem do brief: o beat esgotado espera a cadeia dos aprovados, e o beat que
+        # depende da pessoa (chave de API, link ou arquivo) só passa na frente enquanto
+        # nenhum aprovado estiver a caminho da entrega.
+        waits_for_person = entry.get("unavailable") or entry.get("resolve")
+        if entry.get("exhausted") or (waits_for_person and busy):
+            continue
+        if entry.get("unavailable"):
+            return _unavailable_action(state, entry)
+        if entry.get("resolve"):
+            return _resolve_action(state, entry)
         return _action(
-            "format",
-            "As regras editoriais (ou o brief) mudaram o formato-alvo dos itens já decididos.",
-            "O formato-alvo mudou, então as aprovações antigas não valem mais para o "
-            "corte novo: gere a prévia e o Storyboard de novo e me diga a decisão antes "
-            "de coletar." + detail,
+            "brief-search",
+            f'O beat "{entry["id"]}" do brief ainda não tem candidato registrado.',
+            _missing_beat_phrase(entry),
             state,
-            blocking_human=True,
+            command=entry.get("search") or command_for("search", state["project"]),
         )
-    missing = list(brief.get("missing") or [])
+    return None
+
+
+def _pending_or_blocked_action(state, counts, brief):
+    """Degraus `approve`/`roteiro-sync`/`brief-blocked`, na ordem em que ganham dos demais."""
     # Decisão humana pendente ganha de todo degrau de trabalho do agente — inclusive
     # de "beat sem candidato". Com prévia na mesa esperando alguém decidir, mandar
     # buscar mais material empurra a pessoa para uma pilha maior em vez da parada
@@ -507,30 +543,27 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
             blocking_human=True,
             command=None,
         )
+    return None
+
+
+def _ladder_before_candidates(state, counts, brief, conflicts):
+    """Degraus que antecedem qualquer prévia: brief, aprovação pendente, busca de beats."""
+    action = _format_pending_action(state, counts, conflicts)
+    if action is not None:
+        return action
+    missing = list(brief.get("missing") or [])
+    action = _pending_or_blocked_action(state, counts, brief)
+    if action is not None:
+        return action
     # Beat com todas as fontes já vazias sai da fila de busca: sugerir de novo o mesmo
     # comando é o laço que prendia o `status` num beat sem resultado. A pergunta que
     # ele vira só entra depois da cadeia dos aprovados (ver `_exhausted_action`).
     # O mesmo vale para o beat cujas fontes restantes só respondem com chave de API:
     # o `search` genérico que sobraria ali volta com erro e prende a escada do mesmo jeito.
     busy = _approved_work(state, counts)
-    for entry in missing:
-        # Na ordem do brief: o beat esgotado espera a cadeia dos aprovados, e o beat que
-        # depende da pessoa (chave de API, link ou arquivo) só passa na frente enquanto
-        # nenhum aprovado estiver a caminho da entrega.
-        waits_for_person = entry.get("unavailable") or entry.get("resolve")
-        if entry.get("exhausted") or (waits_for_person and busy):
-            continue
-        if entry.get("unavailable"):
-            return _unavailable_action(state, entry)
-        if entry.get("resolve"):
-            return _resolve_action(state, entry)
-        return _action(
-            "brief-search",
-            f'O beat "{entry["id"]}" do brief ainda não tem candidato registrado.',
-            _missing_beat_phrase(entry),
-            state,
-            command=entry.get("search") or command_for("search", state["project"]),
-        )
+    action = _missing_beat_action(state, missing, busy)
+    if action is not None:
+        return action
     exhausted = [entry for entry in missing if entry.get("exhausted")]
     if exhausted and not busy:
         return _exhausted_action(state, exhausted[0])
@@ -544,6 +577,113 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
             "mostrar o que apareceu." + _library_hint() + warning,
             state,
         )
+    return None
+
+
+def _approved_chain_action(state, counts):
+    """Degraus permit/fetch/verify/deliver para quem já tem itens aprovados."""
+    if not counts["approved"]:
+        return None
+    if counts["permitted"] < counts["approved"]:
+        per_item = state.get("rights_mode", "per_item_evidence") == "per_item_evidence"
+        return _action(
+            "permit",
+            "Itens aprovados ainda sem as condições reais de uso registradas.",
+            (
+                "Falta registrar de onde vem o direito de usar cada trecho aprovado: me "
+                "diga a condição real da fonte (licença, autorização, contato) que eu "
+                "gravo."
+                if per_item
+                else "Vou registrar as condições de uso dos aprovados com a declaração que já está no RULES.md."
+            ),
+            state,
+            blocking_human=per_item,
+        )
+    if counts["delivered"] < counts["permitted"]:
+        return _action(
+            "fetch",
+            "Itens aprovados e permitidos ainda sem o corte final em clips/.",
+            "Está tudo decidido e permitido: vou coletar os cortes finais agora.",
+            state,
+        )
+    if counts["verified"] < counts["delivered"]:
+        return _action(
+            "verify",
+            "Arquivos coletados ainda sem conferência de integridade.",
+            "Coletei os cortes; vou conferir se todos os arquivos abrem e estão íntegros.",
+            state,
+        )
+    if state.get("undelivered"):
+        # `brolls/` guarda por hash; quem abre a pasta precisa de nome de gente.
+        return _action(
+            "deliver",
+            "Há arquivo conferido que ainda não aparece em entrega/, a pasta que a pessoa abre.",
+            "Vou organizar os trechos conferidos em `entrega/`, uma pasta por beat, com "
+            "o contact sheet e a origem de cada um do lado — é essa pasta que você "
+            "arrasta para o editor.",
+            state,
+        )
+    return None
+
+
+def _pending_preview_action(state):
+    """Degrau `preview` (ou `inspect` antes dele) para quem ainda tem candidato sem prévia."""
+    if state.get("duration_unknown"):
+        # Sem saber a duração, qualquer intervalo é chute — e baixar trecho errado
+        # custa pedido à fonte. `inspect` responde isso de graça, antes da prévia.
+        return _action(
+            "inspect",
+            "Há candidato sem duração conhecida: analisar a fonte (capítulos, "
+            "legendas, tempos da descrição) diz onde olhar antes de pedir mídia.",
+            "Antes de gerar prévia, vou analisar a fonte para saber a duração e em "
+            "que minuto está o que você pediu — assim o trecho não sai de palpite.",
+            state,
+            command=_inspect_command(state),
+        )
+    preview_candidate = step_candidate(state, "preview")
+    if preview_candidate and preview_candidate in (state.get("reference_only") or ()):
+        return _action(
+            "preview",
+            "Há candidato sem prévia cuja fonte só entrega o arquivo no `fetch` (baixar "
+            "consome licença ou cota): a prévia dele é só de referência, e `inspect` ou "
+            "prévia com mídia são recusados.",
+            "Essa fonte só libera o arquivo depois da sua aprovação e das condições de "
+            "uso: vou registrar a prévia de referência (miniatura e intervalo) para você "
+            "decidir; depois é approve, permit e fetch.",
+            state,
+            command=command_for(
+                "preview-image-reference" if state.get("preview_image") else "preview-reference",
+                state["project"],
+                preview_candidate,
+            ),
+        )
+    if state.get("preview_image"):
+        # Foto não tem duração nem trecho: nem `inspect` nem `--start/--end`
+        # valem aqui, e mandar para eles deixava o fluxo andando em círculo.
+        return _action(
+            "preview",
+            "Há foto sem prévia gerada; sem prévia ninguém decide. Imagem estática "
+            "não tem trecho: a prévia sai sem --start/--end e é o cartaz da própria foto.",
+            "Vou gerar a prévia da foto que ainda não tem quadro — é a própria "
+            "imagem, parada — para você ver antes de decidir.",
+            state,
+            command=command_for("preview-image", state["project"], step_candidate(state, "preview")),
+        )
+    return _action(
+        "preview",
+        "Há candidatos sem prévia gerada; sem prévia ninguém decide. O intervalo "
+        "do comando só vale depois de `inspect`: o real sai do que a fonte diz "
+        "(capítulos/legendas) e do que se vê no contact sheet, nunca de um palpite.",
+        "Vou gerar a prévia dos candidatos que ainda não têm quadro, para você ver "
+        "antes de decidir. Rode `inspect` antes se ainda não souber onde está o "
+        "trecho: o `--start`/`--end` daqui é só um ponto de partida, confirmado no "
+        "contact sheet da fonte antes de aprovar.",
+        state,
+    )
+
+
+def _ladder_after_candidates(state, counts):
+    """Degraus que seguem à existência de candidatos: entrega completa, cadeia do aprovado, prévia."""
     if flow_complete(state, counts):
         # O estado humano vem antes do rascunho do agente: com a entrega pronta e
         # conferida, mandar inspecionar um candidato descartado diria à pessoa que o
@@ -552,99 +692,31 @@ def next_action(state):  # noqa: C901, PLR0911, PLR0912 - existing size; one bra
     # Item aprovado segue para permit/fetch/verify/deliver antes de qualquer prévia
     # nova: quem sobrou sem quadro é rascunho do agente (ver `flow_complete`), e
     # pedir prévia dele deixava o aprovado parado no meio do caminho.
-    if counts["approved"]:
-        if counts["permitted"] < counts["approved"]:
-            per_item = state.get("rights_mode", "per_item_evidence") == "per_item_evidence"
-            return _action(
-                "permit",
-                "Itens aprovados ainda sem as condições reais de uso registradas.",
-                (
-                    "Falta registrar de onde vem o direito de usar cada trecho aprovado: me "
-                    "diga a condição real da fonte (licença, autorização, contato) que eu "
-                    "gravo."
-                    if per_item
-                    else "Vou registrar as condições de uso dos aprovados com a declaração que já está no RULES.md."
-                ),
-                state,
-                blocking_human=per_item,
-            )
-        if counts["delivered"] < counts["permitted"]:
-            return _action(
-                "fetch",
-                "Itens aprovados e permitidos ainda sem o corte final em clips/.",
-                "Está tudo decidido e permitido: vou coletar os cortes finais agora.",
-                state,
-            )
-        if counts["verified"] < counts["delivered"]:
-            return _action(
-                "verify",
-                "Arquivos coletados ainda sem conferência de integridade.",
-                "Coletei os cortes; vou conferir se todos os arquivos abrem e estão íntegros.",
-                state,
-            )
-        if state.get("undelivered"):
-            # `brolls/` guarda por hash; quem abre a pasta precisa de nome de gente.
-            return _action(
-                "deliver",
-                "Há arquivo conferido que ainda não aparece em entrega/, a pasta que a pessoa abre.",
-                "Vou organizar os trechos conferidos em `entrega/`, uma pasta por beat, com "
-                "o contact sheet e a origem de cada um do lado — é essa pasta que você "
-                "arrasta para o editor.",
-                state,
-            )
+    action = _approved_chain_action(state, counts)
+    if action is not None:
+        return action
     if _pending_preview(state, counts) > 0:
-        if state.get("duration_unknown"):
-            # Sem saber a duração, qualquer intervalo é chute — e baixar trecho errado
-            # custa pedido à fonte. `inspect` responde isso de graça, antes da prévia.
-            return _action(
-                "inspect",
-                "Há candidato sem duração conhecida: analisar a fonte (capítulos, "
-                "legendas, tempos da descrição) diz onde olhar antes de pedir mídia.",
-                "Antes de gerar prévia, vou analisar a fonte para saber a duração e em "
-                "que minuto está o que você pediu — assim o trecho não sai de palpite.",
-                state,
-                command=_inspect_command(state),
-            )
-        preview_candidate = step_candidate(state, "preview")
-        if preview_candidate and preview_candidate in (state.get("reference_only") or ()):
-            return _action(
-                "preview",
-                "Há candidato sem prévia cuja fonte só entrega o arquivo no `fetch` (baixar "
-                "consome licença ou cota): a prévia dele é só de referência, e `inspect` ou "
-                "prévia com mídia são recusados.",
-                "Essa fonte só libera o arquivo depois da sua aprovação e das condições de "
-                "uso: vou registrar a prévia de referência (miniatura e intervalo) para você "
-                "decidir; depois é approve, permit e fetch.",
-                state,
-                command=command_for(
-                    "preview-image-reference" if state.get("preview_image") else "preview-reference",
-                    state["project"],
-                    preview_candidate,
-                ),
-            )
-        if state.get("preview_image"):
-            # Foto não tem duração nem trecho: nem `inspect` nem `--start/--end`
-            # valem aqui, e mandar para eles deixava o fluxo andando em círculo.
-            return _action(
-                "preview",
-                "Há foto sem prévia gerada; sem prévia ninguém decide. Imagem estática "
-                "não tem trecho: a prévia sai sem --start/--end e é o cartaz da própria foto.",
-                "Vou gerar a prévia da foto que ainda não tem quadro — é a própria "
-                "imagem, parada — para você ver antes de decidir.",
-                state,
-                command=command_for("preview-image", state["project"], step_candidate(state, "preview")),
-            )
-        return _action(
-            "preview",
-            "Há candidatos sem prévia gerada; sem prévia ninguém decide. O intervalo "
-            "do comando só vale depois de `inspect`: o real sai do que a fonte diz "
-            "(capítulos/legendas) e do que se vê no contact sheet, nunca de um palpite.",
-            "Vou gerar a prévia dos candidatos que ainda não têm quadro, para você ver "
-            "antes de decidir. Rode `inspect` antes se ainda não souber onde está o "
-            "trecho: o `--start`/`--end` daqui é só um ponto de partida, confirmado no "
-            "contact sheet da fonte antes de aprovar.",
-            state,
-        )
+        return _pending_preview_action(state)
     if not counts["approved"]:
         return _approve_action(state)
     return _done_action(state, counts)
+
+
+def next_action(state):
+    """Único passo que faz sentido agora, com a frase para repassar sem parafrasear.
+
+    `state` = {project, counts, format_pending, brief, review_page, board_url,
+    rights_mode, candidate, duration_unknown, inspect_candidate}. `board_url` só
+    vem preenchido quando o servidor do Storyboard está no ar. `brief` é None
+    quando o arquivo nem existe, `{"error": "..."}` quando existe mas não passa
+    na validação, e {beats, covered, missing[{id, search}], conflicts[]} quando
+    está válido.
+    """
+    counts = _counts(state)
+    brief, conflicts, early = _brief_status(state, counts)
+    if early is not None:
+        return early
+    action = _ladder_before_candidates(state, counts, brief, conflicts)
+    if action is not None:
+        return action
+    return _ladder_after_candidates(state, counts)
