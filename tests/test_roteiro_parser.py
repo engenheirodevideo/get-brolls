@@ -45,13 +45,14 @@ class FrontmatterTests(unittest.TestCase):
 
     def test_errors_carry_line_numbers(self):
         cases = {
-            "foo: 1": "desconhecida",
             "genero: vsl": "genero",
             'aspecto: "4:5"': "aspecto",
             "duracao_alvo_s: 3": "duracao_alvo_s",
             "duracao_alvo_s: ²": "duracao_alvo_s",
             "legenda: talvez": "legenda",
-            "tags: x": "desconhecida",
+            "cliente: Acme Corp": "slug",
+            "direcao: rampa_e_whip": "slug",
+            "Tema: outro": "minúsculas",
             "  - item": "lista",
             "status: gravado": "status",
         }
@@ -66,6 +67,43 @@ class FrontmatterTests(unittest.TestCase):
                 self.assertEqual(errors[0][0], len(head) - 1)
                 self.assertIn(fragment, errors[0][1])
                 self.assertNotIn("repetida", errors[0][1])
+
+    def test_obsidian_properties_are_ignored_with_their_lists(self):
+        head = [
+            *VALID_HEAD[:-1],
+            "created: 2026-09-26",
+            "updated: 2026-09-26",
+            "tags:",
+            "  - get-brolls",
+            "  - reels",
+            "aliases:",
+            "- Roteiro do reels",
+            "",
+            "  - outro nome",
+            "cssclasses: [wide]",
+            "Data de publicação: 2026-10-01",
+            "publish: false",
+            "---",
+        ]
+        meta, body, errors = roteiro.parse_frontmatter([*head, "## Gancho"])
+        self.assertEqual([], errors)
+        self.assertEqual(len(head), body)
+        self.assertEqual({"genero", "aspecto", "duracao_alvo_s", "tema", "legenda", "status"}, set(meta))
+
+    def test_a_list_under_a_get_brolls_key_is_still_an_error(self):
+        head = [*VALID_HEAD[:-1], "tags: x", "status: draft", "  - item", "---"]
+        _, _, errors = roteiro.parse_frontmatter(head)
+        self.assertEqual([(len(head) - 1, errors[0][1])], errors)
+        self.assertIn("lista", errors[0][1])
+
+    def test_client_and_direction_are_slugs_in_meta(self):
+        head = [*VALID_HEAD[:-1], "cliente: acme-corp", 'direcao: "rampa-e-whip"', "---"]
+        meta, _, errors = roteiro.parse_frontmatter(head)
+        self.assertEqual([], errors)
+        self.assertEqual(("acme-corp", "rampa-e-whip"), (meta["cliente"], meta["direcao"]))
+        meta, _, _ = roteiro.parse_frontmatter(VALID_HEAD)
+        self.assertNotIn("cliente", meta)
+        self.assertNotIn("direcao", meta)
 
     def test_empty_value_is_error(self):
         head = [line for line in VALID_HEAD if not line.startswith("tema")]
@@ -133,6 +171,24 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(prova.extensions[0].name, "zoom-in")
         self.assertEqual(prova.extensions[0].args, ("1.2",))
         self.assertEqual(prova.line, 20)
+
+    def test_direction_directives_are_reserved(self):
+        for line in (
+            "[DIRECAO: montagem-no-ritmo]",
+            "[direção: respiro]",
+            "[Transição: whip]",
+            "[TRANSICAO]",
+            "[ritmo: rápido]",
+            "[VELOCIDADE: 2x]",
+            "[direcao:whip]",
+        ):
+            with self.subTest(line=line), self.assertRaises(roteiro.RoteiroError) as caught:
+                roteiro.parse(_doc(f"## A\n[A-ROLL]\n{line}\nOi.\n"), plugins=frozenset())
+            self.assertIn("reservado para a próxima versão", str(caught.exception))
+
+    def test_a_note_that_only_starts_like_a_reserved_name_is_still_a_note(self):
+        doc = roteiro.parse(_doc("## A\n[A-ROLL]\n[ritmo acelerado aqui]\nOi.\n"), plugins=frozenset())
+        self.assertEqual(("ritmo acelerado aqui",), doc.scenes[0].notes)
 
     def test_directive_errors(self):
         cases = {

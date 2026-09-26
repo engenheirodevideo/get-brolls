@@ -195,6 +195,32 @@ class RoteiroCliTests(CliCase):
         self.assertFalse((self.project / "brolls").exists())
 
 
+class FrontmatterCliTests(CliCase):
+    OBSIDIAN = (
+        "created: 2026-09-26\nupdated: 2026-09-26\ntags:\n  - get-brolls\n  - reels\n"
+        "aliases:\n  - Roteiro IA\ncssclasses:\n  - wide\n"
+    )
+
+    def with_head(self, extra):
+        self.cli("init-rules", "--format", "reels")
+        self.cli("roteiro", "--action", "new", "--genero", "reels", "--tema", "IA")
+        self.fill_skeleton()
+        self.edit("type: roteiro\n", "type: roteiro\n" + extra)
+
+    def test_a_full_obsidian_frontmatter_passes_check(self):
+        self.with_head(self.OBSIDIAN + "cliente: acme-corp\ndirecao: rampa-e-whip\n")
+        checked = self.cli("roteiro", "--action", "check")
+        self.assertEqual(4, len(checked["scenes"]))
+        self.assertEqual(("acme-corp", "rampa-e-whip"), (checked["meta"]["cliente"], checked["meta"]["direcao"]))
+        self.assertFalse({"tags", "aliases", "created", "updated", "cssclasses"} & set(checked["meta"]))
+
+    def test_a_client_that_is_not_a_slug_is_a_clear_error(self):
+        self.with_head("cliente: Acme Corp\n")
+        error = self.cli("roteiro", "--action", "check", expect=2)["error"]
+        self.assertIn('"cliente" tem que ser um slug', error)
+        self.assertIn("acme-corp", error)
+
+
 class GuidanceCommandTests(CliCase):
     def test_status_sync_command_parses_and_runs(self):
         self.reviewed()

@@ -22,7 +22,7 @@ _LAYER_KIND = {"SFX": "sfx", "MUSICA": "musica", "COMP": "composicao"}
 # A forma 2 acrescenta `words`, `layout.full_role` e `layout.slots`; o hash não muda.
 PLAN_VERSION = 2
 HASH_VERSION = 1
-META_KEYS = ("aspecto", "legenda", "duracao_alvo_s", "genero", "tema")
+META_KEYS = ("aspecto", "legenda", "duracao_alvo_s", "genero", "tema", "cliente", "direcao")
 # Papel da vaga única de `[FULL: x]` por `full_role`.
 _FULL_SLOT = {"beat": "broll", "marca": "brand", "cartela": "card"}
 

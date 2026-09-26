@@ -270,8 +270,12 @@ class PlanContractTests(unittest.TestCase):
         plan = self.plan("## A <!-- c01 -->\n[A-ROLL]\nOi.\n")
         self.assertEqual(plan["plan_version"], 2)
         self.assertEqual(
-            plan["meta"], {"aspecto": "9:16", "legenda": True, "duracao_alvo_s": 45, "genero": "reels", "tema": "t"}
-        )
+            plan["meta"],
+            {
+                "aspecto": "9:16", "legenda": True, "duracao_alvo_s": 45, "genero": "reels", "tema": "t",
+                "cliente": None, "direcao": None,
+            },
+        )  # fmt: skip
         bare = roteiro.parse('---\ntype: roteiro\ngenero: reels\ntema: "t"\n---\n', plugins=frozenset())
         self.assertIsNone(roteiro_plan.scene_plan(self.project, bare)["meta"]["duracao_alvo_s"])
 

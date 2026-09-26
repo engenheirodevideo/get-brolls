@@ -761,6 +761,29 @@ class MetaIdentityTests(ExportPlanTestCase):
             self.assertEqual([], [layer for layer in scene["layers"] if layer["ref"] is not None])
             self.assertTrue(all("ref" in layer for layer in scene["layers"]))
 
+    def test_client_and_direction_come_from_the_frontmatter(self):
+        project = Project(self.root)
+        text = MIN_ROTEIRO.replace('tema: "Reels mínimo"', 'tema: "Reels mínimo"\ncliente: acme\ndirecao: rampa-e-whip')
+        with mock.patch.object(export_plan, "probe_voice", fake_probe):
+            result, _ = export_plan.build(self.root, project.plan(text), [], "exports/hyperframes/001")
+        self.assertEqual(("acme", "rampa-e-whip"), (result["meta"]["cliente"], result["meta"]["direcao"]))
+        self.assertEqual(
+            [
+                "aspecto",
+                "legenda",
+                "duracao_alvo_s",
+                "genero",
+                "tema",
+                "projeto_id",
+                "cliente",
+                "direcao",
+                "fps",
+                "canvas",
+            ],
+            list(result["meta"]),
+        )
+        self.assertEqual([], errors(result, SCHEMA))
+
     def test_without_a_project_id_it_stays_null(self):
         plan, _ = build(self.root, min_project)
         self.assertIsNone(plan["meta"]["projeto_id"])

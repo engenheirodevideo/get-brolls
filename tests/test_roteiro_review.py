@@ -38,6 +38,7 @@ class ReviewHashTests(unittest.TestCase):
             "fala reflowed": DOC.replace("trava.\nNa mesma", "trava. Na mesma"),
             "default explícito": DOC.replace('tema: "t"', 'tema: "t"\nlegenda: true\naspecto: "9:16"'),
             "título com espaço": DOC.replace("## Problema", "##   Problema  "),
+            "propriedade do Obsidian": DOC.replace('tema: "t"', 'tema: "t"\ntags:\n  - reels\nupdated: 2026-09-26'),
         }
         for label, text in same.items():
             with self.subTest(label=label):
@@ -52,6 +53,8 @@ class ReviewHashTests(unittest.TestCase):
             "nota de linha": DOC.replace("Na mesma parte.", "[pausa]\nNa mesma parte."),
             "título": DOC.replace("## Problema", "## Dor"),
             "tema": DOC.replace('tema: "t"', 'tema: "outro"'),
+            "cliente": DOC.replace('tema: "t"', 'tema: "t"\ncliente: acme'),
+            "direcao": DOC.replace('tema: "t"', 'tema: "t"\ndirecao: rampa-e-whip'),
         }
         for label, text in changed.items():
             with self.subTest(label=label):

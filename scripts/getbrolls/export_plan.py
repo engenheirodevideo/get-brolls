@@ -475,8 +475,9 @@ def check_refs(plan):
 def _meta(plan, project_id):
     """`meta` do plano de cena mais os ids e a base de tempo: nomeados já, `null` enquanto não houver valor."""
     meta = plan["meta"]
+    base = {key: value for key, value in meta.items() if key not in ("cliente", "direcao")}
     return {
-        **meta, "projeto_id": project_id, "cliente": meta.get("cliente"), "direcao": meta.get("direcao"),
+        **base, "projeto_id": project_id, "cliente": meta.get("cliente"), "direcao": meta.get("direcao"),
         "fps": None, "canvas": None,
     }  # fmt: skip
 

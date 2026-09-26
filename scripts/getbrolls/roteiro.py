@@ -1,10 +1,12 @@
 """`ROTEIRO.md`: o conteúdo do vídeo como roteiro — cenas, diretivas e fala.
 
 O arquivo é da pessoa. Este módulo só lê e valida; quem grava ids e status é
-`roteiro_sync`. O frontmatter aceita um subconjunto fechado de YAML (uma linha
-`chave: valor`, aspas opcionais): tudo o que o YAML aceita além disso é recusado
-com a linha, nunca "interpretado". Texto escondido (comentário HTML ou `%%` do
-Obsidian) é erro: a revisão humana tem que ver tudo o que vira beat.
+`roteiro_sync`. No frontmatter, as chaves do get-brolls aceitam um subconjunto
+fechado de YAML (uma linha `chave: valor`, aspas opcionais): o resto do YAML nelas é
+recusado com a linha, nunca "interpretado". Chave de outra ferramenta (as
+propriedades do Obsidian, como `tags`, `aliases` e `created`) é ignorada, junto com
+as linhas de lista ou bloco que vêm abaixo dela. Texto escondido (comentário HTML ou
+`%%` do Obsidian) é erro: a revisão humana tem que ver tudo o que vira beat.
 """
 
 import difflib
@@ -31,11 +33,19 @@ GENRES = {
         ),
     },
 }
-KEYS = ("type", "genero", "aspecto", "duracao_alvo_s", "tema", "legenda", "status")
+KEYS = ("type", "genero", "aspecto", "duracao_alvo_s", "tema", "legenda", "status", "cliente", "direcao")
 REQUIRED = ("type", "genero", "tema")
+# Chaves que só dão nome: o valor passa adiante (plano de export) e nenhum recurso o usa ainda.
+SLUG_KEYS = ("cliente", "direcao")
+SLUG_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+SLUG_MAX = 64
 _PAIR = re.compile(r"^([a-z_]+):(.*)$")
+# Chave de outra ferramenta: começa sem espaço, `-`, `#` ou aspas e termina em `:` seguido de espaço ou fim.
+_OTHER_KEY = re.compile(r"^([^\s#:\-\"'][^:]*):(?:\s|$)")
 
 LAYOUTS = ("A-ROLL", "BROLL", "SPLIT", "FULL", "UGC")
+# Diretivas de direção reservadas: reconhecidas e recusadas até a versão que as implementa.
+RESERVED_DIRECTIVES = ("DIRECAO", "TRANSICAO", "RITMO", "VELOCIDADE")
 LAYERS = ("LETTERING", "SFX", "MUSICA", "COMP")
 PRESENTER = ("A-ROLL", "UGC")
 WORDS_PER_S = 2.5
@@ -212,7 +222,7 @@ def _unquote(value):
     return value.replace('\\"', '"'), False
 
 
-def _field(key, value, quoted, meta):  # noqa: C901, PLR0911 - one return per field rule
+def _field(key, value, quoted, meta):  # noqa: C901, PLR0911, PLR0912 - one branch and return per field rule
     if key == "type":
         return None if value == "roteiro" else '"type" tem que ser roteiro'
     if key == "genero":
@@ -240,6 +250,12 @@ def _field(key, value, quoted, meta):  # noqa: C901, PLR0911 - one return per fi
             return f'"status" aceita: {", ".join(STATUSES)} (quem muda é o comando, não a mão)'
         meta[key] = value
         return None
+    if key in SLUG_KEYS:
+        if len(value) > SLUG_MAX or not SLUG_RE.fullmatch(value):
+            example = "-".join(re.findall(r"[a-z0-9]+", fold(value))) or "acme"
+            return f'"{key}" tem que ser um slug: minúsculas, números e -, sem espaço (ex.: {example[:SLUG_MAX]})'
+        meta[key] = value
+        return None
     if not value:
         return f'"{key}" precisa de um valor'
     meta[key] = value
@@ -251,6 +267,8 @@ def parse_frontmatter(lines):  # noqa: C901, PLR0912 - one branch per grammar ru
     if not lines or lines[0].strip() != "---":
         return {}, 0, [(1, 'o roteiro começa com o frontmatter entre linhas "---"')]
     meta, errors, seen = {}, [], set()
+    # Depois de uma chave de outra ferramenta, a lista ou o bloco indentado dela também é ignorado.
+    skipping = False
     for index in range(1, len(lines)):
         line = lines[index]
         number = index + 1
@@ -259,17 +277,23 @@ def parse_frontmatter(lines):  # noqa: C901, PLR0912 - one branch per grammar ru
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         if line[:1].isspace() or line.lstrip().startswith("-"):
-            errors.append((number, "o frontmatter não aceita lista nem bloco: use uma linha chave: valor"))
+            if not skipping:
+                errors.append((number, "o frontmatter não aceita lista nem bloco: use uma linha chave: valor"))
             continue
+        skipping = False
         match = _PAIR.match(line)
-        if not match:
-            errors.append((number, "use chave: valor"))
+        if not match or match.group(1) not in KEYS:
+            other = _OTHER_KEY.match(line)
+            if other is None:
+                errors.append((number, "use chave: valor"))
+            elif other.group(1).casefold() in KEYS:
+                key = other.group(1)
+                errors.append((number, f'chave "{key}": use minúsculas ({key.casefold()})'))
+            else:
+                skipping = True
             continue
         key = match.group(1)
         value, quoted = _unquote(match.group(2).strip())
-        if key not in KEYS:
-            errors.append((number, f'chave desconhecida "{key}"; aceitas: {", ".join(KEYS)}'))
-            continue
         if key in seen:
             errors.append((number, f'chave "{key}" repetida'))
             continue
@@ -410,6 +434,9 @@ def _guess(head):
 
 def _directive(inner, number, plugins):  # noqa: PLR0911 - one return per validation rule
     """(Directive, erro, nota) para o miolo de `[...]` numa linha inteira; só um dos três vem preenchido."""
+    reserved = re.sub(r"[^A-Z0-9]", "", fold(inner.partition(":")[0]).upper())
+    if reserved in RESERVED_DIRECTIVES:
+        return None, f'"[{inner}]": {reserved} é reservado para a próxima versão do get-brolls; tire a diretiva', None
     ext = _EXT.match(inner.strip())
     if ext and NAME_RE.fullmatch(ext.group(1)) and canonical(ext.group(1)) is None:
         return _extension(ext, inner, number, plugins)

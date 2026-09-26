@@ -49,7 +49,9 @@ class PlanV2Tests(unittest.TestCase):
         plan = roteiro_plan.scene_plan(self.project, roteiro.parse(PINNED, plugins=frozenset()))
         self.assertEqual(2, plan["plan_version"])
         self.assertEqual("IA editando reels", plan["meta"]["tema"])
-        self.assertEqual(["aspecto", "legenda", "duracao_alvo_s", "genero", "tema"], list(plan["meta"]))
+        self.assertEqual(
+            ["aspecto", "legenda", "duracao_alvo_s", "genero", "tema", "cliente", "direcao"], list(plan["meta"])
+        )
 
     def test_hashes_are_the_same_as_plan_version_one(self):
         doc = roteiro.parse(PINNED, plugins=frozenset())
