@@ -132,11 +132,15 @@ def changed_sources(marker, sources, project, number=None):
 def _remove_file(path, source):
     """Apaga um arquivo do staging; hardlink congelado (Windows) volta a ser somente-leitura na origem.
 
-    O recongelamento roda mesmo quando o `unlink` falha de novo depois do degelo.
+    O recongelamento roda mesmo quando o `unlink` falha de novo depois do degelo. Hardlink que o
+    marcador não registrou (`source` None) nunca é degelado: o inode pode ser de um arquivo de fora
+    do staging, e o erro deixa o staging marcado, com aviso, para apagar à mão.
     """
     try:
         path.unlink()
     except PermissionError:
+        if source is None and path.lstat().st_nlink > 1:
+            raise
         try:
             delivery._thaw_unlink(path)  # pylint: disable=protected-access  # cross: helper privado legado
         finally:

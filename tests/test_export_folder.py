@@ -177,6 +177,32 @@ class FailureAndSweepTests(FolderTestCase):
         self.assertTrue(self.clip.exists())
         self.assertEqual(0o444, stat.S_IMODE(self.clip.stat().st_mode))
 
+    def test_sweep_never_thaws_an_unregistered_hardlink_to_a_file_outside(self):
+        # Staging plantado com marcador válido e um hardlink para um arquivo somente-leitura alheio:
+        # no Windows o `unlink` levanta `PermissionError`, e degelar tiraria a proteção do arquivo de fora.
+        outside = self.project / "alheio.txt"
+        outside.write_text("de outra pessoa", encoding="utf-8")
+        outside.chmod(0o444)
+        self.addCleanup(outside.chmod, 0o644)
+        planted = self.root() / ".staging-cccc3333"
+        planted.mkdir(parents=True)
+        (planted / export_folder.MARKER).write_text(
+            json.dumps({"marker": "getbrolls-export", "state": "staging"}), encoding="utf-8"
+        )
+        os.link(outside, planted / "alheio.txt")
+        real_unlink = Path.unlink
+
+        def windows_like(path, missing_ok=False):
+            if path.name == "alheio.txt" and path.parent == planted:
+                raise PermissionError("somente-leitura (Windows)")
+            return real_unlink(path, missing_ok=missing_ok)
+
+        with mock.patch.object(Path, "unlink", autospec=True, side_effect=windows_like):
+            result = self.export()
+        self.assertEqual(0o444, stat.S_IMODE(outside.stat().st_mode))
+        self.assertTrue((planted / "alheio.txt").exists())
+        self.assertTrue(any(".staging-cccc3333 é um export abandonado" in w for w in result["warnings"]))
+
     def test_sweep_removes_only_staging_with_the_core_marker(self):
         root = self.root()
         ours = root / ".staging-aaaa1111"

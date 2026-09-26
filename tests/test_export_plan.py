@@ -727,6 +727,28 @@ class CreditTests(ExportPlanTestCase):
         )
         self.assertNotIn("\\", json.dumps([row["credit"] for row in media.values()], ensure_ascii=False))
 
+    def test_only_http_and_https_links_enter_the_credit(self):
+        _, items = full_project(self.root)
+        project = Project(self.root)
+        urls = {
+            "js": "javascript:alert(1)", "data": "data:text/html,<b>x</b>", "file": "file:///etc/passwd",
+            "ftp": "ftp://e.com/x", "http": "http://e.com/x", "https": "HTTPS://e.com/y",
+        }  # fmt: skip
+        for name, url in urls.items():
+            project.write(f"brolls/clips/c02-{name}.mp4")
+            items.append(clip(f"meuplug:{name}", "c02", f"clips/c02-{name}.mp4", title="T", source_url=url))
+        plan = project.plan(FULL_ROTEIRO)
+        with mock.patch.object(export_plan, "probe_voice", fake_probe):
+            result, _ = export_plan.build(
+                self.root, plan, items, "exports/hyperframes/001", resolve_media=fake_resolver([])
+            )
+        shown = {name: result["media"][f"clip:meuplug:{name}"]["credit"] for name in urls}
+        for name in ("js", "data", "file", "ftp"):
+            with self.subTest(name=name):
+                self.assertEqual("T — meuplug (link sem http/https omitido)", shown[name])
+        self.assertEqual("T — meuplug (http://e.com/x)", shown["http"])
+        self.assertEqual("T — meuplug (HTTPS://e.com/y)", shown["https"])
+
 
 class MetaIdentityTests(ExportPlanTestCase):
     """`meta` nomeia projeto, cliente, direção, fps e quadro; só o id do projeto vem preenchido."""

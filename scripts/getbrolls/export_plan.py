@@ -19,7 +19,7 @@ import stat
 import unicodedata
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from . import __version__, assets, delivery
 from .export_voice import ProbeMissingError, probe_voice, timed_words
@@ -96,10 +96,26 @@ def _credit(text):
     return one_line(text)[:CREDIT_MAX] if text else None
 
 
+# Esquemas que entram como link no crédito; `javascript:`, `data:`, `file:` e o resto viram texto puro.
+_LINK_SCHEMES = ("http", "https")
+
+
+def _is_web_link(url):
+    try:
+        return urlsplit(url).scheme.lower() in _LINK_SCHEMES
+    except ValueError:
+        return False
+
+
 def _clip_credit(c):
     title = one_line(c.get("title") or c["id"])
     url = c.get("source_url")
-    where = one_line(url) if url else "original local"
+    if not url:
+        where = "original local"
+    elif _is_web_link(url):
+        where = one_line(url)
+    else:
+        where = "link sem http/https omitido"
     return _credit(f"{title} — {c.get('provider') or 'fonte'} ({where})")
 
 
