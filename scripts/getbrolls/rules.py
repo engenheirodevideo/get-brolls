@@ -1,5 +1,11 @@
 """User-editable, local declarative rules. No YAML dependency or code evaluation."""
 
+# pylint: disable=missing-function-docstring,cyclic-import
+# Legado: ocorrências pré-existentes em `domain_matches`, `allowed` e
+# `format_report` (corpo idêntico à origin/main). O ciclo
+# (getbrolls.queue <-> getbrolls.rules) já existe na origin/main: quem quebra
+# o ciclo em tempo de execução é o import tardio em `queue.report`.
+
 import logging
 import os
 import re
@@ -137,6 +143,7 @@ def rules_layers(project):
 
 
 def searchable_providers():
+    """Nomes de fonte com busca habilitada, entre as carregadas no registro do SDK."""
     from .sdk.registry import get_registry
 
     reg = get_registry()
@@ -157,15 +164,24 @@ def _declared_by_plugin(name):
     return loader.declared_by(name)
 
 
-def load_rules(project):  # noqa: C901, PLR0912, PLR0915 - existing size; validator with one check per RULES.md field
-    layers, warnings = rules_layers(project)
+def _merge_layers(layers):
+    """Funde as camadas de RULES.md em um único dict, registrando a origem de cada chave."""
     r, sources = {}, {}
     for path, data in layers:
         for key, value in data.items():
             r[key] = _merge(r[key], value) if key in r else value
             sources[key] = str(path)
+    return r, sources
+
+
+def _validate_version(r):
+    """Exige `version: 1` em RULES.md."""
     if type(r.get("version")) is not int or r["version"] != 1:
         raise ValueError('Em RULES.md, "version" tem que ser o número 1. Ajuste essa linha.')
+
+
+def _validate_asset_types(r):
+    """Exige `asset_types` como lista não vazia de tipos conhecidos."""
     if (
         not isinstance(r.get("asset_types"), list)
         or not r["asset_types"]
@@ -176,9 +192,49 @@ def load_rules(project):  # noqa: C901, PLR0912, PLR0915 - existing size; valida
             + ", ".join(sorted(TYPES))
             + "."
         )
+
+
+def _validate_video_format(r):
+    """Exige `video_format` em um dos três valores aceitos."""
     if r.get("video_format") not in ("native", "reels", "horizontal"):
         raise ValueError('Em RULES.md, "video_format" tem que ser "native", "reels" ou "horizontal".')
-    providers = searchable_providers()
+
+
+def _effective_preferred_providers(intent, v, providers, warnings):
+    """Filtra `preferred_providers[intent]`, avisando (sem quebrar) fontes de plugin suspenso."""
+    base_error = ValueError(
+        'Em RULES.md, a lista de "preferred_providers.' + intent + '" só aceita, '
+        "sem repetir: " + ", ".join(sorted(providers)) + "."
+    )
+    if not isinstance(v, list) or any(not isinstance(x, str) for x in v) or len(set(v)) != len(v):
+        raise base_error
+    effective = []
+    for name in v:
+        if name in providers:
+            effective.append(name)
+            continue
+        # Fonte de um plugin instalado, só não carregada agora (falhou, está
+        # suspensa etc.): tirar da lista efetiva com aviso, não quebrar toda busca
+        # do projeto por causa de um plugin que vai voltar a carregar. Nome que
+        # nenhum plugin instalado declara continua sendo erro de verdade.
+        row = _declared_by_plugin(name)
+        if row is None:
+            raise base_error
+        from .sdk.loader import status_hint, status_phrase
+
+        hint = status_hint(row, "Rode plugins --action list / doctor.")
+        message = (
+            f'Em RULES.md, "preferred_providers.{intent}" listava "{name}", fonte do '
+            f"plugin {row['id']}, {status_phrase(row)}; removida da lista "
+            f"efetiva até o plugin voltar a carregar. {hint}"
+        )
+        warnings.append(message)
+        logs.event(log, logging.INFO, "rule_source_skipped", provider=name, plugin=row["id"], status=row["status"])
+    return effective
+
+
+def _validate_preferred_providers(r, warnings, providers):
+    """Valida e filtra `preferred_providers.literal`/`.illustrative` contra as fontes carregáveis."""
     if not isinstance(r.get("preferred_providers"), dict):
         raise ValueError(
             'Em RULES.md, "preferred_providers" tem que ter as chaves "literal" e '
@@ -186,35 +242,11 @@ def load_rules(project):  # noqa: C901, PLR0912, PLR0915 - existing size; valida
         )
     for intent in ("literal", "illustrative"):
         v = r["preferred_providers"].get(intent)
-        base_error = ValueError(
-            'Em RULES.md, a lista de "preferred_providers.' + intent + '" só aceita, '
-            "sem repetir: " + ", ".join(sorted(providers)) + "."
-        )
-        if not isinstance(v, list) or any(not isinstance(x, str) for x in v) or len(set(v)) != len(v):
-            raise base_error
-        effective = []
-        for name in v:
-            if name in providers:
-                effective.append(name)
-                continue
-            # Fonte de um plugin instalado, só não carregada agora (falhou, está
-            # suspensa etc.): tirar da lista efetiva com aviso, não quebrar toda busca
-            # do projeto por causa de um plugin que vai voltar a carregar. Nome que
-            # nenhum plugin instalado declara continua sendo erro de verdade.
-            row = _declared_by_plugin(name)
-            if row is None:
-                raise base_error
-            from .sdk.loader import status_hint, status_phrase
+        r["preferred_providers"][intent] = _effective_preferred_providers(intent, v, providers, warnings)
 
-            hint = status_hint(row, "Rode plugins --action list / doctor.")
-            message = (
-                f'Em RULES.md, "preferred_providers.{intent}" listava "{name}", fonte do '
-                f"plugin {row['id']}, {status_phrase(row)}; removida da lista "
-                f"efetiva até o plugin voltar a carregar. {hint}"
-            )
-            warnings.append(message)
-            logs.event(log, logging.INFO, "rule_source_skipped", provider=name, plugin=row["id"], status=row["status"])
-        r["preferred_providers"][intent] = effective
+
+def _validate_domains(r):
+    """Exige `preferred_domains`/`blocked_domains` como listas de domínios em minúsculas."""
     for key in ("preferred_domains", "blocked_domains"):
         if not isinstance(r.get(key), list) or any(
             not isinstance(v, str) or not re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", v)
@@ -224,8 +256,16 @@ def load_rules(project):  # noqa: C901, PLR0912, PLR0915 - existing size; valida
                 "Em RULES.md, " + key + " só aceita domínios em minúsculas como "
                 '"youtube.com" — sem "https://" e sem caminho depois da barra.'
             )
+
+
+def _validate_editorial_rules(r):
+    """Exige `editorial_rules` como lista de frases."""
     if not isinstance(r.get("editorial_rules"), list) or any(not isinstance(v, str) for v in r["editorial_rules"]):
         raise ValueError('Em RULES.md, "editorial_rules" tem que ser uma lista de frases entre aspas.')
+
+
+def _validate_copyright(r):
+    """Valida o bloco `copyright`, incluindo os campos exigidos no modo `user_declaration`."""
     rights = r.get("copyright", {})
     if not isinstance(rights, dict) or rights.get("mode") not in (
         "per_item_evidence",
@@ -249,6 +289,10 @@ def load_rules(project):  # noqa: C901, PLR0912, PLR0915 - existing size; valida
             '`init-rules --responsible "SEU NOME" --declaration "..." '
             "--mode user_declaration --force` ou preencha esses dois campos no RULES.md."
         )
+
+
+def _validate_browser(r):
+    """Valida o bloco `browser` (viewport, full_page e as quatro dimensões)."""
     browser = r.get("browser", {})
     if (
         not isinstance(browser, dict)
@@ -259,8 +303,24 @@ def load_rules(project):  # noqa: C901, PLR0912, PLR0915 - existing size; valida
             'Em RULES.md, "browser" precisa de "viewport" ("mobile" ou "desktop") e de "full_page" (true ou false).'
         )
     for key in ("mobile_width", "mobile_height", "desktop_width", "desktop_height"):
-        if type(browser.get(key)) is not int or not 240 <= browser[key] <= 3840:  # noqa: PLR2004 - matches the "entre 240 e 3840" message below
+        value = browser.get(key)
+        if type(value) is not int or not 240 <= value <= 3840:  # noqa: PLR2004 - ints do msg abaixo
             raise ValueError("Em RULES.md, " + key + " tem que ser um número inteiro entre 240 e 3840.")
+
+
+def load_rules(project):
+    """Lê, funde e valida RULES.md (mais overrides), devolvendo o dict pronto para uso."""
+    layers, warnings = rules_layers(project)
+    r, sources = _merge_layers(layers)
+    _validate_version(r)
+    _validate_asset_types(r)
+    _validate_video_format(r)
+    providers = searchable_providers()
+    _validate_preferred_providers(r, warnings, providers)
+    _validate_domains(r)
+    _validate_editorial_rules(r)
+    _validate_copyright(r)
+    _validate_browser(r)
     # Optional `pacing` block for the social queue; the environment still wins.
     validate_pacing_block(r.get("pacing"))
     # Aditivo: `sources` diz de que arquivo veio cada campo e `rules_warnings` o que
