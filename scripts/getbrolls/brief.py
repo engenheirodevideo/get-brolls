@@ -55,25 +55,32 @@ def sources():
 
 
 def searchable():
+    """Fontes com busca habilitada, entre as carregadas no registro do SDK."""
     reg = _registry()
-    return tuple(n for n in reg.provider_names() if reg.provider(n).capabilities.search)  # type: ignore[union-attr] - name veio de provider_names()
+    return tuple(
+        n
+        for n in reg.provider_names()
+        if reg.provider(n).capabilities.search  # type: ignore[union-attr] - name veio de provider_names()
+    )
 
 
 def stock_sources():
+    """Fontes de busca ilustrativa (banco de imagens/vídeos genéricos), entre as carregáveis."""
     reg = _registry()
     return tuple(
         n
         for n in searchable()
-        if reg.provider(n).capabilities.match_kind == "illustrative"  # type: ignore[union-attr] - name veio de searchable()
+        if reg.provider(n).capabilities.match_kind == "illustrative"  # type: ignore[union-attr]
     )
 
 
 def still_sources():
+    """Fontes de busca que entregam imagem parada, entre as carregáveis."""
     reg = _registry()
     return tuple(
         n
         for n in searchable()
-        if "image" in reg.provider(n).capabilities.media_kinds  # type: ignore[union-attr] - name veio de searchable()
+        if "image" in reg.provider(n).capabilities.media_kinds  # type: ignore[union-attr] - name de searchable()
     )
 
 
@@ -297,13 +304,13 @@ def resolve_beat(defaults, beat, position):
             "caracteres com letras minúsculas, números e hífen (ele também vira o "
             "valor de --shot)."
         )
-    sources = (
+    allowed_sources = (
         _sources(beat["allowed_sources"], f"{where}.allowed_sources")
         if beat.get("allowed_sources") is not None
         else list(defaults["allowed_sources"])
     )
     stock = _flag(beat["stock"], f"{where}.stock") if beat.get("stock") is not None else defaults["stock"]
-    banks = [s for s in sources if s in stock_sources()]
+    banks = [s for s in allowed_sources if s in stock_sources()]
     if stock and not banks:
         raise ValueError(
             f'O beat "{identifier}" está com "stock": true, mas nenhuma fonte de banco '
@@ -320,7 +327,7 @@ def resolve_beat(defaults, beat, position):
         "narration": _text(beat.get("narration"), f"{where}.narration", required=False),
         "target": _text(beat.get("target"), f"{where}.target"),
         "intent": _choice(beat.get("intent", defaults["intent"]), f"{where}.intent", INTENTS),
-        "allowed_sources": sources,
+        "allowed_sources": allowed_sources,
         "stock": stock,
         "duration_hint_s": _number(
             beat.get("duration_hint_s", defaults["duration_hint_s"]),
@@ -625,7 +632,7 @@ def resolve_routes(beat_id, allowed_sources):
     return "Se você tiver esse material, " + "; ".join(parts) + "."
 
 
-def exhausted_phrase(beat, sources, queries):
+def exhausted_phrase(beat, allowed_sources, queries):
     """Todas as fontes pesquisáveis do beat já voltaram vazias para todas as buscas.
 
     Com fonte que só entra por link ou arquivo no beat, a frase diz "as fontes que
@@ -639,7 +646,7 @@ def exhausted_phrase(beat, sources, queries):
         else "em todas as fontes que o BRIEF.md permite para ele"
     )
     return (
-        f'Busquei o beat "{beat["id"]}" {where} ({", ".join(sources)}) com {asked}, e nenhuma '
+        f'Busquei o beat "{beat["id"]}" {where} ({", ".join(allowed_sources)}) com {asked}, e nenhuma '
         "trouxe nada. Repetir a mesma busca não vai mudar isso."
         + (f" {routes}" if routes else "")
         + " Me diga como seguir: outra forma de dizer o que precisa aparecer "
