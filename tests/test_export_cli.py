@@ -80,6 +80,23 @@ def register(api):
     api.exporter("demo_export", export, "Exporter de teste")
     api.resolver("demo_export_media", resolve, ["sfx", "musica"])
 """
+# Exporter que copia os avisos do plano para o EXPORT.md, como o HyperFrames faz nas pendências.
+WARNINGS_CODE = """
+from getbrolls.sdk import ExportResult
+
+
+def export(plan, options):
+    return ExportResult(files={{"EXPORT.md": "\\n".join(plan["warnings"]) + "\\n"}})
+
+
+def resolve(kind, name):
+    return None
+
+
+def register(api):
+    api.exporter("demo_export", export, "Exporter de teste")
+    api.resolver("demo_export_media", resolve, ["sfx", "musica"])
+"""
 # Dois arquivos que só diferem na caixa: num disco que não diferencia caixa, o mesmo arquivo.
 CASE_CODE = """
 from getbrolls.sdk import ExportResult
@@ -494,6 +511,36 @@ class ExportWriteGuardTests(ExportCase):
             self.assertNotIn(text, shown)
         self.assertIn("Nota do plugin demo_export:", shown)
 
+    def test_a_known_path_inside_a_longer_word_is_not_a_machine_path(self):
+        # HOME=/root não é "/root" dentro de "github.com/rootless-containers".
+        self.install()
+        files = {"index.html": "<a>github.com/rootless-containers</a> e /rootfs\n"}
+        with (
+            mock.patch.object(export, "run_exporter", return_value=self.validated(files)),
+            mock.patch.object(export.Path, "home", return_value=Path("/root")),
+        ):
+            out = export.run(self.args())
+        self.assertEqual("001", out["number"])
+        self.assertIn("rootless", (self.folder("001") / "index.html").read_text(encoding="utf-8"))
+
+    def test_a_plugin_warning_with_a_machine_path_is_scrubbed_not_refused(self):
+        self.install(code=WARNINGS_CODE)
+        real_build = export.export_plan.build
+        # `erro:` antes do caminho escapa do filtro de texto do plano; o filtro de caminhos conhecidos pega.
+        warning = f"Plugin demo_export: falhou em erro:{self.media_dir}/lofi.mp3"
+
+        def build(*args, **kwargs):
+            plan, sources = real_build(*args, **kwargs)
+            plan["warnings"].append(warning)
+            return plan, sources
+
+        with mock.patch.object(export.export_plan, "build", side_effect=build):
+            out = export.run(self.args())
+        text = (self.folder("001") / "EXPORT.md").read_text(encoding="utf-8")
+        self.assertNotIn(str(self.media_dir), text)
+        self.assertIn("erro:<permissions.paths>/lofi.mp3", text)
+        self.assertNotIn(str(self.media_dir), " ".join(out["warnings"]))
+
     def test_plugin_copy_refuses_a_file_outside_the_plugin_paths(self):
         self.install()
         outside = self.project / "lofi.mp3"
@@ -543,6 +590,54 @@ class ExportTextTests(unittest.TestCase):
                 self.assertNotIn("Errno", message)
                 self.assertNotIn("(OSError)", message)
                 self.assertIsNone(re.search(r"\((?:File exists|No such file or directory|Not a directory)\)", message))
+
+
+class MachinePathMatchTests(unittest.TestCase):
+    """Caminho conhecido só vale inteiro: não casa dentro de outra palavra, URL ou nome maior."""
+
+    # Montados em tempo de execução: o guarda do repositório recusa caminho de máquina escrito no código.
+    ROOT_HOME = "/root"
+    BO = "/".join(("", "Users", "bo"))
+    AN = "/".join(("", "home", "an"))
+
+    def machine(self, path, tag="<pasta pessoal>"):
+        return {path: ("a pasta pessoal", tag)}
+
+    def hits(self, text, path):
+        return export._machine_hits({"index.html": text}, self.machine(path), "files")
+
+    def test_a_path_inside_a_longer_name_or_url_is_not_a_hit(self):
+        cases = (
+            ("veja github.com/rootless-containers", self.ROOT_HOME),
+            ("/rootfs e /root-old e /root.bak", self.ROOT_HOME),
+            (f"{self.BO}b/Movies", self.BO),
+            ("https://site.com/home/announcements", self.AN),
+            (f"https://site.com{self.AN}/x", self.AN),
+        )
+        for text, path in cases:
+            with self.subTest(text=text):
+                self.assertEqual([], self.hits(text, path))
+                self.assertEqual(text, export._scrub(text, self.machine(path)))
+
+    def test_the_whole_path_is_a_hit_even_before_a_sentence_dot(self):
+        cases = (
+            (f"Salve em {self.BO}.", self.BO),
+            (f"Salve em {self.BO}/aula.mov", self.BO),
+            (f"<video src='{self.ROOT_HOME}/x.mp4'>", self.ROOT_HOME),
+            (f"caminho: {self.AN}", self.AN),
+            (f"erro:{self.AN}/x", self.AN),
+            (f"SALVE EM {self.BO.upper()}.", self.BO),
+        )
+        for text, path in cases:
+            with self.subTest(text=text):
+                self.assertEqual([("files['index.html']", "a pasta pessoal")], self.hits(text, path))
+                self.assertNotIn(path.casefold(), export._scrub(text, self.machine(path)).casefold())
+
+    def test_scrub_keeps_the_sentence_dot_and_the_rest_of_the_path(self):
+        self.assertEqual(
+            "Salve em <pasta pessoal>. E <pasta pessoal>/aula.mov",
+            export._scrub(f"Salve em {self.BO}. E {self.BO}/aula.mov", self.machine(self.BO)),
+        )
 
 
 class MinimalPlanTests(unittest.TestCase):

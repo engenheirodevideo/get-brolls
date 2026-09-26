@@ -128,9 +128,15 @@ def _machine_paths(project, registry, sources):
     return dict(sorted(found.items(), key=lambda pair: len(pair[0]), reverse=True))
 
 
+def _path_re(path):
+    """O caminho inteiro, sem caixa: não casa dentro de um nome maior (`/root` em `github.com/rootless`,
+    `/Users/bo` em `/Users/bob`); o ponto final de uma frase logo depois ainda casa."""
+    return re.compile(r"(?<![\w.~-])" + re.escape(path) + r"(?![\w-]|\.\w)", re.IGNORECASE)
+
+
 def _machine_hits(value, machine, where):
-    """`[(posição, rótulo)]` de cada texto de `value` que contém um caminho de `machine` (sem caixa)."""
-    folded = [(path.casefold(), label) for path, (label, _) in machine.items()]
+    """`[(posição, rótulo)]` de cada texto de `value` que contém um caminho de `machine` (inteiro, sem caixa)."""
+    patterns = [(_path_re(path), label) for path, (label, _) in machine.items()]
     hits = []
     stack = [(where, value)]
     while stack:
@@ -142,8 +148,7 @@ def _machine_hits(value, machine, where):
         elif type(item) in (list, tuple):
             stack.extend((f"{position}[{index}]", child) for index, child in enumerate(item))
         elif type(item) is str:
-            text = item.casefold()
-            label = next((label for path, label in folded if path in text), None)
+            label = next((label for pattern, label in patterns if pattern.search(item)), None)
             if label is not None:
                 hits.append((position, label))
     return sorted(hits)
@@ -152,7 +157,7 @@ def _machine_hits(value, machine, where):
 def _scrub(text, machine):
     """Troca cada caminho concreto desta máquina pela marca dele (`<projeto>`, `<pasta pessoal>`…)."""
     for path, (_, tag) in machine.items():
-        text = re.sub(re.escape(path), tag, text, flags=re.IGNORECASE)
+        text = _path_re(path).sub(tag, text)
     return text
 
 
@@ -238,6 +243,9 @@ def _run(args, name, project):
     out_dir = f"{export_folder.EXPORTS_DIR}/{name}/{export_folder.folder_name(number)}"
     resolve_media = functools.partial(resolve_with_plugins, registry)
     plan, sources = export_plan.build(project, ready["plan"], ready["items"], out_dir, resolve_media=resolve_media)
+    machine = _machine_paths(project, registry, sources)
+    # Aviso escrito por resolvedor de plugin pode trazer caminho desta máquina: sai com a marca, não recusa.
+    plan["warnings"] = list(dict.fromkeys(_scrub(warning, machine) for warning in plan["warnings"]))
     warnings = list(plan["warnings"])
     warnings += export_folder.changed_sources(export_folder.latest_marker(root), sources, project, number=number)
     validated = run_exporter(registry, name, plan, OPTIONS)
@@ -247,7 +255,6 @@ def _run(args, name, project):
         "export_version": plan["export_version"], "exporter": name, "plugin": owner,
         "plugin_version": row.get("version"), "getbrolls_version": __version__, "created": plan["generated_at"],
     }  # fmt: skip
-    machine = _machine_paths(project, registry, sources)
     warnings += _check_output(owner, name, validated, marker_base, machine)
     envelope = {
         "exporter": name, "plugin": owner, "out": out_dir, "number": export_folder.folder_name(number),
