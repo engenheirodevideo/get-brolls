@@ -427,11 +427,13 @@ video-01/
 ├── RULES.md
 ├── BRIEF.md                 # plano do vídeo; com roteiro, os beats cNN vêm do sync
 ├── ROTEIRO.md               # opcional: cenas, diretivas e fala (roteiro --action new)
-├── aroll/                   # apresentador e UGC: cNN.mp4 ou cNN-<take>.mp4
+├── aroll/                   # apresentador, UGC e narração: cNN.mp4 ou cNN-<take>.mp4 (+ .transcript.json)
 ├── assets/                  # componentes do projeto (não é o assets/ da instalação)
 │   └── marca/  lettering/  sfx/  musica/  composicoes/
 ├── output/playwright/       # screenshots e snapshots de trabalho
 ├── entrega/                 # uma pasta NN-<beat>-<alvo> por beat, gerada pelo deliver
+├── exports/                 # export --to <exporter>: hyperframes/001/, 002/… e LATEST; o core nunca apaga
+├── renders/                 # vídeos renderizados pelo HyperFrames (-o), fora do export
 └── brolls/
     ├── manifest.json        # tipo, formato, contexto e procedência
     ├── references.json      # referências explícitas e seus motivos
@@ -445,7 +447,7 @@ video-01/
     └── review.html
 ```
 
-`aroll/` e `assets/` só nascem com `roteiro --action new`: projeto sem roteiro não ganha pasta nova, e `assets --action list|where` não cria nada.
+`aroll/` e `assets/` só nascem com `roteiro --action new`: projeto sem roteiro não ganha pasta nova, e `assets --action list|where` não cria nada. `exports/` nasce no primeiro `export` (o `--dry-run` não cria nada), e `renders/` com o `mkdir -p renders` do `EXPORT.md`.
 
 ### Roteiro e componentes
 
@@ -456,6 +458,8 @@ O fluxo: `roteiro --action new --genero reels --tema "..."` cria o esqueleto; co
 Só mudar o alvo de um beat já aprovado pede `--confirm-target-change` (as aprovações voltam a pendente); mudar a fala é aviso. Ids de cena nunca são reaproveitados. Cena removida deixa o beat aposentado (`"retired": true`): ele continua no `BRIEF.md`, fica fora de `brief`, `status` e `deliver` (que o lista em `retired`), e candidatos e clipes ficam intactos. Antes de gravar, o sync copia `ROTEIRO.md` e `BRIEF.md` para `*.sync.bak`; `new --force` guarda o roteiro anterior em `ROTEIRO.md.bak`.
 
 Componentes resolvem pelo nome, primeiro em `assets/<tipo>/` do projeto, depois na biblioteca pessoal `~/.getbrolls/assets/<tipo>/`; `assets --action list|where` mostra onde cada um está. Música, SFX e marca registram a licença em `<nome>.licenca.json` (`origem`, `licenca`, `credito`) ao lado do arquivo. Quem monta o vídeo aponta para `brolls/clips/`, não para `entrega/`, que é renumerada quando a ordem muda. Guia do agente, com o formato completo: [`references/roteiro.md`](../references/roteiro.md).
+
+Roteiro revisado e sincronizado vira projeto de edição com `export --to hyperframes --project <projeto>` (experimental; o exporter vem de um plugin habilitado). Cada export é uma pasta nova, `exports/hyperframes/001/`, `002/`…, com `LATEST` guardando o número da mais nova, e o core nunca apaga, sobrescreve nem mescla uma pasta de export: o que você edita lá dentro é seu. `--dry-run` mostra o que seria gravado. Clipes entram por hardlink (não edite no lugar); A-ROLL e componentes, por clone ou cópia. A duração de cada cena vem do A-ROLL gravado; a legenda palavra a palavra, de `aroll/<nome do vídeo>.transcript.json`, gerado pelo `transcribe` do HyperFrames numa pasta temporária, nunca dentro do export. O render vai para `renders/` do projeto, fora do export; o primeiro `check` ou `render` baixa o GSAP e a fonte Inter. Passo a passo, portões e o comando do `transcribe`: [`references/roteiro.md`](../references/roteiro.md#export-do-roteiro-ao-projeto-de-edição).
 
 A memória é por projeto. Para consultar referências de outro projeto, use `references --project /caminho/anterior` com autorização do usuário. Os exemplos orientam a próxima busca; nunca transferem aprovação/licença automaticamente.
 

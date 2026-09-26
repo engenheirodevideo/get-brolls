@@ -73,8 +73,8 @@ Campos de `getbrolls-plugin.json`:
 `exporters` e `resolvers` são suportados nesta versão do SDK** — declarar
 qualquer nome nas outras chaves faz o manifesto ser recusado. `exporters` e
 `resolvers` são experimentais (veja [Exportadores](#exportadores) e
-[Resolvedores](#resolvedores)): o plugin os registra e o `plugins --action check`
-os confere, mas o comando que os usa, `gb export`, chega numa versão futura. Nomes de
+[Resolvedores](#resolvedores)): o plugin os registra, o `plugins --action check`
+os confere e o `gb export` os usa. Nomes de
 provider, preset, rota, exportador e resolvedor têm que ser iguais ao `id` do
 plugin ou começar por `<id>_`; nomes de comando só seguem a regra de nome
 (`a-z0-9_`), porque `gb x <plugin> <comando>` já dá o espaço de nomes. Tudo o
@@ -391,9 +391,9 @@ api.command("recentes", recentes, "Lista os vídeos mais recentes da pasta")
 ## Exportadores
 
 > **Experimental.** O formato do plano e as regras abaixo podem mudar em versão
-> minor. O comando que roda exportadores, `gb export`, chega numa versão futura
-> do Get B-rolls; nesta versão o SDK já registra o exportador, confere o contrato
-> no `plugins --action check` e sabe rodá-lo.
+> minor. Quem roda exportador é o `gb export --to <nome> --project <projeto>`,
+> sobre um roteiro revisado e sincronizado (passo a passo e portões em
+> [`references/roteiro.md`](../references/roteiro.md#export-do-roteiro-ao-projeto-de-edição)).
 
 ```python
 from html import escape
@@ -402,10 +402,16 @@ from getbrolls.sdk import ExportResult, MediaRequest
 
 
 def exporta(plan: dict, options: dict) -> ExportResult:
-    html = "<h1>" + escape(plan["title"]) + "</h1>"
+    partes = ["<h1>" + escape(plan["meta"]["tema"]) + "</h1>"]
+    partes += ["<h2>" + escape(cena["title"]) + "</h2>" for cena in plan["scenes"]]
+    media = [
+        MediaRequest(media_id, f"assets/midia-{n}{row['ext']}")
+        for n, (media_id, row) in enumerate(sorted(plan["media"].items()), start=1)
+        if row["available"]
+    ]
     return ExportResult(
-        files={"index.html": html},
-        media=[MediaRequest("m1", "assets/porta.wav")],
+        files={"index.html": "\n".join(partes)},
+        media=media,
         notes=["Abra index.html no navegador."],
     )
 
@@ -413,6 +419,18 @@ def exporta(plan: dict, options: dict) -> ExportResult:
 api.exporter("meu_banco_html", exporta, "Exporta o plano como página HTML")
 ```
 
+- **O plano.** Um dict JSON descrito em
+  [`schemas/export_plan.schema.json`](../schemas/export_plan.schema.json):
+  `export_version`, `exporter`, `out_dir` (`exports/<nome>/NNN`, a pasta que o
+  core vai criar), `generated_at`, `getbrolls_version`, `plan_version`, `meta`
+  (`aspecto`, `legenda`, `duracao_alvo_s`, `genero`, `tema`), `total_s`,
+  `timing`, `scenes`, `media` e `warnings`. Não há título no topo: o nome do
+  vídeo é `plan["meta"]["tema"]`. Cada cena traz `id`, `title`, tempo global
+  (`start_s`, `duration_s`), `layout` com as vagas (`slots`), `voice_media_ids`,
+  `words_timed` (legenda palavra a palavra, ou `None`), `layers`, `extensions` e
+  `speech_clean`. `media` mapeia cada id lógico (`clip:…`, `aroll:…`,
+  `asset:…`, `plugin:…`) para `kind`, `ext`, `available`, `credit` e o resto da
+  linha; a mídia com `available: false` não tem arquivo para pôr.
 - **Função pura.** O exportador recebe cópias do plano e das opções (`options`
   é `{"args": {}}` por enquanto) e devolve texto e pedidos de mídia. Ele nunca
   toca no disco: quem grava os `files` e coloca cada mídia no `dest` pedido é o
@@ -426,7 +444,11 @@ api.exporter("meu_banco_html", exporta, "Exporta o plano como página HTML")
 - **Nada de caminho absoluto.** O plano traz ids lógicos de mídia e caminhos
   relativos ao projeto (`exports/meu_banco_html/003`), nunca um caminho do disco.
   Um export costuma ser compartilhado, e caminho local vaza nome de usuário e
-  pastas: não escreva um em `files`. A mídia entra só por `media`.
+  pastas: não escreva um em `files`. A mídia entra só por `media`. O `gb export`
+  recusa, sem gravar nada, arquivo que contém um caminho real desta máquina (a
+  pasta do projeto, a pasta pessoal, `GB_HOME`, o caminho de uma mídia, uma
+  pasta de `permissions.paths`); texto que só tem cara de caminho (vindo da fala do
+  roteiro, por exemplo) sai como está, com um aviso.
 - **Falha.** Exceção no exportador vira erro `Plugin <id>: …` (exit 2): o texto
   de um `PluginError`, ou só o tipo de qualquer outra exceção. Um resultado fora
   das regras abaixo também vira erro, que diz qual regra quebrou.
@@ -452,13 +474,25 @@ mostra (o `gb export`, por exemplo) passa cada uma por `delivery.inert`, com
 e com o prefixo "Nota do plugin <id>:".
 
 O `plugins --action check` (e `sdk.testing.check_exporter`) roda o exportador
-com o plano mínimo de `getbrolls.sdk.exporters.MINIMAL_PLAN` e passa o resultado
-pelo mesmo validador: a regra quebrada aparece antes de qualquer export.
+com o plano mínimo de `getbrolls.sdk.exporters.MINIMAL_PLAN` (sem cena e sem
+mídia) e passa o resultado pelo mesmo validador: a regra quebrada aparece antes
+de qualquer export.
+
+Depois do validador, o `gb export` confere cada pedido de mídia contra o plano:
+o `media_id` existe em `plan["media"]` com `available: true`; o `dest` fica em
+`assets/…`, sem trecho vazio, `.` ou `..`, e termina na extensão `ext` da mídia
+(sem diferenciar maiúsculas); dois pedidos nunca vão para o mesmo `dest`.
+Passando tudo, o core grava os `files` e põe cada mídia numa pasta nova
+`exports/<nome>/NNN/` (hardlink para clipe, clone ou cópia para a mídia da
+pessoa, cópia para acerto de resolvedor), e nunca apaga nem sobrescreve uma
+pasta de export. Com `--dry-run`, o exportador roda, o resultado é conferido e
+nada é gravado.
 
 ## Resolvedores
 
-> **Experimental.** Resolvedores rodam só dentro do `gb export`, que chega numa
-> versão futura. `assets --action list/where` não os consultam.
+> **Experimental.** Resolvedores rodam só dentro do `gb export`, para os `SFX` e
+> as `MUSICA` do roteiro que as pastas do projeto e a biblioteca pessoal não
+> têm. `assets --action list/where` não os consultam.
 
 ```python
 from pathlib import Path
@@ -502,7 +536,9 @@ do projeto e da pessoa não acharem nada.
   inode e tamanho são os mesmos do acerto e que o caminho segue dentro da raiz, e
   copia desse descritor.
 - **Loja.** O acerto fica registrado com `store` igual ao id do plugin; o plugin
-  não escolhe esse valor.
+  não escolhe esse valor. No plano de export ele vira a mídia
+  `plugin:<id>:<tipo>:<nome>`, e cada par (tipo, nome) é perguntado uma vez só
+  por export.
 - **Licença informativa.** `license` é texto de até 500 caracteres, mostrado
   numa linha só, com a marcação Markdown/HTML escapada e o prefixo "Licença
   informada pelo plugin <id>:". Ela nunca vale como `permit` e nunca entra em
