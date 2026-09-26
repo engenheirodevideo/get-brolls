@@ -737,9 +737,7 @@ def _media_cell(export, scene):
 
 
 def _credit(row):
-    """Crédito numa linha de Markdown; o de loja de plugin já chega inerte do core e não é escapado de novo."""
-    if row["source"] == "plugin_store":
-        return " ".join(str(row["credit"]).split())
+    """Crédito numa linha de Markdown: o core manda texto cru de toda fonte, e o escape é sempre daqui."""
     return md(row["credit"])
 
 

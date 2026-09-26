@@ -654,11 +654,22 @@ class PendingTests(unittest.TestCase):
         self.assertNotIn("c07: fala sem narração", pending)
         self.assertIn("c07: A-ROLL pendente — GRAVAR aroll/c07.\\*", pending)
 
-    def test_plugin_store_credit_is_not_escaped_twice(self):
+    def test_every_credit_is_escaped_exactly_once(self):
+        # O plano traz `credit` cru de toda fonte (clipe, componente, loja de plugin): o exporter escapa tudo.
         plan = fixture()
+        hostile = {
+            "clip:pexels:1": "Clipe <b>x</b> [l](http://e) *a* www.site",
+            "asset:sfx:whoosh": "Som <i>y</i> [m](http://f) _b_",
+            "plugin:hyperframes:musica:lofi": "Licença informada pelo plugin hyperframes: bgm [x](http://a) `c`",
+        }
+        for media_id, credit in hostile.items():
+            plan["media"][media_id]["credit"] = credit
         text = generate(plan)["files"]["EXPORT.md"]
-        self.assertIn(plan["media"]["plugin:hyperframes:musica:lofi"]["credit"], text)
-        self.assertNotIn("\\\\\\[", text)
+        for media_id, credit in hostile.items():
+            with self.subTest(media_id=media_id):
+                self.assertEqual(1, text.count(hf.md(credit)))
+                self.assertNotIn(credit, text)
+        self.assertNotIn("\\\\", text)
 
 
 @unittest.skipUnless(shutil.which("node"), "Node.js ausente: o agrupamento das legendas roda em JS")

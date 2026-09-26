@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Get B-rolls export plan v1",
   "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/main/schemas/export_plan.schema.json",
-  "description": "O que o core entrega a um exporter. Documental e testado: a gramática dos ids de mídia e as referências cruzadas (toda mídia citada existe em media) são conferidas em código (export_plan.check_refs), porque este subconjunto de JSON Schema não tem propertyNames nem patternProperties. Todo texto é dado não confiável: o exporter escapa no formato dele. Nenhum valor é caminho absoluto.",
+  "description": "O que o core entrega a um exporter. Documental e testado: a gramática dos ids de mídia e as referências cruzadas (toda mídia citada existe em media) são conferidas em código (export_plan.check_refs), porque este subconjunto de JSON Schema não tem propertyNames nem patternProperties. Todo texto é cru e não confiável, inclusive credit (nunca pré-escapado pelo core, de fonte nenhuma): o exporter escapa no formato dele. Nenhum valor é caminho absoluto.",
   "type": "object",
   "additionalProperties": false,
   "required": ["export_version", "exporter", "out_dir", "generated_at", "getbrolls_version", "plan_version", "meta", "total_s", "timing", "scenes", "media", "warnings"],

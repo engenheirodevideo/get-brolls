@@ -5,7 +5,7 @@ pasta numerada escolhida pelo core. Saída: `(plano, fontes)`. O plano leva ids
 lógicos de mídia (`clip:…`, `aroll:…`, `asset:…`, `plugin:…`), tempo global por cena e
 por camada e nunca um caminho absoluto; `fontes` fica no core (caminho real,
 `st_dev`/`st_ino`, método previsto) e nunca vai para o plugin. Todo texto do plano é
-dado não confiável: o exporter escapa no formato dele.
+cru e não confiável, inclusive `credit`: o exporter escapa no formato dele.
 
 O resolvedor de mídia de plugin é injetado (`resolve_media(kind, name, extensions)
 -> (hit | None, avisos)`): só `sfx`/`musica` pendentes no projeto e na biblioteca
@@ -86,14 +86,14 @@ def _row(kind, source, **values):
 
 
 def _credit(text):
+    """Crédito cru numa linha (nunca escapado aqui, de fonte nenhuma): o exporter escapa no formato dele."""
     return one_line(text)[:CREDIT_MAX] if text else None
 
 
 def _clip_credit(c):
-    plugin = delivery.plugin_label(c)
-    title = delivery.inert(c.get("title") or c["id"], plugin)
+    title = one_line(c.get("title") or c["id"])
     url = c.get("source_url")
-    where = delivery.inert(url, plugin) if url else "original local"
+    where = one_line(url) if url else "original local"
     return _credit(f"{title} — {c.get('provider') or 'fonte'} ({where})")
 
 
@@ -324,7 +324,7 @@ class _Collector:
             return None
         if media_id not in self.media:
             license_text = hit.get("license")
-            shown = delivery.inert(license_text, store) if license_text else "não informada"
+            shown = one_line(license_text) if license_text else "não informada"
             self.media[media_id] = _row(
                 "audio", "plugin_store", store=store, ext=Path(hit["path"]).suffix.lower(), available=True,
                 has_audio=True, credit=_credit(f"Licença informada pelo plugin {store}: {shown}"),

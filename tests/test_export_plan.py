@@ -419,9 +419,7 @@ class LayerTests(ExportPlanTestCase):
         self.assertEqual("plugin:hyperframes:musica:lofi", music["media_id"])
         row = plan["media"]["plugin:hyperframes:musica:lofi"]
         self.assertEqual(("plugin_store", "hyperframes", ".mp3"), (row["source"], row["store"], row["ext"]))
-        self.assertEqual(
-            "Licença informada pelo plugin hyperframes: media-use bgm \\[x\\]\\(http\\://a\\)", row["credit"]
-        )
+        self.assertEqual("Licença informada pelo plugin hyperframes: media-use bgm [x](http://a)", row["credit"])
         self.assertEqual(
             ("plugin", 1, 2),
             (
@@ -668,6 +666,34 @@ class ResolverHygieneTests(ExportPlanTestCase):
         c06 = next(s for s in result["scenes"] if s["id"] == "c06")
         self.assertEqual([None, "plugin:hyperframes:musica:lofi"], [layer["media_id"] for layer in c06["layers"]])
         self.assertIn('c06: SFX "pop" pendente (não achei em sfx)', result["warnings"])
+
+
+class CreditTests(ExportPlanTestCase):
+    """`credit` é sempre texto cru, de toda fonte: quem escapa é o exporter, no formato dele."""
+
+    HOSTILE = "T <b>x</b> [l](http://e) *a* www.site"
+
+    def test_every_credit_in_the_plan_is_raw_text(self):
+        _, items = full_project(self.root)
+        project = Project(self.root)
+        project.write("brolls/clips/c02-plug.mp4")
+        items.append(clip("meuplug:9", "c02", "clips/c02-plug.mp4", title=self.HOSTILE, source_url="https://e.com/[x]"))
+        data = {"origem": "banco [y](http://b)", "licenca": "CC0", "credito": self.HOSTILE}
+        project.write("assets/sfx/whoosh.licenca.json", json.dumps(data))
+        plan = project.plan(FULL_ROTEIRO)  # a licença entra no plano de cena: relido depois de trocar o sidecar
+        with mock.patch.object(export_plan, "probe_voice", fake_probe):
+            result, _ = export_plan.build(
+                self.root, plan, items, "exports/hyperframes/001", resolve_media=fake_resolver([])
+            )
+        media = result["media"]
+        self.assertEqual(f"{self.HOSTILE} — meuplug (https://e.com/[x])", media["clip:meuplug:9"]["credit"])
+        self.assertEqual("Segundo <b>clipe</b> — pixabay (https://example.com/2)", media["clip:pixabay:2"]["credit"])
+        self.assertEqual(f"{self.HOSTILE} — CC0 (banco [y](http://b))", media["asset:sfx:whoosh"]["credit"])
+        self.assertEqual(
+            "Licença informada pelo plugin hyperframes: media-use bgm [x](http://a)",
+            media["plugin:hyperframes:musica:lofi"]["credit"],
+        )
+        self.assertNotIn("\\", json.dumps([row["credit"] for row in media.values()], ensure_ascii=False))
 
 
 class FixtureTests(ExportPlanTestCase):

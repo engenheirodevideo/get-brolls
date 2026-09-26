@@ -438,8 +438,9 @@ api.exporter("meu_banco_html", exporta, "Exporta o plano como página HTML")
   toca no disco: quem grava os `files` e coloca cada mídia no `dest` pedido é o
   core. Mudar o plano recebido não muda nada fora do exportador.
 - **Texto do plano não é confiável.** Títulos, falas, autores e créditos vêm de
-  fontes, inclusive de outros plugins. O exportador escapa esse texto para o
-  formato de saída: HTML com `html.escape`, JSON com `json.dumps`, JavaScript
+  fontes, inclusive de outros plugins. Todo texto do plano, incluindo `credit`, é
+  cru: o core não escapa nada para Markdown ou HTML, de fonte nenhuma. O
+  exportador escapa esse texto no formato de saída: HTML com `html.escape`, JSON com `json.dumps`, JavaScript
   só dentro de um JSON (nunca concatenado no código), Markdown com as marcações
   escapadas. O core confere a estrutura de `files`, mas **não** saneia o
   conteúdo dos arquivos.
@@ -541,10 +542,10 @@ do projeto e da pessoa não acharem nada.
   não escolhe esse valor. No plano de export ele vira a mídia
   `plugin:<id>:<tipo>:<nome>`, e cada par (tipo, nome) é perguntado uma vez só
   por export.
-- **Licença informativa.** `license` é texto de até 500 caracteres, mostrado
-  numa linha só, com a marcação Markdown/HTML escapada e o prefixo "Licença
-  informada pelo plugin <id>:". Ela nunca vale como `permit` e nunca entra em
-  `rights.evidence`.
+- **Licença informativa.** `license` é texto de até 500 caracteres. No plano de
+  export ela vira o `credit` da mídia, numa linha só, crua e com o prefixo
+  "Licença informada pelo plugin <id>:"; quem escapa a marcação é o exportador.
+  Ela nunca vale como `permit` e nunca entra em `rights.evidence`.
 
 ## Instalar e atualizar
 
