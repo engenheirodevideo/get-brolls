@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -14,8 +15,9 @@ from _paths import ROOT
 from _plugin_pins import pin_plugins
 from test_plugin_hyperframes import fixture, hf
 
-from getbrolls.sdk import ExportResult, PluginError, ResolverHit
-from getbrolls.sdk.registry import get_registry, reset_registry
+from getbrolls.sdk import ExportResult, PluginError, ResolverHit, ResolverSpec
+from getbrolls.sdk.registry import Registry, get_registry, reset_registry
+from getbrolls.sdk.resolvers import resolve_with_plugins
 
 EXAMPLE = ROOT / "examples" / "plugins" / "hyperframes"
 
@@ -36,7 +38,9 @@ class HomeCase(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.user, ignore_errors=True)
         self.home = Path(tempfile.mkdtemp(prefix="gb-hf-home-"))
         self.addCleanup(shutil.rmtree, self.home, ignore_errors=True)
-        env = mock.patch.dict(os.environ, {"HOME": str(self.user), "GB_HOME": str(self.home)})
+        # `USERPROFILE` também: no Windows, `Path.home()` e `expanduser` leem essa variável.
+        fake = {"HOME": str(self.user), "USERPROFILE": str(self.user), "GB_HOME": str(self.home)}
+        env = mock.patch.dict(os.environ, fake)
         env.start()
         self.addCleanup(env.stop)
         os.environ.pop("GB_PLUGINS", None)
@@ -141,10 +145,64 @@ class ResolverTests(HomeCase):
         self.media_use(["[" * 100_000 + "]" * 100_000, self.record("sfx_001", "sfx", path)])
         self.assertIsNotNone(self.resolve("sfx", "whoosh"))
 
+    def via_sdk(self, kind, name):
+        """O resolvedor pelo runner do core, numa thread: devolve `(acerto, avisos)` ou falha se travar."""
+        registry = Registry()
+        spec = ResolverSpec("hyperframes_media", ("sfx", "musica"), hf.MediaUseResolver(FakeApi()))
+        registry.add_resolver(spec, owner="hyperframes", roots=(str(self.user / ".media"),))
+        box = []
+        worker = threading.Thread(target=lambda: box.append(resolve_with_plugins(registry, kind, name, [".mp3"])))
+        worker.daemon = True
+        worker.start()
+        worker.join(10)
+        self.assertFalse(worker.is_alive(), "o resolvedor travou lendo o manifest.jsonl")
+        return box[0]
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO só existe em POSIX")
+    def test_fifo_ledger_returns_promptly_with_a_warning(self):
+        (self.user / ".media").mkdir()
+        os.mkfifo(self.user / ".media" / "manifest.jsonl")
+        hit, warnings = self.via_sdk("sfx", "whoosh")
+        self.assertIsNone(hit)
+        self.assertEqual(1, len(warnings))
+        self.assertIn("Plugin hyperframes: ~/.media/manifest.jsonl não é um arquivo comum", warnings[0])
+
+    def test_oversize_ledger_is_skipped_with_a_warning(self):
+        self.assertEqual(16 * 1024 * 1024, hf.LEDGER_MAX_BYTES)
+        path = self.cached("sfx_001.mp3")
+        self.media_use([self.record("sfx_001", "sfx", path), " " * 200])
+        with mock.patch.object(hf, "LEDGER_MAX_BYTES", 100):
+            with self.assertRaisesRegex(PluginError, r"~/\.media/manifest\.jsonl passa de 0 MB"):
+                self.resolve("sfx", "whoosh")
+            hit, warnings = self.via_sdk("sfx", "whoosh")
+        self.assertIsNone(hit)
+        self.assertIn("passa de", warnings[0])
+        self.assertIsNotNone(self.resolve("sfx", "whoosh"))
+
+    def test_symlinked_ledger_is_skipped_with_a_warning(self):
+        path = self.cached("sfx_001.mp3")
+        real = self.media_use([self.record("sfx_001", "sfx", path)], self.user / "outro") / "manifest.jsonl"
+        try:
+            (self.user / ".media" / "manifest.jsonl").symlink_to(real)
+        except (OSError, NotImplementedError):
+            self.skipTest("este sistema não cria link simbólico sem privilégio")
+        with self.assertRaisesRegex(PluginError, r"~/\.media/manifest\.jsonl é um link"):
+            self.resolve("sfx", "whoosh")
+
+    def test_bad_project_ledger_is_reported_not_skipped_for_the_global_one(self):
+        global_path = self.cached("sfx_009.mp3")
+        self.media_use([self.record("sfx_009", "sfx", global_path)])
+        project = self.user / ".media" / "projetos" / "reel"
+        (project / ".media" / "manifest.jsonl").mkdir(parents=True)
+        with self.assertRaisesRegex(PluginError, r"projeto reel: \.media/manifest\.jsonl não é um arquivo comum"):
+            self.resolve("sfx", "whoosh", {"media_projects": [str(project)]})
+        (project / ".media" / "manifest.jsonl").rmdir()
+        self.assertIsNotNone(self.resolve("sfx", "whoosh", {"media_projects": [str(project)]}))
+
     def test_ambiguous_level_is_a_plugin_error(self):
         first, second = self.cached("sfx_001.mp3"), self.cached("sfx_004.mp3")
         self.media_use([self.record("sfx_001", "sfx", first), self.record("sfx_004", "sfx", second)])
-        with self.assertRaisesRegex(PluginError, "ambíguo no media-use: sfx_001, sfx_004"):
+        with self.assertRaisesRegex(PluginError, "ambíguo no media-use: sfx_001, sfx_004. Deixe um só registro"):
             self.resolve("sfx", "whoosh")
 
     def test_id_beats_prompt_and_same_sha_is_not_ambiguous(self):

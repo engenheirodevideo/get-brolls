@@ -101,7 +101,7 @@ known-first-party = ["getbrolls"]
 [tool.pyright]
 typeCheckingMode = "basic"
 pythonVersion = "3.11"
-include = ["scripts", "tests"]
+include = ["scripts", "tests", "examples"]
 exclude = ["**/__pycache__", ".venv"]
 extraPaths = ["scripts"]
 

@@ -69,10 +69,14 @@ diferentes no mesmo nível é ambiguidade: o core mostra o aviso e segue sem o
 arquivo. `[SFX]` procura `type: sfx`; `[MUSICA]`, `type: bgm`.
 
 Só entram pastas dentro de `permissions.paths` (`~/.media`). Para usar um projeto
-em outro lugar, acrescente a raiz ao manifesto do plugin e habilite de novo — o
-pin mostra a mudança. A licença que o plugin informa é só informativa: aparece
-nos créditos como "Licença informada pelo plugin hyperframes: …" e nunca vale
-como `permit`.
+em outro lugar, acrescente a raiz ao manifesto do plugin instalado: com o
+conteúdo mudado, ele fica `suspended`. Rode a prévia do `enable` (sem `--yes`),
+confira a mudança com a pessoa e confirme com `--yes --expect <sha256>` da
+prévia. A licença que o plugin informa é só informativa: aparece nos créditos
+como "Licença informada pelo plugin hyperframes: …" e nunca vale como `permit`.
+
+Um `manifest.jsonl` que é link, FIFO ou pasta, ou que passa de 16 MB, não é lido:
+o core mostra o aviso e segue sem o arquivo daquele nome.
 
 ## Limites
 

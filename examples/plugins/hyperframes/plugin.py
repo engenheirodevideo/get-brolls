@@ -21,9 +21,12 @@ volume no tempo só por `data-automation`.
 
 import html
 import json
+import os
 import re
+import stat
 import unicodedata
 from pathlib import Path
+from typing import cast
 from urllib.parse import unquote
 
 from getbrolls.sdk import ExportResult, MediaRequest, PluginError, ResolverHit
@@ -842,7 +845,7 @@ def _export_md(export):
 
 def generate(plan):
     """`{"files": {caminho: texto}, "media": [{"media_id", "dest"}], "notes": [texto]}` a partir do plano."""
-    plan = _clean(plan)
+    plan = cast("dict", _clean(plan))
     export = _Export(plan)
     scenes = {}
     for scene in plan["scenes"]:
@@ -873,17 +876,56 @@ LEDGER = "manifest.jsonl"
 SENTINEL = ".hf-complete"
 LICENSE_MAX_CHARS = 500
 DEFAULT_PATHS = ("~/.media",)
+LEDGER_MAX_BYTES = 16 * 1024 * 1024
+# FIFO não trava a abertura; link no último pedaço é recusado (onde existe O_NOFOLLOW).
+_LEDGER_FLAGS = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
 
 
 def _normal(value):
     return " ".join(str(value or "").strip().lower().split())
 
 
-def _records(ledger):
-    """Registros do `manifest.jsonl` (objeto por linha); linha ruim ou arquivo ilegível é pulado."""
+def _read_ledger(ledger, shown):
+    """Bytes do `manifest.jsonl`, ou `None` sem arquivo. Link, FIFO, pasta, arquivo grande
+    demais ou erro de leitura viram `PluginError` com `shown` (nunca o caminho absoluto):
+    o acervo pode vir de um clone, e o export não pode travar nem encher a memória."""
+
+    def refuse(text):
+        raise PluginError(f"{shown} {text}; corrija o acervo do media-use.")
+
+    if Path(ledger).is_symlink():
+        refuse("é um link")
     try:
-        lines = Path(ledger).read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeDecodeError):
+        fd = os.open(ledger, _LEDGER_FLAGS)
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+    except OSError as exc:
+        refuse(f"não pôde ser aberto ({type(exc).__name__})")
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            refuse("não é um arquivo comum")
+        chunks, size = [], 0
+        while size <= LEDGER_MAX_BYTES:
+            chunk = os.read(fd, min(1024 * 1024, LEDGER_MAX_BYTES + 1 - size))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+        if size > LEDGER_MAX_BYTES:
+            refuse(f"passa de {LEDGER_MAX_BYTES // (1024 * 1024)} MB")
+        return b"".join(chunks)
+    except OSError as exc:
+        refuse(f"não pôde ser lido ({type(exc).__name__})")
+    finally:
+        os.close(fd)
+
+
+def _records(ledger, shown):
+    """Registros do `manifest.jsonl` (objeto por linha); linha ruim é pulada, arquivo fora de UTF-8 também."""
+    raw = _read_ledger(ledger, shown)
+    try:
+        lines = raw.decode("utf-8").splitlines() if raw else []
+    except UnicodeDecodeError:
         return []
     found = []
     for line in lines:
@@ -925,7 +967,7 @@ def _pick(records, media_type, name):
     found = _level_matches(records, media_type, name)
     if len({_same_file(r) for r in found}) > 1:
         ids = ", ".join(sorted(str(r.get("id")) for r in found))
-        raise PluginError(f'"{name}" é ambíguo no media-use: {ids}. Deixe um só ou use o id.')
+        raise PluginError(f'"{name}" é ambíguo no media-use: {ids}. Deixe um só registro com esse nome no acervo.')
     return found[0] if found else None
 
 
@@ -972,7 +1014,9 @@ class MediaUseResolver:
         return projects
 
     def _from_project(self, folder, media_type, name):
-        record = _pick(_records(folder / ".media" / LEDGER), media_type, name)
+        record = _pick(
+            _records(folder / ".media" / LEDGER, f"projeto {folder.name}: .media/{LEDGER}"), media_type, name
+        )
         relative = str((record or {}).get("path") or "")
         if not record or not relative or Path(relative).is_absolute() or ".." in Path(relative).parts:
             return None
@@ -981,7 +1025,7 @@ class MediaUseResolver:
 
     def _from_global(self, media_type, name):
         store = Path.home() / ".media"
-        records = [r for r in _records(store / LEDGER) if r.get("reusable") is True]
+        records = [r for r in _records(store / LEDGER, f"~/.media/{LEDGER}") if r.get("reusable") is True]
         record = _pick(records, media_type, name)
         cached = Path(str((record or {}).get("cached_path") or ""))
         if not record or not cached.is_absolute() or not (cached.parent / SENTINEL).is_file() or not cached.is_file():
