@@ -12,6 +12,12 @@ logger with `logs.get(__name__.rsplit(".", 1)[-1])` and log through
 `logs.event()` or `logs.timed()`.
 """
 
+# pylint: disable=broad-exception-caught,too-few-public-methods,no-else-raise,cyclic-import
+# Legado: ocorrências pré-existentes (corpo idêntico à origin/main). O ciclo
+# (getbrolls.logs <-> getbrolls.runtime) já existe na origin/main: `runtime.py`
+# importa `logs` tardiamente (dentro de função) exatamente para quebrar esse
+# ciclo em tempo de execução.
+
 import contextlib
 import json
 import logging
