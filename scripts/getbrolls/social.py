@@ -1,5 +1,11 @@
 """Social acquisition using the existing yt-dlp/FFmpeg engine, without API keys."""
 
+# pylint: disable=invalid-name,missing-function-docstring,global-statement,too-many-locals,cyclic-import
+# Legado: ocorrências pré-existentes (corpo idêntico à origin/main); `_sleep_logged`
+# é módulo-privado (guarda de log único por processo), não uma constante real. O
+# ciclo (getbrolls.providers <-> getbrolls.social) já existe na origin/main: quem
+# quebra o ciclo em tempo de execução é o import tardio em `providers._youtube`.
+
 import hashlib
 import json
 import logging
@@ -37,7 +43,8 @@ def sleep_settings():
         values = tuple(int(part.strip()) for part in parts)
     except ValueError:
         values = ()
-    if len(values) != 3 or any(v < 0 for v in values) or values[1] > values[2]:  # noqa: PLR2004 - "requests,min,max": exatamente 3 campos
+    bad_count = len(values) != 3  # noqa: PLR2004 - "requests,min,max": exatamente 3 campos
+    if bad_count or any(v < 0 for v in values) or values[1] > values[2]:
         raise ValueError('GB_YTDLP_SLEEP: use "requests,min,max" em segundos inteiros, com min <= max.')
     return values
 
@@ -229,7 +236,8 @@ def run(arguments, timeout=180, *, op=None):
     except (subprocess.SubprocessError, OSError) as exc:
         _log_subprocess(op, started, status="error", exit_code=None)
         raise ProviderError(
-            "yt-dlp não concluiu: confira dependências, disponibilidade do vídeo e sessão exigida pela fonte. Para Instagram, use o fluxo navegador → pares CDN descrito em docs/GUIDE.md."
+            "yt-dlp não concluiu: confira dependências, disponibilidade do vídeo e sessão exigida "
+            "pela fonte. Para Instagram, use o fluxo navegador → pares CDN descrito em docs/GUIDE.md."
         ) from exc
     _log_subprocess(op, started, status="ok", exit_code=proc.returncode)
     return proc.stdout, _extract_warnings(proc.stderr)
@@ -252,7 +260,8 @@ SUBTITLE_LANGS = ("pt", "en")
 def _language_from(name):
     """`probe.pt.vtt` → `pt`; `probe.pt-BR.vtt` → `pt-BR`."""
     parts = Path(name).name.split(".")
-    return parts[-2] if len(parts) >= 3 else "und"  # noqa: PLR2004 - "nome.idioma.vtt": pelo menos 3 partes (ver exemplo acima)
+    # "nome.idioma.vtt": pelo menos 3 partes (ver exemplo acima)
+    return parts[-2] if len(parts) >= 3 else "und"  # noqa: PLR2004
 
 
 # Teto da lista de idiomas na resposta: o YouTube anuncia centenas de traduções
@@ -345,7 +354,9 @@ def metadata(url):
     }
 
 
-def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):  # noqa: C901 - existing size; one branch per cache/retry/subtitle-language outcome
+def probe_remote(  # noqa: C901 - existing size; one branch per cache/retry/subtitle-language outcome
+    url, langs=SUBTITLE_LANGS, cache=None
+):
     """O que a fonte conta sobre si: duração, capítulos, legendas e descrição.
 
     Um único pedido ao yt-dlp, sem baixar vídeo, com as mesmas pausas de
