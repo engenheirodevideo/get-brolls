@@ -150,6 +150,7 @@ def candidate_arg(candidate):
 
 
 def fetch_stage_message(candidate):
+    """Frase para um candidato cuja rota só entrega o arquivo no `fetch`: como revisar agora."""
     # Foto não tem trecho: a prévia de referência dela vai sem `--start/--end`.
     span = "" if (candidate.get("media") or {}).get("kind") == "image" else " --start <INICIO> --end <FIM>"
     return (
@@ -161,6 +162,7 @@ def fetch_stage_message(candidate):
 
 
 def license_evidence(plugin, text):
+    """Evidência de licença registrada pela rota do plugin, com o prefixo que diz de onde veio."""
     from .sdk.guard import LICENSE_EVIDENCE_LABEL, plugin_evidence
 
     return plugin_evidence(LICENSE_EVIDENCE_LABEL, plugin, text)
@@ -324,6 +326,7 @@ def _reuse_fetched(cache, candidate):
 
 
 def route_consumed_message(candidate, consumed_at):
+    """Frase para uma licença já consumida cujo arquivo sumiu do cache: nunca roda a rota de novo."""
     return (
         f"A licença da fonte {candidate.get('provider')} para {candidate.get('id')} já foi consumida em "
         f"{consumed_at}, e o arquivo licenciado não está mais no cache privado do projeto "
@@ -394,6 +397,81 @@ def direct_media(candidate):
     return bool(candidate.get("media_url")) and (candidate.get("acquisition") or {}).get("method") != "yt-dlp"
 
 
+def _log_reused(candidate_id, reused_path):
+    """Registra `source_materialized` de uma fonte reaproveitada do cache (`kind=local`)."""
+    logs.event(
+        log,
+        logging.INFO,
+        "source_materialized",
+        candidate=candidate_id,
+        bytes=reused_path.stat().st_size if reused_path.is_file() else None,
+        ms=0,
+        kind="local",
+    )
+
+
+def _move_into_cache(cache, candidate_id, target, sha, suffix):
+    """Leva `target` para o cache com o nome `<id>-<sha><suffix>` e devolve esse caminho.
+
+    Um arquivo com esse nome e outro conteúdo nunca é sobrescrito: vira erro."""
+    final = cache / (id_stem(candidate_id) + "-" + sha + suffix)
+    if not final.exists():
+        target.replace(final)
+        final.chmod(0o600)
+    elif digest(final) != sha:
+        logs.event(
+            log, logging.WARNING, "source_cache", candidate=candidate_id, result="stale", reason="digest_mismatch"
+        )
+        raise ValueError("Cache de mídia inconsistente; não foi sobrescrito.")
+    return final
+
+
+def _remember_in_cache(cache, candidate_id, final, entry, started):
+    """Registra `source_materialized` (`kind=remote`) e guarda `final` no índice do cache.
+
+    `entry` traz `sha`, `start` e `duration` do arquivo, em tempo da fonte."""
+    logs.event(
+        log,
+        logging.INFO,
+        "source_materialized",
+        candidate=candidate_id,
+        bytes=final.stat().st_size,
+        ms=round((time.monotonic() - started) * 1000),
+        kind="remote",
+    )
+    index = _load_index(cache)
+    entries = index.setdefault(candidate_id, [])
+    entries[:] = [e for e in entries if e.get("sha") != entry["sha"]]
+    entries.append({"path": str(final.resolve()), **entry})
+    _save_index(cache, index)
+
+
+def _direct_download(candidate, refresh):
+    """O que `cache_direct_media` baixa: o item atualizado (com as versões menores da
+    foto da NASA em `media_url_fallbacks`) ou `{"media_url": ...}` do próprio candidato."""
+    url = candidate.get("media_url")
+    fresh = {}
+    if refresh:
+        from .providers import refresh as refresh_candidate
+
+        fresh = refresh_candidate(candidate) or {}
+        url = fresh.get("media_url") or url
+    if not url:
+        raise ValueError("Arquivo do provedor não está mais disponível.")
+    return fresh if fresh.get("media_url") else {"media_url": url}
+
+
+def _download_direct(rendition, target):
+    """Baixa `rendition` para `target` e devolve `target`.
+
+    Como no `fetch`: a foto da NASA traz as versões menores em `media_url_fallbacks`,
+    e acima do teto de download vale a próxima."""
+    from .http import download_rendition
+
+    download_rendition(rendition, target)
+    return target
+
+
 def cache_direct_media(ledger, candidate, refresh=True, stage="inspect"):
     """Baixa uma vez o arquivo direto no cache privado e devolve o caminho local.
 
@@ -404,77 +482,21 @@ def cache_direct_media(ledger, candidate, refresh=True, stage="inspect"):
     _ensure_private_cache_dir(cache)
     reused = _reuse_from_index(cache, candidate["id"], 0, 0)
     if reused is not None:
-        reused_path = Path(reused["path"])
-        logs.event(
-            log,
-            logging.INFO,
-            "source_materialized",
-            candidate=candidate["id"],
-            bytes=reused_path.stat().st_size if reused_path.is_file() else None,
-            ms=0,
-            kind="local",
-        )
-        return reused_path
-    routed = route_name(candidate) is not None
-    url = candidate.get("media_url")
-    fresh = {}
-    if refresh and not routed:
-        from .providers import refresh as refresh_candidate
-
-        fresh = refresh_candidate(candidate) or {}
-        url = fresh.get("media_url") or url
-    if not url and not routed:
-        raise ValueError("Arquivo do provedor não está mais disponível.")
-    from .http import download_rendition
-
+        _log_reused(candidate["id"], Path(reused["path"]))
+        return Path(reused["path"])
+    rendition = None if route_name(candidate) is not None else _direct_download(candidate, refresh)
     started = time.monotonic()
     with tempfile.TemporaryDirectory(dir=cache) as work, contextlib.ExitStack() as route_stack:
-        if routed:
+        if rendition is None:
             target = route_stack.enter_context(plugin_source(ledger, candidate, stage)).path
         else:
-            target = Path(work) / "source.bin"
-            # Como no `fetch`: a foto da NASA traz as versões menores em
-            # `media_url_fallbacks`, e acima do teto de download vale a próxima.
-            download_rendition(fresh if fresh.get("media_url") else {"media_url": url}, target)
+            target = _download_direct(rendition, Path(work) / "source.bin")
         # Antes do ffprobe: foto de formato desconhecido é recusada com a razão certa.
         suffix = _cached_suffix(candidate, target)
         info = probe(target)
         sha = digest(target)
-        final = cache / (id_stem(candidate["id"]) + "-" + sha + suffix)
-        if not final.exists():
-            target.replace(final)
-            final.chmod(0o600)
-        elif digest(final) != sha:
-            logs.event(
-                log,
-                logging.WARNING,
-                "source_cache",
-                candidate=candidate["id"],
-                result="stale",
-                reason="digest_mismatch",
-            )
-            raise ValueError("Cache de mídia inconsistente; não foi sobrescrito.")
-    logs.event(
-        log,
-        logging.INFO,
-        "source_materialized",
-        candidate=candidate["id"],
-        bytes=final.stat().st_size,
-        ms=round((time.monotonic() - started) * 1000),
-        kind="remote",
-    )
-    index = _load_index(cache)
-    entries = index.setdefault(candidate["id"], [])
-    entries[:] = [e for e in entries if e.get("sha") != sha]
-    entries.append(
-        {
-            "path": str(final.resolve()),
-            "sha": sha,
-            "start": 0,
-            "duration": info["duration_s"],
-        }
-    )
-    _save_index(cache, index)
+        final = _move_into_cache(cache, candidate["id"], target, sha, suffix)
+    _remember_in_cache(cache, candidate["id"], final, {"sha": sha, "start": 0, "duration": info["duration_s"]}, started)
     return final
 
 
@@ -513,7 +535,87 @@ def prepare_image_source(ledger, candidate, *, stage="preview"):
     c["media"].update(width=info["width"], height=info["height"])
 
 
-def prepare_source(ledger, candidate, start, end, tolerant=False, *, stage="preview"):  # noqa: C901, PLR0912, PLR0913, PLR0915 - existing size; walks every source-readiness state (local/remote, cache hit/miss, tolerant, plugin route)
+def _ready_locally(candidate, start, end):
+    """A mídia de trabalho já guardada no candidato cobre [start, end]?
+
+    Uma mídia de trabalho alterada desde que foi guardada vira erro."""
+    path = candidate.get("local_path")
+    if not (path and Path(path).is_file()):
+        return False
+    if digest(path) != candidate["local_sha256"]:
+        raise ValueError("Fonte de trabalho alterada; importe novamente antes de revisar.")
+    offset = candidate.get("local_start_s", 0)
+    duration = candidate.get("local_duration_s")
+    return duration is not None and start >= offset and end <= offset + duration + 0.05
+
+
+def _reused_for_range(cache, candidate, start, end):
+    """Aproveita do cache um arquivo que já cobre [start, end]; `True` se aproveitou."""
+    reused = _reuse_from_index(cache, candidate["id"], start, end)
+    if reused is None:
+        return False
+    info = probe(reused["path"])
+    candidate.update(
+        local_path=str(Path(reused["path"]).resolve()),
+        local_sha256=reused["sha"],
+        local_start_s=reused["start"],
+        local_duration_s=reused["duration"],
+    )
+    candidate["media"].update(width=info["width"], height=info["height"], fps=info["fps"])
+    _log_reused(candidate["id"], Path(reused["path"]))
+    return True
+
+
+def _acquire(candidate, target, span, route_stack, source):
+    """Traz o arquivo da fonte para `target`; devolve `(caminho, extensão, início)`.
+
+    `span` é `(start, end)`; `source` é `(ledger, stage)`, para a rota de plugin."""
+    method = candidate["acquisition"].get("method")
+    if method == "yt-dlp":
+        from .social import download_segment
+
+        download_segment(candidate["source_url"], target, span[0], span[1])
+        return target, ".mp4", span[0]
+    if method == "https":
+        from .http import download_rendition
+        from .providers import refresh
+
+        fresh = refresh(candidate)
+        if not fresh.get("media_url"):
+            raise ValueError("Arquivo do provedor não está mais disponível.")
+        download_rendition(fresh, target)
+        return target, _cached_suffix(candidate, target), 0
+    if route_name(candidate) is not None:
+        # Rota de plugin traz o arquivo inteiro (preview) para a pasta de trabalho;
+        # o resto — ffprobe, sha256, cache, índice — segue igual às outras fontes.
+        ledger, stage = source
+        return route_stack.enter_context(plugin_source(ledger, candidate, stage)).path, ".mp4", 0
+    raise ValueError(f"Esta fonte requer importação do original local (method={method!r}).")
+
+
+def _acquire_into_cache(cache, candidate, span, tolerant, source):
+    """Traz o arquivo da fonte e o guarda no cache; devolve `(final, sha, início, probe)`.
+
+    Sem `tolerant`, um arquivo mais curto que `span` (`(start, end)`) vira erro."""
+    with tempfile.TemporaryDirectory(dir=cache) as work, contextlib.ExitStack() as route_stack:
+        target, suffix, offset = _acquire(candidate, Path(work) / "source.mp4", span, route_stack, source)
+        info = probe(target)
+        if span[1] - offset > info["duration_s"] + 0.1 and not tolerant:
+            raise ValueError("Original não contém o intervalo solicitado.")
+        sha = digest(target)
+        return _move_into_cache(cache, candidate["id"], target, sha, suffix), sha, offset, info
+
+
+# Seis parâmetros: é a assinatura que preview, scan e fetch chamam.
+def prepare_source(  # noqa: PLR0913  # pylint: disable=too-many-arguments  # assinatura chamada pelo core
+    ledger,
+    candidate,
+    start,
+    end,
+    tolerant=False,
+    *,
+    stage="preview",
+):
     """Deixa a mídia de trabalho pronta para [start, end] em tempo da fonte.
 
     `tolerant=True` aceita que o arquivo baixado seja mais curto do que o pedido — é
@@ -522,102 +624,16 @@ def prepare_source(ledger, candidate, start, end, tolerant=False, *, stage="prev
     `tolerant` precisa reler `local_duration_s` antes de montar a grade.
     """
     c = candidate
-    remote = c["provider"] != "local"
-    if not remote:
+    if c["provider"] == "local" or _ready_locally(c, start, end):
         return
-    path = c.get("local_path")
-    if path and Path(path).is_file():
-        if digest(path) != c["local_sha256"]:
-            raise ValueError("Fonte de trabalho alterada; importe novamente antes de revisar.")
-        offset = c.get("local_start_s", 0)
-        duration = c.get("local_duration_s")
-        if duration is not None and start >= offset and end <= offset + duration + 0.05:
-            return
     cache = ledger.root.parent / ".getbrolls-sources"
     _ensure_private_cache_dir(cache)
-    reused = _reuse_from_index(cache, c["id"], start, end)
-    if reused is not None:
-        info = probe(reused["path"])
-        c.update(
-            local_path=str(Path(reused["path"]).resolve()),
-            local_sha256=reused["sha"],
-            local_start_s=reused["start"],
-            local_duration_s=reused["duration"],
-        )
-        c["media"].update(width=info["width"], height=info["height"], fps=info["fps"])
-        reused_path = Path(reused["path"])
-        logs.event(
-            log,
-            logging.INFO,
-            "source_materialized",
-            candidate=c["id"],
-            bytes=reused_path.stat().st_size if reused_path.is_file() else None,
-            ms=0,
-            kind="local",
-        )
+    if _reused_for_range(cache, c, start, end):
         return
     started = time.monotonic()
-    with tempfile.TemporaryDirectory(dir=cache) as work, contextlib.ExitStack() as route_stack:
-        target = Path(work) / "source.mp4"
-        suffix = ".mp4"
-        if c["acquisition"].get("method") == "yt-dlp":
-            from .social import download_segment
-
-            download_segment(c["source_url"], target, start, end)
-            offset = start
-        elif c["acquisition"].get("method") == "https":
-            from .http import download_rendition
-            from .providers import refresh
-
-            fresh = refresh(c)
-            if not fresh.get("media_url"):
-                raise ValueError("Arquivo do provedor não está mais disponível.")
-            download_rendition(fresh, target)
-            suffix = _cached_suffix(c, target)
-            offset = 0
-        elif route_name(c) is not None:
-            # Rota de plugin traz o arquivo inteiro (preview) para a pasta de trabalho;
-            # o resto — ffprobe, sha256, cache, índice — segue igual às outras fontes.
-            target = route_stack.enter_context(plugin_source(ledger, c, stage)).path
-            offset = 0
-        else:
-            method = c["acquisition"].get("method")
-            raise ValueError(f"Esta fonte requer importação do original local (method={method!r}).")
-        info = probe(target)
-        if end - offset > info["duration_s"] + 0.1 and not tolerant:
-            raise ValueError("Original não contém o intervalo solicitado.")
-        sha = digest(target)
-        final = cache / (id_stem(c["id"]) + "-" + sha + suffix)
-        if not final.exists():
-            target.replace(final)
-            final.chmod(0o600)
-        elif digest(final) != sha:
-            logs.event(
-                log, logging.WARNING, "source_cache", candidate=c["id"], result="stale", reason="digest_mismatch"
-            )
-            raise ValueError("Cache de mídia inconsistente; não foi sobrescrito.")
+    final, sha, offset, info = _acquire_into_cache(cache, c, (start, end), tolerant, (ledger, stage))
     c.update(
         local_path=str(final.resolve()), local_sha256=sha, local_start_s=offset, local_duration_s=info["duration_s"]
     )
     c["media"].update(width=info["width"], height=info["height"], fps=info["fps"])
-    logs.event(
-        log,
-        logging.INFO,
-        "source_materialized",
-        candidate=c["id"],
-        bytes=final.stat().st_size,
-        ms=round((time.monotonic() - started) * 1000),
-        kind="remote",
-    )
-    index = _load_index(cache)
-    entries = index.setdefault(c["id"], [])
-    entries[:] = [e for e in entries if e.get("sha") != sha]
-    entries.append(
-        {
-            "path": str(final.resolve()),
-            "sha": sha,
-            "start": offset,
-            "duration": info["duration_s"],
-        }
-    )
-    _save_index(cache, index)
+    _remember_in_cache(cache, c["id"], final, {"sha": sha, "start": offset, "duration": info["duration_s"]}, started)
