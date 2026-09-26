@@ -45,6 +45,7 @@ _O_BINARY = getattr(os, "O_BINARY", 0)
 
 
 def folder_name(number):
+    """O número do export com 3 dígitos, com zero à esquerda (`1` -> `"001"`)."""
     return f"{number:03d}"
 
 
@@ -53,9 +54,10 @@ def exporter_root(project, exporter):
     base = Path(project).expanduser().resolve() / EXPORTS_DIR
     root = base / exporter
     for path, label in ((base, "exports/"), (root, f"exports/{exporter}/")):
-        if loader._is_link(path):
+        if loader._is_link(path):  # pylint: disable=protected-access  # cross: helper privado do sdk (fora do escopo)
             raise ValueError(
-                f"{label} é um link: o export só grava numa pasta de verdade do projeto. Troque o link por uma pasta e repita."
+                f"{label} é um link: o export só grava numa pasta de verdade do projeto. "
+                "Troque o link por uma pasta e repita."
             )
         if path.exists() and not path.is_dir():
             raise ValueError(f"{label} é um arquivo, não uma pasta: renomeie esse arquivo e repita.")
@@ -136,10 +138,10 @@ def _remove_file(path, source):
         path.unlink()
     except PermissionError:
         try:
-            delivery._thaw_unlink(path)
+            delivery._thaw_unlink(path)  # pylint: disable=protected-access  # cross: helper privado legado
         finally:
             if source is not None:
-                delivery._freeze(source, "hardlink")
+                delivery._freeze(source, "hardlink")  # pylint: disable=protected-access  # cross: idem
 
 
 def remove_staging(staging, sources_by_rel=None):
@@ -224,7 +226,8 @@ def sweep_abandoned(root):
             continue
         if not path.name.startswith(STAGING_PREFIX):
             continue
-        marker = None if loader._is_link(path) or not path.is_dir() else _read_marker(path / MARKER)
+        is_link = loader._is_link(path)  # pylint: disable=protected-access  # cross: helper privado do sdk
+        marker = None if is_link or not path.is_dir() else _read_marker(path / MARKER)
         if marker is None:
             warnings.append(f"{shown} não tem o marcador do get-brolls: ficou onde está (apague se for seu)")
             continue
@@ -296,7 +299,10 @@ def _moved(wanted, number):
         return []
     old, new = folder_name(wanted), folder_name(number)
     return [
-        f"a pasta {old} apareceu durante o export: este ficou em {new}; nos comandos do EXPORT.md, troque {old} por {new}"
+        (
+            f"a pasta {old} apareceu durante o export: este ficou em {new}; "
+            f"nos comandos do EXPORT.md, troque {old} por {new}"
+        )
     ]
 
 
@@ -362,6 +368,37 @@ def _write_latest(root, number):
     return []
 
 
+def _write_plain_files(staging, files):
+    """Grava cada arquivo de texto do export dentro do staging, criando as subpastas que faltarem."""
+    for relative, text in files.items():
+        target = _inside(staging, relative)
+        data = _utf8(text, f"O texto de {relative}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _write_new(target, data)
+
+
+def _place_media(spec, placements, sources_by_rel):
+    """Põe cada mídia do plano no staging (hardlink/clone/cópia), registrando o marcador antes de ligar."""
+    media, placed, copied = {}, [], 0
+    for media_id, dest, source in placements:
+        target = _inside(spec["staging"], dest)
+        refreeze = _refreeze_source(spec["root"], source)
+        if source["method"] == "hardlink":
+            sources_by_rel[dest] = source["path"]
+            # Registrado antes de ligar: a varredura acha a fonte mesmo se este processo morrer.
+            media[dest] = {"media_id": media_id, "refreeze_source": refreeze}
+            _rewrite_marker(spec["staging"], spec["marker_base"], "staging", spec["number"], media)
+        method, size = spec["place"](source, target)
+        copied += size
+        media[dest] = {
+            "media_id": media_id, "method": method, "source_ino": source["st_ino"],
+            "source_mtime_ns": source.get("st_mtime_ns"), "source_size": source["st_size"],
+            "refreeze_source": refreeze,
+        }  # fmt: skip
+        placed.append({"media_id": media_id, "dest": dest, "method": method})
+    return media, placed, copied
+
+
 def write_export(root, number, content, marker_base, place):
     """Grava um export novo e devolve `{"number", "media", "copied_bytes", "warnings", "latest"}`.
 
@@ -380,28 +417,9 @@ def write_export(root, number, content, marker_base, place):
         _write_new(staging / MARKER, _marker_bytes(marker_base, "staging", number, {}))
         if content.get("plan") is not None:
             _write_new(staging / PLAN_FILE, _utf8(content["plan"], "O plano do export"))
-        for relative, text in content["files"].items():
-            target = _inside(staging, relative)
-            data = _utf8(text, f"O texto de {relative}")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            _write_new(target, data)
-        media, placed, copied = {}, [], 0
-        for media_id, dest, source in content["placements"]:
-            target = _inside(staging, dest)
-            refreeze = _refreeze_source(root, source)
-            if source["method"] == "hardlink":
-                sources_by_rel[dest] = source["path"]
-                # Registrado antes de ligar: a varredura acha a fonte mesmo se este processo morrer.
-                media[dest] = {"media_id": media_id, "refreeze_source": refreeze}
-                _rewrite_marker(staging, marker_base, "staging", number, media)
-            method, size = place(source, target)
-            copied += size
-            media[dest] = {
-                "media_id": media_id, "method": method, "source_ino": source["st_ino"],
-                "source_mtime_ns": source.get("st_mtime_ns"), "source_size": source["st_size"],
-                "refreeze_source": refreeze,
-            }  # fmt: skip
-            placed.append({"media_id": media_id, "dest": dest, "method": method})
+        _write_plain_files(staging, content["files"])
+        spec = {"root": root, "staging": staging, "marker_base": marker_base, "number": number, "place": place}
+        media, placed, copied = _place_media(spec, content["placements"], sources_by_rel)
         number, moved = _promote(root, staging, number, (marker_base, media))
     finally:
         if staging.exists():
