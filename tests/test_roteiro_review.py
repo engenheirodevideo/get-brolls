@@ -62,6 +62,13 @@ class ReviewHashTests(unittest.TestCase):
 
 
 class StatusTests(unittest.TestCase):
+    def test_set_status_replaces_a_status_with_space_before_the_colon(self):
+        text = DOC.replace('tema: "t"', 'tema: "t"\nstatus : draft')
+        changed = roteiro_review.set_status(text, "revisado")
+        self.assertIn("status: revisado", changed)
+        self.assertNotIn("status : draft", changed)
+        self.assertEqual(1, changed.count("status"))
+
     def test_set_status_inserts_then_replaces_inside_the_frontmatter(self):
         once = roteiro_review.set_status(DOC, "revisado")
         self.assertIn('tema: "t"\nstatus: revisado\n---', once)

@@ -39,7 +39,8 @@ REQUIRED = ("type", "genero", "tema")
 SLUG_KEYS = ("cliente", "direcao")
 SLUG_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 SLUG_MAX = 64
-_PAIR = re.compile(r"^([a-z_]+):(.*)$")
+# Espaço antes dos dois-pontos é tolerado: `legenda : false` é a chave `legenda`.
+_PAIR = re.compile(r"^([a-z_]+)[ \t]*:(.*)$")
 # Chave de outra ferramenta: começa sem espaço, `-`, `#` ou aspas e termina em `:` seguido de espaço ou fim.
 _OTHER_KEY = re.compile(r"^([^\s#:\-\"'][^:]*):(?:\s|$)")
 
@@ -199,9 +200,8 @@ def is_roteiro(project):
         return False
     _, body, _ = parse_frontmatter(lines)
     for line in lines[1:body]:
-        match = _PAIR.match(line)
-        if match and match.group(1) == "type":
-            return _unquote(match.group(2).strip())[0] == "roteiro"
+        if frontmatter_key(line) == "type":
+            return _unquote(line.partition(":")[2].strip())[0] == "roteiro"
     return False
 
 
@@ -262,6 +262,28 @@ def _field(key, value, quoted, meta):  # noqa: C901, PLR0911, PLR0912 - one bran
     return None
 
 
+def frontmatter_key(line):
+    """Chave do get-brolls numa linha do frontmatter (`status : x` inclusive), ou None."""
+    match = _PAIR.match(line)
+    return match.group(1) if match else None
+
+
+def _foreign_key_problem(line):
+    """Erro de uma linha que não é chave do get-brolls, ou None quando é chave de outra ferramenta
+    (ignorada). Chave nossa com caixa, acento ou espaço trocados, ou quase igual, é erro com sugestão."""
+    other = _OTHER_KEY.match(line)
+    if other is None:
+        return "use chave: valor"
+    key = other.group(1).strip()
+    normal = fold(key).replace(" ", "_")
+    if normal in KEYS:
+        return f"chave `{key}`: use `{normal}`"
+    close = difflib.get_close_matches(normal, KEYS, n=1, cutoff=0.8)
+    if close:
+        return f"chave desconhecida `{key}`: quis dizer `{close[0]}`?"
+    return None
+
+
 def parse_frontmatter(lines):  # noqa: C901, PLR0912 - one branch per grammar rule
     """Devolve (meta, índice da primeira linha do corpo, erros)."""
     if not lines or lines[0].strip() != "---":
@@ -280,18 +302,14 @@ def parse_frontmatter(lines):  # noqa: C901, PLR0912 - one branch per grammar ru
             if not skipping:
                 errors.append((number, "o frontmatter não aceita lista nem bloco: use uma linha chave: valor"))
             continue
-        skipping = False
         match = _PAIR.match(line)
         if not match or match.group(1) not in KEYS:
-            other = _OTHER_KEY.match(line)
-            if other is None:
-                errors.append((number, "use chave: valor"))
-            elif other.group(1).casefold() in KEYS:
-                key = other.group(1)
-                errors.append((number, f'chave "{key}": use minúsculas ({key.casefold()})'))
-            else:
-                skipping = True
+            problem = _foreign_key_problem(line)
+            if problem:
+                errors.append((number, problem))
+            skipping = _OTHER_KEY.match(line) is not None
             continue
+        skipping = False
         key = match.group(1)
         value, quoted = _unquote(match.group(2).strip())
         if key in seen:
@@ -302,6 +320,8 @@ def parse_frontmatter(lines):  # noqa: C901, PLR0912 - one branch per grammar ru
             message = f'"{key}": comentário no fim da linha não vale aqui; ponha o # numa linha própria'
             errors.append((number, message + " (ou use aspas se ele faz parte do valor)"))
             continue
+        if key in SLUG_KEYS and (not value or (not quoted and value in ("null", "~"))):
+            continue  # propriedade em branco (o Obsidian grava `cliente:`) vale como ausente
         if not value:
             errors.append((number, f'"{key}" precisa de um valor'))
             continue
@@ -434,8 +454,15 @@ def _guess(head):
 
 def _directive(inner, number, plugins):  # noqa: PLR0911 - one return per validation rule
     """(Directive, erro, nota) para o miolo de `[...]` numa linha inteira; só um dos três vem preenchido."""
-    reserved = re.sub(r"[^A-Z0-9]", "", fold(inner.partition(":")[0]).upper())
-    if reserved in RESERVED_DIRECTIVES:
+    head = inner.partition(":")[0]
+    head_key = re.sub(r"[^A-Z0-9]", "", fold(head).upper())
+    # Nome reservado com ou sem os dois-pontos (`[TRANSIÇÃO whip]`, `[RITMO — rápido]`): nome mais um
+    # valor de uma palavra. Frase mais longa (`[ritmo acelerado aqui]`) continua nota de cena.
+    words = [word.upper() for word in re.findall(r"\w+", fold(head))]
+    reserved = head_key if head_key in RESERVED_DIRECTIVES else None
+    if reserved is None and words and words[0] in RESERVED_DIRECTIVES and len(words) <= 2:  # noqa: PLR2004 - nome + valor
+        reserved = words[0]
+    if reserved:
         return None, f'"[{inner}]": {reserved} é reservado para a próxima versão do get-brolls; tire a diretiva', None
     ext = _EXT.match(inner.strip())
     if ext and NAME_RE.fullmatch(ext.group(1)) and canonical(ext.group(1)) is None:

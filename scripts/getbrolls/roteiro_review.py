@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 from .models import now
-from .roteiro import STATUSES, parse_frontmatter
+from .roteiro import STATUSES, frontmatter_key, parse_frontmatter
 from .roteiro_plan import HASH_VERSION, digest, scene_fingerprint
 from .runtime import _ensure_private_file
 
@@ -36,7 +36,7 @@ def set_status(text, status):
         raise ValueError("ROTEIRO.md com frontmatter inválido: rode `roteiro --action check` e corrija antes.")
     closing = body - 1
     for index in range(1, closing):
-        if lines[index].startswith("status:"):
+        if frontmatter_key(lines[index]) == "status":
             lines[index] = f"status: {status}"
             break
     else:

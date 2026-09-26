@@ -28,9 +28,9 @@ Enquanto o `BRIEF.md` não refletir o roteiro — nunca houve sync, há cena sem
 
 ## Formato
 
-Frontmatter, uma linha `chave: valor` cada: `type: roteiro`, `genero` e `tema` (obrigatórios); `aspecto` (`"9:16"` ou `"16:9"`; o padrão vem do gênero), `duracao_alvo_s` (inteiro de 5 a 600), `legenda` (`true`/`false`), `status` (quem muda é o `review`), `cliente` e `direcao`. Nessas chaves, lista, bloco e comentário no fim da linha são recusados, e a chave escrita com maiúscula (`Tema:`) é erro.
+Frontmatter, uma linha `chave: valor` cada: `type: roteiro`, `genero` e `tema` (obrigatórios); `aspecto` (`"9:16"` ou `"16:9"`; o padrão vem do gênero), `duracao_alvo_s` (inteiro de 5 a 600), `legenda` (`true`/`false`), `status` (quem muda é o `review`), `cliente` e `direcao`. Nessas chaves, lista, bloco e comentário no fim da linha são recusados; espaço antes dos dois-pontos (`legenda : false`) vale. Chave nossa escrita com maiúscula, acento ou espaço (`Tema:`, `direção:`) ou quase igual (`legendas:`, `aspeto:`) é erro, com a chave certa sugerida.
 
-- `cliente` e `direcao` são opcionais e aceitam só slug (minúsculas, números e `-`, como `acme-corp`); `cliente: Acme Corp` é erro. Nesta versão eles só dão nome: seguem para o plano de export (`meta.cliente`, `meta.direcao`) e entram na revisão como as outras chaves, sem mudar nada no vídeo.
+- `cliente` e `direcao` são opcionais e aceitam só slug (minúsculas, números e `-`, como `acme-corp`); `cliente: Acme Corp` é erro; em branco, `null` ou `~` vale como ausente. Nesta versão eles só dão nome: seguem para o plano de export (`meta.cliente`, `meta.direcao`) e entram na revisão como as outras chaves, sem mudar nada no vídeo.
 - Chave de outra ferramenta é ignorada, com a lista ou o bloco indentado que vem abaixo dela: as propriedades do Obsidian (`tags`, `aliases`, `created`, `updated`, `cssclasses`) podem ficar no roteiro e não entram na revisão.
 
 - **Cena**: `## Título`. O sync acrescenta `<!-- cNN -->` no fim do título; no modo de leitura ele não aparece. Ao duplicar uma cena, **não copie o comentário** (id repetido é erro). Nenhum outro comentário HTML vale, em lugar nenhum, nem comentário do Obsidian (`%%...%%`) depois do frontmatter: texto escondido não passa pela revisão.
@@ -41,7 +41,7 @@ Frontmatter, uma linha `chave: valor` cada: `type: roteiro`, `genero` e `tema` (
 - Texto entre aspas num lado do `SPLIT` ou no `FULL` é cartela: não vira busca nem beat.
 - **Camadas**: `[LETTERING: "texto" | estilo]` (texto sempre entre aspas, estilo opcional), `[SFX: nome]`, `[MUSICA: nome]`, `[COMP: nome]`. A linha da camada marca onde ela entra: antes da linha de fala seguinte (âncora) ou no fim da cena.
 - **Plugin**: `[<plugin>:<nome>]` só de plugin habilitado (`plugins --action list`); prefixo de plugin desligado é erro. É válvula de escape para um recurso do motor, não o caminho principal: o roteiro cita o componente (`[COMP: nome]`), que vale para qualquer exporter. Os ids `cliente`, `catalogo`, `direcao`, `template` e `projeto` são reservados e nunca viram plugin.
-- **Direção (reservado)**: `[DIRECAO: …]`, `[TRANSICAO: …]`, `[RITMO: …]` e `[VELOCIDADE: …]` (com ou sem acento, em qualquer caixa) são reservados para a próxima versão: o `check` recusa a linha. Por enquanto, combine a direção com a pessoa fora do roteiro.
+- **Direção (reservado)**: `[DIRECAO: …]`, `[TRANSICAO: …]`, `[RITMO: …]` e `[VELOCIDADE: …]` (com ou sem acento, em qualquer caixa, e também sem os dois-pontos, como `[TRANSIÇÃO whip]`) são reservados para a próxima versão: o `check` recusa a linha. Uma frase mais longa que só começa com esses nomes (`[ritmo acelerado aqui]`) continua nota de cena. Por enquanto, combine a direção com a pessoa fora do roteiro.
 - **Nota de cena**: `[risos]` no meio da fala sai da fala e do tempo. Sozinha na linha (`[pausa]`), também sai, mas vira aviso: confira que não era uma diretiva. Colchete que parece diretiva digitada errado é erro ("quis dizer ...").
 - **Tempo**: cerca de 2,5 palavras por segundo, mínimo 1,5 s; cena sem fala vale 2 s; cena acima de 120 s pede divisão. Com `duracao_alvo_s`, o `check` avisa quando a soma passa.
 

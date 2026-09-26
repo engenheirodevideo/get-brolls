@@ -52,7 +52,7 @@ class FrontmatterTests(unittest.TestCase):
             "legenda: talvez": "legenda",
             "cliente: Acme Corp": "slug",
             "direcao: rampa_e_whip": "slug",
-            "Tema: outro": "minúsculas",
+            "Tema: outro": "chave `Tema`: use `tema`",
             "  - item": "lista",
             "status: gravado": "status",
         }
@@ -89,6 +89,37 @@ class FrontmatterTests(unittest.TestCase):
         self.assertEqual([], errors)
         self.assertEqual(len(head), body)
         self.assertEqual({"genero", "aspecto", "duracao_alvo_s", "tema", "legenda", "status"}, set(meta))
+
+    def test_typos_of_get_brolls_keys_are_errors_with_a_suggestion(self):
+        cases = {
+            "Tema: outro": "chave `Tema`: use `tema`",
+            "LEGENDA: false": "chave `LEGENDA`: use `legenda`",
+            "duração_alvo_s: 30": "chave `duração_alvo_s`: use `duracao_alvo_s`",
+            "Duracao Alvo S: 30": "chave `Duracao Alvo S`: use `duracao_alvo_s`",
+            "direção: rampa-e-whip": "chave `direção`: use `direcao`",
+            "legendas: false": "chave desconhecida `legendas`: quis dizer `legenda`?",
+            'aspeto: "16:9"': "chave desconhecida `aspeto`: quis dizer `aspecto`?",
+            "client: acme": "chave desconhecida `client`: quis dizer `cliente`?",
+        }
+        for line, message in cases.items():
+            with self.subTest(line=line):
+                head = [*VALID_HEAD[:-1], line, "---"]
+                _, _, errors = roteiro.parse_frontmatter(head)
+                self.assertEqual([(len(head) - 1, message)], errors)
+
+    def test_space_before_the_colon_is_the_same_key(self):
+        head = [x for x in VALID_HEAD if not x.startswith(("legenda", "aspecto"))]
+        head = [*head[:-1], "legenda : false", 'aspecto  : "16:9"', "---"]
+        meta, _, errors = roteiro.parse_frontmatter(head)
+        self.assertEqual([], errors)
+        self.assertEqual((False, "16:9"), (meta["legenda"], meta["aspecto"]))
+
+    def test_blank_or_null_client_and_direction_are_absent(self):
+        for value in ("", " null", " ~", ' ""'):
+            with self.subTest(value=value):
+                meta, _, errors = roteiro.parse_frontmatter([*VALID_HEAD[:-1], f"cliente:{value}", "---"])
+                self.assertEqual([], errors)
+                self.assertNotIn("cliente", meta)
 
     def test_a_list_under_a_get_brolls_key_is_still_an_error(self):
         head = [*VALID_HEAD[:-1], "tags: x", "status: draft", "  - item", "---"]
@@ -186,9 +217,16 @@ class SceneTests(unittest.TestCase):
                 roteiro.parse(_doc(f"## A\n[A-ROLL]\n{line}\nOi.\n"), plugins=frozenset())
             self.assertIn("reservado para a próxima versão", str(caught.exception))
 
+    def test_reserved_names_without_a_colon_are_refused_too(self):
+        for line in ("[TRANSIÇÃO whip]", "[velocidade 2x]", "[RITMO — rápido]", "[direção respiro]"):
+            with self.subTest(line=line), self.assertRaises(roteiro.RoteiroError) as caught:
+                roteiro.parse(_doc(f"## A\n[A-ROLL]\n{line}\nOi.\n"), plugins=frozenset())
+            self.assertIn("reservado para a próxima versão", str(caught.exception))
+
     def test_a_note_that_only_starts_like_a_reserved_name_is_still_a_note(self):
-        doc = roteiro.parse(_doc("## A\n[A-ROLL]\n[ritmo acelerado aqui]\nOi.\n"), plugins=frozenset())
-        self.assertEqual(("ritmo acelerado aqui",), doc.scenes[0].notes)
+        body = "## A\n[A-ROLL]\n[ritmo acelerado aqui]\n[velocidade da luz]\nOi.\n"
+        doc = roteiro.parse(_doc(body), plugins=frozenset())
+        self.assertEqual(("ritmo acelerado aqui", "velocidade da luz"), doc.scenes[0].notes)
 
     def test_directive_errors(self):
         cases = {
