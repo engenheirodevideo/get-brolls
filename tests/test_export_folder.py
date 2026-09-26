@@ -250,6 +250,274 @@ class ChangedSourceTests(FolderTestCase):
         self.assertIsNone(export_folder.latest_marker(self.root()))
         self.assertEqual([], export_folder.changed_sources(None, {}, self.project))
 
+    def test_warning_names_the_new_folder_number_when_given(self):
+        voice = self.project / "aroll" / "c01.mov"
+        voice.parent.mkdir()
+        voice.write_bytes(b"voz")
+        self.export(placements=[("aroll:c01", "assets/aroll/c01.mov", self.source(voice, "clone"))])
+        marker = export_folder.latest_marker(self.root())
+        voice.write_bytes(b"voz gravada de novo")
+        sources = {"aroll:c01": self.source(voice, "clone")}
+        warnings = export_folder.changed_sources(marker, sources, self.project, number=3)
+        self.assertEqual(["aroll/c01.mov mudou depois do export 001: o 003 usa a versão atual"], warnings)
+
+
+def staging_of(path):
+    """A pasta `.staging-*` que contém `path`."""
+    return next(p for p in Path(path).parents if p.name.startswith(export_folder.STAGING_PREFIX))
+
+
+def marked_staging(root, name=".staging-aaaa1111", media=None):
+    staging = root / name
+    staging.mkdir(parents=True)
+    body = {"marker": "getbrolls-export", "state": "staging", "media": media or {}}
+    (staging / export_folder.MARKER).write_text(json.dumps(body), encoding="utf-8")
+    return staging
+
+
+class CrashSafeRemovalTests(FolderTestCase):
+    def locked_subfolder(self, staging):
+        """Subpasta somente-leitura com um arquivo dentro: apagar esse arquivo falha no POSIX."""
+        locked = staging / "compositions"
+        locked.mkdir()
+        (locked / "scene.html").write_text("x", encoding="utf-8")
+        locked.chmod(0o555)
+        self.addCleanup(locked.chmod, 0o755)
+        return locked
+
+    def test_sweep_failure_is_a_relative_warning_and_the_export_goes_on(self):
+        root = self.root()
+        staging = marked_staging(root)
+        self.locked_subfolder(staging)
+        result = self.export()
+        self.assertEqual("001", result["number"])
+        warning = next(w for w in result["warnings"] if ".staging-aaaa1111" in w)
+        self.assertTrue(warning.startswith("exports/hyperframes/.staging-aaaa1111 "), warning)
+        self.assertIn("apague à mão", warning)
+        self.assertNotIn(str(self.project), " ".join(result["warnings"]))
+        self.assertTrue((staging / export_folder.MARKER).is_file())
+
+    def test_marker_is_removed_last_so_a_failed_removal_stays_marked(self):
+        staging = marked_staging(self.root())
+        self.locked_subfolder(staging)
+        with self.assertRaises(OSError):
+            export_folder.remove_staging(staging)
+        self.assertTrue((staging / export_folder.MARKER).is_file())
+
+    def test_numbered_folders_are_never_swept_even_with_a_staging_marker(self):
+        root = self.root()
+        numbered = marked_staging(root, name="002")
+        (numbered / "index.html").write_text("da pessoa", encoding="utf-8")
+        before = tree(numbered)
+        self.assertEqual("003", self.export()["number"])
+        self.assertEqual(before, tree(numbered))
+
+    def test_stray_latest_temp_files_are_swept(self):
+        root = self.root()
+        root.mkdir(parents=True)
+        stray = root / "LATEST.tmp-abcd1234"
+        stray.write_text("009\n", encoding="utf-8")
+        other = root / "LATEST.tmp-meu"
+        other.write_text("meu", encoding="utf-8")
+        self.export()
+        self.assertFalse(stray.exists())
+        self.assertTrue(other.exists())
+
+    def test_thaw_that_still_fails_refreezes_the_source(self):
+        def place_then_fail(source, dest):
+            export_place.place(source, dest)
+            self.clip.chmod(0o644)  # o que o `_thaw_unlink` faz no Windows antes de falhar de novo
+            raise ValueError("falhou depois de ligar o clipe")
+
+        real_unlink = Path.unlink
+
+        def locked(path, missing_ok=False):
+            if path.name == "c02-main.mp4":
+                raise PermissionError("em uso (Windows)")
+            return real_unlink(path, missing_ok=missing_ok)
+
+        with (
+            mock.patch.object(Path, "unlink", autospec=True, side_effect=locked),
+            mock.patch.object(export_folder.delivery, "_thaw_unlink", side_effect=PermissionError("em uso")),
+            self.assertRaisesRegex(ValueError, "falhou depois de ligar o clipe"),
+        ):
+            self.export(place=place_then_fail)
+        self.assertEqual(0o444, stat.S_IMODE(self.clip.stat().st_mode))
+
+    def test_staging_marker_records_the_relative_source_before_placing(self):
+        seen = {}
+
+        def spy(source, dest):
+            marker = json.loads((staging_of(dest) / export_folder.MARKER).read_text(encoding="utf-8"))
+            seen.update(marker)
+            return export_place.place(source, dest)
+
+        self.export(place=spy)
+        self.assertEqual(("getbrolls-export", "staging"), (seen["marker"], seen["state"]))
+        row = seen["media"]["assets/clips/c02-main.mp4"]
+        self.assertEqual(("clip:p:1", "brolls/clips/a.mp4"), (row["media_id"], row["refreeze_source"]))
+
+    def test_sweep_refreezes_the_source_recorded_in_the_staging_marker(self):
+        media = {"assets/clips/c02-main.mp4": {"media_id": "clip:p:1", "refreeze_source": "brolls/clips/a.mp4"}}
+        staging = marked_staging(self.root(), media=media)
+        (staging / "assets" / "clips").mkdir(parents=True)
+        os.link(self.clip, staging / "assets" / "clips" / "c02-main.mp4")
+        real_unlink = Path.unlink
+        state = {"raised": False}
+
+        def stubborn(path, missing_ok=False):
+            if path.name == "c02-main.mp4" and not state["raised"]:
+                state["raised"] = True
+                raise PermissionError("somente-leitura (Windows)")
+            return real_unlink(path, missing_ok=missing_ok)
+
+        with (
+            mock.patch.object(Path, "unlink", autospec=True, side_effect=stubborn),
+            mock.patch.object(export_folder.delivery, "_freeze", wraps=export_folder.delivery._freeze) as freeze,
+        ):
+            self.assertEqual([], export_folder.sweep_abandoned(self.root()))
+        freeze.assert_called_once_with(str(self.clip), "hardlink")
+        self.assertFalse(staging.exists())
+        self.assertEqual(0o444, stat.S_IMODE(self.clip.stat().st_mode))
+
+    def test_sweep_never_refreezes_a_recorded_path_that_is_not_the_staged_link(self):
+        # Fora do projeto, ou dentro dele mas sem ser o mesmo inode do arquivo no staging.
+        for index, recorded in enumerate(("../fora.mp4", "brolls/clips/a.mp4")):
+            with self.subTest(recorded=recorded):
+                media = {"assets/x.mp4": {"media_id": "m", "refreeze_source": recorded}}
+                staging = marked_staging(self.root(), name=f".staging-0000000{index}", media=media)
+                (staging / "assets").mkdir()
+                (staging / "assets" / "x.mp4").write_bytes(b"x")
+                with (
+                    mock.patch.object(Path, "unlink", autospec=True, side_effect=[PermissionError("x"), None, None]),
+                    mock.patch.object(export_folder.delivery, "_thaw_unlink"),
+                    mock.patch.object(export_folder.delivery, "_freeze") as freeze,
+                ):
+                    export_folder.sweep_abandoned(self.root())
+                freeze.assert_not_called()
+                shutil.rmtree(staging)
+
+
+class RenameTests(FolderTestCase):
+    def setUp(self):
+        super().setUp()
+        sleep = mock.patch.object(export_folder.time, "sleep")
+        sleep.start()
+        self.addCleanup(sleep.stop)
+
+    def test_busy_folder_is_an_honest_message_not_a_collision(self):
+        with (
+            mock.patch.object(Path, "rename", autospec=True, side_effect=PermissionError("em uso")) as rename,
+            self.assertRaisesRegex(ValueError, "Feche o preview ou o antivírus"),
+        ):
+            self.export()
+        targets = {call.args[1].name for call in rename.call_args_list}
+        self.assertEqual({"001"}, targets)
+        self.assertEqual([], sorted(p.name for p in self.root().iterdir()))
+
+    def test_busy_once_then_free_keeps_the_same_number(self):
+        real_rename = Path.rename
+        state = {"raised": False}
+
+        def busy_once(path, target):
+            if not state["raised"]:
+                state["raised"] = True
+                raise PermissionError("em uso")
+            return real_rename(path, target)
+
+        with mock.patch.object(Path, "rename", autospec=True, side_effect=busy_once):
+            result = self.export()
+        self.assertEqual("001", result["number"])
+        self.assertFalse(any("troque" in w for w in result["warnings"]))
+
+    def test_other_rename_errors_are_honest_and_leave_nothing(self):
+        with (
+            mock.patch.object(Path, "rename", autospec=True, side_effect=OSError(5, "Input/output error")),
+            self.assertRaisesRegex(ValueError, r"Não consegui renomear a pasta do export \(Input/output error\)"),
+        ):
+            self.export()
+        self.assertEqual([], sorted(p.name for p in self.root().iterdir()))
+
+
+class LatestAndMarkerTests(FolderTestCase):
+    def test_latest_write_failure_is_a_warning_and_cleans_its_temp_file(self):
+        real_replace = Path.replace
+
+        def refuse_latest(path, target):
+            if Path(target).name == export_folder.LATEST:
+                raise PermissionError(13, "Permission denied")
+            return real_replace(path, target)
+
+        with mock.patch.object(Path, "replace", autospec=True, side_effect=refuse_latest):
+            result = self.export()
+        root = self.root()
+        self.assertEqual("001", result["number"])
+        self.assertTrue((root / "001" / "index.html").is_file())
+        warning = next(w for w in result["warnings"] if "LATEST" in w)
+        self.assertTrue(warning.endswith(": não mexi nele"), warning)
+        self.assertNotIn(str(self.project), warning)
+        self.assertEqual(["001"], sorted(p.name for p in root.iterdir()))
+
+    def test_latest_that_is_a_symlink_is_left_alone_with_a_warning(self):
+        self.export()
+        root = self.root()
+        latest = root / export_folder.LATEST
+        latest.unlink()
+        target = self.project / "meu-latest.txt"
+        target.write_text("001\n", encoding="utf-8")
+        try:
+            latest.symlink_to(target)
+        except OSError:
+            self.skipTest("este sistema não cria symlink")
+        result = self.export()
+        self.assertEqual("002", result["number"])
+        self.assertIn("exports/hyperframes/LATEST não é um arquivo: não mexi nele", result["warnings"])
+        self.assertTrue(latest.is_symlink())
+        self.assertEqual("001\n", target.read_text(encoding="utf-8"))
+
+    def test_marker_has_no_absolute_paths(self):
+        self.export()
+        text = (self.root() / "001" / export_folder.MARKER).read_text(encoding="utf-8")
+        self.assertNotIn(str(self.project), text)
+        self.assertNotIn(Path(self.project).as_posix(), text)
+
+    def test_marker_base_cannot_override_the_identity_keys(self):
+        base = {**BASE, "marker": "outro", "state": "complete", "number": "999", "media": "x"}
+        seen = {}
+
+        def spy(source, dest):
+            seen.update(json.loads((staging_of(dest) / export_folder.MARKER).read_text(encoding="utf-8")))
+            return export_place.place(source, dest)
+
+        root = self.root()
+        content = {"files": FILES, "placements": [("clip:p:1", "assets/clips/c02-main.mp4", self.source(self.clip))]}
+        export_folder.write_export(root, 1, content, base, spy)
+        self.assertEqual(("getbrolls-export", "staging", "001"), (seen["marker"], seen["state"], seen["number"]))
+        marker = json.loads((root / "001" / export_folder.MARKER).read_text(encoding="utf-8"))
+        self.assertEqual(("getbrolls-export", "complete", "001"), (marker["marker"], marker["state"], marker["number"]))
+        self.assertIn("assets/clips/c02-main.mp4", marker["media"])
+
+    def test_marker_names_are_reserved(self):
+        for name in (export_folder.MARKER, f"{export_folder.MARKER}.tmp", ".GETBROLLS-EXPORT.json"):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "nome reservado do get-brolls"):
+                self.export(files={**FILES, name: "{}"}, placements=[])
+        self.assertEqual([], sorted(p.name for p in self.root().iterdir()))
+
+    def test_marker_rewrite_never_recreates_a_vanished_staging(self):
+        def vanish(source, dest):
+            shutil.rmtree(staging_of(dest))
+            return ("copy", 0)
+
+        with self.assertRaises(OSError):
+            self.export(place=vanish)
+        self.assertEqual([], sorted(p.name for p in self.root().iterdir()))
+
+    def test_every_written_file_and_the_marker_are_fsynced(self):
+        with mock.patch.object(export_folder.os, "fsync", wraps=os.fsync) as fsync:
+            self.export()
+        # 3 textos + marcador staging + regravação antes do hardlink + marcador complete + LATEST
+        self.assertGreaterEqual(fsync.call_count, len(FILES) + 3)
+
 
 if __name__ == "__main__":
     unittest.main()
