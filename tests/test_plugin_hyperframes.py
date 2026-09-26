@@ -125,16 +125,28 @@ class RootTests(unittest.TestCase):
                 root = page.all("div")[0]
                 self.assertEqual((str(w), str(h), "30"), (root["data-width"], root["data-height"], root["data-fps"]))
 
-    def test_fps_and_canvas_come_from_the_plan_when_it_has_them(self):
-        for fps, canvas, expected in (
-            ({"num": 25, "den": 1}, {"width": 720, "height": 1280}, ("720", "1280", "25")),
-            ({"num": 30000, "den": 1001}, None, ("1080", "1920", "29.97")),
-        ):
+    def test_fps_comes_from_the_plan_when_it_has_one(self):
+        for fps, expected in (({"num": 25, "den": 1}, "25"), ({"num": 30000, "den": 1001}, "29.97")):
             with self.subTest(fps=fps):
                 plan = fixture()
-                plan["meta"]["fps"], plan["meta"]["canvas"] = fps, canvas
+                plan["meta"]["fps"] = fps
                 root = Elements(generate(plan)["files"]["index.html"]).all("div")[0]
-                self.assertEqual(expected, (root["data-width"], root["data-height"], root["data-fps"]))
+                self.assertEqual(
+                    ("1080", "1920", expected), (root["data-width"], root["data-height"], root["data-fps"])
+                )
+
+    def test_canvas_of_the_aspect_is_the_same_output_and_any_other_is_refused(self):
+        plan = fixture()
+        plan["meta"]["canvas"] = {"width": 1080, "height": 1920}
+        self.assertEqual(generate(fixture()), generate(plan))
+        for canvas in ({"width": 720, "height": 1280}, {"width": 1920, "height": 1080}):
+            with self.subTest(canvas=canvas):
+                plan["meta"]["canvas"] = canvas
+                with self.assertRaises(hf.PluginError) as caught:
+                    generate(plan)
+                message = str(caught.exception)
+                self.assertIn(f"canvas {canvas['width']}×{canvas['height']}", message)
+                self.assertIn("1080×1920", message)
 
     def test_null_fps_and_canvas_keep_the_same_bytes(self):
         plan = fixture()
@@ -826,6 +838,10 @@ class PlanEvolutionTests(unittest.TestCase):
 
     def test_unknown_enum_value_is_not_supported(self):
         cases = (
+            ("aspecto", lambda plan: plan["meta"].update(aspecto="1:1")),
+            ("timing", lambda plan: plan.update(timing="ao-vivo")),
+            ("duração", lambda plan: plan["scenes"][0].update(duration_source="render")),
+            ("legenda", lambda plan: plan["scenes"][0].update(words_source="manual")),
             ("layout", lambda plan: plan["scenes"][0]["layout"].update(kind="ZOOM")),
             ("papel", lambda plan: plan["scenes"][0]["layout"]["slots"][0].update(role="host")),
             ("camada", lambda plan: plan["scenes"][0]["layers"][0].update(kind="TRANSICAO")),
@@ -839,6 +855,13 @@ class PlanEvolutionTests(unittest.TestCase):
                     generate(plan)
                 self.assertIn(field, str(caught.exception))
                 self.assertIn("não é suportado", str(caught.exception))
+
+    def test_an_unknown_export_version_is_refused(self):
+        plan = fixture()
+        plan["export_version"] = 2
+        with self.assertRaises(hf.PluginError) as caught:
+            generate(plan)
+        self.assertIn("export_version 2 não é suportado por esta versão do exporter hyperframes", str(caught.exception))
 
     def test_example_plan_exports_cleanly(self):
         result = hf.export(sample_plan(), {"args": {}})

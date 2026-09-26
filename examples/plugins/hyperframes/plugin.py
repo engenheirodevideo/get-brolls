@@ -175,12 +175,11 @@ class _Export:
 
     def __init__(self, plan):
         self.plan = plan
-        self.aspect = plan["meta"]["aspecto"] if plan["meta"]["aspecto"] in CANVAS else "9:16"
+        # Aspecto, e `canvas` quando vem, já conferidos por `_check_supported`: o quadro é o do aspecto.
+        self.aspect = plan["meta"]["aspecto"]
         self.width, self.height, self.resolution = CANVAS[self.aspect]
-        # Quadro e fps do plano quando vierem; `null` (ou ausente) fica com o padrão do plugin.
-        canvas, fps = plan["meta"].get("canvas"), plan["meta"].get("fps")
-        if canvas:
-            self.width, self.height = canvas["width"], canvas["height"]
+        # fps do plano quando vier; `null` (ou ausente) fica com o padrão do plugin.
+        fps = plan["meta"].get("fps")
         self.fps = num(fps["num"] / fps["den"]) if fps else str(FPS)
         self.media = plan["media"]
         self.dests = {}
@@ -850,7 +849,12 @@ def _export_md(export):
 
 # Valores de enum que este exporter trata. Chave nova no plano é ignorada; valor novo
 # de enum é "não suportado" (política de evolução do plano, docs/SDK.md).
+EXPORT_VERSION = 1
 SUPPORTED = {
+    "aspecto": tuple(CANVAS),
+    "timing": ("estimate", "aroll", "mixed"),
+    "duração": ("aroll", "estimate"),
+    "legenda": ("transcript", "estimate"),
     "layout": ("A-ROLL", "BROLL", "SPLIT", "FULL", "UGC"),
     "vaga": ("a", "b", "main"),
     "papel": ("broll", "presenter", "card", "brand"),
@@ -860,9 +864,18 @@ SUPPORTED = {
 
 
 def _check_supported(plan):
-    """`PluginError` no primeiro valor de enum que esta versão do exporter não conhece."""
-    found = [("mídia", row["kind"]) for row in plan["media"].values()]
+    """`PluginError` na versão do plano, no primeiro valor de enum que esta versão do exporter não
+    conhece ou num `canvas` diferente do quadro do aspecto (o layout ainda não escala)."""
+    version = plan.get("export_version")
+    if version != EXPORT_VERSION:
+        shown = str(version)[:20]
+        raise PluginError(
+            f"export_version {shown} não é suportado por esta versão do exporter hyperframes: atualize o plugin."
+        )
+    found = [("aspecto", plan["meta"]["aspecto"]), ("timing", plan["timing"])]
+    found += [("mídia", row["kind"]) for row in plan["media"].values()]
     for scene in plan["scenes"]:
+        found += [("duração", scene["duration_source"]), ("legenda", scene["words_source"])]
         found.append(("layout", scene["layout"]["kind"]))
         for slot in scene["layout"]["slots"]:
             found += [("vaga", slot["slot"]), ("papel", slot["role"])]
@@ -873,6 +886,13 @@ def _check_supported(plan):
             raise PluginError(
                 f'{field} "{shown}" não é suportado por esta versão do exporter hyperframes: atualize o plugin.'
             )
+    canvas = plan["meta"].get("canvas")
+    width, height, _ = CANVAS[plan["meta"]["aspecto"]]
+    if canvas and (canvas.get("width"), canvas.get("height")) != (width, height):
+        raise PluginError(
+            f"canvas {str(canvas.get('width'))[:10]}×{str(canvas.get('height'))[:10]} não é suportado por esta "
+            f"versão do exporter hyperframes: em {plan['meta']['aspecto']} o quadro é {width}×{height}."
+        )
 
 
 def generate(plan):
