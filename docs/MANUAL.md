@@ -469,6 +469,15 @@ python3 scripts/gb.py roteiro --action sync --project /caminho/meu-video
 #            e onde cada nome resolve: projeto ou biblioteca pessoal. Só lê.
 python3 scripts/gb.py assets --action list --project /caminho/meu-video
 python3 scripts/gb.py assets --action where --kind sfx --name whoosh --project /caminho/meu-video
+
+# ── export --to … [--dry-run] (experimental) ────────────────
+# O QUE FAZ: com o roteiro revisado e sincronizado, monta um projeto de edição numa
+#            pasta nova exports/<exporter>/001/, 002/… (LATEST guarda a mais nova).
+#            O exporter vem de um plugin habilitado; nenhuma pasta de export é apagada.
+# --dry-run mostra a pasta, os arquivos e a mídia, sem gravar nada.
+# Passo a passo: references/roteiro.md#export-do-roteiro-ao-projeto-de-edição
+python3 scripts/gb.py export --to hyperframes --dry-run --project /caminho/meu-video
+python3 scripts/gb.py export --to hyperframes --project /caminho/meu-video
 ```
 
 ## 🧩 Plugins do SDK (experimental)

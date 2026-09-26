@@ -32,12 +32,14 @@ com as mesmas permissões de quem executa a CLI — não é uma extensão isolad
 nem carregada de um repositório remoto. Você escreve o plugin, revisa o
 manifesto e decide habilitá-lo.
 
-Nesta versão do SDK, um plugin pode contribuir quatro tipos de extensão:
+Nesta versão do SDK, um plugin pode contribuir seis tipos de extensão:
 
 - **`providers`** — uma fonte de busca nova (`search`/`resolve`/`refresh`).
 - **`routes`** — como o arquivo de um candidato chega (`prepare(item, workdir)`), para quem precisa de token, URL assinada ou pasta local.
 - **`commands`** — rotinas próprias, rodadas com `gb x <plugin> <comando>` (ex.: sincronizar acervo, ver cota).
 - **`presets`** — um preset de texto de licença, reaproveitado por `permit`.
+- **`exporters`** (experimental) — transforma o roteiro revisado num projeto de edição, rodado por `gb export --to <nome>` (veja [Exportadores](#exportadores)).
+- **`resolvers`** (experimental) — acha som ou música que o projeto não tem, só dentro do `gb export` (veja [Resolvedores](#resolvedores)).
 
 ## Estrutura da pasta
 
