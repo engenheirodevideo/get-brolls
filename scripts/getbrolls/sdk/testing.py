@@ -88,9 +88,14 @@ def check_exporter(spec):
     plan = sample_plan()
     result = spec.export(plan, {"args": {}})
     try:
-        validate_export_result(result)
+        validated = validate_export_result(result)
     except ExportValidationError as exc:
         _fail(f"Exportador {spec.name}: com o plano de exemplo, {exc}")
+    from ..export_folder import RESERVED_NAMES
+
+    reserved = sorted(path for path in validated.files if path.casefold() in RESERVED_NAMES)
+    if reserved:
+        _fail(f"Exportador {spec.name}: {', '.join(reserved)} é nome reservado do get-brolls na pasta do export.")
 
 
 def check_resolver(spec):

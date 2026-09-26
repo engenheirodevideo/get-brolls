@@ -37,7 +37,12 @@ SAMPLE_PLAN = Path(__file__).resolve().parents[3] / "examples" / "plans" / "reel
 
 def sample_plan():
     """Cópia nova do plano de exemplo, com a versão instalada em `getbrolls_version`."""
-    plan = json.loads(SAMPLE_PLAN.read_text(encoding="utf-8"))
+    try:
+        plan = json.loads(SAMPLE_PLAN.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        root = SAMPLE_PLAN.parents[2]
+        shown = SAMPLE_PLAN.relative_to(root).as_posix() if SAMPLE_PLAN.is_relative_to(root) else SAMPLE_PLAN.name
+        raise ValueError(f"Não consegui ler o plano de exemplo {shown}: reinstale o get-brolls.") from None
     return {**plan, "getbrolls_version": __version__}
 
 

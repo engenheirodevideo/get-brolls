@@ -59,18 +59,63 @@
         },
         {
           "text": "grava",
-          "start": 0.3,
-          "end": 0.7
+          "start": 0.35,
+          "end": 0.66
         },
         {
           "text": "a",
-          "start": 0.7,
-          "end": 0.8
+          "start": 0.71,
+          "end": 1.01
         },
         {
           "text": "fala",
-          "start": 0.8,
-          "end": 1.2
+          "start": 1.06,
+          "end": 1.37
+        },
+        {
+          "text": "e",
+          "start": 1.42,
+          "end": 1.72
+        },
+        {
+          "text": "o",
+          "start": 1.77,
+          "end": 2.07
+        },
+        {
+          "text": "resto",
+          "start": 2.12,
+          "end": 2.43
+        },
+        {
+          "text": "aparece",
+          "start": 2.48,
+          "end": 2.78
+        },
+        {
+          "text": "Sem",
+          "start": 2.83,
+          "end": 3.13
+        },
+        {
+          "text": "abrir",
+          "start": 3.18,
+          "end": 3.49
+        },
+        {
+          "text": "banco",
+          "start": 3.54,
+          "end": 3.84
+        },
+        {
+          "text": "de",
+          "start": 3.89,
+          "end": 4.2
+        },
+        {
+          "text": "imagem",
+          "start": 4.25,
+          "end": 4.55
         }
       ],
       "layers": [
@@ -290,7 +335,7 @@
       "available": true,
       "problem": null,
       "has_audio": null,
-      "sha256": "abababababababababababababababababababababababababababababababab",
+      "sha256": "1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f",
       "duration_s": 4.5,
       "width": 1080,
       "height": 1920,
@@ -306,7 +351,7 @@
       "available": true,
       "problem": null,
       "has_audio": null,
-      "sha256": "abababababababababababababababababababababababababababababababab",
+      "sha256": "2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e",
       "duration_s": 4.5,
       "width": 1080,
       "height": 1920,
@@ -406,7 +451,7 @@
       "duration_s": null,
       "width": null,
       "height": null,
-      "credit": "Logo — CC0 (freesound)",
+      "credit": "Logo do canal — uso próprio (arquivo da marca do canal)",
       "expected": null
     },
     "aroll:c04": {

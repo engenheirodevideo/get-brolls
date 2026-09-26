@@ -3,6 +3,7 @@
 import json
 import re
 import unittest
+from unittest import mock
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _paths import ROOT
@@ -196,6 +197,20 @@ class ExamplePlanTests(unittest.TestCase):
         self.assertTrue(any(scene["words_timed"] for scene in plan["scenes"]))
         self.assertTrue(any(not row["available"] for row in plan["media"].values()))
 
+    def test_example_plan_is_internally_consistent(self):
+        plan = example_plan()
+        for scene in plan["scenes"]:
+            timed = scene["words_timed"]
+            if timed is None:
+                continue
+            with self.subTest(scene=scene["id"]):
+                self.assertEqual(scene["words"], len(timed))
+                end = scene["start_s"] + scene["duration_s"]
+                self.assertTrue(all(scene["start_s"] <= w["start"] <= w["end"] <= end for w in timed))
+        clips = [row["sha256"] for row in plan["media"].values() if row["source"] == "clip"]
+        self.assertEqual(len(clips), len(set(clips)))
+        self.assertNotIn("freesound", plan["media"]["asset:marca:logo"]["credit"])
+
     def test_sample_plan_is_the_example_with_the_current_version(self):
         plan = sample_plan()
         self.assertEqual(__version__, plan["getbrolls_version"])
@@ -212,6 +227,28 @@ class ExamplePlanTests(unittest.TestCase):
         testing.check_exporter(ExporterSpec("demo_html", "Exporta", export))
         self.assertEqual(sample_plan(), seen[0])
         self.assertGreaterEqual(len(seen[0]["scenes"]), 3)
+
+
+class CheckExporterGuardTests(unittest.TestCase):
+    def test_check_refuses_a_core_file_name(self):
+        # O marcador (`.getbrolls-export.json`) já cai no validador: começa por ".".
+        for name in ("getbrolls-plan.json", "GETBROLLS-PLAN.json"):
+            files = {"index.html": "<p>ok</p>", name: "{}"}
+            spec = ExporterSpec("demo_html", "Exporta", lambda plan, options, files=files: ExportResult(files))
+            with self.subTest(name=name), self.assertRaises(AssertionError) as caught:
+                testing.check_exporter(spec)
+            self.assertIn("nome reservado do get-brolls", str(caught.exception))
+
+    def test_a_missing_example_plan_is_a_clear_error(self):
+        from getbrolls.sdk import exporters
+
+        with (
+            mock.patch.object(exporters, "SAMPLE_PLAN", ROOT / "examples" / "plans" / "sumiu.plan.json"),
+            self.assertRaises(ValueError) as caught,
+        ):
+            sample_plan()
+        self.assertIn("plano de exemplo", str(caught.exception))
+        self.assertIn("examples/plans/sumiu.plan.json", str(caught.exception))
 
 
 class EvolutionDocTests(unittest.TestCase):
