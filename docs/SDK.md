@@ -19,7 +19,9 @@ exemplos completos e funcionais, veja
 [`examples/plugins/pasta_local`](../examples/plugins/pasta_local/README.md)
 (acervo local, rota de prévia e comando) e
 [`examples/plugins/banco_http`](../examples/plugins/banco_http/README.md)
-(API autenticada, rota de `fetch`).
+(API autenticada, rota de `fetch`); para os contratos experimentais de export,
+[`examples/plugins/hyperframes`](../examples/plugins/hyperframes/README.md)
+(exportador de roteiro para um projeto HyperFrames e resolvedor do acervo `media-use`).
 
 O princípio: **o plugin traz o arquivo; o core decide o resto.** Aprovação,
 permit, hash, corte, ledger e entrega continuam só do core.

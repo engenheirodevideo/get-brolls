@@ -1,5 +1,9 @@
 """Exporter HyperFrames do get-brolls: um roteiro revisado vira um projeto HyperFrames editável.
 
+Registra dois contratos do SDK (experimentais): o exporter `hyperframes` e o
+resolvedor `hyperframes_media`, que acha `[SFX: x]`/`[MUSICA: x]` no acervo do
+`media-use` (só lê `manifest.jsonl`; nunca escreve em `.media/` nem usa rede).
+
 `generate(plan)` é pura: recebe o plano de export do core (um dict) e devolve os
 arquivos de texto do projeto (`index.html`, uma sub-composição por cena, legendas,
 `hyperframes.json`, `meta.json`, `package.json`, `EXPORT.md`) e os pedidos de mídia
@@ -19,9 +23,10 @@ import html
 import json
 import re
 import unicodedata
+from pathlib import Path
 from urllib.parse import unquote
 
-from getbrolls.sdk import ExportResult, MediaRequest
+from getbrolls.sdk import ExportResult, MediaRequest, PluginError, ResolverHit
 
 HYPERFRAMES_VERSION = "0.8.73"
 GSAP_URL = "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"
@@ -858,3 +863,146 @@ def export(plan, options):
     result = generate(plan)
     media = [MediaRequest(row["media_id"], row["dest"]) for row in result["media"]]
     return ExportResult(files=result["files"], media=media, notes=result["notes"])
+
+
+# --- resolvedor do acervo media-use ----------------------------------------------------
+
+# Tipo do roteiro → tipo do media-use. Sem "marca" nesta versão.
+MEDIA_TYPES = {"sfx": "sfx", "musica": "bgm"}
+LEDGER = "manifest.jsonl"
+SENTINEL = ".hf-complete"
+LICENSE_MAX_CHARS = 500
+DEFAULT_PATHS = ("~/.media",)
+
+
+def _normal(value):
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def _records(ledger):
+    """Registros do `manifest.jsonl` (objeto por linha); linha ruim ou arquivo ilegível é pulado."""
+    try:
+        lines = Path(ledger).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return []
+    found = []
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except (ValueError, RecursionError):  # JSON aninhado demais também é linha ruim
+            continue
+        if isinstance(record, dict):
+            found.append(record)
+    return found
+
+
+def _level_matches(records, media_type, name):
+    """Registros do tipo pedido no primeiro nível que casa: `id` → `entity` → `prompt`/`library_key`."""
+    key = _normal(name)
+    typed = [r for r in records if r.get("type") == media_type]
+
+    def prompt_or_key(record):
+        provenance = record.get("provenance") if isinstance(record.get("provenance"), dict) else {}
+        return key in (_normal(provenance.get("prompt")), _normal(provenance.get("library_key")))
+
+    for matches in (
+        lambda r: _normal(r.get("id")) == key,
+        lambda r: _normal(r.get("entity")) == key,
+        prompt_or_key,
+    ):
+        found = [r for r in typed if matches(r)]
+        if found:
+            return found
+    return []
+
+
+def _same_file(record):
+    """Quem é o arquivo do registro: `sha` no acervo global; no projeto, que não tem `sha`, o `path`."""
+    return str(record.get("sha") or record.get("cached_path") or record.get("path") or record.get("id"))
+
+
+def _pick(records, media_type, name):
+    found = _level_matches(records, media_type, name)
+    if len({_same_file(r) for r in found}) > 1:
+        ids = ", ".join(sorted(str(r.get("id")) for r in found))
+        raise PluginError(f'"{name}" é ambíguo no media-use: {ids}. Deixe um só ou use o id.')
+    return found[0] if found else None
+
+
+def _license(record):
+    """Uma linha informativa (o core prefixa e deixa inerte): origem, provedor e descrição."""
+    provenance = record.get("provenance") if isinstance(record.get("provenance"), dict) else {}
+    parts = [f"media-use {record.get('source') or 'sem origem'}"]
+    if provenance.get("provider"):
+        parts.append(f"provider {provenance['provider']}")
+    if record.get("description"):
+        parts.append(" ".join(str(record["description"]).split())[:200])
+    return "; ".join(parts)[:LICENSE_MAX_CHARS]
+
+
+def _allowed_roots():
+    """Raízes de `permissions.paths` do próprio manifesto: projeto fora delas nem é consultado."""
+    try:
+        manifest = json.loads(Path(__file__).with_name("getbrolls-plugin.json").read_text(encoding="utf-8"))
+        paths = manifest["permissions"]["paths"]
+    except (OSError, ValueError, KeyError, TypeError):
+        paths = DEFAULT_PATHS
+    return [Path(p).expanduser().resolve() for p in paths if isinstance(p, str)]
+
+
+class MediaUseResolver:
+    """`resolve(kind, name)`: projetos do `media-use` (`media_projects` no settings.json) e depois o acervo global."""
+
+    def __init__(self, api):
+        self.api = api
+
+    def _projects(self):
+        raw = self.api.config().get("media_projects") or []
+        roots = _allowed_roots()
+        projects = []
+        for entry in raw if isinstance(raw, list) else []:
+            try:
+                folder = Path(entry).expanduser() if isinstance(entry, str) else None
+                real = folder.resolve() if folder is not None and folder.is_absolute() else None
+            except (OSError, RuntimeError, ValueError):
+                # Entrada que nem vira caminho (NUL, `~outro` sem pasta pessoal): pula só ela.
+                real = None
+            if folder is not None and real is not None and any(real.is_relative_to(root) for root in roots):
+                projects.append(folder)
+        return projects
+
+    def _from_project(self, folder, media_type, name):
+        record = _pick(_records(folder / ".media" / LEDGER), media_type, name)
+        relative = str((record or {}).get("path") or "")
+        if not record or not relative or Path(relative).is_absolute() or ".." in Path(relative).parts:
+            return None
+        path = folder / relative
+        return ResolverHit(str(path), _license(record)) if path.is_file() else None
+
+    def _from_global(self, media_type, name):
+        store = Path.home() / ".media"
+        records = [r for r in _records(store / LEDGER) if r.get("reusable") is True]
+        record = _pick(records, media_type, name)
+        cached = Path(str((record or {}).get("cached_path") or ""))
+        if not record or not cached.is_absolute() or not (cached.parent / SENTINEL).is_file() or not cached.is_file():
+            return None
+        return ResolverHit(str(cached), _license(record))
+
+    def __call__(self, kind, name):
+        media_type = MEDIA_TYPES.get(kind)
+        if media_type is None:
+            return None
+        for folder in self._projects():
+            hit = self._from_project(folder, media_type, name)
+            if hit is not None:
+                return hit
+        return self._from_global(media_type, name)
+
+
+def register(api):
+    api.exporter(
+        "hyperframes",
+        export,
+        "Projeto HyperFrames editável a partir do roteiro revisado (pasta numerada em exports/hyperframes/)",
+    )
+    api.resolver("hyperframes_media", MediaUseResolver(api), ["sfx", "musica"])

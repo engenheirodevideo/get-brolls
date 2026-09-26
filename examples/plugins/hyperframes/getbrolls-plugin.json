@@ -1,0 +1,11 @@
+{
+  "id": "hyperframes",
+  "name": "HyperFrames",
+  "description": "Exemplo do SDK: transforma o roteiro revisado num projeto HyperFrames editável e acha SFX e música no acervo do media-use.",
+  "version": "0.1.0",
+  "sdk_api": 1,
+  "requires_getbrolls": ">=2.5,<3",
+  "entry": "plugin.py",
+  "contributes": {"exporters": ["hyperframes"], "resolvers": ["hyperframes_media"]},
+  "permissions": {"network": [], "env": [], "paths": ["~/.media"]}
+}
