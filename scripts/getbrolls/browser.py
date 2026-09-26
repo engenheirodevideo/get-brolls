@@ -1,5 +1,8 @@
 """Reviewable Playwright CLI capture plan; browser interactions stay with agent."""
 
+# pylint: disable=missing-function-docstring
+# Legado: ocorrências pré-existentes (corpo idêntico à origin/main).
+
 from datetime import UTC
 
 from .http import public_url
@@ -53,7 +56,10 @@ def plan(ledger, url, rules):
             "Confirme manchete, data, autor, URL e conteúdo carregado.",
             "Se necessário, interaja por refs do snapshot e tire novo snapshot.",
             "Captura não passa por paywall/login nem autentica autoria automaticamente.",
-            f"Importe PNG com resolve --file --asset-type {asset_type} --source-url URL --title TITULO --captured-at ISO --shot ID.",
+            (
+                f"Importe PNG com resolve --file --asset-type {asset_type} --source-url URL --title TITULO "
+                "--captured-at ISO --shot ID."
+            ),
             "Preview, revisão humana, permit e fetch continuam obrigatórios.",
         ],
     }
