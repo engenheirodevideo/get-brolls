@@ -26,6 +26,11 @@ temporária, nunca para a árvore real.
 Sem dependências externas (stdlib).
 """
 
+# pylint: disable=missing-function-docstring,duplicate-code
+# Legado: ocorrências pré-existentes (corpo idêntico à origin/main); a
+# duplicação é o helper `_utf8_output`, repetido porque cada script standalone
+# é autossuficiente e não importa dos outros.
+
 from __future__ import annotations
 
 import argparse
@@ -369,9 +374,10 @@ def run(root: Path, version: str, date_str: str, check: bool) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("version", help="nova versão, no formato X.Y.Z")
+    today = _date.today().isoformat()  # noqa: DTZ011 - local date; tz-aware would shift day near midnight
     parser.add_argument(
         "--date",
-        default=_date.today().isoformat(),  # noqa: DTZ011 - local date of the CLI run; timezone-aware would shift the day near midnight
+        default=today,
         help="data AAAA-MM-DD usada no CHANGELOG e em SKILL.md (padrão: hoje)",
     )
     parser.add_argument(
