@@ -1,5 +1,8 @@
 """Choose the existing B-roll or supplied composition for the review preview."""
 
+# pylint: disable=missing-function-docstring
+# Legado: ocorrências pré-existentes (corpo idêntico à origin/main).
+
 import hashlib
 import json
 
@@ -8,7 +11,9 @@ from .media import image_preview, review_preview
 from .models import id_stem
 
 
-def prepare_preview(ledger, c, start, end, config):  # noqa: C901 - existing size; validates staleness/scope then dispatches by media kind
+def prepare_preview(  # noqa: C901 - existing size; validates staleness/scope then dispatches by media kind
+    ledger, c, start, end, config
+):
     src = c["local_path"]
     if digest(src) != c["local_sha256"]:
         raise ValueError("Original local mudou: importe novamente.")
@@ -24,10 +29,12 @@ def prepare_preview(ledger, c, start, end, config):  # noqa: C901 - existing siz
     if scope == "full":
         if not c.get("full_preview_path"):
             raise ValueError(
-                "GB_GIF_SCOPE=full exige --full-preview-file com a composição do insert. Forneça esse arquivo ou use GB_GIF_SCOPE=broll."
+                "GB_GIF_SCOPE=full exige --full-preview-file com a composição do insert. "
+                "Forneça esse arquivo ou use GB_GIF_SCOPE=broll."
             )
         duration = c["full_preview_media"]["duration_s"]
-        if abs(duration - (end - start)) > 0.25:  # noqa: PLR2004 - 0.25 s tolerance when comparing the composition length with the segment
+        gap = abs(duration - (end - start))
+        if gap > 0.25:  # noqa: PLR2004 - 0.25 s tolerance vs. the segment length
             raise ValueError("A composição deve conter apenas o mesmo insert e ter a duração do trecho selecionado.")
         src = c["full_preview_path"]
         start = 0
