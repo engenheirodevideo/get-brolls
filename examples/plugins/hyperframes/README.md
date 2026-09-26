@@ -16,10 +16,20 @@ O código inteiro está em `plugin.py` e usa só o que o
 plano de export do core e devolve textos e pedidos de mídia por id lógico; quem
 grava a pasta e põe a mídia em `assets/` é o core.
 
+## Requisitos
+
+- A CLI HyperFrames (`npx --yes hyperframes@0.8.73 …`) precisa de **Node.js 22**
+  ou mais novo e do **FFmpeg** no PATH.
+- O próprio `export` usa o `ffprobe` (vem com o FFmpeg) para medir o A-ROLL; sem
+  ele, as durações ficam estimadas, com um aviso.
+
 ## Instalação
 
+Rode pelo caminho absoluto da instalação do Get B-rolls (como em
+[`references/roteiro.md`](../../../references/roteiro.md)), de qualquer pasta:
+
 ```sh
-python3 scripts/gb.py plugins --action install --source examples/plugins/hyperframes
+python3 <caminho absoluto da instalação>/scripts/gb.py plugins --action install --source <caminho absoluto da instalação>/examples/plugins/hyperframes
 ```
 
 Sem `--yes`, o `install` só mostra o que chegaria, com o `sha256` do conteúdo.
@@ -44,8 +54,8 @@ python3 scripts/gb.py export --to hyperframes --project <projeto>
 
 Cada export é uma pasta nova em `exports/hyperframes/NNN/`. O `EXPORT.md` dela
 traz os comandos da CLI HyperFrames, sempre da raiz do projeto
-(`npx --yes hyperframes@0.8.77 lint|check|preview|render exports/hyperframes/NNN`).
-Versão testada da CLI: **0.8.77** (`HYPERFRAMES_VERSION` no `plugin.py`); o
+(`npx --yes hyperframes@0.8.73 lint|check|preview|render exports/hyperframes/NNN`).
+Versão testada da CLI: **0.8.73** (`HYPERFRAMES_VERSION` no `plugin.py`); o
 `check` e o `render` baixam GSAP e a fonte Inter na primeira vez.
 
 Diretivas `[hyperframes:<bloco>]` no roteiro viram um comentário na cena e um
@@ -75,8 +85,8 @@ confira a mudança com a pessoa e confirme com `--yes --expect <sha256>` da
 prévia. A licença que o plugin informa é só informativa: aparece nos créditos
 como "Licença informada pelo plugin hyperframes: …" e nunca vale como `permit`.
 
-Um `manifest.jsonl` que é link, FIFO ou pasta, ou que passa de 16 MB, não é lido:
-o core mostra o aviso e segue sem o arquivo daquele nome.
+Um `manifest.jsonl` que é link, FIFO ou pasta, que passa de 16 MiB ou que não está
+em UTF-8 não é lido: o core mostra o aviso e segue sem o arquivo daquele nome.
 
 ## Limites
 

@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import tempfile
 import threading
@@ -79,6 +80,28 @@ class RegistrationTests(HomeCase):
         assert resolver is not None
         self.assertEqual(("sfx", "musica"), resolver.kinds)
         self.assertEqual((str(self.user / ".media"),), registry.resolver_roots("hyperframes_media"))
+
+
+class ReadmeTests(unittest.TestCase):
+    """O README do exemplo diz a versão testada da CLI, o que ela precisa e como instalar de qualquer pasta."""
+
+    def setUp(self):
+        self.readme = (EXAMPLE / "README.md").read_text(encoding="utf-8")
+
+    def test_pins_only_the_tested_cli(self):
+        self.assertEqual({hf.HYPERFRAMES_VERSION}, set(re.findall(r"hyperframes@([0-9.]+)", self.readme)))
+        self.assertIn(f"Versão testada da CLI: **{hf.HYPERFRAMES_VERSION}**", self.readme)
+        changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        self.assertIn(f"testado com a CLI {hf.HYPERFRAMES_VERSION})", changelog)
+
+    def test_requirements_and_absolute_install_path(self):
+        self.assertIn("Node.js 22", self.readme)
+        self.assertIn("FFmpeg", self.readme)
+        self.assertIn(
+            "plugins --action install --source <caminho absoluto da instalação>/examples/plugins/hyperframes",
+            self.readme,
+        )
+        self.assertNotIn("--source examples/plugins/hyperframes", self.readme)
 
 
 class ResolverTests(HomeCase):
