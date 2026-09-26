@@ -6,6 +6,9 @@ aprovação humana **não** atravessam: continuam por projeto, por revisão e po
 intervalo, e toda resposta daqui repete isso em `rights_not_transferable`.
 """
 
+# pylint: disable=missing-function-docstring,too-many-locals
+# Legado: ocorrências pré-existentes (corpo idêntico à origin/main).
+
 import contextlib
 import hashlib
 import json
