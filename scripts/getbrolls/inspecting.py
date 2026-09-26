@@ -5,6 +5,9 @@ assunto acontece no vídeo. Aqui isso vira janelas candidatas pontuadas contra a
 frase do usuário — só biblioteca padrão, nada de rede e nada gravado.
 """
 
+# pylint: disable=use-maxsplit-arg,too-many-locals
+# Legado: ocorrências pré-existentes (corpo idêntico à origin/main).
+
 import re
 import unicodedata
 
