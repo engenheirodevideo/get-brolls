@@ -8,9 +8,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import acquisition, providers, runtime
+from getbrolls import acquisition, commands, providers, runtime
 from getbrolls.acquisition import prepare_source
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate
@@ -170,7 +170,6 @@ class IntervalCacheIndexTests(unittest.TestCase):
 
 class Finding40SearchSummaryMentionsFailedSourcesTests(unittest.TestCase):
     def test_summary_line_appends_failed_source_count(self):
-        from getbrolls import commands
 
         result = {
             "items": [{"id": "a"}],
@@ -181,7 +180,6 @@ class Finding40SearchSummaryMentionsFailedSourcesTests(unittest.TestCase):
         self.assertIn("2 fonte(s) falharam", line)
 
     def test_summary_line_omits_failed_suffix_when_no_errors(self):
-        from getbrolls import commands
 
         result = {"items": [{"id": "a"}], "errors": [], "excluded_by_rules": 0}
         line = commands.FLOW_SUMMARIES["search"](result)

@@ -6,12 +6,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls.ledger import Ledger
-from getbrolls.models import candidate, set_segment
+from getbrolls.models import approve, candidate, set_segment, signature
 from getbrolls.rendering import render
-from getbrolls.review import import_review, latest_review_file
+from getbrolls.review import import_review, latest_review_file, legacy_review_epoch
 
 
 def _review_payload(page):
@@ -103,8 +103,6 @@ class PartialImportTests(unittest.TestCase):
         se o item mudou depois do export, a decisão dele não vale mais. Aqui são os
         dois jeitos de o item mudar, e nenhum dos dois é aplicado.
         """
-        from getbrolls.models import approve, signature
-        from getbrolls.review import legacy_review_epoch
 
         # 1) Mudou a aprovação (mesmo intervalo): a assinatura ainda bate, a época não.
         with tempfile.TemporaryDirectory() as folder:

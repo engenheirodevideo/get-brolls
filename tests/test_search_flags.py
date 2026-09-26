@@ -13,10 +13,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import library, providers
+from getbrolls import library, providers, social
+from getbrolls.brief import beat_commands, search_query
 from getbrolls.commands import execute
 from getbrolls.models import candidate
 from getbrolls.runtime import OperationError, audited
@@ -169,7 +170,6 @@ class ProviderFactsInTheListing(unittest.TestCase):
     """O que o YouTube já responde na busca: canal e duração, sem outra chamada."""
 
     def stub(self, tmp, **extra):
-        from getbrolls import social
 
         with patch.object(social, "run", return_value=(json.dumps(YTDLP_FLAT), [])):
             return audited(args(tmp, limit=5, **extra), execute)
@@ -287,7 +287,6 @@ class BeatQueryIsEntityAndAction(unittest.TestCase):
         }
 
     def test_a_long_target_is_trimmed_to_six_meaningful_tokens(self):
-        from getbrolls.brief import beat_commands, search_query
 
         beat = self.beat("print da página de preços do concorrente com o valor em destaque")
         self.assertEqual("print página preços concorrente valor destaque", search_query(beat))
@@ -297,7 +296,6 @@ class BeatQueryIsEntityAndAction(unittest.TestCase):
         self.assertNotIn("da página", command)
 
     def test_an_explicit_query_from_the_person_goes_through_untouched(self):
-        from getbrolls.brief import search_query
 
         beat = self.beat("qualquer coisa", queries=["exatamente o que eu quero buscar aqui agora"])
         self.assertEqual("exatamente o que eu quero buscar aqui agora", search_query(beat))

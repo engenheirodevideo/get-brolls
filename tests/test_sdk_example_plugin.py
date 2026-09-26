@@ -5,17 +5,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _paths import ROOT
 from test_sdk_loader import LoaderTestCase
+
+from getbrolls.sdk import SDK_API, Preset, ProviderCapabilities
 
 EXAMPLE = ROOT / "examples" / "plugins" / "pasta_local"
 
 
 class ExamplePluginTests(LoaderTestCase):
     def test_public_sdk_surface(self):
-        from getbrolls.sdk import SDK_API, Preset, ProviderCapabilities
 
         self.assertEqual(1, SDK_API)
         self.assertTrue(ProviderCapabilities(search=True).search)

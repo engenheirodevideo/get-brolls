@@ -2,12 +2,13 @@
 nunca INTERNAL_ERROR em `plugins list`, `doctor` ou `x --list`."""
 
 import unittest
+from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from test_sdk_loader import LoaderTestCase
 
-from getbrolls.sdk import loader
+from getbrolls.sdk import loader, manifest
 
 
 class ManifestBoundsTests(LoaderTestCase):
@@ -37,9 +38,6 @@ class ManifestBoundsTests(LoaderTestCase):
         self.assertEqual({"commands": []}, run_cli("x", "--list", env=env))
 
     def test_recursion_while_parsing_is_an_invalid_row(self):
-        from unittest.mock import patch
-
-        from getbrolls.sdk import manifest
 
         self.plant("fundo", "{}")
         with patch.object(manifest.json, "loads", side_effect=RecursionError()):

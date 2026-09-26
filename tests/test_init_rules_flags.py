@@ -6,10 +6,12 @@ import unittest
 from pathlib import Path
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
+from test_brief import VALID
 
+from getbrolls.brief import validate_brief
 from getbrolls.rules import load_rules
 
 TEXT = "Sou responsável pelos materiais que escolhi para este vídeo."
@@ -54,8 +56,6 @@ class VideoFormatFlagTests(unittest.TestCase):
             self.assertEqual(prose, Path(tmp, "RULES.md").read_text(encoding="utf-8").split("```json")[0])
 
     def test_the_brief_conflict_points_at_a_command_that_can_fix_it(self):
-        from getbrolls.brief import validate_brief
-        from tests.test_brief import VALID
 
         payload = json.loads(json.dumps(VALID))
         payload["video"]["delivery"]["format"] = "reels"

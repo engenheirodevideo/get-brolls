@@ -7,16 +7,19 @@ import unittest
 from pathlib import Path
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-import _paths  # noqa: F401  (efeito de import: insere scripts/ em sys.path; ROOT é de getbrolls.rules, não deste helper)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+
+# efeito de import: insere scripts/ em sys.path; ROOT é de getbrolls.rules, não deste helper
+import _paths  # noqa: F401  # pylint: disable=unused-import
 from _media import synth_image
 
 from getbrolls.browser import plan
 from getbrolls.http import _scrub
 from getbrolls.ledger import Ledger
 from getbrolls.memory import remember
-from getbrolls.models import approve, candidate, set_segment
-from getbrolls.rules import ROOT, allowed, format_report, load_rules
+from getbrolls.models import approve, candidate, set_segment, signature
+from getbrolls.review import import_review, project_id, review_epoch
+from getbrolls.rules import ROOT, allowed, format_report, load_rules, sync_formats
 
 CLI = ROOT / "scripts/gb.py"
 
@@ -79,9 +82,6 @@ class RulesTests(unittest.TestCase):
             )
 
     def test_rule_changes_invalidate_and_block_import(self):
-        from getbrolls.models import signature
-        from getbrolls.review import import_review, project_id, review_epoch
-        from getbrolls.rules import sync_formats
 
         with tempfile.TemporaryDirectory() as d:
             led = Ledger(d)
@@ -192,7 +192,6 @@ class FormatChangeGateTests(unittest.TestCase):
         return ledger, rules
 
     def test_change_that_invalidates_approvals_aborts_and_lists_the_items(self):
-        from getbrolls.rules import sync_formats
 
         with tempfile.TemporaryDirectory() as folder:
             ledger, rules = self._project_with_approved_item(folder)
@@ -206,7 +205,6 @@ class FormatChangeGateTests(unittest.TestCase):
             self.assertEqual("approved", ledger.data["items"][0]["approval"]["status"])
 
     def test_the_same_change_goes_through_once_confirmed(self):
-        from getbrolls.rules import sync_formats
 
         with tempfile.TemporaryDirectory() as folder:
             ledger, rules = self._project_with_approved_item(folder)
@@ -216,7 +214,6 @@ class FormatChangeGateTests(unittest.TestCase):
             self.assertEqual("reels", ledger.data["items"][0]["format"]["target"])
 
     def test_a_change_without_approvals_never_needs_the_flag(self):
-        from getbrolls.rules import sync_formats
 
         with tempfile.TemporaryDirectory() as folder:
             ledger = Ledger(folder)
@@ -256,7 +253,8 @@ class FormatChangeGateTests(unittest.TestCase):
             path.write_text("```json\n" + json.dumps(rules) + "\n```", encoding="utf-8")
             for command in (["references"], ["inspect", "--url", "https://example.org/a"]):
                 with self.subTest(command=command[0]):
-                    proc = subprocess.run(  # noqa: PLW1510 - only stdout/stderr matter here, exit code is not asserted
+                    # Só stdout/stderr importam aqui; o código de saída não é verificado.
+                    proc = subprocess.run(  # noqa: PLW1510  # pylint: disable=subprocess-run-check
                         [sys.executable, str(CLI), *command, "--project", folder],
                         capture_output=True,
                         text=True,

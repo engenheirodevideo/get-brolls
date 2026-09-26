@@ -1,8 +1,9 @@
 """Validador stdlib do subconjunto de JSON Schema usado pelo SDK."""
 
+import json
 import unittest
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT
 
 from getbrolls.sdk.jsonschema import SchemaError, check_schema, errors, validate
@@ -56,7 +57,6 @@ class SubsetTests(unittest.TestCase):
         self.assertIn("#/properties/a", str(caught.exception))
 
     def test_core_schemas_use_only_the_subset(self):
-        import json
 
         for name in ("brief.schema.json", "candidate.schema.json"):
             check_schema(json.loads((ROOT / "schemas" / name).read_text(encoding="utf-8")))

@@ -3,11 +3,18 @@
 import json
 import os
 import re
+import shlex
 import stat
 import tempfile
+
+# Reimport com apelido só pra isolar o setup do teste que precisa dele
+# (mesmo motivo do redefined-outer-name em tests/pylintrc).
+import tempfile as tf  # pylint: disable=reimported
+import threading
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation
@@ -16,6 +23,8 @@ from _paths import ROOT
 
 from getbrolls import library
 from getbrolls.cli import SUMMARIES, build_parser
+from getbrolls.commands import execute
+from getbrolls.guidance import next_action
 from getbrolls.ledger import Ledger
 from getbrolls.memory import remember
 from getbrolls.models import approve, candidate, require_fetch, set_segment
@@ -36,7 +45,8 @@ def approved_candidate(project, source_url="https://www.youtube.com/watch?v=abc"
 
 class LibraryBase(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        # Ciclo de vida cobre o teste (ou a classe) inteiro; a limpeza já é feita via addCleanup/tearDownClass.
+        self.tmp = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
         self.addCleanup(self.tmp.cleanup)
         self.home = Path(self.tmp.name) / "home"
         self.project = Path(self.tmp.name) / "project"
@@ -141,14 +151,14 @@ class LibraryTests(LibraryBase):
         self.assertEqual("pending", fresh["approval"]["status"])
 
     def test_two_writers_at_once_keep_both_entries(self):
-        import threading
 
         errors = []
 
         def write(n):
             try:
                 library.learn_query(f"busca {n}", "youtube", "hit")
-            except Exception as e:  # noqa: BLE001 - the test wants the real failure to assert none occurred
+            # O teste quer a falha real, para garantir que nenhuma ocorreu.
+            except Exception as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
                 errors.append(e)
 
         threads = [threading.Thread(target=write, args=(n,)) for n in range(8)]
@@ -194,7 +204,6 @@ class LibraryTests(LibraryBase):
         self.assertEqual([], library.hints("foguete"))
 
     def test_the_tests_never_point_at_the_real_home(self):
-        import tempfile as tf
 
         os.environ.pop("GB_HOME", None)
 
@@ -243,9 +252,6 @@ class LibraryCommandTests(LibraryBase):
         self.assertEqual(1, len(found["queries"]))
 
     def test_search_appends_hints_and_records_a_failed_provider(self):
-        from unittest.mock import patch
-
-        from getbrolls.commands import execute
 
         args = build_parser().parse_args(
             [
@@ -276,9 +282,6 @@ class LibraryCommandTests(LibraryBase):
         self.assertIn("foguete decolando", [h.get("query") for h in hints])
 
     def test_the_search_rung_mentions_the_library_without_changing_the_command(self):
-        import shlex
-
-        from getbrolls.guidance import next_action
 
         state = {
             "project": str(self.project),

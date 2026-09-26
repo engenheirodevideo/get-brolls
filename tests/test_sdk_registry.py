@@ -1,12 +1,14 @@
 """Registro tipado: nomes, donos, colisões e rollback por dono."""
 
 import unittest
+from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
+from getbrolls import presets, providers
 from getbrolls.sdk.contracts import CORE, ProviderCapabilities
-from getbrolls.sdk.registry import Registry, RegistryError
+from getbrolls.sdk.registry import Registry, RegistryError, get_registry, reset_registry
 
 
 class FakeProvider:
@@ -92,13 +94,11 @@ class RegistryTests(unittest.TestCase):
 
 class BuiltinProvidersTests(unittest.TestCase):
     def setUp(self):
-        from getbrolls.sdk.registry import reset_registry
 
         reset_registry()
         self.addCleanup(reset_registry)
 
     def test_builtins_are_registered_in_canonical_order_owned_by_core(self):
-        from getbrolls.sdk.registry import get_registry
 
         reg = get_registry()
         expected = ("youtube", "instagram", "tiktok", "pexels", "pixabay", "commons", "nasa", "local")
@@ -107,7 +107,6 @@ class BuiltinProvidersTests(unittest.TestCase):
         self.assertEqual("youtube", reg.provider_for_host("youtu.be").name)  # type: ignore[union-attr]
 
     def test_capabilities_output_is_unchanged(self):
-        from getbrolls import providers
 
         caps = providers.capabilities()
         self.assertEqual(
@@ -131,9 +130,6 @@ class BuiltinProvidersTests(unittest.TestCase):
         self.assertNotIn("plugin", caps["pexels"])
 
     def test_search_still_honours_patched_module_functions(self):
-        from unittest.mock import patch
-
-        from getbrolls import providers
 
         with patch.object(providers, "_youtube", return_value=[]) as fake:
             self.assertEqual([], providers.search("youtube", "earth", 2))
@@ -142,14 +138,11 @@ class BuiltinProvidersTests(unittest.TestCase):
 
 class BuiltinPresetsTests(unittest.TestCase):
     def setUp(self):
-        from getbrolls.sdk.registry import reset_registry
 
         reset_registry()
         self.addCleanup(reset_registry)
 
     def test_every_builtin_preset_is_in_the_registry(self):
-        from getbrolls import presets
-        from getbrolls.sdk.registry import get_registry
 
         reg = get_registry()
         self.assertEqual(sorted(presets.PERMIT_PRESETS), sorted(reg.preset_names()))
@@ -157,7 +150,6 @@ class BuiltinPresetsTests(unittest.TestCase):
         self.assertEqual(presets.PERMIT_PRESETS["nasa"]["text"], presets.get("nasa")["text"])
 
     def test_unknown_preset_is_a_clear_error(self):
-        from getbrolls import presets
 
         with self.assertRaises(ValueError) as caught:
             presets.get("inexistente")

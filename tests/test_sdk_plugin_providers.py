@@ -3,19 +3,27 @@
 import json
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _plugin_pins import pin_plugins
-from test_sdk_loader import MANIFEST, PLUGIN_CODE, LoaderTestCase  # noqa: F401  (MANIFEST reexportado)
 
-from getbrolls import presets, providers
+# MANIFEST não é usado aqui: fica reexportado para quem importar deste módulo.
+from test_sdk_loader import MANIFEST, PLUGIN_CODE, LoaderTestCase  # noqa: F401  # pylint: disable=unused-import
+
+from getbrolls import brief, presets, providers, rules
+from getbrolls.brief import _sources
+from getbrolls.cli import build_parser
 from getbrolls.http import ProviderError
 from getbrolls.presets import PERMIT_PRESETS
+from getbrolls.sdk import loader
+from getbrolls.sdk.jsonschema import errors as schema_errors
 from getbrolls.sdk.registry import reset_registry
+from getbrolls.sdk.schemas import load as load_schema
 
 # `demo` some do contributes.providers efetivo porque register() nunca chega
 # a chamar `api.provider(...)` — o plugin continua declarando a fonte no manifesto.
@@ -187,7 +195,6 @@ class PluginProviderTests(PluginTestCase):
         """Pin quebrado suspende o plugin; a busca por esse nome de fonte tem
         que dizer isso, não "fonte desconhecida"."""
         folder = self.install()
-        from getbrolls.sdk import loader
 
         loader.enable("demo", confirm=True)
         (folder / "plugin.py").write_text(PLUGIN_CODE + "\n# mudou\n", encoding="utf-8")
@@ -229,7 +236,6 @@ class PluginProviderTests(PluginTestCase):
 
     def test_cli_preset_choices_include_enabled_plugin(self):
         self.enable()
-        from getbrolls.cli import build_parser
 
         args = build_parser().parse_args(["permit", "--project", ".", "--candidate", "x", "--preset", "demo"])
         self.assertEqual("demo", args.preset)
@@ -251,8 +257,6 @@ class PluginProviderTests(PluginTestCase):
         self.assertEqual({"start_s": None, "end_s": None, "revision": 0}, item["segment"])
 
     def test_clean_plugin_candidate_still_passes_the_core_schema(self):
-        from getbrolls.sdk.jsonschema import errors as schema_errors
-        from getbrolls.sdk.schemas import load as load_schema
 
         self.enable()
         item = providers.search("demo", "mar", 1)[0]
@@ -297,7 +301,6 @@ class PluginProviderTests(PluginTestCase):
         """Cheap minor: `guard.rows` materializa só até `limit` (`itertools.islice`) —
         um gerador infinito de um plugin mal-comportado não pode travar a busca nem
         gastar tempo sanitizando candidato que `search` ia descartar de qualquer jeito."""
-        import sys
 
         self.enable(INFINITE_SEARCH)
         items = providers.search("demo", "mar", 3)
@@ -320,7 +323,6 @@ class PluginProviderTests(PluginTestCase):
 
 class RegistryDrivenValidationTests(PluginTestCase):
     def test_brief_accepts_enabled_plugin_source_and_refuses_unknown(self):
-        from getbrolls import brief
 
         self.enable()
         self.assertIn("demo", brief.sources())
@@ -330,13 +332,11 @@ class RegistryDrivenValidationTests(PluginTestCase):
         self.assertEqual(("commons", "nasa"), brief.still_sources())
 
     def test_builtin_lists_are_unchanged_without_plugins(self):
-        from getbrolls import brief
 
         self.assertEqual(brief.SOURCES, brief.sources())
         self.assertEqual(brief.SEARCHABLE, brief.searchable())
 
     def test_rules_accept_plugin_source_in_preferred_providers(self):
-        from getbrolls import rules
 
         self.enable()
         self.assertIn("demo", rules.searchable_providers())
@@ -371,8 +371,6 @@ class RegistryDrivenValidationTests(PluginTestCase):
     def test_preferred_providers_drops_a_suspended_plugin_source_with_a_warning(self):
         """Um plugin suspenso citado em preferred_providers não pode quebrar
         `load_rules` (e por tabela, toda busca do projeto) — só sai da lista com aviso."""
-        from getbrolls import rules
-        from getbrolls.sdk import loader
 
         folder = self.install()
         loader.enable("demo", confirm=True)
@@ -388,7 +386,6 @@ class RegistryDrivenValidationTests(PluginTestCase):
         self.assertIn("event=rule_source_skipped", "\n".join(cm.output))
 
     def test_preferred_providers_still_refuses_a_truly_unknown_name(self):
-        from getbrolls import rules
 
         project = self._rules_project(["youtube", "inexistente"])
         with self.assertRaises(ValueError) as caught:
@@ -398,8 +395,6 @@ class RegistryDrivenValidationTests(PluginTestCase):
     def test_brief_allowed_sources_names_the_plugin_for_a_suspended_source(self):
         """BRIEF.md continua recusando a fonte suspensa, mas a mensagem
         nomeia o plugin e o status em vez de só listar as fontes válidas."""
-        from getbrolls.brief import _sources
-        from getbrolls.sdk import loader
 
         folder = self.install()
         loader.enable("demo", confirm=True)

@@ -13,13 +13,14 @@ import unittest
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 from test_brief import VALID, write_brief
 
 from getbrolls import cli, providers
 from getbrolls.cli import build_parser
 from getbrolls.ledger import Ledger
+from getbrolls.models import approve, candidate, set_segment
 
 
 def one_beat_brief(project, sources, **beat):
@@ -71,7 +72,6 @@ class EmptySearchesMoveOn(unittest.TestCase):
             self.assertIn("allowed_sources", final["for_human"])
 
     def test_a_search_that_found_something_is_not_recorded_as_empty(self):
-        from getbrolls.models import candidate
 
         found = [candidate("commons", "1", "Achado", "https://commons.wikimedia.org/wiki/File:A.jpg")]
         with tempfile.TemporaryDirectory() as tmp:
@@ -110,7 +110,6 @@ def exhaust(project):
 
 
 def add_approved_item(project):
-    from getbrolls.models import approve, candidate, set_segment
 
     ledger = Ledger(project)
     item = candidate("youtube", "aprovado123", "Aprovado", "https://www.youtube.com/watch?v=aprovado123")
@@ -325,7 +324,6 @@ class EmptySearchRecord(unittest.TestCase):
 
     def test_only_an_empty_final_result_is_recorded(self):
         """M-d: se o encurtamento achou algo, a busca não foi vazia."""
-        from getbrolls.models import candidate
 
         long_query = "registro real do eclipse total visto da cidade ao meio dia"
         found = [candidate("commons", "9", "Achado", "https://commons.wikimedia.org/wiki/File:B.jpg")]

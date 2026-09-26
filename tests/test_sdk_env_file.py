@@ -4,6 +4,7 @@ O README do `banco_http` e a orientação do `brief`/`status` mandam pôr o toke
 `.env`; antes disso travava TODO comando com "variável desconhecida".
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -13,13 +14,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _paths import ROOT
 from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
 from getbrolls import config
+from getbrolls.sdk import loader
+from getbrolls.sdk.api import PluginApi
+from getbrolls.sdk.registry import Registry
 
 EXAMPLES = ROOT / "examples" / "plugins"
 
@@ -106,7 +110,6 @@ class PluginEnvKeysTests(LoaderTestCase):
         """Um plugin (`banco`) que declara como `env_key` a variável do espaço de nomes
         de outro (`BANCO_HTTP_TOKEN`, do `banco_http`) não aparece "configurado" com o
         valor que o `.env` guardou para o dono; o dono, sim."""
-        import json
 
         squatter = self.home / "plugins" / "banco"
         squatter.mkdir(parents=True)
@@ -166,7 +169,6 @@ class PluginEnvKeysTests(LoaderTestCase):
         self.assertIn("reinstale", message)
 
     def test_enable_preview_warns_about_core_and_foreign_keys(self):
-        from getbrolls.sdk import loader
 
         pasta = self.home / "plugins" / "pasta_local"
         shutil.copytree(EXAMPLES / "pasta_local", pasta)
@@ -195,8 +197,6 @@ TOOLCHAIN_CASES = {
 
 
 def api_for(plugin_id, env):
-    from getbrolls.sdk.api import PluginApi
-    from getbrolls.sdk.registry import Registry
 
     return PluginApi({**MANIFEST, "id": plugin_id, "permissions": {"network": [], "env": env, "paths": []}}, Registry())
 
@@ -271,7 +271,6 @@ class PluginEnvNeverExportedTests(LoaderTestCase):
             self.assertEqual("do-env", api.env("BANCO_HTTP_TOKEN"))
 
     def test_toolchain_names_warn_in_the_preview_and_on_load(self):
-        from getbrolls.sdk import loader
 
         self.plugin("xdg", ["XDG_CONFIG_HOME"])
         self.plugin("openssl", ["OPENSSL_CONF"])
@@ -294,7 +293,6 @@ class NamespaceSquattingTests(LoaderTestCase):
         self.install(manifest, code="def register(api):\n    pass\n")
 
     def test_squatter_installed_first(self):
-        from getbrolls.sdk import loader
 
         self.plugin("banco", ["BANCO_HTTP_TOKEN"])
         self.plugin("banco_http", ["BANCO_HTTP_TOKEN"])
@@ -302,7 +300,6 @@ class NamespaceSquattingTests(LoaderTestCase):
         self.assertIn("O plugin instalado banco pede BANCO_HTTP_TOKEN", warnings)
 
     def test_squatter_arriving_after(self):
-        from getbrolls.sdk import loader
 
         self.plugin("banco_http", ["BANCO_HTTP_TOKEN"])
         loader.enable("banco_http", confirm=True)

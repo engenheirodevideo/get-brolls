@@ -2,17 +2,22 @@
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import unittest
+from unittest import mock
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import CLI, ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 
-from getbrolls import __version__
+# efeito de import: insere scripts/ em sys.path
+from _paths import CLI, ROOT  # noqa: F401  # pylint: disable=unused-import
+
+from getbrolls import __version__, media, social
 from getbrolls.cli import FORMAT_GATE_SUBCOMMANDS, SUMMARIES, build_parser
 from getbrolls.commands import doctor_summary
+from getbrolls.http import ProviderError
 
 
 def subparsers(parser):
@@ -98,8 +103,6 @@ class DoctorVerdictTests(unittest.TestCase):
         self.assertIn("ffmpeg", summary["ok"])
 
     def test_unset_provider_keys_are_optional_not_missing(self):
-        import os
-        from unittest import mock
 
         environment = {
             key: value for key, value in os.environ.items() if key not in ("PEXELS_API_KEY", "PIXABAY_API_KEY")
@@ -114,8 +117,6 @@ class DoctorVerdictTests(unittest.TestCase):
 
 class ActionableErrorTests(unittest.TestCase):
     def test_missing_ytdlp_names_the_installer(self):
-        from getbrolls import social
-        from getbrolls.http import ProviderError
 
         original_local = social.local_ytdlp
         original_which = social.shutil.which
@@ -133,7 +134,6 @@ class ActionableErrorTests(unittest.TestCase):
         self.assertIn("/plugin update", message)
 
     def test_absent_ffmpeg_is_distinguishable_from_bad_range(self):
-        from getbrolls import media
 
         with self.assertRaises(ValueError) as absent:
             media.run(["ffmpeg-inexistente-getbrolls", "-version"])

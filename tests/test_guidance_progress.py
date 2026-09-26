@@ -7,13 +7,15 @@ import unittest
 from pathlib import Path
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_video
 
 from getbrolls.cli import build_parser
 from getbrolls.commands import status_next
 from getbrolls.guidance import next_action
+from getbrolls.ledger import Ledger
+from getbrolls.models import candidate
 
 PROJECT = "/tmp/projeto-sem-brief"
 NO_BRIEF_OPENING = "Antes de buscar qualquer coisa"
@@ -229,8 +231,6 @@ class InspectCommandCarriesTheBeat(unittest.TestCase):
     """L-3: o `inspect` do degrau saía com `--query NARRACAO_OU_ALVO` mesmo com o beat no brief."""
 
     def test_the_inspect_rung_uses_the_narration_of_the_candidates_beat(self):
-        from getbrolls.ledger import Ledger
-        from getbrolls.models import candidate
 
         brief = json.loads(json.dumps(LOCAL_BRIEF))
         brief["defaults"]["allowed_sources"] = ["youtube"]

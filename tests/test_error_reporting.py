@@ -17,12 +17,14 @@ import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
-from typing import Any, cast
+
+# Any só aparece citado em cast("Any", ...); o pyright resolve a string, o pylint não.
+from typing import Any, cast  # pylint: disable=unused-import
 from unittest.mock import MagicMock, patch
 
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import cli, http, media, providers, runtime, social
+from getbrolls import cli, http, media, providers, queue, runtime, social
 from getbrolls import instagram_pairs as ig
 from getbrolls.http import ProviderError
 
@@ -52,7 +54,6 @@ class SocialErrorClassificationTests(unittest.TestCase):
         msg = self._run_with_stderr("ERROR: HTTP Error 429: Too Many Requests")
         self.assertIn("429", msg)
         self.assertIn("limite de requisições da fonte (429); aguarde e tente de novo", msg)
-        from getbrolls import queue  # local: only this assertion needs it
 
         self.assertTrue(queue.is_cooldown_reason(msg))
 
@@ -270,7 +271,8 @@ class MediaErrorSeparationTests(unittest.TestCase):
 class DrawtextCacheTests(unittest.TestCase):
     def setUp(self):
         media._DRAWTEXT.clear()
-        self.tmp = tempfile.TemporaryDirectory()
+        # Ciclo de vida cobre o teste inteiro; a limpeza já é feita via addCleanup.
+        self.tmp = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
         self.addCleanup(self.tmp.cleanup)
         self.env_patch = patch.dict("os.environ", {"GB_CACHE_DIR": self.tmp.name})
         self.env_patch.start()
@@ -528,7 +530,8 @@ class Finding41MultilineWarningsTests(unittest.TestCase):
 class Finding27DrawtextProbeFailureNotCachedTests(unittest.TestCase):
     def setUp(self):
         media._DRAWTEXT.clear()
-        self.tmp = tempfile.TemporaryDirectory()
+        # Ciclo de vida cobre o teste inteiro; a limpeza já é feita via addCleanup.
+        self.tmp = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
         self.addCleanup(self.tmp.cleanup)
         self.env_patch = patch.dict("os.environ", {"GB_CACHE_DIR": self.tmp.name})
         self.env_patch.start()

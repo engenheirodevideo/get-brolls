@@ -15,11 +15,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from test_sdk_install import HAS_GIT, InstallTestCase, git, write_plugin
 
 from getbrolls import runtime
 from getbrolls.sdk import install as install_mod
+from getbrolls.sdk import loader
 
 IS_ROOT = hasattr(os, "geteuid") and os.geteuid() == 0
 
@@ -115,7 +116,8 @@ class NtfsJunctionTests(InstallTestCase):
     como um link: o loader marca a pasta `invalid` e o install recusa."""
 
     def plugin_with_junction(self, folder):
-        import _winapi  # só existe no Windows (a classe é pulada fora dele)
+        # _winapi só existe no Windows; a classe inteira já é pulada fora dele.
+        import _winapi  # pylint: disable=import-outside-toplevel,import-error
 
         write_plugin(folder)
         outside = self.work / "fora"
@@ -125,7 +127,6 @@ class NtfsJunctionTests(InstallTestCase):
         return folder
 
     def test_loader_marks_a_folder_with_a_junction_invalid(self):
-        from getbrolls.sdk import loader
 
         self.plugin_with_junction(self.home / "plugins" / "demo")
         self.assertEqual(("link", "vendor"), loader.content_problem(self.home / "plugins" / "demo"))
@@ -151,7 +152,6 @@ class ReparseTagTests(unittest.TestCase):
     SYMLINK = 0xA000000C  # IO_REPARSE_TAG_SYMLINK
 
     def is_link_with_tag(self, tag, windows=True):
-        from getbrolls.sdk import loader
 
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp) / "pasta"

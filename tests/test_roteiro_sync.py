@@ -5,16 +5,20 @@ import os
 import re
 import shutil
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT
 
-from getbrolls import models, roteiro, roteiro_ids, roteiro_review, roteiro_sync
+from getbrolls import ledger as ledger_module
+from getbrolls import models, roteiro, roteiro_commands, roteiro_ids, roteiro_review, roteiro_sync
+from getbrolls.commands import brief_report, status_report
 from getbrolls.ledger import Ledger
+from getbrolls.rules import load_rules
 
 BRIEF = {
     "version": 1,
@@ -449,7 +453,6 @@ class CarriedRequirementTests(SyncCase):
         self.assertEqual((self.project / "BRIEF.md.bak").read_bytes(), b"brief antigo\n")
 
     def test_manifest_is_saved_before_the_roteiro_is_written(self):
-        from getbrolls import ledger as ledger_module
 
         self.review()
         self.sync()
@@ -675,18 +678,16 @@ class CarriedRequirementTests(SyncCase):
 class StatusDriftTests(SyncCase):
     """`status` só manda para o sync quando o roteiro está fora de sincronia com o brief."""
 
-    AROLL_ONLY = '---\ntype: roteiro\ngenero: reels\ntema: "t"\n---\n\n## Gancho\n[A-ROLL]\nOi.\n\n## CTA\n[FULL: logo]\nTchau.\n'
+    AROLL_ONLY = (
+        '---\ntype: roteiro\ngenero: reels\ntema: "t"\n---\n\n'
+        "## Gancho\n[A-ROLL]\nOi.\n\n## CTA\n[FULL: logo]\nTchau.\n"
+    )
 
     def status(self):
-        from getbrolls.commands import status_report
-        from getbrolls.rules import load_rules
 
         return status_report(Ledger(self.project, recover=False), load_rules(self.project))["summary"]
 
     def brief_line(self):
-        import types
-
-        from getbrolls.commands import brief_report
 
         return brief_report(types.SimpleNamespace(project=str(self.project), validate=True, beat=None))["summary"]
 
@@ -778,9 +779,6 @@ class PlanSafetyTests(SyncCase):
         self.assertNotIn("queries", " ".join(self.plan()["warnings"]))
 
     def test_plan_summary_says_the_sync_will_refuse_without_review(self):
-        import types
-
-        from getbrolls import roteiro_commands
 
         args = types.SimpleNamespace(command="roteiro", action="plan", project=str(self.project))
         self.assertIn("o sync vai recusar: falta a revisão da pessoa", roteiro_commands.run(args)["summary"]["line"])

@@ -1,6 +1,15 @@
 """Issue #32: `gb.py serve` sobe um servidor local só-leitura para brolls/review.html."""
 
 import json
+
+# Reimport com apelido só pra isolar o setup do teste que precisa dele
+# (mesmo motivo do redefined-outer-name em tests/pylintrc).
+import json as _json  # pylint: disable=reimported
+import subprocess
+
+# Reimport com apelido só pra isolar o setup do teste que precisa dele
+# (mesmo motivo do redefined-outer-name em tests/pylintrc).
+import subprocess as _subprocess  # pylint: disable=reimported
 import sys
 import tempfile
 import threading
@@ -10,10 +19,11 @@ import urllib.error
 import urllib.request
 from contextlib import contextmanager
 from pathlib import Path
+from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import serve
 
@@ -64,8 +74,11 @@ class ServeStartTests(unittest.TestCase):
             (root / "secret.txt").write_text("nope", encoding="utf-8")
             server, port = serve.start(root, port=0)
             with self._running(server):
-                with self.assertRaises(urllib.error.HTTPError) as ctx:
-                    urllib.request.urlopen(f"http://127.0.0.1:{port}/../secret.txt", timeout=5)
+                with (
+                    self.assertRaises(urllib.error.HTTPError) as ctx,
+                    urllib.request.urlopen(f"http://127.0.0.1:{port}/../secret.txt", timeout=5),
+                ):
+                    pass
                 self.assertEqual(404, ctx.exception.code)
 
     def test_second_start_on_busy_port_picks_another(self):
@@ -84,11 +97,6 @@ class ServeStartTests(unittest.TestCase):
 
 class ServeMissingStoryboardEnvelopeTests(unittest.TestCase):
     def test_missing_review_html_is_a_normal_error_without_creating_brolls(self):
-        import json
-        import subprocess
-        import sys
-        import tempfile
-        from pathlib import Path
 
         with tempfile.TemporaryDirectory() as tmp:
             proc = subprocess.run(
@@ -133,7 +141,6 @@ class SaveEndpointTests(unittest.TestCase):
             server.server_close()
 
     def _post(self, port, body, token, path="/__save"):
-        import json as _json
 
         request = urllib.request.Request(
             f"http://127.0.0.1:{port}{path}",
@@ -155,7 +162,6 @@ class SaveEndpointTests(unittest.TestCase):
                 self.assertIn("storyboard", page)
 
     def test_post_with_the_token_writes_under_reviews(self):
-        import json as _json
 
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
@@ -267,7 +273,6 @@ class BackgroundServeTests(unittest.TestCase):
     def test_stop_without_a_server_cleans_a_stale_pid_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
-            import json as _json
 
             pid_file = root / "brolls" / ".serve.pid"
             pid_file.write_text(_json.dumps({"pid": 999999999, "port": 8767, "urls": []}), encoding="utf-8")
@@ -293,38 +298,35 @@ class ServerIdentityTests(unittest.TestCase):
         return root
 
     def test_a_recycled_pid_is_never_killed_and_the_file_is_cleaned(self):
-        import json as _json
-        import subprocess as _subprocess
 
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
             # Um processo vivo qualquer, que não é o nosso servidor: o PID existe,
             # mas ninguém responde ao ping com a nossa sessão.
-            innocent = _subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
-            try:
-                (root / "brolls" / ".serve.pid").write_text(
-                    _json.dumps(
-                        {
-                            "pid": innocent.pid,
-                            "port": 1,
-                            "session": "sessao-que-nunca-existiu",
-                            "urls": [],
-                        }
-                    ),
-                    encoding="utf-8",
-                )
-                self.assertFalse(serve.state(root)["running"])
-                result = serve.stop(root)
-                self.assertFalse(result["stopped"])
-                self.assertEqual("stale_pid", result["reason"])
-                self.assertFalse((root / "brolls" / ".serve.pid").exists())
-                self.assertIsNone(innocent.poll(), "o processo inocente foi morto")
-            finally:
-                innocent.kill()
-                innocent.wait(timeout=5)
+            with _subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"]) as innocent:
+                try:
+                    (root / "brolls" / ".serve.pid").write_text(
+                        _json.dumps(
+                            {
+                                "pid": innocent.pid,
+                                "port": 1,
+                                "session": "sessao-que-nunca-existiu",
+                                "urls": [],
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+                    self.assertFalse(serve.state(root)["running"])
+                    result = serve.stop(root)
+                    self.assertFalse(result["stopped"])
+                    self.assertEqual("stale_pid", result["reason"])
+                    self.assertFalse((root / "brolls" / ".serve.pid").exists())
+                    self.assertIsNone(innocent.poll(), "o processo inocente foi morto")
+                finally:
+                    innocent.kill()
+                    innocent.wait(timeout=5)
 
     def test_a_wrong_session_in_the_pid_file_is_not_running(self):
-        import json as _json
 
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
@@ -341,7 +343,6 @@ class ServerIdentityTests(unittest.TestCase):
                 serve.stop(root)
 
     def test_ping_answers_the_session_of_this_server(self):
-        import json as _json
 
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
@@ -399,7 +400,6 @@ class RebindingTests(unittest.TestCase):
                 self.assertEqual(403, ctx.exception.code)
 
     def test_post_with_a_foreign_host_or_origin_is_refused(self):
-        import json as _json
 
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
@@ -424,7 +424,6 @@ class RebindingTests(unittest.TestCase):
             self.assertFalse((root / "brolls" / "reviews").exists())
 
     def test_a_non_ascii_token_is_a_refusal_not_a_crash(self):
-        import json as _json
 
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
@@ -532,7 +531,6 @@ class SlowButAliveServerTests(unittest.TestCase):
         return ping
 
     def test_stop_still_terminates_a_server_that_answers_after_half_a_second(self):
-        from unittest.mock import patch
 
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
@@ -555,7 +553,6 @@ class SlowButAliveServerTests(unittest.TestCase):
             self.assertTrue(started["background"])
 
     def test_start_background_sees_the_slow_server_instead_of_raising_a_second_one(self):
-        from unittest.mock import patch
 
         with tempfile.TemporaryDirectory() as tmp:
             root = self._project(Path(tmp))
@@ -577,14 +574,12 @@ class DeadPidCostsNothingTests(unittest.TestCase):
     """`status` é leitura barata: com o PID morto não se abre socket nenhum."""
 
     def dead_pid(self):
-        import subprocess as _subprocess
 
-        done = _subprocess.Popen([sys.executable, "-c", "pass"])
-        done.wait(timeout=10)
-        return done.pid
+        with _subprocess.Popen([sys.executable, "-c", "pass"]) as done:
+            done.wait(timeout=10)
+            return done.pid
 
     def test_state_with_a_dead_pid_answers_under_a_quarter_second(self):
-        import json as _json
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -615,8 +610,6 @@ class DeadPidCostsNothingTests(unittest.TestCase):
         self.assertEqual(1, serve.PING_RETRIES)
 
     def test_a_dead_pid_does_not_open_a_socket_at_all(self):
-        import json as _json
-        from unittest.mock import patch
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

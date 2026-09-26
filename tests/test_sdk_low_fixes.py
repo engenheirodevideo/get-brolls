@@ -3,19 +3,25 @@ aparece em mensagem e os textos apontam o conserto certo."""
 
 import json
 import os
+import shutil
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
 from getbrolls import brief, providers
-from getbrolls.commands import doctor_plugin_problems
+from getbrolls.commands import _plugin_reference_note, doctor_plugin_problems
 from getbrolls.http import ProviderError
+from getbrolls.sdk import api as sdk_api
 from getbrolls.sdk import loader
+from getbrolls.sdk.api import PluginApi
 from getbrolls.sdk.manifest import read_manifest
-from getbrolls.sdk.registry import get_registry
+from getbrolls.sdk.plugin_commands import _missing
+from getbrolls.sdk.registry import Registry, get_registry
 
 CONFIG_SECRET = "cfg_secret_ABCDEF123"
 
@@ -94,16 +100,11 @@ class ResolvedRootBreadthTests(unittest.TestCase):
     acima dela ou a raiz do disco não vale — mesmo passando pela checagem de texto."""
 
     def api(self, paths):
-        from getbrolls.sdk.api import PluginApi
-        from getbrolls.sdk.registry import Registry
 
         manifest = {**MANIFEST, "permissions": {"network": [], "env": [], "paths": paths}}
         return PluginApi(manifest, Registry())
 
     def test_home_its_ancestors_and_links_to_them_are_ignored(self):
-        import shutil
-        import tempfile
-        from pathlib import Path
 
         base = Path(tempfile.mkdtemp(prefix="gb-b09-")).resolve()
         self.addCleanup(shutil.rmtree, base, ignore_errors=True)
@@ -141,7 +142,6 @@ class EnablePermissionsDiffTests(LoaderTestCase):
 
 class PreviewAndCheckMessagesTests(LoaderTestCase):
     def test_reference_note_tells_a_failed_download_from_a_missing_thumbnail(self):
-        from getbrolls.commands import _plugin_reference_note
 
         c = {"provider": "demo", "preview": {"poster_path": None, "poster_url": "https://demo.example/p.jpg"}}
         self.assertIn("não pôde ser baixada", _plugin_reference_note(c))
@@ -150,10 +150,6 @@ class PreviewAndCheckMessagesTests(LoaderTestCase):
         self.assertEqual("", _plugin_reference_note({"provider": "nasa", "preview": {}}))
 
     def test_mount_point_roots_are_ignored_and_shown_in_the_previews(self):
-        import tempfile
-        from pathlib import Path
-
-        from getbrolls.sdk import api as sdk_api
 
         mount = Path(tempfile.mkdtemp(prefix="gb-mount-")).resolve()
         self.addCleanup(mount.rmdir)
@@ -177,7 +173,6 @@ class PreviewAndCheckMessagesTests(LoaderTestCase):
         self.assertIn("isso basta — e rode o check de novo", str(caught.exception))
 
     def test_x_hint_for_a_plugin_left_out_by_gb_plugins(self):
-        from getbrolls.sdk.plugin_commands import _missing
 
         def message(row):
             registry = type("R", (), {"plugins": {"demo": row}})()

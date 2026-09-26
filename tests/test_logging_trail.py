@@ -10,16 +10,31 @@ reached it.
 """
 
 import json
+import os
 import re
+
+# Reimport com apelido só pra isolar o setup do teste que precisa dele
+# (mesmo motivo do redefined-outer-name em tests/pylintrc).
+import re as _re  # pylint: disable=reimported
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 # The skill's personal folder goes to a temp dir: no test touches ~/.getbrolls.
-import _isolation  # noqa: F401  (import side effect: defines GB_HOME)
+import _isolation  # noqa: F401  (import side effect: defines GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_video
-from _paths import ROOT  # noqa: F401  (import side effect: inserts scripts/ into sys.path)
+from _paths import (  # pylint: disable=unused-import
+    CLI,
+    ROOT,  # noqa: F401  (import side effect: inserts scripts/ into sys.path)
+)
+
+from getbrolls import runtime
+from getbrolls.ledger import Ledger
+from getbrolls.models import candidate, set_segment
+from getbrolls.rendering import render
 
 DEBUG_ENV = {"GB_LOG_LEVEL": "DEBUG"}
 
@@ -82,7 +97,7 @@ class CandidateWalkThroughLoggingTests(unittest.TestCase):
     """Walks one candidate through the whole approval/rights trail and checks
     the resulting `getbrolls.log` line by line."""
 
-    def test_the_full_trail_is_logged_in_order_with_the_right_fields(self):  # noqa: PLR0915 - existing size; asserts every step of the approval/rights trail in order
+    def test_the_full_trail_is_logged_in_order_with_the_right_fields(self):
         with tempfile.TemporaryDirectory() as tmp:
             root, src = _project(tmp)
             base = ["--project", str(root)]
@@ -118,47 +133,42 @@ class CandidateWalkThroughLoggingTests(unittest.TestCase):
             filtered = [n for n in names_in_order if n in expected_order]
             self.assertEqual(expected_order, filtered)
 
-            resolve_event = next(e for e in events if e["event"] == "resolve")
-            self.assertEqual("local", resolve_event["provider"])
-            self.assertEqual(cid, resolve_event["candidate"])
-            self.assertEqual("file", resolve_event["kind"])
+            def one(name):
+                return next(e for e in events if e["event"] == name)
 
-            preview_event = next(e for e in events if e["event"] == "preview")
-            self.assertEqual(cid, preview_event["candidate"])
-            self.assertEqual("cut", preview_event["mode"])
-            self.assertEqual(0.0, float(preview_event["start_s"]))
-            self.assertEqual(1.0, float(preview_event["end_s"]))
+            self.assertEqual("local", one("resolve")["provider"])
+            self.assertEqual(cid, one("resolve")["candidate"])
+            self.assertEqual("file", one("resolve")["kind"])
 
-            approve_event = next(e for e in events if e["event"] == "approve")
-            self.assertEqual(cid, approve_event["candidate"])
-            self.assertEqual("chat", approve_event["channel"])
-            self.assertEqual("True", approve_event["by_present"])
-            self.assertEqual("True", approve_event["statement_present"])
+            self.assertEqual(cid, one("preview")["candidate"])
+            self.assertEqual("cut", one("preview")["mode"])
+            self.assertEqual(0.0, float(one("preview")["start_s"]))
+            self.assertEqual(1.0, float(one("preview")["end_s"]))
 
-            permit_event = next(e for e in events if e["event"] == "permit")
-            self.assertEqual(cid, permit_event["candidate"])
-            self.assertEqual("evidence", permit_event["route"])
-            self.assertIsNone(permit_event["preset"])
+            self.assertEqual(cid, one("approve")["candidate"])
+            self.assertEqual("chat", one("approve")["channel"])
+            self.assertEqual("True", one("approve")["by_present"])
+            self.assertEqual("True", one("approve")["statement_present"])
 
-            fetch_event = next(e for e in events if e["event"] == "fetch")
-            self.assertEqual(cid, fetch_event["candidate"])
-            self.assertEqual("local", fetch_event["kind"])
-            self.assertEqual(fetched["output"]["sha256"][:12], fetch_event["sha256_prefix"])
+            self.assertEqual(cid, one("permit")["candidate"])
+            self.assertEqual("evidence", one("permit")["route"])
+            self.assertIsNone(one("permit")["preset"])
 
-            verify_event = next(e for e in events if e["event"] == "verify")
-            self.assertEqual(cid, verify_event["candidate"])
-            self.assertEqual("ok", verify_event["result"])
+            self.assertEqual(cid, one("fetch")["candidate"])
+            self.assertEqual("local", one("fetch")["kind"])
+            self.assertEqual(fetched["output"]["sha256"][:12], one("fetch")["sha256_prefix"])
 
-            deliver_event = next(e for e in events if e["event"] == "deliver")
-            self.assertEqual("1", deliver_event["delivered"])
-            self.assertEqual("0", deliver_event["conflicts"])
-            self.assertEqual("False", deliver_event["dry_run"])
+            self.assertEqual(cid, one("verify")["candidate"])
+            self.assertEqual("ok", one("verify")["result"])
 
-            reject_event = next(e for e in events if e["event"] == "reject")
-            self.assertEqual(cid, reject_event["candidate"])
-            self.assertEqual("False", reject_event["had_review"])
-            self.assertEqual("True", reject_event["reason_present"])
-            self.assertEqual("True", reject_event["output_cleared"])
+            self.assertEqual("1", one("deliver")["delivered"])
+            self.assertEqual("0", one("deliver")["conflicts"])
+            self.assertEqual("False", one("deliver")["dry_run"])
+
+            self.assertEqual(cid, one("reject")["candidate"])
+            self.assertEqual("False", one("reject")["had_review"])
+            self.assertEqual("True", one("reject")["reason_present"])
+            self.assertEqual("True", one("reject")["output_cleared"])
 
     def test_private_values_never_reach_the_log_at_debug_level(self):
         """The approver's name, the approval statement, the rights evidence text
@@ -206,11 +216,6 @@ class StdoutStaysOneJsonDocumentTests(unittest.TestCase):
 
     @skip_unless_ffmpeg
     def test_resolve_preview_and_fetch_each_print_a_single_json_document(self):
-        import os
-        import subprocess
-        import sys
-
-        from _paths import CLI
 
         with tempfile.TemporaryDirectory() as tmp:
             root, src = _project(tmp)
@@ -260,8 +265,6 @@ class ApproveAllLoggingTests(unittest.TestCase):
         reading the response, and is mirrored into the log like every other
         `record_warning`, unrelated to this task's call sites) never fires;
         this keeps the privacy assertion below meaningful."""
-        from getbrolls.ledger import Ledger
-        from getbrolls.models import candidate, set_segment
 
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Ledger(tmp)
@@ -307,11 +310,6 @@ class ImportReviewLoggingTests(unittest.TestCase):
     decision, and one `import_review` summary — never the reviewer's name."""
 
     def test_import_review_logs_selection_items_and_summary(self):
-        import re as _re
-
-        from getbrolls.ledger import Ledger
-        from getbrolls.models import candidate, set_segment
-        from getbrolls.rendering import render
 
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Ledger(tmp)
@@ -382,7 +380,6 @@ class WarningMirrorPrivacyTests(unittest.TestCase):
     """A warning reaches the log by its code only, never by its message text."""
 
     def test_the_mirrored_warning_carries_the_code_and_not_the_message(self):
-        from getbrolls import runtime
 
         with self.assertLogs("getbrolls.runtime", level="WARNING") as captured:
             runtime.record_warning("APPROVE_ALL_WIDE", "aprovando tudo em nome de Ana: confira a lista")

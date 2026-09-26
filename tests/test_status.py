@@ -10,19 +10,26 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import ClassVar
+from unittest import mock
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import CLI, ROOT
+from test_brief import VALID, write_brief
 
+from getbrolls import serve
 from getbrolls.commands import (
     FLOW_SUMMARIES,
     STATUS_STAGES,
+    _flow_state,
+    _step_candidates,
     status_next,
     with_summary,
 )
+from getbrolls.guidance import next_action
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, now, set_segment
+from getbrolls.runtime import project_lock
 
 # Infraestrutura de auditoria: `audited()` grava estes arquivos em qualquer comando.
 AUDIT_FILES = {"diagnostics.jsonl", ".command.lock"}
@@ -157,7 +164,6 @@ class StatusCommandTests(unittest.TestCase):
             self.assertIsNone(summary["brief"])
 
     def test_status_counts_brief_coverage_without_writing(self):
-        from tests.test_brief import VALID, write_brief
 
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
@@ -174,7 +180,6 @@ class StatusCommandTests(unittest.TestCase):
             self.assertEqual(before, sorted(p.name for p in Path(tmp).iterdir()))
 
     def test_brief_search_comes_back_once_nobody_owes_a_decision(self):
-        from tests.test_brief import VALID, write_brief
 
         with tempfile.TemporaryDirectory() as tmp:
             ledger = fixture(tmp)
@@ -190,7 +195,6 @@ class StatusCommandTests(unittest.TestCase):
             self.assertIn("search --project", summary["do"]["command"])
 
     def test_status_tells_a_broken_brief_apart_from_a_missing_one(self):
-        from tests.test_brief import VALID, write_brief
 
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
@@ -422,7 +426,6 @@ class StatusCommandTests(unittest.TestCase):
             self.assertEqual(4, payload["counts"]["candidates"])
 
     def test_status_answers_while_another_command_holds_the_lock(self):
-        from getbrolls.runtime import project_lock
 
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
@@ -487,8 +490,6 @@ class BoardUrlTests(unittest.TestCase):
 
     def do(self, ledger):
         """Mesmo `summary.do` do `status`, com o brief já dado como válido."""
-        from getbrolls.commands import _flow_state
-        from getbrolls.guidance import next_action
 
         brief = {"beats": 1, "covered": 1, "missing": [], "conflicts": []}
         return next_action(_flow_state(ledger, None, brief=brief))
@@ -510,9 +511,6 @@ class BoardUrlTests(unittest.TestCase):
             self.assertNotIn("57114", do["for_human"])
 
     def test_a_running_server_lends_its_own_port(self):
-        from unittest import mock
-
-        from getbrolls import serve
 
         with tempfile.TemporaryDirectory() as tmp:
             record = {"pid": 4321, "port": 57219, "session": "s", "urls": []}
@@ -703,7 +701,6 @@ class StepCandidateTests(unittest.TestCase):
         return ledger
 
     def test_each_rung_names_an_item_of_its_own_stage(self):
-        from getbrolls.commands import _step_candidates
 
         with tempfile.TemporaryDirectory() as tmp:
             chosen = _step_candidates(self.project(tmp).data["items"])
@@ -720,7 +717,6 @@ class StepCandidateTests(unittest.TestCase):
         )
 
     def test_no_rung_ever_names_the_rejected_decoy(self):
-        from getbrolls.commands import _step_candidates
 
         with tempfile.TemporaryDirectory() as tmp:
             chosen = _step_candidates(self.project(tmp).data["items"])
@@ -730,8 +726,6 @@ class StepCandidateTests(unittest.TestCase):
 
     def test_the_permit_rung_command_carries_the_approved_item(self):
         """O bug real: `permit --candidate <rejeitado>` saía pronto no `status.do`."""
-        from getbrolls.commands import _flow_state
-        from getbrolls.guidance import next_action
 
         brief = {"beats": 1, "covered": 1, "missing": [], "conflicts": []}
         with tempfile.TemporaryDirectory() as tmp:
@@ -750,8 +744,6 @@ class StepCandidateTests(unittest.TestCase):
 
     def test_the_approve_rung_command_approves_instead_of_starting_a_server(self):
         """Degrau e comando têm que nomear a mesma ação."""
-        from getbrolls.commands import _flow_state
-        from getbrolls.guidance import next_action
 
         brief = {"beats": 1, "covered": 1, "missing": [], "conflicts": []}
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,14 +1,19 @@
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT
 
-from getbrolls import providers
+from getbrolls import providers, social
+from getbrolls.cli import main
+from getbrolls.commands import _local_playwright
+from getbrolls.media import probe
 
 
 class SocialRecoveryTests(unittest.TestCase):
@@ -48,7 +53,6 @@ class SocialRecoveryTests(unittest.TestCase):
         self.assertFalse((ROOT / "scripts/instagram").exists())
 
     def test_doctor_checks_download_dependencies(self):
-        from getbrolls.cli import main
 
         result = main(["doctor"])
         for name in ("yt-dlp", "curl", "bash"):
@@ -62,7 +66,6 @@ if __name__ == "__main__":
 
 class RemotePreviewTests(unittest.TestCase):
     def test_local_ytdlp_accepts_windows_and_posix_virtualenv_layouts(self):
-        from getbrolls import social
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -77,7 +80,6 @@ class RemotePreviewTests(unittest.TestCase):
             self.assertEqual(posix, social.local_ytdlp(root))
 
     def test_local_playwright_accepts_windows_command_shim(self):
-        from getbrolls.commands import _local_playwright
 
         with tempfile.TemporaryDirectory() as tmp:
             shim = Path(tmp) / ".tools/node_modules/.bin/playwright-cli.cmd"
@@ -86,7 +88,6 @@ class RemotePreviewTests(unittest.TestCase):
             self.assertTrue(_local_playwright(tmp))
 
     def test_youtube_search_without_key_uses_ytdlp_metadata(self):
-        from getbrolls import social
 
         with (
             patch.dict(os.environ, {}, clear=True),
@@ -102,12 +103,6 @@ class RemotePreviewTests(unittest.TestCase):
             self.assertEqual(c["acquisition"]["method"], "yt-dlp")
 
     def test_preview_caches_remote_interval_and_fetch_uses_same_bytes(self):
-        import shutil
-        import subprocess
-
-        from getbrolls import social
-        from getbrolls.cli import main
-        from getbrolls.media import probe
 
         if not shutil.which("ffmpeg"):
             self.skipTest("FFmpeg required")
@@ -171,8 +166,6 @@ class RemotePreviewTests(unittest.TestCase):
 class HelperRuntimeTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "Helpers Bash são opcionais no Windows nativo.")
     def test_original_helper_enables_node_without_deno(self):
-        import shutil
-        import subprocess
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -198,8 +191,6 @@ class HelperRuntimeTests(unittest.TestCase):
 
     @unittest.skipIf(os.name == "nt", "Helpers Bash são opcionais no Windows nativo.")
     def test_contact_helper_uses_portable_mktemp_and_linux_font(self):
-        import shutil
-        import subprocess
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -215,8 +206,13 @@ class HelperRuntimeTests(unittest.TestCase):
             font = root / "DejaVuSans.ttf"
             font.write_bytes(b"fixture")
             for name, body in {
-                "yt-dlp": '#!/bin/sh\ncase "$*" in *"%(title)s"*) echo "Fixture title";; *) echo "https://example.org/video.mp4";; esac\n',
-                "mktemp": '#!/bin/sh\ncase "$1" in *XXXXXX) p="${1%XXXXXX}ABC123"; : > "$p"; echo "$p";; *) exit 64;; esac\n',
+                "yt-dlp": (
+                    '#!/bin/sh\ncase "$*" in *"%(title)s"*) echo "Fixture title";; '
+                    '*) echo "https://example.org/video.mp4";; esac\n'
+                ),
+                "mktemp": (
+                    '#!/bin/sh\ncase "$1" in *XXXXXX) p="${1%XXXXXX}ABC123"; : > "$p"; echo "$p";; *) exit 64;; esac\n'
+                ),
                 "ffmpeg": '#!/bin/sh\nprintf "%s\\n" "$@" > "$FFMPEG_ARGS_FILE"\nfor last do :; done\n: > "$last"\n',
             }.items():
                 path = bindir / name
@@ -247,8 +243,6 @@ class HelperRuntimeTests(unittest.TestCase):
 class InstallerTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "O Windows usa scripts/install.ps1.")
     def test_rejects_old_node_before_installing_dependencies(self):
-        import shutil
-        import subprocess
 
         with tempfile.TemporaryDirectory() as tmp:
             bindir = Path(tmp)
@@ -273,9 +267,6 @@ class InstallerTests(unittest.TestCase):
 
 class SocialErrorTests(unittest.TestCase):
     def test_ip_block_is_reported_without_signed_urls(self):
-        import subprocess
-
-        from getbrolls import social
 
         with (
             patch.object(social, "command", return_value=["yt-dlp"]),

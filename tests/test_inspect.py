@@ -1,5 +1,10 @@
 """Analisar antes de coletar: o que a fonte tem, antes de pedir mídia."""
 
+# too-many-lines: já passava de 1000 linhas antes desta release; cobre um único
+# comando (`inspect`) com muitos cenários, e dividir o arquivo fragmentaria
+# fixtures que várias classes de teste compartilham (SCAN_COLORS, cell_rgb...).
+# pylint: disable=too-many-lines
+
 import hashlib
 import json
 import os
@@ -15,12 +20,18 @@ from pathlib import Path
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import synth_video
 from _paths import ROOT, SKILLS
 
-from getbrolls import inspecting, social
-from getbrolls.cli import build_parser
+from getbrolls import commands, inspecting, social
+from getbrolls.cli import SUMMARIES, build_parser
+from getbrolls.commands import clamp_windows, execute, inspect_summary, inspect_warnings, preview_files
+from getbrolls.config import KEYS, settings
+from getbrolls.ledger import Ledger
+from getbrolls.media import review_preview
+from getbrolls.models import candidate
+from getbrolls.runtime import OperationError, audited
 
 URL = "https://www.youtube.com/watch?v=abcdefghijk"
 
@@ -42,6 +53,9 @@ Depois disso, os moradores voltaram às ruas
 # tempo por palavra, linhas só com um espaço dentro do bloco, e o par de cues em
 # rolagem — um cue de 10 ms repetindo a linha anterior e o seguinte reabrindo com ela.
 # `<SP>` marca a linha de um espaço só, que sumiria em qualquer editor.
+# A régua de linha longa não se aplica ao VTT abaixo: quebrar uma linha de
+# legenda mudaria o conteúdo exato que o parser sob teste enxerga.
+# pylint: disable=line-too-long
 YOUTUBE_AUTO_VTT = """\
 WEBVTT
 Kind: captions
@@ -78,6 +92,7 @@ contas<00:00:07.359><c> todas</c><00:00:08.000><c> estão</c><00:00:08.320><c> p
 00:00:09.030 --> 00:00:09.040 align:start position:0%
 contas todas estão pesando no seu
 """.replace("<SP>", " ")
+# pylint: enable=line-too-long
 
 WITH_EVERYTHING = {
     "id": "abcdefghijk",
@@ -413,7 +428,6 @@ class SummaryTests(unittest.TestCase):
     """O veredito em PT-BR não pode soar igual quando houve legenda e quando não houve."""
 
     def setUp(self):
-        from getbrolls import commands
 
         self.summary = commands.inspect_summary
 
@@ -465,7 +479,6 @@ def project_with_candidate(tmp):
 
 class InspectCommandTests(unittest.TestCase):
     def test_inspect_is_registered_with_help_and_parses(self):
-        from getbrolls.cli import SUMMARIES
 
         self.assertIn("inspect", SUMMARIES)
         parsed = build_parser().parse_args(
@@ -543,7 +556,6 @@ class SuggestedWindowFitsThePreviewTests(unittest.TestCase):
     """Fricção 3 da rodada 2: o `inspect` sugeria 11 s e o `preview` recusava aos 10 s."""
 
     def test_a_long_window_is_clamped_to_the_preview_ceiling(self):
-        from getbrolls.commands import clamp_windows
 
         windows = [{"start_s": 122.0, "end_s": 133.0, "text": "x", "source": "chapter", "score": 0.0}]
         clamped = clamp_windows(windows, 10.0)
@@ -554,15 +566,12 @@ class SuggestedWindowFitsThePreviewTests(unittest.TestCase):
 
     def test_a_window_exactly_at_the_ceiling_is_left_alone(self):
         """`16.1 - 6.1` dá 10.000000000000002: o corte não pode morder o que já cabe."""
-        from getbrolls.commands import clamp_windows
 
         windows = [{"start_s": 6.1, "end_s": 16.1, "text": "x", "source": "chapter", "score": 0.0}]
         self.assertEqual(16.1, clamp_windows(windows, 10.0)[0]["end_s"])
 
     def test_preview_accepts_an_interval_equal_to_the_ceiling(self):
         """O teto é inclusivo: o intervalo que o `inspect` sugere tem que passar."""
-        from getbrolls.config import settings
-        from getbrolls.media import review_preview
 
         config = settings()
         cap = float(config["max_seconds"])
@@ -597,7 +606,6 @@ class UnusualSourceWarningsTests(unittest.TestCase):
     """Fricção 6 da rodada 2: nem duração de risco nem 360° apareciam antes da prévia."""
 
     def test_a_long_source_and_a_360_video_are_announced(self):
-        from getbrolls.commands import inspect_warnings
 
         self.assertEqual([], inspect_warnings({"duration_s": 120.0, "title": "Curto"}))
         self.assertEqual(["fonte longa: 207 min"], inspect_warnings({"duration_s": 12420.0, "title": "Transmissão"}))
@@ -641,7 +649,6 @@ class DoctorAcceptsProjectTests(unittest.TestCase):
 
 class ScanTests(unittest.TestCase):
     def test_preview_scan_is_a_flag_and_the_cap_is_a_known_env_var(self):
-        from getbrolls.config import KEYS, settings
 
         parsed = build_parser().parse_args(["preview", "--project", "/tmp/p", "--candidate", "x", "--scan"])
         self.assertTrue(parsed.scan)
@@ -706,8 +713,6 @@ class ScanTests(unittest.TestCase):
             self.assertIn("30", scan["note"])
 
     def test_the_preview_ceiling_error_names_the_limit_and_the_value_asked(self):
-        from getbrolls.commands import execute
-        from getbrolls.runtime import audited
 
         with tempfile.TemporaryDirectory() as tmp:
             run_cli(["init-rules", "--project", tmp])
@@ -725,7 +730,6 @@ class ScanTests(unittest.TestCase):
                 narration=None,
                 reason=None,
             )
-            from getbrolls.runtime import OperationError
 
             with (
                 patch.dict(os.environ, {"GB_PREVIEW_MAX_SECONDS": "10"}),
@@ -787,8 +791,6 @@ class DirectMediaSourceTests(unittest.TestCase):
         return src
 
     def _candidate(self, tmp):
-        from getbrolls.ledger import Ledger
-        from getbrolls.models import candidate
 
         ledger = Ledger(tmp)
         item = candidate("nasa", "KSC-2022", "Rollout for launch")
@@ -822,8 +824,6 @@ class DirectMediaSourceTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
     def test_inspect_reads_the_duration_from_the_direct_file_and_reports_no_subtitles(self):
-        from getbrolls.commands import execute
-        from getbrolls.runtime import audited
 
         with tempfile.TemporaryDirectory() as tmp:
             fixture = self._fixture(tmp)
@@ -847,7 +847,6 @@ class DirectMediaSourceTests(unittest.TestCase):
             for window in payload["candidate_windows"]:
                 self.assertLessEqual(window["end_s"], 8.05)
             # Único efeito no projeto: a duração, como em qualquer `inspect`.
-            from getbrolls.ledger import Ledger
 
             stored = Ledger(tmp).get(candidate_id)
             self.assertAlmostEqual(8.0, stored["media"]["duration_s"], places=1)
@@ -855,7 +854,6 @@ class DirectMediaSourceTests(unittest.TestCase):
             self.assertEqual("pending", stored["approval"]["status"])
 
     def test_the_download_this_route_costs_is_announced_with_its_size(self):
-        from getbrolls.commands import inspect_warnings
 
         found = inspect_warnings({"duration_s": 8.0, "title": "Rollout", "downloaded_bytes": 3 * 1024 * 1024})
         self.assertEqual(1, len(found))
@@ -866,8 +864,6 @@ class DirectMediaSourceTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
     def test_inspect_on_a_direct_source_says_it_had_to_download_the_file(self):
-        from getbrolls.commands import execute
-        from getbrolls.runtime import audited
 
         with tempfile.TemporaryDirectory() as tmp:
             fixture = self._fixture(tmp)
@@ -891,8 +887,6 @@ class DirectMediaSourceTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
     def test_preview_uses_the_direct_download_instead_of_ytdlp(self):
-        from getbrolls.commands import execute
-        from getbrolls.runtime import audited
 
         with tempfile.TemporaryDirectory() as tmp:
             fixture = self._fixture(tmp)
@@ -917,8 +911,6 @@ class DirectMediaSourceTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
     def test_scan_works_on_a_direct_source_without_a_known_duration(self):
-        from getbrolls.commands import execute
-        from getbrolls.runtime import audited
 
         with tempfile.TemporaryDirectory() as tmp:
             fixture = self._fixture(tmp)
@@ -956,7 +948,10 @@ def color_at(source_second):
     return list(SCAN_COLORS)[min(int(source_second // SCAN_BAND_S), len(SCAN_COLORS) - 1)]
 
 
-def cell_rgb(sheet, index, cols=4, width=240, height=136, padding=6, margin=6):  # noqa: PLR0913, PLR0917 - existing size; one field per contact-sheet cell-geometry parameter
+# Tamanho já existente: um campo por parâmetro de geometria da célula do contact sheet.
+def cell_rgb(  # noqa: PLR0913, PLR0917  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    sheet, index, cols=4, width=240, height=136, padding=6, margin=6
+):
     """RGB do centro da célula `index` do contact sheet, sem dependência de imagem."""
     col, row = index % cols, index // cols
     x = margin + col * (width + padding) + width // 2
@@ -984,8 +979,58 @@ def cell_rgb(sheet, index, cols=4, width=240, height=136, padding=6, margin=6): 
         return tuple(raw.read_bytes()[:3])
 
 
+# pylint: enable=too-many-arguments,too-many-positional-arguments
+
+
 def nearest_color(rgb):
     return min(SCAN_COLORS, key=lambda name: sum((a - b) ** 2 for a, b in zip(SCAN_COLORS[name], rgb, strict=False)))
+
+
+def _scan_source_video(tmp):
+    """Concatena as cores da varredura numa fonte e devolve o recorte que começa aos 20 s dela."""
+    whole = Path(tmp) / "fonte.mp4"
+    inputs = []
+    for name in SCAN_COLORS:
+        inputs += ["-f", "lavfi", "-i", f"color=c={name}:s=160x90:d={SCAN_BAND_S}:r=10"]
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            *inputs,
+            "-filter_complex",
+            "".join(f"[{i}:v]" for i in range(len(SCAN_COLORS))) + f"concat=n={len(SCAN_COLORS)}:v=1[v]",
+            "-map",
+            "[v]",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            str(whole),
+        ],
+        check=True,
+    )
+    # A mídia de trabalho é um recorte que começa aos 20 s da fonte — é o que
+    # sobra de uma prévia anterior, e é com ela que a varredura tem de contar.
+    trimmed = Path(tmp) / "trabalho.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-ss",
+            "20",
+            "-i",
+            str(whole),
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            str(trimmed),
+        ],
+        check=True,
+    )
+    return trimmed
 
 
 class ScanLabelsMatchTheSourceTests(unittest.TestCase):
@@ -994,48 +1039,7 @@ class ScanLabelsMatchTheSourceTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
     def test_a_working_copy_that_starts_at_20s_still_labels_source_time(self):
         with tempfile.TemporaryDirectory() as tmp:
-            whole = Path(tmp) / "fonte.mp4"
-            inputs = []
-            for name in SCAN_COLORS:
-                inputs += ["-f", "lavfi", "-i", f"color=c={name}:s=160x90:d={SCAN_BAND_S}:r=10"]
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-v",
-                    "error",
-                    *inputs,
-                    "-filter_complex",
-                    "".join(f"[{i}:v]" for i in range(len(SCAN_COLORS))) + f"concat=n={len(SCAN_COLORS)}:v=1[v]",
-                    "-map",
-                    "[v]",
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
-                    str(whole),
-                ],
-                check=True,
-            )
-            # A mídia de trabalho é um recorte que começa aos 20 s da fonte — é o que
-            # sobra de uma prévia anterior, e é com ela que a varredura tem de contar.
-            trimmed = Path(tmp) / "trabalho.mp4"
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-v",
-                    "error",
-                    "-ss",
-                    "20",
-                    "-i",
-                    str(whole),
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
-                    str(trimmed),
-                ],
-                check=True,
-            )
+            trimmed = _scan_source_video(tmp)
             run_cli(["init-rules", "--project", tmp])
             resolved = run_cli(["resolve", "--file", str(trimmed), "--project", tmp])
             candidate_id = json.loads(resolved.stdout)["id"]
@@ -1113,7 +1117,6 @@ class LanguageMismatchTests(unittest.TestCase):
         self.assertIsNone(inspecting.language_mismatch({"subtitle_langs": []}, "o trecho em que ele fala"))
 
     def test_the_warning_names_both_sides_and_says_what_to_do(self):
-        from getbrolls.commands import inspect_warnings
 
         warnings = inspect_warnings({"subtitle_langs": ["en"]}, "o trecho em que ele fala do preço")
         self.assertIn(
@@ -1122,7 +1125,6 @@ class LanguageMismatchTests(unittest.TestCase):
         )
 
     def test_the_summary_line_says_it_too(self):
-        from getbrolls.commands import inspect_summary
 
         probe = {"duration_s": 90.0, "subtitle_langs": ["en"], "subtitles": {}}
         windows = [{"start_s": 0.0, "end_s": 12.0, "text": "", "source": "even_spacing", "score": 0.0}]
@@ -1156,7 +1158,6 @@ class PreviewFilesOnEveryBranchTests(unittest.TestCase):
     """Toda rota de `preview` devolve `files` com caminho absoluto; nenhuma fica muda."""
 
     def test_the_scan_branch_carries_the_other_artifacts_too(self):
-        from getbrolls.commands import preview_files
 
         class FakeLedger:
             root = Path("/tmp/projeto/brolls")

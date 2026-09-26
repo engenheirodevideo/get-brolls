@@ -36,15 +36,20 @@ from pathlib import Path
 from unittest.mock import patch
 
 # The skill's personal folder goes to a temp dir: no test touches ~/.getbrolls.
-import _isolation  # noqa: F401  (import side effect: defines GB_HOME)
+import _isolation  # noqa: F401  (import side effect: defines GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_video
-from _paths import ROOT  # noqa: F401  (import side effect: inserts scripts/ into sys.path)
 
+# import side effect: inserts scripts/ into sys.path
+from _paths import ROOT  # noqa: F401  # pylint: disable=unused-import
+
+from getbrolls import commands
+from getbrolls.cli import main
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, set_segment
 from getbrolls.rendering import render
 from getbrolls.review import latest_review_file
+from getbrolls.runtime import OperationError
 
 APPROVAL_STATEMENT = "Aprovo este trecho para o vídeo."
 EVIDENCE = "Material próprio de teste sintético."
@@ -249,9 +254,6 @@ class VerifyRestoresVerifiedFlagTests(unittest.TestCase):
 
     def test_a_clip_that_matches_its_hash_but_does_not_decode_is_not_marked_verified(self):
         """The flag only goes back to True after probe, hash AND decode all pass."""
-        from getbrolls import commands
-        from getbrolls.cli import main
-        from getbrolls.runtime import OperationError
 
         with tempfile.TemporaryDirectory() as tmp:
             root, src = _project(tmp)

@@ -3,18 +3,35 @@
 import argparse
 import json
 import os
+import re
 import shutil
+import subprocess
+import tempfile
 import unittest
+from argparse import Namespace
 from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _media import skip_unless_ffmpeg
+from _paths import ROOT
+from test_delivery import fetched, project, with_brief
 from test_sdk_loader import MANIFEST, PLUGIN_CODE, LoaderTestCase
+from test_sdk_route_acquisition import ROUTE_MANIFEST, ROUTE_PLUGIN
 from test_sdk_route_fetch import FetchRouteCase
 
-from getbrolls.sdk import loader
-from getbrolls.sdk.registry import reset_registry
+from getbrolls import commands, delivery, providers, rules
+from getbrolls.brief import _sources
+from getbrolls.cli import build_parser
+from getbrolls.commands import inspect_warnings, provider_error_text
+from getbrolls.health import live_checks
+from getbrolls.http import ProviderError, _scrub
+from getbrolls.models import candidate
+from getbrolls.rendering import render
+from getbrolls.runtime import OperationError, audited
+from getbrolls.sdk import install, loader
+from getbrolls.sdk.registry import get_registry, reset_registry
+from getbrolls.sdk.scaffold import README
 
 
 def _state(home):
@@ -137,7 +154,6 @@ class NoteTests(LoaderTestCase):
         return source
 
     def test_install_preview_names_expect_and_success_does_not_ask_to_rerun(self):
-        from getbrolls.sdk import install
 
         source = self._source()
         preview = install.install(str(source), confirm=False)
@@ -147,7 +163,6 @@ class NoteTests(LoaderTestCase):
         self.assertNotIn("rode de novo", done["note"].lower())
 
     def test_update_preview_names_expect_and_success_does_not_ask_to_rerun(self):
-        from getbrolls.sdk import install
 
         source = self._source()
         sha = install.install(str(source), confirm=False)["plugin"]["sha256"]
@@ -176,8 +191,6 @@ class GbPluginsSelectionTests(LoaderTestCase):
                 self.assertIn("desligado por GB_PLUGINS", row["reason"])
 
     def test_search_error_points_to_gb_plugins(self):
-        from getbrolls import providers
-        from getbrolls.http import ProviderError
 
         self.install()
         loader.enable("demo", confirm=True)
@@ -232,10 +245,6 @@ class UnavailableSourceMessageTests(LoaderTestCase):
     (busca, BRIEF.md e RULES.md usam a mesma frase de status)."""
 
     def _messages(self):
-        from getbrolls import providers, rules
-        from getbrolls.brief import _sources
-        from getbrolls.http import ProviderError
-        from getbrolls.sdk.registry import get_registry
 
         reset_registry()
         get_registry()  # o registro montado é o que diz "failed" (register() estourou)
@@ -294,7 +303,6 @@ class SearchPluginErrorTests(LoaderTestCase):
     """`search` não repete o nome da fonte na frente de "Plugin <fonte>: …"."""
 
     def test_search_error_and_warning_have_a_single_prefix(self):
-        import tempfile
 
         self.install(code=SEARCH_RAISES_PLUGIN_ERROR)
         loader.enable("demo", confirm=True)
@@ -311,9 +319,6 @@ class PluginErrorHintTests(LoaderTestCase):
     """Erro de plugin não leva o "Confira docs/RULES.md." genérico; built-in igual."""
 
     def _message(self, error):
-        from argparse import Namespace
-
-        from getbrolls.runtime import OperationError, audited
 
         def boom(_args):
             raise error
@@ -323,7 +328,6 @@ class PluginErrorHintTests(LoaderTestCase):
         return caught.exception.payload["message"]
 
     def test_plugin_provider_error_gets_a_plugin_hint(self):
-        from getbrolls.http import ProviderError
 
         message = self._message(ProviderError("Plugin meu_route: Falha ao resolver provedor"))
         self.assertNotIn("RULES.md", message)
@@ -332,20 +336,17 @@ class PluginErrorHintTests(LoaderTestCase):
         self.assertNotIn("..", message)
 
     def test_plugin_error_already_ending_with_a_period(self):
-        from getbrolls.http import ProviderError
 
         message = self._message(ProviderError("Plugin demo: Configure DEMO_DIR com a pasta."))
         self.assertNotIn("RULES.md", message)
         self.assertNotIn("..", message)
 
     def test_unavailable_plugin_source_keeps_its_own_hint_only(self):
-        from getbrolls.http import ProviderError
 
         text = "Fonte demo é do plugin demo, que está failed. Rode plugins --action list / doctor."
         self.assertEqual(text, self._message(ProviderError(text)))
 
     def test_builtin_message_is_unchanged(self):
-        from getbrolls.http import ProviderError
 
         self.assertEqual(
             "Falha ao resolver provedor Confira docs/RULES.md.",
@@ -369,8 +370,6 @@ class LivePluginChecksTests(LoaderTestCase):
     com rota, e mostra a mensagem (saneada) do PluginError em vez de uma genérica."""
 
     def _live(self):
-        from getbrolls import providers
-        from getbrolls.health import live_checks
 
         original = providers.search
 
@@ -390,7 +389,6 @@ class LivePluginChecksTests(LoaderTestCase):
         self.assertEqual("no_media_url (fonte só-metadados)", row["refresh"])
 
     def test_route_source_reports_the_route(self):
-        from test_sdk_route_acquisition import ROUTE_MANIFEST, ROUTE_PLUGIN
 
         self.install(ROUTE_MANIFEST, ROUTE_PLUGIN)
         loader.enable("demo", confirm=True)
@@ -451,7 +449,6 @@ class InspectLocalCopyTests(LoaderTestCase):
     """`inspect` de fonte que veio por rota não diz "baixar o arquivo inteiro (0.0 MB)"."""
 
     def test_route_copy_is_named_and_small_sizes_use_kb(self):
-        from getbrolls.commands import inspect_warnings
 
         found = inspect_warnings({"duration_s": 3.0, "downloaded_bytes": 51 * 1024, "local_copy": "pasta_local"})
         self.assertEqual(1, len(found))
@@ -462,14 +459,11 @@ class InspectLocalCopyTests(LoaderTestCase):
         self.assertNotIn("0.0 MB", found[0])
 
     def test_route_copy_of_a_big_file_keeps_mb(self):
-        from getbrolls.commands import inspect_warnings
 
         found = inspect_warnings({"downloaded_bytes": 3 * 1024 * 1024, "local_copy": "pasta_local"})
         self.assertIn("3.0 MB", found[0])
 
     def test_probe_direct_marks_the_route_copy(self):
-        from getbrolls import commands
-        from getbrolls.models import candidate
 
         item = candidate("demo", "1", "Praia")
         item["acquisition"] = {"status": "available", "method": "plugin:pasta_local", "evidence": []}
@@ -484,14 +478,12 @@ class InspectLocalCopyTests(LoaderTestCase):
         self.assertEqual("pasta_local", probe["local_copy"])
 
     def test_builtin_direct_source_is_unchanged(self):
-        from getbrolls.commands import inspect_warnings
 
         found = inspect_warnings({"downloaded_bytes": 51 * 1024})
         self.assertIn("baixar o arquivo inteiro (0.0 MB)", found[0])
 
 
 def _plugin_fetched():
-    from test_delivery import fetched
 
     c = fetched("a", "praia_por_do_sol")
     c["provider"] = "demo"
@@ -506,7 +498,6 @@ class PluginProvenanceTests(LoaderTestCase):
     """ORIGEM.md/credits.md de candidato de plugin nomeiam o plugin e o arquivo."""
 
     def test_origin_names_the_plugin_and_local_file(self):
-        from getbrolls import delivery
 
         self.install()
         loader.enable("demo", confirm=True)
@@ -516,7 +507,6 @@ class PluginProvenanceTests(LoaderTestCase):
         self.assertIn("- Título na fonte: praia\\_por\\_do\\_sol", lines)
 
     def test_origin_with_a_public_url_keeps_it_next_to_the_plugin(self):
-        from getbrolls import delivery
 
         self.install()
         c = _plugin_fetched()
@@ -528,11 +518,6 @@ class PluginProvenanceTests(LoaderTestCase):
         )
 
     def test_credits_name_the_plugin_and_title(self):
-        import tempfile
-
-        from test_delivery import project
-
-        from getbrolls.rendering import render
 
         self.install()
         with tempfile.TemporaryDirectory() as tmp:
@@ -544,12 +529,6 @@ class PluginProvenanceTests(LoaderTestCase):
         self.assertIn("- Título na fonte: praia\\_por\\_do\\_sol", lines)
 
     def test_builtin_lines_are_unchanged(self):
-        import tempfile
-
-        from test_delivery import fetched, project
-
-        from getbrolls import delivery
-        from getbrolls.rendering import render
 
         c = fetched("a", "Palco")
         c["source_url"] = None
@@ -566,7 +545,6 @@ class SearchHelpTests(LoaderTestCase):
     """`search --help` cita fontes de plugin e manda rodar `providers`."""
 
     def test_provider_help_mentions_plugins_and_providers(self):
-        from getbrolls.cli import build_parser
 
         subparsers = next(a for a in build_parser()._actions if isinstance(a, argparse._SubParsersAction))
         search = subparsers.choices["search"]
@@ -580,7 +558,6 @@ class StatusNextAgreesWithDoTests(FetchRouteCase):
     """Com candidato de rota `fetch`, `summary.next` não contradiz `summary.do`."""
 
     def test_next_says_reference_only_when_do_does(self):
-        from test_delivery import with_brief
 
         self.enable(duration="0")
         with_brief(str(self.project))
@@ -605,7 +582,6 @@ class StrictScrubResidualNamesTests(LoaderTestCase):
     `encryption_key` também caem no scrub estrito; chaves de paginação sobrevivem."""
 
     def test_residual_credential_names_drop(self):
-        from getbrolls.http import _scrub
 
         payload = dict.fromkeys(
             (
@@ -626,7 +602,6 @@ class StrictScrubResidualNamesTests(LoaderTestCase):
         self.assertEqual({}, _scrub(payload, strict=True))
 
     def test_pagination_and_lookalike_keys_survive(self):
-        from getbrolls.http import _scrub
 
         keep = (
             "next_page_token",
@@ -646,7 +621,6 @@ class StrictScrubResidualNamesTests(LoaderTestCase):
         self.assertEqual(payload, _scrub(payload, strict=True))
 
     def test_builtin_path_is_unchanged(self):
-        from getbrolls.http import _scrub
 
         payload = {"api_token": "v", "pwd": "v", "hmac": "v", "signing_key": "v"}
         self.assertEqual(payload, _scrub(payload))
@@ -665,7 +639,6 @@ class PluginsEnvelopeTests(LoaderTestCase):
                 self.assertTrue(err["error"])
 
     def test_other_commands_keep_the_full_envelope(self):
-        import tempfile
 
         project = tempfile.mkdtemp(prefix="gb-project-", dir=self.home)
         err = run_cli("inspect", "--url", " ", project=project, expect=2, env={"GB_HOME": str(self.home)})
@@ -678,7 +651,6 @@ class DocsGapsTests(LoaderTestCase):
 
     @staticmethod
     def read(relative):
-        from _paths import ROOT
 
         return (ROOT / relative).read_text(encoding="utf-8")
 
@@ -706,7 +678,6 @@ class DocsGapsTests(LoaderTestCase):
         self.assertIn("a **prévia é recusada**", text)
 
     def test_scaffold_readme_says_to_run_tests_from_the_plugin_folder(self):
-        from getbrolls.sdk.scaffold import README
 
         self.assertIn("diretório atual", README)
 
@@ -721,7 +692,6 @@ class MessageFollowUpTests(LoaderTestCase):
         return {"GB_HOME": str(self.home)}
 
     def test_pin_map_is_capped_like_install(self):
-        from getbrolls.sdk import install
 
         self.assertEqual(install.MAX_FILES, loader.PIN_MAP_MAX_FILES)
         folder = self.install()
@@ -785,7 +755,6 @@ class MessageFollowUpTests(LoaderTestCase):
             loader.read_state()
 
     def test_update_of_a_disabled_plugin_refreshes_its_last_pin(self):
-        from getbrolls.sdk import install
 
         source = self.home / "fonte" / "demo"
         source.mkdir(parents=True)
@@ -801,14 +770,12 @@ class MessageFollowUpTests(LoaderTestCase):
         self.assertNotIn("diff", loader.enable("demo", confirm=False))
 
     def test_search_does_not_prefix_the_source_name_to_an_unavailable_plugin_message(self):
-        from getbrolls.commands import provider_error_text
 
         text = "Fonte pasta_local é do plugin pasta_local, que está suspended. Rode plugins --action list / doctor."
         self.assertEqual(text, provider_error_text("pasta_local", text))
         self.assertEqual("youtube: falhou", provider_error_text("youtube", "falhou"))
 
     def test_expect_help_mentions_the_suspended_enable(self):
-        from getbrolls.cli import build_parser
 
         subparsers = next(a for a in build_parser()._actions if isinstance(a, argparse._SubParsersAction))
         expect = next(a for a in subparsers.choices["plugins"]._actions if "--expect" in a.option_strings)
@@ -816,10 +783,6 @@ class MessageFollowUpTests(LoaderTestCase):
 
     @unittest.skipIf(os.name == "nt" or not shutil.which("sh"), "comando POSIX do README")
     def test_pasta_local_readme_copy_command_works_on_a_fresh_gb_home(self):
-        import re
-        import subprocess
-
-        from _paths import ROOT
 
         text = (ROOT / "examples/plugins/pasta_local/README.md").read_text(encoding="utf-8")
         block = next(b for b in re.findall(r"```sh\n(.*?)```", text, re.DOTALL) if "cp -r" in b)

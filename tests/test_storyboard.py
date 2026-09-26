@@ -1,9 +1,14 @@
 import base64
+import re
+import tempfile
 import unittest
 from pathlib import Path
 
 from _paths import ROOT
 
+from getbrolls.ledger import Ledger
+from getbrolls.models import candidate, set_segment
+from getbrolls.rendering import render
 from getbrolls.storyboard import render_page
 
 
@@ -43,11 +48,6 @@ class StoryboardTest(unittest.TestCase):
 
 def render_one(**overrides):
     """Um candidato de YouTube renderizado pelo pipeline real, do ledger ao HTML."""
-    import tempfile
-
-    from getbrolls.ledger import Ledger
-    from getbrolls.models import candidate, set_segment
-    from getbrolls.rendering import render
 
     with tempfile.TemporaryDirectory() as d:
         ledger = Ledger(d)
@@ -104,11 +104,6 @@ class StoryboardV2Test(unittest.TestCase):
     """The generator ships the approved V2 template (source card, speech bubble, decisions)."""
 
     def render_two(self):
-        import tempfile
-
-        from getbrolls.ledger import Ledger
-        from getbrolls.models import candidate, set_segment
-        from getbrolls.rendering import render
 
         with tempfile.TemporaryDirectory() as d:
             ledger = Ledger(d)
@@ -210,7 +205,8 @@ class PanelStringsSnapshotTest(unittest.TestCase):
         page = self.page()
         self.assertIn('title="Marca o trecho como aprovado. Depois eu baixo ele pra sua pasta.">Aprovar</button>', page)
         self.assertIn(
-            'title="Você escreve o que mudar (outro pedaço do vídeo, ou outro vídeo) e eu refaço.">Pedir ajuste</button>',
+            'title="Você escreve o que mudar (outro pedaço do vídeo, ou outro vídeo) e eu refaço.">'
+            "Pedir ajuste</button>",
             page,
         )
         self.assertIn('title="Descarta o trecho. Eu não baixo ele.">Reprovar</button>', page)
@@ -248,7 +244,6 @@ class PanelStringsSnapshotTest(unittest.TestCase):
 
     def test_the_panel_column_has_no_fixed_width_that_would_overflow_375px(self):
         """375 px sem overflow: nada no painel pode ter largura fixa maior que isso."""
-        import re
 
         css = (self.ASSETS / "review.css").read_text(encoding="utf-8")
         for value in re.findall(r"(?:^|[;{])\s*(?:min-)?width:\s*(\d+)px", css):

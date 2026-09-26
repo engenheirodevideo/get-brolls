@@ -9,12 +9,15 @@ import unittest
 from pathlib import Path
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _paths import ROOT, SKILLS
 
 from getbrolls import brief as brief_module
 from getbrolls.cli import SUMMARIES, build_parser
+from getbrolls.commands import brief_state
+from getbrolls.guidance import next_action
+from getbrolls.ledger import Ledger
 
 TEMPLATE = ROOT / "docs" / "BRIEF.md"
 
@@ -343,7 +346,6 @@ class BlockedBeatTests(unittest.TestCase):
         self.assertIn("blocked_reason", str(caught.exception))
 
     def test_a_blocked_beat_is_neither_covered_nor_missing(self):
-        from getbrolls.commands import brief_state
 
         with tempfile.TemporaryDirectory() as tmp:
             write_brief(tmp, self.blocked())
@@ -358,7 +360,6 @@ class BlockedBeatTests(unittest.TestCase):
         self.assertEqual(state["beats"], int(state["covered"]) + len(missing) + len(blocked))
 
     def test_the_rung_asks_the_human_instead_of_promising_a_search(self):
-        from getbrolls.guidance import next_action
 
         state = {
             "project": "/tmp/projeto",
@@ -380,7 +381,6 @@ class BlockedBeatTests(unittest.TestCase):
         self.assertIsNone(action["command"])
 
     def test_status_reports_the_blocked_count(self):
-        from getbrolls.ledger import Ledger
 
         with tempfile.TemporaryDirectory() as tmp:
             Ledger(tmp)
@@ -414,7 +414,6 @@ class RejectedCandidatesDoNotCoverABeatTests(unittest.TestCase):
         self.assertEqual(["youtube:bbb"], progress["reacao-publico"])
 
     def test_a_beat_whose_candidates_were_all_rejected_goes_back_to_missing(self):
-        from getbrolls.commands import brief_state
 
         items = [{"id": "youtube:aaa", "shot": "abertura", "approval": {"status": "rejected"}}]
         with tempfile.TemporaryDirectory() as tmp:
@@ -486,7 +485,6 @@ class StockOnlyBeatWithoutKeyTests(unittest.TestCase):
         self.assertTrue(any("PEXELS_API_KEY" in w for w in payload["warnings"]))
 
     def test_the_rung_asks_for_the_key_not_for_the_company_or_the_date(self):
-        from getbrolls.ledger import Ledger
 
         with tempfile.TemporaryDirectory() as tmp:
             Ledger(tmp)
@@ -534,7 +532,6 @@ class BriefCommandTests(unittest.TestCase):
             self.assertEqual(["line", "problems", "next"], list(result["summary"]))
             # `next` vem da mesma escada de `status` (guidance.next_action): nenhum
             # beat tem candidato ainda, então o passo é buscar pelo primeiro.
-            from getbrolls.guidance import next_action
 
             self.assertTrue(result["summary"]["next"])
             self.assertEqual(

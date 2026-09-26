@@ -1,18 +1,23 @@
 """Download autenticado: `http.download(headers, allow_signed)` e `api.download` presa ao workdir."""
 
 import email.message
+import hashlib
 import io
+import json as _json
+import os
 import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
-from unittest.mock import patch
+from typing import ClassVar
+from unittest.mock import MagicMock, patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from test_sdk_loader import LoaderTestCase
 
 from getbrolls import http
 from getbrolls.http import ProviderError
+from getbrolls.sdk import api as sdk_api
 from getbrolls.sdk.api import PluginApi, route_scope
 from getbrolls.sdk.manifest import read_manifest
 from getbrolls.sdk.registry import Registry
@@ -428,9 +433,6 @@ class PluginDownloadTests(LoaderTestCase):
 
 class SignedJsonTests(unittest.TestCase):
     def fake_response(self, payload):
-        import io
-        import json as _json
-        from typing import ClassVar
 
         class _Resp(io.BytesIO):
             status = 200
@@ -445,9 +447,6 @@ class SignedJsonTests(unittest.TestCase):
         return _Resp(_json.dumps(payload).encode())
 
     def test_get_json_keep_signed_returns_signed_url_without_cache(self):
-        from unittest.mock import MagicMock, patch
-
-        from getbrolls import http
 
         signed = "https://cdn.example.com/f.mp4?X-Amz-Signature=abc&X-Amz-Expires=60"
         opener = MagicMock()
@@ -460,17 +459,11 @@ class SignedJsonTests(unittest.TestCase):
         self.assertNotIn("token", kept)
 
     def test_keep_signed_refuses_cache(self):
-        from getbrolls import http
 
         with self.assertRaises(http.ProviderError):
             http.get_json("https://api.example.com/dl", cache_ttl=60, keep_signed=True)
 
     def test_keep_signed_success_leaves_no_cache_file(self):
-        import hashlib
-        import os
-        from unittest.mock import MagicMock, patch
-
-        from getbrolls import http
 
         url = "https://api.example.com/dl-keep-signed-no-cache"
         signed = "https://cdn.example.com/f.mp4?X-Amz-Signature=abc&X-Amz-Expires=60"
@@ -485,11 +478,6 @@ class SignedJsonTests(unittest.TestCase):
             self.assertEqual([], list(Path(tmp).glob("*.json")))
 
     def test_plugin_api_forwards_keep_signed(self):
-        from unittest.mock import patch
-
-        from getbrolls.sdk import api as sdk_api
-        from getbrolls.sdk.api import PluginApi
-        from getbrolls.sdk.registry import Registry
 
         manifest = {
             "id": "demo",

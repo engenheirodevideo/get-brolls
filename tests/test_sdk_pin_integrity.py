@@ -4,8 +4,10 @@ sem link simbólico e sem bytecode ao lado da fonte revisada."""
 import os
 import shutil
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from test_sdk_install import HAS_GIT, InstallTestCase, git, write_plugin
 from test_sdk_loader import LoaderTestCase
 
@@ -115,7 +117,7 @@ class LoadTimeContentTests(LoaderTestCase):
                 (folder / rel).parent.mkdir(parents=True, exist_ok=True)
                 (folder / rel).write_bytes(b"x")
                 self.assert_invalid("bytecode")
-                top = folder / rel.split("/")[0]
+                top = folder / rel.split("/", maxsplit=1)[0]
                 if top.is_dir():
                     shutil.rmtree(top)
                 else:
@@ -152,8 +154,6 @@ class InstallPinsWhatWasConfirmedTests(InstallTestCase):
     """O pin do install é o sha256 confirmado no staging, não um novo hash depois da troca."""
 
     def test_content_swapped_after_the_move_is_suspended(self):
-        from pathlib import Path
-        from unittest.mock import patch
 
         source = write_plugin(self.work / "demo_src")
         preview = install_mod.install(str(source), confirm=False)

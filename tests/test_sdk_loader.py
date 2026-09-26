@@ -9,13 +9,20 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 from _plugin_pins import pin_plugins
 
+from getbrolls.http import ProviderError
 from getbrolls.sdk import loader
-from getbrolls.sdk.registry import get_registry, reset_registry
+from getbrolls.sdk.api import PluginApi
+from getbrolls.sdk.manifest import read_manifest
+from getbrolls.sdk.registry import Registry, get_registry, reset_registry
 
+# A régua de linha longa não se aplica ao texto abaixo: são bytes literais de um
+# plugin de mentira, usados por `.replace()`/hash em outros testes; reformatar
+# mudaria o valor exato da string.
+# pylint: disable=line-too-long
 PLUGIN_CODE = """
 from getbrolls.sdk.contracts import ProviderCapabilities
 
@@ -41,6 +48,7 @@ def register(api):
     api.provider(Fonte(api))
     api.preset("demo", "https://demo.example/licenca", "Demo — verifique a página da fonte: https://demo.example/licenca")
 """
+# pylint: enable=line-too-long
 
 MANIFEST = {
     "id": "demo",
@@ -68,7 +76,8 @@ class LoaderTestCase(unittest.TestCase):
         reset_registry()
         self.addCleanup(reset_registry)
 
-    def install(self, manifest=MANIFEST, code=PLUGIN_CODE):
+    # MANIFEST/PLUGIN_CODE nunca são mutados; servem só de fixture padrão compartilhada.
+    def install(self, manifest=MANIFEST, code=PLUGIN_CODE):  # pylint: disable=dangerous-default-value
         folder = self.home / "plugins" / manifest["id"]
         folder.mkdir(parents=True, exist_ok=True)
         (folder / "getbrolls-plugin.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -225,10 +234,6 @@ class LoaderLoggingTests(LoaderTestCase):
 
 class PluginApiTests(LoaderTestCase):
     def test_env_and_network_are_limited_to_declared_permissions(self):
-        from getbrolls.http import ProviderError
-        from getbrolls.sdk.api import PluginApi
-        from getbrolls.sdk.manifest import read_manifest
-        from getbrolls.sdk.registry import Registry
 
         api = PluginApi(read_manifest(self.install()), Registry())
         with patch.dict(os.environ, {"DEMO_TOKEN": "x", "OUTRA": "y"}):
@@ -246,10 +251,6 @@ class PluginApiTests(LoaderTestCase):
         """Cheap minor: quando `urlsplit` não acha host nenhum (URL sem esquema/netloc),
         a mensagem tem que dizer "-", nunca ecoar a URL crua (poderia carregar
         token/query sensível — `urlsplit` não valida isso, só não achou host)."""
-        from getbrolls.http import ProviderError
-        from getbrolls.sdk.api import PluginApi
-        from getbrolls.sdk.manifest import read_manifest
-        from getbrolls.sdk.registry import Registry
 
         api = PluginApi(read_manifest(self.install()), Registry())
         url = "sem-host-nenhum?token=segredo123"
@@ -261,10 +262,6 @@ class PluginApiTests(LoaderTestCase):
     def test_malformed_url_becomes_provider_error_not_a_raw_valueerror(self):
         """Cheap minor: `urlsplit` pode levantar ValueError pra URL malformada (ex.:
         IPv6 inválido) — isso tem que virar ProviderError, não vazar cru."""
-        from getbrolls.http import ProviderError
-        from getbrolls.sdk.api import PluginApi
-        from getbrolls.sdk.manifest import read_manifest
-        from getbrolls.sdk.registry import Registry
 
         api = PluginApi(read_manifest(self.install()), Registry())
         with self.assertRaises(ProviderError):

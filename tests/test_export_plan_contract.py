@@ -5,12 +5,12 @@ import re
 import unittest
 from unittest import mock
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT
 from _schemas import example_plan, published, strict
 
 from getbrolls import __version__, export_plan
-from getbrolls.sdk import ExporterSpec, ExportResult, PluginError, testing
+from getbrolls.sdk import ExporterSpec, ExportResult, PluginError, exporters, testing
 from getbrolls.sdk.exporters import find_local_paths, sample_plan
 from getbrolls.sdk.jsonschema import errors
 
@@ -240,7 +240,6 @@ class CheckExporterGuardTests(unittest.TestCase):
             self.assertIn("nome reservado do get-brolls", str(caught.exception))
 
     def test_a_missing_example_plan_is_a_clear_error(self):
-        from getbrolls.sdk import exporters
 
         with (
             mock.patch.object(exporters, "SAMPLE_PLAN", ROOT / "examples" / "plans" / "sumiu.plan.json"),
@@ -258,7 +257,8 @@ class EvolutionDocTests(unittest.TestCase):
         code = text.split("## Exportadores", 1)[1].split("```python\n", 1)[1].split("```", 1)[0]
         code = code.replace('api.exporter("meu_banco_html", exporta, "Exporta o plano como página HTML")', "")
         namespace = {}
-        exec(compile(code, "SDK.md", "exec"), namespace)  # noqa: S102 - runs the doc's own example
+        # Roda o exemplo do próprio doc, como está.
+        exec(compile(code, "SDK.md", "exec"), namespace)  # noqa: S102  # pylint: disable=exec-used
         return namespace["exporta"]
 
     def test_the_doc_example_refuses_an_unknown_export_version(self):

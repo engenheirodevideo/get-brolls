@@ -14,12 +14,28 @@ from typing import ClassVar
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT, SKILLS
+from test_brief import VALID, write_brief
 
-from getbrolls import social
-from getbrolls.commands import execute, mark_rejected
+from getbrolls import providers, social
+from getbrolls.brief import beat_commands, load_brief, validate_brief, wants_a_still
+from getbrolls.cli import build_parser
+from getbrolls.commands import (
+    FLOW_SUMMARIES,
+    _flow_state,
+    brief_report,
+    execute,
+    inspect_warnings,
+    mark_rejected,
+    reject_all,
+    status_report,
+)
+from getbrolls.guidance import next_action
+from getbrolls.http import ProviderError, download
+from getbrolls.inspecting import source_language
 from getbrolls.ledger import Ledger
+from getbrolls.models import candidate, set_segment
 from getbrolls.runtime import audited
 
 TIKTOK = "https://www.tiktok.com/@engenheirodevideo/video/7312345678901234567"
@@ -61,7 +77,8 @@ def resolve_args(project, url, **extra):
 class ResolveFillsRemoteMetadata(unittest.TestCase):
     """C2 pede título, canal e duração; o candidato precisa trazê-los do resolve."""
 
-    def stub(self, payload=TIKTOK_JSON):
+    # TIKTOK_JSON nunca é mutado; serve só de fixture padrão compartilhada.
+    def stub(self, payload=TIKTOK_JSON):  # pylint: disable=dangerous-default-value
         return patch.object(social, "run", return_value=(json.dumps(payload), []))
 
     def test_a_tiktok_url_comes_back_with_title_creator_and_duration(self):
@@ -90,7 +107,6 @@ class ResolveFillsRemoteMetadata(unittest.TestCase):
 
     def test_a_page_that_refuses_metadata_still_registers_the_url(self):
         """Metadado é bônus; perder o candidato por causa dele seria pior que o vazio."""
-        from getbrolls.http import ProviderError
 
         with (
             tempfile.TemporaryDirectory() as tmp,
@@ -141,7 +157,6 @@ class RejectReason(unittest.TestCase):
             self.assertIsNone(mark_rejected(self.candidate(), blank)["rejection"]["reason"])
 
     def test_an_item_that_never_had_a_review_does_not_lose_one(self):
-        from getbrolls.commands import FLOW_SUMMARIES
 
         item = mark_rejected(self.candidate())
         self.assertFalse(item["rejection"]["invalidated_review"])
@@ -149,7 +164,6 @@ class RejectReason(unittest.TestCase):
         self.assertNotIn("revisão invalidada", line)
 
     def test_an_item_that_had_a_review_still_says_it_was_invalidated(self):
-        from getbrolls.commands import FLOW_SUMMARIES
 
         item = mark_rejected(self.candidate(review={"decision": "approved"}), "mudou o enquadramento")
         self.assertTrue(item["rejection"]["invalidated_review"])
@@ -159,9 +173,6 @@ class RejectReason(unittest.TestCase):
         self.assertIn("mudou o enquadramento", line)
 
     def test_the_cli_accepts_the_flag_and_status_shows_the_text(self):
-        from getbrolls.cli import build_parser
-        from getbrolls.commands import status_report
-        from getbrolls.models import candidate, set_segment
 
         parsed = build_parser().parse_args(
             ["reject", "--project", "/tmp/p", "--candidate", "local:a", "--reason", "fora do tema"]
@@ -177,8 +188,6 @@ class RejectReason(unittest.TestCase):
         self.assertEqual(["fora do tema"], [i["rejection_reason"] for i in report["items"]])
 
     def test_many_candidates_share_the_same_reason(self):
-        from getbrolls.commands import reject_all
-        from getbrolls.models import candidate, set_segment
 
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Ledger(tmp)
@@ -199,7 +208,6 @@ class DownloadLimitCopy(unittest.TestCase):
     """O teto de download é transporte, não regra editorial: a mensagem tem que dizer isso."""
 
     def message(self):
-        from getbrolls.http import ProviderError, download
 
         class FakeResponse:
             headers: ClassVar = {"Content-Length": str(700 * 1024 * 1024)}
@@ -243,8 +251,6 @@ class FormatConflictIsActionable(unittest.TestCase):
     """O conflito de formato é um default desalinhado, não um brief inválido."""
 
     def conflict(self):
-        from getbrolls.brief import validate_brief
-        from tests.test_brief import VALID
 
         data = json.loads(json.dumps(VALID))
         data["video"]["delivery"]["format"] = "reels"
@@ -260,8 +266,6 @@ class FormatConflictIsActionable(unittest.TestCase):
         self.assertIn("Não é erro do brief", self.conflict())
 
     def test_validate_still_calls_the_brief_valid(self):
-        from getbrolls.brief import load_brief, validate_brief
-        from tests.test_brief import VALID, write_brief
 
         data = json.loads(json.dumps(VALID))
         data["video"]["delivery"]["format"] = "reels"
@@ -297,7 +301,6 @@ class StillBeatsAskForImages(unittest.TestCase):
         }
 
     def test_a_photo_target_routes_to_commons_with_media_image(self):
-        from getbrolls.brief import beat_commands
 
         command = beat_commands("/tmp/p", self.beat("foto do foguete SLS na plataforma"))["search"]
         self.assertIn("--provider commons", command)
@@ -305,7 +308,6 @@ class StillBeatsAskForImages(unittest.TestCase):
         self.assertNotIn("--provider youtube", command)
 
     def test_every_still_word_is_recognised(self):
-        from getbrolls.brief import wants_a_still
 
         for word in ("foto", "imagem", "print", "still", "screenshot", "fotografia"):
             with self.subTest(word=word):
@@ -313,21 +315,18 @@ class StillBeatsAskForImages(unittest.TestCase):
         self.assertFalse(wants_a_still(self.beat("foguete SLS decolando da plataforma")))
 
     def test_nasa_answers_when_commons_is_not_allowed(self):
-        from getbrolls.brief import beat_commands
 
         command = beat_commands("/tmp/p", self.beat("foto do SLS", ("youtube", "nasa")))["search"]
         self.assertIn("--provider nasa", command)
         self.assertIn("--media image", command)
 
     def test_a_moving_target_keeps_the_video_route(self):
-        from getbrolls.brief import beat_commands
 
         command = beat_commands("/tmp/p", self.beat("foguete SLS decolando"))["search"]
         self.assertIn("--provider youtube", command)
         self.assertNotIn("--media", command)
 
     def test_a_still_beat_without_any_image_source_falls_back_instead_of_failing(self):
-        from getbrolls.brief import beat_commands
 
         command = beat_commands("/tmp/p", self.beat("foto do SLS", ("youtube",)))["search"]
         self.assertIn("--provider youtube", command)
@@ -338,7 +337,6 @@ class SearchCarriesDuration(unittest.TestCase):
     """C2 lista duração; ela tem que sobreviver à busca, inclusive com `--shot`."""
 
     def rows(self):
-        from getbrolls.models import candidate
 
         item = candidate("youtube", "aaaaaaaaaaa", "Keynote", YOUTUBE)
         item["creator"]["name"] = "NVIDIA"
@@ -363,7 +361,6 @@ class SearchCarriesDuration(unittest.TestCase):
         return types.SimpleNamespace(**base)
 
     def test_duration_and_channel_reach_the_search_report(self):
-        from getbrolls import providers
 
         with tempfile.TemporaryDirectory() as tmp, patch.object(providers, "search", return_value=self.rows()):
             result = audited(self.args(tmp), execute)
@@ -372,7 +369,6 @@ class SearchCarriesDuration(unittest.TestCase):
         self.assertEqual("NVIDIA", row["channel"])
 
     def test_the_shot_path_keeps_them_too(self):
-        from getbrolls import providers
 
         with tempfile.TemporaryDirectory() as tmp, patch.object(providers, "search", return_value=self.rows()):
             result = audited(self.args(tmp, shot="abertura"), execute)
@@ -436,8 +432,6 @@ class BriefAndStatusNameTheSameNextStep(unittest.TestCase):
     """Dois comandos, um projeto, um próximo passo: `brief` não pode discordar do `status`."""
 
     def project(self, tmp, brief_data):
-        from getbrolls.models import candidate, set_segment
-        from tests.test_brief import write_brief
 
         ledger = Ledger(tmp)
         # Um item com prévia e sem decisão: é ele que trava o fluxo nos dois comandos.
@@ -450,8 +444,6 @@ class BriefAndStatusNameTheSameNextStep(unittest.TestCase):
 
     def both(self, tmp):
         """`brief.summary.next` e `status.summary.do` do mesmo projeto."""
-        from getbrolls.commands import _flow_state, brief_report
-        from getbrolls.guidance import next_action
 
         ledger = Ledger(tmp, recover=False)
         report = brief_report(types.SimpleNamespace(project=tmp, validate=False, beat=None))
@@ -459,7 +451,6 @@ class BriefAndStatusNameTheSameNextStep(unittest.TestCase):
         return report["summary"]["next"], do
 
     def pending_with_a_missing_beat(self):
-        from tests.test_brief import VALID
 
         return json.loads(json.dumps(VALID))
 
@@ -490,7 +481,6 @@ class BlockedBriefNeverSaysGoAhead(unittest.TestCase):
     """Brief com todos os beats travados não é um brief pronto para buscar."""
 
     def all_blocked(self, count=3):
-        from tests.test_brief import VALID
 
         data = json.loads(json.dumps(VALID))
         base = data["beats"][0]
@@ -503,8 +493,6 @@ class BlockedBriefNeverSaysGoAhead(unittest.TestCase):
         return data
 
     def validate(self, tmp, data):
-        from getbrolls.commands import brief_report
-        from tests.test_brief import write_brief
 
         write_brief(tmp, data)
         return brief_report(types.SimpleNamespace(project=tmp, validate=True, beat=None))
@@ -518,8 +506,6 @@ class BlockedBriefNeverSaysGoAhead(unittest.TestCase):
         self.assertEqual(6, sum(1 for p in payload["summary"]["problems"] if "travado esperando você" in p))
 
     def test_the_same_question_comes_out_of_status(self):
-        from getbrolls.commands import _flow_state
-        from getbrolls.guidance import next_action
 
         with tempfile.TemporaryDirectory() as tmp:
             self.validate(tmp, self.all_blocked(3))
@@ -532,7 +518,6 @@ class BlockedBriefNeverSaysGoAhead(unittest.TestCase):
         self.assertEqual(do["for_human"], payload["summary"]["next"])
 
     def test_a_brief_with_nothing_blocked_still_clears_the_search(self):
-        from tests.test_brief import VALID
 
         with tempfile.TemporaryDirectory() as tmp:
             payload = self.validate(tmp, json.loads(json.dumps(VALID)))
@@ -546,7 +531,6 @@ class EveryBlockedBeatIsAskedAtOnce(unittest.TestCase):
         return [{"id": f"beat-{i}", "reason": f"Falta o fato {i}.", "target": "alvo"} for i in range(count)]
 
     def rung(self, count):
-        from getbrolls.guidance import next_action
 
         return next_action(
             {
@@ -600,20 +584,17 @@ class TranslatedTrackNeverDecidesTheSourceLanguage(unittest.TestCase):
     ORIGINAL_EN: ClassVar = {"subtitle_langs": ["pt", "en-orig"], "original_lang": "en-orig"}
 
     def test_the_source_language_comes_from_the_original_track(self):
-        from getbrolls.inspecting import source_language
 
         self.assertEqual("en", source_language(self.ORIGINAL_EN))
         # Sem o campo explícito, o sufixo `-orig` resolve sozinho.
         self.assertEqual("en", source_language({"subtitle_langs": ["pt", "en-orig"]}))
 
     def test_an_english_query_on_an_english_source_is_not_warned(self):
-        from getbrolls.commands import inspect_warnings
 
         warnings = inspect_warnings(self.ORIGINAL_EN, "the part where he talks about the launch")
         self.assertEqual([], [w for w in warnings if "legenda em" in w])
 
     def test_a_portuguese_query_on_an_english_source_is_warned(self):
-        from getbrolls.commands import inspect_warnings
 
         warnings = inspect_warnings(self.ORIGINAL_EN, "o trecho em que ele fala do lançamento")
         self.assertIn(
@@ -623,7 +604,6 @@ class TranslatedTrackNeverDecidesTheSourceLanguage(unittest.TestCase):
 
     def test_the_old_inverted_warning_is_gone(self):
         """A regressão literal do relatório: "legenda em PT" para uma query em EN."""
-        from getbrolls.commands import inspect_warnings
 
         for query in (
             "the part where he talks about the launch",
@@ -634,8 +614,6 @@ class TranslatedTrackNeverDecidesTheSourceLanguage(unittest.TestCase):
                 self.assertNotIn("legenda em PT", joined)
 
     def test_two_tracks_with_nothing_marking_the_original_stay_silent(self):
-        from getbrolls.commands import inspect_warnings
-        from getbrolls.inspecting import source_language
 
         ambiguous = {"subtitle_langs": ["pt", "en"]}
         self.assertIsNone(source_language(ambiguous))
@@ -643,7 +621,6 @@ class TranslatedTrackNeverDecidesTheSourceLanguage(unittest.TestCase):
 
     def test_the_probe_reports_the_original_track(self):
         """`probe_remote` precisa entregar o campo, senão o detector não tem o que ler."""
-        from getbrolls import social
 
         payload = {
             "id": "abcdefghijk",
@@ -688,7 +665,6 @@ class ResolveExposesTheSameFlatFieldsAsSearch(unittest.TestCase):
         self.assertEqual(47.0, saved["media"]["duration_s"])
 
     def test_a_source_without_metadata_leaves_the_shortcuts_absent_not_wrong(self):
-        from getbrolls.http import ProviderError
 
         with (
             tempfile.TemporaryDirectory() as tmp,

@@ -1,6 +1,9 @@
 """`permit --preset <desconhecido>` é erro de uso, como no 2.5.0 — nada do
 projeto é aberto, travado ou registrado, e nenhum `brolls/` é criado."""
 
+import argparse
+import contextlib
+import io
 import os
 import shutil
 import subprocess
@@ -9,7 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import CLI
 from test_sdk_loader import LoaderTestCase
 
@@ -19,9 +22,6 @@ from getbrolls.sdk import loader
 
 def argparse_choice_error(name, choices):
     """A linha de erro que o parser do 2.5.0 (`--preset` com `choices=`) imprimia."""
-    import argparse
-    import contextlib
-    import io
 
     parser = argparse.ArgumentParser(prog="gb.py")
     sub = parser.add_subparsers(dest="command")

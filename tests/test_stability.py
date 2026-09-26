@@ -2,21 +2,25 @@ import json
 import os
 import tempfile
 import unittest
+from argparse import Namespace
 from pathlib import Path
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
+import getbrolls.ledger as module
+from getbrolls.config import settings
 from getbrolls.ledger import Ledger
-from getbrolls.models import candidate
+from getbrolls.models import candidate, set_segment
+from getbrolls.previewing import prepare_preview
 from getbrolls.rules import load_rules
+from getbrolls.runtime import OperationError, _acquire_lock, _release_lock, audited, record_warning
 
 
 class StabilityTests(unittest.TestCase):
     def test_windows_lock_backend_locks_and_unlocks_one_byte(self):
-        from getbrolls.runtime import _acquire_lock, _release_lock
 
         calls = []
 
@@ -63,7 +67,6 @@ class StabilityTests(unittest.TestCase):
             ledger = Ledger(tmp)
             c = candidate("local", "one", "One")
             ledger.add(c)
-            import getbrolls.ledger as module
 
             real = module.os.replace
 
@@ -73,10 +76,6 @@ class StabilityTests(unittest.TestCase):
                 return real(src, dst)
 
             with patch.object(module.os, "replace", side_effect=interrupted):
-                from argparse import Namespace
-
-                from getbrolls.runtime import OperationError, audited
-
                 with self.assertRaises(OperationError) as failure:
                     audited(
                         Namespace(command="resolve", project=tmp),
@@ -97,9 +96,6 @@ class StabilityTests(unittest.TestCase):
             )
 
     def test_log_redaction_and_single_json_warning(self):
-        from argparse import Namespace
-
-        from getbrolls.runtime import OperationError, audited, record_warning
 
         with (
             tempfile.TemporaryDirectory() as tmp,
@@ -135,9 +131,6 @@ class StabilityTests(unittest.TestCase):
                 self.assertEqual(result["warnings"][0]["code"], "LOG_UNAVAILABLE")
 
     def test_preview_scope_keeps_context_static(self):
-        from getbrolls.config import settings
-        from getbrolls.models import set_segment
-        from getbrolls.previewing import prepare_preview
 
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Ledger(tmp)

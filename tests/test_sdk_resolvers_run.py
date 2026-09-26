@@ -7,11 +7,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any, cast
+
+# Any só aparece citado em cast("Any", ...); o pyright resolve a string, o pylint não.
+from typing import Any, cast  # pylint: disable=unused-import
 from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import http
 from getbrolls.sdk import PluginError, ResolverHit, ResolverSpec, safe_copy, testing
@@ -133,7 +135,8 @@ class RefusedHitTests(ResolverTestCase):
 
     @unittest.skipUnless(os.name == "nt", "junction é do NTFS")
     def test_junction_is_a_link(self):
-        import _winapi  # type: ignore[import-not-found]  # só existe no Windows
+        # _winapi só existe no Windows; o teste inteiro já é pulado fora dele.
+        import _winapi  # type: ignore[import-not-found]  # pylint: disable=import-outside-toplevel,import-error
 
         junction = self.root / "atalho.wav"
         _winapi.CreateJunction(str(self.outside), str(junction))  # type: ignore[attr-defined]

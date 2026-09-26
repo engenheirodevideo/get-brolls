@@ -8,19 +8,23 @@ fonte que só entrega no fetch; extensão da imagem roteada; um teto só; e
 
 import json
 import os
+import shlex
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_image, synth_video
 from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
-from getbrolls import acquisition, cli, http
+from getbrolls import acquisition, cli, commands, http
+from getbrolls.cli import build_parser
+from getbrolls.guidance import next_action
+from getbrolls.ledger import Ledger
 from getbrolls.runtime import OperationError
 
 ROUTE_MANIFEST = {**MANIFEST, "contributes": {"providers": ["demo"], "routes": ["demo"]}}
@@ -99,7 +103,8 @@ def image_plugin(target):
 class FetchRouteCase(LoaderTestCase):
     @classmethod
     def setUpClass(cls):
-        cls._media = tempfile.TemporaryDirectory()
+        # Ciclo de vida cobre o teste (ou a classe) inteiro; a limpeza já é feita via addCleanup/tearDownClass.
+        cls._media = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
         cls.video = Path(cls._media.name) / "fonte.mp4"
         synth_video(cls.video, duration=3)
         cls.image = Path(cls._media.name) / "foto.png"
@@ -120,6 +125,7 @@ class FetchRouteCase(LoaderTestCase):
         self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
         self.calls = self.project.parent / (self.project.name + "-calls.txt")
         self.addCleanup(self.calls.unlink, missing_ok=True)
+        self.env = None
 
     def enable(self, code=FETCH_PLUGIN, source=None, duration="30"):
         self.install(ROUTE_MANIFEST, code=code)
@@ -300,12 +306,6 @@ class FetchStageGuidanceTests(FetchRouteCase):
     """`status`/`guidance` mandam `preview --reference-only`, nunca inspect ou prévia com intervalo."""
 
     def test_candidate_carries_the_fetch_stage_and_guidance_recommends_reference_only(self):
-        import shlex
-
-        from getbrolls import commands
-        from getbrolls.cli import build_parser
-        from getbrolls.guidance import next_action
-        from getbrolls.ledger import Ledger
 
         self.enable(duration="0")
         item = self.gb("search", "--provider", "demo", "--query", "mar")["items"][0]
@@ -334,12 +334,6 @@ class FetchStageGuidanceTests(FetchRouteCase):
         self.assertEqual(item["id"], parsed.candidate)
 
     def test_fetch_stage_photo_reference_preview_has_no_range(self):
-        import shlex
-
-        from getbrolls import commands
-        from getbrolls.cli import build_parser
-        from getbrolls.guidance import next_action
-        from getbrolls.ledger import Ledger
 
         self.enable(image_plugin("foto.png"), source=self.image)
         item = self.gb("search", "--provider", "demo", "--query", "mar")["items"][0]

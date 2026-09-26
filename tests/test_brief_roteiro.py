@@ -13,11 +13,11 @@ from typing import ClassVar, cast
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT
 
-from getbrolls import brief, delivery
-from getbrolls.commands import brief_report, brief_state, record_empty_searches, status_report
+from getbrolls import brief, delivery, roteiro
+from getbrolls.commands import _beat_search_names, brief_report, brief_state, record_empty_searches, status_report
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, now, set_segment
 from getbrolls.rules import load_rules
@@ -149,8 +149,16 @@ class DocsAndSchemaTests(unittest.TestCase):
 
     def test_roteiro_guide_and_manual_match_the_behaviour(self):
         guide = (ROOT / "references" / "roteiro.md").read_text(encoding="utf-8")
-        for fragment in ("**Caminhos.**", "sem aviso de placeholder", "%%", "`a-` ou `b-`", "type: roteiro",
-                         "não pede b-roll", "qualquer arquivo que não seja o `BRIEF.md` da pasta do projeto"):  # fmt: skip
+        fragments = (
+            "**Caminhos.**",
+            "sem aviso de placeholder",
+            "%%",
+            "`a-` ou `b-`",
+            "type: roteiro",
+            "não pede b-roll",
+            "qualquer arquivo que não seja o `BRIEF.md` da pasta do projeto",
+        )
+        for fragment in fragments:
             with self.subTest(fragment=fragment):
                 self.assertIn(fragment, guide)
         manual = (ROOT / "docs" / "MANUAL.md").read_text(encoding="utf-8")
@@ -406,7 +414,6 @@ class SearchRetiredShotTests(unittest.TestCase):
         items = json.loads(manifest.read_text(encoding="utf-8"))["items"] if manifest.is_file() else []
         self.assertEqual(items, [])
         # Beat ativo do mesmo brief segue com a regra de fontes de antes.
-        from getbrolls.commands import _beat_search_names
 
         self.assertEqual(_beat_search_names(str(project), "c01", None, "youtube", ["youtube"]), ["youtube"])
 
@@ -554,7 +561,6 @@ class RoteiroOwnershipTests(unittest.TestCase):
                 self.assertNotEqual(status["summary"]["do"]["step"], "roteiro-sync")
 
     def test_unreadable_or_odd_roteiro_never_raises(self):
-        from getbrolls import roteiro
 
         path = self.project / "ROTEIRO.md"
         path.write_bytes(b"---\ntype: roteiro\xff\n---\n")
@@ -566,7 +572,6 @@ class RoteiroOwnershipTests(unittest.TestCase):
         self.assertFalse(roteiro.is_roteiro(self.project))
 
     def test_getbrolls_roteiro_is_recognised(self):
-        from getbrolls import roteiro
 
         path = self.project / "ROTEIRO.md"
         for text in ("---\ntype: roteiro\n---\n", '\ufeff---\r\ntype: "roteiro"\r\ngenero: x\r\n---\r\n'):

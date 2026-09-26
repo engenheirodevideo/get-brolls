@@ -7,13 +7,14 @@ import unicodedata
 import unittest
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT
 
 # Caminho local de máquina: Unix (/Users, /home, com usuário maiúsculo ou não) e
 # Windows (C:\Users\...), mais o marcador do worktree temporário do agente.
 LOCAL_PATH_PATTERN = re.compile(
-    r"/Users/[A-Za-z0-9._-]+/|[A-Za-z]:\\Users\\[A-Za-z0-9._-]+|/private/tmp/[A-Za-z0-9]|/home/[A-Za-z0-9._-]+/|claude-501"
+    r"/Users/[A-Za-z0-9._-]+/|[A-Za-z]:\\Users\\[A-Za-z0-9._-]+|"
+    r"/private/tmp/[A-Za-z0-9]|/home/[A-Za-z0-9._-]+/|claude-501"
 )
 
 # Extensões varridas pela procura de caminho local dentro do conteúdo rastreado.
@@ -344,7 +345,6 @@ class RepositoryDocumentationTests(unittest.TestCase):
         # arguments to native executables, so `python -c '... "x" ...'`
         # reaches Python as `... x ...` and raises SyntaxError (issue #23).
         # Single quotes escaped as '' survive in both 5.1 and 7.
-        import re
 
         powershell = (ROOT / "scripts/install.ps1").read_text(encoding="utf-8")
         snippets = re.findall(r"'-c',\s*'((?:[^']|'')*)'", powershell)

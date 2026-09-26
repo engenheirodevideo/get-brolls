@@ -12,11 +12,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import skip_unless_ffmpeg, synth_image
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import providers
+from getbrolls import cli, http, providers
+from getbrolls.ledger import Ledger
+from getbrolls.models import approve, candidate
 
 IMAGE_BASE = "https://images-assets.nasa.gov/image/S69-1/S69-1"
 VIDEO_BASE = "https://images-assets.nasa.gov/video/KSC-1/KSC-1"
@@ -99,7 +101,6 @@ class SizeCapFallsBackToASmallerRendition(unittest.TestCase):
     """A original acima do teto de download não derruba a coleta; a próxima versão menor vale."""
 
     def test_fetch_uses_the_next_rendition_when_the_original_is_over_the_cap(self):
-        from getbrolls import http
 
         body = b"\xff\xd8\xff\xe0" + b"0" * 64
         asked = []
@@ -122,7 +123,6 @@ class SizeCapFallsBackToASmallerRendition(unittest.TestCase):
         self.assertEqual([IMAGE_BASE + "~orig.jpg", IMAGE_BASE + "~large.jpg"], asked)
 
     def test_without_fallbacks_the_cap_error_is_kept(self):
-        from getbrolls import http
 
         class Opener:
             def open(self, request, timeout=None):
@@ -140,9 +140,6 @@ class SizeCapFallsBackToASmallerRendition(unittest.TestCase):
     def test_fetch_of_a_nasa_photo_delivers_the_smaller_rendition_over_the_cap(self):
         """Caminho real do `fetch`: a API da NASA (dublada) monta as versões, e a `~orig`
         acima do teto cai para a `~large`, sem nada injetado em `refresh`."""
-        from getbrolls import cli, http
-        from getbrolls.ledger import Ledger
-        from getbrolls.models import approve, candidate
 
         with tempfile.TemporaryDirectory() as tmp:
             jpg = Path(tmp) / "large.jpg"

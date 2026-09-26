@@ -18,9 +18,11 @@ import unittest
 import unittest.mock
 from pathlib import Path
 
+import gen_skill_mirror
 from _paths import ROOT
 
 from getbrolls import __version__
+from getbrolls.cli import SUMMARIES
 
 ROOT_SKILL = ROOT / "SKILL.md"
 MIRROR_SKILL = ROOT / "skills" / "get-brolls" / "SKILL.md"
@@ -83,7 +85,6 @@ class SkillMirrorTests(unittest.TestCase):
         """`--check` detecta divergência: aponta o gerador para uma cópia
         editada à mão do espelho, fora do repositório, e nunca escreve no
         `skills/get-brolls/SKILL.md` versionado."""
-        import gen_skill_mirror
 
         with tempfile.TemporaryDirectory() as tmp:
             tampered = Path(tmp) / "SKILL.md"
@@ -110,7 +111,6 @@ class SkillMirrorTests(unittest.TestCase):
         mas não exista de verdade (nem arquivo, nem pasta) é um caminho quebrado
         no `SKILL.md` da raiz: precisa falhar alto, em `--check` e na escrita,
         não ficar sem prefixo em silêncio."""
-        import gen_skill_mirror
 
         broken_ref = "scripts/does-not-exist-getbrolls.py"
         frontmatter_text, existing_body = gen_skill_mirror.split_frontmatter(ROOT_SKILL.read_text(encoding="utf-8"))
@@ -252,7 +252,6 @@ class SkillCommandsExistTests(unittest.TestCase):
     """Todo subcomando citado no SKILL.md existe de verdade na CLI."""
 
     def test_every_mentioned_subcommand_is_registered(self):
-        from getbrolls.cli import SUMMARIES
 
         mentioned = set(re.findall(r"gb\.py\" ([a-z\-]+)", body(ROOT_SKILL)))
         self.assertTrue(mentioned, "SKILL.md não cita nenhum subcomando")

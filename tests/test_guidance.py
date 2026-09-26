@@ -10,12 +10,13 @@ import unittest
 from pathlib import Path
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import synth_video
 from _paths import CLI
 
 from getbrolls.cli import build_parser
-from getbrolls.guidance import STEPS, command_for, next_action
+from getbrolls.commands import STATUS_LADDER, status_next
+from getbrolls.guidance import STEPS, command_for, leftovers, next_action
 
 # O comando repassa o `--project` como recebeu, sem resolver links simbólicos: assim
 # `do.command` e o `project` do relatório falam do mesmo caminho.
@@ -290,7 +291,6 @@ LADDER_PHRASES = {
 
 class SameLadder(unittest.TestCase):
     def test_next_and_do_name_the_same_stage_for_every_fixture(self):
-        from getbrolls.commands import status_next
 
         for step, state in LADDER_STATES.items():
             if step not in LADDER_PHRASES:
@@ -310,21 +310,18 @@ class SameLadder(unittest.TestCase):
                 self.assertEqual(step, next_action(state)["step"])
 
     def test_a_fully_delivered_project_reports_the_flow_as_complete(self):
-        from getbrolls.commands import status_next
 
         counts = {**full(candidates=3, previews=3, approved=3, permitted=3, delivered=3, verified=3)}
         counts.update(pending=0, rejected=0)
         self.assertIn("completo", status_next(counts, 0, pending_preview=0, undelivered=0))
 
     def test_verified_files_still_outside_entrega_are_named_by_next_too(self):
-        from getbrolls.commands import status_next
 
         counts = {**full(candidates=3, previews=3, approved=3, permitted=3, delivered=3, verified=3)}
         counts.update(pending=0, rejected=0)
         self.assertIn("deliver", status_next(counts, 0, pending_preview=0, undelivered=3))
 
     def test_a_rejected_item_without_a_preview_does_not_pin_the_ladder_to_preview(self):
-        from getbrolls.commands import status_next
 
         counts = {**full(candidates=4, previews=3, approved=3, permitted=3, delivered=3, verified=3)}
         counts.update(pending=0, rejected=1)
@@ -352,7 +349,6 @@ class HumanStateWinsOverAgentDraft(unittest.TestCase):
         self.assertFalse(action["blocking_human"])
 
     def test_the_same_finished_flow_reads_the_same_in_status_next(self):
-        from getbrolls.commands import status_next
 
         counts = self._delivered()["counts"]
         phrase = status_next(counts, 0, pending_preview=13, undelivered=0)
@@ -375,7 +371,6 @@ class HumanStateWinsOverAgentDraft(unittest.TestCase):
         self.assertEqual("done", next_action(base_state(counts=decided, undelivered=0))["step"])
 
     def test_status_next_also_refuses_to_close_with_a_decision_pending(self):
-        from getbrolls.commands import status_next
 
         counts = full(candidates=5, previews=5, approved=2, permitted=2, delivered=2, verified=2)
         counts.update(pending=3, rejected=0)
@@ -385,7 +380,6 @@ class HumanStateWinsOverAgentDraft(unittest.TestCase):
 
     def test_an_item_with_a_preview_and_no_decision_is_not_a_leftover(self):
         """ "Sobraram N" conta só candidato sem prévia: com prévia, é decisão pendente."""
-        from getbrolls.guidance import leftovers
 
         counts = full(candidates=10, previews=5, approved=2, permitted=2, delivered=2, verified=2)
         counts.update(pending=3, rejected=0)
@@ -406,7 +400,6 @@ class HumanStateWinsOverAgentDraft(unittest.TestCase):
         self.assertIn("3 item", action["why"])
 
     def test_status_next_names_the_pending_decision_too(self):
-        from getbrolls.commands import status_next
 
         counts = full(candidates=8, previews=3)
         counts.update(pending=3, rejected=0)
@@ -459,7 +452,6 @@ class HumanDecisionOutranksAgentWork(unittest.TestCase):
 
     def test_status_ladder_and_status_next_agree_with_the_guidance_rung(self):
         """`summary.next` e `summary.do` não podem nomear etapas diferentes."""
-        from getbrolls.commands import STATUS_LADDER, status_next
 
         counts = {
             "candidates": 6,

@@ -5,12 +5,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_video
 from _offline import OFFLINE_YTDLP
 from _paths import ROOT
 
+from getbrolls import brief as brief_module
 from getbrolls import providers
 from getbrolls.sdk import schemas
 from getbrolls.sdk.jsonschema import errors
@@ -121,7 +122,6 @@ class CandidateSchemaContractTests(unittest.TestCase):
 
 class BriefSchemaContractTests(unittest.TestCase):
     def test_template_brief_matches(self):
-        from getbrolls import brief as brief_module
 
         with tempfile.TemporaryDirectory() as tmp:
             raw = (ROOT / "docs" / "BRIEF.md").read_text(encoding="utf-8")
@@ -152,7 +152,6 @@ class BriefSchemaContractTests(unittest.TestCase):
     def test_runtime_accepts_and_ignores_unknown_keys(self):
         """O runtime é permissivo: chave desconhecida (e `ext`) no topo, em `video` ou
         num beat não recusa o BRIEF.md e não aparece no brief normalizado."""
-        from getbrolls import brief as brief_module
 
         with tempfile.TemporaryDirectory() as tmp:
             raw = (ROOT / "docs" / "BRIEF.md").read_text(encoding="utf-8")

@@ -6,6 +6,7 @@ read-only.
 
 import json
 import os
+import random
 import subprocess
 import sys
 import tempfile
@@ -18,10 +19,14 @@ from typing import Any
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import CLI, ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+
+# efeito de import: insere scripts/ em sys.path
+from _paths import CLI, ROOT  # noqa: F401  # pylint: disable=unused-import
 
 from getbrolls import commands, queue
+from getbrolls.ledger import Ledger
+from getbrolls.rules import load_rules
 from getbrolls.runtime import READ_ONLY_ACTIONS, audited, project_lock
 
 T0 = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
@@ -31,7 +36,6 @@ TIKTOK = "https://www.tiktok.com/@user/video/1234567890"
 
 
 def rng(value=0.0):
-    import random
 
     generator = random.Random(1)
     generator.uniform = lambda a, b: a + value * (b - a)
@@ -54,7 +58,10 @@ VALID_RULES = textwrap.dedent(
       "blocked_domains": [],
       "editorial_rules": [],
       "copyright": {"mode": "per_item_evidence", "responsible_person": null, "declaration": null},
-      "browser": {"viewport": "mobile", "mobile_width": 390, "mobile_height": 844, "desktop_width": 1440, "desktop_height": 900, "full_page": false},
+      "browser": {
+        "viewport": "mobile", "mobile_width": 390, "mobile_height": 844,
+        "desktop_width": 1440, "desktop_height": 900, "full_page": false
+      },
       "pacing": {"instagram": {"min_s": 1, "max_s": 2, "max_per_hour": 20, "max_per_day": 4}}
     }
     ```
@@ -374,8 +381,6 @@ class Schema99StatusStaysExit0Tests(unittest.TestCase):
 
     def test_status_exit_0_and_hint_returns_error_without_rewriting(self):
         with tempfile.TemporaryDirectory() as tmp:
-            from getbrolls.ledger import Ledger
-
             Ledger(tmp)
             path = queue.queue_path(tmp)
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -490,8 +495,6 @@ class QueueActionReadOnlyTests(unittest.TestCase):
 
     def test_queue_status_succeeds_while_another_command_holds_the_lock(self):
         with tempfile.TemporaryDirectory() as tmp:
-            from getbrolls.ledger import Ledger
-
             Ledger(tmp)
             with project_lock(tmp):
                 args = queue_args(tmp, "status")
@@ -532,7 +535,6 @@ class RulesPacingReachesQueueTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             invalid = VALID_RULES.replace('"max_s": 2', '"max_s": "not-a-number"')
             (Path(tmp) / "RULES.md").write_text(invalid, encoding="utf-8")
-            from getbrolls.rules import load_rules
 
             with self.assertRaises(ValueError):
                 load_rules(tmp)
@@ -553,7 +555,6 @@ class CooldownReasonSkillMessagesTests(unittest.TestCase):
     """As mensagens de bloqueio que a própria skill emite (social.py) abrem cooldown."""
 
     def test_skill_messages_trigger_and_local_errors_do_not(self):
-        from getbrolls import queue
 
         positives = [
             "A fonte exige uma sessão de acesso. Use o navegador autorizado.",

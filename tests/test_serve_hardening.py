@@ -8,6 +8,7 @@ import http.client
 import json
 import os
 import re
+import shutil
 import stat
 import tempfile
 import threading
@@ -19,10 +20,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_video
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import serve
 
@@ -80,8 +81,11 @@ class SecurityHeadersTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = _project_with_review(Path(tmp))
             with _serving(root) as (_server, port):
-                with self.assertRaises(urllib.error.HTTPError) as ctx:
-                    urllib.request.urlopen(f"http://127.0.0.1:{port}/manifest.json", timeout=5)
+                with (
+                    self.assertRaises(urllib.error.HTTPError) as ctx,
+                    urllib.request.urlopen(f"http://127.0.0.1:{port}/manifest.json", timeout=5),
+                ):
+                    pass
                 self.assertEqual(404, ctx.exception.code)
                 headers = ctx.exception.headers
                 self.assertEqual("DENY", headers.get("X-Frame-Options"))
@@ -160,16 +164,25 @@ class AllowlistTests(unittest.TestCase):
                     ".hidden",
                 ]
                 for path in blocked:
-                    with self.assertRaises(urllib.error.HTTPError) as ctx:
-                        urllib.request.urlopen(f"http://127.0.0.1:{port}/{path}", timeout=5)
+                    with (
+                        self.assertRaises(urllib.error.HTTPError) as ctx,
+                        urllib.request.urlopen(f"http://127.0.0.1:{port}/{path}", timeout=5),
+                    ):
+                        pass
                     self.assertEqual(404, ctx.exception.code, path)
 
                 # Listagem de diretório.
-                with self.assertRaises(urllib.error.HTTPError) as ctx:
-                    urllib.request.urlopen(f"http://127.0.0.1:{port}/previews/", timeout=5)
+                with (
+                    self.assertRaises(urllib.error.HTTPError) as ctx,
+                    urllib.request.urlopen(f"http://127.0.0.1:{port}/previews/", timeout=5),
+                ):
+                    pass
                 self.assertEqual(404, ctx.exception.code)
-                with self.assertRaises(urllib.error.HTTPError) as ctx:
-                    urllib.request.urlopen(f"http://127.0.0.1:{port}/reviews/", timeout=5)
+                with (
+                    self.assertRaises(urllib.error.HTTPError) as ctx,
+                    urllib.request.urlopen(f"http://127.0.0.1:{port}/reviews/", timeout=5),
+                ):
+                    pass
                 self.assertEqual(404, ctx.exception.code)
 
 
@@ -287,8 +300,11 @@ class SymlinkEscapeTests(unittest.TestCase):
                 previews.mkdir(parents=True)
                 (previews / "escape.jpg").symlink_to(outside)
                 with _serving(root) as (_server, port):
-                    with self.assertRaises(urllib.error.HTTPError) as ctx:
-                        urllib.request.urlopen(f"http://127.0.0.1:{port}/previews/escape.jpg", timeout=5)
+                    with (
+                        self.assertRaises(urllib.error.HTTPError) as ctx,
+                        urllib.request.urlopen(f"http://127.0.0.1:{port}/previews/escape.jpg", timeout=5),
+                    ):
+                        pass
                     self.assertEqual(404, ctx.exception.code)
             finally:
                 outside.unlink(missing_ok=True)
@@ -306,12 +322,14 @@ class SymlinkEscapeTests(unittest.TestCase):
             try:
                 (root / "brolls" / "previews").symlink_to(outside, target_is_directory=True)
                 with _serving(root) as (_server, port):
-                    with self.assertRaises(urllib.error.HTTPError) as ctx:
-                        urllib.request.urlopen(f"http://127.0.0.1:{port}/previews/secret.txt", timeout=5)
+                    with (
+                        self.assertRaises(urllib.error.HTTPError) as ctx,
+                        urllib.request.urlopen(f"http://127.0.0.1:{port}/previews/secret.txt", timeout=5),
+                    ):
+                        pass
                     self.assertEqual(404, ctx.exception.code)
             finally:
                 (root / "brolls" / "previews").unlink()
-                import shutil
 
                 shutil.rmtree(outside)
 
@@ -447,11 +465,11 @@ class SessionComparisonTests(unittest.TestCase):
     def test_ping_treats_a_non_string_session_as_a_mismatch_not_a_crash(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = _project_with_review(Path(tmp))
-            with (
-                _serving(root) as (server, port),
-                patch.object(serve.json, "loads", return_value={"session": 12345, "port": port}),
-            ):
-                self.assertFalse(serve._ping(port, server.session_id, timeout=2.0))
+            # Aninhado de propósito: combinar os dois `with` faz o pylint reportar
+            # "used-before-assignment" de `port` (falso positivo).
+            with _serving(root) as (server, port):  # noqa: SIM117
+                with patch.object(serve.json, "loads", return_value={"session": 12345, "port": port}):
+                    self.assertFalse(serve._ping(port, server.session_id, timeout=2.0))
 
 
 if __name__ == "__main__":

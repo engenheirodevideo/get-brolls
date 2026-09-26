@@ -12,10 +12,11 @@ from typing import Any
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import media
+from getbrolls.config import settings
 
 # Dois-pontos separam opções do filtro, aspas simples delimitam valores e `%` abre
 # uma expansão: os três caracteres que já quebraram o banner.
@@ -90,7 +91,6 @@ class DrawtextEscapingTests(unittest.TestCase):
 
 
 def media_settings():
-    from getbrolls.config import settings
 
     return settings()
 

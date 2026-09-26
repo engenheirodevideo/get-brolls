@@ -10,6 +10,7 @@ import contextlib
 import io
 import logging
 import os
+import shutil as _shutil
 import socket
 import subprocess
 import tempfile
@@ -18,9 +19,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import skip_unless_ffmpeg, synth_audio, synth_video
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import instagram_pairs as ig
 from getbrolls import logs, social
@@ -476,18 +477,17 @@ class InstagramPairsStdoutParityTests(unittest.TestCase):
                 return code, out.getvalue(), err.getvalue()
 
             try:
-                code1, out1, err1 = run_once({"GB_LOG_LEVEL": "DEBUG", "GB_LOG_STDERR": ""})
-                self.assertEqual(0, code1)
-                import shutil as _shutil
+                first = run_once({"GB_LOG_LEVEL": "DEBUG", "GB_LOG_STDERR": ""})
+                self.assertEqual(0, first[0])
 
                 _shutil.rmtree(outdir)
                 _shutil.rmtree(partsdir)
-                code2, out2, err2 = run_once({"GB_LOG_LEVEL": "off", "GB_LOG_STDERR": ""})
-                self.assertEqual(0, code2)
+                second = run_once({"GB_LOG_LEVEL": "off", "GB_LOG_STDERR": ""})
+                self.assertEqual(0, second[0])
             finally:
                 logs._degrade()
-            self.assertEqual(out1, out2)
-            self.assertEqual(err1, err2)
+            self.assertEqual(first[1], second[1])
+            self.assertEqual(first[2], second[2])
 
 
 if __name__ == "__main__":

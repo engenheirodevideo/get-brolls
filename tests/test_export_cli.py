@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_video
 from _plugin_pins import pin_plugins
@@ -25,6 +25,7 @@ from _schemas import strict
 from test_roteiro_sync import SyncCase
 
 from getbrolls import __version__, export, export_folder, models
+from getbrolls.cli import build_parser
 from getbrolls.ledger import Ledger
 from getbrolls.runtime import project_lock
 from getbrolls.sdk.exporters import ValidatedExport, find_local_paths, run_exporter, sample_plan
@@ -401,7 +402,6 @@ class ExportRefusalTests(ExportCase):
         self.assertFalse((self.project / "exports").exists())
 
     def test_help_lists_to_and_dry_run(self):
-        from getbrolls.cli import build_parser
 
         text = build_parser().parse_args(["export", "--project", "p", "--to", "x"])
         self.assertEqual(("export", "x", False), (text.command, text.to, text.dry_run))

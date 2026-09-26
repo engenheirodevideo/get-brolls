@@ -6,10 +6,11 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from html.parser import HTMLParser
 from pathlib import Path
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import synth_image, synth_video
 from _paths import CLI
 
@@ -58,37 +59,38 @@ class CliTest(unittest.TestCase):
             # Cada comando do fluxo também diz, em uma linha, o que acabou de fazer.
             self.assertIn("Registrei o candidato", c["summary"]["line"])
             self.call("fetch", *base, ok=False)
-            preview = self.call("preview", *base, "--start", 0.5, "--end", 1.5)
-            self.assertIn("Gerei a prévia", preview["summary"]["line"])
-            approved = self.call(
-                "approve",
-                *base,
-                "--start",
-                0.5,
-                "--end",
-                1.5,
-                "--by",
-                "Fixture humano",
-                "--statement",
-                "Aprovo este trecho para o vídeo.",
+            self.assertIn(
+                "Gerei a prévia", self.call("preview", *base, "--start", 0.5, "--end", 1.5)["summary"]["line"]
             )
-            self.assertIn("Registrei a aprovação humana", approved["summary"]["line"])
+            self.assertIn(
+                "Registrei a aprovação humana",
+                self.call(
+                    "approve",
+                    *base,
+                    "--start",
+                    0.5,
+                    "--end",
+                    1.5,
+                    "--by",
+                    "Fixture humano",
+                    "--statement",
+                    "Aprovo este trecho para o vídeo.",
+                )["summary"]["line"],
+            )
             self.call("fetch", *base, ok=False)
-            permitted = self.call(
-                "permit",
-                *base,
-                "--evidence",
-                "Vídeo sintético de teste gerado localmente",
+            self.assertIn(
+                "condições de uso",
+                self.call("permit", *base, "--evidence", "Vídeo sintético de teste gerado localmente")["summary"][
+                    "line"
+                ],
             )
-            self.assertIn("condições de uso", permitted["summary"]["line"])
             out = self.call("fetch", *base)
             self.assertTrue(out["output"]["verified"])
             self.assertIn("Coletei o corte final", out["summary"]["line"])
             verified = self.call("verify", "--project", root)
             self.assertEqual(verified["count"], 1)
             self.assertIn("1 arquivo coletado: íntegro e decodificável", verified["summary"]["line"])
-            reviewed = self.call("review", "--project", root)
-            self.assertIn("Gerei o Storyboard", reviewed["summary"]["line"])
+            self.assertIn("Gerei o Storyboard", self.call("review", "--project", root)["summary"]["line"])
             state = self.call("status", "--project", root)
             self.assertEqual(1, state["counts"]["verified"])
             self.assertIn("completo", state["summary"]["next"])
@@ -259,7 +261,6 @@ class CliTest(unittest.TestCase):
                 self.assertIn("não pode ser vazio", failure["message"])
 
     def test_youtube_review_inline_segment_safe(self):
-        from html.parser import HTMLParser
 
         class DOM(HTMLParser):
             def __init__(self):

@@ -8,20 +8,29 @@ arquivo editado pela pessoa preservado e `verify` que avisa em vez de reprovar.
 
 import json
 import os
+import re
+import shutil
 import stat
 import tempfile
 import types
 import unittest
 from pathlib import Path
 from typing import ClassVar
+from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT
 
 from getbrolls import delivery
+
+# Reimport com apelido só pra isolar o setup do teste que precisa dele
+# (mesmo motivo do redefined-outer-name em tests/pylintrc).
+from getbrolls import delivery as module  # pylint: disable=reimported
+from getbrolls.commands import execute
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, now, set_segment
+from getbrolls.runtime import audited
 
 
 def fetched(source_id, title, shot=None, clip: str | None = "clips/x.mp4", sheet: str | None = "previews/x.jpg"):
@@ -49,7 +58,6 @@ def fetched(source_id, title, shot=None, clip: str | None = "clips/x.mp4", sheet
 
 def with_brief(tmp):
     """BRIEF.md válido com um beat `abertura`, para a escada ter onde chegar."""
-    import re
 
     raw = (ROOT / "docs" / "BRIEF.md").read_text(encoding="utf-8")
     block = re.findall(r"```json\s*\n(.*?)\n```", raw, re.DOTALL)[0]
@@ -189,8 +197,6 @@ class Build(unittest.TestCase):
     def test_dry_run_leaves_the_manifest_byte_identical(self):
         # O ensaio passa pelo mesmo caminho de `deliver`, inclusive `sync_formats`:
         # nenhuma etapa dele pode reescrever o manifesto.
-        from getbrolls.commands import execute
-        from getbrolls.runtime import audited
 
         with tempfile.TemporaryDirectory() as tmp:
             project(tmp, [fetched("a", "Palco", shot="abertura")])
@@ -243,8 +249,6 @@ class Build(unittest.TestCase):
             self.assertIn("cópia independente", index)
 
     def test_the_index_points_at_what_comes_after_the_delivery(self):
-        from getbrolls.commands import execute
-        from getbrolls.runtime import audited
 
         with tempfile.TemporaryDirectory() as tmp:
             project(tmp, [fetched("a", "Palco", shot="abertura")])
@@ -266,8 +270,6 @@ class Build(unittest.TestCase):
 
     def test_the_index_never_points_at_a_candidate_the_human_never_saw(self):
         """Fricção 1 da rodada 2: o README nascia mandando inspecionar um descarte."""
-        from getbrolls.commands import execute
-        from getbrolls.runtime import audited
 
         with tempfile.TemporaryDirectory() as tmp:
             leftover = candidate("youtube", "descartado", "Livestream 24/7")
@@ -293,8 +295,6 @@ class Build(unittest.TestCase):
 
     def test_the_index_asks_for_the_pending_decision_instead_of_saying_it_is_done(self):
         """Entregar o que foi aprovado não fecha o fluxo enquanto houver prévia sem decisão."""
-        from getbrolls.commands import execute
-        from getbrolls.runtime import audited
 
         with tempfile.TemporaryDirectory() as tmp:
             waiting = candidate("local", "espera", "Prévia esperando decisão")
@@ -453,9 +453,6 @@ class OriginAuthor(unittest.TestCase):
 
 class VerifyHook(unittest.TestCase):
     def test_delivery_failure_only_warns_and_verify_still_succeeds(self):
-        from getbrolls import delivery as module
-        from getbrolls.commands import execute
-        from getbrolls.runtime import audited
 
         with tempfile.TemporaryDirectory() as tmp:
             project(tmp, [fetched("a", "Palco", shot="abertura", clip=None)])
@@ -524,7 +521,6 @@ class MixedDeliveryIndex(unittest.TestCase):
         self.assertNotIn("Edição |", copies)
 
     def test_a_real_mixed_delivery_produces_the_column(self):
-        from unittest.mock import patch
 
         real = delivery.link_or_copy
         calls = {"n": 0}
@@ -534,8 +530,6 @@ class MixedDeliveryIndex(unittest.TestCase):
             # o sistema recusar o link de um arquivo só (outro volume, por exemplo).
             calls["n"] += 1
             if calls["n"] == 2:  # noqa: PLR2004 - second file of the pair (see the comment above)
-                import shutil
-
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dest)
                 return "copy"

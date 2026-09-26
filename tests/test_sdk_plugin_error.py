@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _paths import ROOT
 from _plugin_pins import pin_plugins
@@ -18,6 +18,7 @@ from getbrolls import cli, providers
 from getbrolls.http import ProviderError
 from getbrolls.runtime import OperationError
 from getbrolls.sdk import PluginError, guard
+from getbrolls.sdk.registry import reset_registry
 from getbrolls.sdk.scaffold import ROUTE
 
 EXAMPLES = ROOT / "examples" / "plugins"
@@ -88,8 +89,6 @@ class PluginErrorFlowTests(LoaderTestCase):
     def test_other_exceptions_and_plugin_error_subclasses_show_only_the_type(self):
         for raised in ("ValueError('Configure DEMO_TOKEN')", "type('Sub', (PluginError,), {})('Configure DEMO_TOKEN')"):
             with self.subTest(raised=raised):
-                from getbrolls.sdk.registry import reset_registry
-
                 reset_registry()
                 self.enable(raised)
                 with self.assertRaises(ProviderError) as caught:

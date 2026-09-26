@@ -10,13 +10,16 @@ approval was rejected.
 """
 
 import os
+import shutil
+import stat as stat_module
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import delivery, runtime
 from getbrolls.ledger import Ledger
@@ -68,14 +71,13 @@ def _force_rmtree(path):
     Only needed for the negative-proof cleanup: a fixed `build_delivery` never writes
     here, but this keeps teardown robust regardless.
     """
-    import shutil
-    import stat as stat_module
 
     def _on_error(func, target, exc_info):
         Path(target).chmod(stat_module.S_IWRITE | stat_module.S_IREAD)
         func(target)
 
-    shutil.rmtree(path, onerror=_on_error)
+    # onerror (não onexc) por compatibilidade com Python 3.11, como em runtime.retry().
+    shutil.rmtree(path, onerror=_on_error)  # pylint: disable=deprecated-argument
 
 
 def _symlinks_available(tmp):
@@ -161,7 +163,6 @@ class SymlinkedDeliveryRoot(unittest.TestCase):
     def test_a_real_empty_beat_directory_rmdir_failure_is_a_warning_not_a_crash(self):
         """The same non-fatal contract `_freeze` already has: an `OSError` while
         removing an empty, orphaned beat directory must not abort `_sweep`."""
-        from unittest.mock import patch
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "entrega"
@@ -254,7 +255,6 @@ class ComparisonIOFailureIsNotAnEditClaim(unittest.TestCase):
     def test_link_or_copy_reports_the_os_error_instead_of_blaming_an_edit(self):
         """Wiring test: `link_or_copy` must translate `_CompareError` into an IO message,
         never into the "parece edição sua" content-mismatch message."""
-        from unittest.mock import patch
 
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "src.mp4"

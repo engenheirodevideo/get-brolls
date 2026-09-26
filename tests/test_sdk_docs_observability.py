@@ -1,15 +1,20 @@
 """Documentação e observabilidade do SDK."""
 
+import dataclasses
 import os
 import unittest
 from unittest.mock import patch
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT
 from _plugin_pins import pin_plugins
 from test_sdk_loader import LoaderTestCase
 from test_sdk_routes_contracts import ROUTE_MANIFEST, route_code
 
+from getbrolls.commands import PLUGIN_PROBLEM_STATUSES
+from getbrolls.media import SNIFFED_IMAGE_SUFFIXES
+from getbrolls.sdk.api import PluginApi
+from getbrolls.sdk.contracts import ProviderCapabilities
 from getbrolls.sdk.registry import get_registry
 
 SDK_DOC = ROOT / "docs" / "SDK.md"
@@ -52,12 +57,6 @@ class SdkDocTests(unittest.TestCase):
         """A lista vem do código, não de uma frase do próprio documento: extensão de
         foto aceita, campo de `ProviderCapabilities`, método de `PluginApi` e status
         de plugin — o que mudar no código e não no SDK.md quebra aqui."""
-        import dataclasses
-
-        from getbrolls.commands import PLUGIN_PROBLEM_STATUSES
-        from getbrolls.media import SNIFFED_IMAGE_SUFFIXES
-        from getbrolls.sdk.api import PluginApi
-        from getbrolls.sdk.contracts import ProviderCapabilities
 
         text = SDK_DOC.read_text(encoding="utf-8")
         expected = [f"`{suffix}`" for suffix in SNIFFED_IMAGE_SUFFIXES]

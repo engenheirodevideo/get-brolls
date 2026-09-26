@@ -7,10 +7,10 @@ import unittest
 from pathlib import Path
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import roteiro, roteiro_plan
+from getbrolls import roteiro, roteiro_plan, roteiro_review
 
 HEAD = '---\ntype: roteiro\ngenero: reels\ntema: "t"\nduracao_alvo_s: 45\n---\n'  # corpo começa na linha 7
 META = {"aspecto": "9:16"}
@@ -301,7 +301,6 @@ class PlanContractTests(unittest.TestCase):
         self.assertNotEqual(quoted["content_hash"], plain["content_hash"])
 
     def test_hash_inputs_carry_a_version_marker(self):
-        from getbrolls import roteiro_review
 
         body = "## A <!-- c01 -->\n[BROLL: praia]\nOi.\n"
         doc = self.doc(body)

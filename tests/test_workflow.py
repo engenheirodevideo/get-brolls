@@ -8,11 +8,12 @@ from typing import Any
 from unittest.mock import patch
 
 from _media import synth_video
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
+from getbrolls import media
 from getbrolls.config import load_env, settings
 from getbrolls.ledger import Ledger
-from getbrolls.media import probe, review_preview
+from getbrolls.media import find_font, frame_times, probe, review_preview
 from getbrolls.models import candidate, require_fetch, set_segment, signature
 from getbrolls.review import import_review, project_id, review_epoch
 
@@ -148,7 +149,6 @@ class ContactSheetTests(unittest.TestCase):
         return src
 
     def test_frame_times_cover_the_whole_interval(self):
-        from getbrolls.media import frame_times
 
         self.assertEqual(frame_times(7, 12, 5), [7.0, 8.0, 9.0, 10.0, 11.0])
         self.assertEqual(frame_times(0, 2, 4), [0.0, 0.5, 1.0, 1.5])
@@ -173,7 +173,6 @@ class ContactSheetTests(unittest.TestCase):
             self.assertEqual(info["width"], 4 * 480 + 3 * 10 + 2 * 10)
 
     def test_sheet_with_drawtext_adds_index_and_banner(self):
-        from getbrolls import media
 
         calls = []
 
@@ -213,7 +212,6 @@ class ContactSheetTests(unittest.TestCase):
             self.assertIn("textfile=", vf)
 
     def test_labels_and_times_use_source_time_when_working_file_is_offset(self):
-        from getbrolls import media
 
         calls = []
 
@@ -256,7 +254,6 @@ class ContactSheetTests(unittest.TestCase):
             self.assertEqual(calls[-1][calls[-1].index("-ss") + 1], "0")
 
     def test_font_pin_must_exist(self):
-        from getbrolls.media import find_font
 
         with patch.dict(os.environ, {"GB_FONT_FILE": "/nao/existe.ttf"}), self.assertRaises(ValueError):
             find_font()

@@ -19,8 +19,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import acquisition, health, http, library, runtime
 from getbrolls.http import ProviderError
@@ -77,7 +77,8 @@ class DownloadDoesNotMisclassifyBugsTests(unittest.TestCase):
 
 class LibraryHintsCorruptedIndexTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        # Ciclo de vida cobre o teste (ou a classe) inteiro; a limpeza já é feita via addCleanup/tearDownClass.
+        self.tmp = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
         self.addCleanup(self.tmp.cleanup)
         for key in ("GB_HOME", "GB_LIBRARY"):
             old = os.environ.get(key)
@@ -206,7 +207,6 @@ class PrivateSourcesCachePermissionTests(unittest.TestCase):
 class DiagnosticsLogPermissionTests(unittest.TestCase):
     @skip_on_windows
     def test_diagnostics_log_is_created_0600(self):
-        import argparse
 
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "proj"
@@ -219,7 +219,6 @@ class DiagnosticsLogPermissionTests(unittest.TestCase):
 
     @skip_on_windows
     def test_an_existing_looser_diagnostics_log_is_tightened(self):
-        import argparse
 
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "proj"
@@ -297,7 +296,6 @@ class RedactExtendedScrubbingTests(unittest.TestCase):
         """No nested quantifiers were introduced: the widened patterns must stay
         linear, not blow up on a 100k-char string engineered to maximize
         backtracking attempts."""
-        import time
 
         adversarial = "key" * 20000 + "token=" * 10000 + "Bearer " * 10000 + "a" * 30000
         started = time.monotonic()
