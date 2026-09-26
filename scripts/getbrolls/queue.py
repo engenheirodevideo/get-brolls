@@ -5,6 +5,12 @@ random interval between items plus hourly/daily caps per provider; a failure tha
 looks like a block (403/429/challenge/login/rate limit) opens a doubling cooldown.
 """
 
+# pylint: disable=missing-function-docstring,too-many-locals,cyclic-import
+# Legado: ocorrências pré-existentes (corpo idêntico à origin/main). O ciclo
+# (getbrolls.queue <-> getbrolls.rules) já existe na origin/main: `report()`
+# importa `rules.load_rules` tardiamente (dentro de função) exatamente para
+# quebrar esse ciclo em tempo de execução.
+
 import json
 import logging
 import os
@@ -205,7 +211,8 @@ def pacing(provider, rules=None, use_env=True):
                 overrides[key] = "env"
     if limits["min_s"] > limits["max_s"]:
         raise ValueError(
-            f"Ritmo de {provider}: min_s não pode ser maior que max_s (GB_PACE_MIN_S/GB_PACE_MAX_S ou o bloco pacing em RULES.md)."
+            f"Ritmo de {provider}: min_s não pode ser maior que max_s "
+            "(GB_PACE_MIN_S/GB_PACE_MAX_S ou o bloco pacing em RULES.md)."
         )
     if overrides:
         logs.event(log, logging.DEBUG, "pacing_override", provider=provider, **overrides)
@@ -522,20 +529,29 @@ def summary_line(result):
     """Human line for the CLI, chosen by the action that produced the result."""
     action = result.get("action")
     if action == "add":
-        return f"Enfileirei {len(result.get('added') or [])} URL(s); {len(result.get('duplicates') or [])} repetida(s); {result.get('pending')} pendente(s)."
+        return (
+            f"Enfileirei {len(result.get('added') or [])} URL(s); "
+            f"{len(result.get('duplicates') or [])} repetida(s); {result.get('pending')} pendente(s)."
+        )
     if action == "next":
         if result.get("item"):
             return f"Próximo item: {result['item']['id']} ({result['item']['url']})."
         if result.get("reason") == "empty":
             return "Fila vazia: nada pendente."
-        return f"Aguarde {result.get('wait_seconds')} s (motivo: {result.get('reason')}); retome em {result.get('resume_at')}."
+        return (
+            f"Aguarde {result.get('wait_seconds')} s (motivo: {result.get('reason')}); "
+            f"retome em {result.get('resume_at')}."
+        )
     if action == "mark":
         item = result.get("item") or {}
         cooldown = result.get("cooldown")
         extra = f" Cooldown de {cooldown['seconds']} s até {cooldown['until']}." if cooldown else ""
         return f"Marquei {item.get('id')} como {item.get('status')}.{extra}"
     counts = result.get("counts") or {}
-    return f"Fila: {counts.get('pending', 0)} pendente(s), {counts.get('done', 0)} concluído(s), {counts.get('failed', 0)} com falha."
+    return (
+        f"Fila: {counts.get('pending', 0)} pendente(s), {counts.get('done', 0)} concluído(s), "
+        f"{counts.get('failed', 0)} com falha."
+    )
 
 
 def _mark_status(args):
