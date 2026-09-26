@@ -31,11 +31,15 @@ OPTIONS = {"args": {}}
 _PREDICTED = {"hardlink": "hardlink", "clone": "clone", "plugin": "copy"}
 # Clone pelo `cp`: num disco que não clona ele copia tudo, então o resumo diz "até N MB".
 _CLONE_METHODS = ("clone", "reflink-auto")
-_OS_REASONS = {
+# Compartilhado com `roteiro_commands` (mesmos códigos, mesmo texto): ver `_OS_REASONS_COMMON`.
+_OS_REASONS_COMMON = {
     errno.EACCES: "sem permissão",
     errno.EPERM: "sem permissão",
     errno.EROFS: "o disco está somente leitura",
     errno.ENOSPC: "o disco está cheio",
+}
+_OS_REASONS = {
+    **_OS_REASONS_COMMON,
     errno.EEXIST: "o arquivo já existe",
     errno.ENOENT: "o arquivo ou a pasta não existe",
     errno.ENOTDIR: "um trecho do caminho não é uma pasta",
@@ -47,7 +51,9 @@ _UNSAFE = {
     # Aberto sem seguir link: o acerto trocado por um link (ou apagado) não abre.
     safe_copy.OPEN_FAILED: _CHANGED,
     safe_copy.NOT_REGULAR: "{name} deixou de ser um arquivo durante o export: repita.",
-    safe_copy.LINKED: "{name} tem mais de um nome no disco (hardlink): o export não copia esse arquivo do plugin {store}.",
+    safe_copy.LINKED: (
+        "{name} tem mais de um nome no disco (hardlink): o export não copia esse arquivo do plugin {store}."
+    ),
     safe_copy.OUTSIDE: "{name} está fora de permissions.paths do plugin {store}: o export não copia esse arquivo.",
     safe_copy.TARGET_EXISTS: "{name} já existe no export em montagem: repita o export.",
     safe_copy.TARGET_FAILED: (
@@ -213,7 +219,7 @@ def _os_error(exc, project):
     if isinstance(exc.filename, (str, bytes)):
         path = Path(os.path.realpath(os.fsdecode(exc.filename)))
         where = path.relative_to(project).as_posix() if path.is_relative_to(project) else path.name
-    return OSError(
+    return OSError(  # pylint: disable=line-too-long  # mensagem em pt-BR; ruff format mantém numa linha só
         f"Não consegui ler ou gravar {where} ({reason}). Confira as permissões e o espaço em disco e repita o export."
     )
 
@@ -234,11 +240,13 @@ def _summary(out, files, written):
     cloned = any(m["method"] in _CLONE_METHODS for m in written["media"])
     amount = _megabytes(written["copied_bytes"])
     copied = f"até {amount} MB copiados" if cloned else f"{amount} MB copiados de fato"
+    # pylint: disable-next=line-too-long  # mensagem em pt-BR; ruff format mantém numa linha só
     line = f"Export {written['number']} em {out}: {len(files)} arquivo(s), {len(written['media'])} mídia(s) ({copied})."
     return line + (f" Abra {out}/EXPORT.md." if "EXPORT.md" in files else "")
 
 
 def run(args):
+    """Ponto de entrada de `gb export --to <exporter>`: valida o nome e delega para `_run`."""
     name = args.to
     if not isinstance(name, str) or not NAME_RE.fullmatch(name):
         raise ValueError("--to espera o nome de um exporter (minúsculas, números e _), ex.: --to hyperframes.")
@@ -250,34 +258,57 @@ def run(args):
 
 
 def _plan_text(plan):
+    """O plano em JSON pronto para gravar em `getbrolls-plan.json` (com quebra de linha no fim)."""
     return json.dumps(plan, ensure_ascii=False, indent=2) + "\n"
 
 
-def _run(args, name, project):
+def _phase_target(ctx):
+    """1ª fase de `_run`: portões, exporter e pasta/número do próximo export, gravados no `ctx`."""
+    project, name = ctx["project"], ctx["name"]
     ready = export_gates.check(project)
     registry = get_registry()
     if registry.exporter(name) is None:
         raise ValueError(_unavailable(registry, name))
-    owner = registry.owner("exporter", name) or CORE
     root = export_folder.exporter_root(project, name)
     number = export_folder.next_number(root)
-    out_dir = f"{export_folder.EXPORTS_DIR}/{name}/{export_folder.folder_name(number)}"
+    ctx.update(
+        ready=ready,
+        registry=registry,
+        owner=registry.owner("exporter", name) or CORE,
+        root=root,
+        number=number,
+        out_dir=f"{export_folder.EXPORTS_DIR}/{name}/{export_folder.folder_name(number)}",
+    )
+
+
+def _phase_plan(ctx):
+    """2ª fase de `_run`: plano de export com os resolvedores injetados, avisos já com a marca da máquina."""
+    project, registry, ready = ctx["project"], ctx["registry"], ctx["ready"]
     resolve_media = functools.partial(resolve_with_plugins, registry)
     plan, sources = export_plan.build(
         project,
         ready["plan"],
         ready["items"],
-        out_dir,
+        ctx["out_dir"],
         resolve_media=resolve_media,
         project_id=ready["project_id"],
     )
     machine = _machine_paths(project, registry, sources)
     # Aviso escrito por resolvedor de plugin pode trazer caminho desta máquina: sai com a marca, não recusa.
     plan["warnings"] = list(dict.fromkeys(_scrub(warning, machine) for warning in plan["warnings"]))
+    ctx.update(plan=plan, sources=sources, machine=machine)
+
+
+def _phase_validate(ctx):
+    """3ª fase de `_run`: roda o exporter, confere as mídias contra o plano e monta o marcador base."""
+    registry, name, plan, sources = ctx["registry"], ctx["name"], ctx["plan"], ctx["sources"]
     warnings = list(plan["warnings"])
-    warnings += export_folder.changed_sources(export_folder.latest_marker(root), sources, project, number=number)
+    warnings += export_folder.changed_sources(
+        export_folder.latest_marker(ctx["root"]), sources, ctx["project"], number=ctx["number"]
+    )
     validated = run_exporter(registry, name, plan, OPTIONS)
     checked = export_place.check_requests(validated.media, plan["media"], sources)
+    owner = ctx["owner"]
     row = registry.plugins.get(owner) or {}
     marker_base = {
         "export_version": plan["export_version"], "exporter": name, "plugin": owner,
@@ -285,30 +316,60 @@ def _run(args, name, project):
         "projeto_id": plan["meta"]["projeto_id"], "cliente": plan["meta"]["cliente"],
         "direcao": plan["meta"]["direcao"],
     }  # fmt: skip
-    warnings += _check_output(owner, name, validated, (marker_base, plan), machine)
-    envelope = {
-        "exporter": name, "plugin": owner, "out": out_dir, "number": export_folder.folder_name(number),
-        "latest": False, "files": sorted(validated.files), "media": [],
-        "notes": [note_line(owner, _scrub(note, machine)) for note in validated.notes], "warnings": warnings,
-        "dry_run": bool(args.dry_run),
+    warnings += _check_output(owner, name, validated, (marker_base, plan), ctx["machine"])
+    ctx.update(warnings=warnings, validated=validated, checked=checked, marker_base=marker_base)
+
+
+def _phase_envelope(ctx):
+    """4ª fase de `_run`: resposta base do export, antes de saber se é ensaio (`dry-run`) ou gravação de verdade."""
+    validated = ctx["validated"]
+    ctx["envelope"] = {
+        "exporter": ctx["name"], "plugin": ctx["owner"], "out": ctx["out_dir"],
+        "number": export_folder.folder_name(ctx["number"]), "latest": False,
+        "files": sorted(validated.files), "media": [],
+        "notes": [note_line(ctx["owner"], _scrub(note, ctx["machine"])) for note in validated.notes],
+        "warnings": ctx["warnings"], "dry_run": bool(ctx["args"].dry_run),
     }  # fmt: skip
-    if args.dry_run:
-        media = [{"media_id": m, "dest": d, "method": _predicted(sources[m])} for m, d in checked]
-        line = (
-            f"Ensaio: {len(validated.files)} arquivo(s) e {len(media)} mídia(s) iriam para {out_dir}; nada foi gravado."
-        )
-        return {**envelope, "media": media, "summary": {"line": line}}
+
+
+def _dry_run_result(ctx):
+    """Resposta do `--dry-run`: só o que iria acontecer, nada gravado."""
+    sources, checked, validated = ctx["sources"], ctx["checked"], ctx["validated"]
+    media = [{"media_id": m, "dest": d, "method": _predicted(sources[m])} for m, d in checked]
+    line = (
+        f"Ensaio: {len(validated.files)} arquivo(s) e {len(media)} mídia(s) "
+        f"iriam para {ctx['out_dir']}; nada foi gravado."
+    )
+    return {**ctx["envelope"], "media": media, "summary": {"line": line}}
+
+
+def _write_result(ctx):
+    """Grava a pasta numerada do export e devolve a resposta com o resultado de verdade."""
+    project, name = ctx["project"], ctx["name"]
+    validated = ctx["validated"]
     # O código do plugin rodou desde a primeira conferência: `exports/` pode ter virado link.
     root = export_folder.exporter_root(project, name)
     content = {
         "files": validated.files,
-        "plan": _plan_text(plan),
-        "placements": [(m, d, sources[m]) for m, d in checked],
+        "plan": _plan_text(ctx["plan"]),
+        "placements": [(m, d, ctx["sources"][m]) for m, d in ctx["checked"]],
     }
-    place = functools.partial(export_place.place, copy_plugin=functools.partial(copy_plugin, registry))
-    written = export_folder.write_export(root, number, content, marker_base, place)
+    place = functools.partial(export_place.place, copy_plugin=functools.partial(copy_plugin, ctx["registry"]))
+    written = export_folder.write_export(root, ctx["number"], content, ctx["marker_base"], place)
     out = f"{export_folder.EXPORTS_DIR}/{name}/{written['number']}"
     return {
-        **envelope, "out": out, "number": written["number"], "latest": written["latest"], "media": written["media"],
-        "warnings": warnings + written["warnings"], "summary": {"line": _summary(out, validated.files, written)},
+        **ctx["envelope"], "out": out, "number": written["number"], "latest": written["latest"],
+        "media": written["media"], "warnings": ctx["warnings"] + written["warnings"],
+        "summary": {"line": _summary(out, validated.files, written)},
     }  # fmt: skip
+
+
+def _run(args, name, project):
+    ctx = {"args": args, "name": name, "project": project}
+    _phase_target(ctx)
+    _phase_plan(ctx)
+    _phase_validate(ctx)
+    _phase_envelope(ctx)
+    if args.dry_run:
+        return _dry_run_result(ctx)
+    return _write_result(ctx)
