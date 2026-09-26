@@ -1,0 +1,171 @@
+"""Mídia dentro de uma pasta de export: posta pelo core, por id lógico, sem nunca mudar a fonte.
+
+| Fonte | Método |
+|---|---|
+| clipe (`brolls/clips/`) | hardlink, cópia como alternativa (`delivery.link_or_copy`, sem symlink e sem chmod: o `deliver` já congela a fonte) |
+| mídia da pessoa (`aroll/`, `assets/`, biblioteca pessoal) | clone (`cp -c` no macOS, `cp --reflink=auto` no Linux) ou `shutil.copy2`; nunca hardlink |
+| mídia de resolvedor de plugin | cópia pelo descritor, pela função `copy_plugin(source, dest)` que o chamador injeta |
+
+Antes de pôr, a fonte é conferida de novo (`lstat`): mesmo `st_dev`/`st_ino`/tamanho
+(e data, quando o plano a tem), arquivo regular e não link. Depois de pôr, confere de
+novo a fonte e o destino (hardlink = mesmo inode; cópia = mesmo tamanho): se algo
+mudou no meio, o destino sai e o export para com "mudou durante o export".
+"""
+
+import contextlib
+import os
+import shutil
+import stat
+import subprocess
+import sys
+from pathlib import Path, PurePosixPath
+
+from . import delivery
+
+# Método que não duplica bytes em disco: não conta nos MB copiados do resumo.
+SHARED_METHODS = ("hardlink", "clone")
+CLONE_TIMEOUT_S = 600
+
+
+def check_requests(requests, media, sources):
+    """Confere os pedidos de mídia do exporter contra o plano: devolve `[(media_id, dest)]` ou levanta.
+
+    Cada id existe no mapa do core e está disponível; o sufixo do destino é a extensão
+    da fonte (sem caixa: `.MOV` da câmera já virou `.mov` no plano); nenhum destino
+    repete outro depois de `casefold`.
+    """
+    seen = {}
+    checked = []
+    for media_id, dest in requests:
+        row = media.get(media_id)
+        if row is None:
+            raise ValueError(f"O exporter pediu a mídia {media_id!r}, que não está no plano.")
+        if not row["available"] or media_id not in sources:
+            raise ValueError(f"O exporter pediu a mídia {media_id!r}, que não está disponível.")
+        path = PurePosixPath(dest)
+        if path.parts[:1] != ("assets",) or len(path.parts) < 2:  # noqa: PLR2004 - "assets/<nome>" at least
+            raise ValueError(f"Destino de mídia fora de assets/: {dest!r}.")
+        if path.suffix.casefold() != (row["ext"] or "").casefold():
+            raise ValueError(f"Destino {dest!r} não tem a extensão da mídia {media_id!r} ({row['ext']}).")
+        key = dest.casefold()
+        if key in seen:
+            raise ValueError(f"Dois pedidos de mídia no mesmo destino: {seen[key]!r} e {dest!r}.")
+        seen[key] = dest
+        checked.append((media_id, dest))
+    return checked
+
+
+def _changed(path):
+    return ValueError(f"{Path(path).name} mudou durante o export: repita.")
+
+
+def verify_source(source):
+    """A fonte ainda é o arquivo visto no plano: regular, não link, mesmo `st_dev`/`st_ino`/tamanho.
+
+    A data (`st_mtime_ns`) também conta quando o plano a registrou: mesmo tamanho com
+    outra data é outro conteúdo.
+    """
+    path = Path(source["path"])
+    try:
+        info = path.lstat()
+    except OSError:
+        raise ValueError(f"{path.name} sumiu durante o export: repita.") from None
+    same = (info.st_dev, info.st_ino, info.st_size) == (source["st_dev"], source["st_ino"], source["st_size"])
+    mtime = source.get("st_mtime_ns")
+    if mtime is not None and info.st_mtime_ns != mtime:
+        same = False
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or not same:
+        raise _changed(path)
+    return info
+
+
+def _clone_command(src, dest):
+    """(argv, método) do clone do sistema, ou None onde não há (Windows, `cp` ausente)."""
+    if sys.platform == "darwin":
+        return ["/bin/cp", "-c", str(src), str(dest)], "clone"
+    if sys.platform.startswith("linux"):
+        cp = shutil.which("cp")
+        if cp:
+            return [cp, "--reflink=auto", str(src), str(dest)], "reflink-auto"
+    return None
+
+
+def clone_or_copy(src, dest):
+    """Clona quando o disco deixa (APFS, Btrfs, XFS); senão `shutil.copy2`. Nunca hardlink, nunca chmod."""
+    src, dest = Path(src), Path(dest)
+    command = _clone_command(src, dest)
+    if command is not None:
+        argv, method = command
+        try:
+            done = subprocess.run(argv, check=False, capture_output=True, timeout=CLONE_TIMEOUT_S)  # noqa: S603 - fixed argv with absolute paths, never a shell
+        except (OSError, subprocess.SubprocessError):
+            done = None
+        if done is not None and done.returncode == 0 and dest.is_file() and not dest.is_symlink():
+            return method
+        dest.unlink(missing_ok=True)
+    shutil.copy2(src, dest)
+    return "copy"
+
+
+def _undo(dest):
+    """Tira o destino recusado (só o nome no staging; num hardlink, a fonte fica intacta)."""
+    with contextlib.suppress(OSError):
+        dest.unlink(missing_ok=True)
+
+
+def _confirm(source, dest, method):
+    """Depois de pôr: a fonte ainda é a do plano e o destino é ela (mesmo inode ou mesmo tamanho)."""
+    try:
+        if method != "plugin":
+            verify_source(source)
+        placed = dest.lstat()
+    except (OSError, ValueError):
+        _undo(dest)
+        raise _changed(source["path"]) from None
+    if method == "hardlink":
+        same = (placed.st_dev, placed.st_ino) == (source["st_dev"], source["st_ino"])
+    else:
+        same = stat.S_ISREG(placed.st_mode) and placed.st_size == source["st_size"]
+    if not same:
+        _undo(dest)
+        raise _changed(source["path"])
+
+
+def place(source, dest, copy_plugin=None):
+    """Põe a fonte em `dest` (absoluto, dentro do staging) e devolve `(método, bytes copiados)`.
+
+    `copy_plugin(source, dest)` recebe a linha inteira do plano (`path`, `st_dev`,
+    `st_ino`, `st_size`, `store`); o que ela devolve é ignorado, e o destino tem de
+    ficar com o tamanho do plano.
+    """
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    kind = source["method"]
+    if kind == "plugin":
+        if copy_plugin is None:
+            raise ValueError("Mídia de resolvedor de plugin precisa da cópia pelo descritor do SDK.")
+        copy_plugin(source, dest)
+        _confirm(source, dest, "plugin")
+        return "copy", source["st_size"]
+    if kind not in ("hardlink", "clone"):
+        raise ValueError(f"Método de mídia desconhecido: {kind!r}.")
+    info = verify_source(source)
+    if kind == "hardlink":
+        method = delivery.link_or_copy(source["path"], dest, read_only=False, allow_symlink=False)
+    else:
+        method = clone_or_copy(source["path"], dest)
+    _confirm(source, dest, method)
+    return method, 0 if method in SHARED_METHODS else info.st_size
+
+
+def same_as_before(source, marker_row):
+    """False quando a fonte de uma mídia do export anterior mudou (inode, data ou tamanho): só para aviso."""
+    try:
+        info = os.lstat(source["path"])
+    except OSError:
+        return False
+    return (info.st_ino, info.st_mtime_ns, info.st_size) == (
+        marker_row.get("source_ino"),
+        marker_row.get("source_mtime_ns"),
+        marker_row.get("source_size"),
+    )
