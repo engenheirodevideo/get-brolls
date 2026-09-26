@@ -644,6 +644,17 @@ class PendingTests(unittest.TestCase):
             with self.subTest(subject=subject):
                 self.assertEqual(1, pending.count(subject), pending)
 
+    def test_missing_brand_file_says_where_to_put_it(self):
+        pending = self.pending()
+        self.assertEqual(1, pending.count('c08: marca "logo" pendente'), pending)
+        plan = fixture()
+        plan["warnings"] = []
+        self.assertIn(
+            "c08: MARCA pendente — ponha o arquivo em assets/marca/logo.\\<png\\|svg\\|webp\\|jpg\\|jpeg\\|mp4\\|mov\\>",
+            self.pending(plan),
+        )
+        self.assertNotIn("c05: MARCA", self.pending(plan))
+
     def test_missing_presenter_is_not_called_missing_narration(self):
         pending = self.pending()
         self.assertNotIn("c07: fala sem narração", pending)

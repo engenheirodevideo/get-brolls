@@ -353,7 +353,11 @@ class _Collector:
             if self.media[media_id]["problem"] == "missing":
                 self.warnings.append(f"{label}: A-ROLL não gravado (grave {self.media[media_id]['expected']})")
             return media_id, []
-        return self.asset("marca", row, label), []
+        media_id = self.asset("marca", row, label)
+        if media_id is not None and self.media[media_id]["problem"] == "missing":
+            expected = self.media[media_id]["expected"]
+            self.warnings.append(f'{label}: marca "{row["name"]}" pendente (ponha o arquivo em {expected})')
+        return media_id, []
 
     def _voices(self, scene, slots):
         label = scene["id"]

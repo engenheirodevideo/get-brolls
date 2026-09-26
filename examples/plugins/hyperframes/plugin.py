@@ -352,6 +352,10 @@ class _Scene:
         if self.export.usable(slot["media_id"]):
             self.visual(slot["slot"], region, slot["media_id"], (0, self.duration), contain=True)
             return
+        row = self.export.media.get(slot["media_id"] or "") or {}
+        if row.get("problem") == "missing" and row.get("expected"):
+            label = self.scene["id"]
+            self.export.pend(f"{label}: MARCA pendente — ponha o arquivo em {row['expected']}", f"{label}: marca")
         self.card(slot["slot"], region, [("card-title", f"MARCA: {slot['text']}")], (0, self.duration))
 
     def lettering(self, layer):

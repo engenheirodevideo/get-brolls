@@ -362,6 +362,11 @@ class SlotAndClipTests(ExportPlanTestCase):
         logo = plan["media"][scenes["c08"]["layout"]["slots"][0]["media_id"]]
         self.assertEqual((False, "missing"), (logo["available"], logo["problem"]))
         self.assertTrue(logo["expected"].startswith("assets/marca/logo."))
+        self.assertIn(
+            'c08: marca "logo" pendente (ponha o arquivo em assets/marca/logo.<png|svg|webp|jpg|jpeg|mp4|mov>)',
+            plan["warnings"],
+        )
+        self.assertFalse(any(w.startswith("c05: marca") for w in plan["warnings"]))
         card = scenes["c06"]["layout"]["slots"][0]
         self.assertEqual(("card", "Comenta BROLL", None), (card["role"], card["text"], card["media_id"]))
 

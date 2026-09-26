@@ -733,6 +733,7 @@
     "c05: Plugin hyperframes: sfx pop não achado",
     "c05: SFX \"pop\" pendente (não achei em sfx)",
     "c07: A-ROLL não gravado (grave aroll/c07.(mp4|mov|m4v))",
+    "c08: marca \"logo\" pendente (ponha o arquivo em assets/marca/logo.<png|svg|webp|jpg|jpeg|mp4|mov>)",
     "c08: fala sem narração gravada (grave aroll/c08.mp4|mov|m4v)"
   ]
 }
