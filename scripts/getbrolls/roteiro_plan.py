@@ -84,7 +84,8 @@ def _is_brand(project, target):
 
 
 def full_role(project, layout):
-    """Papel de `[FULL: x]`: "cartela" (texto entre aspas), "marca" (componente, sem beat) ou "beat"; None fora de FULL."""
+    """Papel de `[FULL: x]`: "cartela" (texto entre aspas), "marca" (componente, sem beat) ou "beat";
+    None fora de FULL."""
     if layout.kind != "FULL":
         return None
     if layout.quoted[0]:
@@ -103,7 +104,9 @@ def _aroll_name(scene_id, take, side=None):
     return "-".join(part for part in (scene_id, side, take) if part)
 
 
-def _component(project, directive, kind, name, *, prompt=None, side=None, take=None, error=None):  # noqa: PLR0913 - one keyword per row field the caller knows
+def _component(  # noqa: PLR0913 - one keyword per row field the caller knows
+    project, directive, kind, name, *, prompt=None, side=None, take=None, error=None
+):  # pylint: disable=too-many-arguments,too-many-positional-arguments  # one keyword per row field the caller knows
     """Linha de componente; `side` ("a"/"b") só em apresentador de SPLIT e `take` só em A-ROLL; None no resto."""
     row = {
         "directive": directive.kind, "kind": kind, "name": name, "line": directive.line, "prompt": prompt,
@@ -310,8 +313,9 @@ def aspect_problems(meta, rules, brief_data=None):
     video_format = (rules or {}).get("video_format")
     if video_format != expected:
         problems.append(
-            f"O roteiro está em {meta['aspecto']} ({expected}) e o RULES.md em vigor está {_format_label(video_format)}. "
-            f"Rode `init-rules --format {expected} --force --project <projeto>` ou ajuste o aspecto do roteiro."
+            f"O roteiro está em {meta['aspecto']} ({expected}) e o RULES.md em vigor "
+            f"está {_format_label(video_format)}. Rode `init-rules --format {expected} "
+            "--force --project <projeto>` ou ajuste o aspecto do roteiro."
         )
     if brief_data is not None:
         delivered = ((brief_data.get("video") or {}).get("delivery") or {}).get("format")
