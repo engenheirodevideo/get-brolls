@@ -9,6 +9,7 @@ fluxo do mundo nunca chega a rodar.
 import re
 import unittest
 
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import SKILLS
 
 # (frase que a pessoa escreve, palavra-gatilho que precisa estar na description)

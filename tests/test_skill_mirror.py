@@ -18,6 +18,7 @@ import unittest
 import unittest.mock
 from pathlib import Path
 
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 import gen_skill_mirror
 from _paths import ROOT
 

@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, cast  # pylint: disable=unused-import
 from unittest.mock import MagicMock, patch
 
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import cli, http, media, providers, queue, runtime, social

@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 import check_anchors as anchors
 
 
