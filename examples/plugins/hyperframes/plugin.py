@@ -23,7 +23,7 @@ from urllib.parse import unquote
 
 from getbrolls.sdk import ExportResult, MediaRequest
 
-HYPERFRAMES_VERSION = "0.8.77"
+HYPERFRAMES_VERSION = "0.8.73"
 GSAP_URL = "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"
 FPS = 30
 NPX = f"npx --yes hyperframes@{HYPERFRAMES_VERSION}"

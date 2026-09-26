@@ -89,7 +89,7 @@ Experimental. Com o roteiro revisado e sincronizado, `python3 "scripts/gb.py" ex
 
   ```bash
   tmp="$(mktemp -d)"
-  npx --yes hyperframes@0.8.77 transcribe aroll/c03.mov -d "$tmp" --engine whisper --model small --language pt --json
+  npx --yes hyperframes@0.8.73 transcribe aroll/c03.mov -d "$tmp" --engine whisper --model small --language pt --json
   cp "$tmp/transcript.json" aroll/c03.transcript.json
   ```
 

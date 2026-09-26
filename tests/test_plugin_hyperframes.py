@@ -177,7 +177,7 @@ class RootTests(unittest.TestCase):
         for script in package["scripts"].values():
             self.assertIn(f"hyperframes@{hf.HYPERFRAMES_VERSION}", script)
         self.assertEqual(
-            "npx --yes hyperframes@0.8.77 render . -o ../../../renders/hyperframes-003.mp4",
+            "npx --yes hyperframes@0.8.73 render . -o ../../../renders/hyperframes-003.mp4",
             package["scripts"]["render"],
         )
         self.assertNotIn("devDependencies", package)
@@ -377,7 +377,7 @@ class LayoutTests(unittest.TestCase):
         self.assertIn("hyperframes:zoom-in 1.2 em", scene)
         self.assertNotIn("brilho", scene)
         self.assertIn(
-            "npx --yes hyperframes@0.8.77 add zoom-in --dir exports/hyperframes/003", result["files"]["EXPORT.md"]
+            "npx --yes hyperframes@0.8.73 add zoom-in --dir exports/hyperframes/003", result["files"]["EXPORT.md"]
         )
 
     def test_comp_is_a_root_comment_and_a_next_step(self):
@@ -711,7 +711,7 @@ class ExportDocTests(unittest.TestCase):
         text = generate(plan)["files"]["EXPORT.md"]
         self.assertNotIn("cd ", text)
         for command in ("lint", "check", "preview"):
-            self.assertIn(f"npx --yes hyperframes@0.8.77 {command} exports/hyperframes/003", text)
+            self.assertIn(f"npx --yes hyperframes@0.8.73 {command} exports/hyperframes/003", text)
         self.assertIn('-o "$PWD/renders/hyperframes-003-rascunho.mp4"', text)
         self.assertIn("`exports/hyperframes/003`", text)
         for fixed in (
@@ -722,6 +722,13 @@ class ExportDocTests(unittest.TestCase):
             "Take contínuo",
         ):
             self.assertIn(fixed, text)
+
+    def test_pinned_cli_is_the_tested_one_everywhere(self):
+        # A versão fixada é a que rodou lint/check de verdade; os docs mandam rodar a mesma.
+        self.assertEqual("0.8.73", hf.HYPERFRAMES_VERSION)
+        guide = (ROOT / "references" / "roteiro.md").read_text(encoding="utf-8")
+        pins = set(re.findall(r"hyperframes@([0-9.]+)", guide))
+        self.assertEqual({hf.HYPERFRAMES_VERSION}, pins)
 
     def test_pending_lists_plan_warnings_and_narration(self):
         text = generate()["files"]["EXPORT.md"]
