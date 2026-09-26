@@ -5,24 +5,18 @@
 link (nota do Obsidian): quem grava escreve no arquivo de verdade e o link continua link.
 """
 
-import errno
 import shutil
 import time
 from pathlib import Path
 
 from . import assets, roteiro, roteiro_plan, roteiro_review, roteiro_sync
 from .brief import brief_path, load_brief
+from .export import _OS_REASONS_COMMON as _OS_REASONS
 from .ledger import atomic_write
 from .rules import load_rules
 
 NEW_FOLDERS = ("aroll", *(k.folder for k in assets.ASSET_KINDS.values() if k.folder.startswith("assets/")))
 BACKUP_SUFFIX = ".bak"
-_OS_REASONS = {
-    errno.EACCES: "sem permissão",
-    errno.EPERM: "sem permissão",
-    errno.EROFS: "o disco está somente leitura",
-    errno.ENOSPC: "o disco está cheio",
-}
 
 
 def skeleton(genero, tema):
@@ -185,6 +179,7 @@ def _os_error(exc, project):
 
 
 def run(args):
+    """Despacha `roteiro`/`assets` para a ação certa, conforme `args.action`."""
     actions = {
         "new": _new,
         "check": _check,
