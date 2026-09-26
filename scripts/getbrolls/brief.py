@@ -150,6 +150,42 @@ QUERY_STOPWORDS = frozenset(
 )
 
 
+_FENCE = "```json"
+_CLOSE = "\n```"
+_SPACES = re.compile(r"\s*")
+
+
+def json_block_spans(raw):
+    """`[(início, fim)]` do miolo de cada bloco ```json de `raw`, em tempo linear.
+
+    Mesma leitura de `re.findall(r"```json\\s*\\n(.*?)\\n```", raw, re.DOTALL)`: o miolo começa
+    depois da última quebra de linha do espaço que segue o ```json e vai até o primeiro `\\n```` que
+    vem depois. A regex voltava atrás a cada quebra de linha e ficava quadrática num fence sem fecho.
+    """
+    spans, pos = [], 0
+    while (start := raw.find(_FENCE, pos)) != -1:
+        after = start + len(_FENCE)
+        spaces = _SPACES.match(raw, after)  # `\s*` sempre casa (até vazio)
+        end_space = spaces.end() if spaces else after
+        last = raw.rfind("\n", after, end_space)
+        if last == -1:
+            pos = start + 1
+            continue
+        close = raw.find(_CLOSE, last + 1)
+        if close != -1:
+            spans.append((last + 1, close))
+            pos = close + len(_CLOSE)
+            continue
+        # Sem fecho adiante: só resta o fence colado na última quebra (miolo = espaço antes dela).
+        before = raw.rfind("\n", after, last)
+        if before != -1 and raw.startswith("```", last + 1):
+            spans.append((before + 1, last))
+            pos = last + len(_CLOSE)
+            continue
+        break  # nenhum `\n```` depois daqui: nenhum outro bloco fecha
+    return spans
+
+
 def read_json_block(path, missing, syntax, not_object=None):
     """Lê `path` e devolve o único bloco ```json nele, já decodificado.
 
@@ -159,7 +195,7 @@ def read_json_block(path, missing, syntax, not_object=None):
     (dict), senão essa mensagem é levantada.
     """
     raw = Path(path).read_text(encoding="utf-8")
-    blocks = re.findall(r"```json\s*\n(.*?)\n```", raw, re.DOTALL)
+    blocks = [raw[begin:end] for begin, end in json_block_spans(raw)]
     if len(blocks) != 1:
         raise ValueError(missing)
     try:

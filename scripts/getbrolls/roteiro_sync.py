@@ -10,12 +10,11 @@ Só mudar a fala nunca invalida nada: vira aviso.
 """
 
 import json
-import re
 import shutil
 from pathlib import Path
 
 from . import roteiro, roteiro_ids
-from .brief import brief_path, read_json_block, validate_brief
+from .brief import brief_path, json_block_spans, read_json_block, validate_brief
 from .ledger import Ledger, atomic_write
 from .models import invalidate_approval
 from .roteiro_plan import aspect_problems, full_role, scene_plan
@@ -28,7 +27,6 @@ STALE_FIELDS = (("queries", "as buscas (queries)"), ("notes", "as notas (notes)"
 PENDING = ".pending-transaction.json"
 # Cópia do sync; `ROTEIRO.md.bak`/`BRIEF.md.bak` são de `roteiro new --force` e nunca mudam aqui.
 SYNC_BAK = ".sync.bak"
-_JSON_BLOCK = re.compile(r"```json\s*\n(.*?)\n```", re.DOTALL)
 REVIEW_MISSING = (
     "O roteiro atual não tem revisão humana registrada (ou mudou depois dela). Mostre o texto e o review.sha256 "
     "do check à pessoa e registre com "
@@ -169,10 +167,11 @@ def _brief(project, rules):
 
 def _replace_block(raw, data):
     """Troca só o miolo do bloco ```json; a prosa em volta fica byte a byte."""
-    match = _JSON_BLOCK.search(raw)
-    if match is None:
+    spans = json_block_spans(raw)
+    if not spans:
         raise ValueError("O BRIEF.md não tem o bloco ```json que o sync troca: conserte e repita.")
-    return raw[: match.start(1)] + json.dumps(data, ensure_ascii=False, indent=2) + raw[match.end(1) :]
+    start, end = spans[0]
+    return raw[:start] + json.dumps(data, ensure_ascii=False, indent=2) + raw[end:]
 
 
 def _stale(old_beats, merge):

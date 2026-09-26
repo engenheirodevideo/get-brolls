@@ -3,8 +3,10 @@
 import copy
 import json
 import os
+import re
 import shlex
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -115,6 +117,57 @@ class LoadBriefTests(unittest.TestCase):
             with self.assertRaises(ValueError) as raised:
                 brief_module.load_brief(tmp)
         self.assertIn("exatamente um bloco", str(raised.exception))
+
+
+class JsonBlockScanTests(unittest.TestCase):
+    """O bloco ```json do BRIEF.md: a mesma leitura da regex antiga, em tempo linear."""
+
+    OLD = re.compile(r"```json\s*\n(.*?)\n```", re.DOTALL)
+    CASES = (
+        "# B\n\n```json\n{}\n```\n",
+        '```json\n{"a": 1}\n```',
+        '```json   \n\n  \n{"a": 1}\n```\n',
+        "```json\n\n```",
+        "```json\n```",
+        "```json\n\n\n```",
+        "x```json\n{}\n```python\nresto\n",
+        "```json {}\n```\n```json\n[1]\n```\n",
+        "```json\n{}\n```\n\n```json\n[]\n```\n",
+        "```json\n{}\n",
+        "```jsonx\n{}\n```",
+        "```json\t\r\n{}\r\n```",
+        "```json\n```json\n{}\n```\n",
+        "sem bloco nenhum",
+        "",
+    )
+
+    def test_same_blocks_as_the_old_regex(self):
+        for raw in self.CASES:
+            with self.subTest(raw=raw):
+                expected = [(m.start(1), m.end(1)) for m in self.OLD.finditer(raw)]
+                self.assertEqual(expected, brief_module.json_block_spans(raw))
+
+    def test_unclosed_fence_with_many_lines_is_linear(self):
+        for unit, count in (("\n", 200_000), ("x\n", 200_000), ("```json \n", 50_000)):
+            raw = "```json" + unit * count
+            with self.subTest(unit=unit):
+                small = "```json" + unit * 50
+                self.assertEqual(
+                    [(m.start(1), m.end(1)) for m in self.OLD.finditer(small)], brief_module.json_block_spans(small)
+                )
+                started = time.perf_counter()
+                brief_module.json_block_spans(raw)
+                self.assertLess(time.perf_counter() - started, 0.5)
+
+    def test_read_json_block_refuses_a_huge_unclosed_fence_quickly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "BRIEF.md"
+            path.write_text("# B\n\n```json" + "\n" * 200_000, encoding="utf-8")
+            started = time.perf_counter()
+            with self.assertRaises(ValueError) as ctx:
+                brief_module.read_json_block(path, missing="sem bloco", syntax="json ruim")
+            self.assertEqual("sem bloco", str(ctx.exception))
+            self.assertLess(time.perf_counter() - started, 0.5)
 
 
 class ValidateBriefTests(unittest.TestCase):
