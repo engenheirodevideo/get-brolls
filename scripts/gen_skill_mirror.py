@@ -24,6 +24,11 @@ quando o espelho versionado está fora de sincronia com o que o gerador
 produziria.
 """
 
+# pylint: disable=missing-function-docstring,duplicate-code
+# Legado: ocorrências pré-existentes (corpo idêntico à origin/main); a
+# duplicação é o helper `_utf8_output`, repetido porque cada script standalone
+# é autossuficiente e não importa dos outros.
+
 from __future__ import annotations
 
 import argparse
