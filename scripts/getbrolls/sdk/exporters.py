@@ -283,11 +283,15 @@ def find_local_paths(value, where="$"):
     export), aparece algo com cara de caminho local absoluto. Devolve a lista de
     posições (`$.files['index.html']`); vazia quando não há nenhum. Export é para
     compartilhar: caminho local vaza nome de usuário e pastas."""
-    home = None
+    home_re = None
     try:
-        home = str(Path.home())
+        home = str(Path.home()).rstrip("/\\")
     except RuntimeError:
-        home = None
+        home = ""
+    if len(home) > 1:
+        # A pasta pessoal inteira: depois de início, espaço, aspas ou `=`, e antes de `/`, `\` ou do fim
+        # (HOME=/root não casa em "rootless").
+        home_re = re.compile(r"(?:^|(?<=[\s'\"=]))" + re.escape(home) + r"(?=[/\\]|$)")
     found = []
     stack = [(where, value)]
     while stack:
@@ -300,6 +304,6 @@ def find_local_paths(value, where="$"):
                     stack.append((f"{label}<chave>", key))
         elif type(item) in (list, tuple):
             stack.extend((f"{position}[{index}]", child) for index, child in enumerate(item))
-        elif type(item) is str and (_LOCAL_PATH_RE.search(item) or (home and len(home) > 1 and home in item)):
+        elif type(item) is str and (_LOCAL_PATH_RE.search(item) or (home_re and home_re.search(item))):
             found.append(position)
     return sorted(found)

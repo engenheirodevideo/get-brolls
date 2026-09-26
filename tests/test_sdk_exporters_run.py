@@ -306,6 +306,21 @@ class LocalPathScanTests(unittest.TestCase):
             find_local_paths(plan),
         )
 
+    def test_home_only_counts_as_a_whole_path(self):
+        cases = (
+            ("/root", {"a": "veja github.com/rootless-containers", "b": "/rootless e /root.bak"}, []),
+            ("/root", {"a": "/root/clips/a.mp4"}, ["$['a']"]),
+            ("/srv/bruno", {"a": "/srv/brunoteca", "b": "x/srv/bruno/a", "c": "https://s.com/srv/bruno/a"}, []),
+            (
+                "/srv/bruno",
+                {"a": "/srv/bruno", "b": "src='/srv/bruno/a'", "c": "dir=/srv/bruno\\a", "d": "em /srv/bruno/a"},
+                ["$['a']", "$['b']", "$['c']", "$['d']"],
+            ),
+        )
+        for home, value, expected in cases:
+            with self.subTest(home=home, value=value), patch.object(Path, "home", return_value=Path(home)):
+                self.assertEqual(expected, find_local_paths(value))
+
     def test_a_validated_export_of_a_clean_plan_has_no_local_paths(self):
         def export(plan, options):
             return ExportResult({"index.html": f"<h1>{plan['title']}</h1>", "plan.json": str(plan)})
