@@ -103,21 +103,26 @@ class TimedWordsTests(unittest.TestCase):
         self.assertIn("mais velha que o A-ROLL", warnings[0])
 
     def test_bad_shapes_fall_back_to_the_estimate(self):
-        cases = {
-            "não é JSON UTF-8": (None, b"\xff\xfe nada"),
-            "não é uma lista de palavras": ({"words": []}, None),
-            "item 0 não é objeto": (["oi"], None),
-            "item 0 sem texto": (words(("  ", 0.0, 1.0)), None),
-            "item 1 com texto longo demais ou em mais de uma linha": (
+        cases = [
+            ("não é JSON UTF-8", None, b"\xff\xfe nada"),
+            ("não é JSON UTF-8", None, b'[{"text": "a", "start": 0, "end": ' + b"1" * 5000 + b"}]"),
+            ("não é JSON UTF-8", None, b"[" * 200_000 + b"]" * 200_000),
+            ("não é uma lista de palavras", {"words": []}, None),
+            ("item 0 não é objeto", ["oi"], None),
+            ("item 0 sem texto", words(("  ", 0.0, 1.0)), None),
+            (
+                "item 1 com texto longo demais ou em mais de uma linha",
                 words(("a", 0.0, 1.0), ("b\nc", 1.0, 2.0)),
                 None,
             ),
-            "item 0 com tempo inválido": (words(("a", 1.0, 1.0)), None),
-            "item 1 começa antes do anterior": (words(("a", 1.0, 2.0), ("b", 0.5, 2.5)), None),
-            "passa da duração do vídeo": (words(("a", 0.0, 5.2)), None),
-        }
-        for reason, (data, raw) in cases.items():
-            with self.subTest(reason=reason):
+            ("item 0 com tempo inválido", words(("a", 1.0, 1.0)), None),
+            ("item 0 com tempo inválido", None, b'[{"text": "a", "start": 0, "end": 1' + b"0" * 400 + b"}]"),
+            ("item 1 começa antes do anterior", words(("a", 1.0, 2.0), ("b", 0.5, 2.5)), None),
+            ("passa da duração do vídeo", words(("a", 0.0, 5.2)), None),
+            ("passa da duração do vídeo", words(("a", 0.0, 100.0), ("b", 1.0, 2.0)), None),
+        ]
+        for index, (reason, data, raw) in enumerate(cases):
+            with self.subTest(index=index, reason=reason):
                 self.sidecar(data, raw)
                 found, warnings = self.run_words(duration=5.0)
                 self.assertIsNone(found)
@@ -128,7 +133,22 @@ class TimedWordsTests(unittest.TestCase):
             with self.subTest(bad=bad):
                 raw = json.dumps([{"text": "a", "start": 0, "end": bad}]).encode("utf-8")
                 self.sidecar(None, raw)
-                self.assertIsNone(self.run_words()[0])
+                found, warnings = self.run_words()
+                self.assertIsNone(found)
+                self.assertEqual(
+                    ["c03: aroll/c03.transcript.json inválido (item 0 com tempo inválido): legenda estimada"], warnings
+                )
+
+    def test_empty_sidecar_is_an_estimate_with_a_warning(self):
+        self.sidecar([])
+        self.assertEqual(
+            (None, ["c03: transcrição vazia: legenda estimada (aroll/c03.transcript.json)"]), self.run_words()
+        )
+
+    def test_same_mtime_sidecar_is_accepted(self):
+        path = self.sidecar(words(("a", 0.0, 1.0)))
+        os.utime(path, ns=(1_000_000_000_000, 1_000_000_000_000))
+        self.assertEqual((words(("a", 9.6, 10.6)), []), self.run_words())
 
     def test_too_many_words_and_too_big_file(self):
         self.sidecar(words(*((f"w{i}", i * 0.001, i * 0.001 + 0.0005) for i in range(5001))))
@@ -147,6 +167,38 @@ class TimedWordsTests(unittest.TestCase):
         found, warnings = self.run_words()
         self.assertIsNone(found)
         self.assertIn("(é um link)", warnings[0])
+
+    def refused_reason(self):
+        found, warnings = self.run_words()
+        self.assertIsNone(found)
+        self.assertEqual(1, len(warnings))
+        return warnings[0]
+
+    def test_dangling_link_sidecar_is_refused(self):
+        try:
+            (self.root / "c03.transcript.json").symlink_to(self.root / "sumiu.json")
+        except OSError:
+            self.skipTest("este sistema não cria symlink")
+        self.assertIn("(é um link)", self.refused_reason())
+
+    def test_hardlink_sidecar_is_refused(self):
+        real = self.root / "outro.json"
+        real.write_text(json.dumps(words(("a", 0.0, 1.0))), encoding="utf-8")
+        os.utime(real, ns=(2_000_000_000_000, 2_000_000_000_000))
+        try:
+            os.link(real, self.root / "c03.transcript.json")
+        except OSError:
+            self.skipTest("este sistema não cria hardlink")
+        self.assertIn("(é um link)", self.refused_reason())
+
+    def test_directory_sidecar_is_refused(self):
+        (self.root / "c03.transcript.json").mkdir()
+        self.assertIn("(não é um arquivo)", self.refused_reason())
+
+    @unittest.skipIf(os.name == "nt", "FIFO não existe no Windows")
+    def test_fifo_sidecar_is_refused_without_blocking(self):
+        os.mkfifo(self.root / "c03.transcript.json")
+        self.assertIn("(não é um arquivo)", self.refused_reason())
 
 
 if __name__ == "__main__":

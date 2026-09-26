@@ -7,8 +7,10 @@ ao arquivo). O sidecar é da pessoa: qualquer problema vira aviso e a cena volta
 legenda estimada; o export nunca cai por causa dele.
 """
 
+import errno
 import json
 import math
+import os
 import stat
 from pathlib import Path
 
@@ -55,9 +57,13 @@ def sidecar_path(voice_path):
 
 def _time(value):
     """Segundos de um item do sidecar, ou None: só número finito (bool e texto não contam)."""
-    if type(value) not in (int, float) or not math.isfinite(value):
+    if type(value) not in (int, float):
         return None
-    return float(value)
+    try:
+        seconds = float(value)
+    except (OverflowError, ValueError):
+        return None
+    return seconds if math.isfinite(seconds) else None
 
 
 def _word_problem(word, index, previous_start):
@@ -77,35 +83,80 @@ def _word_problem(word, index, previous_start):
     return None
 
 
-def _file_problem(sidecar):
-    """Motivo para não ler o sidecar (link, pasta, grande demais), ou None."""
-    try:
-        info = sidecar.lstat()
-    except OSError:
-        return "não consegui ler"
+def _info_problem(info):
+    """Motivo para recusar o sidecar pelo `stat` (link, hardlink, pasta, grande demais), ou None."""
     if stat.S_ISLNK(info.st_mode):
         return "é um link"
     if not stat.S_ISREG(info.st_mode):
         return "não é um arquivo"
+    if info.st_nlink != 1:
+        return "é um link"
     if info.st_size > SIDECAR_MAX_BYTES:
         return "passa de 1 MiB"
     return None
 
 
-def _read(sidecar):
-    """(lista crua, motivo): o arquivo tem que ser regular, pequeno e JSON UTF-8."""
-    problem = _file_problem(sidecar)
+def _open(sidecar):
+    """(fd, motivo): recusa pelo `lstat` e abre sem seguir link nem travar em FIFO."""
+    try:
+        problem = _info_problem(sidecar.lstat())
+    except OSError:
+        return None, "não consegui ler"
     if problem:
         return None, problem
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
     try:
-        data = json.loads(sidecar.read_bytes().decode("utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return None, "não é JSON UTF-8"
+        return os.open(sidecar, flags), None
+    except OSError as exc:
+        return None, "é um link" if exc.errno == errno.ELOOP else "não consegui ler"
+
+
+def _read_limited(fd):
+    """Até `SIDECAR_MAX_BYTES + 1` bytes do fd (um a mais revela o arquivo grande demais)."""
+    chunks, size = [], 0
+    while size <= SIDECAR_MAX_BYTES:
+        chunk = os.read(fd, SIDECAR_MAX_BYTES + 1 - size)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        size += len(chunk)
+    return b"".join(chunks)
+
+
+def _read_bytes(sidecar):
+    """(bytes, mtime_ns, motivo): confere pelo `fstat` o mesmo arquivo que lê."""
+    fd, problem = _open(sidecar)
+    if fd is None:
+        return None, None, problem
+    raw = mtime_ns = None
+    try:
+        info = os.fstat(fd)
+        problem = _info_problem(info)
+        if problem is None:
+            raw, mtime_ns = _read_limited(fd), info.st_mtime_ns
+    except OSError:
+        problem = "não consegui ler"
+    finally:
+        os.close(fd)
+    if raw is not None and len(raw) > SIDECAR_MAX_BYTES:
+        problem = "passa de 1 MiB"
+    return (None, None, problem) if problem else (raw, mtime_ns, None)
+
+
+def _read(sidecar):
+    """(lista crua, mtime_ns, motivo): o arquivo tem que ser regular, pequeno e JSON UTF-8."""
+    raw, mtime_ns, problem = _read_bytes(sidecar)
+    if problem or raw is None:
+        return None, None, problem
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (ValueError, RecursionError):  # UnicodeDecodeError e JSONDecodeError são ValueError; número enorme também
+        return None, None, "não é JSON UTF-8"
     if not isinstance(data, list):
-        return None, "não é uma lista de palavras"
+        return None, None, "não é uma lista de palavras"
     if len(data) > MAX_WORDS:
-        return None, f"mais de {MAX_WORDS} palavras"
-    return data, None
+        return None, None, f"mais de {MAX_WORDS} palavras"
+    return data, mtime_ns, None
 
 
 def _validated(data, voice_duration_s):
@@ -115,9 +166,9 @@ def _validated(data, voice_duration_s):
         problem = _word_problem(word, index, previous)
         if problem:
             return None, problem
+        if word["end"] > voice_duration_s + END_TOLERANCE_S:
+            return None, "passa da duração do vídeo"
         previous = word["start"]
-    if data and data[-1]["end"] > voice_duration_s + END_TOLERANCE_S:
-        return None, "passa da duração do vídeo"
     return data, None
 
 
@@ -146,10 +197,10 @@ def timed_words(voice_path, voice_duration_s, window, label):
     relative = f"aroll/{sidecar.name}"
     if not sidecar.exists() and not sidecar.is_symlink():
         return None, []
-    data, problem = _read(sidecar)
-    if problem is None:
+    data, mtime_ns, problem = _read(sidecar)
+    if problem is None and mtime_ns is not None:
         try:
-            if sidecar.stat().st_mtime_ns < voice_path.stat().st_mtime_ns:
+            if mtime_ns < voice_path.stat().st_mtime_ns:
                 return None, [f"{label}: transcrição mais velha que o A-ROLL: gere de novo ({relative})"]
         except OSError:
             problem = "não consegui ler"
@@ -157,6 +208,8 @@ def timed_words(voice_path, voice_duration_s, window, label):
         data, problem = _validated(data, voice_duration_s)
     if problem is not None or data is None:
         return None, [f"{label}: {relative} inválido ({problem}): legenda estimada"]
+    if not data:
+        return None, [f"{label}: transcrição vazia: legenda estimada ({relative})"]
     words, dropped = _shifted(data, *window)
     warnings = [f"{label}: {dropped} palavra(s) de {relative} passam do fim da cena"] if dropped else []
     return words, warnings
