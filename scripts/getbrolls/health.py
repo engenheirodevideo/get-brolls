@@ -37,6 +37,7 @@ def _plugin_refresh(source, owner, row):
 
 
 def live_checks():
+    """Busca real (limite 1) e refresh em cada fonte carregada, sem baixar mídia."""
     results = []
     from .sdk.registry import get_registry
 
@@ -45,10 +46,11 @@ def live_checks():
     extra = tuple(
         n
         for n in reg.provider_names()
-        if n not in builtin and reg.provider(n).capabilities.search  # type: ignore[union-attr] - name veio de provider_names()
+        if n not in builtin and reg.provider(n).capabilities.search  # type: ignore[union-attr]
     )
     for name in builtin + extra:
-        key = reg.provider(name).capabilities.env_key  # type: ignore[union-attr] - name veio de builtin/provider_names()
+        prov = reg.provider(name)
+        key = prov.capabilities.env_key if prov else None  # type: ignore[union-attr]
         if key and not env_is_set(key, reg.owner("provider", name)):
             results.append({"provider": name, "status": "not_tested_missing_key", "env_key": key})
             continue
@@ -97,5 +99,8 @@ def live_checks():
             )
     return {
         "checks": results,
-        "scope": "Busca real limite 1 e refresh. Não verifica download integral, existência/reprodução de links sociais ou direitos. Pode consumir quota de API.",
+        "scope": (
+            "Busca real limite 1 e refresh. Não verifica download integral, "
+            "existência/reprodução de links sociais ou direitos. Pode consumir quota de API."
+        ),
     }
