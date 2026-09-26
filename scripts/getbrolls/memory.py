@@ -1,5 +1,8 @@
 """Explicit editorial reference history, separate from media permission."""
 
+# pylint: disable=missing-function-docstring
+# Legado: ocorrência pré-existente (corpo idêntico à origin/main).
+
 import json
 
 from .models import now, signature
