@@ -657,7 +657,10 @@ class PendingTests(unittest.TestCase):
 
     def test_missing_ffprobe_names_the_tool_not_the_file(self):
         plan = fixture()
-        warning = "ffprobe não encontrado: instale o FFmpeg; as durações ficaram estimadas"
+        warning = (
+            "ffprobe não encontrado: instale FFmpeg/ffprobe ou aponte GB_FFMPEG_PATH/GB_FFPROBE_PATH; "
+            "verifique python3 scripts/gb.py doctor; as durações ficaram estimadas"
+        )
         plan["warnings"] = [warning]
         for media_id in ("aroll:c01", "aroll:c02"):
             plan["media"][media_id].update(available=False, problem="no_ffprobe", ext=".mov", expected=None)

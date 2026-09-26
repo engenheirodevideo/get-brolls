@@ -289,9 +289,10 @@ def find_local_paths(value, where="$"):
     except RuntimeError:
         home = ""
     if len(home) > 1:
-        # A pasta pessoal inteira: depois de início, espaço, aspas ou `=`, e antes de `/`, `\` ou do fim
-        # (HOME=/root não casa em "rootless").
-        home_re = re.compile(r"(?:^|(?<=[\s'\"=]))" + re.escape(home) + r"(?=[/\\]|$)")
+        # A pasta pessoal inteira, sem caixa: mesma regra de `_path_re` em export.py (não casa dentro
+        # de um nome maior, como `/root` em "rootless"; o ponto final de uma frase logo depois ainda
+        # casa). Cópia local para não criar um ciclo de import com export.py.
+        home_re = re.compile(r"(?<![\w~-])" + re.escape(home) + r"(?![\w-]|\.\w)", re.IGNORECASE)
     found = []
     stack = [(where, value)]
     while stack:

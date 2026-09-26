@@ -130,8 +130,9 @@ def _machine_paths(project, registry, sources):
 
 def _path_re(path):
     """O caminho inteiro, sem caixa: não casa dentro de um nome maior (`/root` em `github.com/rootless`,
-    `/srv/bo` em `/srv/bob`); o ponto final de uma frase logo depois ainda casa."""
-    return re.compile(r"(?<![\w.~-])" + re.escape(path) + r"(?![\w-]|\.\w)", re.IGNORECASE)
+    `/srv/bo` em `/srv/bob`); o ponto final de uma frase logo depois ainda casa, e um "." logo antes
+    (caminho relativo como `../../<pasta>/x`) não blinda mais o caminho."""
+    return re.compile(r"(?<![\w~-])" + re.escape(path) + r"(?![\w-]|\.\w)", re.IGNORECASE)
 
 
 def _machine_hits(value, machine, where):

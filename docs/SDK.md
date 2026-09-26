@@ -432,7 +432,10 @@ api.exporter("meu_banco_html", exporta, "Exporta o plano como página HTML")
   `words_timed` (legenda palavra a palavra, ou `None`), `layers`, `extensions` e
   `speech_clean`. `media` mapeia cada id lógico (`clip:…`, `aroll:…`,
   `asset:…`, `plugin:…`) para `kind`, `ext`, `available`, `credit` e o resto da
-  linha; a mídia com `available: false` não tem arquivo para pôr.
+  linha; a mídia com `available: false` não tem arquivo para pôr. Um exportador
+  deve tratar um `problem` que não conhece como indisponível: valor novo pode
+  aparecer sem mudar `export_version`, e os valores atuais estão listados no
+  schema.
 - **Função pura.** O exportador recebe cópias do plano e das opções (`options`
   é `{"args": {}}` por enquanto) e devolve texto e pedidos de mídia. Ele nunca
   toca no disco: quem grava os `files` e coloca cada mídia no `dest` pedido é o
@@ -440,10 +443,10 @@ api.exporter("meu_banco_html", exporta, "Exporta o plano como página HTML")
 - **Texto do plano não é confiável.** Títulos, falas, autores e créditos vêm de
   fontes, inclusive de outros plugins. Todo texto do plano, incluindo `credit`, é
   cru: o core não escapa nada para Markdown ou HTML, de fonte nenhuma. O
-  exportador escapa esse texto no formato de saída: HTML com `html.escape`, JSON com `json.dumps`, JavaScript
-  só dentro de um JSON (nunca concatenado no código), Markdown com as marcações
-  escapadas. O core confere a estrutura de `files`, mas **não** saneia o
-  conteúdo dos arquivos.
+  exportador escapa esse texto no formato de saída: HTML com `html.escape`,
+  JSON com `json.dumps`, JavaScript só dentro de um JSON (nunca concatenado no
+  código), Markdown com as marcações escapadas. O core confere a estrutura de
+  `files`, mas **não** saneia o conteúdo dos arquivos.
 - **Nada de caminho absoluto.** O plano traz ids lógicos de mídia e caminhos
   relativos ao projeto (`exports/meu_banco_html/003`), nunca um caminho do disco.
   Um export costuma ser compartilhado, e caminho local vaza nome de usuário e

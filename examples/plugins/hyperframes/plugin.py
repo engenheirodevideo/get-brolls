@@ -44,7 +44,10 @@ MUSIC_BASE, MUSIC_DUCK, SFX_VOLUME = 0.5, 0.125, 0.35
 ATTACK_S, RELEASE_S, MERGE_GAP_S = 0.15, 0.4, 0.6
 MAX_AUTOMATION_POINTS = 512
 MAX_NOTES = 50
-NO_FFPROBE = "ffprobe não encontrado: instale o FFmpeg; as durações ficaram estimadas"
+NO_FFPROBE = (
+    "ffprobe não encontrado: instale FFmpeg/ffprobe ou aponte GB_FFMPEG_PATH/GB_FFPROBE_PATH; "
+    "verifique python3 scripts/gb.py doctor; as durações ficaram estimadas"
+)
 # O Chrome do Studio/render não toca estes formatos: pendência de conversão.
 UNPLAYABLE_AUDIO = (".aif", ".aiff", ".ogg", ".m4a")
 BG, FG = "#0b0b0b", "#ffffff"

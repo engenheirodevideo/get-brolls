@@ -613,7 +613,7 @@ class MachinePathMatchTests(unittest.TestCase):
 
     # Montados em tempo de execução: o guarda do repositório recusa caminho de máquina escrito no código.
     ROOT_HOME = "/root"
-    BO = "/".join(("", "Users", "bo"))
+    BO = "/".join(("", "srv", "bo"))
     AN = "/".join(("", "home", "an"))
 
     def machine(self, path, tag="<pasta pessoal>"):
@@ -654,6 +654,12 @@ class MachinePathMatchTests(unittest.TestCase):
             "Salve em <pasta pessoal>. E <pasta pessoal>/aula.mov",
             export._scrub(f"Salve em {self.BO}. E {self.BO}/aula.mov", self.machine(self.BO)),
         )
+
+    def test_a_relative_path_through_dots_is_still_a_hit(self):
+        # Caminho relativo tipo "../../<pasta>/x": um "." logo antes não deve mais blindar o caminho.
+        text = f"../..{self.AN}/x"
+        self.assertEqual([("files['index.html']", "a pasta pessoal")], self.hits(text, self.AN))
+        self.assertNotIn(self.AN.casefold(), export._scrub(text, self.machine(self.AN)).casefold())
 
 
 class MinimalPlanTests(unittest.TestCase):

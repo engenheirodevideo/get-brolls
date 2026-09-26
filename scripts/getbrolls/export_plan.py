@@ -38,8 +38,11 @@ SLOT_KEYS = ("slot", "role", "text", "beat_id", "take", "prompt")
 _LAYER_COMPONENT = {"SFX": "sfx", "MUSICA": "musica", "COMP": "composicao", "LETTERING": "lettering"}
 _EXPECTED_VIDEO = "(" + "|".join(ext.lstrip(".") for ext in assets.VIDEO) + ")"
 _ID_HASH_CHARS = 12
+NO_FFPROBE = (
+    "ffprobe não encontrado: instale FFmpeg/ffprobe ou aponte GB_FFMPEG_PATH/GB_FFPROBE_PATH; "
+    "verifique python3 scripts/gb.py doctor; as durações ficaram estimadas"
+)
 # Caminho absoluto em texto de plugin (POSIX, `~/`, `C:\`, `\\servidor`, `file:`): vira `<caminho>`.
-NO_FFPROBE = "ffprobe não encontrado: instale o FFmpeg; as durações ficaram estimadas"
 _ABS_PATH_RE = re.compile(r"file:/+[^\s\"'<>|]*|(?<![\w.~:/\\-])(?:~?/|[A-Za-z]:[\\/]|\\\\)[^\s\"'<>|]+")
 
 

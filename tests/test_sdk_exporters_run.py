@@ -321,6 +321,25 @@ class LocalPathScanTests(unittest.TestCase):
             with self.subTest(home=home, value=value), patch.object(Path, "home", return_value=Path(home)):
                 self.assertEqual(expected, find_local_paths(value))
 
+    def test_home_counts_after_punctuation_and_before_a_sentence_dot(self):
+        cases = (
+            ("/srv/bruno", {"a": "código: `/srv/bruno/a`"}, ["$['a']"]),
+            ("/srv/bruno", {"a": "(/srv/bruno/a)"}, ["$['a']"]),
+            ("/srv/bruno", {"a": "erro:/srv/bruno/a"}, ["$['a']"]),
+            ("/srv/bruno", {"a": "em /srv/bruno."}, ["$['a']"]),
+        )
+        for home, value, expected in cases:
+            with self.subTest(home=home, value=value), patch.object(Path, "home", return_value=Path(home)):
+                self.assertEqual(expected, find_local_paths(value))
+
+    def test_home_folder_suffix_word_is_not_a_hit(self):
+        with patch.object(Path, "home", return_value=Path("/root")):
+            self.assertEqual([], find_local_paths({"a": "/root-backup/a"}))
+
+    def test_home_inside_url_path_is_not_counted(self):
+        with patch.object(Path, "home", return_value=Path("/root")):
+            self.assertEqual([], find_local_paths({"a": "https://x.com/root/a"}))
+
     def test_a_validated_export_of_a_clean_plan_has_no_local_paths(self):
         def export(plan, options):
             return ExportResult({"index.html": f"<h1>{plan['title']}</h1>", "plan.json": str(plan)})

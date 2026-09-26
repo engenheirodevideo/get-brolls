@@ -82,20 +82,28 @@ def verify_source(source):
     return info
 
 
+def _clone_platform():
+    """Onde clonar é possível: "darwin", o `cp` achado no Linux, ou None (Windows, `cp` ausente)."""
+    if sys.platform == "darwin":
+        return "/bin/cp"
+    if sys.platform.startswith("linux"):
+        return shutil.which("cp")
+    return None
+
+
 def can_clone():
     """True onde `clone_or_copy` tenta o clone (macOS; Linux com `cp`); no Windows é sempre cópia."""
-    return sys.platform == "darwin" or (sys.platform.startswith("linux") and shutil.which("cp") is not None)
+    return _clone_platform() is not None
 
 
 def _clone_command(src, dest):
     """(argv, método) do clone do sistema, ou None onde não há (Windows, `cp` ausente)."""
+    cp = _clone_platform()
+    if cp is None:
+        return None
     if sys.platform == "darwin":
-        return ["/bin/cp", "-c", "--", str(src), str(dest)], "clone"
-    if sys.platform.startswith("linux"):
-        cp = shutil.which("cp")
-        if cp:
-            return [cp, "--reflink=auto", "--", str(src), str(dest)], "reflink-auto"
-    return None
+        return [cp, "-c", "--", str(src), str(dest)], "clone"
+    return [cp, "--reflink=auto", "--", str(src), str(dest)], "reflink-auto"
 
 
 def clone_or_copy(src, dest):

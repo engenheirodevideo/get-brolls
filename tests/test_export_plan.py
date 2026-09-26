@@ -681,7 +681,9 @@ class MissingProbeTests(ExportPlanTestCase):
         self.assertEqual([], errors(result, SCHEMA))
         self.assertEqual(1, result["warnings"].count(export_plan.NO_FFPROBE))
         self.assertEqual(
-            "ffprobe não encontrado: instale o FFmpeg; as durações ficaram estimadas", export_plan.NO_FFPROBE
+            "ffprobe não encontrado: instale FFmpeg/ffprobe ou aponte GB_FFMPEG_PATH/GB_FFPROBE_PATH; "
+            "verifique python3 scripts/gb.py doctor; as durações ficaram estimadas",
+            export_plan.NO_FFPROBE,
         )
         self.assertFalse(any("não consegui ler" in w for w in result["warnings"]), result["warnings"])
         for name in ("aroll:c01", "aroll:c03", "aroll:c04-a-t2", "aroll:c04-b"):
