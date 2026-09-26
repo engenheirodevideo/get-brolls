@@ -1,5 +1,8 @@
 """Local manifest with recoverable writes and derived candidate snapshots."""
 
+# pylint: disable=missing-function-docstring,too-many-branches,missing-class-docstring
+# Legado: ocorrências pré-existentes (corpo idêntico à origin/main).
+
 import hashlib
 import json
 import os
@@ -96,7 +99,8 @@ def validate_manifest(data):  # noqa: C901, PLR0912 - existing size; validator w
                     raise ValueError
     except (ValueError, TypeError, KeyError):
         raise ValueError(
-            "manifest.json inválido ou incompatível. Preserve o arquivo e restaure uma cópia válida; nenhum dado foi reiniciado."
+            "manifest.json inválido ou incompatível. Preserve o arquivo e restaure uma cópia válida; "
+            "nenhum dado foi reiniciado."
         ) from None
     return data
 
@@ -153,7 +157,8 @@ class Ledger:
             ):
                 if c.get(field) != old.get(field):
                     raise ValueError(
-                        "Este insert já existe com metadados diferentes. Use outro --shot para registrar a nova origem/contexto."
+                        "Este insert já existe com metadados diferentes. Use outro --shot para "
+                        "registrar a nova origem/contexto."
                     )
             return old
         self.data["items"].append(c)
@@ -196,7 +201,8 @@ class Ledger:
                 raise ValueError
         except (KeyError, ValueError, TypeError):
             raise ValueError(
-                "Journal de recuperação inválido. Preserve .pending-transaction.json e restaure o projeto antes de continuar."
+                "Journal de recuperação inválido. Preserve .pending-transaction.json e restaure "
+                "o projeto antes de continuar."
             ) from None
         atomic_write(self.path, json.dumps(data, ensure_ascii=False, indent=2))
         for c in data["items"]:
