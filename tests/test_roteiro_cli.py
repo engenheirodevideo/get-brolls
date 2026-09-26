@@ -9,13 +9,14 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import models
+from getbrolls import models, roteiro, roteiro_commands, roteiro_review
 from getbrolls.cli import build_parser
 from getbrolls.guidance import command_for
 from getbrolls.ledger import Ledger
@@ -60,6 +61,11 @@ class CliCase(unittest.TestCase):
             text = text.replace(old, new)
         path.write_text(text, encoding="utf-8")
 
+    def review(self, expect=0):
+        """`review` com o `--expect` do hash que o `check` mostra, como a skill faz depois de mostrar o roteiro."""
+        sha = self.cli("roteiro", "--action", "check")["review"]["sha256"]
+        return self.cli("roteiro", "--action", "review", *REVIEW, "--expect", sha, expect=expect)
+
     def write_brief(self):
         (self.project / "BRIEF.md").write_text(
             "# Brief\n\n```json\n" + json.dumps(BRIEF, indent=2) + "\n```\n", encoding="utf-8"
@@ -71,7 +77,7 @@ class CliCase(unittest.TestCase):
         self.cli("roteiro", "--action", "new", "--genero", "reels", "--tema", "IA")
         self.fill_skeleton()
         self.write_brief()
-        self.cli("roteiro", "--action", "review", *REVIEW)
+        self.review()
 
     def ready(self):
         """Projeto revisado e sincronizado."""
@@ -129,7 +135,7 @@ class RoteiroCliTests(CliCase):
 
         self.assertIn("revisão humana", self.cli("roteiro", "--action", "sync", expect=2)["error"])
         self.cli("roteiro", "--action", "review", "--by", "Bruno Moreira", expect=2)
-        self.cli("roteiro", "--action", "review", *REVIEW)
+        self.review()
         self.assertIn("status: revisado", (self.project / "ROTEIRO.md").read_text(encoding="utf-8"))
         self.assertIn("/get-brolls-brief", self.cli("roteiro", "--action", "sync", expect=2)["error"])
 
@@ -287,7 +293,7 @@ class ReviewWriteTests(CliCase):
         self.base()
         path = self.project / "ROTEIRO.md"
         path.write_bytes(b"\xef\xbb\xbf" + path.read_text(encoding="utf-8").replace("\n", "\r\n").encode("utf-8"))
-        self.cli("roteiro", "--action", "review", *REVIEW)
+        self.review()
         raw = path.read_bytes()
         self.assertFalse(raw.startswith(b"\xef\xbb\xbf"))
         self.assertNotIn(b"\r", raw)
@@ -302,9 +308,66 @@ class ReviewWriteTests(CliCase):
         real = notes / "roteiro.md"
         shutil.move(self.project / "ROTEIRO.md", real)
         (self.project / "ROTEIRO.md").symlink_to(real)
-        self.cli("roteiro", "--action", "review", *REVIEW)
+        self.review()
         self.assertTrue((self.project / "ROTEIRO.md").is_symlink())
         self.assertIn("status: revisado", real.read_text(encoding="utf-8"))
+
+
+class ReviewExpectTests(CliCase):
+    CHANGED = "O roteiro mudou desde a versão revisada; mostre de novo e revise."
+
+    def setUp(self):
+        super().setUp()
+        self.cli("init-rules", "--format", "reels")
+        self.cli("roteiro", "--action", "new", "--genero", "reels", "--tema", "IA")
+        self.fill_skeleton()
+        self.write_brief()
+        self.path = self.project / "ROTEIRO.md"
+
+    def reviews(self):
+        return self.project / "brolls" / "roteiro-reviews.jsonl"
+
+    def test_review_requires_the_hash_that_check_and_plan_show(self):
+        refused = self.cli("roteiro", "--action", "review", *REVIEW, expect=2)
+        self.assertIn("--expect", refused["error"])
+        self.assertIn("review.sha256", refused["error"])
+        checked = self.cli("roteiro", "--action", "check")["review"]["sha256"]
+        planned = self.cli("roteiro", "--action", "plan")["review"]["sha256"]
+        self.assertEqual(checked, planned)
+        self.assertRegex(checked, r"^[0-9a-f]{64}$")
+        entry = self.cli("roteiro", "--action", "review", *REVIEW, "--expect", checked.upper())["review"]
+        self.assertEqual(entry["sha256"], checked)
+        self.assertTrue(self.cli("roteiro", "--action", "plan")["review"]["reviewed"])
+
+    def test_review_of_another_version_is_refused_without_writing(self):
+        sha = self.cli("roteiro", "--action", "check")["review"]["sha256"]
+        self.edit("Todo mundo trava.", "Todo mundo desiste.")
+        before = self.path.read_bytes()
+        refused = self.cli("roteiro", "--action", "review", *REVIEW, "--expect", sha, expect=2)
+        self.assertIn(self.CHANGED, refused["error"])
+        self.assertEqual(before, self.path.read_bytes())
+        self.assertFalse(self.reviews().exists())
+
+    def test_edit_during_the_review_is_refused_without_writing(self):
+        sha = self.cli("roteiro", "--action", "check")["review"]["sha256"]
+        edited = self.path.read_text(encoding="utf-8").replace("Todo mundo trava.", "Todo mundo desiste.")
+        real_set_status = roteiro_review.set_status
+
+        def autosave_in_the_middle(text, status):
+            self.path.write_text(edited, encoding="utf-8")  # o Obsidian grava entre a leitura e a escrita
+            return real_set_status(text, status)
+
+        args = build_parser().parse_args(
+            ["roteiro", "--action", "review", *REVIEW, "--expect", sha, "--project", str(self.project)]
+        )
+        with (
+            mock.patch.object(roteiro_review, "set_status", autosave_in_the_middle),
+            self.assertRaises(ValueError) as ctx,
+        ):
+            roteiro_commands.run(args)
+        self.assertIn(self.CHANGED, str(ctx.exception))
+        self.assertEqual(edited, self.path.read_text(encoding="utf-8"))
+        self.assertFalse(self.reviews().exists())
 
 
 class TargetGateSummaryTests(CliCase):
@@ -312,7 +375,7 @@ class TargetGateSummaryTests(CliCase):
         self.ready()
         candidate = self.approved("c02")
         self.edit("[BROLL: timeline cheia]", "[BROLL: mesa de edição]")
-        self.cli("roteiro", "--action", "review", *REVIEW)
+        self.review()
         planned = self.cli("roteiro", "--action", "plan")
         self.assertEqual(planned["affected_approvals"], [{"candidate": candidate, "beat": "c02"}])
         self.assertIn(candidate, planned["summary"]["line"])
@@ -342,7 +405,7 @@ class BrokenRoteiroPathTests(CliCase):
     ACTIONS = (
         ("check",),
         ("plan",),
-        ("review", *REVIEW),
+        ("review", *REVIEW, "--expect", "0" * 64),
         ("sync",),
         ("new", "--genero", "reels", "--tema", "IA"),
         ("new", "--genero", "reels", "--tema", "IA", "--force"),
@@ -400,10 +463,14 @@ class WriteErrorTests(CliCase):
         self.cli("roteiro", "--action", "new", "--genero", "reels", "--tema", "IA")
         self.fill_skeleton()
         self.write_brief()
-        self.cli("roteiro", "--action", "check")  # cria brolls/ antes de travar a raiz
+        sha = self.cli("roteiro", "--action", "check")["review"]["sha256"]  # cria brolls/ antes de travar a raiz
         (self.project / "brolls").mkdir(exist_ok=True)
         self.lock_project_root()
-        self.assert_clean(self.cli("roteiro", "--action", "review", *REVIEW, expect=2))
+        self.assert_clean(self.cli("roteiro", "--action", "review", *REVIEW, "--expect", sha, expect=2))
+        # O review que não gravou o ROTEIRO.md não registra nada; o sync abaixo precisa de uma revisão válida.
+        self.assertFalse((self.project / "brolls" / "roteiro-reviews.jsonl").exists())
+        doc = roteiro.parse(roteiro.load_text(self.project))
+        roteiro_review.record_review(self.project, doc, "Bruno Moreira", "chat", "aprovado, pode seguir")
         self.assert_clean(
             self.cli("roteiro", "--action", "new", "--genero", "reels", "--tema", "IA", "--force", expect=2)
         )

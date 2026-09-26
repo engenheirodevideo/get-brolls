@@ -2132,6 +2132,18 @@
           "required": false
         },
         {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "expect",
+          "help": "review.sha256 que check e plan mostram, da versão que a pessoa viu; obrigatório no review, que recusa se o roteiro mudou desde então (review)",
+          "nargs": null,
+          "option_strings": [
+            "--expect"
+          ],
+          "required": false
+        },
+        {
           "action": "_StoreTrueAction",
           "choices": null,
           "default": false,

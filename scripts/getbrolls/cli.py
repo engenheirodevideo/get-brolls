@@ -273,6 +273,13 @@ def _add_roteiro_args(p, name):
     p.add_argument("--channel", choices=["chat"], default="chat", help="Por onde a revisão chegou (review)")
     p.add_argument("--statement", help="Frase exata dita por quem revisou (review)")
     p.add_argument(
+        "--expect",
+        help=(
+            "review.sha256 que check e plan mostram, da versão que a pessoa viu; obrigatório no review, "
+            "que recusa se o roteiro mudou desde então (review)"
+        ),
+    )
+    p.add_argument(
         "--confirm-target-change",
         action="store_true",
         help="Aceitar que aprovações de beats com alvo novo voltem a pendente (sync)",

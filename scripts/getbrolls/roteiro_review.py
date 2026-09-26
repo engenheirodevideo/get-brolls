@@ -49,14 +49,19 @@ def reviews_path(project):
     return Path(project).expanduser().resolve() / "brolls" / REVIEWS_FILE
 
 
-def record_review(project, doc, by, channel, statement):
-    """Acrescenta uma linha em `brolls/roteiro-reviews.jsonl` (append-only) e devolve a entrada."""
+def check_review_args(by, channel, statement):
+    """Recusa `--by`, `--channel` ou `--statement` que não servem para registrar uma revisão."""
     if not isinstance(by, str) or not by.strip():
         raise ValueError("Informe em --by quem revisou o roteiro.")
     if channel != "chat":
         raise ValueError("Revisão de roteiro só pelo chat por enquanto: use --channel chat.")
     if not isinstance(statement, str) or not statement.strip():
         raise ValueError("Revisão pelo chat exige --statement com a frase exata dita pela pessoa.")
+
+
+def record_review(project, doc, by, channel, statement):
+    """Acrescenta uma linha em `brolls/roteiro-reviews.jsonl` (append-only) e devolve a entrada."""
+    check_review_args(by, channel, statement)
     entry = {
         "at": now(),
         "by": by.strip(),

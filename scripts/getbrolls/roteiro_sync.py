@@ -30,8 +30,9 @@ PENDING = ".pending-transaction.json"
 SYNC_BAK = ".sync.bak"
 _JSON_BLOCK = re.compile(r"```json\s*\n(.*?)\n```", re.DOTALL)
 REVIEW_MISSING = (
-    "O roteiro atual não tem revisão humana registrada (ou mudou depois dela). Mostre o texto à pessoa e "
-    'registre com `roteiro --action review --by NOME --channel chat --statement "frase exata"`.'
+    "O roteiro atual não tem revisão humana registrada (ou mudou depois dela). Mostre o texto e o review.sha256 "
+    "do check à pessoa e registre com "
+    '`roteiro --action review --by NOME --channel chat --statement "frase exata" --expect <sha256>`.'
 )
 
 
@@ -237,7 +238,8 @@ def _prepare(project, write, plugins):
         ensure_no_pending(project)
     text = roteiro.load_text(project)
     doc = roteiro.parse(text, plugins)
-    reviewed = review_state(project, doc)["reviewed"]
+    review = review_state(project, doc)
+    reviewed = review["reviewed"]
     if write and not reviewed:
         raise ValueError(REVIEW_MISSING)
     rules = load_rules(project)
@@ -248,7 +250,8 @@ def _prepare(project, write, plugins):
     old_beats = list(brief_data.get("beats") or [])
     ids = roteiro_ids.plan_ids(doc, old_beats, ledger.data["items"] if ledger else [], state)
     return {
-        "text": text, "reviewed": reviewed, "rules": rules, "brief_file": brief_file, "raw_brief": raw_brief,
+        "text": text, "reviewed": reviewed, "review": review, "rules": rules, "brief_file": brief_file,
+        "raw_brief": raw_brief,
         "brief_data": brief_data, "ledger": ledger, "state": state, "old_beats": old_beats, "ids": ids,
     }  # fmt: skip
 
@@ -283,7 +286,8 @@ def _base_report(ctx):
     """Campos do relatório de `run` que valem tanto com recusa de id quanto sem ela."""
     ids = ctx["ids"]
     return {
-        **_empty_report(), "written": [], "reviewed": ctx["reviewed"], "refusal": ids["refusal"],
+        **_empty_report(), "written": [], "reviewed": ctx["reviewed"], "review": ctx["review"],
+        "refusal": ids["refusal"],
         "ids_to_assign": {str(line): i for line, i in ids["assign"].items()},
         "readopted": {str(line): i for line, i in ids["readopted"].items()},
     }  # fmt: skip

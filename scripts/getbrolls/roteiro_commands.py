@@ -109,16 +109,32 @@ def _check(args):
     return {"meta": doc.meta, **plan, "warnings": warnings, "review": review, "summary": {"line": line}}
 
 
+REVIEW_CHANGED = "O roteiro mudou desde a versão revisada; mostre de novo e revise."
+EXPECT_MISSING = (
+    "roteiro --action review exige --expect <sha256>: o review.sha256 que check e plan mostram, "
+    "junto com o roteiro que a pessoa revisou."
+)
+
+
 def _review(args):
+    expect = (getattr(args, "expect", None) or "").strip().lower()
+    if not expect:
+        raise ValueError(EXPECT_MISSING)
     path = roteiro.roteiro_path(args.project)
     # `load_text` tira BOM e CRLF: `set_status` e o hash da revisão trabalham sobre o mesmo texto.
     text = roteiro.load_text(args.project)
     doc = roteiro.parse(text)
+    roteiro_review.check_review_args(args.by, args.channel, args.statement)
+    if roteiro_review.review_hash(doc, args.project) != expect:
+        raise ValueError(REVIEW_CHANGED)
     marked = roteiro_review.set_status(text, "revisado")
-    entry = roteiro_review.record_review(args.project, doc, args.by, args.channel, args.statement)
+    # Compare-and-swap sob a trava do projeto: o Obsidian ou um sync de nuvem podem gravar no meio.
+    if roteiro.load_text(args.project) != text:
+        raise ValueError(REVIEW_CHANGED)
     if marked != text:
         # Link (nota do Obsidian) continua link: grava no arquivo de verdade, como o sync.
         atomic_write(path.resolve(), marked)
+    entry = roteiro_review.record_review(args.project, doc, args.by, args.channel, args.statement)
     return {
         "review": entry,
         "summary": {"line": f"Revisão de {entry['by']} registrada; pode rodar roteiro --action plan."},

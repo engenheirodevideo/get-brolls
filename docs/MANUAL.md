@@ -455,7 +455,8 @@ python3 scripts/gb.py roteiro --action check --project /caminho/meu-video
 
 # ── roteiro --action review ─────────────────────────────────
 # O QUE FAZ: registra que VOCÊ revisou o texto atual. Mudou o conteúdo? Revise de novo.
-python3 scripts/gb.py roteiro --action review --by "Seu Nome" --channel chat --statement "pode seguir" --project /caminho/meu-video
+# --expect é o review.sha256 que o check mostrou: se o arquivo mudou desde então, recusa.
+python3 scripts/gb.py roteiro --action review --by "Seu Nome" --channel chat --statement "pode seguir" --expect <sha256> --project /caminho/meu-video
 
 # ── roteiro --action plan / sync ────────────────────────────
 # O QUE FAZ: plan mostra o que o sync mudaria no BRIEF.md, sem gravar;
