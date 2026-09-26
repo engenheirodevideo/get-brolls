@@ -27,6 +27,8 @@ IMAGE = (".png", ".svg", ".webp", ".jpg", ".jpeg")
 
 @dataclass(frozen=True)
 class AssetKind:
+    """Tipo de componente: pasta onde mora, extensões aceitas e regras de licença/pessoal."""
+
     name: str
     folder: str
     extensions: tuple[str, ...]
@@ -58,13 +60,14 @@ def valid_name(name):
     return ".." not in name and _NAME.match(name) is not None
 
 
-def _roots(project, spec):
+def component_roots(project, spec):
+    """(origem, pasta) onde um componente pode morar: a do projeto e, se aplicável, a pessoal."""
     yield "project", Path(project).expanduser().resolve() / spec.folder
     if spec.personal:
         yield "personal", home_dir() / "assets" / spec.folder.removeprefix("assets/")
 
 
-def _entries(root, spec):
+def component_entries(root, spec):
     """Arquivos candidatos de uma pasta, agrupados pela chave de comparação.
 
     Fica de fora: arquivo oculto (`.x`, `._x` do macOS), sidecar de licença,
@@ -106,12 +109,13 @@ def _outside(path, root):
 
 
 def resolve(project, kind, name):
+    """Acha o componente pelo nome, valida a licença e devolve o status ("found" ou "pending")."""
     spec = _kind(kind)
     if not valid_name(name):
         raise ValueError(f'Nome de componente inválido "{name}": use letras, números, espaço, - ou _.')
     key = fold(unicodedata.normalize("NFC", name))
-    for origin, root in _roots(project, spec):
-        matches = _entries(root, spec).get(key, [])
+    for origin, root in component_roots(project, spec):
+        matches = component_entries(root, spec).get(key, [])
         if len(matches) > 1:
             listed = ", ".join(p.name for p in matches)
             raise ValueError(f'"{name}" é ambíguo em {root}: {listed}. Deixe só um.')
@@ -162,7 +166,7 @@ def listing(project, kind=None):
     kinds = [_kind(kind)] if kind else list(ASSET_KINDS.values())
     rows = []
     for spec in kinds:
-        for origin, root in _roots(project, spec):
-            for key, paths in sorted(_entries(root, spec).items()):
+        for origin, root in component_roots(project, spec):
+            for key, paths in sorted(component_entries(root, spec).items()):
                 rows.extend(_row(spec, key, p, origin, root) for p in paths)
     return rows
