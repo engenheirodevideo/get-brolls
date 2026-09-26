@@ -76,4 +76,5 @@ ACTIONS = {
 
 
 def run(args):
+    """Roda a ação de `plugins --action ...` e devolve o resultado."""
     return ACTIONS[args.action](args)

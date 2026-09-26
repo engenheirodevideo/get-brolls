@@ -6,7 +6,9 @@ que o `register(api)` registra, sem instalar nada.
 """
 
 import inspect
+import os
 from pathlib import Path
+from typing import TYPE_CHECKING, NoReturn
 
 from .contracts import (
     NAME_RE,
@@ -18,8 +20,11 @@ from .contracts import (
     ResolverSpec,
 )
 
+if TYPE_CHECKING:
+    from .registry import Registry
 
-def _fail(message):
+
+def _fail(message: str) -> NoReturn:
     raise AssertionError(message)
 
 
@@ -40,7 +45,15 @@ def _named(kind, obj):
     return name
 
 
-def check_provider(provider):
+def check_provider(provider: object) -> None:
+    """Confere nome, capabilities e os métodos `search`/`resolve`/`refresh` de uma fonte.
+
+    Args:
+        provider: a fonte que o plugin entrega a `api.provider` (ou a guardada no registro).
+
+    Raises:
+        AssertionError: com a frase do que corrigir.
+    """
     name = _named("Provider", provider)
     if not isinstance(getattr(provider, "capabilities", None), ProviderCapabilities):
         _fail(f"Provider {name}: capabilities tem que ser ProviderCapabilities.")
@@ -54,7 +67,15 @@ def check_provider(provider):
             _fail(f"Provider {name}: falta {method}() com {count} argumento(s) além de self.")
 
 
-def check_route(route):
+def check_route(route: object) -> None:
+    """Confere nome, estágio e o método `prepare(item, workdir)` de uma rota.
+
+    Args:
+        route: a rota que o plugin entrega a `api.route`.
+
+    Raises:
+        AssertionError: com a frase do que corrigir.
+    """
     name = _named("Rota", route)
     if getattr(route, "stage", None) not in ROUTE_STAGES:
         _fail(f'Rota {name}: stage tem que ser "preview" ou "fetch".')
@@ -63,7 +84,15 @@ def check_route(route):
         _fail(f"Rota {name}: falta prepare(item, workdir).")
 
 
-def check_command(spec):
+def check_command(spec: object) -> None:
+    """Confere nome, ajuda e `handler(args, ctx)` de um comando.
+
+    Args:
+        spec: o `CommandSpec` guardado no registro por `api.command`.
+
+    Raises:
+        AssertionError: com a frase do que corrigir.
+    """
     if not isinstance(spec, CommandSpec):
         _fail("Comando: registre com api.command(nome, handler, help).")
     _named("Comando", spec)
@@ -73,9 +102,18 @@ def check_command(spec):
         _fail(f"Comando {spec.name}: o handler tem que aceitar (args, ctx).")
 
 
-def check_exporter(spec):
-    """Forma do exportador e, depois, uma exportação de verdade com o plano de exemplo
-    (`exporters.sample_plan()`), conferida pelo MESMO validador do core."""
+def check_exporter(spec: object) -> None:
+    """Confere a forma do exportador e uma exportação de verdade com o plano de exemplo.
+
+    O plano é o de `exporters.sample_plan()`, e o resultado passa pelo MESMO
+    validador do core.
+
+    Args:
+        spec: o `ExporterSpec` guardado no registro por `api.exporter`.
+
+    Raises:
+        AssertionError: com a frase do que corrigir.
+    """
     from .exporters import ExportValidationError, sample_plan, validate_export_result
 
     if not isinstance(spec, ExporterSpec):
@@ -98,7 +136,15 @@ def check_exporter(spec):
         _fail(f"Exportador {spec.name}: {', '.join(reserved)} é nome reservado do get-brolls na pasta do export.")
 
 
-def check_resolver(spec):
+def check_resolver(spec: object) -> None:
+    """Confere nome, tipos e `resolve(kind, name)` de um resolvedor.
+
+    Args:
+        spec: o `ResolverSpec` guardado no registro por `api.resolver`.
+
+    Raises:
+        AssertionError: com a frase do que corrigir.
+    """
     if not isinstance(spec, ResolverSpec):
         _fail("Resolvedor: registre com api.resolver(nome, resolve, kinds).")
     _named("Resolvedor", spec)
@@ -116,8 +162,20 @@ def check_resolver(spec):
         _fail(f"Resolvedor {spec.name}: resolve tem que aceitar (kind, name).")
 
 
-def check_registry(registry, owner):
-    """Roda as checagens em tudo o que `owner` registrou; devolve os nomes conferidos."""
+def check_registry(registry: "Registry", owner: str) -> dict[str, list[str]]:
+    """Roda as checagens em tudo o que `owner` registrou.
+
+    Args:
+        registry: o registro onde o plugin registrou suas extensões.
+        owner: id do plugin.
+
+    Returns:
+        Os nomes conferidos, por tipo (`providers`, `presets`, `routes`, `commands`,
+        `exporters`, `resolvers`).
+
+    Raises:
+        AssertionError: com a frase do que corrigir, na primeira checagem que falhar.
+    """
     owned = registry.owned_by(owner)
     for name in owned["provider"]:
         check_provider(registry.provider(name))
@@ -139,12 +197,25 @@ def check_registry(registry, owner):
     }
 
 
-def check_plugin(folder):
+def check_plugin(folder: str | os.PathLike[str]) -> dict:
     """Manifesto + `register(api)` num registro descartável + as checagens acima.
 
     É o `plugins --action check`: valida o manifesto e executa o `register()` contra
     um registro descartável com os built-ins, para pegar colisão de nome sem habilitar
-    nada."""
+    nada.
+
+    Args:
+        folder: pasta do plugin.
+
+    Returns:
+        A prévia do plugin (manifesto, permissões, sha256, avisos) com `ok`,
+        `manifest_file` e os nomes conferidos em `contracts`.
+
+    Raises:
+        ManifestError: manifesto ausente ou fora do formato.
+        ValueError: plugin incompatível, com conteúdo que o `install` recusaria, que
+            falhou no `register()` ou na checagem de contrato.
+    """
     from .. import presets, providers
     from . import guard, loader
     from .manifest import MANIFEST_NAME, compatibility_problem, read_manifest

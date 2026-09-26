@@ -9,7 +9,7 @@ import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 from unittest.mock import MagicMock, patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
@@ -332,8 +332,9 @@ class PluginDownloadTests(LoaderTestCase):
 
     def test_headers_must_be_text(self):
         api = self.api()
+        not_text: Any = {"Authorization": 123}  # tipo errado de propósito: a recusa é em tempo de execução
         with tempfile.TemporaryDirectory() as work, route_scope("demo", Path(work)), self.assertRaises(ProviderError):
-            api.download("https://demo.example/files/1", "a.mp4", {"Authorization": 123})
+            api.download("https://demo.example/files/1", "a.mp4", not_text)
 
     def test_header_control_characters_are_rejected_and_never_echoed(self):
         """Camada 1 (validador do SDK, `PluginApi._validate_headers`, usada por

@@ -256,6 +256,7 @@ def prefixed(owner, text):
 
 
 def without_prefix(owner, text):
+    """`text` sem o prefixo `Plugin <id>:` (quando ele está lá)."""
     prefix = f"Plugin {owner}:"
     return text[len(prefix) :].strip() if text.startswith(prefix) else text
 
@@ -306,6 +307,7 @@ PENDING_APPROVAL = {"status": "pending", "by": None, "at": None, "revision": Non
 
 
 def call(owner, provider, fn, *args):
+    """Roda `fn(*args)` de uma fonte de plugin isolado; falha vira `ProviderError` com o id do plugin."""
     return isolated(
         owner,
         fn,
@@ -374,6 +376,10 @@ def _kept(raw, allowed):
 
 
 def plugin_candidate(item, provider, owner, download=True, route=None, *, route_stage=None):  # noqa: C901, PLR0912, PLR0913, PLR0915 - route_stage (keyword) grava o estágio da rota na prévia; um campo guardado por seção do candidato
+    """O candidato do plugin reescrito pelo core: allowlist, URLs estritas, direitos e aprovação pendentes.
+
+    O que o plugin tentou preencher fora do permitido cai e aparece no log
+    `plugin_candidate_sanitized`; o resultado tem que passar no schema do candidato."""
     item = _normalize(item, owner)
     if not isinstance(item, dict):
         raise ProviderError(f"Plugin {owner}: {provider} devolveu um candidato que não é objeto.")
@@ -524,6 +530,7 @@ def plugin_candidate(item, provider, owner, download=True, route=None, *, route_
 
 
 def refreshed(current, fresh, owner):
+    """`current` com o `media_url` que o `refresh` do plugin devolveu, já filtrado."""
     fresh = _normalize(fresh, owner)
     if not isinstance(fresh, dict):
         raise ProviderError(f"Plugin {owner}: refresh tem que devolver o candidato.")

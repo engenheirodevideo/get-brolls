@@ -60,7 +60,7 @@ CLAUSE_RE = re.compile(r"\s*(>=|<=|==|>|<)\s*(\d+(?:\.\d+){0,2})\s*")
 
 
 class ManifestError(ValueError):
-    pass
+    """Manifesto ausente, ilegível ou fora do formato; a mensagem diz o que corrigir."""
 
 
 def _fail(folder_name, message) -> NoReturn:
@@ -156,6 +156,7 @@ def _identity(folder, raw):
 
 
 def reserved_id_message(ident):
+    """Frase que recusa um id reservado do get-brolls, listando os reservados."""
     return f'id "{ident}" é reservado do get-brolls ({", ".join(RESERVED_IDS)}): escolha outro.'
 
 
@@ -205,6 +206,10 @@ def _load_json(folder_name, path):
 
 
 def read_manifest(folder: Path, require_folder_match: bool = True) -> dict:
+    """Lê e valida `getbrolls-plugin.json` de `folder`; devolve o manifesto normalizado.
+
+    Com `require_folder_match`, o `id` tem que ser o nome da pasta (plugin instalado);
+    o `plugins check` passa `False` para conferir uma pasta qualquer."""
     path = folder / MANIFEST_NAME
     if not path.is_file():
         _fail(folder.name, f"{MANIFEST_NAME} não encontrado.")
@@ -243,6 +248,7 @@ def _as_tuple(text):
 
 
 def satisfies(version: str, spec: str) -> bool:
+    """`version` atende a `spec` (cláusulas como `">=2.6,<3"`)? Spec inválida vira `ManifestError`."""
     clauses = spec.split(",")
     parsed = [CLAUSE_RE.fullmatch(clause) for clause in clauses]
     if not clauses or any(m is None for m in parsed):
@@ -259,6 +265,7 @@ def satisfies(version: str, spec: str) -> bool:
 
 
 def compatibility_problem(manifest: dict, version: str = __version__) -> str | None:
+    """Por que o plugin não roda nesta versão (`sdk_api` ou `requires_getbrolls`), ou `None`."""
     if manifest["sdk_api"] != SDK_API:
         return f"sdk_api {manifest['sdk_api']} não é suportado; esta versão do get-brolls fala sdk_api {SDK_API}."
     if not satisfies(version, manifest["requires_getbrolls"]):

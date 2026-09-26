@@ -161,6 +161,7 @@ def _manifest(plugin_id, kind):
 
 
 def new(plugin_id, kind, parent=None):
+    """Cria a pasta de um plugin novo (manifesto, código, teste e README) para o tipo `kind`."""
     if not isinstance(plugin_id, str) or not NAME_RE.fullmatch(plugin_id) or plugin_id == CORE:
         raise ValueError("--id inválido; use 2–32 caracteres a-z, 0-9 e _, começando por letra.")
     if plugin_id in RESERVED_IDS:

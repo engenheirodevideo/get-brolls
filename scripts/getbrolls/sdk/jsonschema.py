@@ -40,6 +40,7 @@ class SchemaError(ValueError):
 
 
 def check_schema(schema, path="#"):
+    """Recusa (`SchemaError`) palavra-chave fora do subconjunto suportado."""
     if not isinstance(schema, dict):
         raise SchemaError(f"{path}: schema tem que ser um objeto JSON")
     unknown = set(schema) - SUPPORTED
@@ -142,6 +143,7 @@ def errors(value, schema, path="$"):
 
 
 def validate(value, schema, label="dados"):
+    """Levanta `ValueError` com até 5 problemas quando `value` não segue `schema`."""
     problems = errors(value, schema)
     if problems:
         raise ValueError(f"{label} fora do schema: " + "; ".join(problems[:5]))

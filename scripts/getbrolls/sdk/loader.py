@@ -47,10 +47,12 @@ GB_PLUGINS_UNPINNED_REASON = (
 
 
 def plugins_root():
+    """Pasta dos plugins instalados: `$GB_HOME/plugins`."""
     return home_dir() / "plugins"
 
 
 def state_path():
+    """`$GB_HOME/plugins.json`: pins, últimos pins e origens."""
     return home_dir() / "plugins.json"
 
 
@@ -80,6 +82,7 @@ def nested_vcs(folder):
 
 
 def is_bytecode_name(name, is_dir):
+    """`__pycache__` (pasta) ou `.pyc`/`.pyo` (arquivo), sem diferenciar maiúsculas."""
     folded = name.casefold()
     return folded == BYTECODE_DIRNAME if is_dir else folded.endswith(BYTECODE_SUFFIXES)
 
@@ -274,6 +277,7 @@ def _valid_origin(entry):
 
 
 def read_state():
+    """`plugins.json` como dict (`{"enabled": {}}` sem arquivo); inválido vira `ValueError`."""
     path = state_path()
     if not path.exists():
         return {"enabled": {}}
@@ -306,6 +310,7 @@ def _write_state(data):
 
 
 def env_selection():
+    """Ids escolhidos por `GB_PLUGINS` (`off` = nenhum), ou `None` sem a variável."""
     raw = os.environ.get("GB_PLUGINS")
     if raw is None:
         return None
@@ -334,6 +339,8 @@ def _invalid_row(ident, reason):
 
 
 def entries():
+    """`(linha de inventário, pasta, manifesto ou None)` de cada pasta em `plugins/`,
+    com status e motivo, sem rodar código de plugin."""
     root = plugins_root()
     if not root.is_dir():
         return []
@@ -386,10 +393,12 @@ def entries():
 
 
 def inventory():
+    """As linhas de inventário de `entries()`."""
     return [row for row, _, _ in entries()]
 
 
 def declared(kind):
+    """Nomes de `contributes.<kind>` dos plugins habilitados."""
     return [
         name
         for row, _, manifest in entries()
@@ -423,6 +432,7 @@ def _import(folder, manifest):
 
 
 def register_plugin(folder, manifest, registry):
+    """Roda a fonte do plugin e o `register(api)` dele contra `registry`, e confere o que ele registrou."""
     module = _import(folder, manifest)
     register = getattr(module, "register", None)
     if not callable(register):
@@ -531,6 +541,7 @@ def load_enabled(registry):
 
 
 def find(plugin_id):
+    """A entrada de `entries()` do plugin `plugin_id`; ausente vira `ValueError`."""
     for entry in entries():
         if entry[0]["id"] == plugin_id:
             return entry
@@ -638,6 +649,7 @@ def permission_warnings(manifest):
 
 
 def plugin_preview(manifest, folder, sha=None):
+    """O que a prévia de `enable`/`check` mostra: manifesto, permissões, sha256 e avisos."""
     preview = {
         "id": manifest["id"],
         "name": manifest["name"],
@@ -744,6 +756,7 @@ def pin(manifest, folder, origin=None, enable=True, digests=None):
 
 
 def disable(plugin_id):
+    """Tira o pin do plugin, guardando-o em `last_pins`, e descarta o registro montado."""
     state = read_state()
     last = state["enabled"].pop(plugin_id, None)
     was = last is not None

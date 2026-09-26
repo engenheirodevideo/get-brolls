@@ -47,6 +47,8 @@ def sample_plan():
 
 
 class ValidatedExport(NamedTuple):
+    """Resultado do exportador já conferido, só com tipos do core."""
+
     files: dict[str, str]
     media: tuple[tuple[str, str], ...]  # (media_id, dest)
     notes: tuple[str, ...]

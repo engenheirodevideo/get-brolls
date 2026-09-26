@@ -102,12 +102,15 @@ class PluginProvider:
         self._refresh = getattr(provider, "refresh", None)
 
     def search(self, query: str, limit: int, media: str) -> list[dict]:
+        """Repassa a busca ao método `search` do plugin."""
         return self._search(query, limit, media)  # type: ignore[misc] - chamado só dentro do guard
 
     def resolve(self, url: str) -> dict | None:
+        """Repassa a URL ao método `resolve` do plugin."""
         return self._resolve(url)  # type: ignore[misc] - chamado só dentro do guard
 
     def refresh(self, item: dict) -> dict:
+        """Repassa o candidato ao método `refresh` do plugin."""
         return self._refresh(item)  # type: ignore[misc] - chamado só dentro do guard
 
     def bound(self, method: str) -> object:
@@ -116,6 +119,10 @@ class PluginProvider:
 
 
 class Registry:
+    """Fontes, presets, rotas, comandos, exportadores e resolvedores registrados, com o dono de cada um.
+
+    O core registra primeiro; um nome (ou host) já tomado recusa o registro seguinte."""
+
     def __init__(self) -> None:
         self._items: dict[str, dict[str, object]] = {kind: {} for kind in KINDS}
         self._owners: dict[str, dict[str, str]] = {kind: {} for kind in KINDS}
@@ -134,6 +141,7 @@ class Registry:
             raise RegistryError(f"{kind} {name!r} já registrado por {current}; registro de {owner} recusado.")
 
     def add_provider(self, provider: Provider, owner: str = CORE) -> None:
+        """Registra uma fonte e os hosts dela; a de plugin vira um `PluginProvider` com capabilities conferidas."""
         name = getattr(provider, "name", None)
         _check_name("provider", name)
         name = cast("str", name)
@@ -155,16 +163,20 @@ class Registry:
             self._hosts[host] = name
 
     def provider(self, name: str) -> Provider | None:
+        """A fonte `name`, ou `None`."""
         return self._items["provider"].get(name)  # type: ignore[return-value]
 
     def provider_names(self) -> tuple[str, ...]:
+        """Nomes das fontes, na ordem de registro."""
         return tuple(self._items["provider"])
 
     def provider_for_host(self, host: str) -> Provider | None:
+        """A fonte dona de `host` (de `url_hosts`), ou `None`."""
         name = self._hosts.get(host)
         return self.provider(name) if name else None
 
     def add_preset(self, name: str, url: str, text: str, owner: str = CORE) -> None:
+        """Registra um preset de condições; o texto tem que terminar apontando a página da fonte."""
         _check_name("preset", name)
         if type(url) is not str:
             raise RegistryError(f"Preset {name!r}: url tem que ser texto.")
@@ -175,12 +187,15 @@ class Registry:
         self._owners["preset"][name] = owner
 
     def preset(self, name: str) -> Preset | None:
+        """O preset `name`, ou `None`."""
         return self._items["preset"].get(name)  # type: ignore[return-value]
 
     def preset_names(self) -> tuple[str, ...]:
+        """Nomes dos presets, na ordem de registro."""
         return tuple(self._items["preset"])
 
     def add_route(self, route: Route, owner: str = CORE) -> None:
+        """Registra uma rota; o estágio (`preview` ou `fetch`) é lido uma vez, aqui."""
         name = getattr(route, "name", None)
         _check_name("rota", name)
         name = cast("str", name)
@@ -195,15 +210,19 @@ class Registry:
         self._stages[name] = cast("str", stage)
 
     def route(self, name: str) -> Route | None:
+        """A rota `name`, ou `None`."""
         return self._items["route"].get(name)  # type: ignore[return-value]
 
     def route_stage(self, name: str) -> str | None:
+        """O estágio registrado da rota `name`, ou `None`."""
         return self._stages.get(name)
 
     def route_names(self) -> tuple[str, ...]:
+        """Nomes das rotas, na ordem de registro."""
         return tuple(self._items["route"])
 
     def add_command(self, spec: CommandSpec, owner: str) -> None:
+        """Registra um comando no espaço do plugin dono (`gb x <plugin> <comando>`)."""
         if not isinstance(spec, CommandSpec):
             raise RegistryError("Comando tem que ser CommandSpec.")
         name, help_text, handler = spec.name, spec.help, spec.handler
@@ -222,12 +241,15 @@ class Registry:
         self._owners["command"][key] = owner
 
     def command(self, plugin_id: str, name: str) -> CommandSpec | None:
+        """O comando `name` do plugin `plugin_id`, ou `None`."""
         return self._items["command"].get(f"{plugin_id}:{name}")  # type: ignore[return-value]
 
     def command_keys(self) -> tuple[tuple[str, str], ...]:
+        """`(plugin, comando)` de cada comando registrado."""
         return tuple(tuple(key.split(":", 1)) for key in self._items["command"])  # type: ignore[return-value]
 
     def add_exporter(self, spec: ExporterSpec, owner: str) -> None:
+        """Registra um exportador (experimental)."""
         if not isinstance(spec, ExporterSpec):
             raise RegistryError("Exportador tem que ser ExporterSpec.")
         name, description, export = spec.name, spec.description, spec.export
@@ -243,12 +265,15 @@ class Registry:
         self._owners["exporter"][name] = owner
 
     def exporter(self, name: str) -> ExporterSpec | None:
+        """O exportador `name`, ou `None`."""
         return self._items["exporter"].get(name)  # type: ignore[return-value]
 
     def exporter_names(self) -> tuple[str, ...]:
+        """Nomes dos exportadores, na ordem de registro."""
         return tuple(self._items["exporter"])
 
     def add_resolver(self, spec: ResolverSpec, owner: str, roots: tuple[str, ...]) -> None:
+        """Registra um resolvedor (experimental) com as raízes de `permissions.paths` do dono."""
         if not isinstance(spec, ResolverSpec):
             raise RegistryError("Resolvedor tem que ser ResolverSpec.")
         name, kinds, resolve = spec.name, spec.kinds, spec.resolve
@@ -270,9 +295,11 @@ class Registry:
         self._roots[name] = roots
 
     def resolver(self, name: str) -> ResolverSpec | None:
+        """O resolvedor `name`, ou `None`."""
         return self._items["resolver"].get(name)  # type: ignore[return-value]
 
     def resolver_roots(self, name: str) -> tuple[str, ...]:
+        """Raízes guardadas com o resolvedor `name` (vazio se não há)."""
         return self._roots.get(name, ())
 
     def resolvers_for(self, kind: str) -> list[tuple[str, ResolverSpec]]:
@@ -290,9 +317,11 @@ class Registry:
         return {kind: [name for name, who in self._owners[kind].items() if who == owner] for kind in KINDS}
 
     def owner(self, kind: str, name: str) -> str | None:
+        """Dono (`core` ou id do plugin) de `name` em `kind`, ou `None`."""
         return self._owners[kind].get(name)
 
     def remove_owner(self, owner: str) -> None:
+        """Tira do registro tudo o que `owner` registrou (plugin que falhou ao carregar)."""
         for kind in KINDS:
             for name in [n for n, o in self._owners[kind].items() if o == owner]:
                 del self._owners[kind][name]
@@ -303,7 +332,14 @@ class Registry:
 
 
 def get_registry() -> Registry:
-    """Registro do processo; montado na primeira consulta (start-up da CLI continua rápido)."""
+    """Registro do processo; montado na primeira consulta (start-up da CLI continua rápido).
+
+    Um plugin habilitado que falha ao carregar fica de fora (e aparece no `doctor`);
+    os built-ins sempre entram.
+
+    Returns:
+        O registro com os built-ins e os plugins habilitados.
+    """
     registry = registry_state.current()
     if registry is None:
         from . import loader

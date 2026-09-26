@@ -166,6 +166,7 @@ def _missing(registry, plugin_id, name):
 
 
 def run(args):
+    """`x --list` ou `x <plugin> <comando>`: roda o comando do plugin isolado e devolve o resultado."""
     if args.list:
         if args.plugin_id or args.plugin_command:
             raise ValueError("Use x --list sozinho, ou x <plugin> <comando>.")

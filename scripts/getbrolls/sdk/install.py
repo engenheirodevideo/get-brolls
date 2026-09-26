@@ -629,6 +629,9 @@ def _check_expect(expect, sha):
 
 
 def install(source, confirm, expect=None):
+    """Prévia (sem `confirm`) ou instalação de um plugin a partir de pasta local ou URL git.
+
+    Confirmar exige o sha256 da prévia em `expect`; o plugin sai instalado e habilitado."""
     loader.read_state()  # plugins.json corrompido recusa antes de qualquer mutação.
     _sweep_stale_staging()
     staging = _staging()
@@ -666,6 +669,9 @@ def _diff(old_folder, old_manifest, new_folder, new_manifest):
 
 
 def update(plugin_id, confirm, expect=None):
+    """Prévia (com o diff) ou troca de um plugin instalado pela versão atual da origem.
+
+    Confirmar exige o sha256 da prévia em `expect`; um plugin desabilitado continua desabilitado."""
     state = loader.read_state()  # plugins.json corrompido recusa antes de qualquer mutação.
     origin = (state.get("sources") or {}).get(plugin_id)
     if origin is None:
