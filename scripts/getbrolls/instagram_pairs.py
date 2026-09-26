@@ -10,6 +10,10 @@ por execução) e param no primeiro HTTP 403/429 para nunca martelar uma conta e
 CDN já está recusando.
 """
 
+# pylint: disable=missing-function-docstring,unreachable,too-many-arguments,too-many-locals
+# pylint: disable=raise-missing-from,too-many-statements,broad-exception-caught,unnecessary-lambda-assignment
+# Legado: ocorrências pré-existentes (corpo idêntico à origin/main).
+
 from __future__ import annotations
 
 import argparse
@@ -259,7 +263,7 @@ def ensure_tool(name: str) -> None:
 
 
 def _reused_part_is_valid(path: Path) -> bool:
-    """Sanidade rápida via ffprobe numa parte reaproveitada; mídia corrompida/truncada não pode seguir em silêncio."""
+    """Sanidade rápida via ffprobe numa parte reaproveitada; mídia corrompida/truncada não segue em silêncio."""
     try:
         subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", str(path)],
@@ -287,7 +291,7 @@ def _log_pair_stage(stage: str | None, started: float, *, status: str, size: int
     )
 
 
-def download_or_reuse(  # noqa: C901, PLR0913, PLR0915 - existing size; one download/reuse/verify branch per source combination
+def download_or_reuse(  # noqa: C901, PLR0913, PLR0915 - existing size; one branch per source combination
     *,
     cfg_path: Path,
     part_path: Path,
@@ -351,7 +355,8 @@ def download_or_reuse(  # noqa: C901, PLR0913, PLR0915 - existing size; one down
             stderr = exc.stderr or b""
             if isinstance(stderr, bytes):
                 stderr = stderr.decode("utf-8", errors="replace")
-            blocked = BLOCKED_RE.search(stderr) if exc.returncode == 22 else None  # noqa: PLR2004 - curl exit 22 (--fail), see the comment at the top of the file
+            curl_fail = exc.returncode == 22  # noqa: PLR2004 - curl --fail; ver comentário no topo do arquivo
+            blocked = BLOCKED_RE.search(stderr) if curl_fail else None
             if blocked:
                 _log_pair_stage(stage, started, status="error")
                 message = (
@@ -371,7 +376,8 @@ def download_or_reuse(  # noqa: C901, PLR0913, PLR0915 - existing size; one down
         except subprocess.TimeoutExpired as exc:
             _log_pair_stage(stage, started, status="error")
             die(
-                f"curl timed out after {exc.timeout}s para o config {cfg_path}; recapture URLs expiradas/proibidas e tente de novo"
+                f"curl timed out after {exc.timeout}s para o config {cfg_path}; recapture URLs "
+                "expiradas/proibidas e tente de novo"
             )
         except (subprocess.SubprocessError, OSError):
             _log_pair_stage(stage, started, status="error")
@@ -581,7 +587,9 @@ def process_one(  # noqa: PLR0913 - existing size; one field per stem/config/out
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Baixa/mescla pares de configs curl de vídeo+áudio de Reels do Instagram sem imprimir URLs assinadas.",
+        description=(
+            "Baixa/mescla pares de configs curl de vídeo+áudio de Reels do Instagram sem imprimir URLs assinadas."
+        ),
         epilog=(
             "Lotes grandes: use --pace MIN-MAX (padrão 20-60s) e --max-per-run (padrão 25) para dividir "
             "o lote em execuções menores e manter o ritmo. O resumo em --summary-json é sempre gravado de forma "
@@ -646,7 +654,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--pace",
         default=DEFAULT_PACE,
-        help="Pausa aleatória em segundos entre stems, como MIN-MAX (padrão 20-60); 0 desabilita. Nunca antes do primeiro stem.",
+        help=(
+            "Pausa aleatória em segundos entre stems, como MIN-MAX (padrão 20-60); "
+            "0 desabilita. Nunca antes do primeiro stem."
+        ),
     )
     parser.add_argument(
         "--max-per-run",
@@ -657,7 +668,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--continue-on-error",
         action="store_true",
-        help="Registra um stem com falha e continua em vez de interromper o lote. HTTP 403/429 sempre interrompe o lote.",
+        help=(
+            "Registra um stem com falha e continua em vez de interromper o lote. HTTP 403/429 sempre interrompe o lote."
+        ),
     )
     return parser
 
@@ -690,7 +703,8 @@ def record_queue_cooldown(project: Path | None, reason: str) -> str | None:
     """Abre um cooldown em `<project>/work/queue.json`, sob a trava do projeto; None quando não registrado."""
     if project is None:
         print(
-            "WARNING: cooldown não registrado (nenhum --project informado; use --project para gravar o cooldown em work/queue.json)",
+            "WARNING: cooldown não registrado (nenhum --project informado; use --project "
+            "para gravar o cooldown em work/queue.json)",
             file=sys.stderr,
         )
         return None
@@ -773,7 +787,7 @@ def _record_failure(
     return None, None
 
 
-def run_batch(pairs, *, output_for, args) -> dict:  # noqa: C901 - existing size; pace/cap/summary/block-detection loop over the stems
+def run_batch(pairs, *, output_for, args) -> dict:  # noqa: C901 - existing size; pace/cap/summary loop over stems
     """Processa stems em ordem com ritmo, teto por execução, resumo incremental e detecção de bloqueio."""
     low, high = parse_pace(args.pace)
     if args.max_per_run < 1:
@@ -808,7 +822,7 @@ def run_batch(pairs, *, output_for, args) -> dict:  # noqa: C901 - existing size
             logs.event(_log, logging.INFO, "pair_item_start", shortcode=item_id)
             try:
                 result = _collect_one(stem, video_config, audio_config, output, args)
-            except Exception as exc:  # noqa: BLE001 - one item's failure (network/provider/etc.) must not kill the batch
+            except Exception as exc:  # noqa: BLE001 - one item's failure must not kill the batch
                 stop_reason, fatal = _record_failure(results, stem, exc, args)
                 if stop_reason == "cooldown":
                     stopped_by = "cooldown"
@@ -876,7 +890,7 @@ def _main(argv: list[str] | None = None) -> int:
     except CollectError as exc:
         print(f"-- lote interrompido: {exc.message}", file=sys.stderr)
         return exc.code
-    except Exception as exc:  # noqa: BLE001 - summary is already written; batch must end with a clean message, not a raw traceback
+    except Exception as exc:  # noqa: BLE001 - batch must end with a clean message, not a raw traceback
         print(f"-- lote interrompido: {type(exc).__name__}: {redact(str(exc))}", file=sys.stderr)
         return 1
 
