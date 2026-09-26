@@ -22,6 +22,7 @@ from getbrolls.sdk import (
     ResolverHit,
     ResolverSpec,
     loader,
+    testing,
 )
 from getbrolls.sdk.api import ApiError, PluginApi
 from getbrolls.sdk.contracts import CORE
@@ -318,7 +319,7 @@ class LoadedPluginTests(LoaderTestCase):
         folder = self.install(self.manifest(), code=EXPORT_CODE)
         row = loader.inventory()[0]
         self.assertEqual({"exporters": ["demo_html"], "resolvers": ["demo"]}, row["contributes"])
-        checked = loader.trial_load(folder)
+        checked = testing.check_plugin(folder)
         self.assertEqual(["demo_html"], checked["contracts"]["exporters"])
         self.assertEqual(["demo"], checked["contracts"]["resolvers"])
 

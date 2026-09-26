@@ -140,7 +140,47 @@ def check_registry(registry, owner):
 
 
 def check_plugin(folder):
-    """Manifesto + `register(api)` num registro descartável + as checagens acima."""
-    from . import loader
+    """Manifesto + `register(api)` num registro descartável + as checagens acima.
 
-    return loader.trial_load(Path(folder).resolve())
+    É o `plugins --action check`: valida o manifesto e executa o `register()` contra
+    um registro descartável com os built-ins, para pegar colisão de nome sem habilitar
+    nada."""
+    from .. import presets, providers
+    from . import guard, loader
+    from .manifest import MANIFEST_NAME, compatibility_problem, read_manifest
+    from .registry import Registry
+
+    folder = Path(folder).resolve()
+    manifest = read_manifest(folder, require_folder_match=False)
+    problem = compatibility_problem(manifest)
+    if problem:
+        raise ValueError(f"Plugin {manifest['id']}: {problem}")
+    # O mesmo que o `install` recusaria: VCS aninhado, link simbólico e bytecode.
+    nested = loader.nested_vcs(folder)
+    if nested is not None:
+        raise ValueError(f"Plugin {manifest['id']}: pasta de controle de versão aninhada ({nested}); tire-a da pasta.")
+    content = loader.content_problem(folder)
+    if content is not None:
+        raise ValueError(f"Plugin {manifest['id']}: {loader.content_reason(content, 'rode o check de novo')}")
+    registry = Registry()
+    providers.register_builtins(registry)
+    presets.register_builtins(registry)
+    plugin_id = manifest["id"]
+    loader.disable_bytecode()
+    # Mesmo isolamento do carregamento (BaseException, tipo seguro, sem cadeia). Aqui,
+    # e só aqui, o texto de um tipo embutido exato (RuntimeError('boom')) também aparece:
+    # `check` é a ferramenta de quem escreve o plugin, rodando a pasta que ele apontou.
+    failure = guard.attempt(plugin_id, loader.register_plugin, folder, manifest, registry, builtin_text=True).failure
+    if failure is not None:
+        detail = f": {guard.without_prefix(plugin_id, failure.text)}" if failure.text else "."
+        raise ValueError(f"Plugin {plugin_id}: {failure.type_name}{detail}") from None
+    checked = guard.attempt(plugin_id, check_registry, registry, plugin_id, builtin_text=True)
+    if checked.failure is not None:
+        detail = checked.failure.text or f"a checagem falhou ({checked.failure.type_name})."
+        raise ValueError(f"Plugin {plugin_id}: contrato: {guard.without_prefix(plugin_id, detail)}") from None
+    return {
+        "ok": True,
+        **loader.plugin_preview(manifest, folder),
+        "manifest_file": MANIFEST_NAME,
+        "contracts": checked.value,
+    }

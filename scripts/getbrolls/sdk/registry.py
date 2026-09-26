@@ -4,6 +4,7 @@ import dataclasses
 import logging
 from typing import cast
 
+from . import registry_state
 from .contracts import (
     CORE,
     MATCH_KINDS,
@@ -19,13 +20,10 @@ from .contracts import (
     ResolverSpec,
     Route,
 )
+from .errors import RegistryError
 
 KINDS = ("provider", "preset", "route", "command", "exporter", "resolver")
 HELP_MAX_CHARS = 200
-
-
-class RegistryError(ValueError):
-    pass
 
 
 def _check_name(kind: str, name: object) -> None:
@@ -304,12 +302,10 @@ class Registry:
         self._roots = {name: roots for name, roots in self._roots.items() if name in self._items["resolver"]}
 
 
-_STATE: dict[str, Registry | None] = {"registry": None}
-
-
 def get_registry() -> Registry:
     """Registro do processo; montado na primeira consulta (start-up da CLI continua rápido)."""
-    if _STATE["registry"] is None:
+    registry = registry_state.current()
+    if registry is None:
         from . import loader
 
         registry = _builtins_only()
@@ -325,8 +321,8 @@ def get_registry() -> Registry:
 
             logs.event(logs.get("sdk"), logging.WARNING, "plugin_failed", plugin="-", error=safe_type_name(exc))
             registry = _builtins_only()
-        _STATE["registry"] = registry
-    return _STATE["registry"]
+        registry_state.remember(registry)
+    return registry
 
 
 def _builtins_only() -> Registry:
@@ -340,7 +336,7 @@ def _builtins_only() -> Registry:
 
 def reset_registry() -> None:
     """Descarta o registro montado: `plugins enable/disable` e testes recomeçam do zero."""
-    _STATE["registry"] = None
+    registry_state.forget()
 
 
 def built_registry() -> Registry | None:
@@ -348,4 +344,4 @@ def built_registry() -> Registry | None:
     colateral (`get_registry()` monta e roda plugins habilitados na primeira
     consulta). Usado por quem só quer aproveitar um registro que outra parte do
     comando já construiu, sem forçar carregamento de código de plugin."""
-    return _STATE["registry"]
+    return registry_state.current()

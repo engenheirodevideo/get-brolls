@@ -10,7 +10,6 @@ import hashlib
 import json
 import logging
 import os
-import stat
 import sys
 import types
 from pathlib import Path
@@ -18,10 +17,12 @@ from pathlib import Path
 from .. import logs
 from ..ledger import atomic_write
 from ..rules import home_dir
-from . import guard
+from . import guard, registry_state
 from .api import PluginApi
+from .files import TOP_LEVEL_VCS, counted_files
+from .files import is_link as _is_link  # `export_folder`/`export_plan` leem `loader._is_link`
 from .guard import without_prefix
-from .manifest import MANIFEST_NAME, ManifestError, compatibility_problem, read_manifest
+from .manifest import ManifestError, compatibility_problem, read_manifest
 
 _log = logs.get("sdk")
 
@@ -53,50 +54,17 @@ def state_path():
     return home_dir() / "plugins.json"
 
 
-# Arquivo de lixo de SO que aparece sozinho (Finder/Explorer abriram a pasta): contá-lo
-# no hash suspenderia o plugin por um arquivo que ninguém escreveu de propósito. Fica
-# fora do hash — e por isso o `install` nunca o materializa: código do plugin
-# não pode ler nem executar esses nomes, nem o `.git` de topo (docs/SDK.md).
-JUNK_FILENAMES = frozenset({".DS_Store", "Thumbs.db", "desktop.ini"})
 # Bytecode ao lado da fonte: o `import` de um módulo irmão lê um `.pyc` de
 # `__pycache__` (um `.pyc` com hash não conferido nem olha a fonte), então o código
 # que roda deixaria de ser o que a pessoa revisou. Pasta com bytecode, ou com
 # link simbólico (conteúdo fora do hash), fica `invalid` e nunca carrega.
 BYTECODE_DIRNAME = "__pycache__"
 BYTECODE_SUFFIXES = (".pyc", ".pyo")
-# Pastas de VCS. Só o `.git` DE TOPO (o de um `git pull`/clone da própria pasta do
-# plugin) fica fora do hash: é metadado do controle de versão, não conteúdo que
-# `_import` executa. Qualquer pasta de VCS em outro lugar (`vendor/.hg`, `.svn`
-# aninhado, `.git` dentro de subpasta) torna o plugin inválido (`nested_vcs`), e
-# `.hg`/`.svn` de topo contam no hash como qualquer arquivo.
+# Pastas de VCS. Só o `.git` DE TOPO (`files.TOP_LEVEL_VCS`) fica fora do hash.
+# Qualquer pasta de VCS em outro lugar (`vendor/.hg`, `.svn` aninhado, `.git` dentro
+# de subpasta) torna o plugin inválido (`nested_vcs`), e `.hg`/`.svn` de topo contam
+# no hash como qualquer arquivo.
 VCS_DIRNAMES = frozenset({".git", ".hg", ".svn"})
-TOP_LEVEL_VCS = ".git"
-
-
-def _counted_files(folder):
-    """(caminho relativo, caminho) de cada arquivo que entra no hash, em ordem estável.
-
-    Ordena por `rel.parts` (tupla de `str`, componente por componente), não pelo
-    `Path` em si: no `WindowsPath` real, `Path.__lt__` compara sem diferenciar
-    maiúsculas de minúsculas, o que mudaria a ordem (e portanto o hash) entre
-    Windows e POSIX para o mesmo conteúdo. `.parts` é texto puro em
-    qualquer SO, então a comparação de tupla já é por ponto de código — e dá a
-    MESMA ordem que o `sorted(Path...)` antigo já dava no POSIX (`sub/x.py`
-    antes de `sub.py`, porque a tupla compara `"sub"` com `"sub.py"` antes de
-    olhar o resto do caminho): nenhum pin de plugin no POSIX muda com este
-    fix. Ordenar pela string inteira (`rel.as_posix()`) foi tentado antes e
-    descartado — inverte esse par (`.` fica antes de `/` na comparação de string
-    inteira), o que mudaria pin no POSIX também, não só no Windows."""
-    candidates = []
-    for path in folder.rglob("*"):
-        if not path.is_file():
-            continue
-        rel = path.relative_to(folder)
-        if rel.name in JUNK_FILENAMES or rel.parts[0] == TOP_LEVEL_VCS:
-            continue
-        candidates.append((rel, path))
-    candidates.sort(key=lambda item: item[0].parts)
-    yield from candidates
 
 
 def nested_vcs(folder):
@@ -109,42 +77,6 @@ def nested_vcs(folder):
         if not rel.parts and TOP_LEVEL_VCS in dirs:
             dirs.remove(TOP_LEVEL_VCS)
     return None
-
-
-# Reparse points que são "name surrogate" — apontam para outro caminho, como um
-# link: a junction (MOUNT_POINT) e o link simbólico do NTFS. Os outros reparse
-# points (arquivo sob demanda do OneDrive, deduplicação) guardam o próprio
-# conteúdo e não tiram nada do hash; tratá-los como link deixaria `invalid` todo
-# plugin numa pasta sincronizada. As constantes só existem no `stat` do Windows.
-_NAME_SURROGATE_TAGS = frozenset(
-    {
-        getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003),
-        getattr(stat, "IO_REPARSE_TAG_SYMLINK", 0xA000000C),
-    }
-)
-
-
-def _is_link(path, windows=None):
-    """Link simbólico, ou junction do NTFS (que não é `is_symlink()`).
-
-    No Windows, além de `is_symlink()` e de `Path.is_junction()` (3.12+), confere o
-    `st_reparse_tag` do `lstat` — o que acha a junction também no 3.11. Só as tags
-    de "name surrogate" contam; o bit `FILE_ATTRIBUTE_REPARSE_POINT` sozinho não.
-    No POSIX, `is_symlink()` basta."""
-    if path.is_symlink():
-        return True
-    if windows is None:
-        windows = os.name == "nt"
-    if not windows:
-        return False
-    is_junction = getattr(path, "is_junction", None)
-    if is_junction is not None and is_junction():
-        return True
-    try:
-        tag = getattr(os.lstat(path), "st_reparse_tag", 0)
-    except OSError:
-        return False
-    return tag in _NAME_SURROGATE_TAGS
 
 
 def is_bytecode_name(name, is_dir):
@@ -226,7 +158,7 @@ def _hash_file(path, budget, *into):
 
 
 def folder_digest(folder):
-    """Hash de todo arquivo da pasta, exceto lixo de SO (`JUNK_FILENAMES`) e o
+    """Hash de todo arquivo da pasta, exceto lixo de SO (`files.JUNK_FILENAMES`) e o
     `.git` de topo — o resto conta sem exceção. Link simbólico e bytecode nem
     chegam aqui: tornam o plugin `invalid` antes (`content_problem`).
 
@@ -234,7 +166,7 @@ def folder_digest(folder):
     `ValueError`, quando passa): nunca carrega um arquivo inteiro na memória."""
     digest = hashlib.sha256()
     budget = DIGEST_MAX_TOTAL_BYTES
-    for rel, path in _counted_files(folder):
+    for rel, path in counted_files(folder):
         digest.update(rel.as_posix().encode() + b"\0")
         budget -= _hash_file(path, budget, digest)
         digest.update(b"\0")
@@ -245,7 +177,7 @@ def file_digests(folder):
     """sha256 por arquivo, com o mesmo recorte e os mesmos tetos de `folder_digest` — base do diff do `update`."""
     result = {}
     budget = DIGEST_MAX_TOTAL_BYTES
-    for rel, path in _counted_files(folder):
+    for rel, path in counted_files(folder):
         one = hashlib.sha256()
         budget -= _hash_file(path, budget, one)
         result[rel.as_posix()] = one.hexdigest()
@@ -261,7 +193,7 @@ def pin_digests(folder):
     whole = hashlib.sha256()
     files = {}
     budget = DIGEST_MAX_TOTAL_BYTES
-    for rel, path in _counted_files(folder):
+    for rel, path in counted_files(folder):
         one = hashlib.sha256()
         whole.update(rel.as_posix().encode() + b"\0")
         budget -= _hash_file(path, budget, whole, one)
@@ -490,7 +422,7 @@ def _import(folder, manifest):
     return module
 
 
-def _register(folder, manifest, registry):
+def register_plugin(folder, manifest, registry):
     module = _import(folder, manifest)
     register = getattr(module, "register", None)
     if not callable(register):
@@ -525,7 +457,7 @@ def _load_one(row, folder, manifest, pinned, registry):
         reason = _pin_mismatch_reason(row, folder, pinned)
         if reason is not None:
             return reason
-        _register(folder, manifest, registry)
+        register_plugin(folder, manifest, registry)
         return None
 
     # Código de plugin é de terceiro: qualquer falha (incl. SystemExit de um sys.exit()
@@ -560,7 +492,7 @@ def _load_one(row, folder, manifest, pinned, registry):
     return row
 
 
-def _no_bytecode():
+def disable_bytecode():
     """Plugin que importa um módulo irmão (`sys.path` + `import`) faria o `import`
     normal gravar `__pycache__` na pasta dele — o que muda o hash e suspende o
     próprio plugin depois do primeiro uso. Desligado para o processo inteiro antes
@@ -573,7 +505,7 @@ def load_enabled(registry):
     corrompido ou uma pasta ilegível derrubar os built-ins — o pior caso é
     carregar nenhum plugin, registrado como `plugin_failed` com `plugin="-"`.
 
-    `_no_bytecode()` só roda quando existe de fato uma linha `enabled` para
+    `disable_bytecode()` só roda quando existe de fato uma linha `enabled` para
     carregar (na borda do primeiro `_load_one` que vai importar) — não no topo
     daqui incondicionalmente: numa instalação sem plugin nenhum,
     `providers`/`search`/`doctor` (que montam o registro assim mesmo) não
@@ -593,7 +525,7 @@ def load_enabled(registry):
 
     for row, folder, manifest in rows:
         if row["status"] == "enabled":
-            _no_bytecode()
+            disable_bytecode()
         stored_row = _load_one(row, folder, manifest, pinned, registry)
         registry.plugins[stored_row["id"]] = stored_row
 
@@ -618,9 +550,7 @@ def declared_by(name, kind="providers"):
     a linha nele), cai para o inventário pré-carga (`entries()`, só
     manifesto/pin); um `plugins.json` corrompido nesse fallback vira "não sei
     dizer o motivo" (`None`), não uma queda de quem chamou."""
-    from .registry import built_registry
-
-    registry = built_registry()
+    registry = registry_state.current()
     if registry is not None:
         for row in registry.plugins.values():
             if name in (row.get("contributes") or {}).get(kind, []):
@@ -707,7 +637,7 @@ def permission_warnings(manifest):
     return warnings
 
 
-def _preview(manifest, folder, sha=None):
+def plugin_preview(manifest, folder, sha=None):
     preview = {
         "id": manifest["id"],
         "name": manifest["name"],
@@ -730,8 +660,6 @@ def enable(plugin_id, confirm, expect=None):
     enable"): a prévia traz o `diff` dos arquivos contra o mapa guardado no pin, e
     confirmar exige `--expect <sha256>` desta prévia — paridade com install/update,
     sem re-pinar às cegas o que estiver no disco."""
-    from .registry import reset_registry
-
     row, folder, manifest = find(plugin_id)
     if manifest is None:
         raise ValueError(row["reason"])
@@ -739,7 +667,7 @@ def enable(plugin_id, confirm, expect=None):
     if problem:
         raise ValueError(f"Plugin {plugin_id}: {problem}")
     sha, files = pin_digests(folder)
-    preview = _preview(manifest, folder, sha)
+    preview = plugin_preview(manifest, folder, sha)
     names = sorted(files)
     preview["files"] = {
         "count": len(names),
@@ -780,7 +708,7 @@ def enable(plugin_id, confirm, expect=None):
     state["enabled"][plugin_id] = pin_entry(manifest, sha, files)
     state.get("last_pins", {}).pop(plugin_id, None)
     _write_state(state)
-    reset_registry()
+    registry_state.forget()
     logs.event(_log, logging.INFO, "plugin_enabled", plugin=plugin_id, version=manifest["version"])
     return {"enabled": True, "plugin": preview, **extra, "note": DONE_NOTE}
 
@@ -798,8 +726,6 @@ def pin(manifest, folder, origin=None, enable=True, digests=None):
     `digests` (`(sha, files)` já calculados) vem do `install`/`update`: o pin grava
     exatamente o conteúdo que a pessoa confirmou no staging, não um novo hash da
     pasta depois da troca — se alguém mexer nela no meio, o plugin fica suspenso."""
-    from .registry import reset_registry
-
     plugin_id = manifest["id"]
     sha, files = digests if digests is not None else pin_digests(folder)
     state = read_state()
@@ -813,13 +739,11 @@ def pin(manifest, folder, origin=None, enable=True, digests=None):
     if origin is not None:
         state.setdefault("sources", {})[plugin_id] = origin
     _write_state(state)
-    reset_registry()
+    registry_state.forget()
     return sha
 
 
 def disable(plugin_id):
-    from .registry import reset_registry
-
     state = read_state()
     last = state["enabled"].pop(plugin_id, None)
     was = last is not None
@@ -828,43 +752,6 @@ def disable(plugin_id):
         # exige `--expect`; conteúdo igual religa só com `--yes`.
         state.setdefault("last_pins", {})[plugin_id] = last
         _write_state(state)
-    reset_registry()
+    registry_state.forget()
     logs.event(_log, logging.INFO, "plugin_disabled", plugin=plugin_id, was_enabled=was)
     return {"disabled": True, "id": plugin_id, "was_enabled": was}
-
-
-def trial_load(folder):
-    """`plugins check`: valida manifesto e executa o register() contra um registro
-    descartável com os built-ins, para pegar colisão de nome sem habilitar nada."""
-    from .. import presets, providers
-    from .registry import Registry
-    from .testing import check_registry
-
-    manifest = read_manifest(folder, require_folder_match=False)
-    problem = compatibility_problem(manifest)
-    if problem:
-        raise ValueError(f"Plugin {manifest['id']}: {problem}")
-    # O mesmo que o `install` recusaria: VCS aninhado, link simbólico e bytecode.
-    nested = nested_vcs(folder)
-    if nested is not None:
-        raise ValueError(f"Plugin {manifest['id']}: pasta de controle de versão aninhada ({nested}); tire-a da pasta.")
-    content = content_problem(folder)
-    if content is not None:
-        raise ValueError(f"Plugin {manifest['id']}: {content_reason(content, 'rode o check de novo')}")
-    registry = Registry()
-    providers.register_builtins(registry)
-    presets.register_builtins(registry)
-    plugin_id = manifest["id"]
-    _no_bytecode()
-    # Mesmo isolamento do carregamento (BaseException, tipo seguro, sem cadeia). Aqui,
-    # e só aqui, o texto de um tipo embutido exato (RuntimeError('boom')) também aparece:
-    # `check` é a ferramenta de quem escreve o plugin, rodando a pasta que ele apontou.
-    failure = guard.attempt(plugin_id, _register, folder, manifest, registry, builtin_text=True).failure
-    if failure is not None:
-        detail = f": {guard.without_prefix(plugin_id, failure.text)}" if failure.text else "."
-        raise ValueError(f"Plugin {plugin_id}: {failure.type_name}{detail}") from None
-    checked = guard.attempt(plugin_id, check_registry, registry, plugin_id, builtin_text=True)
-    if checked.failure is not None:
-        detail = checked.failure.text or f"a checagem falhou ({checked.failure.type_name})."
-        raise ValueError(f"Plugin {plugin_id}: contrato: {guard.without_prefix(plugin_id, detail)}") from None
-    return {"ok": True, **_preview(manifest, folder), "manifest_file": MANIFEST_NAME, "contracts": checked.value}

@@ -37,7 +37,9 @@ def _check(args):
     folder = Path(args.path).expanduser().resolve()
     if not folder.is_dir():
         raise ValueError("--path tem que ser a pasta do plugin.")
-    return loader.trial_load(folder)
+    from . import testing
+
+    return testing.check_plugin(folder)
 
 
 def _install(args):

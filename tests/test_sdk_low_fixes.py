@@ -17,7 +17,7 @@ from getbrolls import brief, providers
 from getbrolls.commands import _plugin_reference_note, doctor_plugin_problems
 from getbrolls.http import ProviderError
 from getbrolls.sdk import api as sdk_api
-from getbrolls.sdk import loader
+from getbrolls.sdk import loader, testing
 from getbrolls.sdk.api import PluginApi
 from getbrolls.sdk.manifest import read_manifest
 from getbrolls.sdk.plugin_commands import _missing
@@ -158,7 +158,7 @@ class PreviewAndCheckMessagesTests(LoaderTestCase):
         with patch.object(sdk_api.os.path, "ismount", lambda p: Path(p) == mount or real_ismount(p)):
             self.assertEqual([str(mount)], sdk_api.ignored_paths(read_manifest(folder)))
             preview = loader.enable("demo", confirm=False)["plugin"]
-            checked = loader.trial_load(folder)
+            checked = testing.check_plugin(folder)
         for out in (preview, checked):
             self.assertTrue(any("ponto de montagem" in w and str(mount) in w for w in out["warnings"]))
 
@@ -167,7 +167,7 @@ class PreviewAndCheckMessagesTests(LoaderTestCase):
         (folder / "__pycache__").mkdir()
         (folder / "__pycache__" / "plugin.cpython-314.pyc").write_bytes(b"x")
         with self.assertRaises(ValueError) as caught:
-            loader.trial_load(folder)
+            testing.check_plugin(folder)
         self.assertIn("bytecode", str(caught.exception))
         self.assertIn("Apague a pasta __pycache__", str(caught.exception))
         self.assertIn("isso basta — e rode o check de novo", str(caught.exception))

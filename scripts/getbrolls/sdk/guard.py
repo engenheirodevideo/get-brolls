@@ -10,6 +10,7 @@ plugin passa primeiro por um round-trip de JSON: um objeto de terceiro com
 
 import builtins
 import contextlib
+import contextvars
 import copy
 import itertools
 import json
@@ -19,6 +20,7 @@ import re
 import sys
 import types
 import unicodedata
+from pathlib import Path
 from typing import Any, NamedTuple
 
 from .. import logs
@@ -27,7 +29,9 @@ from ..http import public_url as _core_public_url
 from ..models import empty_output
 from ..runtime import redact
 from .contracts import PluginError, RouteResult
+from .errors import ApiError, RegistryError
 from .jsonschema import errors
+from .manifest import ManifestError
 from .schemas import load
 
 _log = logs.get("sdk")
@@ -139,10 +143,6 @@ def remember_config(owner, data):
 
 
 def _trusted_types():
-    from .api import ApiError
-    from .manifest import ManifestError
-    from .registry import RegistryError
-
     return (PluginError, ProviderError, ApiError, ManifestError, RegistryError)
 
 
@@ -549,10 +549,31 @@ def _route_result(result):
     return str(raw_path), license_text
 
 
+# (id do plugin, pasta de trabalho) da rota em execução. Só o core liga isto, em
+# volta de `Route.prepare`; fora dali `api.download`/`api.local_file` recusam.
+_ACTIVE_ROUTE: contextvars.ContextVar[tuple[str, Path] | None] = contextvars.ContextVar(
+    "getbrolls_active_route", default=None
+)
+
+
+@contextlib.contextmanager
+def route_scope(plugin_id, workdir):
+    """Liga `api.download`/`api.local_file` do plugin `plugin_id` à pasta `workdir`."""
+    token = _ACTIVE_ROUTE.set((plugin_id, Path(workdir).resolve()))
+    try:
+        yield
+    finally:
+        _ACTIVE_ROUTE.reset(token)
+
+
+def active_route():
+    """`(id do plugin, pasta de trabalho)` da rota em execução, ou `None` fora de uma."""
+    return _ACTIVE_ROUTE.get()
+
+
 def route_call(owner, name, route, item, workdir):
     """Roda `route.prepare(item, workdir)` com `api.download`/`api.local_file` presos
     ao `workdir`; qualquer falha (incl. SystemExit) vira `ProviderError` com o id do plugin."""
-    from .api import route_scope
 
     def run():
         with route_scope(owner, workdir):

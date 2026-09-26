@@ -21,7 +21,7 @@ from test_sdk_loader import MANIFEST, LoaderTestCase
 
 from getbrolls import providers, rules
 from getbrolls.http import ProviderError
-from getbrolls.sdk import guard, loader
+from getbrolls.sdk import guard, loader, testing
 from getbrolls.sdk.registry import Registry, get_registry, reset_registry
 
 SECRET = "sk_test_SECRET123"
@@ -330,7 +330,7 @@ class TrialLoadIsolationTests(LoaderTestCase):
             "    raise HostileStr(1)\n",
         ):
             with self.subTest(body=body), self.assertRaises(ValueError) as caught:
-                loader.trial_load(self.folder(HOSTILE_HELPERS + "\n\ndef register(api):\n" + body))
+                testing.check_plugin(self.folder(HOSTILE_HELPERS + "\n\ndef register(api):\n" + body))
             self.assertTrue(str(caught.exception).startswith("Plugin demo:"))
             self.assertNotIn(SECRET, str(caught.exception))
             self.assertIsNone(caught.exception.__cause__)
@@ -342,7 +342,7 @@ class TrialLoadIsolationTests(LoaderTestCase):
             "    def _old(self, query, limit, media):\n",
         )
         with self.assertRaises(ValueError) as caught:
-            loader.trial_load(self.folder(code))
+            testing.check_plugin(self.folder(code))
         self.assertTrue(str(caught.exception).startswith("Plugin demo:"))
 
 

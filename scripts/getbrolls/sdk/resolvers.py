@@ -16,6 +16,7 @@ from .. import logs
 from ..http import ProviderError
 from . import guard, safe_copy
 from .contracts import RESOLVER_KINDS, ResolverHit
+from .files import is_link
 
 _log = logs.get("sdk")
 
@@ -49,12 +50,10 @@ class _RefusedError(Exception):
 def _checked_file(owner, raw, roots, extensions):
     """Confere o arquivo no disco (nada de código do plugin roda aqui) e devolve
     `(caminho resolvido, stat)`; o descritor aberto para conferir já sai fechado."""
-    from .loader import _is_link
-
     shown = guard.plain_line(Path(raw).name or "arquivo", limit=120)
     if not roots:
         raise _RefusedError("nenhuma pasta de permissions.paths vale neste sistema.")
-    if _is_link(Path(raw)):
+    if is_link(Path(raw)):
         raise _RefusedError(f"{shown} é um link; aponte para o arquivo de verdade.")
     try:
         resolved = Path(raw).resolve(strict=True)

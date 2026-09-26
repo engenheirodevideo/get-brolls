@@ -1,7 +1,5 @@
 """Objeto entregue ao `register(api)` do plugin: o único caminho de entrada no registro."""
 
-import contextlib
-import contextvars
 import json
 import logging
 import os
@@ -16,30 +14,18 @@ from ..models import candidate as core_candidate
 from ..rules import home_dir
 from . import guard, safe_copy
 from .contracts import CommandSpec, ExporterSpec, ResolverSpec
+from .errors import ApiError
+from .files import bad_file_name, checked_roots
 
 _log = logs.get("sdk")
 
-
-class ApiError(ValueError):
-    """Recusa escrita pelo próprio `PluginApi` (uso errado da API): o texto é do core,
-    então chega à pessoa mesmo quando o plugin deixa a exceção subir."""
-
-
-# Nome de arquivo que a rota pode pedir dentro da pasta de trabalho: sem barra,
-# sem `..`, sem começar por ponto (nada de arquivo escondido nem caminho).
-FILE_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+# Liga `api.download`/`api.local_file` de um plugin à pasta da rota em execução. Mora no
+# `guard`, que o usa em `route_call`; continua acessível aqui como sempre foi.
+route_scope = guard.route_scope
 
 # Extensão simples (ponto + 1-8 letras/dígitos minúsculos) usada para nomear o arquivo
 # copiado por `api.local_file` como `local<sufixo>`; qualquer outra coisa vira `.bin`.
 SUFFIX_RE = re.compile(r"\.[a-z0-9]{1,8}")
-
-# Nomes reservados do Windows (case-insensitive): mesmo num projeto rodando em
-# Linux/macOS, o arquivo pode acabar sincronizado ou aberto numa máquina Windows,
-# onde "CON.mp4"/"con"/"LPT1.txt" não são arquivos normais. `stem` = parte antes
-# do primeiro ponto.
-_RESERVED_STEMS = frozenset(
-    {"CON", "PRN", "AUX", "NUL"} | {f"COM{n}" for n in range(10)} | {f"LPT{n}" for n in range(10)}
-)
 
 # Nome de header HTTP (RFC 7230 token): letras, dígitos e os símbolos abaixo, sem
 # espaço nem dois-pontos — o que `http.client.putheader` aceita como nome.
@@ -73,74 +59,12 @@ def _bad_header_value_char(value):
     )
 
 
-def _bad_file_name(name):
-    """`True` quando `name` não serve como nome de arquivo dentro do workdir da rota."""
-    if not isinstance(name, str) or not FILE_NAME_RE.fullmatch(name) or ".." in name or name.endswith("."):
-        return True
-    stem = name.split(".", 1)[0]
-    return stem.upper() in _RESERVED_STEMS
-
-
-# (id do plugin, pasta de trabalho) da rota em execução. Só o core liga isto, em
-# volta de `Route.prepare`; fora dali `api.download`/`api.local_file` recusam.
-_ACTIVE_ROUTE: contextvars.ContextVar[tuple[str, Path] | None] = contextvars.ContextVar(
-    "getbrolls_active_route", default=None
-)
-
-
-@contextlib.contextmanager
-def route_scope(plugin_id, workdir):
-    """Liga `api.download`/`api.local_file` do plugin `plugin_id` à pasta `workdir`."""
-    token = _ACTIVE_ROUTE.set((plugin_id, Path(workdir).resolve()))
-    try:
-        yield
-    finally:
-        _ACTIVE_ROUTE.reset(token)
-
-
-def _same(a, b):
-    try:
-        return Path(a).samefile(b)
-    except OSError:
-        return False
-
-
-def _too_broad(root):
-    """A raiz resolvida é a raiz de um disco (inclusive um ponto de montagem, como
-    `/Volumes/Backup`), a pasta pessoal ou uma pasta que a contém? Comparação pelo
-    arquivo de verdade (`samefile`), não pelo texto: vale para link, firmlink e disco
-    que não diferencia maiúsculas."""
-    if root == Path(root.anchor) or os.path.ismount(root):
-        return True
-    try:
-        home = Path.home().resolve()
-    except (RuntimeError, OSError):
-        return False
-    parts = home.parts
-    return any(_same(root.joinpath(*parts[i:]), home) for i in range(1, len(parts) + 1))
-
-
-def _checked_roots(paths):
-    """`(raízes resolvidas que valem, entradas ignoradas por serem amplas demais)`."""
-    roots, ignored = [], []
-    for raw in paths:
-        path = Path(raw).expanduser()
-        if not path.is_absolute():
-            continue
-        resolved = path.resolve()
-        if _too_broad(resolved):
-            ignored.append(raw)
-        else:
-            roots.append(resolved)
-    return roots, ignored
-
-
 def ignored_paths(manifest):
     """Entradas de `permissions.paths` que, neste sistema, apontam para a raiz de um
     disco, um ponto de montagem, a pasta pessoal ou uma pasta acima dela — ignoradas
     por `api.local_file`. Só lê o manifesto e o disco; não roda código do plugin."""
     try:
-        return _checked_roots(manifest["permissions"]["paths"])[1]
+        return checked_roots(manifest["permissions"]["paths"])[1]
     except (OSError, RuntimeError, ValueError):
         return []
 
@@ -297,7 +221,7 @@ class PluginApi:
         )
 
     def _workdir(self, operation):
-        active = _ACTIVE_ROUTE.get()
+        active = guard.active_route()
         if active is None or active[0] != self.plugin_id:
             raise ProviderError(f"Plugin {self.plugin_id}: api.{operation} só funciona dentro de Route.prepare.")
         return active[1]
@@ -309,7 +233,7 @@ class PluginApi:
         log ou mensagem de erro. O teto é o mesmo do core (`http.DOWNLOAD_MAX_BYTES`).
         """
         workdir = self._workdir("download")
-        if _bad_file_name(name):
+        if bad_file_name(name):
             raise ProviderError(
                 f"Plugin {self.plugin_id}: nome de arquivo inválido; use letras, números, '.', '_' ou '-', sem pasta, "
                 "sem terminar em '.' e sem ser um nome reservado do Windows (CON, PRN, AUX, NUL, COM0-9, LPT0-9)."
@@ -330,7 +254,7 @@ class PluginApi:
         # O manifesto passou na checagem de texto, mas a pasta de verdade pode ser a raiz
         # do disco, um ponto de montagem, a pasta pessoal ou uma pasta acima dela (link,
         # `/Volumes/Macintosh HD`, `/Users`, outra caixa do mesmo nome): ignorada.
-        roots, ignored = _checked_roots(self._manifest["permissions"]["paths"])
+        roots, ignored = checked_roots(self._manifest["permissions"]["paths"])
         for _raw in ignored:
             logs.event(_log, logging.WARNING, "plugin_path_refused", plugin=self.plugin_id, reason="too_broad")
         return roots

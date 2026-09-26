@@ -13,6 +13,8 @@ import os
 import stat
 from pathlib import Path
 
+from .files import is_link
+
 CHUNK_BYTES = 1024 * 1024
 
 # Motivos de `UnsafeFileError`.
@@ -58,11 +60,8 @@ def open_regular(path, *, single_link=True):
     não existe, um link simbólico ou junction é recusado antes de abrir. Quem recebe
     o descritor fecha; numa recusa ele já sai fechado.
     """
-    if not hasattr(os, "O_NOFOLLOW"):
-        from .loader import _is_link
-
-        if _is_link(Path(path)):
-            raise UnsafeFileError(OPEN_FAILED, "OSError")
+    if not hasattr(os, "O_NOFOLLOW") and is_link(Path(path)):
+        raise UnsafeFileError(OPEN_FAILED, "OSError")
     try:
         fd = os.open(path, _READ_FLAGS)
     except OSError as exc:

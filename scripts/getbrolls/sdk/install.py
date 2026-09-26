@@ -30,6 +30,7 @@ from .. import logs
 from ..runtime import force_rmtree, stderr_tail
 from . import loader
 from .contracts import NAME_RE
+from .files import JUNK_FILENAMES, counted_files, is_link
 from .manifest import MANIFEST_MAX_BYTES, MANIFEST_NAME, compatibility_problem, read_manifest
 
 _log = logs.get("sdk")
@@ -37,9 +38,9 @@ _log = logs.get("sdk")
 GIT_URL_RE = re.compile(r"(https://\S+|git@[A-Za-z0-9.-]+:\S+)")
 GIT_TIMEOUT_S = 120
 # Cópia de pasta local: sem metadado de VCS de topo (VCS aninhado é recusado antes,
-# em `_refuse_nested_vcs`) e sem lixo de SO (`loader.JUNK_FILENAMES`), que fica fora
+# em `_refuse_nested_vcs`) e sem lixo de SO (`files.JUNK_FILENAMES`), que fica fora
 # do hash. Bytecode e link simbólico não são ignorados: são recusados.
-COPY_IGNORE = shutil.ignore_patterns(".git", ".hg", ".svn", *sorted(loader.JUNK_FILENAMES))
+COPY_IGNORE = shutil.ignore_patterns(".git", ".hg", ".svn", *sorted(JUNK_FILENAMES))
 # Quantos nomes de arquivo a prévia do install/update lista (o total vem sempre).
 PREVIEW_FILES_MAX = 50
 
@@ -270,7 +271,7 @@ def _refuse_bytecode_path(path):
 
 
 def _is_junk(path):
-    return path.rsplit("/", 1)[-1] in loader.JUNK_FILENAMES
+    return path.rsplit("/", 1)[-1] in JUNK_FILENAMES
 
 
 def _refuse_oversized_blob(path, size):
@@ -429,16 +430,16 @@ def _refuse_nested_vcs(folder):
 
 def _file_list(folder):
     """Arquivos que o pin vai cobrir, para a prévia: total e nomes (no máximo `PREVIEW_FILES_MAX`)."""
-    names = [rel.as_posix() for rel, _path in loader._counted_files(folder)]
+    names = [rel.as_posix() for rel, _path in counted_files(folder)]
     return {"count": len(names), "names": names[:PREVIEW_FILES_MAX], "truncated": len(names) > PREVIEW_FILES_MAX}
 
 
 def _guard_folder_cap(folder):
     """Teto de árvore antes de copiar, no caminho de pasta comum: mesmo recorte de `folder_digest`
-    (`loader._counted_files`), então o que conta aqui é exatamente o que seria
+    (`files.counted_files`), então o que conta aqui é exatamente o que seria
     materializado por `shutil.copytree` com `COPY_IGNORE`."""
     total_bytes = 0
-    for total_files, (_rel, path) in enumerate(loader._counted_files(folder), start=1):
+    for total_files, (_rel, path) in enumerate(counted_files(folder), start=1):
         if total_files > MAX_FILES:
             raise ValueError(f"O plugin tem mais de {MAX_FILES} arquivos; recusado.")
         total_bytes += path.stat().st_size
@@ -462,13 +463,13 @@ def _materialize(source, dest):
         # Só uma PASTA `.git` de verdade faz da origem um repositório: um arquivo
         # `.git` (gitfile de worktree/submódulo) ou um link apontaria o clone para
         # outro repositório, não para a pasta que a pessoa está vendo.
-        if git_dir.is_dir() and not loader._is_link(git_dir):
+        if git_dir.is_dir() and not is_link(git_dir):
             return str(folder), _from_git(folder.as_uri(), dest)
         _checked_manifest(folder)
         _refuse_nested_vcs(folder)
         _refuse_links_and_bytecode(folder)
         _guard_folder_cap(folder)
-        _refuse_tree_collisions(rel.as_posix() for rel, _path in loader._counted_files(folder))
+        _refuse_tree_collisions(rel.as_posix() for rel, _path in counted_files(folder))
         try:
             shutil.copytree(folder, dest, symlinks=True, ignore=COPY_IGNORE)
         except OSError as exc:

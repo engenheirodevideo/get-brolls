@@ -19,6 +19,7 @@ from test_sdk_loader import MANIFEST, PLUGIN_CODE
 
 from getbrolls.sdk import install as install_mod
 from getbrolls.sdk import loader, scaffold
+from getbrolls.sdk.files import counted_files
 from getbrolls.sdk.registry import get_registry, reset_registry
 
 
@@ -78,7 +79,7 @@ class FolderInstallHardeningTests(InstallTestCase):
 
 
 class CountedFilesOrderTests(InstallTestCase):
-    """A ordem de `_counted_files` (e por tabela `folder_digest`/prévia de
+    """A ordem de `files.counted_files` (e por tabela `folder_digest`/prévia de
     arquivos) não pode depender de `Path.__lt__` — no `WindowsPath` real essa
     comparação é insensível a maiúsculas, então `getbrolls-plugin.json` viria antes
     de `LEIAME.md`. Simulamos essa comparação insensível via patch para provar que
@@ -95,7 +96,7 @@ class CountedFilesOrderTests(InstallTestCase):
             (folder / name).write_text("x", encoding="utf-8")
 
         with patch.object(Path, "__lt__", self._casefold_lt):
-            names = [rel.as_posix() for rel, _path in loader._counted_files(folder)]
+            names = [rel.as_posix() for rel, _path in counted_files(folder)]
             digest_under_case_insensitive_cmp = loader.folder_digest(folder)
 
         self.assertEqual(["LEIAME.md", "getbrolls-plugin.json", "plugin.py"], names)
@@ -114,7 +115,7 @@ class CountedFilesOrderTests(InstallTestCase):
         (folder / "sub" / "x.py").write_text("x", encoding="utf-8")
         (folder / "sub.py").write_text("x", encoding="utf-8")
 
-        names = [rel.as_posix() for rel, _path in loader._counted_files(folder)]
+        names = [rel.as_posix() for rel, _path in counted_files(folder)]
         self.assertEqual(["sub/x.py", "sub.py"], names)
 
 
@@ -224,7 +225,7 @@ class BytecodeTests(InstallTestCase):
 
 
 class BytecodeOnlyWhenPluginLoadsTests(InstallTestCase):
-    """`_no_bytecode()` só mexe em `sys.dont_write_bytecode` quando existe uma
+    """`disable_bytecode()` só mexe em `sys.dont_write_bytecode` quando existe uma
     linha `enabled` para carregar — antes rodava no topo de `load_enabled` mesmo
     sem plugin nenhum, desligando o cache de `.pyc` para os módulos do próprio
     core que `providers`/`search`/`doctor` importam de leve (lazy) depois, numa

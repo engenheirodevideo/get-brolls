@@ -13,7 +13,7 @@ from _plugin_pins import pin_plugins
 from test_sdk_exporters_resolvers import EXPORT_CODE
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
-from getbrolls.sdk import ExporterSpec, ExportResult, MediaRequest, PluginError, exporters, loader, testing
+from getbrolls.sdk import ExporterSpec, ExportResult, MediaRequest, PluginError, exporters, testing
 from getbrolls.sdk.exporters import (
     FILE_MAX_BYTES,
     ExportValidationError,
@@ -387,7 +387,7 @@ class ExporterAvailabilityTests(LoaderTestCase):
         self.assertNotEqual(EXPORT_CODE, BAD_DEST_CODE)
         folder = self.install(self.manifest(), code=BAD_DEST_CODE)
         with self.assertRaises(ValueError) as caught:
-            loader.trial_load(folder)
+            testing.check_plugin(folder)
         self.assertIn("contrato", str(caught.exception))
         self.assertIn("assets/", str(caught.exception))
 

@@ -13,8 +13,8 @@ from typing import NamedTuple
 
 from .. import __version__, logs
 from . import guard
-from .api import _bad_file_name
 from .contracts import CORE, NAME_RE, ExportResult, MediaRequest
+from .files import bad_file_name
 
 _log = logs.get("sdk")
 
@@ -71,7 +71,7 @@ def _check_path(path, where):
     segments = path.split("/")
     if len(segments) > PATH_MAX_SEGMENTS:
         raise ExportValidationError(f"{where}: {_shown(path)} tem mais de {PATH_MAX_SEGMENTS} níveis.")
-    if any(_bad_file_name(segment) for segment in segments):
+    if any(bad_file_name(segment) for segment in segments):
         raise ExportValidationError(
             f"{where}: {_shown(path)} tem um nome inválido; cada parte usa letras, números, '.', '_' ou '-', "
             "sem começar por '.', sem '..', sem terminar em '.' e sem ser um nome reservado do Windows."
