@@ -13,7 +13,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _media import skip_unless_ffmpeg, synth_video
 from _paths import ROOT
 
-from getbrolls import assets, export_plan, roteiro, roteiro_plan
+from getbrolls import assets, export_plan, export_voice, roteiro, roteiro_plan
 from getbrolls.sdk.exporters import find_local_paths
 from getbrolls.sdk.jsonschema import errors
 
@@ -671,6 +671,25 @@ class ResolverHygieneTests(ExportPlanTestCase):
         c06 = next(s for s in result["scenes"] if s["id"] == "c06")
         self.assertEqual([None, "plugin:hyperframes:musica:lofi"], [layer["media_id"] for layer in c06["layers"]])
         self.assertIn('c06: SFX "pop" pendente (não achei em sfx)', result["warnings"])
+
+
+class MissingProbeTests(ExportPlanTestCase):
+    def test_missing_ffprobe_is_one_warning_and_every_voice_is_estimated(self):
+        plan, items = full_project(self.root)
+        with mock.patch.object(export_voice.media.subprocess, "run", side_effect=FileNotFoundError):
+            result, sources = export_plan.build(self.root, plan, items, "exports/hyperframes/001")
+        self.assertEqual([], errors(result, SCHEMA))
+        self.assertEqual(1, result["warnings"].count(export_plan.NO_FFPROBE))
+        self.assertEqual(
+            "ffprobe não encontrado: instale o FFmpeg; as durações ficaram estimadas", export_plan.NO_FFPROBE
+        )
+        self.assertFalse(any("não consegui ler" in w for w in result["warnings"]), result["warnings"])
+        for name in ("aroll:c01", "aroll:c03", "aroll:c04-a-t2", "aroll:c04-b"):
+            row = result["media"][name]
+            self.assertEqual((False, "no_ffprobe"), (row["available"], row["problem"]), name)
+            self.assertNotIn(name, sources)
+        self.assertEqual({"estimate"}, {s["duration_source"] for s in result["scenes"]})
+        self.assertEqual("missing", result["media"]["aroll:c02"]["problem"])
 
 
 class CreditTests(ExportPlanTestCase):

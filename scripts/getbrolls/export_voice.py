@@ -24,12 +24,24 @@ MAX_WORD_CHARS = 100
 END_TOLERANCE_S = 0.05
 
 
+class ProbeMissingError(ValueError):
+    """O ffprobe não está instalado (executável não achado): o problema é da ferramenta, não do arquivo."""
+
+
 def probe_voice(path):
-    """`{"duration_s", "width", "height", "has_audio"}` do vídeo de voz; `ValueError` quando o ffprobe não lê."""
-    raw = media.run(
-        ["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", str(path)],
-        op="probe_voice",
-    )
+    """`{"duration_s", "width", "height", "has_audio"}` do vídeo de voz; `ValueError` quando o ffprobe não lê
+    e `ProbeMissingError` quando não há ffprobe."""
+    try:
+        raw = media.run(
+            ["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", str(path)],
+            op="probe_voice",
+        )
+    except FileNotFoundError as exc:
+        raise ProbeMissingError("ffprobe não encontrado") from exc
+    except ValueError as exc:
+        if isinstance(exc.__cause__, FileNotFoundError):  # `media.run` embrulha o executável ausente
+            raise ProbeMissingError(str(exc)) from exc
+        raise
     try:
         data = json.loads(raw)
         streams = data.get("streams") or []

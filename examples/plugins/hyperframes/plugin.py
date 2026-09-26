@@ -44,6 +44,7 @@ MUSIC_BASE, MUSIC_DUCK, SFX_VOLUME = 0.5, 0.125, 0.35
 ATTACK_S, RELEASE_S, MERGE_GAP_S = 0.15, 0.4, 0.6
 MAX_AUTOMATION_POINTS = 512
 MAX_NOTES = 50
+NO_FFPROBE = "ffprobe não encontrado: instale o FFmpeg; as durações ficaram estimadas"
 # O Chrome do Studio/render não toca estes formatos: pendência de conversão.
 UNPLAYABLE_AUDIO = (".aif", ".aiff", ".ogg", ".m4a")
 BG, FG = "#0b0b0b", "#ffffff"
@@ -216,6 +217,8 @@ def _presenter_title(export, media_id, scene_id):
     """O que fazer com o A-ROLL que falta: gravar, trocar o arquivo ilegível ou o link."""
     row = export.media.get(media_id or "") or {}
     name = _name_of(media_id) if media_id else scene_id
+    if row.get("problem") == "no_ffprobe":
+        return "FFPROBE NÃO ENCONTRADO: instale o FFmpeg e exporte de novo"
     if row.get("problem") == "unreadable":
         return f"NÃO CONSEGUI LER aroll/{name}{row.get('ext') or '.*'}"
     if row.get("problem") == "link":
@@ -484,6 +487,10 @@ def ducking(start, length, windows):
 def _missing_voice(export, scene, voice):
     """Pendência da voz que falta: A-ROLL do apresentador (a cartela diz o que gravar) ou narração."""
     sid = scene["id"]
+    if (export.media.get(voice) or {}).get("problem") == "no_ffprobe":
+        # A ferramenta falta, não o arquivo: uma pendência só para o export inteiro.
+        export.pend(NO_FFPROBE, NO_FFPROBE)
+        return
     if any(s["role"] == "presenter" and s["media_id"] == voice for s in scene["layout"]["slots"]):
         title = _presenter_title(export, voice, sid)
         export.pend(

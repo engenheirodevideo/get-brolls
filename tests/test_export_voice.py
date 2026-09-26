@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _media import skip_unless_ffmpeg, synth_video
@@ -55,6 +56,21 @@ class ProbeVoiceTests(unittest.TestCase):
         broken.write_bytes(b"isto nao e video")
         with self.assertRaises(ValueError):
             export_voice.probe_voice(broken)
+
+    def test_missing_ffprobe_is_its_own_error(self):
+        video = self.root / "c01.mov"
+        video.write_bytes(b"voz")
+        with (
+            mock.patch.object(export_voice.media.subprocess, "run", side_effect=FileNotFoundError("ffprobe")),
+            self.assertRaises(export_voice.ProbeMissingError) as caught,
+        ):
+            export_voice.probe_voice(video)
+        self.assertIsInstance(caught.exception, ValueError)
+        with (
+            mock.patch.object(export_voice.media, "run", side_effect=FileNotFoundError("ffprobe")),
+            self.assertRaises(export_voice.ProbeMissingError),
+        ):
+            export_voice.probe_voice(video)
 
 
 class TimedWordsTests(unittest.TestCase):

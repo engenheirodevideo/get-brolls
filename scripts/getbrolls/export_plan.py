@@ -22,7 +22,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from . import __version__, assets, delivery
-from .export_voice import probe_voice, timed_words
+from .export_voice import ProbeMissingError, probe_voice, timed_words
 from .roteiro import END_ANCHOR, fold
 from .roteiro_plan import PLAN_VERSION
 from .runtime import one_line
@@ -39,6 +39,7 @@ _LAYER_COMPONENT = {"SFX": "sfx", "MUSICA": "musica", "COMP": "composicao", "LET
 _EXPECTED_VIDEO = "(" + "|".join(ext.lstrip(".") for ext in assets.VIDEO) + ")"
 _ID_HASH_CHARS = 12
 # Caminho absoluto em texto de plugin (POSIX, `~/`, `C:\`, `\\servidor`, `file:`): vira `<caminho>`.
+NO_FFPROBE = "ffprobe não encontrado: instale o FFmpeg; as durações ficaram estimadas"
 _ABS_PATH_RE = re.compile(r"file:/+[^\s\"'<>|]*|(?<![\w.~:/\\-])(?:~?/|[A-Za-z]:[\\/]|\\\\)[^\s\"'<>|]+")
 
 
@@ -251,6 +252,11 @@ class _Collector:
             return
         try:
             info = probe_voice(entry)
+        except ProbeMissingError:
+            # Um aviso só, da ferramenta; o vídeo existe, mas sem medida a cena fica com a estimativa.
+            self.warnings.append(NO_FFPROBE)
+            self.media[media_id] = _row("video", "aroll", ext=ext, problem="no_ffprobe")
+            return
         except ValueError:
             self.warnings.append(f"{label}: não consegui ler aroll/{entry.name} (ffprobe): confira o arquivo")
             self.media[media_id] = _row("video", "aroll", ext=ext, problem="unreadable")

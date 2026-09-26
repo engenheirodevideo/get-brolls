@@ -655,6 +655,24 @@ class PendingTests(unittest.TestCase):
         )
         self.assertNotIn("c05: MARCA", self.pending(plan))
 
+    def test_missing_ffprobe_names_the_tool_not_the_file(self):
+        plan = fixture()
+        warning = "ffprobe não encontrado: instale o FFmpeg; as durações ficaram estimadas"
+        plan["warnings"] = [warning]
+        for media_id in ("aroll:c01", "aroll:c02"):
+            plan["media"][media_id].update(available=False, problem="no_ffprobe", ext=".mov", expected=None)
+        result = generate(plan)
+        scene = result["files"]["compositions/scene-c01.html"]
+        self.assertIn("FFPROBE NÃO ENCONTRADO", scene)
+        self.assertNotIn("NÃO CONSEGUI LER", scene)
+        pending = self.pending(plan)
+        self.assertEqual(1, pending.count("ffprobe não encontrado"), pending)
+        self.assertNotIn("c01: A-ROLL pendente", pending)
+        self.assertNotIn("c02: fala sem narração", pending)
+        plan["warnings"] = []
+        pending = self.pending(plan)
+        self.assertEqual(1, pending.count("ffprobe não encontrado"), pending)
+
     def test_missing_presenter_is_not_called_missing_narration(self):
         pending = self.pending()
         self.assertNotIn("c07: fala sem narração", pending)

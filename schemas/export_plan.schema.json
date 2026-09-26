@@ -149,7 +149,7 @@
           "origin": { "enum": ["project", "personal", null] },
           "ext": { "type": ["string", "null"], "pattern": "^\\.[a-z0-9]{1,8}$" },
           "available": { "type": "boolean" },
-          "problem": { "enum": ["missing", "unreadable", "link", "changed", null] },
+          "problem": { "enum": ["missing", "unreadable", "no_ffprobe", "link", "changed", null] },
           "has_audio": { "type": ["boolean", "null"] },
           "sha256": { "type": ["string", "null"] },
           "duration_s": { "type": ["number", "null"], "minimum": 0 },
