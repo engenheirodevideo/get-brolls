@@ -29,7 +29,8 @@ from .runtime import one_line
 
 EXPORT_VERSION = 1
 OUT_DIR_RE = re.compile(r"exports/([a-z][a-z0-9_]{1,31})/([0-9]{3,})")
-# `clip:<candidato>`, `aroll:<nome>`, `asset:<tipo>:<nome>`, `plugin:<id>:<tipo>:<nome>`: sem barra, espaço nem controle.
+# `clip:<candidato>`, `aroll:<nome>`, `asset:<tipo>:<nome>`, `plugin:<id>:<tipo>:<nome>`:
+# sem barra, espaço nem controle.
 MEDIA_ID_RE = re.compile(r"(?:clip|aroll|asset|plugin):[^\s/\\\x00-\x1f\x7f]+")
 MEDIA_ID_MAX = 200
 CREDIT_MAX = 300
@@ -47,6 +48,7 @@ _ABS_PATH_RE = re.compile(r"file:/+[^\s\"'<>|]*|(?<![\w.~:/\\-])(?:~?/|[A-Za-z]:
 
 
 def valid_media_id(value):
+    """True quando `value` é um id de mídia dentro da gramática (`clip:`/`aroll:`/`asset:`/`plugin:`) e do tamanho."""
     return isinstance(value, str) and len(value) <= MEDIA_ID_MAX and MEDIA_ID_RE.fullmatch(value) is not None
 
 
@@ -155,8 +157,8 @@ class _Collector:
         spec = assets.ASSET_KINDS[kind]
         key = fold(unicodedata.normalize("NFC", name))
         # Mesma busca de `assets.resolve` (raízes e agrupamento), mas devolvendo a entrada sem resolver o link.
-        for origin, root in assets._roots(self.project, spec):
-            matches = assets._entries(root, spec).get(key)
+        for origin, root in assets.component_roots(self.project, spec):
+            matches = assets.component_entries(root, spec).get(key)
             if matches:
                 return matches[0], origin, root
         return None, None, None
@@ -397,7 +399,8 @@ class _Collector:
         return {
             "kind": kind, "args": list(layer["args"]), "quoted": list(layer["quoted"]), "line": layer["line"],
             "anchor": layer["anchor"], "word_offset": layer["word_offset"],
-            "at_s": at_seconds(layer, scene["words"], window), "text": layer["args"][0] if kind == "LETTERING" else None,
+            "at_s": at_seconds(layer, scene["words"], window),
+            "text": layer["args"][0] if kind == "LETTERING" else None,
             "name": name, "media_id": media_id, "component_status": component["status"] if component else None,
             "ref": None,
         }  # fmt: skip
@@ -427,11 +430,17 @@ class _Collector:
         self.warnings.extend(warnings)
         return ("transcript", found) if found else ("estimate", None)
 
-    def scene(self, scene, clips, start, exporter):
+    def _slots(self, scene, clips):
+        """Vagas do layout da cena, cada uma já com a mídia escolhida (ou pendente) e as extras."""
         slots = []
         for slot in scene["layout"]["slots"]:
             media_id, extra = self._slot_media(scene, slot, clips)
             slots.append({**{k: slot[k] for k in SLOT_KEYS}, "media_id": media_id, "extra_media_ids": extra})
+        return slots
+
+    def scene(self, scene, clips, start, exporter):
+        """Linha do plano de export para uma cena: tempo, vagas, vozes, camadas e extensões."""
+        slots = self._slots(scene, clips)
         voice_ids, timed = self._voices(scene, slots)
         seen = [self.media[m]["duration_s"] for m in timed if self.media[m]["available"]]
         duration = round(max(seen), 3) if seen else scene["duration_s"]
@@ -482,7 +491,19 @@ def _meta(plan, project_id):
     }  # fmt: skip
 
 
-def build(project, plan, items, out_dir, resolve_media=None, *, project_id=None):  # noqa: PLR0913 - keyword-only project id on top of the build inputs
+def _build_scenes(collector, clips, plan, exporter):
+    """Linha do plano por cena, na ordem do roteiro, com o cursor de tempo acumulado."""
+    scenes, cursor = [], 0.0
+    for scene in plan["scenes"]:
+        row = collector.scene(scene, clips, cursor, exporter)
+        scenes.append(row)
+        cursor = round(cursor + row["duration_s"], 3)
+    return scenes, cursor
+
+
+def build(  # noqa: PLR0913 - keyword-only project id on top of the build inputs
+    project, plan, items, out_dir, resolve_media=None, *, project_id=None
+):  # pylint: disable=too-many-arguments,too-many-positional-arguments  # keyword-only project id on top of the build inputs
     """(plano de export, fontes do core) para a pasta numerada `out_dir` (`exports/<exporter>/<NNN>`).
 
     `plan` é o `scene_plan` de um roteiro revisado e sincronizado (toda cena com id);
@@ -495,11 +516,7 @@ def build(project, plan, items, out_dir, resolve_media=None, *, project_id=None)
     exporter = match.group(1)
     collector = _Collector(project, resolve_media)
     clips = collector.clips_by_beat(items)
-    scenes, cursor = [], 0.0
-    for scene in plan["scenes"]:
-        row = collector.scene(scene, clips, cursor, exporter)
-        scenes.append(row)
-        cursor = round(cursor + row["duration_s"], 3)
+    scenes, cursor = _build_scenes(collector, clips, plan, exporter)
     result = {
         "export_version": EXPORT_VERSION, "exporter": exporter, "out_dir": out_dir,
         "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), "getbrolls_version": __version__,
