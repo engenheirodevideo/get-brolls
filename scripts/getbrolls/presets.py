@@ -56,6 +56,7 @@ PERMIT_PRESETS = {
 
 
 def register_builtins(registry):
+    """Registra cada preset embutido de permit no registro do SDK."""
     for name, row in PERMIT_PRESETS.items():
         registry.add_preset(name, row["url"], row["text"])
 
