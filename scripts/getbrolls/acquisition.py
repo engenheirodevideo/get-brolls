@@ -417,13 +417,15 @@ def cache_direct_media(ledger, candidate, refresh=True, stage="inspect"):
         return reused_path
     routed = route_name(candidate) is not None
     url = candidate.get("media_url")
+    fresh = {}
     if refresh and not routed:
         from .providers import refresh as refresh_candidate
 
-        url = (refresh_candidate(candidate) or {}).get("media_url") or url
+        fresh = refresh_candidate(candidate) or {}
+        url = fresh.get("media_url") or url
     if not url and not routed:
         raise ValueError("Arquivo do provedor não está mais disponível.")
-    from .http import download
+    from .http import download_rendition
 
     started = time.monotonic()
     with tempfile.TemporaryDirectory(dir=cache) as work, contextlib.ExitStack() as route_stack:
@@ -431,7 +433,9 @@ def cache_direct_media(ledger, candidate, refresh=True, stage="inspect"):
             target = route_stack.enter_context(plugin_source(ledger, candidate, stage)).path
         else:
             target = Path(work) / "source.bin"
-            download(url, target)
+            # Como no `fetch`: a foto da NASA traz as versões menores em
+            # `media_url_fallbacks`, e acima do teto de download vale a próxima.
+            download_rendition(fresh if fresh.get("media_url") else {"media_url": url}, target)
         # Antes do ffprobe: foto de formato desconhecido é recusada com a razão certa.
         suffix = _cached_suffix(candidate, target)
         info = probe(target)

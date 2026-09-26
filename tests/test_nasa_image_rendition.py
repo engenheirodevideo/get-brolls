@@ -175,6 +175,36 @@ class SizeCapFallsBackToASmallerRendition(unittest.TestCase):
             self.assertEqual(body, delivered.read_bytes())
         self.assertEqual([IMAGE_BASE + "~orig.jpg", IMAGE_BASE + "~large.jpg"], asked)
 
+    @skip_unless_ffmpeg
+    def test_static_preview_of_a_nasa_photo_uses_the_smaller_rendition_over_the_cap(self):
+        """A prévia estática da foto (`cache_direct_media`) segue as mesmas versões do
+        `fetch`: a `~orig` acima do teto cai para a `~large`, em vez de falhar."""
+        from getbrolls import acquisition, http
+        from getbrolls.ledger import Ledger
+        from getbrolls.models import candidate
+
+        with tempfile.TemporaryDirectory() as tmp:
+            jpg = Path(tmp) / "large.jpg"
+            synth_image(jpg, size="96x64")
+            body = jpg.read_bytes()
+            asked = []
+
+            class Opener:
+                def open(self, request, timeout=None):
+                    asked.append(request.full_url)
+                    huge = request.full_url.endswith("~orig.jpg")
+                    return _Sized(b"" if huge else body, 600 * 1024 * 1024 if huge else len(body))
+
+            item = candidate("nasa", "S69-1", "Saturn V", "https://images.nasa.gov/details/S69-1")
+            item["media"]["kind"] = "image"
+            item["media_url"] = IMAGE_BASE + "~medium.jpg"
+            payload = assets(IMAGE_BASE + "~orig.jpg", IMAGE_BASE + "~medium.jpg", IMAGE_BASE + "~large.jpg")
+            with patch.object(providers, "get_json", return_value=payload), patch.object(http, "_opener", Opener):
+                cached = acquisition.cache_direct_media(Ledger(tmp), item)
+            self.assertEqual(body, Path(cached).read_bytes())
+            self.assertEqual(".jpg", Path(cached).suffix)
+        self.assertEqual([IMAGE_BASE + "~orig.jpg", IMAGE_BASE + "~large.jpg"], asked)
+
 
 if __name__ == "__main__":
     unittest.main()
