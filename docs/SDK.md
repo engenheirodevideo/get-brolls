@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-23
-updated: 2026-09-25
+updated: 2026-09-26
 tags: [get-brolls, sdk, plugins]
 ---
 
@@ -61,7 +61,7 @@ Campos de `getbrolls-plugin.json`:
 
 | Campo | Tipo | Obrigatório | Descrição |
 |---|---|---|---|
-| `id` | string | sim | 2–32 caracteres `a-z0-9_`, começando por letra; não pode ser `core`. Igual ao nome da pasta. |
+| `id` | string | sim | 2–32 caracteres `a-z0-9_`, começando por letra; não pode ser um id reservado (`core`, `cliente`, `catalogo`, `direcao`, `template`, `projeto`). Igual ao nome da pasta. |
 | `name` | string | sim | Nome de exibição, até 80 caracteres. |
 | `description` | string | não | Até 500 caracteres. |
 | `version` | string | sim | `X.Y.Z` do próprio plugin. |
@@ -72,10 +72,16 @@ Campos de `getbrolls-plugin.json`:
 | `permissions` | objeto | não (padrão `{}`) | `network` (hosts liberados para `get_json`/`download`), `env` (variáveis liberadas para `env`) e `paths` (pastas liberadas para `local_file`); cada chave ausente vale lista vazia. |
 
 `contributes` aceita as chaves `providers`, `presets`, `routes`, `commands`,
-`exporters`, `resolvers`, `rules`, `hooks`, `themes`, `brief_templates` e
-`eval_rubrics`, mas **só `providers`, `presets`, `routes`, `commands`,
-`exporters` e `resolvers` são suportados nesta versão do SDK** — declarar
-qualquer nome nas outras chaves faz o manifesto ser recusado. `exporters` e
+`exporters`, `resolvers`, `rules`, `hooks`, `themes`, `brief_templates`,
+`eval_rubrics`, `capturers`, `engines`, `catalogs` e `roteiro_templates`, mas
+**só `providers`, `presets`, `routes`, `commands`, `exporters` e `resolvers` são
+suportados nesta versão do SDK** — declarar qualquer nome nas outras chaves faz o
+manifesto ser recusado com "ainda não é suportado nesta versão do SDK". Os quatro
+últimos são nomes guardados para o que vem depois: `capturers` (trazer um item
+editado no motor de volta como item de catálogo), `engines` (chamar a CLI de um
+motor com versão conferida e log), `catalogs` (catálogo de componentes por
+projeto, cliente ou pessoa) e `roteiro_templates` (modelos de roteiro por gênero
+ou cliente). `exporters` e
 `resolvers` são experimentais (veja [Exportadores](#exportadores) e
 [Resolvedores](#resolvedores)): o plugin os registra, o `plugins --action check`
 os confere e o `gb export` os usa. Nomes de
@@ -103,10 +109,17 @@ e o `plugins --action check` listam essas raízes em `warnings`. Num disco que n
 diferencia maiúsculas de minúsculas, escreva a raiz com a mesma caixa que o
 sistema mostra.
 
-Os campos `schema` e `signed_fields` existem no formato do manifesto para
-versões futuras do SDK; nesta versão eles têm que ficar ausentes ou ser o objeto
-vazio `{}` — `[]`, `""` ou `null` são recusados. Qualquer outro campo de topo
-fora da tabela também recusa o manifesto.
+Os campos `schema`, `signed_fields` e `engines` existem no formato do manifesto
+para versões futuras do SDK; nesta versão eles têm que ficar ausentes ou ser o
+objeto vazio `{}` — conteúdo, `[]`, `""` ou `null` são recusados com "ainda não é
+suportado nesta versão do SDK". `engines` vai dizer a faixa de versão de cada
+motor que o plugin chama (ex.: `{"hyperframes": ">=0.8.73,<0.9"}`). Qualquer
+outro campo de topo fora da tabela também recusa o manifesto.
+
+Ids reservados: além de `core`, os ids `cliente`, `catalogo`, `direcao`,
+`template` e `projeto` são do get-brolls. O manifesto com um deles é recusado, e
+por isso `install`, `enable` e `new` também recusam: um plugin chamado
+`direcao` seria dono da diretiva `[direcao:x]` no roteiro.
 
 ## Contrato de Provider
 
@@ -427,8 +440,9 @@ api.exporter("meu_banco_html", exporta, "Exporta o plano como página HTML")
   [`schemas/export_plan.schema.json`](../schemas/export_plan.schema.json):
   `export_version`, `exporter`, `out_dir` (`exports/<nome>/NNN`, a pasta que o
   core vai criar), `generated_at`, `getbrolls_version`, `plan_version`, `meta`
-  (`aspecto`, `legenda`, `duracao_alvo_s`, `genero`, `tema`), `total_s`,
-  `timing`, `scenes`, `media` e `warnings`. Não há título no topo: o nome do
+  (`aspecto`, `legenda`, `duracao_alvo_s`, `genero`, `tema`, `projeto_id`,
+  `cliente`, `direcao`, `fps`, `canvas`), `total_s`, `timing`, `scenes`, `media`
+  e `warnings`. Não há título no topo: o nome do
   vídeo é `plan["meta"]["tema"]`. Cada cena traz `id`, `title`, tempo global
   (`start_s`, `duration_s`), `layout` com as vagas (`slots`), `voice_media_ids`,
   `words_timed` (legenda palavra a palavra, ou `None`), `layers`, `extensions` e
@@ -438,6 +452,18 @@ api.exporter("meu_banco_html", exporta, "Exporta o plano como página HTML")
   deve tratar um `problem` que não conhece como indisponível: valor novo pode
   aparecer sem mudar `export_version`, e os valores atuais estão listados no
   schema.
+- **Campos que só dão nome.** `meta.projeto_id` é o id do projeto (o mesmo
+  `project_id` de `brolls/manifest.json`; o export que grava cria o id quando
+  falta, e o `--dry-run` sem id manda `null`). `meta.cliente` e `meta.direcao`
+  vêm do frontmatter do roteiro (slug ou `null`). `meta.fps` (`{num, den}`, 30 é
+  `{num: 30, den: 1}`) e `meta.canvas` (`{width, height}` em pixels) são `null`
+  nesta versão: com `null`, o exportador usa o padrão dele; com valor, usa o
+  valor. Cada camada traz `ref` (id de item de catálogo, sempre `null` por
+  enquanto), cada cena traz `direction` (intenções de direção, sempre `[]`) e
+  `origin` de mídia aceita `"client"` (biblioteca do cliente, ainda sem uso).
+- **Plano gravado.** Toda pasta `exports/<nome>/NNN/` recebe
+  `getbrolls-plan.json`, o plano exato entregue ao exportador. O nome é
+  reservado: `files` com ele (ou com `.getbrolls-export.json`) é recusado.
 - **Função pura.** O exportador recebe cópias do plano e das opções (`options`
   é `{"args": {}}` por enquanto) e devolve texto e pedidos de mídia. Ele nunca
   toca no disco: quem grava os `files` e coloca cada mídia no `dest` pedido é o
@@ -785,7 +811,8 @@ ignorada, e num candidato do `manifest.json` uma chave fora do schema não é
 recusada. Candidato que vem de plugin é diferente: o guarda-corpo descarta todo
 campo fora do allowlist, `ext` incluso (veja [Guarda-corpos](#guarda-corpos)).
 Também nas próximas versões: suporte aos demais tipos de `contributes`
-(`rules`, `hooks`, `themes`, `brief_templates`, `eval_rubrics`) e
+(`rules`, `hooks`, `themes`, `brief_templates`, `eval_rubrics`, `capturers`,
+`engines`, `catalogs`, `roteiro_templates`) e
 um caminho para promover um campo nascido em `ext.<id>` de um plugin para o
 schema do core, quando fizer sentido para todo mundo. Nada disso está
 disponível nesta versão.

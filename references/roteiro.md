@@ -2,7 +2,7 @@
 type: reference
 status: current
 created: 2026-09-25
-updated: 2026-09-25
+updated: 2026-09-26
 tags: [get-brolls, roteiro, reels, componentes]
 ---
 
@@ -28,7 +28,10 @@ Enquanto o `BRIEF.md` não refletir o roteiro — nunca houve sync, há cena sem
 
 ## Formato
 
-Frontmatter, uma linha `chave: valor` cada: `type: roteiro`, `genero` e `tema` (obrigatórios); `aspecto` (`"9:16"` ou `"16:9"`; o padrão vem do gênero), `duracao_alvo_s` (inteiro de 5 a 600), `legenda` (`true`/`false`) e `status` (quem muda é o `review`). Lista, bloco e comentário no fim da linha são recusados.
+Frontmatter, uma linha `chave: valor` cada: `type: roteiro`, `genero` e `tema` (obrigatórios); `aspecto` (`"9:16"` ou `"16:9"`; o padrão vem do gênero), `duracao_alvo_s` (inteiro de 5 a 600), `legenda` (`true`/`false`), `status` (quem muda é o `review`), `cliente` e `direcao`. Nessas chaves, lista, bloco e comentário no fim da linha são recusados, e a chave escrita com maiúscula (`Tema:`) é erro.
+
+- `cliente` e `direcao` são opcionais e aceitam só slug (minúsculas, números e `-`, como `acme-corp`); `cliente: Acme Corp` é erro. Nesta versão eles só dão nome: seguem para o plano de export (`meta.cliente`, `meta.direcao`) e entram na revisão como as outras chaves, sem mudar nada no vídeo.
+- Chave de outra ferramenta é ignorada, com a lista ou o bloco indentado que vem abaixo dela: as propriedades do Obsidian (`tags`, `aliases`, `created`, `updated`, `cssclasses`) podem ficar no roteiro e não entram na revisão.
 
 - **Cena**: `## Título`. O sync acrescenta `<!-- cNN -->` no fim do título; no modo de leitura ele não aparece. Ao duplicar uma cena, **não copie o comentário** (id repetido é erro). Nenhum outro comentário HTML vale, em lugar nenhum, nem comentário do Obsidian (`%%...%%`) depois do frontmatter: texto escondido não passa pela revisão.
 - **Diretiva**: `[...]` sozinho na linha inteira. Acento, caixa e sinônimos comuns (`[MÚSICA]`, `[TRILHA]`, `[APRESENTADOR]`) são aceitos.
@@ -37,7 +40,8 @@ Frontmatter, uma linha `chave: valor` cada: `type: roteiro`, `genero` e `tema` (
 - **FULL**: o alvo vira o beat `cNN`. `logo`, `marca`, `cta` ou um arquivo de `assets/marca/` (do projeto ou da biblioteca pessoal) é componente de marca, sem beat. Pôr ou tirar esse arquivo troca beat por marca: a revisão cai, e o sync avisa que o `FULL` virou componente de marca.
 - Texto entre aspas num lado do `SPLIT` ou no `FULL` é cartela: não vira busca nem beat.
 - **Camadas**: `[LETTERING: "texto" | estilo]` (texto sempre entre aspas, estilo opcional), `[SFX: nome]`, `[MUSICA: nome]`, `[COMP: nome]`. A linha da camada marca onde ela entra: antes da linha de fala seguinte (âncora) ou no fim da cena.
-- **Plugin**: `[<plugin>:<nome>]` só de plugin habilitado (`plugins --action list`); prefixo de plugin desligado é erro.
+- **Plugin**: `[<plugin>:<nome>]` só de plugin habilitado (`plugins --action list`); prefixo de plugin desligado é erro. É válvula de escape para um recurso do motor, não o caminho principal: o roteiro cita o componente (`[COMP: nome]`), que vale para qualquer exporter. Os ids `cliente`, `catalogo`, `direcao`, `template` e `projeto` são reservados e nunca viram plugin.
+- **Direção (reservado)**: `[DIRECAO: …]`, `[TRANSICAO: …]`, `[RITMO: …]` e `[VELOCIDADE: …]` (com ou sem acento, em qualquer caixa) são reservados para a próxima versão: o `check` recusa a linha. Por enquanto, combine a direção com a pessoa fora do roteiro.
 - **Nota de cena**: `[risos]` no meio da fala sai da fala e do tempo. Sozinha na linha (`[pausa]`), também sai, mas vira aviso: confira que não era uma diretiva. Colchete que parece diretiva digitada errado é erro ("quis dizer ...").
 - **Tempo**: cerca de 2,5 palavras por segundo, mínimo 1,5 s; cena sem fala vale 2 s; cena acima de 120 s pede divisão. Com `duracao_alvo_s`, o `check` avisa quando a soma passa.
 
@@ -71,7 +75,7 @@ Quem monta o vídeo aponta para os clipes em `brolls/clips/`, nunca para `entreg
 - **Fala mudou**: só aviso, sem portão. Confira se o clipe ainda serve.
 - **Cena removida**: o beat fica no `BRIEF.md` com `"retired": true`, e a próxima cena nova ganha id novo sem esbarrar nele. `brief`, `status`, busca e `deliver` o ignoram; candidatos e clipes ficam, e o `deliver` lista os clipes dele em `retired`. Se a cena volta com o mesmo id, o beat volta a valer.
 - **Ordem mudou**: aviso; o próximo `deliver` renumera as pastas de `entrega/`.
-- **Revisão vencida**: trocar título, palavra da fala, nota de cena, alvo, lugar de camada, qualquer campo do frontmatter (menos `status`) ou o papel de um `FULL` (beat ou marca) exige novo `review`: mostre o roteiro de novo à pessoa. Linha em branco, espaço sobrando e o comentário de id não contam.
+- **Revisão vencida**: trocar título, palavra da fala, nota de cena, alvo, lugar de camada, qualquer chave do get-brolls no frontmatter (menos `status`; `cliente` e `direcao` contam) ou o papel de um `FULL` (beat ou marca) exige novo `review`: mostre o roteiro de novo à pessoa. Linha em branco, espaço sobrando, o comentário de id e as propriedades de outras ferramentas (`tags`, `updated`…) não contam.
 - **Aspecto**: `aspecto` diferente do `video_format` do `RULES.md` ou do `video.delivery.format` do `BRIEF.md` faz `check` e `sync` recusarem. Alinhe antes.
 - **O que o sync grava**: nos beats `cNN`, só `target`, `narration` e `duration_hint_s`; beat escrito à mão fica como está. Antes de gravar, copia `ROTEIRO.md` e `BRIEF.md` para `ROTEIRO.md.sync.bak` e `BRIEF.md.sync.bak`.
 - **Links**: `ROTEIRO.md` pode ser link simbólico; o sync e o `review` gravam no arquivo de verdade e o link continua link. `BRIEF.md` não pode: link, ou `GB_BRIEF_FILE` apontando para qualquer arquivo que não seja o `BRIEF.md` da pasta do projeto, é recusado.
@@ -96,6 +100,7 @@ Experimental. Com o roteiro revisado e sincronizado, `python3 "scripts/gb.py" ex
   Vídeo `.m4v` não passa direto pelo whisper ("Unsupported file type: .m4v"): extraia o som antes, com `ffmpeg -i aroll/cNN.m4v -vn -ac 1 -ar 16000 "$tmp/cNN.wav"`, e transcreva esse `.wav` com as mesmas opções; o sidecar continua `aroll/cNN.transcript.json`. Avise a pessoa antes do primeiro `transcribe`: ele pode instalar o whisper-cpp e baixar o modelo (cerca de 470 MB no `small`).
 
   O `-d` é sempre uma pasta temporária e vazia (no Windows, uma pasta nova em `%TEMP%`), nunca um export: o `transcribe` reescreve os `.html` com `const TRANSCRIPT` da pasta alvo. `--model small --language pt` são obrigatórios (o padrão `small.en` traduz a fala para inglês), e `--engine whisper` garante que o `--model` vale mesmo com o Parakeet instalado. Transcrição mais velha que o vídeo, inválida ou vazia é ignorada, com aviso. Depois de gerar, rode `export` de novo: sai uma pasta nova. Nunca corrija a legenda editando o export.
+- **Plano gravado.** Cada pasta de export traz `getbrolls-plan.json`, o plano exato que o exporter recebeu (sem caminho desta máquina), e o marcador `.getbrolls-export.json` com o id do projeto. Os dois são do core: o exporter não grava arquivo com esses nomes, e a pessoa não precisa editá-los.
 - **Caminhos.** Export é para compartilhar. Texto só com cara de caminho (como "salve em ~/Movies" na fala) sai como está, com aviso. Caminho real desta máquina (a pasta do projeto, a pasta pessoal, `GB_HOME`) num arquivo do export é recusado e nada é gravado: tire-o do roteiro.
 - **Depois do export.** O `EXPORT.md` da pasta lista cenas, pendências, créditos e os próximos passos, sempre da raiz do projeto: `lint`, `check`, `preview` e `render` com `-o` para `renders/` do projeto, nunca dentro do export. O primeiro `check` ou `render` baixa o GSAP (jsdelivr) e a fonte Inter (Google Fonts).
 

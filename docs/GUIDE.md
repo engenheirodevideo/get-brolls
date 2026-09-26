@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-25
+updated: 2026-09-26
 tags: [get-brolls, guide, installation, providers, storyboard]
 ---
 
@@ -432,7 +432,7 @@ video-01/
 │   └── marca/  lettering/  sfx/  musica/  composicoes/
 ├── output/playwright/       # screenshots e snapshots de trabalho
 ├── entrega/                 # uma pasta NN-<beat>-<alvo> por beat, gerada pelo deliver
-├── exports/                 # export --to <exporter>: hyperframes/001/, 002/… e LATEST; o core nunca apaga
+├── exports/                 # export --to <exporter>: hyperframes/001/ (com getbrolls-plan.json), 002/… e LATEST; o core nunca apaga
 ├── renders/                 # vídeos renderizados pelo HyperFrames (-o), fora do export
 └── brolls/
     ├── manifest.json        # tipo, formato, contexto e procedência
@@ -447,7 +447,7 @@ video-01/
     └── review.html
 ```
 
-`aroll/` e `assets/` só nascem com `roteiro --action new`: projeto sem roteiro não ganha pasta nova, e `assets --action list|where` não cria nada. `exports/` nasce no primeiro `export` (o `--dry-run` não cria nada), e `renders/` com o `mkdir -p renders` do `EXPORT.md`.
+`brolls/` é a pasta de estado do get-brolls no projeto: manifesto, eventos, logs e o estado do roteiro moram nela, inclusive quando o projeto não coleta b-roll nenhum. `aroll/` e `assets/` só nascem com `roteiro --action new`: projeto sem roteiro não ganha pasta nova, e `assets --action list|where` não cria nada. `exports/` nasce no primeiro `export` (o `--dry-run` não cria nada), e `renders/` com o `mkdir -p renders` do `EXPORT.md`.
 
 ### Roteiro e componentes
 
