@@ -426,19 +426,33 @@ class ExportPlanFileTests(ExportCase):
         for path in (str(self.project), str(self.project.resolve()), str(self.home), str(Path.home())):
             self.assertNotIn(path, text)
 
-    def test_plan_and_marker_carry_the_project_id(self):
+    def test_a_project_without_an_id_gets_null_and_stays_untouched(self):
         self.install()
+        manifest = self.project / "brolls" / "manifest.json"
+        self.assertNotIn("project_id", json.loads(manifest.read_text(encoding="utf-8")))
+        before = manifest.read_bytes()
         self.export()
-        project_id = Ledger(self.project, recover=False).data["project_id"]
         meta = self.saved()["meta"]
         self.assertEqual(
-            (project_id, None, None, None, None),
+            (None, None, None, None, None),
             (meta["projeto_id"], meta["cliente"], meta["direcao"], meta["fps"], meta["canvas"]),
         )
         marker = json.loads((self.folder("001") / export_folder.MARKER).read_text(encoding="utf-8"))
-        self.assertEqual((project_id, None, None), (marker["projeto_id"], marker["cliente"], marker["direcao"]))
-        self.export()
-        self.assertEqual(project_id, self.saved("002")["meta"]["projeto_id"])
+        self.assertEqual((None, None, None), (marker["projeto_id"], marker["cliente"], marker["direcao"]))
+        self.assertEqual(before, manifest.read_bytes())
+
+    def test_a_pending_journal_and_the_ledger_stay_byte_identical(self):
+        self.install()
+        brolls = self.project / "brolls"
+        pending = brolls / ".pending-transaction.json"
+        pending.write_text(json.dumps({"data": {"schema_version": 1, "items": []}, "events": []}), encoding="utf-8")
+        watched = [p for p in (pending, brolls / "manifest.json", brolls / "events.jsonl") if p.exists()]
+        before = {p: p.read_bytes() for p in watched}
+        for extra in ((), ("--dry-run",)):
+            with self.subTest(extra=extra):
+                self.assertIn("gravação interrompida", self.export(*extra, expect=2)["message"].lower())
+                self.assertEqual(before, {p: p.read_bytes() for p in watched})
+        self.assertFalse((self.project / "exports").exists())
 
     def test_an_existing_project_id_is_reused(self):
         self.install()
@@ -447,6 +461,10 @@ class ExportPlanFileTests(ExportCase):
         ledger.save("test")
         self.export()
         self.assertEqual("id-que-ja-existia", self.saved()["meta"]["projeto_id"])
+        marker = json.loads((self.folder("001") / export_folder.MARKER).read_text(encoding="utf-8"))
+        self.assertEqual("id-que-ja-existia", marker["projeto_id"])
+        self.export()
+        self.assertEqual("id-que-ja-existia", self.saved("002")["meta"]["projeto_id"])
 
     def test_the_exporter_cannot_write_the_plan_file(self):
         self.install()

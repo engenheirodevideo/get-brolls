@@ -50,17 +50,18 @@ def _in_sync(project, plugins):
     return not any(report[key] for key in (*_PENDING_LISTS, *_PENDING_MAPS))
 
 
-def _items(project):
-    """Candidatos do manifesto, lidos sem recuperar gravação (o portão 1 já recusou journal pendente)."""
+def _manifest(project):
+    """Manifesto lido sem recuperar gravação (o portão 1 já recusou journal pendente); nunca grava."""
     from .ledger import Ledger
 
     if not (Path(project).expanduser().resolve() / "brolls").is_dir():
-        return []
-    return Ledger(project, recover=False).data["items"]
+        return {"items": []}
+    return Ledger(project, recover=False).data
 
 
 def check(project, plugins=None):
-    """`{"doc", "plan", "items"}` de um projeto pronto para exportar; `ValueError` com a primeira recusa."""
+    """`{"doc", "plan", "items", "project_id"}` de um projeto pronto para exportar; `ValueError` com a
+    primeira recusa. `project_id` é o id que o manifesto já tem, ou None: o export nunca cria um."""
     plugins = roteiro.enabled_plugins() if plugins is None else plugins
     roteiro_sync.ensure_no_pending(project)
     text = roteiro.load_text(project)
@@ -76,4 +77,11 @@ def check(project, plugins=None):
         raise ValueError(roteiro_sync.REVIEW_MISSING)
     if not _in_sync(project, plugins):
         raise ValueError(OUT_OF_SYNC)
-    return {"doc": doc, "plan": plan, "items": _items(project)}
+    data = _manifest(project)
+    project_id = data.get("project_id")
+    return {
+        "doc": doc,
+        "plan": plan,
+        "items": data["items"],
+        "project_id": project_id if isinstance(project_id, str) else None,
+    }

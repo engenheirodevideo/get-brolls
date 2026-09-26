@@ -393,7 +393,8 @@ def audited(args, execute):  # noqa: C901, PLR0912, PLR0915 - existing size; wra
         if args.command in QUIET_ERROR_COMMANDS and event["error_code"] != "INTERNAL_ERROR":
             # `plugins`/`x` não gravam no projeto: erro de uso ali (flag faltando, plugin
             # inexistente) é só a mensagem — traceback e a dica de recovery/review eram
-            # ruído. `export` grava só numa pasta nova, sem journal: a dica de recovery
+            # ruído. `export` grava só numa pasta nova em exports/ e nunca no manifesto nem
+            # no journal (recusa journal pendente antes de começar): a dica de recovery
             # também não vale lá. `diagnostics.jsonl` (quando há projeto) guarda tudo igual.
             for key in ("traceback", "repr", "hint"):
                 payload.pop(key, None)

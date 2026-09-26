@@ -21,7 +21,7 @@
         "duracao_alvo_s": { "type": ["integer", "null"] },
         "genero": { "type": "string" },
         "tema": { "type": "string" },
-        "projeto_id": { "type": ["string", "null"], "maxLength": 64, "description": "Id do projeto, o mesmo project_id de brolls/manifest.json; continua o mesmo quando a pasta é copiada. null só no --dry-run de um projeto que ainda não tem id." },
+        "projeto_id": { "type": ["string", "null"], "maxLength": 64, "description": "Id do projeto, o mesmo project_id de brolls/manifest.json; continua o mesmo quando a pasta é copiada. O export só lê o id: null quando o projeto ainda não tem um." },
         "cliente": { "type": ["string", "null"], "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64, "description": "Slug do cliente, vindo do frontmatter do roteiro; null quando o roteiro não diz." },
         "direcao": { "type": ["string", "null"], "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64, "description": "Slug do estilo de direção, vindo do frontmatter do roteiro; null quando o roteiro não diz. Reservado: nenhum exporter o aplica ainda." },
         "fps": {

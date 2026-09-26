@@ -5,7 +5,7 @@ plano de export (`export_plan.build`, com os resolvedores de plugin injetados) �
 `run_exporter` do SDK (valida o que o plugin devolveu) → pedidos de mídia conferidos
 contra o plano → `--dry-run` para aqui; senão a pasta numerada nova é gravada
 (`export_folder.write_export`, mídia por `export_place.place`), com o plano entregue
-ao exporter em `getbrolls-plan.json` e o id do projeto no marcador. Nada passa por
+ao exporter em `getbrolls-plan.json` e o id do projeto (só lido, nunca criado) no marcador. Nada passa por
 `sync_formats`, `recover` ou `entrega/`.
 """
 
@@ -249,16 +249,6 @@ def run(args):
         raise _os_error(exc, project) from exc
 
 
-def _project_id(project, dry_run):
-    """Id do projeto: o `project_id` de `brolls/manifest.json`, o mesmo do review. O export
-    que grava cria o id quando ainda não existe; o ensaio só lê e, sem id, fica com None."""
-    from .ledger import Ledger
-    from .review import project_id
-
-    ledger = Ledger(project, recover=False)
-    return ledger.data.get("project_id") if dry_run else project_id(ledger)
-
-
 def _plan_text(plan):
     return json.dumps(plan, ensure_ascii=False, indent=2) + "\n"
 
@@ -279,7 +269,7 @@ def _run(args, name, project):
         ready["items"],
         out_dir,
         resolve_media=resolve_media,
-        project_id=_project_id(project, args.dry_run),
+        project_id=ready["project_id"],
     )
     machine = _machine_paths(project, registry, sources)
     # Aviso escrito por resolvedor de plugin pode trazer caminho desta máquina: sai com a marca, não recusa.

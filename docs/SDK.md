@@ -453,8 +453,8 @@ api.exporter("meu_banco_html", exporta, "Exporta o plano como página HTML")
   aparecer sem mudar `export_version`, e os valores atuais estão listados no
   schema.
 - **Campos que só dão nome.** `meta.projeto_id` é o id do projeto (o mesmo
-  `project_id` de `brolls/manifest.json`; o export que grava cria o id quando
-  falta, e o `--dry-run` sem id manda `null`). `meta.cliente` e `meta.direcao`
+  `project_id` de `brolls/manifest.json`; o export só lê o id e manda `null`
+  quando o projeto ainda não tem um). `meta.cliente` e `meta.direcao`
   vêm do frontmatter do roteiro (slug ou `null`). `meta.fps` (`{num, den}`, 30 é
   `{num: 30, den: 1}`) e `meta.canvas` (`{width, height}` em pixels) são `null`
   nesta versão: com `null`, o exportador usa o padrão dele; com valor, usa o
