@@ -190,7 +190,9 @@ def _thaw_unlink(path):
     path.unlink()
 
 
-def link_or_copy(src, dest, read_only=False, allow_symlink=True):  # noqa: C901 - existing size; hardlink/reflink/copy fallback ladder across OSes
+def link_or_copy(  # noqa: C901 - existing size; hardlink/reflink/copy fallback ladder across OSes
+    src, dest, read_only=False, allow_symlink=True
+):
     """Liga `dest` a `src` pelo jeito mais barato que o sistema aceitar.
 
     Hardlink primeiro (não ocupa disco e não quebra ao mover a pasta de dentro),
@@ -245,7 +247,7 @@ def link_or_copy(src, dest, read_only=False, allow_symlink=True):  # noqa: C901 
 
 
 def _frontmatter(kind, created, tags):
-    today = date.today().isoformat()  # noqa: DTZ011 - local date in the frontmatter; timezone-aware would shift the day near midnight
+    today = date.today().isoformat()  # noqa: DTZ011 - local date; tz-aware would shift day near midnight
     return [
         "---",
         f"type: {kind}",
@@ -367,6 +369,7 @@ def render_origin(c, media_name, created=None, method="hardlink"):
     approval = c.get("approval") or {}
     plugin = plugin_label(c)
     lines = _frontmatter("delivery-origin", created, ["get-brolls", "entrega"])
+    # pylint: disable-next=fixme
     # Todo valor vindo do candidato passa por `one_line`: um título/licença/evidência
     # com quebra de linha (plugin ou ledger editado à mão) nunca forja outra linha
     # "- Direitos:"/"- Aprovado por:" neste registro. Texto normal sai idêntico.
@@ -548,12 +551,8 @@ def deliverable(project, items, retired=None, log_event="deliver_skipped"):
     return _drop_retired(project, collected, retired, log_event), skipped
 
 
-def _plan(project, items, retired=None):
-    """Um grupo por beat, na ordem do brief; sem brief, na ordem do manifesto.
-
-    Quem entra é decidido por `deliverable` (o mesmo predicado do export).
-    """
-    collected, skipped = deliverable(project, items, retired)
+def _plan_group_order(project, collected):
+    """Ordem dos beats (do brief, mais os shots extras que não estão nele) e seus metadados."""
     beats = _brief_beats(project)
     order = [b["id"] for b in beats]
     meta = {b["id"]: b for b in beats}
@@ -561,30 +560,44 @@ def _plan(project, items, retired=None):
         shot = c.get("shot")
         if shot and shot not in order:
             order.append(shot)
+    return order, meta
+
+
+def _plan_beat_group(position, beat_id, beat, collected):
+    """Grupo de um beat: membros, alvo (com plugin inerte quando vem do título) e pasta; None se vazio."""
+    members = [c for c in collected if c.get("shot") == beat_id]
+    if not members:
+        return None
+    target = beat.get("target") or members[0].get("title") or beat_id
+    # Alvo que veio do título na fonte de um plugin: sai inerte na tabela do README
+    # (a pasta continua saindo do texto original, por `slug`).
+    from_title = not beat.get("target") and members[0].get("title")
+    title_plugin = plugin_label(members[0]) if from_title else None
+    return {
+        "beat": beat_id,
+        "narration": beat.get("narration"),
+        "target": target,
+        "target_label": inert(target, title_plugin) if title_plugin else target,
+        # O alvo é texto humano (do brief, ou o título do candidato quando o beat
+        # não tem alvo): "AC/DC ao vivo" tem barra e não é caminho. A pasta sai do
+        # slug; o texto de verdade segue em `target` e no ORIGEM.md.
+        "dir": beat_dir_name(position, beat_id, slug(target)),
+        "items": members,
+    }
+
+
+def _plan(project, items, retired=None):
+    """Um grupo por beat, na ordem do brief; sem brief, na ordem do manifesto.
+
+    Quem entra é decidido por `deliverable` (o mesmo predicado do export).
+    """
+    collected, skipped = deliverable(project, items, retired)
+    order, meta = _plan_group_order(project, collected)
     groups = []
     for position, beat_id in enumerate(order, start=1):
-        beat = meta.get(beat_id) or {}
-        members = [c for c in collected if c.get("shot") == beat_id]
-        if not members:
-            continue
-        target = beat.get("target") or members[0].get("title") or beat_id
-        # Alvo que veio do título na fonte de um plugin: sai inerte na tabela do README
-        # (a pasta continua saindo do texto original, por `slug`).
-        from_title = not beat.get("target") and members[0].get("title")
-        title_plugin = plugin_label(members[0]) if from_title else None
-        groups.append(
-            {
-                "beat": beat_id,
-                "narration": beat.get("narration"),
-                "target": target,
-                "target_label": inert(target, title_plugin) if title_plugin else target,
-                # O alvo é texto humano (do brief, ou o título do candidato quando o beat
-                # não tem alvo): "AC/DC ao vivo" tem barra e não é caminho. A pasta sai do
-                # slug; o texto de verdade segue em `target` e no ORIGEM.md.
-                "dir": beat_dir_name(position, beat_id, slug(target)),
-                "items": members,
-            }
-        )
+        group = _plan_beat_group(position, beat_id, meta.get(beat_id) or {}, collected)
+        if group is not None:
+            groups.append(group)
     orphans = [c for c in collected if not c.get("shot")]
     if orphans:
         groups.append(
@@ -729,7 +742,180 @@ def _sweep(root, expected, dry_run, owned=(), brolls_root=None):
     return removed, kept
 
 
-def build_delivery(project, dry_run=False, ledger=None, for_human=None):  # noqa: C901, PLR0912, PLR0915 - existing size; rebuilds `entrega/` through every item/state combination
+def _deliver_refuse_symlink(root):
+    """Recusa `deliver` se `entrega/` já existe como link simbólico (varrer seguiria o alvo)."""
+    if not root.is_symlink():
+        return
+    logs.event(log, logging.WARNING, "deliver_refusal", reason="entrega_is_symlink")
+    raise ValueError(
+        f"{root} é um link simbólico: apague o link antes de rodar `deliver`. A pasta "
+        "de entrega precisa ser uma pasta real dentro do projeto, nunca um atalho para "
+        "outro lugar."
+    )
+
+
+class _DeliverCtx:  # pylint: disable=too-few-public-methods
+    # Contêiner simples de estado (novo nesta release), não um objeto com comportamento.
+    """Ledger, pasta de entrega e modo dry-run, compartilhados por todo `build_delivery`."""
+
+    def __init__(self, ledger, root, dry_run):
+        self.ledger = ledger
+        self.root = root
+        self.dry_run = dry_run
+
+
+def _deliver_materialize_item(ctx, group, c, names, sheet):
+    """Liga/copia mídia e contact sheet deste item; devolve (método ou None, conflito ou None)."""
+    media_rel = f"{group['dir']}/{names['media']}"
+    sheet_rel_out = f"{group['dir']}/{names['sheet']}" if sheet else None
+    source = ctx.ledger.root / c["output"]["path"]
+    method = None
+    try:
+        if source.is_file():
+            # Só hardlink/symlink são congelados: cópia é independente.
+            method = link_or_copy(source, ctx.root / media_rel, read_only=True)
+            logs.event(
+                log,
+                logging.INFO,
+                "deliver_item",
+                beat=group["beat"] or "no_beat",
+                mode=method,
+                # `link_or_copy` doesn't report a per-attempt failure reason
+                # (its signature is shared with tests that stub it out with a
+                # 3-arg fake), so only the one fallback cause this call site
+                # can know for certain — a forced copy — is named here.
+                reason="env_copy" if copies_forced() else None,
+            )
+        if sheet and sheet_rel_out and sheet.is_file():
+            # O contact sheet não é congelado: `preview` regrava o arquivo
+            # de origem no mesmo caminho quando a pessoa muda o intervalo.
+            link_or_copy(sheet, ctx.root / sheet_rel_out)
+    except ValueError as exc:
+        conflict = str(exc)
+        logs.event(
+            log,
+            logging.WARNING,
+            "deliver_conflict",
+            beat=group["beat"] or "no_beat",
+            kind="foreign_file" if "parece edição sua" in conflict else "io_error",
+        )
+        return method, conflict
+    return method, None
+
+
+def _deliver_write_origin(ctx, origin_rel, c, names, method):
+    """Grava ORIGEM.md deste item, com a data de criação preservada se o arquivo já existia."""
+    from .ledger import atomic_write
+
+    target = ctx.root / origin_rel
+    atomic_write(target, render_origin(c, names["media"], _created_in(target), method or "hardlink"))
+
+
+def _deliver_process_item(ctx, group, index, c, acc):
+    """Processa um item do grupo: liga/copia arquivos, grava ORIGEM.md e atualiza os acumuladores."""
+    sheet_rel = (c.get("preview") or {}).get("contact_sheet_path")
+    sheet = ctx.ledger.root / sheet_rel if sheet_rel else None
+    names = _names(
+        group["dir"],
+        index,
+        Path(c["output"]["path"]).suffix or ".mp4",
+        Path(sheet_rel).suffix if sheet_rel else ".jpg",
+    )
+    media_rel = f"{group['dir']}/{names['media']}"
+    acc["expected"].add(media_rel)
+    method = "planned" if ctx.dry_run else None
+    sheet_rel_out = f"{group['dir']}/{names['sheet']}" if sheet else None
+    if sheet_rel_out:
+        acc["expected"].add(sheet_rel_out)
+    conflict = None
+    if not ctx.dry_run:
+        method, conflict = _deliver_materialize_item(ctx, group, c, names, sheet)
+        if conflict:
+            acc["conflicts"].append(conflict)
+            acc["conflicted"].append(media_rel)
+    origin_rel = f"{group['dir']}/{names['origin']}"
+    acc["expected"].add(origin_rel)
+    if not ctx.dry_run and not conflict:
+        _deliver_write_origin(ctx, origin_rel, c, names, method)
+    record = {"path": f"{DELIVERY_DIR}/{media_rel}", "method": method}
+    if conflict:
+        # Não entregamos este: manter o registro antigo (ou nenhum) é o que
+        # mantém o item fora de "entregue" no `status` e fora da tabela.
+        return
+    if not ctx.dry_run and c.get("delivery") != record:
+        c["delivery"] = record
+        acc["changed"].append(c)
+    acc["listed"].append(
+        {
+            "id": c["id"],
+            "beat": group["beat"],
+            "path": f"{DELIVERY_DIR}/{media_rel}",
+            "method": method,
+        }
+    )
+    acc["rows"].append(
+        {
+            "beat": group["beat"] or "sem beat",
+            "narration": group["narration"],
+            "target": group.get("target_label", group["target"]),
+            "file": f"{group['dir']}/{names['media']}",
+            "state": c.get("state"),
+            "rights": (c.get("rights") or {}).get("status"),
+            # Como este arquivo chegou aqui: é o que decide se editar nele
+            # editaria o original.
+            "method": method,
+        }
+    )
+
+
+def _deliver_write_index(root, for_human, rows, conflicted, listed):
+    """Grava o índice (README) da entrega, com o próximo passo já refletindo o estado novo."""
+    from .ledger import atomic_write
+
+    index = root / INDEX
+    # O "próximo passo" é lido agora, com `c["delivery"]` já preenchido: senão o
+    # índice mandaria a pessoa rodar exatamente o comando que acabou de rodar.
+    text = for_human() if callable(for_human) else for_human
+    atomic_write(
+        index,
+        render_index(
+            rows,
+            text,
+            _created_in(index),
+            conflicted,
+            # Quando tudo virou cópia, o aviso de "é o mesmo arquivo" seria mentira.
+            copies=bool(listed) and all(i["method"] == "copy" for i in listed),
+        ),
+    )
+
+
+def _deliver_forget_retired(items, retired, changed):
+    """Apaga o registro de entrega dos itens de beats aposentados, para reativar pedir `deliver` de novo."""
+    gone = {entry["id"] for entry in retired}
+    for c in items:
+        if c["id"] in gone and "delivery" in c:
+            del c["delivery"]
+            changed.append(c)
+
+
+def _deliver_process_groups(ctx, groups, acc):
+    """Processa todos os grupos do plano, item a item, preenchendo os acumuladores."""
+    for group in groups:
+        acc["expected"].add(group["dir"])
+        for index, c in enumerate(group["items"], start=1):
+            _deliver_process_item(ctx, group, index, c, acc)
+
+
+def _deliver_owned_paths(items):
+    """Caminhos relativos a `entrega/` que o próprio manifesto já diz que foram entregues."""
+    return {
+        (c.get("delivery") or {}).get("path", "")[len(DELIVERY_DIR) + 1 :]
+        for c in items
+        if (c.get("delivery") or {}).get("path", "").startswith(DELIVERY_DIR + "/")
+    }
+
+
+def build_delivery(project, dry_run=False, ledger=None, for_human=None):
     """Refaz `entrega/` a partir do que já está coletado em `brolls/`.
 
     Não toca em `brolls/`, não decide nada e não inventa direito de uso: só reorganiza
@@ -749,152 +935,36 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):  # noqa
     seguir ele poderia varrer e apagar arquivos de outro lugar (o alvo do link), então o
     comando recusa antes de tocar em qualquer arquivo, mesmo em `dry_run`.
     """
-    from .ledger import Ledger, atomic_write
+    from .ledger import Ledger
 
     ledger = ledger or Ledger(project, recover=False)
     items = ledger.data["items"]
     root = Path(project).expanduser().resolve() / DELIVERY_DIR
-    if root.is_symlink():
-        logs.event(log, logging.WARNING, "deliver_refusal", reason="entrega_is_symlink")
-        raise ValueError(
-            f"{root} é um link simbólico: apague o link antes de rodar `deliver`. A pasta "
-            "de entrega precisa ser uma pasta real dentro do projeto, nunca um atalho para "
-            "outro lugar."
-        )
+    _deliver_refuse_symlink(root)
     retired = []
     groups, skipped = _plan(project, items, retired)
-    expected, listed, rows, changed = set(), [], [], []
-    conflicts, conflicted = [], []
-    for group in groups:
-        expected.add(group["dir"])
-        for index, c in enumerate(group["items"], start=1):
-            source = ledger.root / c["output"]["path"]
-            sheet_rel = (c.get("preview") or {}).get("contact_sheet_path")
-            sheet = ledger.root / sheet_rel if sheet_rel else None
-            names = _names(
-                group["dir"],
-                index,
-                Path(c["output"]["path"]).suffix or ".mp4",
-                Path(sheet_rel).suffix if sheet_rel else ".jpg",
-            )
-            media_rel = f"{group['dir']}/{names['media']}"
-            expected.add(media_rel)
-            method = "planned" if dry_run else None
-            sheet_rel_out = f"{group['dir']}/{names['sheet']}" if sheet else None
-            if sheet_rel_out:
-                expected.add(sheet_rel_out)
-            conflict = None
-            if not dry_run:
-                try:
-                    if source.is_file():
-                        # Só hardlink/symlink são congelados: cópia é independente.
-                        method = link_or_copy(source, root / media_rel, read_only=True)
-                        logs.event(
-                            log,
-                            logging.INFO,
-                            "deliver_item",
-                            beat=group["beat"] or "no_beat",
-                            mode=method,
-                            # `link_or_copy` doesn't report a per-attempt failure reason
-                            # (its signature is shared with tests that stub it out with a
-                            # 3-arg fake), so only the one fallback cause this call site
-                            # can know for certain — a forced copy — is named here.
-                            reason="env_copy" if copies_forced() else None,
-                        )
-                    if sheet and sheet_rel_out and sheet.is_file():
-                        # O contact sheet não é congelado: `preview` regrava o arquivo
-                        # de origem no mesmo caminho quando a pessoa muda o intervalo.
-                        link_or_copy(sheet, root / sheet_rel_out)
-                except ValueError as exc:
-                    conflict = str(exc)
-                    conflicts.append(conflict)
-                    conflicted.append(media_rel)
-                    logs.event(
-                        log,
-                        logging.WARNING,
-                        "deliver_conflict",
-                        beat=group["beat"] or "no_beat",
-                        kind="foreign_file" if "parece edição sua" in conflict else "io_error",
-                    )
-            origin_rel = f"{group['dir']}/{names['origin']}"
-            expected.add(origin_rel)
-            if not dry_run and not conflict:
-                target = root / origin_rel
-                atomic_write(
-                    target,
-                    render_origin(c, names["media"], _created_in(target), method or "hardlink"),
-                )
-            record = {"path": f"{DELIVERY_DIR}/{media_rel}", "method": method}
-            if conflict:
-                # Não entregamos este: manter o registro antigo (ou nenhum) é o que
-                # mantém o item fora de "entregue" no `status` e fora da tabela.
-                continue
-            if not dry_run and c.get("delivery") != record:
-                c["delivery"] = record
-                changed.append(c)
-            listed.append(
-                {
-                    "id": c["id"],
-                    "beat": group["beat"],
-                    "path": f"{DELIVERY_DIR}/{media_rel}",
-                    "method": method,
-                }
-            )
-            rows.append(
-                {
-                    "beat": group["beat"] or "sem beat",
-                    "narration": group["narration"],
-                    "target": group.get("target_label", group["target"]),
-                    "file": f"{group['dir']}/{names['media']}",
-                    "state": c.get("state"),
-                    "rights": (c.get("rights") or {}).get("status"),
-                    # Como este arquivo chegou aqui: é o que decide se editar nele
-                    # editaria o original.
-                    "method": method,
-                }
-            )
-    expected.add(INDEX)
+    ctx = _DeliverCtx(ledger, root, dry_run)
+    acc = {"expected": set(), "listed": [], "rows": [], "changed": [], "conflicts": [], "conflicted": []}
+    _deliver_process_groups(ctx, groups, acc)
+    acc["expected"].add(INDEX)
     if not dry_run:
         root.mkdir(parents=True, exist_ok=True)
-        index = root / INDEX
-        # O "próximo passo" é lido agora, com `c["delivery"]` já preenchido: senão o
-        # índice mandaria a pessoa rodar exatamente o comando que acabou de rodar.
-        text = for_human() if callable(for_human) else for_human
-        atomic_write(
-            index,
-            render_index(
-                rows,
-                text,
-                _created_in(index),
-                conflicted,
-                # Quando tudo virou cópia, o aviso de "é o mesmo arquivo" seria mentira.
-                copies=bool(listed) and all(i["method"] == "copy" for i in listed),
-            ),
-        )
-    owned = {
-        (c.get("delivery") or {}).get("path", "")[len(DELIVERY_DIR) + 1 :]
-        for c in items
-        if (c.get("delivery") or {}).get("path", "").startswith(DELIVERY_DIR + "/")
-    }
-    removed, kept = _sweep(root, expected, dry_run, owned, ledger.root)
+        _deliver_write_index(root, for_human, acc["rows"], acc["conflicted"], acc["listed"])
+    removed, kept = _sweep(root, acc["expected"], dry_run, _deliver_owned_paths(items), ledger.root)
     if not dry_run and retired:
         # A pasta do beat aposentado acabou de ser varrida: o registro de entrega dela
         # sai também, senão o beat reativado depois nunca pediria `deliver` de novo.
-        gone = {entry["id"] for entry in retired}
-        for c in items:
-            if c["id"] in gone and "delivery" in c:
-                del c["delivery"]
-                changed.append(c)
-    if changed:
-        ledger.save_many("deliver", changed)
-    if conflicts:
-        raise ValueError(" ".join(conflicts))
+        _deliver_forget_retired(items, retired, acc["changed"])
+    if acc["changed"]:
+        ledger.save_many("deliver", acc["changed"])
+    if acc["conflicts"]:
+        raise ValueError(" ".join(acc["conflicts"]))
     return {
         "delivery": str(root),
         "readme": str(root / INDEX),
         "dry_run": bool(dry_run),
-        "items": listed,
-        "rows": rows,
+        "items": acc["listed"],
+        "rows": acc["rows"],
         "removed": removed,
         "kept": kept,
         "skipped": skipped,
