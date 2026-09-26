@@ -1,5 +1,10 @@
 """Discovery adapters: yt-dlp for YouTube and official stock APIs."""
 
+# pylint: disable=cyclic-import
+# Legado: o ciclo (getbrolls.providers <-> getbrolls.social) já existe na
+# origin/main: `_youtube` importa `social` tardiamente (dentro de função)
+# exatamente para quebrar esse ciclo em tempo de execução.
+
 import html
 import os
 import re
@@ -119,28 +124,34 @@ class _Builtin:
         self.capabilities = BUILTIN_CAPABILITIES[name]
 
     def search(self, query, limit, media):
+        """Busca na função embutida deste nome, ciente de mídia quando a fonte suportar."""
         fn = globals()[BUILTIN_SEARCH[self.name]]
         return fn(query, limit, media) if self.name in MEDIA_AWARE else fn(query, limit)
 
     def resolve(self, url):
+        """Resolve a URL na fonte embutida correspondente."""
         return _resolve_builtin(url)
 
     def refresh(self, item):
+        """Renova a URL de mídia temporária do item na fonte embutida."""
         return _refresh_builtin(item)
 
 
 def register_builtins(registry):
+    """Registra cada fonte embutida no registro, com o core como dono."""
     for name in BUILTIN_CAPABILITIES:
         registry.add_provider(_Builtin(name), owner=CORE)
 
 
 def _registry():
+    """Registro carregado do SDK (fontes embutidas mais as de plugins habilitados)."""
     from .sdk.registry import get_registry
 
     return get_registry()
 
 
 def capabilities():
+    """Capacidades de cada fonte carregada: busca, resolução, transporte e configuração."""
     reg = _registry()
     result = {}
     for name in reg.provider_names():
@@ -177,9 +188,12 @@ def _source_unavailable_error(name):
 
 
 def search(provider, query, limit=8, media="any"):
+    """Busca candidatos na fonte pedida, validando limite e query antes de despachar."""
     if not isinstance(limit, int) or not 1 <= limit <= 50:  # noqa: PLR2004 - matches the "entre 1 e 50" message below
         raise ProviderError("Limite deve estar entre 1 e 50")
-    if not isinstance(query, str) or not query.strip() or len(query) > 500:  # noqa: PLR2004 - matches the "entre 1 e 500 caracteres" message below
+    max_query_len = 500
+    bad_query = not isinstance(query, str) or not query.strip() or len(query) > max_query_len
+    if bad_query:
         raise ProviderError("Consulta deve ter entre 1 e 500 caracteres")
     if media not in MEDIA_CHOICES:
         raise ProviderError("--media aceita image, video ou any")
@@ -525,7 +539,8 @@ def _resolve_builtin(url):  # noqa: C901 - existing size; one branch per recogni
             else (parse_qs(p.query).get("v") or [None])[0]
             if path == "watch"
             else path.split("/")[1]
-            if path.startswith(("shorts/", "embed/")) and len(path.split("/")) == 2  # noqa: PLR2004 - caminho "shorts/<id>" ou "embed/<id>": exatamente 2 partes
+            # "shorts/<id>" ou "embed/<id>": exatamente 2 partes
+            if path.startswith(("shorts/", "embed/")) and len(path.split("/")) == 2  # noqa: PLR2004
             else None
         )
         if not ident or not re.fullmatch(r"[A-Za-z0-9_-]{11}", ident):
@@ -577,6 +592,7 @@ def _resolve_builtin(url):  # noqa: C901 - existing size; one branch per recogni
 
 
 def resolve(url):
+    """Resolve a URL na fonte cujo host bate, embutida ou de plugin."""
     if public_url(url):
         host = (urlsplit(url).hostname or "").lower()
         reg = _registry()
