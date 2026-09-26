@@ -13,7 +13,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
 from _media import skip_unless_ffmpeg, synth_video
 from _paths import ROOT
 
-from getbrolls import export_plan, roteiro, roteiro_plan
+from getbrolls import assets, export_plan, roteiro, roteiro_plan
 from getbrolls.sdk.exporters import find_local_paths
 from getbrolls.sdk.jsonschema import errors
 
@@ -503,6 +503,166 @@ class ContractTests(ExportPlanTestCase):
         first = stable(build(self.root, full_project, resolve_media=fake_resolver([]))[0])
         second = stable(build(self.root, full_project, resolve_media=fake_resolver([]))[0])
         self.assertEqual(first, second)
+
+
+class LinkedFolderTests(ExportPlanTestCase):
+    """Pasta do projeto trocada por link (para fora): o export não segue; a biblioteca pessoal pode ser link."""
+
+    def link_out(self, relative):
+        outside = Path(tempfile.mkdtemp(prefix="gb-export-outside-"))
+        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
+        folder = self.root / relative
+        target = outside / folder.name
+        shutil.move(folder, target)
+        try:
+            folder.symlink_to(target, target_is_directory=True)
+        except OSError:
+            self.skipTest("este sistema não cria symlink")
+        return target
+
+    def linked(self, relative):
+        plan, items = full_project(self.root)
+        target = self.link_out(relative)
+        with mock.patch.object(export_plan, "probe_voice", fake_probe):
+            result, sources = export_plan.build(
+                self.root, plan, items, "exports/hyperframes/001", resolve_media=fake_resolver([])
+            )
+        self.assertEqual([], errors(result, SCHEMA))
+        self.assertEqual([], export_plan.check_refs(result))
+        for source in sources.values():
+            self.assertFalse(Path(source["path"]).is_relative_to(target), source)
+        return result, sources
+
+    def assert_link(self, result, sources, media_id):
+        row = result["media"][media_id]
+        self.assertEqual((False, "link"), (row["available"], row["problem"]), media_id)
+        self.assertNotIn(media_id, sources)
+
+    def test_linked_aroll_folder_is_not_followed_nor_its_transcript(self):
+        result, sources = self.linked("aroll")
+        for media_id in ("aroll:c01", "aroll:c03", "aroll:c04-a-t2", "aroll:c04-b"):
+            self.assert_link(result, sources, media_id)
+        scenes = {s["id"]: s for s in result["scenes"]}
+        self.assertEqual(("estimate", None), (scenes["c01"]["words_source"], scenes["c01"]["words_timed"]))
+        self.assertEqual("estimate", result["timing"])
+        self.assertIn(
+            "c01: a pasta aroll/ é um link: o export não segue link; troque pela pasta real", result["warnings"]
+        )
+
+    def test_linked_assets_folder_is_not_followed(self):
+        result, sources = self.linked("assets")
+        self.assert_link(result, sources, "asset:sfx:whoosh")
+        self.assert_link(result, sources, "asset:marca:selo")
+        self.assertIn(
+            "c01: a pasta assets/ é um link: o export não segue link; troque pela pasta real", result["warnings"]
+        )
+
+    def test_linked_asset_kind_folder_is_not_followed(self):
+        result, sources = self.linked("assets/sfx")
+        self.assert_link(result, sources, "asset:sfx:whoosh")
+        self.assertTrue(result["media"]["asset:marca:selo"]["available"])
+        self.assertIn(
+            "c01: a pasta assets/sfx/ é um link: o export não segue link; troque pela pasta real", result["warnings"]
+        )
+
+    def test_linked_brolls_folder_is_not_followed(self):
+        result, sources = self.linked("brolls")
+        self.assert_link(result, sources, "clip:pexels:1")
+        self.assert_link(result, sources, "clip:pixabay:2")
+        self.assertIn("c02: clipe pexels:1 fora do export (a pasta brolls/ é um link)", result["warnings"])
+
+    def test_linked_clips_folder_is_not_followed(self):
+        result, sources = self.linked("brolls/clips")
+        self.assert_link(result, sources, "clip:pexels:1")
+        self.assertIn("c02: clipe pexels:1 fora do export (a pasta brolls/clips/ é um link)", result["warnings"])
+
+    def test_personal_library_may_be_a_link_and_is_cloned(self):
+        disk = Path(tempfile.mkdtemp(prefix="gb-export-disk-"))
+        home = Path(tempfile.mkdtemp(prefix="gb-export-home-"))
+        for folder in (disk, home):
+            self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        (disk / "sfx").mkdir()
+        (disk / "sfx" / "pop.wav").write_bytes(b"x")
+        try:
+            (home / "assets").symlink_to(disk, target_is_directory=True)
+        except OSError:
+            self.skipTest("este sistema não cria symlink")
+        with mock.patch.object(assets, "home_dir", return_value=home):
+            plan, sources, _ = self.full()
+        row = plan["media"]["asset:sfx:pop"]
+        self.assertEqual((True, "personal", None), (row["available"], row["origin"], row["problem"]))
+        self.assertEqual("clone", sources["asset:sfx:pop"]["method"])
+
+
+class LongNameTests(ExportPlanTestCase):
+    """Nome válido longo em escrita não latina não quebra o plano; id longo ganha sufixo de hash estável."""
+
+    CJK = "编辑" * 15  # 30 caracteres
+    GREEK = "αβγδεζηθικ" * 4  # 40 caracteres
+
+    def test_non_latin_brand_and_sfx_names_fit_the_id_grammar(self):
+        project = Project(self.root)
+        project.write(f"assets/marca/{self.CJK}.png")
+        project.write(f"assets/sfx/{self.GREEK}.wav")
+        text = f'---\ntype: roteiro\ngenero: reels\ntema: "x"\n---\n\n## Marca <!-- c01 -->\n[FULL: {self.CJK}]\n[SFX: {self.GREEK}]\n'
+        plan = project.plan(text)
+        with mock.patch.object(export_plan, "probe_voice", fake_probe):
+            result, sources = export_plan.build(self.root, plan, [], "exports/hyperframes/001")
+        brand, sfx = f"asset:marca:{self.CJK}", f"asset:sfx:{self.GREEK}"
+        self.assertEqual(brand, result["scenes"][0]["layout"]["slots"][0]["media_id"])
+        self.assertEqual(sfx, result["scenes"][0]["layers"][0]["media_id"])
+        self.assertTrue(result["media"][brand]["available"] and result["media"][sfx]["available"])
+        self.assertEqual({brand, sfx}, set(sources))
+        self.assertEqual([], errors(result, SCHEMA))
+
+    def test_id_name_escapes_only_space_and_percent(self):
+        self.assertEqual(self.CJK, export_plan.id_name(self.CJK))
+        self.assertEqual("acao%20rapida%2550", export_plan.id_name("Ação  Rápida%50"))
+
+    def test_too_long_id_gets_a_stable_hash_suffix(self):
+        prefix = "plugin:" + "s" * 32 + ":musica:"
+        name = "a " * 39 + "a"
+        other = "a " * 39 + "b"
+        first = export_plan.named_id(prefix, name)
+        self.assertTrue(export_plan.valid_media_id(first), first)
+        self.assertTrue(first.startswith(prefix))
+        self.assertEqual(first, export_plan.named_id(prefix, name))
+        self.assertNotEqual(first, export_plan.named_id(prefix, other))
+        self.assertEqual("asset:sfx:pop", export_plan.named_id("asset:sfx:", "Pop"))
+
+
+class ResolverHygieneTests(ExportPlanTestCase):
+    def test_plugin_warning_paths_are_scrubbed(self):
+        # Montados em tempo de execução: o guarda do repositório recusa caminho de máquina escrito no código.
+        posix = "/".join(("", "Users", "fulana", "x"))
+        windows = "\\".join(("C:", "Users", "fulana", "a.mp3"))
+        uri = "file://" + "/".join(("", "home", "fulana", "a.mp3"))
+
+        def resolve(kind, name, extensions):
+            text = f"Plugin hyperframes: {kind} {name}: falhou em {posix}/{name}.mp3, {windows}, ~/lib/a.mp3 e {uri}"
+            return None, [text + " (veja https://example.com/a)"]
+
+        plan, _ = build(self.root, full_project, resolve_media=resolve)
+        raw = json.dumps(plan["warnings"], ensure_ascii=False)
+        self.assertNotIn("fulana", raw)
+        self.assertEqual([], find_local_paths(plan))
+        self.assertIn("https://example.com/a", raw)
+        self.assertIn("<caminho>", raw)
+
+    def test_resolver_is_called_once_per_kind_and_name(self):
+        calls = []
+        plan, items = full_project(self.root)
+        text = FULL_ROTEIRO.replace('[FULL: "Comenta BROLL"]', '[FULL: "Comenta BROLL"]\n[SFX: pop]\n[MUSICA: lofi]')
+        plan = Project(self.root).plan(text)
+        with mock.patch.object(export_plan, "probe_voice", fake_probe):
+            result, _ = export_plan.build(
+                self.root, plan, items, "exports/hyperframes/001", resolve_media=fake_resolver(calls)
+            )
+        self.assertEqual([("musica", "lofi"), ("sfx", "pop")], [(k, n) for k, n, _ in calls])
+        self.assertEqual(1, sum("sfx pop não achado" in w for w in result["warnings"]))
+        c06 = next(s for s in result["scenes"] if s["id"] == "c06")
+        self.assertEqual([None, "plugin:hyperframes:musica:lofi"], [layer["media_id"] for layer in c06["layers"]])
+        self.assertIn('c06: SFX "pop" pendente (não achei em sfx)', result["warnings"])
 
 
 class FixtureTests(ExportPlanTestCase):

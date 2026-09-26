@@ -12,6 +12,7 @@ O resolvedor de mídia de plugin é injetado (`resolve_media(kind, name, extensi
 pessoal chegam a ele, e sem ele nada de plugin é consultado.
 """
 
+import hashlib
 import json
 import re
 import stat
@@ -36,6 +37,9 @@ RESOLVABLE = ("sfx", "musica")
 SLOT_KEYS = ("slot", "role", "text", "beat_id", "take", "prompt")
 _LAYER_COMPONENT = {"SFX": "sfx", "MUSICA": "musica", "COMP": "composicao", "LETTERING": "lettering"}
 _EXPECTED_VIDEO = "(" + "|".join(ext.lstrip(".") for ext in assets.VIDEO) + ")"
+_ID_HASH_CHARS = 12
+# Caminho absoluto em texto de plugin (POSIX, `~/`, `C:\`, `\\servidor`, `file:`): vira `<caminho>`.
+_ABS_PATH_RE = re.compile(r"file:/+[^\s\"'<>|]*|(?<![\w.~:/\\-])(?:~?/|[A-Za-z]:[\\/]|\\\\)[^\s\"'<>|]+")
 
 
 def valid_media_id(value):
@@ -43,8 +47,27 @@ def valid_media_id(value):
 
 
 def id_name(name):
-    """Nome de componente dentro de um id de mídia: dobrado e sem espaço (`minha trilha` → `minha%20trilha`)."""
-    return quote(fold(unicodedata.normalize("NFC", name)), safe="-_.")
+    """Nome de componente dentro de um id de mídia: dobrado, com espaço e `%` escapados (`minha trilha` →
+    `minha%20trilha`); letra não latina fica como está (a gramática aceita)."""
+    folded = fold(unicodedata.normalize("NFC", name))
+    return "".join("%25" if ch == "%" else (quote(ch) if ch.isspace() else ch) for ch in folded)
+
+
+def named_id(prefix, name):
+    """`prefix` + nome do componente; se passar do limite da gramática, o nome é cortado e ganha `~<hash>` estável."""
+    part = id_name(name)
+    if len(prefix) + len(part) <= MEDIA_ID_MAX:
+        return prefix + part
+    digest = hashlib.sha256(part.encode("utf-8")).hexdigest()[:_ID_HASH_CHARS]
+    kept = part[: MEDIA_ID_MAX - len(prefix) - _ID_HASH_CHARS - 1]
+    cut = kept.rfind("%", len(kept) - 2)
+    if cut != -1:  # não deixa um `%XX` pela metade
+        kept = kept[:cut]
+    return f"{prefix}{kept}~{digest}"
+
+
+def _scrub_paths(text):
+    return _ABS_PATH_RE.sub("<caminho>", text)
 
 
 def _media_kind(ext):
@@ -99,6 +122,22 @@ class _Collector:
         self.media = {}
         self.sources = {}
         self.warnings = []
+        self.resolved = {}
+
+    def _linked_dir(self, relative):
+        """Primeira pasta de `relative` (dentro do projeto) que é link ou junction, ou None."""
+        # Import tardio, como em sdk.resolvers: o plano não carrega o SDK à toa.
+        from .sdk.loader import _is_link
+
+        here = self.project
+        for part in Path(relative).parts:
+            here /= part
+            if _is_link(here):
+                return here.relative_to(self.project).as_posix()
+        return None
+
+    def _link_warning(self, label, linked):
+        self.warnings.append(f"{label}: a pasta {linked}/ é um link: o export não segue link; troque pela pasta real")
 
     def _source(self, media_id, path, method):
         info = path.lstat()
@@ -130,6 +169,9 @@ class _Collector:
         if not isinstance(rel, str) or not rel.startswith("clips/"):
             return None, "caminho fora de clips/"
         path = self.project / "brolls" / rel
+        linked = self._linked_dir(Path("brolls", rel).parent)
+        if linked:
+            return path, f"a pasta {linked}/ é um link"
         if path.is_symlink():
             return path, "é um link"
         try:
@@ -157,7 +199,9 @@ class _Collector:
             path, problem = self._clip_problem(c, clips_root)
             if problem or path is None:
                 self.warnings.append(f"{shot or 'sem beat'}: clipe {c['id']} fora do export ({problem})")
-                self.media[media_id] = _row("video", "clip", problem="changed")
+                self.media[media_id] = _row(
+                    "video", "clip", problem="link" if problem and problem.endswith("é um link") else "changed"
+                )
                 changed.setdefault(shot, []).append(media_id)
                 continue
             ext = path.suffix.lower()
@@ -177,8 +221,16 @@ class _Collector:
     def aroll(self, name, label):
         """Id `aroll:<nome>`, sempre com linha na tabela (disponível ou não)."""
         media_id = f"aroll:{name}"
-        if media_id in self.media:
-            return media_id
+        if media_id not in self.media:
+            linked = self._linked_dir("aroll")
+            if linked:  # a pasta tem que ser real: nem o vídeo nem o sidecar são lidos através do link
+                self._link_warning(label, linked)
+                self.media[media_id] = _row("video", "aroll", problem="link")
+            else:
+                self._aroll_file(media_id, name, label)
+        return media_id
+
+    def _aroll_file(self, media_id, name, label):
         expected = f"aroll/{name}.{_EXPECTED_VIDEO}"
         try:
             found = assets.resolve(self.project, "aroll", name)
@@ -187,35 +239,34 @@ class _Collector:
                 f"{label}: aroll/{name}.* é ambíguo ou aponta para fora de aroll/: deixe um arquivo só"
             )
             self.media[media_id] = _row("video", "aroll", problem="unreadable")
-            return media_id
+            return
         entry, _, _ = self._entry("aroll", name) if found["status"] == "found" else (None, None, None)
         if entry is None:
             self.media[media_id] = _row("video", "aroll", problem="missing", expected=expected)
-            return media_id
+            return
         ext = entry.suffix.lower()
         if entry.is_symlink():
             self.warnings.append(f"{label}: aroll/{entry.name} é um link: o export não segue link; troque pelo arquivo")
             self.media[media_id] = _row("video", "aroll", ext=ext, problem="link")
-            return media_id
+            return
         try:
             info = probe_voice(entry)
         except ValueError:
             self.warnings.append(f"{label}: não consegui ler aroll/{entry.name} (ffprobe): confira o arquivo")
             self.media[media_id] = _row("video", "aroll", ext=ext, problem="unreadable")
-            return media_id
+            return
         self.media[media_id] = _row(
             "video", "aroll", origin="project", ext=ext, available=True, has_audio=info["has_audio"],
             duration_s=info["duration_s"], width=info["width"], height=info["height"],
         )  # fmt: skip
         self._source(media_id, entry, "clone")
-        return media_id
 
     # --- componentes --------------------------------------------------------
 
     def asset(self, kind, row, label):
         """Id de um componente de mídia (`marca`/`sfx`/`musica`); None quando não há o que pôr no export."""
         name = row["name"]
-        media_id = f"asset:{kind}:{id_name(name)}"
+        media_id = named_id(f"asset:{kind}:", name)
         if media_id in self.media:
             return media_id
         if row["status"] == "found":
@@ -236,6 +287,12 @@ class _Collector:
         entry, origin, root = located
         ext = entry.suffix.lower()
         media_kind = _media_kind(ext)
+        # A pasta do projeto tem que ser real; a biblioteca pessoal pode morar num link (disco externo): lá é cópia.
+        linked = self._linked_dir(entry.parent.relative_to(self.project)) if origin == "project" else None
+        if linked:
+            self._link_warning(label, linked)
+            self.media[media_id] = _row(media_kind, "asset", origin=origin, ext=ext, problem="link")
+            return media_id
         if entry.is_symlink():
             where = self._where(origin, root, entry)
             self.warnings.append(f"{label}: {where} é um link: o export não segue link; troque pelo arquivo")
@@ -252,12 +309,16 @@ class _Collector:
         """Pergunta aos resolvedores de plugin (injetados); o acerto vira `plugin:<id>:<tipo>:<nome>`."""
         if self.resolve_media is None:
             return None
-        hit, warnings = self.resolve_media(kind, name, assets.ASSET_KINDS[kind].extensions)
-        self.warnings.extend(f"{label}: {w}" for w in warnings)
+        key = (kind, id_name(name))
+        if key not in self.resolved:  # uma pergunta por (tipo, nome); os avisos saem na primeira cena
+            hit, warnings = self.resolve_media(kind, name, assets.ASSET_KINDS[kind].extensions)
+            self.warnings.extend(dict.fromkeys(f"{label}: {_scrub_paths(w)}" for w in warnings))
+            self.resolved[key] = hit
+        hit = self.resolved[key]
         if hit is None:
             return None
         store = hit["store"]
-        media_id = f"plugin:{store}:{kind}:{id_name(name)}"
+        media_id = named_id(f"plugin:{store}:{kind}:", name)
         if not valid_media_id(media_id):
             self.warnings.append(f"{label}: resposta do plugin {store} ignorada (id fora do padrão)")
             return None
