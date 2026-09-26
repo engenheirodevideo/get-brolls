@@ -76,10 +76,10 @@ def names():
 def get(name):
     """`{"url", "text"}` do preset. Preset de plugin: o texto sai saneado e marcado como
     informado pelo plugin — nunca uma declaração ou outra evidência forjada."""
+    from .sdk import registry_state
     from .sdk.contracts import CORE
-    from .sdk.registry import get_registry
 
-    registry = get_registry()
+    registry = registry_state.get()
     preset = registry.preset(name)
     if preset is None:
         raise ValueError(f"Preset desconhecido: {name}. Use um de: {', '.join(names())}.")

@@ -380,3 +380,13 @@ def built_registry() -> Registry | None:
     consulta). Usado por quem só quer aproveitar um registro que outra parte do
     comando já construiu, sem forçar carregamento de código de plugin."""
     return registry_state.current()
+
+
+def _build() -> Registry:
+    """`get_registry()` lido na hora da chamada (um teste que troca `get_registry` vale aqui também)."""
+    return get_registry()
+
+
+# `registry_state.get()` monta o registro por aqui: quem este módulo importa para os
+# built-ins (`presets`) pede o registro sem importar `registry` de volta.
+registry_state.set_builder(_build)

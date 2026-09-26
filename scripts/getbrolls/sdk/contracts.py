@@ -1,13 +1,13 @@
 """Contratos públicos do SDK: o que uma extensão entrega ao registro."""
 
 import copy
-import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
 from ..http import ProviderError
+from . import names
 
 # Muda só em major do get-brolls. Plugin declara o mesmo número em `sdk_api`.
 SDK_API = 1
@@ -17,7 +17,9 @@ CORE = "core"
 # conceitos próprios (cliente, catálogo, direção, template e projeto), para que
 # `[cliente:x]` ou `[direcao:x]` num roteiro nunca vire diretiva de um plugin.
 RESERVED_IDS = (CORE, "cliente", "catalogo", "direcao", "template", "projeto")
-NAME_RE = re.compile(r"[a-z][a-z0-9_]{1,31}")
+# O padrão mora no módulo folha `names` (o roteiro o lê sem passar por aqui); o
+# mesmo objeto continua acessível como `contracts.NAME_RE`.
+NAME_RE = names.NAME_RE
 MATCH_KINDS = ("literal", "illustrative")
 MEDIA_KINDS = ("video", "image")
 # "preview": a rota pode trazer mídia de trabalho para revisão. "fetch": trazer o

@@ -17,7 +17,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .brief import MAX_HINT_S
-from .sdk.contracts import NAME_RE
+from .sdk.names import NAME_RE
 
 ROTEIRO_FILE = "ROTEIRO.md"
 STATUSES = ("draft", "revisado")
