@@ -1,3 +1,7 @@
+# pylint: disable=missing-module-docstring,missing-function-docstring,too-many-arguments
+# pylint: disable=too-many-positional-arguments,too-many-locals
+# Legado: ocorrências pré-existentes (corpo idêntico à origin/main).
+
 import hashlib
 import json
 import logging
@@ -322,7 +326,9 @@ def preview(src, dst, start, end):
         raise ValueError("Não foi possível criar a prévia.")
 
 
-def review_preview(src, directory, stem, start, end, config, label=None):  # noqa: PLR0913, PLR0917 - existing size; one field per input the preview/contact-sheet/GIF build needs
+def review_preview(  # noqa: PLR0913, PLR0917 - existing size; one field per input the preview/GIF build needs
+    src, directory, stem, start, end, config, label=None
+):
     """Full selected interval, native aspect, static gallery and bounded GIF.
 
     The contact sheet follows the original gb_contact.sh: evenly sampled frames tiled
@@ -424,7 +430,11 @@ def review_preview(src, directory, stem, start, end, config, label=None):  # noq
             w = config["width"]
             fps = config["fps"]
             colors = config["colors"]
-            filt = f"fps={fps},scale='min({w},iw)':-2:flags=lanczos,split[a][b];[a]palettegen=max_colors={colors}:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle"
+            filt = (
+                f"fps={fps},scale='min({w},iw)':-2:flags=lanczos,split[a][b];"
+                f"[a]palettegen=max_colors={colors}:stats_mode=diff[p];"
+                "[b][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle"
+            )
             run([*base, "-filter_complex", filt, "-loop", "0", str(gif)])
             size = gif.stat().st_size
             result["gif_bytes"] = size
@@ -433,14 +443,17 @@ def review_preview(src, directory, stem, start, end, config, label=None):  # noq
                 files.append((gif, result["gif_path"]))
             else:
                 result["warning"] = (
-                    "GIF excedeu o limite de tamanho; entregue estático. Reduza largura/FPS ou aumente GB_GIF_MAX_MB e gere novamente."
+                    "GIF excedeu o limite de tamanho; entregue estático. Reduza largura/FPS ou "
+                    "aumente GB_GIF_MAX_MB e gere novamente."
                 )
         for source, relative in files:
             source.replace(directory.parent / relative)
     return result
 
 
-def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):  # noqa: PLR0913, PLR0917 - existing size; one field per input the full-video contact sheet needs
+def scan_sheet(  # noqa: PLR0913, PLR0917 - existing size; one field per input the full-video contact sheet needs
+    src, directory, stem, start, span, frames=12, source_offset=0
+):
     """Varredura do vídeo inteiro: um quadro a cada span/frames segundos, baixa resolução.
 
     Não é a prévia do trecho (essa é `review_preview`, presa a GB_PREVIEW_MAX_SECONDS):
