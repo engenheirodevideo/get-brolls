@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -413,9 +414,12 @@ class ExportWriteGuardTests(ExportCase):
         self.assertFalse(dest.exists())
         export.copy_plugin(registry, {**row, "st_size": info.st_size}, dest)
         self.assertEqual(track.read_bytes(), dest.read_bytes())
-        umask = os.umask(0)
-        os.umask(umask)
-        self.assertEqual(0o644 & ~umask, dest.stat().st_mode & 0o777)
+        if os.name == "nt":  # no Windows não há umask e arquivo gravável é 0o666
+            self.assertTrue(dest.stat().st_mode & stat.S_IWRITE)
+        else:
+            umask = os.umask(0)
+            os.umask(umask)
+            self.assertEqual(0o644 & ~umask, dest.stat().st_mode & 0o777)
 
     def plugin_row(self, path):
         info = path.lstat()

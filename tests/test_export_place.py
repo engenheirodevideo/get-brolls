@@ -75,7 +75,10 @@ class PersonMediaTests(PlaceTestCase):
         self.assertIn(method, ("clone", "reflink-auto", "copy"))
         self.assertFalse(voice.samefile(dest))
         self.assertEqual(b"conteudo", dest.read_bytes())
-        self.assertEqual(0o644, stat.S_IMODE(voice.stat().st_mode))
+        if os.name == "nt":  # no Windows, arquivo gravável é 0o666: basta seguir gravável (não congelado)
+            self.assertTrue(voice.stat().st_mode & stat.S_IWRITE)
+        else:
+            self.assertEqual(0o644, stat.S_IMODE(voice.stat().st_mode))
 
     def test_failed_clone_removes_the_partial_and_copies(self):
         voice = self.file("aroll/c01.mov")

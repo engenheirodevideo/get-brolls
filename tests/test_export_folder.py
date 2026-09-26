@@ -279,6 +279,8 @@ def marked_staging(root, name=".staging-aaaa1111", media=None):
 class CrashSafeRemovalTests(FolderTestCase):
     def locked_subfolder(self, staging):
         """Subpasta somente-leitura com um arquivo dentro: apagar esse arquivo falha no POSIX."""
+        if os.name == "nt":
+            self.skipTest("no Windows, pasta somente-leitura não impede apagar o arquivo de dentro")
         locked = staging / "compositions"
         locked.mkdir()
         (locked / "scene.html").write_text("x", encoding="utf-8")
