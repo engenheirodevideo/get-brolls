@@ -1,5 +1,13 @@
 """Operational diagnostics. Never log command arguments or tokens; tracebacks are stored redacted."""
 
+# pylint: disable=import-error,missing-function-docstring,broad-exception-caught,use-sequence-for-iteration,missing-class-docstring,cyclic-import
+# Legado: ocorrências pré-existentes (corpo idêntico à origin/main). `import-error`
+# é o `fcntl`/`msvcrt` condicional por plataforma em `_acquire_lock`/`_release_lock`.
+# Os ciclos (getbrolls.runtime <-> getbrolls.logs, getbrolls.runtime <-> getbrolls.http)
+# já existem na origin/main: os imports de `logs`/`http` aqui são tardios (dentro de
+# função) de propósito, exatamente para quebrar esses ciclos em tempo de execução
+# (ver os comentários "avoids a runtime<->logs/http import cycle" abaixo).
+
 import contextlib
 import contextvars
 import json
@@ -206,7 +214,8 @@ def force_rmtree(path):
         if sys.version_info >= (3, 12):
             shutil.rmtree(root, onexc=retry)
         else:  # pragma: no cover - Python 3.11
-            shutil.rmtree(root, onerror=retry)
+            # `onexc` só existe a partir do 3.12; este ramo é só para o 3.11.
+            shutil.rmtree(root, onerror=retry)  # pylint: disable=deprecated-argument
 
 
 def scrub_home(text):
@@ -326,7 +335,102 @@ def provider_error_message(text):
     return f"{closed} {PLUGIN_ERROR_HINT}"
 
 
-def audited(args, execute):  # noqa: C901, PLR0912, PLR0915 - existing size; wraps every command with locking, logging and the audit trail
+def _classify_audited_error(event, exc, log):
+    """Preenche o evento com a classificação da exceção capturada por `audited`."""
+    event["status"] = "error"
+    event["recovery_pending"] = bool(log and (log.parent / ".pending-transaction.json").exists())
+    # Diagnostics survive regardless of classification, redacted like everything else here.
+    event["type"] = type(exc).__name__
+    event["repr"] = scrub_home(redact(repr(exc)))
+    event["traceback"] = scrub_home(redact(traceback.format_exc()))
+    if isinstance(exc, (KeyError, TypeError, AttributeError)):
+        # These are bug signatures, not user-fixable input problems; the traceback is what
+        # a maintainer needs, not a RULES.md pointer.
+        event["error_code"] = "INTERNAL_ERROR"
+        event["message"] = (
+            f"Erro interno inesperado (bug) [type: {exc.__class__!r}]. Reporte incluindo diagnostics.jsonl"
+            + (f" ({log})." if log else ".")
+        )
+        return
+    from .http import ProviderError  # local: avoids a runtime<->http import cycle
+
+    if isinstance(exc, ProviderError):
+        event["error_code"] = "INVALID_DATA"
+        event["message"] = provider_error_message(redact(exc))
+        current = ACTIVE.get()
+        if current is not None:
+            current["warnings"].append({"code": "PROVIDER_ERROR", "message": redact(exc)})
+            event["warnings"] = current["warnings"]
+    else:
+        event["error_code"] = "IO_ERROR" if isinstance(exc, OSError) else "INVALID_DATA"
+        event["message"] = redact(exc)
+
+
+def _audited_error_failure(args, event, log, app_log_path):
+    """Monta o `OperationError` da exceção já classificada por `_classify_audited_error`."""
+    hint = (
+        "Se recovery_pending=true, o próximo comando retoma a gravação. Se "
+        "state_committed=true e não houver pendência, execute review para "
+        "regenerar a página. Caso contrário, corrija o erro e repita."
+    )
+    payload = {
+        **event,
+        "hint": hint,
+        "log": str(log) if log else None,
+        "app_log": str(app_log_path) if app_log_path and app_log_path.is_file() else None,
+    }
+    if args.command in QUIET_ERROR_COMMANDS and event["error_code"] != "INTERNAL_ERROR":
+        # `plugins`/`x` não gravam no projeto: erro de uso ali (flag faltando, plugin
+        # inexistente) é só a mensagem — traceback e a dica de recovery/review eram
+        # ruído. `export` grava só numa pasta nova em exports/ e nunca no manifesto nem
+        # no journal (recusa journal pendente antes de começar): a dica de recovery
+        # também não vale lá. `diagnostics.jsonl` (quando há projeto) guarda tudo igual.
+        for key in ("traceback", "repr", "hint"):
+            payload.pop(key, None)
+    return OperationError(payload)
+
+
+def _audited_interrupt_failure(event, log, app_log_path):
+    """Monta o `OperationError` de uma interrupção (Ctrl-C) durante `audited`."""
+    event["status"] = "interrupted"
+    event["error_code"] = "INTERRUPTED"
+    return OperationError(
+        {
+            **event,
+            "message": "Operação interrompida. O próximo comando recuperará uma gravação pendente, se houver.",
+            "log": str(log) if log else None,
+            "app_log": str(app_log_path) if app_log_path and app_log_path.is_file() else None,
+        }
+    )
+
+
+def _write_audit_log(event, log, read_only, failure, result):
+    """Grava a linha JSONL do evento; se a escrita falhar, anexa o aviso onde houver espaço."""
+    # Um comando somente leitura nunca cria a árvore do projeto só para logar.
+    if not (log and (not read_only or log.parent.is_dir())):
+        return
+    try:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        _ensure_private_file(log)
+        with log.open("a", encoding="utf-8") as stream:
+            stream.write(scrub_home(json.dumps(event, ensure_ascii=False)) + "\n")
+    except OSError:
+        warning = {
+            "code": "LOG_UNAVAILABLE",
+            "message": "Não foi possível gravar diagnostics.jsonl. Confira espaço e permissões.",
+        }
+        if failure is not None:
+            failure.payload.setdefault("warnings", []).append(warning)
+        elif isinstance(result, dict):
+            result.setdefault("warnings", []).append(warning)
+        else:
+            # `result` isn't a dict (e.g. None, or a non-mapping success value), so
+            # the warning has nowhere to live in the response; it must not vanish.
+            print(json.dumps(warning, ensure_ascii=False), file=sys.stderr)
+
+
+def audited(args, execute):
+    """Envolve a execução de um comando com trava, log de auditoria e trilha de erro/interrupção."""
     started = time.monotonic()
     event = {
         "at": now(),
@@ -337,7 +441,14 @@ def audited(args, execute):  # noqa: C901, PLR0912, PLR0915 - existing size; wra
     }
     token = ACTIVE.set(event)
     project = getattr(args, "project", None)
-    read_only = args.command in READ_ONLY_COMMANDS or (args.command, getattr(args, "action", None)) in READ_ONLY_ACTIONS
+    read_only = (
+        args.command in READ_ONLY_COMMANDS
+        or (
+            args.command,
+            getattr(args, "action", None),
+        )
+        in READ_ONLY_ACTIONS
+    )
     log = Path(project).resolve() / "brolls/diagnostics.jsonl" if project else None
     app_log_path = Path(project).resolve() / "brolls" / "getbrolls.log" if project else None
     result = None
@@ -357,83 +468,15 @@ def audited(args, execute):  # noqa: C901, PLR0912, PLR0915 - existing size; wra
         AttributeError,
         OverflowError,
     ) as exc:
-        event["status"] = "error"
-        event["recovery_pending"] = bool(log and (log.parent / ".pending-transaction.json").exists())
-        # Diagnostics survive regardless of classification, redacted like everything else here.
-        event["type"] = type(exc).__name__
-        event["repr"] = scrub_home(redact(repr(exc)))
-        event["traceback"] = scrub_home(redact(traceback.format_exc()))
-        if isinstance(exc, (KeyError, TypeError, AttributeError)):
-            # These are bug signatures, not user-fixable input problems; the traceback is what
-            # a maintainer needs, not a RULES.md pointer.
-            event["error_code"] = "INTERNAL_ERROR"
-            event["message"] = (
-                f"Erro interno inesperado (bug) [type: {exc.__class__!r}]. Reporte incluindo diagnostics.jsonl"
-                + (f" ({log})." if log else ".")
-            )
-        else:
-            from .http import ProviderError  # local: avoids a runtime<->http import cycle
-
-            if isinstance(exc, ProviderError):
-                event["error_code"] = "INVALID_DATA"
-                event["message"] = provider_error_message(redact(exc))
-                current = ACTIVE.get()
-                if current is not None:
-                    current["warnings"].append({"code": "PROVIDER_ERROR", "message": redact(exc)})
-                    event["warnings"] = current["warnings"]
-            else:
-                event["error_code"] = "IO_ERROR" if isinstance(exc, OSError) else "INVALID_DATA"
-                event["message"] = redact(exc)
-        payload = {
-            **event,
-            "hint": "Se recovery_pending=true, o próximo comando retoma a gravação. Se state_committed=true e não houver pendência, execute review para regenerar a página. Caso contrário, corrija o erro e repita.",
-            "log": str(log) if log else None,
-            "app_log": str(app_log_path) if app_log_path and app_log_path.is_file() else None,
-        }
-        if args.command in QUIET_ERROR_COMMANDS and event["error_code"] != "INTERNAL_ERROR":
-            # `plugins`/`x` não gravam no projeto: erro de uso ali (flag faltando, plugin
-            # inexistente) é só a mensagem — traceback e a dica de recovery/review eram
-            # ruído. `export` grava só numa pasta nova em exports/ e nunca no manifesto nem
-            # no journal (recusa journal pendente antes de começar): a dica de recovery
-            # também não vale lá. `diagnostics.jsonl` (quando há projeto) guarda tudo igual.
-            for key in ("traceback", "repr", "hint"):
-                payload.pop(key, None)
-        failure = OperationError(payload)
+        _classify_audited_error(event, exc, log)
+        failure = _audited_error_failure(args, event, log, app_log_path)
         raise failure from None
     except KeyboardInterrupt:
-        event["status"] = "interrupted"
-        event["error_code"] = "INTERRUPTED"
-        failure = OperationError(
-            {
-                **event,
-                "message": "Operação interrompida. O próximo comando recuperará uma gravação pendente, se houver.",
-                "log": str(log) if log else None,
-                "app_log": str(app_log_path) if app_log_path and app_log_path.is_file() else None,
-            }
-        )
+        failure = _audited_interrupt_failure(event, log, app_log_path)
         raise failure from None
     finally:
         event["duration_ms"] = round((time.monotonic() - started) * 1000)
-        # Um comando somente leitura nunca cria a árvore do projeto só para logar.
-        if log and (not read_only or log.parent.is_dir()):
-            try:
-                log.parent.mkdir(parents=True, exist_ok=True)
-                _ensure_private_file(log)
-                with log.open("a", encoding="utf-8") as stream:
-                    stream.write(scrub_home(json.dumps(event, ensure_ascii=False)) + "\n")
-            except OSError:
-                warning = {
-                    "code": "LOG_UNAVAILABLE",
-                    "message": "Não foi possível gravar diagnostics.jsonl. Confira espaço e permissões.",
-                }
-                if failure is not None:
-                    failure.payload.setdefault("warnings", []).append(warning)
-                elif isinstance(result, dict):
-                    result.setdefault("warnings", []).append(warning)
-                else:
-                    # `result` isn't a dict (e.g. None, or a non-mapping success value), so
-                    # the warning has nowhere to live in the response; it must not vanish.
-                    print(json.dumps(warning, ensure_ascii=False), file=sys.stderr)
+        _write_audit_log(event, log, read_only, failure, result)
         ACTIVE.reset(token)
 
 
