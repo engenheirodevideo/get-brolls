@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long  # tabela em markdown: cada linha da tabela não quebra sem virar outro valor
 """Mídia dentro de uma pasta de export: posta pelo core, por id lógico, sem nunca mudar a fonte.
 
 | Fonte | Método |
@@ -11,6 +12,7 @@ Antes de pôr, a fonte é conferida de novo (`lstat`): mesmo `st_dev`/`st_ino`/t
 novo a fonte e o destino (hardlink = mesmo inode; cópia = mesmo tamanho): se algo
 mudou no meio, o destino sai e o export para com "mudou durante o export".
 """
+# pylint: enable=line-too-long
 
 import contextlib
 import os
@@ -119,7 +121,7 @@ def clone_or_copy(src, dest):
     if command is not None:
         argv, method = command
         try:
-            done = subprocess.run(argv, check=False, capture_output=True)  # noqa: S603 - fixed cp argv, absolute paths after "--", never a shell
+            done = subprocess.run(argv, check=False, capture_output=True)  # noqa: S603 - fixed cp argv, absolute paths after "--", never a shell  # pylint: disable=line-too-long
         except (OSError, subprocess.SubprocessError):
             done = None
         if done is not None and done.returncode == 0 and dest.is_file() and not dest.is_symlink():
