@@ -753,6 +753,14 @@ class MetaIdentityTests(ExportPlanTestCase):
         )
         self.assertEqual([], errors(result, SCHEMA))
 
+    def test_layers_and_scenes_reserve_ref_and_direction(self):
+        plan, _, _ = self.full()
+        self.assertTrue(any(scene["layers"] for scene in plan["scenes"]))
+        for scene in plan["scenes"]:
+            self.assertEqual([], scene["direction"])
+            self.assertEqual([], [layer for layer in scene["layers"] if layer["ref"] is not None])
+            self.assertTrue(all("ref" in layer for layer in scene["layers"]))
+
     def test_without_a_project_id_it_stays_null(self):
         plan, _ = build(self.root, min_project)
         self.assertIsNone(plan["meta"]["projeto_id"])

@@ -81,7 +81,8 @@
           "text": "3x mais <rápido>",
           "name": "destaque",
           "media_id": null,
-          "component_status": "pending"
+          "component_status": "pending",
+          "ref": null
         },
         {
           "kind": "SFX",
@@ -98,10 +99,12 @@
           "text": null,
           "name": "whoosh",
           "media_id": "asset:sfx:whoosh",
-          "component_status": "found"
+          "component_status": "found",
+          "ref": null
         }
       ],
       "extensions": [],
+      "direction": [],
       "speech_clean": "Eu digo o tema </script> e ele acha.\nCorta e entrega.",
       "notes": [],
       "content_hash": "3090c8a0c8e508cd97b920fb2dcc50a0870d3f312a2558868331aaa0c5e46a8f"
@@ -160,7 +163,8 @@
           "text": null,
           "name": "lofi",
           "media_id": "plugin:hyperframes:musica:lofi",
-          "component_status": "pending"
+          "component_status": "pending",
+          "ref": null
         }
       ],
       "extensions": [
@@ -189,6 +193,7 @@
           "at_s": 7.2
         }
       ],
+      "direction": [],
       "speech_clean": "Horas cortando vídeo na mão.",
       "notes": [],
       "content_hash": "c39280a6de3d42ac9aa1fb9e1d9af8d0fa51e59f600bf1b046d14787033c88d0"
@@ -257,10 +262,12 @@
           "text": null,
           "name": "grafico",
           "media_id": null,
-          "component_status": "pending"
+          "component_status": "pending",
+          "ref": null
         }
       ],
       "extensions": [],
+      "direction": [],
       "speech_clean": "Ele acha, corta e organiza.",
       "notes": [],
       "content_hash": "e0314765017fae0a485ae7c930a9a670b800d9dc97dd22fb75bf58cae4ce1765"
@@ -315,6 +322,7 @@
       "words_timed": null,
       "layers": [],
       "extensions": [],
+      "direction": [],
       "speech_clean": "Nós dois falando.",
       "notes": [],
       "content_hash": "61fb8acba2322f132095ab2bd3977e9102a063a33856e8c62aa1661024dc52a2"
@@ -369,10 +377,12 @@
           "text": null,
           "name": "pop",
           "media_id": null,
-          "component_status": "pending"
+          "component_status": "pending",
+          "ref": null
         }
       ],
       "extensions": [],
+      "direction": [],
       "speech_clean": "",
       "notes": [],
       "content_hash": "44b239e9c571ea705c7f5b95e4669324a2a00e26c7557ea67fb7c9c93f3f24ff"
@@ -413,6 +423,7 @@
       "words_timed": null,
       "layers": [],
       "extensions": [],
+      "direction": [],
       "speech_clean": "",
       "notes": [],
       "content_hash": "69a20c133e32adc63853ac0a8aa8398feb327beb0fec70da54534aea00786041"
@@ -455,6 +466,7 @@
       "words_timed": null,
       "layers": [],
       "extensions": [],
+      "direction": [],
       "speech_clean": "Testei e amei.",
       "notes": [],
       "content_hash": "26eb405a0b1b2828bc1e570d0b5210fdb2468317839798867fa27a08118e716a"
@@ -511,10 +523,12 @@
           "text": "Siga",
           "name": null,
           "media_id": null,
-          "component_status": null
+          "component_status": null,
+          "ref": null
         }
       ],
       "extensions": [],
+      "direction": [],
       "speech_clean": "Segue para mais.",
       "notes": [],
       "content_hash": "03c65d8a5d00b95ed37850b6f30e97027a9129afaee90f44124ef98885252744"

@@ -399,6 +399,7 @@ class _Collector:
             "anchor": layer["anchor"], "word_offset": layer["word_offset"],
             "at_s": at_seconds(layer, scene["words"], window), "text": layer["args"][0] if kind == "LETTERING" else None,
             "name": name, "media_id": media_id, "component_status": component["status"] if component else None,
+            "ref": None,
         }  # fmt: skip
 
     def _extension(self, scene, ext, window, exporter):
@@ -447,6 +448,7 @@ class _Collector:
             "voice_media_ids": voice_ids, "words_source": source, "words_timed": words_timed,
             "layers": [self._layer(scene, layer, window) for layer in scene["layers"]],
             "extensions": [self._extension(scene, ext, window, exporter) for ext in scene["extensions"]],
+            "direction": [],
             "speech_clean": scene["speech_clean"], "notes": list(scene["notes"]), "content_hash": scene["content_hash"],
         }  # fmt: skip
 

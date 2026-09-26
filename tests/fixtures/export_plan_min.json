@@ -79,10 +79,12 @@
           "text": null,
           "name": "whoosh",
           "media_id": "asset:sfx:whoosh",
-          "component_status": "found"
+          "component_status": "found",
+          "ref": null
         }
       ],
       "extensions": [],
+      "direction": [],
       "speech_clean": "Eu digo o tema.\nE ele acha.",
       "notes": [],
       "content_hash": "ab9fe9b46128b82a5139cdf61596a5c7ecba27cacbd7275767c583da30d53aaa"
@@ -125,6 +127,7 @@
       "words_timed": null,
       "layers": [],
       "extensions": [],
+      "direction": [],
       "speech_clean": "Horas cortando.",
       "notes": [],
       "content_hash": "b1bcb0a5d8cfa7835350b66d371b46619d815192cb092e408e89364aab797954"
@@ -165,6 +168,7 @@
       "words_timed": null,
       "layers": [],
       "extensions": [],
+      "direction": [],
       "speech_clean": "",
       "notes": [],
       "content_hash": "69a20c133e32adc63853ac0a8aa8398feb327beb0fec70da54534aea00786041"

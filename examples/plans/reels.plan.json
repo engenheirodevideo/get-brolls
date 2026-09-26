@@ -91,7 +91,8 @@
           "text": "3 minutos",
           "name": "destaque",
           "media_id": null,
-          "component_status": "pending"
+          "component_status": "pending",
+          "ref": null
         },
         {
           "kind": "SFX",
@@ -108,10 +109,12 @@
           "text": null,
           "name": "whoosh",
           "media_id": "asset:sfx:whoosh",
-          "component_status": "found"
+          "component_status": "found",
+          "ref": null
         }
       ],
       "extensions": [],
+      "direction": [],
       "speech_clean": "Você grava a fala e o resto aparece.\nSem abrir banco de imagem.",
       "notes": [],
       "content_hash": "5ada5889cd83c1cb2f6432a1ebe0a2b6156bfe769ca3826e949f2e6edf9d8513"
@@ -168,10 +171,12 @@
           "text": null,
           "name": "lofi",
           "media_id": "asset:musica:lofi",
-          "component_status": "found"
+          "component_status": "found",
+          "ref": null
         }
       ],
       "extensions": [],
+      "direction": [],
       "speech_clean": "Horas procurando o plano certo.",
       "notes": [],
       "content_hash": "87dbc3fd48cce564b01245974037912255576be1b9ebfb667cd626347e863e85"
@@ -226,6 +231,7 @@
       "words_timed": null,
       "layers": [],
       "extensions": [],
+      "direction": [],
       "speech_clean": "Ele busca, corta e organiza por cena.",
       "notes": [],
       "content_hash": "3d7c519bbed4ff42a8c1c8ff3a15c2bb533ee03c5df573701a8ab7efc2c78dd3"
@@ -268,6 +274,7 @@
       "words_timed": null,
       "layers": [],
       "extensions": [],
+      "direction": [],
       "speech_clean": "Comenta BROLL que eu te mando.",
       "notes": [],
       "content_hash": "d573b9bf46d0dbd88cd1d690ba6e3de775891298b3c6681e842519f39ee476a7"

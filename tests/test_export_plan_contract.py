@@ -119,6 +119,35 @@ class MetaReservationTests(unittest.TestCase):
                 self.assertTrue(self.meta_errors(cliente=value))
 
 
+class CatalogReservationTests(unittest.TestCase):
+    """Escopo de cliente, referência de catálogo e direção por cena: nomeados, ainda sem uso."""
+
+    def test_schema_reserves_client_origin_ref_and_direction(self):
+        schema = published()
+        scene = schema["properties"]["scenes"]["items"]
+        layer = scene["properties"]["layers"]["items"]
+        origin = schema["properties"]["media"]["additionalProperties"]["properties"]["origin"]
+        self.assertIn("client", origin["enum"])
+        self.assertIn("ref", layer["required"])
+        self.assertEqual(["string", "null"], layer["properties"]["ref"]["type"])
+        self.assertIn("direction", scene["required"])
+        self.assertEqual("array", scene["properties"]["direction"]["type"])
+        for node in (origin, layer["properties"]["ref"], scene["properties"]["direction"]):
+            self.assertIn("reservad", node["description"].lower())
+
+    def test_core_output_leaves_them_empty(self):
+        plan = example_plan()
+        for scene in plan["scenes"]:
+            self.assertEqual([], scene["direction"])
+            self.assertTrue(all(layer["ref"] is None for layer in scene["layers"]))
+        self.assertNotIn("client", {row["origin"] for row in plan["media"].values()})
+
+    def test_client_origin_is_valid(self):
+        plan = example_plan()
+        next(iter(plan["media"].values()))["origin"] = "client"
+        self.assertEqual([], errors(plan, strict()))
+
+
 class ExamplePlanTests(unittest.TestCase):
     def test_example_plan_follows_the_strict_schema(self):
         plan = example_plan()
