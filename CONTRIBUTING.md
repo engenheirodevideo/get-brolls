@@ -31,7 +31,7 @@ Mudanças na revisão visual exigem conferir aprovação/ajuste/sugestão, expor
 
 ## Lint e type check
 
-O estilo de código (base Google Python Style Guide, adaptada ao nosso stack) e o checklist de revisão estão em [`docs/CODE_STYLE.md`](docs/CODE_STYLE.md).
+O estilo de código (base Google Python Style Guide, adaptada ao nosso stack) e o checklist de revisão estão em [`docs/CODE_STYLE.md`](docs/CODE_STYLE.md). Toda mudança segue, em ordem, o [`docs/CHECKLIST.md`](docs/CHECKLIST.md).
 
 `ruff`, `pyright` e `pylint` são as únicas dependências de desenvolvimento e ficam pinadas em `requirements-dev.txt`; o runtime da CLI continua sem dependência nenhuma. A configuração das três está em `pyproject.toml`: `ruff` com E, F, W, I, B, UP, ISC, ICN, G, LOG, PLE, ERA, RSE, C4, PIE, RET, FURB, PERF, TC, A, N, DTZ, SIM, RUF, BLE, PLW, PTH, S, T20, ARG, C90, PLC e PLR em 120 colunas (lista completa e as exceções propositais em `[tool.ruff.lint]`), `pyright` em `basic` sobre `scripts/` e `tests/`, e `pylint` na régua de `[tool.pylint]` (`tests/pylintrc` para os testes).
 
