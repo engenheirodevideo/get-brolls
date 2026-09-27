@@ -268,7 +268,30 @@ Rota `stage="fetch"` consome licença ou cota **uma vez só**:
 - `api.exporter(name, export, description)` — experimental: registra um exportador; `name` tem que estar em `contributes.exporters`, `export(plan, options)` devolve um `ExportResult(files, media=[], notes=[])` e `description` tem de 1 a 200 caracteres. Veja [Exportadores](#exportadores).
 - `api.resolver(name, resolve, kinds)` — experimental: registra um resolvedor; `name` tem que estar em `contributes.resolvers`, `resolve(kind, name)` devolve um `ResolverHit(path, license=None)` ou `None`, e `kinds` é uma lista não vazia, sem repetição, com `"sfx"` e/ou `"musica"` (`RESOLVER_KINDS`). As pastas em que ele pode achar arquivo são as de `permissions.paths`, conferidas como em `api.local_file`. Veja [Resolvedores](#resolvedores).
 - `api.download(url, name, headers=None)` — só dentro de `Route.prepare`: baixa `url` (https, host em `permissions.network`, IP público, sem redirect, teto de 512 MB) para `workdir/name` e devolve o caminho. Aceita URL assinada (ex.: um link S3 que o próprio plugin assinou) e headers como `Authorization`; nenhum dos dois vai para log ou mensagem de erro. `name` é só nome de arquivo (`[A-Za-z0-9._-]`, sem `/` nem `..`).
-- `api.local_file(path)` — só dentro de `Route.prepare`: copia um arquivo que esteja dentro de `permissions.paths` para o `workdir`. Sempre cópia, nunca hardlink — o original da pessoa não muda. No POSIX, a abertura desce da raiz de `permissions.paths` uma pasta por vez, sem seguir link: trocar uma pasta do caminho (ou a própria raiz) por um link depois da conferência, mesmo várias vezes durante a abertura, não entrega mais um arquivo de fora dela; o arquivo em si abre com `O_NOFOLLOW` (um link trocado ali não é seguido) e `O_NONBLOCK` (uma FIFO não trava), conferido pelo próprio descritor (arquivo regular, até 512 MB) e copiado dele com o teto contado nos bytes lidos; o destino é criado exclusivo, sem seguir link plantado. A recusa nomeia o arquivo que o plugin pediu, nunca o alvo resolvido. No Windows, onde `O_NOFOLLOW` não existe, vale a conferência antiga: resolução + conferência de raiz antes de abrir (link simbólico lá exige privilégio de administrador).
+- `api.local_file(path)` — só dentro de `Route.prepare`: copia um arquivo que
+  esteja dentro de `permissions.paths` para o `workdir`. Sempre cópia, nunca
+  hardlink — o original da pessoa não muda. No macOS e no Linux, a pasta de
+  `permissions.paths` é aberta descendo de `/` um nome por vez, sem seguir link,
+  pelo caminho gravado no pin no `enable`/`install`/`update` (a prévia mostra
+  esse caminho), e dela até o arquivo a descida segue igual, uma pasta por vez:
+  trocar a própria pasta de `permissions.paths`, uma pasta acima dela ou uma
+  pasta do caminho por um link, antes da chamada ou durante a abertura, não
+  entrega mais um arquivo de fora dela. Uma pasta de `permissions.paths` que
+  hoje não confere com a gravada no pin do enable (aponta para outro lugar, ou o
+  pin não a guardou) fica ignorada, com aviso; com pin de versão anterior, sem
+  esse campo, vale o caminho resolvido na carga, com aviso para habilitar de
+  novo. O arquivo em si abre com `O_NOFOLLOW` (um link trocado ali não é
+  seguido) e `O_NONBLOCK` (uma FIFO não trava), conferido pelo próprio descritor
+  (arquivo regular, até 512 MB) e copiado dele com o teto contado nos bytes
+  lidos; o destino é criado exclusivo, sem seguir link plantado. Hardlink é
+  aceito (snapshot de NAS, `rsync --link-dest`) e fica registrado no log
+  (`plugin_path_hardlink`, só com o id do plugin). A recusa nomeia o arquivo que
+  o plugin pediu, nunca o alvo resolvido. No Windows, onde `O_NOFOLLOW` e
+  `dir_fd` não existem, vale a conferência antiga — resolução + conferência de
+  raiz antes de abrir e de novo depois; ela ainda deixa uma janela para quem
+  troca pastas do caminho durante a abertura, e uma junction de pasta (`mklink
+  /J`) não exige administrador nem modo de desenvolvedor: a descida sem seguir
+  link, por enquanto, é só do macOS e do Linux.
 - `api.data_dir` — `$GB_HOME/plugin-data/<id>/` (0700), criado na primeira leitura: estado e cache do plugin. Fica fora da pasta do plugin, então escrever ali não muda o pin de hash.
 - `api.config()` — lê `data_dir/settings.json` como dicionário (`{}` sem arquivo); JSON inválido ou que não é objeto vira erro com o caminho relativo.
 - `api.finish()` — chamado automaticamente pelo loader depois de `register()`; confere se tudo declarado em `contributes` foi mesmo registrado e se cada `capabilities.route` aponta para uma rota registrada pelo próprio plugin.
@@ -663,12 +686,15 @@ do projeto e da pessoa não acharem nada.
   dentro da raiz `.../Sons`.
 - **O que o core confere.** `ResolverHit` exato, com caminho absoluto; o caminho
   não é link simbólico nem junction; resolvido, fica dentro de uma raiz; é um
-  arquivo regular com um só nome no disco (hardlink é recusado); a abertura desce
-  da raiz uma pasta por vez, sem seguir link, como em `api.local_file` — trocar
-  uma pasta do caminho, ou a própria raiz, por um link, mesmo várias vezes
-  durante a abertura, não entrega mais um arquivo de fora dela; tem uma extensão
-  aceita para o tipo, comparada sem diferenciar maiúsculas (`PORTA.WAV` vale
-  como `.wav`); e tem até 512 MB.
+  arquivo regular com um só nome no disco (hardlink é recusado, ao contrário de
+  `api.local_file`); no macOS e no Linux, a abertura desce de `/` até a raiz —
+  pelo caminho gravado no pin — e da raiz até o arquivo, um nome por vez, sem
+  seguir link, como em `api.local_file`: trocar a própria raiz, uma pasta acima
+  dela ou uma pasta do caminho por um link, antes ou durante a abertura, não
+  entrega mais um arquivo de fora dela (no Windows vale a conferência antiga,
+  com a mesma janela de `api.local_file`); tem uma extensão aceita para o tipo,
+  comparada sem diferenciar maiúsculas (`PORTA.WAV` vale como `.wav`); e tem até
+  512 MB.
 - **Sempre cópia.** O arquivo é da pessoa: o core nunca faz hardlink nem muda a
   permissão dele. Na hora de copiar, o core abre de novo, confere que dispositivo,
   inode e tamanho são os mesmos do acerto e que o caminho segue dentro da raiz, e

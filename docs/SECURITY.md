@@ -44,22 +44,27 @@ não chega ao ambiente.
 permissões de quem executa a CLI, e não tem egress próprio além do que o
 código dele fizer — só habilite plugins cujo código você leu e em que confia.
 
-Rotas de plugin trazem o arquivo, mas o core decide o resto: a rota grava só
-na pasta de trabalho que o core cria em `.getbrolls-sources/` (e apaga ao
-fim), e o arquivo devolvido é recusado se estiver fora dela, for link
-simbólico, vazio, maior que 512 MB ou ilegível pelo `ffprobe`. Rota que
-consome licença ou cota (`stage="fetch"`) nunca roda em `inspect`, `preview`
-ou varredura — só no `fetch`, depois da aprovação humana e do `permit`.
-`api.download` segue o transporte do core (HTTPS, IP público, sem redirect,
-host em `permissions.network`) e aceita header de autorização e URL assinada
-sem registrá-los em log nem em mensagem de erro. `api.local_file` só lê
-arquivos dentro de `permissions.paths` (pastas específicas — nunca `/`, a raiz
-de uma unidade, `~` nem a pasta pessoal inteira), sem seguir link e sempre
-copiando. `permissions.paths` e `permissions.network` aparecem no preview do
-`enable` e do `install`. A resposta de `api.get_json` de um plugin nunca vai
-para o cache em disco. Comandos de plugin (`gb x`) só leem o projeto, por
-cópias. `install`/`update` clonam com `GIT_TERMINAL_PROMPT=0`, recusam URL com
-credencial, link simbólico e pasta de controle de versão fora do topo, e não
+Rotas de plugin trazem o arquivo, mas o core decide o resto: a rota grava só na
+pasta de trabalho que o core cria em `.getbrolls-sources/` (e apaga ao fim), e o
+arquivo devolvido é recusado se estiver fora dela, for link simbólico, vazio,
+maior que 512 MB ou ilegível pelo `ffprobe`. Rota que consome licença ou cota
+(`stage="fetch"`) nunca roda em `inspect`, `preview` ou varredura — só no
+`fetch`, depois da aprovação humana e do `permit`. `api.download` segue o
+transporte do core (HTTPS, IP público, sem redirect, host em
+`permissions.network`) e aceita header de autorização e URL assinada sem
+registrá-los em log nem em mensagem de erro. `api.local_file` só lê arquivos
+dentro de `permissions.paths` (pastas específicas — nunca `/`, a raiz de uma
+unidade, `~` nem a pasta pessoal inteira), sem seguir link e sempre copiando. No
+macOS e no Linux, a pasta de `permissions.paths` é aberta descendo de `/` pelo
+caminho gravado no pin no `enable` (mostrado na prévia), sem seguir link; uma
+pasta que não confere mais com a gravada fica ignorada, com aviso. No Windows
+vale a conferência antiga, que ainda deixa uma janela de corrida, e uma junction
+não exige administrador. `api.local_file` aceita hardlink e o registra no log;
+os resolvedores o recusam. `permissions.paths` e `permissions.network` aparecem
+no preview do `enable` e do `install`. A resposta de `api.get_json` de um plugin
+nunca vai para o cache em disco. Comandos de plugin (`gb x`) só leem o projeto,
+por cópias. `install`/`update` clonam com `GIT_TERMINAL_PROMPT=0`, recusam URL
+com credencial, link simbólico e pasta de controle de versão fora do topo, e não
 executam código do plugin. `GB_PLUGINS=off` desliga tudo; `GB_PLUGINS=id1,id2`
 só escolhe entre os plugins já habilitados com pin válido — nunca carrega um
 plugin não habilitado nem um com conteúdo mudado desde o `enable`.
