@@ -151,9 +151,11 @@ def walk_leaves(value, where, *, keys_of_any_type=False):
             yield position, item
 
 
-def checked_roots(paths):
-    """`(raízes resolvidas que valem, entradas ignoradas por serem amplas demais)`."""
-    roots, ignored = [], []
+def resolved_roots(paths):
+    """`([(entrada como escrita, raiz resolvida)...], entradas ignoradas por serem amplas demais)`.
+
+    Só entra a entrada absoluta NESTE sistema (depois de expandir `~`)."""
+    pairs, ignored = [], []
     for raw in paths:
         path = Path(raw).expanduser()
         if not path.is_absolute():
@@ -162,5 +164,11 @@ def checked_roots(paths):
         if _too_broad(resolved):
             ignored.append(raw)
         else:
-            roots.append(resolved)
-    return roots, ignored
+            pairs.append((raw, resolved))
+    return pairs, ignored
+
+
+def checked_roots(paths):
+    """`(raízes resolvidas que valem, entradas ignoradas por serem amplas demais)`."""
+    pairs, ignored = resolved_roots(paths)
+    return [resolved for _raw, resolved in pairs], ignored

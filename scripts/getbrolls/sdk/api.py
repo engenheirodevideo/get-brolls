@@ -14,10 +14,11 @@ from .. import logs
 from ..http import ProviderError, get_json, public_url
 from ..models import candidate as core_candidate
 from ..rules import home_dir
+from ..runtime import record_warning
 from . import guard, safe_copy
 from .contracts import CommandContext, CommandSpec, Exporter, ExporterSpec, Provider, Resolver, ResolverSpec, Route
 from .errors import ApiError
-from .files import bad_file_name, checked_roots
+from .files import bad_file_name, checked_roots, resolved_roots
 
 if TYPE_CHECKING:
     from .registry import Registry
@@ -84,12 +85,16 @@ class PluginApi:
         plugin_id: id do plugin, como no manifesto.
     """
 
-    def __init__(self, manifest: dict, registry: "Registry") -> None:
+    def __init__(self, manifest: dict, registry: "Registry", *, pin: dict | None = None) -> None:
         """Prepara a API do plugin `manifest["id"]` sobre `registry`.
 
         Args:
             manifest: manifesto já validado por `read_manifest`.
             registry: registro onde o plugin vai registrar o que declarou.
+            pin: entrada do plugin em `plugins.json`, passada pelo core na carga; com
+                ela, uma raiz de `permissions.paths` que hoje resolve para outro lugar
+                que no enable fica ignorada. Sem ela (o `plugins check`), vale a raiz
+                resolvida agora.
         """
         self.plugin_id = manifest["id"]
         self._manifest = manifest
@@ -105,6 +110,9 @@ class PluginApi:
         # Raízes de `permissions.paths` resolvidas uma vez só por instância (no primeiro
         # uso): a raiz trocada por link depois disso não muda para onde `local_file` olha.
         self._root_cache: tuple[list[Path], list[str]] | None = None
+        self._pin = pin
+        # Alguma raiz ficou ignorada por ter mudado desde o enable (muda a recusa do local_file).
+        self._roots_changed = False
         guard.remember_env(self.plugin_id, manifest["permissions"]["env"])
 
     def _own(self, kind, name):
@@ -411,11 +419,51 @@ class PluginApi:
         # do disco, um ponto de montagem, a pasta pessoal ou uma pasta acima dela (link,
         # `/Volumes/Macintosh HD`, `/Users`, outra caixa do mesmo nome): ignorada.
         if self._root_cache is None:
-            self._root_cache = checked_roots(self._manifest["permissions"]["paths"])
+            self._root_cache = self._resolve_roots()
         roots, ignored = self._root_cache
         for _raw in ignored:
             logs.event(_log, logging.WARNING, "plugin_path_refused", plugin=self.plugin_id, reason="too_broad")
         return list(roots)
+
+    def _resolve_roots(self):
+        """`(raízes que valem, entradas amplas demais)`, conferidas contra o pin.
+
+        Sem pin (o `plugins check`), é `checked_roots`. Com pin que guardou
+        `roots_resolved`, uma raiz que hoje resolve para outro caminho (ou que o pin não
+        guardou) fica ignorada, com um aviso que nomeia a entrada como está escrita no
+        manifesto — nunca o caminho resolvido — e a raiz usada é a gravada no pin. Pin
+        antigo, sem o campo: vale a raiz resolvida agora, com um aviso para habilitar de
+        novo."""
+        paths = self._manifest["permissions"]["paths"]
+        if self._pin is None:
+            return checked_roots(paths)
+        pairs, ignored = resolved_roots(paths)
+        recorded = self._pin.get("roots_resolved")
+        if not isinstance(recorded, dict) or not all(
+            type(key) is str and type(value) is str for key, value in recorded.items()
+        ):
+            if paths:
+                record_warning(
+                    "PLUGIN_PIN_OUTDATED",
+                    f"Plugin {self.plugin_id}: o pin é de uma versão antiga e não guardou as pastas de "
+                    f"permissions.paths; rode plugins --action enable --id {self.plugin_id} para o core "
+                    "conferir que elas não mudaram.",
+                )
+            return [resolved for _raw, resolved in pairs], ignored
+        roots = []
+        for raw, resolved in pairs:
+            pinned = recorded.get(raw)
+            if pinned is not None and Path(pinned) == resolved:
+                roots.append(Path(pinned))
+                continue
+            self._roots_changed = True
+            logs.event(_log, logging.WARNING, "plugin_path_refused", plugin=self.plugin_id, reason="changed")
+            record_warning(
+                "PLUGIN_PATH_CHANGED",
+                f"Plugin {self.plugin_id}: a pasta {raw} de permissions.paths aponta para outro lugar desde "
+                f"o enable e fica ignorada; confira a pasta e rode plugins --action enable --id {self.plugin_id}.",
+            )
+        return roots, ignored
 
     def _refuse(self, text):
         return ProviderError(f"Plugin {self.plugin_id}: {text}")
@@ -427,6 +475,11 @@ class PluginApi:
             roots = self._roots()
         except (OSError, RuntimeError, ValueError) as exc:
             raise self._refuse(f"permissions.paths não pôde ser resolvido ({type(exc).__name__}).") from None
+        if not roots and self._roots_changed:
+            raise self._refuse(
+                "as pastas de permissions.paths mudaram desde o enable e ficam ignoradas; confira-as e rode "
+                f"plugins --action enable --id {self.plugin_id}."
+            )
         if not roots:
             raise self._refuse("permissions.paths está vazio; declare a pasta no manifesto para usar api.local_file.")
         try:

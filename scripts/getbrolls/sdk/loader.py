@@ -13,13 +13,14 @@ import os
 import sys
 import types
 from pathlib import Path
+from typing import NamedTuple
 
 from .. import logs
 from ..ledger import atomic_write
 from ..rules import home_dir
 from . import guard, registry_state
 from .api import PluginApi
-from .files import TOP_LEVEL_VCS, counted_files
+from .files import TOP_LEVEL_VCS, counted_files, resolved_roots
 from .files import is_link as _is_link  # `export_folder`/`export_plan` leem `loader._is_link`
 from .guard import without_prefix
 from .manifest import ManifestError, compatibility_problem, read_manifest
@@ -222,11 +223,42 @@ def permissions_diff(before, after):
     return {"from": before, "to": after}
 
 
-def pin_entry(manifest, sha, files):
-    """Entrada de `enabled`/`last_pins`: versão, sha256, permissões aprovadas e o mapa
-    por arquivo (se cabe no teto). As permissões guardadas deixam o `enable` de um
-    conteúdo mudado mostrar o que elas eram antes."""
-    entry = {"version": manifest["version"], "sha256": sha, "permissions": manifest["permissions"]}
+ROOTS_FIELD = "roots_resolved"
+
+
+class PinContent(NamedTuple):
+    """O que o pin grava do conteúdo confirmado: sha256 da pasta, mapa por arquivo e
+    as raízes de `permissions.paths` resolvidas (`pinned_roots`)."""
+
+    sha: str
+    files: dict
+    roots: dict
+
+
+def pinned_roots(manifest):
+    """`{entrada de permissions.paths como escrita: caminho resolvido}` das raízes que valem agora.
+
+    Vai para o pin (`roots_resolved`), fora do sha256 do conteúdo: na carga, uma raiz
+    que passou a resolver para outro lugar fica ignorada. Uma entrada que não resolve
+    fica de fora (e fica ignorada na carga)."""
+    try:
+        pairs, _ignored = resolved_roots(manifest["permissions"].get("paths", []))
+    except (OSError, RuntimeError, ValueError):
+        return {}
+    return {raw: str(resolved) for raw, resolved in pairs}
+
+
+def pin_entry(manifest, sha, files, roots=None):
+    """Entrada de `enabled`/`last_pins`: versão, sha256, permissões aprovadas, as raízes
+    resolvidas de `permissions.paths` (`roots`, ou calculadas agora) e o mapa por
+    arquivo (se cabe no teto). As permissões guardadas deixam o `enable` de um conteúdo
+    mudado mostrar o que elas eram antes."""
+    entry = {
+        "version": manifest["version"],
+        "sha256": sha,
+        "permissions": manifest["permissions"],
+        ROOTS_FIELD: pinned_roots(manifest) if roots is None else roots,
+    }
     if len(files) > PIN_MAP_MAX_FILES:
         entry["files_omitted"] = True
     else:
@@ -435,8 +467,11 @@ def _import(folder, manifest):
     return module
 
 
-def register_plugin(folder, manifest, registry):
-    """Roda a fonte do plugin e o `register(api)` dele contra `registry`, e confere o que ele registrou."""
+def register_plugin(folder, manifest, registry, pinned=None):
+    """Roda a fonte do plugin e o `register(api)` dele contra `registry`, e confere o que ele registrou.
+
+    `pinned` é a entrada do plugin em `plugins.json` (a carga normal passa; o `check`, não):
+    dela sai o caminho resolvido de cada raiz de `permissions.paths` no enable."""
     module = _import(folder, manifest)
     try:
         register = module.register
@@ -444,7 +479,7 @@ def register_plugin(folder, manifest, registry):
         register = None
     if not callable(register):
         raise ManifestError(f"Plugin {manifest['id']}: {manifest['entry']} não define register(api).")
-    api = PluginApi(manifest, registry)
+    api = PluginApi(manifest, registry, pin=pinned)
     register(api)
     api.finish()
 
@@ -474,7 +509,7 @@ def _load_one(row, folder, manifest, pinned, registry):
         reason = _pin_mismatch_reason(row, folder, pinned)
         if reason is not None:
             return reason
-        register_plugin(folder, manifest, registry)
+        register_plugin(folder, manifest, registry, pinned.get(row["id"]) or {})
         return None
 
     # Código de plugin é de terceiro: qualquer falha (incl. SystemExit de um sys.exit()
@@ -701,6 +736,21 @@ def _pin_diff(pinned, manifest, files):
     return diff
 
 
+def _enable_preview(manifest, folder, content):
+    """Prévia do `enable`: a de `plugin_preview`, os arquivos que o pin cobre e, quando o
+    plugin declara `permissions.paths`, as raízes resolvidas que o pin vai gravar, tal e qual."""
+    preview = plugin_preview(manifest, folder, content.sha)
+    names = sorted(content.files)
+    preview["files"] = {
+        "count": len(names),
+        "names": names[:PREVIEW_FILES_MAX],
+        "truncated": len(names) > PREVIEW_FILES_MAX,
+    }
+    if manifest["permissions"]["paths"]:
+        preview[ROOTS_FIELD] = content.roots
+    return preview
+
+
 def enable(plugin_id, confirm, expect=None):
     """Prévia (sem `confirm`) ou pin do conteúdo atual como habilitado.
 
@@ -716,13 +766,8 @@ def enable(plugin_id, confirm, expect=None):
     if problem:
         raise ValueError(f"Plugin {plugin_id}: {problem}")
     sha, files = pin_digests(folder)
-    preview = plugin_preview(manifest, folder, sha)
-    names = sorted(files)
-    preview["files"] = {
-        "count": len(names),
-        "names": names[:PREVIEW_FILES_MAX],
-        "truncated": len(names) > PREVIEW_FILES_MAX,
-    }
+    roots = pinned_roots(manifest)
+    preview = _enable_preview(manifest, folder, PinContent(sha, files, roots))
     state = read_state()
     # Pin atual ou, depois de um `disable`, o último pin guardado: desligar e mudar
     # a pasta não pode virar atalho para re-pinar às cegas só com `--yes`.
@@ -733,7 +778,7 @@ def enable(plugin_id, confirm, expect=None):
         return {"enabled": False, "plugin": preview, **extra, "note": EXPECT_NOTE if changed else SANDBOX_NOTE}
     if changed or expect:
         check_expect(expect, sha)
-    state["enabled"][plugin_id] = pin_entry(manifest, sha, files)
+    state["enabled"][plugin_id] = pin_entry(manifest, sha, files, roots)
     state.get("last_pins", {}).pop(plugin_id, None)
     _write_state(state)
     registry_state.forget()
@@ -741,7 +786,7 @@ def enable(plugin_id, confirm, expect=None):
     return {"enabled": True, "plugin": preview, **extra, "note": DONE_NOTE}
 
 
-def pin(manifest, folder, origin=None, enabled=True, digests=None):
+def pin(manifest, folder, origin=None, enabled=True, content=None):
     """Grava o pin de hash de `folder` como o plugin `manifest["id"]` e, vindo do
     `install`/`update`, a origem (`{"source", "commit"}`) em `plugins.json`.
 
@@ -751,13 +796,15 @@ def pin(manifest, folder, origin=None, enabled=True, digests=None):
     `last_pins` dele, se houver, passa a ser este conteúdo: a pessoa já o aprovou
     no update (`--expect`), então religar depois é só `--yes`.
 
-    `digests` (`(sha, files)` já calculados) vem do `install`/`update`: o pin grava
-    exatamente o conteúdo que a pessoa confirmou no staging, não um novo hash da
-    pasta depois da troca — se alguém mexer nela no meio, o plugin fica suspenso."""
+    `content` (`PinContent` já calculado) vem do `install`/`update`: o pin grava
+    exatamente o conteúdo (e as raízes resolvidas) que a pessoa confirmou no staging,
+    não um novo hash da pasta depois da troca — se alguém mexer nela no meio, o plugin
+    fica suspenso."""
     plugin_id = manifest["id"]
-    sha, files = digests if digests is not None else pin_digests(folder)
+    if content is None:
+        content = PinContent(*pin_digests(folder), pinned_roots(manifest))
     state = read_state()
-    entry = pin_entry(manifest, sha, files)
+    entry = pin_entry(manifest, content.sha, content.files, content.roots)
     last_pins = state.get("last_pins", {})
     if enabled:
         state["enabled"][plugin_id] = entry
@@ -768,7 +815,7 @@ def pin(manifest, folder, origin=None, enabled=True, digests=None):
         state.setdefault("sources", {})[plugin_id] = origin
     _write_state(state)
     registry_state.forget()
-    return sha
+    return content.sha
 
 
 def disable(plugin_id):

@@ -614,15 +614,19 @@ def _checked_manifest(folder):
     return manifest
 
 
-def _summary(manifest, origin, commit, sha256, files):
+def _summary(manifest, origin, commit, content, files):
+    """Prévia do install/update: manifesto, origem, sha256, arquivos e, quando o plugin
+    declara `permissions.paths`, as raízes resolvidas que o pin vai gravar."""
     warnings = loader.permission_warnings(manifest)
     summary = {
         **loader.manifest_summary(manifest),
         "source": origin,
         "commit": commit,
-        "sha256": sha256,
+        "sha256": content.sha,
         "files": files,
     }
+    if manifest["permissions"]["paths"]:
+        summary[loader.ROOTS_FIELD] = content.roots
     if warnings:
         summary["warnings"] = warnings
     return summary
@@ -648,15 +652,15 @@ def install(source, confirm, expect=None):
             raise ValueError(
                 f"Plugin {manifest['id']} já está instalado; use plugins --action update --id {manifest['id']}."
             )
-        sha, files = loader.pin_digests(staging)
-        preview = _summary(manifest, origin, commit, sha, _file_list(staging))
+        content = loader.PinContent(*loader.pin_digests(staging), loader.pinned_roots(manifest))
+        preview = _summary(manifest, origin, commit, content, _file_list(staging))
         if not confirm:
             return {"installed": False, "plugin": preview, "note": loader.EXPECT_NOTE}
-        _check_expect(expect, sha)
+        _check_expect(expect, content.sha)
         staging.replace(target)
     finally:
         force_rmtree(staging)
-    pinned_sha = loader.pin(manifest, target, {"source": origin, "commit": commit}, digests=(sha, files))
+    pinned_sha = loader.pin(manifest, target, {"source": origin, "commit": commit}, content=content)
     logs.event(_log, logging.INFO, "plugin_installed", plugin=manifest["id"], version=manifest["version"])
     return {"installed": True, "plugin": {**preview, "sha256": pinned_sha}, "note": loader.DONE_NOTE}
 
@@ -679,7 +683,7 @@ class _Staged(NamedTuple):
     source: str
     commit: str | None
     manifest: dict
-    digests: tuple[str, dict]
+    content: "loader.PinContent"
     preview: dict
     diff: dict
 
@@ -690,10 +694,10 @@ def _stage_update(plugin_id, origin, staging, folder, current):
     manifest = _checked_manifest(staging)
     if manifest["id"] != plugin_id:
         raise ValueError(f"A origem agora traz o plugin {manifest['id']}, não {plugin_id}; nada foi trocado.")
-    sha, files = loader.pin_digests(staging)
-    preview = _summary(manifest, source, commit, sha, _file_list(staging))
+    content = loader.PinContent(*loader.pin_digests(staging), loader.pinned_roots(manifest))
+    preview = _summary(manifest, source, commit, content, _file_list(staging))
     diff = _diff(folder, current, staging, manifest)
-    return _Staged(source, commit, manifest, (sha, files), preview, diff)
+    return _Staged(source, commit, manifest, content, preview, diff)
 
 
 def _swap_in(plugin_id, folder, staging):
@@ -735,7 +739,7 @@ def update(plugin_id, confirm, expect=None):
         staged = _stage_update(plugin_id, origin, staging, folder, current)
         if not confirm:
             return {"updated": False, "plugin": staged.preview, "diff": staged.diff, "note": loader.EXPECT_NOTE}
-        _check_expect(expect, staged.digests[0])
+        _check_expect(expect, staged.content.sha)
         _swap_in(plugin_id, folder, staging)
     finally:
         force_rmtree(staging)
@@ -743,7 +747,7 @@ def update(plugin_id, confirm, expect=None):
     # Atualizar o conteúdo não liga de volta um plugin que estava desabilitado —
     # só quem já estava habilitado sai daqui com pin novo (senão o pin some).
     sha_after = loader.pin(
-        manifest, folder, {"source": staged.source, "commit": commit}, enabled=was_enabled, digests=staged.digests
+        manifest, folder, {"source": staged.source, "commit": commit}, enabled=was_enabled, content=staged.content
     )
     logs.event(
         _log,
