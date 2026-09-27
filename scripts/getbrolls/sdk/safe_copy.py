@@ -137,6 +137,16 @@ _BY_COMPONENT = (
 )
 
 
+# Pastas acima da raiz (e a própria raiz): abertas só para busca quando o sistema deixa
+# (`O_PATH` no Linux, `O_SEARCH` no macOS), então uma pasta com permissão só de passagem
+# (`--x`) no caminho continua valendo; sem isso, leitura.
+_SEARCH_FLAGS = (
+    (getattr(os, "O_PATH", 0) or getattr(os, "O_SEARCH", 0) or os.O_RDONLY)
+    | getattr(os, "O_DIRECTORY", 0)
+    | getattr(os, "O_NOFOLLOW", 0)
+)
+
+
 def _open_at(name, flags, dir_fd=None):
     """`os.open` de `name` relativo à pasta `dir_fd` (ou do caminho `name`, sem ela)."""
     return os.open(name, flags, dir_fd=dir_fd)
@@ -195,6 +205,60 @@ def _open_folder_at(dir_fd, name):
         raise _refused_folder(dir_fd, name, exc) from None
 
 
+def _refused_root_part(dir_fd, name, exc):
+    """Recusa de uma pasta do caminho da raiz que não abriu: link, pasta que sumiu ou algo
+    que não é pasta é `OUTSIDE` (o caminho já resolvido mudou); o resto é `OPEN_FAILED`."""
+    if isinstance(exc, (FileNotFoundError, NotADirectoryError)):
+        return UnsafeFileError(OUTSIDE)
+    try:
+        info = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+    except OSError:
+        return UnsafeFileError(OPEN_FAILED, type(exc).__name__)
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+        return UnsafeFileError(OUTSIDE)
+    return UnsafeFileError(OPEN_FAILED, type(exc).__name__)
+
+
+def open_root(root):
+    """Descritor da pasta `root`, descendo da âncora (`/` ou a unidade) um nome por vez.
+
+    `root` é um caminho já resolvido (sem link por construção): cada nome é aberto com
+    `O_DIRECTORY|O_NOFOLLOW` relativo à pasta anterior, então uma pasta acima da raiz,
+    ou a própria raiz, trocada por link depois de resolvida é `OUTSIDE` — como um nome
+    que sumiu ou deixou de ser pasta. Só no POSIX (`dir_fd`); quem recebe o descritor
+    fecha, e numa recusa as pastas abertas no caminho já saem fechadas.
+
+    Args:
+        root: caminho absoluto e já resolvido da raiz.
+
+    Returns:
+        O descritor da raiz.
+
+    Raises:
+        UnsafeFileError: `OUTSIDE` (link, nome que sumiu, não é pasta, caminho relativo)
+            ou `OPEN_FAILED` (outra falha ao abrir, com o tipo do erro).
+    """
+    path = Path(root)
+    if not path.is_absolute():
+        raise UnsafeFileError(OUTSIDE)
+    try:
+        dir_fd = _open_at(path.anchor, _SEARCH_FLAGS)
+    except OSError as exc:
+        raise UnsafeFileError(OPEN_FAILED, type(exc).__name__) from None
+    try:
+        for name in path.parts[1:]:
+            try:
+                child_fd = _open_at(name, _SEARCH_FLAGS, dir_fd)
+            except OSError as exc:
+                raise _refused_root_part(dir_fd, name, exc) from None
+            os.close(dir_fd)
+            dir_fd = child_fd
+    except BaseException:
+        os.close(dir_fd)
+        raise
+    return dir_fd
+
+
 def _open_file_at(dir_fd, name):
     """Descritor do arquivo `name` dentro de `dir_fd`, com as flags de `open_regular`."""
     try:
@@ -206,16 +270,17 @@ def _open_file_at(dir_fd, name):
 def _open_by_component(path, roots, single_link):
     """`open_under` no POSIX: desce da raiz uma pasta por vez, pelo descritor.
 
-    A raiz é aberta pelo caminho, também com `O_DIRECTORY|O_NOFOLLOW` (ela já foi
-    resolvida no registro: se agora é um link, é `OUTSIDE`), e conferida pelo descritor
-    (mesmo dispositivo + inode do `lstat` da raiz escolhida); cada pasta do meio é
-    aberta com `O_DIRECTORY|O_NOFOLLOW` relativa à anterior, e o arquivo com as flags de `open_regular` relativas à
-    última. Nenhum link é seguido depois da escolha da raiz: trocar uma pasta do meio
+    A raiz é aberta por `open_root`, descendo da âncora um nome por vez sem seguir link
+    (ela já foi resolvida: se ela ou uma pasta acima dela agora é um link, é `OUTSIDE`),
+    e conferida pelo descritor (mesmo dispositivo + inode do `lstat` da raiz escolhida);
+    cada pasta do meio é aberta com `O_DIRECTORY|O_NOFOLLOW` relativa à anterior, e o
+    arquivo com as flags de `open_regular` relativas à última. Nenhum link é seguido
+    depois da escolha da raiz: trocar uma pasta do meio, a raiz ou uma pasta acima dela
     por um link — uma vez ou várias, antes ou durante a abertura — nunca leva a um
     arquivo de fora dela. Toda pasta aberta na descida é fechada; numa recusa o
     arquivo também sai fechado."""
     root, root_info, parts = _root_and_parts(path, roots)
-    dir_fd = _open_folder_at(None, root)
+    dir_fd = open_root(root)
     try:
         if not _same(os.stat(dir_fd), root_info):  # noqa: PTH116 - stat do descritor aberto (o mesmo que fstat)
             raise UnsafeFileError(CHANGED)

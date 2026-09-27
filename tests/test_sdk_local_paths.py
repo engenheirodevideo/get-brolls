@@ -112,7 +112,7 @@ class LocalFileHardeningTests(LoaderTestCase):
 
         def small_fstat(fd):
             st = real_fstat(fd)
-            return SimpleNamespace(st_mode=st.st_mode, st_size=1)
+            return SimpleNamespace(st_mode=st.st_mode, st_size=1, st_nlink=st.st_nlink)
 
         with (
             route_scope("demo", self.work),

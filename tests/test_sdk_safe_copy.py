@@ -1,9 +1,12 @@
 """Abrir e copiar arquivo da pessoa pelo descritor, sem seguir link (`sdk.safe_copy`)."""
 
 import contextlib
+import logging
 import os
 import shutil
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -284,14 +287,9 @@ class DescentTests(DescentTestCase):
 
     @unittest.skipUnless(BY_COMPONENT, "a descida por dir_fd é do POSIX")
     def test_a_root_replaced_before_it_is_opened_is_refused(self):
-        real_open = safe_copy._open_at
+        real_open_root = safe_copy.open_root
 
-        def other_root(name, flags, dir_fd=None):
-            if dir_fd is None:
-                return real_open(self.outside, flags)
-            return real_open(name, flags, dir_fd)
-
-        with patch.object(safe_copy, "_open_at", other_root):
+        with patch.object(safe_copy, "open_root", lambda root: real_open_root(self.outside)):
             self.refused(safe_copy.CHANGED, safe_copy.open_under, self.inner, [self.root])
 
     def test_the_legacy_check_still_refuses_a_single_swap(self):
@@ -345,10 +343,9 @@ class DescriptorLeakTests(DescentTestCase):
                 self.assert_no_leak(lambda path=path, kwargs=kwargs: safe_copy.open_under(path, [self.root], **kwargs))
 
     @staticmethod
-    def failing_at(call):
-        """`_open_at` que recusa a `call`-ésima abertura (1 = raiz, 2 = `sub`, 3 = arquivo)."""
+    def failing_at(call, calls):
+        """`_open_at` que recusa a `call`-ésima abertura (da âncora até o arquivo), anotando cada uma em `calls`."""
         real_open = safe_copy._open_at
-        calls = []
 
         def flaky_open(name, flags, dir_fd=None):
             calls.append(name)
@@ -359,8 +356,13 @@ class DescriptorLeakTests(DescentTestCase):
         return flaky_open
 
     def test_a_failure_at_any_open_closes_the_folders_already_open(self):
-        for call in (1, 2, 3):
-            with self.subTest(call=call), patch.object(safe_copy, "_open_at", self.failing_at(call)):
+        opened = []
+        with patch.object(safe_copy, "_open_at", self.failing_at(0, opened)):
+            fd, _ = safe_copy.open_under(self.inner, [self.root])
+        os.close(fd)
+        self.assertEqual(["eco.wav", "sub"], opened[:-3:-1])
+        for call in range(1, len(opened) + 1):
+            with self.subTest(call=call), patch.object(safe_copy, "_open_at", self.failing_at(call, [])):
                 self.assert_no_leak(lambda: safe_copy.open_under(self.inner, [self.root]))
 
     def test_swaps_and_a_replaced_root_close_what_they_opened(self):
@@ -371,13 +373,12 @@ class DescriptorLeakTests(DescentTestCase):
                 self.swap_to_link()
             return real_open(name, flags, dir_fd)
 
-        def other_root(name, flags, dir_fd=None):
-            return real_open(self.outside if dir_fd is None else name, flags, dir_fd)
+        real_open_root = safe_copy.open_root
 
         with patch.object(safe_copy, "_open_at", swapping_open):
             self.assert_no_leak(lambda: safe_copy.open_under(self.inner, [self.root]))
         self.swap_back()
-        with patch.object(safe_copy, "_open_at", other_root):
+        with patch.object(safe_copy, "open_root", lambda root: real_open_root(self.outside)):
             self.assert_no_leak(lambda: safe_copy.open_under(self.inner, [self.root]))
 
     def test_a_root_swapped_for_a_link_closes_what_it_opened(self):
@@ -448,6 +449,149 @@ class LocalFileSwapTests(LoaderTestCase):
 
         with patch.object(safe_copy, "_open_at", swapping_open):
             self.assert_refused_outside()
+
+
+class AncestorTestCase(SafeCopyTestCase):
+    """`base/anc/root/sub/f.wav` dentro; `base/evil/root/sub/f.wav` de fora, com o mesmo
+    formato, para trocar uma pasta ACIMA da raiz (ou a própria raiz) por um link."""
+
+    def setUp(self):
+        super().setUp()
+        self.base = self.base.resolve()
+        self.anc, self.evil = self.base / "anc", self.base / "evil"
+        self.root = self.anc / "root"
+        for top, body in ((self.anc, b"INSIDE"), (self.evil, b"OUTSIDE-SECRET")):
+            (top / "root" / "sub").mkdir(parents=True)
+            (top / "root" / "sub" / "f.wav").write_bytes(body)
+        self.target = self.root / "sub" / "f.wav"
+
+    def ancestor_to_link(self):
+        self.anc.rename(self.base / "anc-real")
+        self.anc.symlink_to(self.evil)
+
+    def ancestor_back(self):
+        self.anc.unlink()
+        (self.base / "anc-real").rename(self.anc)
+
+    def read_under(self, path, roots):
+        """Bytes do arquivo aberto por `open_under`, ou o motivo da recusa."""
+        try:
+            fd, _ = safe_copy.open_under(path, roots)
+        except UnsafeFileError as exc:
+            return exc.reason
+        try:
+            return os.read(fd, 100)
+        finally:
+            os.close(fd)
+
+
+@unittest.skipUnless(BY_COMPONENT, "a descida da âncora por dir_fd é do POSIX")
+class AncestorTests(AncestorTestCase):
+    """A raiz já resolvida é aberta descendo de `/`: nenhuma pasta acima dela vira link."""
+
+    def test_open_root_walks_from_the_anchor_to_the_real_folder(self):
+        fd = safe_copy.open_root(self.root)
+        self.addCleanup(os.close, fd)
+        self.assertEqual(self.root.stat().st_ino, os.fstat(fd).st_ino)
+
+    def test_a_link_missing_folder_or_file_on_the_way_is_outside(self):
+        self.refused(safe_copy.OUTSIDE, safe_copy.open_root, self.base / "nada" / "root")
+        self.refused(safe_copy.OUTSIDE, safe_copy.open_root, self.target)
+        self.refused(safe_copy.OUTSIDE, safe_copy.open_root, Path("relativo"))
+        self.ancestor_to_link()
+        self.refused(safe_copy.OUTSIDE, safe_copy.open_root, self.root)
+
+    def test_an_ancestor_swapped_for_a_link_never_opens_an_outside_file(self):
+        self.assertEqual(b"INSIDE", self.read_under(self.target, [self.root]))
+        self.ancestor_to_link()
+        self.assertEqual(safe_copy.OUTSIDE, self.read_under(self.target, [self.root]))
+
+    def test_an_ancestor_that_keeps_flipping_never_opens_an_outside_file(self):
+        stop = threading.Event()
+
+        def flip():
+            while not stop.is_set():
+                self.ancestor_to_link()
+                self.ancestor_back()
+
+        flipper = threading.Thread(target=flip)
+        flipper.start()
+        seen = {}
+        deadline = time.monotonic() + 2
+        try:
+            while time.monotonic() < deadline:
+                got = self.read_under(self.target, [self.root])
+                seen[got] = seen.get(got, 0) + 1
+        finally:
+            stop.set()
+            flipper.join()
+        self.assertEqual(0, seen.get(b"OUTSIDE-SECRET", 0), seen)
+        self.assertGreater(sum(seen.values()), 0)
+
+    @unittest.skipUnless(FD_DIR.is_dir(), "conta descritores por /dev/fd")
+    def test_every_root_walk_refusal_closes_what_it_opened(self):
+        before = len(list(FD_DIR.iterdir()))
+        for root in (self.base / "nada" / "root", self.target):
+            with self.subTest(root=root.name), self.assertRaises(UnsafeFileError):
+                safe_copy.open_root(root)
+        self.ancestor_to_link()
+        self.assertEqual(safe_copy.OUTSIDE, self.read_under(self.target, [self.root]))
+        self.assertEqual(before, len(list(FD_DIR.iterdir())))
+
+
+class LocalFileRootTests(LoaderTestCase):
+    """`api.local_file` resolve as raízes uma vez só por instância."""
+
+    def setUp(self):
+        super().setUp()
+        self.base = Path(tempfile.mkdtemp(prefix="gb-roots-")).resolve()
+        self.addCleanup(shutil.rmtree, self.base, ignore_errors=True)
+        self.anc, self.evil = self.base / "anc", self.base / "evil"
+        for top, body in ((self.anc, b"INSIDE"), (self.evil, b"OUTSIDE-SECRET")):
+            (top / "root" / "sub").mkdir(parents=True)
+            (top / "root" / "sub" / "f.wav").write_bytes(body)
+        self.root = self.anc / "root"
+        manifest = {**MANIFEST, "permissions": {**MANIFEST["permissions"], "paths": [str(self.root)]}}
+        self.api = PluginApi(read_manifest(self.install(manifest)), Registry())
+
+    def copy(self):
+        work = Path(tempfile.mkdtemp(prefix="gb-work-", dir=self.base))
+        with route_scope("demo", work):
+            return self.api.local_file(self.root / "sub" / "f.wav").read_bytes()
+
+    def assert_refused(self):
+        with self.assertRaises(ProviderError) as caught:
+            self.copy()
+        self.assertIn("f.wav está fora de permissions.paths", str(caught.exception))
+
+    @unittest.skipUnless(POSIX, "symlink exige privilégio no Windows")
+    def test_a_root_swapped_for_a_link_between_calls_is_refused(self):
+        self.assertEqual(b"INSIDE", self.copy())
+        self.root.rename(self.anc / "root-orig")
+        self.root.symlink_to(self.evil / "root")
+        self.assert_refused()
+
+    @unittest.skipUnless(BY_COMPONENT, "a descida da âncora por dir_fd é do POSIX")
+    def test_an_ancestor_swapped_for_a_link_between_calls_is_refused(self):
+        self.assertEqual(b"INSIDE", self.copy())
+        self.anc.rename(self.base / "anc-real")
+        self.anc.symlink_to(self.evil)
+        self.assert_refused()
+
+    def test_a_hardlink_is_copied_and_logged_without_the_path(self):
+        os.link(self.root / "sub" / "f.wav", self.base / "outro-nome.wav")
+        with self.assertLogs("getbrolls.sdk", level="INFO") as cm:
+            self.assertEqual(b"INSIDE", self.copy())
+        joined = "\n".join(cm.output)
+        self.assertIn("event=plugin_path_hardlink", joined)
+        self.assertIn("plugin=demo", joined)
+        self.assertNotIn(str(self.base), joined)
+
+    def test_a_single_name_file_is_not_logged_as_hardlink(self):
+        with self.assertLogs("getbrolls.sdk", level="INFO") as cm:
+            self.assertEqual(b"INSIDE", self.copy())
+            logging.getLogger("getbrolls.sdk").info("fim")
+        self.assertNotIn("plugin_path_hardlink", "\n".join(cm.output))
 
 
 if __name__ == "__main__":

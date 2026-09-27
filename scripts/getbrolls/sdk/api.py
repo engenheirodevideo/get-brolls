@@ -102,6 +102,9 @@ class PluginApi:
             "exporters": set(),
             "resolvers": set(),
         }
+        # Raízes de `permissions.paths` resolvidas uma vez só por instância (no primeiro
+        # uso): a raiz trocada por link depois disso não muda para onde `local_file` olha.
+        self._root_cache: tuple[list[Path], list[str]] | None = None
         guard.remember_env(self.plugin_id, manifest["permissions"]["env"])
 
     def _own(self, kind, name):
@@ -407,10 +410,12 @@ class PluginApi:
         # O manifesto passou na checagem de texto, mas a pasta de verdade pode ser a raiz
         # do disco, um ponto de montagem, a pasta pessoal ou uma pasta acima dela (link,
         # `/Volumes/Macintosh HD`, `/Users`, outra caixa do mesmo nome): ignorada.
-        roots, ignored = checked_roots(self._manifest["permissions"]["paths"])
+        if self._root_cache is None:
+            self._root_cache = checked_roots(self._manifest["permissions"]["paths"])
+        roots, ignored = self._root_cache
         for _raw in ignored:
             logs.event(_log, logging.WARNING, "plugin_path_refused", plugin=self.plugin_id, reason="too_broad")
-        return roots
+        return list(roots)
 
     def _refuse(self, text):
         return ProviderError(f"Plugin {self.plugin_id}: {text}")
@@ -441,23 +446,28 @@ class PluginApi:
     def local_file(self, path: str | os.PathLike[str]) -> Path:
         """Copia um arquivo de dentro de `permissions.paths` para a pasta de trabalho.
 
-        O caminho é resolvido (links simbólicos seguidos) antes de conferir a raiz:
-        um link dentro da pasta apontando para fora é recusado. No POSIX, a abertura
-        desce da raiz uma pasta por vez, sem seguir link: uma pasta do meio trocada por
-        link depois dessa conferência nunca leva a um arquivo de fora. O arquivo é
-        aberto com `O_NOFOLLOW` (um link trocado ali entre a conferência e a abertura
-        não é seguido) e `O_NONBLOCK` (uma FIFO não trava), conferido pelo próprio
-        descritor (`fstat`: arquivo regular, dentro do teto) e copiado dele com teto
-        nos bytes de fato lidos — o arquivo crescer durante a cópia não fura o teto.
-        O destino é criado com `O_CREAT|O_EXCL|O_NOFOLLOW`: nunca segue um link
-        plantado no workdir. Sempre cópia, nunca hardlink — o core ajusta permissão e
-        move o arquivo de trabalho, e isso não pode respingar no original da pessoa.
-        Mensagens de recusa nomeiam o arquivo que o plugin pediu, nunca o alvo resolvido.
+        As raízes de `permissions.paths` são resolvidas uma vez por instância, no
+        primeiro uso; o caminho pedido é resolvido (links simbólicos seguidos) antes de
+        conferir a raiz: um link dentro da pasta apontando para fora é recusado. No
+        POSIX, a raiz é aberta descendo de `/` um nome por vez, sem seguir link, e o
+        arquivo descendo da raiz do mesmo jeito: a raiz, uma pasta acima dela ou uma
+        pasta do meio trocada por link depois da resolução nunca leva a um arquivo de
+        fora. O arquivo é aberto com `O_NOFOLLOW` e `O_NONBLOCK` (uma FIFO não trava),
+        conferido pelo próprio descritor (`fstat`: arquivo regular, dentro do teto) e
+        copiado dele com teto nos bytes de fato lidos — o arquivo crescer durante a
+        cópia não fura o teto. O destino é criado com `O_CREAT|O_EXCL|O_NOFOLLOW`: nunca
+        segue um link plantado no workdir. Sempre cópia, nunca hardlink — o core ajusta
+        permissão e move o arquivo de trabalho, e isso não pode respingar no original da
+        pessoa. Um arquivo com mais de um nome no disco (hardlink) é aceito e registrado
+        no log (`plugin_path_hardlink`, sem caminho). Mensagens de recusa nomeiam o
+        arquivo que o plugin pediu, nunca o alvo resolvido.
 
-        No Windows, onde `os.O_NOFOLLOW` não existe, vale a resolução + conferência de
-        raiz feitas antes (link simbólico lá exige privilégio de administrador), e um
-        link ou junction no caminho resolvido é recusado antes de abrir; `O_BINARY`
-        garante cópia byte a byte. A abertura e a cópia são as de `sdk.safe_copy`.
+        No Windows, onde `os.O_NOFOLLOW` e `dir_fd` não existem, vale a resolução +
+        conferência de raiz feitas antes, e um link ou junction no último nome do
+        caminho resolvido é recusado antes de abrir; a conferência depois de abrir ainda
+        deixa uma janela para quem troca pastas durante a abertura (junction não exige
+        privilégio de administrador). `O_BINARY` garante cópia byte a byte. A abertura e
+        a cópia são as de `sdk.safe_copy`.
 
         Args:
             path: caminho do arquivo, dentro de uma raiz de `permissions.paths`.
@@ -492,6 +502,10 @@ class PluginApi:
                 logs.event(_log, logging.WARNING, "plugin_path_refused", plugin=self.plugin_id)
             text = refusals.get(exc.reason) or f"{shown} não pôde ser aberto ({exc.type_name})."
             raise self._refuse(text) from None
+        if info.st_nlink > 1:
+            # Hardlink continua aceito (snapshot de NAS, `rsync --link-dest`): só fica
+            # registrado, sem caminho, que o arquivo tem outro nome no disco.
+            logs.event(_log, logging.INFO, "plugin_path_hardlink", plugin=self.plugin_id)
         try:
             if info.st_size > cap:
                 raise self._refuse(too_big)
