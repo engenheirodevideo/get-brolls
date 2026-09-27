@@ -9,14 +9,18 @@ camada de lugar conta — e aí o `sync` recusa até a pessoa revisar de novo.
 """
 
 import json
+import logging
 from pathlib import Path
 
+from . import logs
+from .ledger import existing_project_id
 from .models import now
 from .roteiro import STATUSES, frontmatter_key, parse_frontmatter
 from .roteiro_plan import HASH_VERSION, digest, scene_fingerprint
 from .runtime import _ensure_private_file
 
 REVIEWS_FILE = "roteiro-reviews.jsonl"
+log = logs.get("roteiro_review")
 
 
 def review_hash(doc, project):
@@ -74,6 +78,14 @@ def record_review(project, doc, by, channel, statement):
     _ensure_private_file(path)
     with path.open("a", encoding="utf-8") as stream:
         stream.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    logs.event(
+        log,
+        logging.INFO,
+        "roteiro_review",
+        projeto_id=existing_project_id(project),
+        sha256=entry["sha256"],
+        channel=channel,
+    )
     return entry
 
 

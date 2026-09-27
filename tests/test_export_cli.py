@@ -24,6 +24,7 @@ from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_video
 from _plugin_pins import pin_plugins
 from _schemas import strict
+from test_logging_trail import DEBUG_ENV, _events, _log_path
 from test_roteiro_sync import SyncCase
 
 from getbrolls import __version__, export, export_folder, models
@@ -170,10 +171,14 @@ class ExportCase(SyncCase):
         synth_video(self.project / "aroll" / "c01.mp4", size="160x284", duration=2)
         self.clip_id = self.collected("c02")
 
-    def collected(self, shot):
+    def collected(self, shot, frozen=True):
+        """Clipe verificado em `brolls/clips/`; `frozen` (padrão) imita o que o `deliver` já deixaria."""
         clip = self.project / "brolls" / "clips" / f"{shot}-clip.mp4"
         clip.parent.mkdir(parents=True, exist_ok=True)
         synth_video(clip, size="160x284", duration=3)
+        if frozen:
+            clip.chmod(0o444)
+            self.addCleanup(clip.chmod, 0o644)
         ledger = Ledger(self.project)
         c = models.candidate("youtube", "abc", "Timeline cheia", "https://www.youtube.com/watch?v=abc")
         c["shot"] = shot
@@ -242,6 +247,55 @@ class ExportHappyPathTests(ExportCase):
         self.assertRegex(
             out["summary"]["line"], r"^Export 001 em exports/demo_export/001: 2 arquivo\(s\), 2 mídia\(s\)"
         )
+
+    def test_writable_clip_is_cloned_never_hardlinked_and_keeps_its_mode(self):
+        """Clipe ainda gravável (nenhum `deliver` passou por ele) segue o caminho de A-ROLL: clone/cópia.
+
+        O original em `brolls/clips/` nunca vira o mesmo inode do export, e o export
+        nunca mexe no modo do arquivo (congelado ou gravável, o modo é sempre o mesmo
+        antes e depois).
+        """
+        self.install()
+        clip = self.project / "brolls" / "clips" / "c02-clip.mp4"
+        clip.chmod(0o644)
+        self.addCleanup(clip.chmod, 0o644)
+        before = stat.S_IMODE(clip.stat().st_mode)
+        out = self.export()
+        clip_dest = f"assets/clip-{self.clip_id.replace(':', '-')}.mp4"
+        methods = {m["dest"]: m["method"] for m in out["media"]}
+        self.assertIn(methods[clip_dest], ("clone", "reflink-auto", "copy"))
+        dest_file = self.folder("001") / clip_dest
+        self.assertFalse(clip.samefile(dest_file))
+        self.assertEqual(clip.read_bytes(), dest_file.read_bytes())
+        self.assertEqual(before, stat.S_IMODE(clip.stat().st_mode))
+
+    def test_dry_run_predicts_clone_for_a_writable_clip_and_hardlink_for_a_frozen_one(self):
+        self.install()
+        clip = self.project / "brolls" / "clips" / "c02-clip.mp4"
+        clip.chmod(0o644)
+        self.addCleanup(clip.chmod, 0o644)
+        clip_dest = f"assets/clip-{self.clip_id.replace(':', '-')}.mp4"
+        out = self.export("--dry-run")
+        self.assertIn({"media_id": f"clip:{self.clip_id}", "dest": clip_dest, "method": "clone"}, out["media"])
+        clip.chmod(0o444)
+        out = self.export("--dry-run")
+        self.assertIn({"media_id": f"clip:{self.clip_id}", "dest": clip_dest, "method": "hardlink"}, out["media"])
+
+    def test_export_done_is_logged_with_the_right_fields(self):
+        self.install()
+        out = run_cli("export", "--to", "demo_export", project=self.project, env=DEBUG_ENV)
+        text = _log_path(self.project).read_text(encoding="utf-8")
+        event = _events(text, "export_done")[-1]
+        self.assertIsNone(event["projeto_id"])  # projeto sem plugin/board nunca ganhou id
+        self.assertEqual("demo_export", event["exporter"])
+        self.assertEqual("demo_export", event["plugin"])
+        self.assertEqual(out["number"], event["number"])
+        self.assertEqual(str(len(out["files"])), event["files"])
+        self.assertEqual(str(len(out["media"])), event["media"])
+        # O clipe (congelado) é hardlink (0 byte); só o clone do A-ROLL conta bytes.
+        voice_size = (self.project / "aroll" / "c01.mp4").stat().st_size
+        self.assertEqual(str(voice_size), event["bytes"])
+        self.assertNotIn(str(self.project), text)
 
     def test_summary_counts_only_bytes_that_may_have_been_copied(self):
         self.install()
@@ -461,10 +515,12 @@ class ExportPlanFileTests(ExportCase):
         ledger = Ledger(self.project, recover=False)
         ledger.data["project_id"] = "id-que-ja-existia"
         ledger.save("test")
-        self.export()
+        run_cli("export", "--to", "demo_export", project=self.project, env=DEBUG_ENV)
         self.assertEqual("id-que-ja-existia", self.saved()["meta"]["projeto_id"])
         marker = json.loads((self.folder("001") / export_folder.MARKER).read_text(encoding="utf-8"))
         self.assertEqual("id-que-ja-existia", marker["projeto_id"])
+        text = _log_path(self.project).read_text(encoding="utf-8")
+        self.assertEqual("id-que-ja-existia", _events(text, "export_done")[-1]["projeto_id"])
         self.export()
         self.assertEqual("id-que-ja-existia", self.saved("002")["meta"]["projeto_id"])
 

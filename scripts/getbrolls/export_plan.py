@@ -186,6 +186,18 @@ class _Collector:
 
     # --- clipes -------------------------------------------------------------
 
+    @staticmethod
+    def _clip_method(info):
+        """`"hardlink"` só quando o clipe já está congelado (somente leitura, como o `deliver` deixa).
+
+        Gravável ainda (nenhum `deliver` passou por ele, ou o `chmod` falhou e ficou
+        avisado) sai como `"clone"`, o mesmo caminho de A-ROLL e componentes: o
+        original em `brolls/clips/` nunca fica exposto a uma escrita através do
+        hardlink do export.
+        """
+        frozen = not stat.S_IMODE(info.st_mode) & stat.S_IWUSR
+        return "hardlink" if frozen else "clone"
+
     def _clip_problem(self, c, clips_root):
         rel = (c.get("output") or {}).get("path")
         if not isinstance(rel, str) or not rel.startswith("clips/"):
@@ -234,7 +246,7 @@ class _Collector:
                 duration_s=output_media.get("duration_s"), width=output_media.get("width"),
                 height=output_media.get("height"), credit=_clip_credit(c),
             )  # fmt: skip
-            self._source(media_id, path, "hardlink")
+            self._source(media_id, path, self._clip_method(path.lstat()))
             good.setdefault(shot, []).append(media_id)
         return {beat: good.get(beat, []) + changed.get(beat, []) for beat in {*good, *changed}}
 

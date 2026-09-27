@@ -223,3 +223,9 @@ class Ledger:
                 prior + ("\n" if prior and not prior.endswith("\n") else "") + extra,
             )
         self.pending.unlink()
+
+
+def existing_project_id(project):
+    """`project_id` do manifesto do projeto, ou `None` sem manifesto ou sem o campo; nunca cria um."""
+    project_id = Ledger(project, recover=False).data.get("project_id")
+    return project_id if isinstance(project_id, str) else None

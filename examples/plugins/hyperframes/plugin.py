@@ -38,6 +38,9 @@ from getbrolls.sdk import ExportResult, MediaRequest, PluginError, ResolverHit
 
 HYPERFRAMES_VERSION = "0.8.73"
 GSAP_URL = "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"
+# Subresource Integrity do GSAP 3.14.2: calculado do arquivo oficial e conferido contra o
+# sha256 publicado pelo jsdelivr. Trava por teste (tests/test_plugin_hyperframes.py).
+GSAP_INTEGRITY = "sha384-sG0Hv1tP1lZCk9KQmrIbY/XNwi+OY84GQqhMscbnsoBFqAz8KNCil1kvfL3Hbbk2"
 FPS = 30
 NPX = f"npx --yes hyperframes@{HYPERFRAMES_VERSION}"
 # Opt-out da telemetria (PostHog) que a CLI manda por padrão, conferido no `dist/cli.js` da versão fixada.
@@ -767,7 +770,7 @@ def _index(export, scenes_html):  # pylint: disable=redefined-outer-name  # nome
     <meta charset="utf-8">
     <meta name="viewport" content="width={w}, height={h}">
     <title>{esc(plan["meta"]["tema"])}</title>
-    <script src="{GSAP_URL}"></script>
+    <script src="{GSAP_URL}" integrity="{GSAP_INTEGRITY}" crossorigin="anonymous"></script>
     <style>
       html, body {{ margin: 0; width: {w}px; height: {h}px; overflow: hidden; background: {BG}; }}
       #root {{ position: relative; width: 100%; height: 100%; overflow: hidden; background: {BG}; }}

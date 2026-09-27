@@ -214,6 +214,14 @@ class RootTests(unittest.TestCase):
         )
         self.assertNotIn("devDependencies", package)
 
+    def test_gsap_script_carries_sri(self):
+        index = generate()["files"]["index.html"]
+        gsap_tag = Elements(index).all("script")[0]
+        self.assertEqual(hf.GSAP_URL, gsap_tag["src"])
+        self.assertEqual(hf.GSAP_INTEGRITY, gsap_tag["integrity"])
+        self.assertEqual("anonymous", gsap_tag["crossorigin"])
+        self.assertTrue(hf.GSAP_INTEGRITY.startswith("sha384-"))
+
 
 class MediaTests(unittest.TestCase):
     def test_media_rules_in_every_html(self):
@@ -224,7 +232,6 @@ class MediaTests(unittest.TestCase):
                 continue
             with self.subTest(path=path):
                 page = Elements(text)
-                self.assertNotIn("crossorigin", text)
                 self.assertNotIn("../", text)
                 self.assertIsNone(re.search(r"/Users/|/home/|[A-Za-z]:\\\\", text))
                 for video in page.all("video"):
@@ -234,6 +241,8 @@ class MediaTests(unittest.TestCase):
                     for attrs in page.all(tag):
                         self.assertIn(attrs["src"], dests)
                         self.assertFalse(attrs["src"].startswith("compositions/"))
+                        # `crossorigin` é só do GSAP (SRI), nunca da mídia do próprio projeto.
+                        self.assertNotIn("crossorigin", attrs)
                 for _, attrs in page.timed():
                     float(attrs["data-start"])
         audio_ids = [a["id"] for a in Elements(result["files"]["index.html"]).all("audio")]

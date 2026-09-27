@@ -10,16 +10,19 @@ Só mudar a fala nunca invalida nada: vira aviso.
 """
 
 import json
+import logging
 import shutil
 from pathlib import Path
 
-from . import roteiro, roteiro_ids
+from . import logs, roteiro, roteiro_ids
 from .brief import brief_path, json_block_spans, read_json_block, validate_brief
-from .ledger import Ledger, atomic_write
+from .ledger import Ledger, atomic_write, existing_project_id
 from .models import invalidate_approval
 from .roteiro_plan import aspect_problems, full_role, scene_plan
 from .roteiro_review import review_state
 from .rules import load_rules
+
+log = logs.get("roteiro_sync")
 
 OWNED = ("target", "narration", "duration_hint_s")
 # Campos da pessoa que descrevem o alvo: continuam dela depois do sync, mas ficam velhos quando o alvo muda.
@@ -338,6 +341,15 @@ def _finish_write(project, ctx, result, write_ctx, confirm):
     if new_state != ctx["state"] or not roteiro_ids.state_path(project).is_file():
         roteiro_ids.write_state(project, new_state)
         written.append(f"brolls/{roteiro_ids.STATE_FILE}")
+    logs.event(
+        log,
+        logging.INFO,
+        "roteiro_sync",
+        projeto_id=existing_project_id(project),
+        beats_criados=len(result["new"]),
+        beats_alterados=len(set(result["target_changed"]) | set(result["speech_changed"])),
+        beats_aposentados=len(result["retired"]),
+    )
     return {**result, "written": written, "invalidated": [c["id"] for c in hits]}
 
 

@@ -144,6 +144,8 @@ class Project:
     def write(self, relative, data: bytes | str = b"x", mtime_ns=None):
         path = self.root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            path.chmod(0o644)  # regrava mesmo num clipe congelado por uma rodada anterior deste helper
         path.write_bytes(data if isinstance(data, bytes) else data.encode("utf-8"))
         if mtime_ns is not None:
             os.utime(path, ns=(mtime_ns, mtime_ns))
@@ -171,7 +173,7 @@ def min_project(root):
     )
     project.write("assets/sfx/whoosh.wav")
     project.license("assets/sfx/whoosh.wav")
-    project.write("brolls/clips/c02-pexels-123.mp4")
+    project.write("brolls/clips/c02-pexels-123.mp4").chmod(0o444)  # congelado, como o `deliver` deixa
     items = [clip("pexels:123", "c02", "clips/c02-pexels-123.mp4")]
     return project.plan(MIN_ROTEIRO), items
 
@@ -190,7 +192,7 @@ def full_project(root):
     project.write("assets/marca/selo.png")
     project.license("assets/marca/selo.png")
     for rel in ("c02-a.mp4", "c02-b.mov", "c02-rej.mp4", "c02-unv.mp4"):
-        project.write(f"brolls/clips/{rel}")
+        project.write(f"brolls/clips/{rel}").chmod(0o444)  # congelado, como o `deliver` deixa
     rejected = clip("pexels:3", "c02", "clips/c02-rej.mp4", approval={"status": "rejected"})
     unverified = clip("pexels:4", "c02", "clips/c02-unv.mp4")
     unverified["output"]["verified"] = False
@@ -312,6 +314,19 @@ class SlotAndClipTests(ExportPlanTestCase):
         self.assertEqual(".mov", plan["media"]["clip:pixabay:2"]["ext"])
         self.assertEqual("hardlink", sources["clip:pexels:1"]["method"])
         self.assertEqual("Clipe pexels:1 — pexels (https://example.com/1)", plan["media"]["clip:pexels:1"]["credit"])
+
+    def test_writable_clip_is_planned_as_clone_frozen_one_as_hardlink(self):
+        """`brolls/clips/` congelado (como o `deliver` deixa) vira hardlink; ainda gravável, clone/cópia."""
+        plan, items = full_project(self.root)
+        clip_path = self.root / "brolls" / "clips" / "c02-a.mp4"
+        self.assertEqual("hardlink", self.build(plan, items)[1]["clip:pexels:1"]["method"])
+        clip_path.chmod(0o644)
+        self.addCleanup(clip_path.chmod, 0o444)
+        self.assertEqual("clone", self.build(plan, items)[1]["clip:pexels:1"]["method"])
+
+    def build(self, plan, items):
+        with mock.patch.object(export_plan, "probe_voice", fake_probe):
+            return export_plan.build(self.root, plan, items, "exports/hyperframes/001", resolve_media=fake_resolver([]))
 
     def test_broll_without_clip_is_a_warning_and_no_media(self):
         plan, _, scenes = self.full()

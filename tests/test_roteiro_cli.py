@@ -15,6 +15,7 @@ from unittest import mock
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
+from test_logging_trail import DEBUG_ENV, _events, _log_path
 
 from getbrolls import models, roteiro, roteiro_commands, roteiro_review
 from getbrolls.cli import build_parser
@@ -44,8 +45,8 @@ class CliCase(unittest.TestCase):
         self.project = Path(tempfile.mkdtemp(prefix="gb-rcli-"))
         self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
 
-    def cli(self, *args, expect=0):
-        return run_cli(*args, project=self.project, expect=expect)
+    def cli(self, *args, expect=0, env=None):
+        return run_cli(*args, project=self.project, expect=expect, env=env)
 
     def fill_skeleton(self, path=None):
         path = path or self.project / "ROTEIRO.md"
@@ -475,6 +476,36 @@ class WriteErrorTests(CliCase):
             self.cli("roteiro", "--action", "new", "--genero", "reels", "--tema", "IA", "--force", expect=2)
         )
         self.assert_clean(self.cli("roteiro", "--action", "sync", expect=2))
+
+
+class RoteiroLoggingTests(CliCase):
+    """`roteiro_review` e `roteiro_sync` no `getbrolls.log`: campos-base, sem caminho nem texto do roteiro."""
+
+    def test_review_and_sync_log_the_right_fields(self):
+        self.cli("init-rules", "--format", "reels")
+        self.cli("roteiro", "--action", "new", "--genero", "reels", "--tema", "IA")
+        self.fill_skeleton()
+        self.write_brief()
+        sha = self.cli("roteiro", "--action", "check")["review"]["sha256"]
+        self.cli("roteiro", "--action", "review", *REVIEW, "--expect", sha, env=DEBUG_ENV)
+        synced = self.cli("roteiro", "--action", "sync", env=DEBUG_ENV)
+
+        text = _log_path(self.project).read_text(encoding="utf-8")
+        review_event = _events(text, "roteiro_review")[-1]
+        self.assertEqual(sha, review_event["sha256"])
+        self.assertEqual("chat", review_event["channel"])
+        self.assertIsNone(review_event["projeto_id"])  # projeto sem plugin/board nunca ganhou id
+
+        sync_event = _events(text, "roteiro_sync")[-1]
+        self.assertIsNone(sync_event["projeto_id"])
+        self.assertEqual(str(len(synced["new"])), sync_event["beats_criados"])
+        alterados = len(set(synced["target_changed"]) | set(synced["speech_changed"]))
+        self.assertEqual(str(alterados), sync_event["beats_alterados"])
+        self.assertEqual(str(len(synced["retired"])), sync_event["beats_aposentados"])
+
+        self.assertNotIn(str(self.project), text)
+        self.assertNotIn(REVIEW[3], text)  # a frase de revisão nunca vaza
+        self.assertNotIn("Você não precisa editar 4 horas", text)  # nem a fala do roteiro
 
 
 class ParserTests(unittest.TestCase):

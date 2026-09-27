@@ -13,13 +13,14 @@ import contextlib
 import errno
 import functools
 import json
+import logging
 import os
 import re
 import unicodedata
 import urllib.parse
 from pathlib import Path
 
-from . import __version__, export_folder, export_gates, export_place, export_plan
+from . import __version__, export_folder, export_gates, export_place, export_plan, logs
 from .delivery import copies_forced
 from .rules import home_dir
 from .sdk import guard, loader, safe_copy
@@ -28,6 +29,8 @@ from .sdk.exporters import find_local_paths, note_line, run_exporter
 from .sdk.files import walk_leaves
 from .sdk.registry import get_registry
 from .sdk.resolvers import resolve_with_plugins
+
+log = logs.get("export")
 
 OPTIONS = {"args": {}}
 # Método que o dry-run mostra para cada fonte (o real pode cair para cópia).
@@ -416,6 +419,18 @@ def _write_result(ctx):
     place = functools.partial(export_place.place, copy_plugin=functools.partial(copy_plugin, ctx["registry"]))
     written = export_folder.write_export(root, ctx["number"], content, ctx["marker_base"], place)
     out = f"{export_folder.EXPORTS_DIR}/{name}/{written['number']}"
+    logs.event(
+        log,
+        logging.INFO,
+        "export_done",
+        projeto_id=ctx["plan"]["meta"]["projeto_id"],
+        exporter=name,
+        plugin=ctx["owner"],
+        number=written["number"],
+        files=len(validated.files),
+        media=len(written["media"]),
+        bytes=written["copied_bytes"],
+    )
     return {
         **ctx["envelope"], "out": out, "number": written["number"], "latest": written["latest"],
         "media": written["media"], "warnings": ctx["warnings"] + written["warnings"],
