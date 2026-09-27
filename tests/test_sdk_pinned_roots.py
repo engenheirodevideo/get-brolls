@@ -23,13 +23,25 @@ from getbrolls.sdk import api as sdk_api
 from getbrolls.sdk import install as install_mod
 from getbrolls.sdk import loader
 from getbrolls.sdk.api import PluginApi, route_scope
+from getbrolls.sdk.files import resolved_roots
 from getbrolls.sdk.registry import Registry, get_registry, reset_registry
+from getbrolls.sdk.resolvers import resolve_with_plugins
 
 CAN_SYMLINK = os.name != "nt"
 
 RESOLVER_CODE = """
 def register(api):
     api.resolver("demo", lambda kind, name: None, ["sfx"])
+"""
+
+HIT_CODE = """
+from pathlib import Path
+
+from getbrolls.sdk import ResolverHit
+
+
+def register(api):
+    api.resolver("demo", lambda kind, name: ResolverHit(str(Path.home() / "Acervo" / "porta.wav")), ["sfx"])
 """
 
 PATHS_MANIFEST = {
@@ -181,6 +193,67 @@ class LoadChecksTests(PinnedRootsTestCase):
             api = PluginApi(PATHS_MANIFEST, Registry())
             api.resolver("demo", lambda kind, name: None, ["sfx"])
         warn.assert_not_called()
+
+
+class EdgeCaseTests(PinnedRootsTestCase):
+    def not_utf8(self, paths):
+        """`resolved_roots` do loader com `~/Acervo` num caminho que não cabe em UTF-8 (Linux)."""
+        real = resolved_roots(paths)
+        bad = Path(str(self.person / "Acervo") + "\udcff")
+        return [(raw, bad if raw == "~/Acervo" else resolved) for raw, resolved in real[0]], real[1]
+
+    def rewrite_field(self, value):
+        state = self.state()
+        state["enabled"]["demo"]["roots_resolved"] = value
+        (self.home / "plugins.json").write_text(json.dumps(state), encoding="utf-8")
+
+    def test_a_root_path_outside_utf8_stays_out_of_the_pin_and_is_ignored_at_load(self):
+        self.install(PATHS_MANIFEST, RESOLVER_CODE)
+        with patch.object(loader, "resolved_roots", self.not_utf8):
+            preview = loader.enable("demo", confirm=False)
+            loader.enable("demo", confirm=True)
+        only_outra = {"~/Outra": str(self.person / "Outra")}
+        self.assertEqual(only_outra, preview["plugin"]["roots_resolved"])
+        self.assertEqual(only_outra, self.pinned())
+        with patch.object(sdk_api, "record_warning") as warn:
+            self.assertEqual((str(self.person / "Outra"),), self.loaded_roots())
+        self.assertEqual("PLUGIN_PATH_CHANGED", warn.call_args.args[0])
+        self.assertIn("~/Acervo", warn.call_args.args[1])
+
+    def test_install_with_a_root_path_outside_utf8_is_not_left_half_done(self):
+        source = self.person / "fonte" / "demo"
+        source.mkdir(parents=True)
+        (source / "getbrolls-plugin.json").write_text(json.dumps(PATHS_MANIFEST), encoding="utf-8")
+        (source / "plugin.py").write_text(RESOLVER_CODE, encoding="utf-8")
+        with patch.object(loader, "resolved_roots", self.not_utf8):
+            preview = install_mod.install(str(source), confirm=False)
+            install_mod.install(str(source), confirm=True, expect=preview["plugin"]["sha256"])
+        self.assertEqual({"~/Outra": str(self.person / "Outra")}, self.pinned())
+        self.assertEqual("enabled", loader.inventory()[0]["status"])
+
+    def test_a_malformed_field_ignores_every_root_with_a_warning(self):
+        self.install(PATHS_MANIFEST, RESOLVER_CODE)
+        loader.enable("demo", confirm=True)
+        for value in (["~/Acervo"], {"~/Acervo": 1, "~/Outra": str(self.person / "Outra")}, "x"):
+            with self.subTest(value=value):
+                self.rewrite_field(value)
+                with patch.object(sdk_api, "record_warning") as warn:
+                    self.assertEqual((), self.loaded_roots())
+                self.assertEqual(["PLUGIN_PATH_CHANGED"] * 2, [call.args[0] for call in warn.call_args_list])
+
+    def test_the_resolver_says_the_folders_changed_when_every_root_was_ignored(self):
+        self.install(
+            {**PATHS_MANIFEST, "permissions": {**PATHS_MANIFEST["permissions"], "paths": ["~/Acervo"]}}, HIT_CODE
+        )
+        loader.enable("demo", confirm=True)
+        self.rewrite_field([])
+        reset_registry()
+        with patch.object(sdk_api, "record_warning"):
+            hit, warnings = resolve_with_plugins(get_registry(), "sfx", "porta", (".wav",))
+        self.assertIsNone(hit)
+        self.assertEqual(1, len(warnings), warnings)
+        self.assertIn("mudaram desde o enable", warnings[0])
+        self.assertNotIn("vale neste sistema", warnings[0])
 
 
 @unittest.skipUnless(CAN_SYMLINK, "symlink exige privilégio no Windows")

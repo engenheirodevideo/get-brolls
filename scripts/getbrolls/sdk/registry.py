@@ -132,6 +132,8 @@ class Registry:  # pylint: disable=too-many-public-methods  # um par registrar/c
         self._stages: dict[str, str] = {}
         # Raízes de `permissions.paths` do dono de cada resolvedor, resolvidas no registro.
         self._roots: dict[str, tuple[str, ...]] = {}
+        # Resolvedores cujo dono teve raiz ignorada por não conferir com o pin do enable.
+        self._roots_changed: set[str] = set()
         # id do plugin → linha de inventário (status, motivo); preenchido pelo loader.
         self.plugins: dict[str, dict] = {}
 
@@ -272,8 +274,13 @@ class Registry:  # pylint: disable=too-many-public-methods  # um par registrar/c
         """Nomes dos exportadores, na ordem de registro."""
         return tuple(self._items["exporter"])
 
-    def add_resolver(self, spec: ResolverSpec, owner: str, roots: tuple[str, ...]) -> None:
-        """Registra um resolvedor (experimental) com as raízes de `permissions.paths` do dono."""
+    def add_resolver(
+        self, spec: ResolverSpec, owner: str, roots: tuple[str, ...], *, roots_changed: bool = False
+    ) -> None:
+        """Registra um resolvedor (experimental) com as raízes de `permissions.paths` do dono.
+
+        `roots_changed`: alguma raiz do dono ficou de fora por não conferir com o pin do
+        enable (a recusa do resolvedor sem raiz diz isso, não "nenhuma pasta vale")."""
         if not isinstance(spec, ResolverSpec):
             raise RegistryError("Resolvedor tem que ser ResolverSpec.")
         name, kinds, resolve = spec.name, spec.kinds, spec.resolve
@@ -293,6 +300,8 @@ class Registry:  # pylint: disable=too-many-public-methods  # um par registrar/c
         self._items["resolver"][name] = spec
         self._owners["resolver"][name] = owner
         self._roots[name] = roots
+        if roots_changed:
+            self._roots_changed.add(name)
 
     def resolver(self, name: str) -> ResolverSpec | None:
         """O resolvedor `name`, ou `None`."""
@@ -301,6 +310,10 @@ class Registry:  # pylint: disable=too-many-public-methods  # um par registrar/c
     def resolver_roots(self, name: str) -> tuple[str, ...]:
         """Raízes guardadas com o resolvedor `name` (vazio se não há)."""
         return self._roots.get(name, ())
+
+    def resolver_roots_changed(self, name: str) -> bool:
+        """Alguma raiz do dono do resolvedor `name` ficou de fora por não conferir com o pin?"""
+        return name in self._roots_changed
 
     def resolvers_for(self, kind: str) -> list[tuple[str, ResolverSpec]]:
         """`(dono, spec)` dos resolvedores de `kind`: por id do dono e, dentro dele, na
@@ -329,6 +342,7 @@ class Registry:  # pylint: disable=too-many-public-methods  # um par registrar/c
         self._hosts = {host: name for host, name in self._hosts.items() if name in self._items["provider"]}
         self._stages = {name: stage for name, stage in self._stages.items() if name in self._items["route"]}
         self._roots = {name: roots for name, roots in self._roots.items() if name in self._items["resolver"]}
+        self._roots_changed &= set(self._items["resolver"])
 
 
 def get_registry() -> Registry:

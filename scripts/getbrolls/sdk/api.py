@@ -235,7 +235,7 @@ class PluginApi:
                 f"Plugin {self.plugin_id}: permissions.paths não pôde ser resolvido ({type(exc).__name__})."
             ) from None
         spec = ResolverSpec(name, cast("tuple[str, ...]", kinds), resolve)
-        self._registry.add_resolver(spec, owner=self.plugin_id, roots=roots)
+        self._registry.add_resolver(spec, owner=self.plugin_id, roots=roots, roots_changed=self._roots_changed)
         self._registered["resolvers"].add(name)
 
     def candidate(self, provider: str, source_id: object, title: str, source_url: str | None = None) -> dict:
@@ -432,16 +432,13 @@ class PluginApi:
         `roots_resolved`, uma raiz que hoje resolve para outro caminho (ou que o pin não
         guardou) fica ignorada, com um aviso que nomeia a entrada como está escrita no
         manifesto — nunca o caminho resolvido — e a raiz usada é a gravada no pin. Pin
-        antigo, sem o campo: vale a raiz resolvida agora, com um aviso para habilitar de
-        novo."""
+        antigo, SEM o campo: vale a raiz resolvida agora, com um aviso para habilitar de
+        novo. Campo presente mas malformado: nenhuma raiz confere (todas ignoradas, com aviso)."""
         paths = self._manifest["permissions"]["paths"]
         if self._pin is None:
             return checked_roots(paths)
         pairs, ignored = resolved_roots(paths)
-        recorded = self._pin.get("roots_resolved")
-        if not isinstance(recorded, dict) or not all(
-            type(key) is str and type(value) is str for key, value in recorded.items()
-        ):
+        if "roots_resolved" not in self._pin:
             if paths:
                 record_warning(
                     "PLUGIN_PIN_OUTDATED",
@@ -450,6 +447,12 @@ class PluginApi:
                     "conferir que elas não mudaram.",
                 )
             return [resolved for _raw, resolved in pairs], ignored
+        recorded = self._pin["roots_resolved"]
+        if not isinstance(recorded, dict) or not all(
+            type(key) is str and type(value) is str for key, value in recorded.items()
+        ):
+            # Campo presente mas malformado (editado à mão, corrompido): nenhuma raiz confere.
+            recorded = {}
         roots = []
         for raw, resolved in pairs:
             pinned = recorded.get(raw)
@@ -460,8 +463,8 @@ class PluginApi:
             logs.event(_log, logging.WARNING, "plugin_path_refused", plugin=self.plugin_id, reason="changed")
             record_warning(
                 "PLUGIN_PATH_CHANGED",
-                f"Plugin {self.plugin_id}: a pasta {raw} de permissions.paths aponta para outro lugar desde "
-                f"o enable e fica ignorada; confira a pasta e rode plugins --action enable --id {self.plugin_id}.",
+                f"Plugin {self.plugin_id}: a pasta {raw} de permissions.paths não confere com a gravada no "
+                f"enable e fica ignorada; confira a pasta e rode plugins --action enable --id {self.plugin_id}.",
             )
         return roots, ignored
 

@@ -239,13 +239,24 @@ def pinned_roots(manifest):
     """`{entrada de permissions.paths como escrita: caminho resolvido}` das raízes que valem agora.
 
     Vai para o pin (`roots_resolved`), fora do sha256 do conteúdo: na carga, uma raiz
-    que passou a resolver para outro lugar fica ignorada. Uma entrada que não resolve
-    fica de fora (e fica ignorada na carga)."""
+    que passou a resolver para outro lugar fica ignorada. Uma entrada que não resolve,
+    ou cujo caminho não cabe em UTF-8, fica de fora (e fica ignorada na carga). Quem
+    instala ou atualiza calcula isto antes de mexer em qualquer pasta."""
     try:
         pairs, _ignored = resolved_roots(manifest["permissions"].get("paths", []))
     except (OSError, RuntimeError, ValueError):
         return {}
-    return {raw: str(resolved) for raw, resolved in pairs}
+    return {raw: str(resolved) for raw, resolved in pairs if _utf8_text(raw) and _utf8_text(str(resolved))}
+
+
+def _utf8_text(text):
+    """`text` cabe em UTF-8? Um caminho com bytes fora de UTF-8 (Linux) vira `str` com
+    substitutos que o `plugins.json` não grava: fica fora do pin (e ignorado na carga)."""
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 def pin_entry(manifest, sha, files, roots=None):

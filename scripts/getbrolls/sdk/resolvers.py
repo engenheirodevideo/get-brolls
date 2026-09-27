@@ -47,12 +47,18 @@ class _RefusedError(Exception):
     pass
 
 
-def _checked_file(owner, raw, roots, extensions):
+def _checked_file(owner, raw, roots, extensions, roots_changed=False):
     """Confere o arquivo no disco (nada de código do plugin roda aqui) e devolve
     `(caminho resolvido, stat)`; o descritor aberto para conferir já sai fechado.
-    `roots` são as raízes guardadas com o resolvedor, como texto."""
+    `roots` são as raízes guardadas com o resolvedor, como texto; `roots_changed`, se
+    alguma ficou de fora por não conferir com o pin do enable."""
     roots = [Path(root) for root in roots]
     shown = guard.plain_line(Path(raw).name or "arquivo", limit=120)
+    if not roots and roots_changed:
+        raise _RefusedError(
+            "as pastas de permissions.paths mudaram desde o enable e ficam ignoradas; confira-as e rode "
+            f"plugins --action enable --id {owner}."
+        )
     if not roots:
         raise _RefusedError("nenhuma pasta de permissions.paths vale neste sistema.")
     if is_link(Path(raw)):
@@ -118,7 +124,9 @@ def resolve_with_plugins(registry, kind, name, extensions):
             continue
         raw, license_text = outcome.value
         try:
-            resolved, info = _checked_file(owner, raw, registry.resolver_roots(spec.name), wanted)
+            resolved, info = _checked_file(
+                owner, raw, registry.resolver_roots(spec.name), wanted, registry.resolver_roots_changed(spec.name)
+            )
         except _RefusedError as exc:
             warnings.append(f"Plugin {owner}: o resolvedor {spec.name} foi ignorado: {exc}")
             continue
