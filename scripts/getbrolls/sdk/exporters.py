@@ -286,6 +286,9 @@ _LOCAL_PATH_RE = re.compile(
     r"|(?<![\w.])~[\\/]"
 )
 
+# Separador de pasta em qualquer sistema: a pasta pessoal casa escrita com `/` ou com `\`.
+_SEPARATORS = re.compile(r"[\\/]")
+
 
 def find_local_paths(value, where="$"):
     """Onde, dentro de `value` (dict/list/texto, como um plano ou os `files` de um
@@ -300,8 +303,9 @@ def find_local_paths(value, where="$"):
     if len(home) > 1:
         # A pasta pessoal inteira, sem caixa: mesma regra de `_path_re` em export.py (não casa dentro
         # de um nome maior, como `/root` em "rootless"; o ponto final de uma frase logo depois ainda
-        # casa).
-        home_re = re.compile(r"(?<![\w~-])" + re.escape(home) + r"(?![\w-]|\.\w)", re.IGNORECASE)
+        # casa). `/` e `\` valem igual: no Windows a pasta vem com `\` e o texto costuma ter `/`.
+        body = r"[\\/]".join(re.escape(part) for part in _SEPARATORS.split(home))
+        home_re = re.compile(r"(?<![\w~-])" + body + r"(?![\w-]|\.\w)", re.IGNORECASE)
     found = [
         position
         for position, item in walk_leaves(value, where)

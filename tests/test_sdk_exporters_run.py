@@ -4,7 +4,7 @@ import io
 import os
 import sys
 import unittest
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, cast
 from unittest.mock import patch
 
@@ -331,6 +331,17 @@ class LocalPathScanTests(unittest.TestCase):
         )
         for home, value, expected in cases:
             with self.subTest(home=home, value=value), patch.object(Path, "home", return_value=Path(home)):
+                self.assertEqual(expected, find_local_paths(value))
+
+    def test_home_counts_with_either_slash(self):
+        # No Windows a pasta pessoal vem com `\` e o texto costuma trazer `/`; o contrário também vale.
+        cases = (
+            (PureWindowsPath("/srv/bruno"), {"a": "/srv/bruno/a", "b": "em /srv/bruno."}, ["$['a']", "$['b']"]),
+            (PurePosixPath("/srv/bruno"), {"a": "\\srv\\bruno\\a", "b": "dir=\\srv/bruno"}, ["$['a']", "$['b']"]),
+            (PureWindowsPath("/srv/bruno"), {"a": "/srv/brunoteca", "b": "x/srv/bruno/a", "c": "\\srv\\bruno-b"}, []),
+        )
+        for home, value, expected in cases:
+            with self.subTest(home=str(home), value=value), patch.object(Path, "home", return_value=home):
                 self.assertEqual(expected, find_local_paths(value))
 
     def test_home_folder_suffix_word_is_not_a_hit(self):
