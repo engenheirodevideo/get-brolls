@@ -5,19 +5,26 @@ português dizendo o que fazer. O brief descreve o vídeo e os beats; cada beat 
 comando pronto (`search`/`resolve`/`preview`) e se liga ao candidato pelo `--shot`.
 """
 
-import json
-import os
 import re
 import shlex
 from pathlib import Path
 
+from . import brief_source
+from .brief_source import BEAT_ID_RE, load_brief
 from .config import env_is_set
+from .limits import MAX_HINT_S, MIN_HINT_S
 
 ROOT = Path(__file__).resolve().parents[2]
 CLI = ROOT / "scripts" / "gb.py"
 
-# O id do beat também é valor de `--shot`, então usa um alfabeto mais estreito que ele.
-BEAT_ID_RE = re.compile(r"[a-z0-9-]{1,40}")
+# Reexport: quem já importava daqui (`from .brief import brief_path`, `brief.load_brief`
+# etc.) continua igual; o corpo deste módulo não os usa (mora em `brief_source`, o leaf
+# que `sdk.contracts` lê sem reabrir o ciclo `brief <-> sdk.contracts`).
+brief_path = brief_source.brief_path
+json_block_spans = brief_source.json_block_spans
+read_json_block = brief_source.read_json_block
+retired_beat_ids = brief_source.retired_beat_ids
+
 FORMATS = ("native", "reels", "horizontal")
 INTENTS = ("literal", "illustrative")
 POSTURES = ("per_item_evidence", "user_declaration")
@@ -33,8 +40,6 @@ SOURCES = (
 )
 STOCK_SOURCES = ("pexels", "pixabay")
 SEARCHABLE = ("youtube", "pexels", "pixabay", "commons", "nasa")
-MIN_HINT_S = 0.5
-MAX_HINT_S = 120
 
 # Teto de palavras da query sugerida, igual ao de `search`: fonte de vídeo casa por
 # palavra, e o `target` é escrito para gente ler, não para a API procurar.
@@ -148,97 +153,6 @@ QUERY_STOPWORDS = frozenset(
         "from",
     ]
 )
-
-
-_FENCE = "```json"
-_CLOSE = "\n```"
-_SPACES = re.compile(r"\s*")
-
-
-def json_block_spans(raw):
-    """`[(início, fim)]` do miolo de cada bloco ```json de `raw`, em tempo linear.
-
-    Mesma leitura de `re.findall(r"```json\\s*\\n(.*?)\\n```", raw, re.DOTALL)`: o miolo começa
-    depois da última quebra de linha do espaço que segue o ```json e vai até o primeiro `\\n```` que
-    vem depois. A regex voltava atrás a cada quebra de linha e ficava quadrática num fence sem fecho.
-    """
-    spans, pos = [], 0
-    while (start := raw.find(_FENCE, pos)) != -1:
-        after = start + len(_FENCE)
-        spaces = _SPACES.match(raw, after)  # `\s*` sempre casa (até vazio)
-        end_space = spaces.end() if spaces else after
-        last = raw.rfind("\n", after, end_space)
-        if last == -1:
-            pos = start + 1
-            continue
-        close = raw.find(_CLOSE, last + 1)
-        if close != -1:
-            spans.append((last + 1, close))
-            pos = close + len(_CLOSE)
-            continue
-        # Sem fecho adiante: só resta o fence colado na última quebra (miolo = espaço antes dela).
-        before = raw.rfind("\n", after, last)
-        if before != -1 and raw.startswith("```", last + 1):
-            spans.append((before + 1, last))
-            pos = last + len(_CLOSE)
-            continue
-        break  # nenhum `\n```` depois daqui: nenhum outro bloco fecha
-    return spans
-
-
-def read_json_block(path, missing, syntax, not_object=None):
-    """Lê `path` e devolve o único bloco ```json nele, já decodificado.
-
-    `missing` e `syntax` são as mensagens (já prontas, em português) para os
-    casos de zero/mais de um bloco e de JSON malformado, respectivamente. Se
-    `not_object` for informado, o resultado também precisa ser um objeto
-    (dict), senão essa mensagem é levantada.
-    """
-    raw = Path(path).read_text(encoding="utf-8")
-    blocks = [raw[begin:end] for begin, end in json_block_spans(raw)]
-    if len(blocks) != 1:
-        raise ValueError(missing)
-    try:
-        value = json.loads(blocks[0])
-    except json.JSONDecodeError:
-        raise ValueError(syntax) from None
-    if not_object is not None and not isinstance(value, dict):
-        raise ValueError(not_object)
-    return value
-
-
-def brief_path(project):
-    """Arquivo que vale para este projeto: GB_BRIEF_FILE vence o BRIEF.md da pasta."""
-    override = os.environ.get("GB_BRIEF_FILE")
-    path = Path(override) if override else Path(project) / "BRIEF.md"
-    # Caminho absoluto: a resposta é lida de outra pasta que não a do projeto.
-    return path.expanduser().resolve()
-
-
-def load_brief(project):
-    """Lê o BRIEF.md do projeto e devolve o JSON cru, sem validar o conteúdo."""
-    path = brief_path(project)
-    if not path.exists():
-        if os.environ.get("GB_BRIEF_FILE"):
-            raise ValueError(
-                "GB_BRIEF_FILE aponta para um arquivo que não existe: corrija o caminho "
-                "ou apague essa variável para usar o BRIEF.md da pasta do trabalho."
-            )
-        raise ValueError(
-            "Este projeto ainda não tem BRIEF.md. Rode `/get-brolls-brief` para fazer a "
-            "entrevista, ou `init-brief --project ...` para criar o modelo e preencher."
-        )
-    return read_json_block(
-        path,
-        missing=(
-            "O BRIEF.md precisa de exatamente um bloco ```json — apague os blocos extras "
-            "ou rode `init-brief` numa pasta limpa para começar de um modelo."
-        ),
-        syntax=(
-            "O bloco json do BRIEF.md está com erro de digitação (vírgula ou aspas "
-            "sobrando). Conserte essa linha e rode `brief --validate` de novo."
-        ),
-    )
 
 
 def _text(value, field, required=True):
@@ -531,37 +445,6 @@ def template_leftovers(data):
             if beat["resolved"].get(key) == text:
                 found.append(f'O beat "{beat["id"]}" ainda está com o {key} de exemplo do modelo: troque pelo real.')
     return found
-
-
-def retired_beat_ids(project):
-    """Ids dos beats aposentados (`"retired": true`) lidos do bloco json cru do BRIEF.md.
-
-    Não depende da validação completa nem do RULES.md: um brief que a postura de
-    direitos deixa inválido continua com os aposentados fora de `entrega/`, da busca e
-    do `resolve`. Vazio quando o brief falta ou o json não é legível; id fora do
-    formato de beat não conta. `deliver` e `status` usam isto para deixar esses clipes
-    fora de `entrega/` sem tratá-los como pendência. Sem ROTEIRO.md do get-brolls
-    (`type: roteiro`), nada é aposentado: vazio.
-    """
-    from .roteiro import is_roteiro
-
-    if project is None or not is_roteiro(project):
-        return frozenset()
-    try:
-        raw = load_brief(project)
-    except (ValueError, OSError):
-        return frozenset()
-    beats = raw.get("beats") if isinstance(raw, dict) else None
-    if not isinstance(beats, list):
-        return frozenset()
-    return frozenset(
-        b["id"]
-        for b in beats
-        if isinstance(b, dict)
-        and b.get("retired") is True
-        and isinstance(b.get("id"), str)
-        and BEAT_ID_RE.fullmatch(b["id"])
-    )
 
 
 def search_query(beat, limit=QUERY_MAX_TOKENS):

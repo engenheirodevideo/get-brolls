@@ -231,7 +231,7 @@ class CommandContext:
         """
         if self.project is None:
             return None
-        from ..brief import brief_path, load_brief
+        from ..brief_source import brief_path, load_brief
 
         if not brief_path(self.project).is_file():
             return None
@@ -251,7 +251,7 @@ class CommandContext:
         """
         if self.project is None:
             return []
-        from ..brief import load_brief, retired_beat_ids
+        from ..brief_source import load_brief, retired_beat_ids
 
         retired = retired_beat_ids(self.project)
         if not retired:

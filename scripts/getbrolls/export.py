@@ -25,6 +25,7 @@ from .rules import home_dir
 from .sdk import guard, loader, safe_copy
 from .sdk.contracts import CORE, NAME_RE, RESOLVER_KINDS
 from .sdk.exporters import find_local_paths, note_line, run_exporter
+from .sdk.files import walk_leaves
 from .sdk.registry import get_registry
 from .sdk.resolvers import resolve_with_plugins
 
@@ -204,16 +205,8 @@ def _machine_hits(value, machine, where):
     na grafia crua ou em qualquer grafia normalizada (`_spellings`)."""
     patterns = _patterns(machine)
     hits = []
-    stack = [(where, value)]
-    while stack:
-        position, item = stack.pop()
-        if type(item) is dict:
-            for key, child in item.items():
-                stack.append((f"{position}[{key!r}]", child))
-                stack.append((f"{position}[{key!r}]<chave>", key))
-        elif type(item) in (list, tuple):
-            stack.extend((f"{position}[{index}]", child) for index, child in enumerate(item))
-        elif type(item) is str:
+    for position, item in walk_leaves(value, where, keys_of_any_type=True):
+        if type(item) is str:
             label = _first_label(item, patterns)
             if label is not None:
                 hits.append((position, label))

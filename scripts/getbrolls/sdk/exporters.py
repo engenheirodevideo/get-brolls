@@ -14,7 +14,7 @@ from typing import NamedTuple
 from .. import __version__, logs
 from . import guard
 from .contracts import CORE, NAME_RE, ExportResult, MediaRequest
-from .files import bad_file_name
+from .files import bad_file_name, walk_leaves
 
 _log = logs.get("sdk")
 
@@ -300,20 +300,11 @@ def find_local_paths(value, where="$"):
     if len(home) > 1:
         # A pasta pessoal inteira, sem caixa: mesma regra de `_path_re` em export.py (não casa dentro
         # de um nome maior, como `/root` em "rootless"; o ponto final de uma frase logo depois ainda
-        # casa). Cópia local para não criar um ciclo de import com export.py.
+        # casa).
         home_re = re.compile(r"(?<![\w~-])" + re.escape(home) + r"(?![\w-]|\.\w)", re.IGNORECASE)
-    found = []
-    stack = [(where, value)]
-    while stack:
-        position, item = stack.pop()
-        if type(item) is dict:
-            for key, child in item.items():
-                label = f"{position}[{key!r}]"
-                stack.append((label, child))
-                if type(key) is str:
-                    stack.append((f"{label}<chave>", key))
-        elif type(item) in (list, tuple):
-            stack.extend((f"{position}[{index}]", child) for index, child in enumerate(item))
-        elif type(item) is str and (_LOCAL_PATH_RE.search(item) or (home_re and home_re.search(item))):
-            found.append(position)
+    found = [
+        position
+        for position, item in walk_leaves(value, where)
+        if type(item) is str and (_LOCAL_PATH_RE.search(item) or (home_re and home_re.search(item)))
+    ]
     return sorted(found)

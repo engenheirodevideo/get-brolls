@@ -1,8 +1,9 @@
 """Checagens de arquivo e de caminho que várias partes do SDK dividem.
 
 Módulo folha: só usa a biblioteca padrão. `loader`, `api`, `safe_copy`,
-`resolvers`, `install` e `exporters` importam daqui sem criar ciclo entre eles.
-Nada aqui é contrato público: `getbrolls.sdk` não exporta estes nomes.
+`resolvers`, `install`, `exporters` e (fora do SDK) `export` importam daqui sem
+criar ciclo entre eles. Nada aqui é contrato público: `getbrolls.sdk` não
+exporta estes nomes.
 """
 
 import os
@@ -123,6 +124,31 @@ def _too_broad(root):
         return False
     parts = home.parts
     return any(_same(root.joinpath(*parts[i:]), home) for i in range(1, len(parts) + 1))
+
+
+def walk_leaves(value, where, *, keys_of_any_type=False):
+    """Passeio em profundidade por `value` (dict/list/tuple), devolvendo (posição, folha) de
+    cada nó que não é container — dict e list/tuple só abrem caminho, nunca viram folha.
+
+    A chave de um dict também vira posição própria (`<chave>`), para achar o problema no
+    nome do campo, não só no valor; por padrão só quando a chave é `str` (chave não textual
+    nunca é o que os chamadores procuram). `keys_of_any_type=True` remove essa guarda —
+    usado por quem já pegava toda chave antes desta função existir, para não mudar
+    comportamento. Ordem de pilha (LIFO): o chamador ordena o resultado se a ordem importar.
+    """
+    stack = [(where, value)]
+    while stack:
+        position, item = stack.pop()
+        if type(item) is dict:
+            for key, child in item.items():
+                label = f"{position}[{key!r}]"
+                stack.append((label, child))
+                if keys_of_any_type or type(key) is str:
+                    stack.append((f"{label}<chave>", key))
+        elif type(item) in (list, tuple):
+            stack.extend((f"{position}[{index}]", child) for index, child in enumerate(item))
+        else:
+            yield position, item
 
 
 def checked_roots(paths):
