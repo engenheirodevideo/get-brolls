@@ -36,6 +36,8 @@ from getbrolls.sdk.exporters import ValidatedExport, find_local_paths, run_expor
 from getbrolls.sdk.jsonschema import errors
 from getbrolls.sdk.registry import get_registry, reset_registry
 
+# No Windows o core nunca clona (`export_place.can_clone`): o dry-run prevê cópia para a mídia gravável.
+WRITABLE_METHOD = "copy" if os.name == "nt" else "clone"
 # O que um comando que grava deixa em brolls/ mesmo no ensaio: a trava e os logs.
 RUNTIME_FILES = {"brolls/.command.lock", "brolls/diagnostics.jsonl", "brolls/getbrolls.log"}
 DEMO_CODE = """
@@ -277,7 +279,7 @@ class ExportHappyPathTests(ExportCase):
         self.addCleanup(clip.chmod, 0o644)
         clip_dest = f"assets/clip-{self.clip_id.replace(':', '-')}.mp4"
         out = self.export("--dry-run")
-        self.assertIn({"media_id": f"clip:{self.clip_id}", "dest": clip_dest, "method": "clone"}, out["media"])
+        self.assertIn({"media_id": f"clip:{self.clip_id}", "dest": clip_dest, "method": WRITABLE_METHOD}, out["media"])
         clip.chmod(0o444)
         out = self.export("--dry-run")
         self.assertIn({"media_id": f"clip:{self.clip_id}", "dest": clip_dest, "method": "hardlink"}, out["media"])
@@ -341,7 +343,9 @@ class ExportHappyPathTests(ExportCase):
         out = self.export("--dry-run")
         self.assertEqual(before, tree(self.project))
         self.assertEqual((True, "exports/demo_export/001"), (out["dry_run"], out["out"]))
-        self.assertIn({"media_id": "aroll:c01", "dest": "assets/aroll-c01.mp4", "method": "clone"}, out["media"])
+        self.assertIn(
+            {"media_id": "aroll:c01", "dest": "assets/aroll-c01.mp4", "method": WRITABLE_METHOD}, out["media"]
+        )
         self.assertIn("nada foi gravado", out["summary"]["line"])
 
     def test_dry_run_holds_the_project_lock(self):

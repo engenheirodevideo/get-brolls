@@ -761,7 +761,10 @@ class CaptionGroupTests(unittest.TestCase):
             hf.CAPTION_GROUPING_JS
             + f"\nconsole.log(JSON.stringify(groupWords({json.dumps(words)}, {json.dumps(list(cards))})));"
         )
-        done = subprocess.run(["node", "-e", script], capture_output=True, text=True, timeout=60, check=True)
+        # O Node escreve UTF-8; sem `encoding`, o Windows leria na página de código local (`só` virava `sÃ³`).
+        done = subprocess.run(
+            ["node", "-e", script], capture_output=True, text=True, encoding="utf-8", timeout=60, check=True
+        )
         return [g["text"].split(" ") for g in json.loads(done.stdout)]
 
     @staticmethod

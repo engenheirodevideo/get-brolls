@@ -16,7 +16,7 @@ from pathlib import Path
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _paths import ROOT
-from test_export_cli import ExportCase, tree
+from test_export_cli import WRITABLE_METHOD, ExportCase, tree
 from test_plugin_hyperframes_cli import ENV, find_cli
 
 EXAMPLE = ROOT / "examples" / "plugins" / "hyperframes"
@@ -64,7 +64,7 @@ class HyperframesExportTests(ExportCase):
             ("hyperframes", "hyperframes", True, "exports/hyperframes/001"),
             (out["exporter"], out["plugin"], out["dry_run"], out["out"]),
         )
-        self.assertIn({"media_id": "aroll:c01", "dest": AROLL, "method": "clone"}, out["media"])
+        self.assertIn({"media_id": "aroll:c01", "dest": AROLL, "method": WRITABLE_METHOD}, out["media"])
         self.assertIn("nada foi gravado", out["summary"]["line"])
 
     def test_export_is_a_hyperframes_project(self):

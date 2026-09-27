@@ -13,6 +13,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import export_folder, export_place
+from getbrolls.runtime import force_rmtree
 
 BASE = {
     "export_version": 1, "exporter": "hyperframes", "plugin": "hyperframes", "plugin_version": "0.1.0",
@@ -104,7 +105,10 @@ class NumberingTests(FolderTestCase):
     def test_numbers_are_monotonic_even_after_deleting_a_folder(self):
         self.export()
         self.export()
-        shutil.rmtree(self.project / "exports" / "hyperframes" / "002")
+        second = self.project / "exports" / "hyperframes" / "002"
+        # O clipe congelado entrou por hardlink: o Windows só apaga o somente leitura depois de degelar.
+        force_rmtree(second)
+        self.assertFalse(second.exists())
         self.assertEqual("003", self.export()["number"])
 
     def test_latest_that_is_garbage_or_a_folder_is_ignored_with_a_warning(self):
