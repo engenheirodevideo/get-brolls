@@ -786,5 +786,38 @@ class PlanSafetyTests(SyncCase):
         self.assertNotIn("vai recusar", roteiro_commands.run(args)["summary"]["line"])
 
 
+class LineEndingTests(SyncCase):
+    """O que a revisão e o sync gravam sai com `\\n` puro: no Windows, o modo texto trocaria por `\\r\\n`."""
+
+    @staticmethod
+    def written(action):
+        """`{nome: newline}` de cada arquivo que `action` abriu para gravar pelo `Path.open`."""
+        real_open = Path.open
+        seen = {}
+
+        def spy(path, *args, **kwargs):
+            mode = args[0] if args else kwargs.get("mode", "r")
+            if set(mode) & set("wax"):
+                seen[path.name] = kwargs.get("newline")
+            return real_open(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "open", autospec=True, side_effect=spy):
+            action()
+        return seen
+
+    def test_review_and_sync_write_lf_on_every_system(self):
+        self.assertEqual("\n", self.written(self.review)["roteiro-reviews.jsonl"])
+        seen = self.written(self.sync)
+        self.assertEqual(["\n", "\n"], [seen["ROTEIRO.md.tmp"], seen["BRIEF.md.tmp"]])
+        for name in ("ROTEIRO.md", "BRIEF.md", "brolls/roteiro-reviews.jsonl"):
+            self.assertNotIn(b"\r", (self.project / name).read_bytes(), name)
+
+    def test_atomic_write_keeps_the_text_byte_for_byte(self):
+        target = self.project / "nota.md"
+        seen = self.written(lambda: ledger_module.atomic_write(target, "a\nb\r\nc\n"))
+        self.assertEqual({"nota.md.tmp": "\n"}, seen)
+        self.assertEqual(b"a\nb\r\nc\n", target.read_bytes())
+
+
 if __name__ == "__main__":
     unittest.main()

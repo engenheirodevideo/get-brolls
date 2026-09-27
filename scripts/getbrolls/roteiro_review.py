@@ -76,7 +76,8 @@ def record_review(project, doc, by, channel, statement):
     path = reviews_path(project)
     path.parent.mkdir(parents=True, exist_ok=True)
     _ensure_private_file(path)
-    with path.open("a", encoding="utf-8") as stream:
+    # Uma linha JSON terminada em `\n` em qualquer sistema (o Windows trocaria por `\r\n` sem o `newline`).
+    with path.open("a", encoding="utf-8", newline="\n") as stream:
         stream.write(json.dumps(entry, ensure_ascii=False) + "\n")
     logs.event(
         log,

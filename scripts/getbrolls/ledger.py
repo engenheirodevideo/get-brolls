@@ -21,10 +21,14 @@ def digest(path):
 
 
 def atomic_write(path, text):
+    """Grava `text` inteiro de uma vez (temporário + troca), em UTF-8 e com o `\\n` como está.
+
+    Sem `newline="\\n"`, o Windows trocaria cada `\\n` por `\\r\\n`: o arquivo sairia diferente do
+    macOS e do Linux, e o ROTEIRO.md revisado voltaria com o CRLF que a revisão tirou."""
     path = Path(path)
     temp = path.with_name(path.name + ".tmp")
     try:
-        with temp.open("w", encoding="utf-8") as f:
+        with temp.open("w", encoding="utf-8", newline="\n") as f:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
