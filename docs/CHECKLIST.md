@@ -12,13 +12,20 @@ Siga este checklist na ordem, a cada mudança no get-brolls: correção, recurso
 
 Referências: [CODE_STYLE](CODE_STYLE.md) (estilo e revisão), [CONTRIBUTING](../CONTRIBUTING.md) (ferramentas, dependências e release), [QUALITY](QUALITY.md) (o que conta como evidência) e [SECURITY](SECURITY.md).
 
-## 1. Antes de começar
+## 1. Antes de começar: discovery → spec → plano → TDD
+Uma feature é resolvida inteira, sempre nesta ordem:
 - [ ] Trabalhe numa branch própria a partir da branch-alvo combinada, nunca direto na `main`.
 - [ ] Rode `git status`: a árvore precisa estar limpa, e a branch sincronizada com o remoto.
-- [ ] Mudança grande: escreva um plano ou PRD curto, passe por uma crítica adversarial e ajuste antes de escrever código.
-- [ ] Liste o que a mudança toca: CLI, JSON de saída, arquivos do projeto, contrato do plano de export, API do SDK, docs.
+- [ ] **Discovery**: leia o código e a doc que a feature toca. Liste o que ela toca (CLI, JSON de saída, arquivos do projeto, contrato do plano de export, API do SDK, docs), o que já existe para reaproveitar e as restrições.
+- [ ] **Spec**: escreva o que a feature faz, para quem, o contrato (comandos, flags, JSON, arquivos), os casos de borda e o que fica fora. Passe por crítica adversarial e ajuste.
+- [ ] **Plano**:
+  - Quebre a feature em tarefas **completas**, cada uma do tamanho que um implementador resolve numa sessão, sem passos miúdos que gastam contexto à toa.
+  - Cada tarefa traz o arquivo e a linha exatos a mudar, o código ou a assinatura esperados, os testes a escrever e o comando que prova que ficou pronta. Quem implementa só escreve, sem refazer a descoberta.
+  - Marque a ordem e as dependências entre as tarefas.
+- [ ] **TDD** em cada tarefa: primeiro o teste que falha, depois o código, e aí o portão da seção 3.
 
 ## 2. Enquanto escreve
+- [ ] Siga o plano: se a tarefa pedir mudança fora do que o plano previu, pare e corrija o plano primeiro, para não haver retrabalho.
 - [ ] TDD: primeiro o teste que falha (vermelho), depois o código que o faz passar (verde). Bug corrigido ganha teste de regressão.
 - [ ] O código segue o [CODE_STYLE](CODE_STYLE.md): stdlib, 120 colunas, docstring de uma linha em pt-BR e supressão só na linha, com a regra e o motivo.
 - [ ] Mensagens para a pessoa em pt-BR, dizendo o que aconteceu e o próximo passo, sem caminho absoluto da máquina, token ou texto de exceção em inglês.
