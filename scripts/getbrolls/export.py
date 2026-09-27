@@ -18,7 +18,7 @@ import os
 import re
 import unicodedata
 import urllib.parse
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from . import __version__, export_folder, export_gates, export_place, export_plan, logs
 from .delivery import copies_forced
@@ -115,6 +115,40 @@ def copy_plugin(registry, source, dest):
         raise ValueError(_CHANGED.format(name=name))
 
 
+def _windows_name(function, text):
+    """O que `GetShortPathNameW`/`GetLongPathNameW` devolve para `text`; None quando o sistema não responde."""
+    import ctypes  # só chega aqui no Windows ou num teste com a API de mentira
+
+    size = function(text, None, 0)
+    if not size:
+        return None
+    buffer = ctypes.create_unicode_buffer(size)
+    written = function(text, buffer, size)
+    return buffer.value if 0 < written < size else None
+
+
+def _windows_spellings(path, platform=None, kernel32=None):
+    """No Windows, as outras grafias de `path` com nome curto (8.3, como `RUNNER~1`); fora dele, nenhuma.
+
+    O `realpath` devolve o nome longo, mas o TEMP e o que a pessoa digita podem vir com o nome curto
+    numa pasta de cima e o longo no resto (`C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\gb-x`): vale o
+    nome longo inteiro e, para cada pasta de cima, ela no nome curto seguida do resto como está."""
+    if (platform or os.name) != "nt":
+        return []
+    if kernel32 is None:
+        import ctypes  # só no Windows
+
+        kernel32 = ctypes.windll.kernel32  # pyright: ignore[reportAttributeAccessIssue]  # só existe no Windows
+    long_name = _windows_name(kernel32.GetLongPathNameW, str(path)) or str(path)
+    pure = PureWindowsPath(long_name)
+    found = [long_name]
+    for folder in (pure, *pure.parents):
+        short = _windows_name(kernel32.GetShortPathNameW, str(folder))
+        if short and short != str(folder):
+            found.append(str(PureWindowsPath(short) / pure.relative_to(folder)))
+    return found
+
+
 def _machine_paths(project, registry, sources):
     """`{caminho: (rótulo, marca)}` dos caminhos concretos desta máquina que o core conhece:
     projeto, fontes de mídia do plano, raízes de `permissions.paths`, GB_HOME e pasta pessoal."""
@@ -124,7 +158,11 @@ def _machine_paths(project, registry, sources):
         real = os.path.realpath(path)
         # No macOS, /var e /tmp são links para /private/...: as duas grafias valem.
         alias = real[len("/private") :] if real.startswith(("/private/var/", "/private/tmp/")) else ""
-        for text in (str(path), real, alias):
+        texts = [str(path), real, alias]
+        # No Windows, o nome curto (8.3) de qualquer pasta do caminho também vale.
+        for name in dict.fromkeys((str(path), real)):
+            texts.extend(_windows_spellings(name))
+        for text in texts:
             trimmed = text.rstrip("/\\")
             if len(trimmed) > 1:
                 found.setdefault(trimmed, (label, tag))

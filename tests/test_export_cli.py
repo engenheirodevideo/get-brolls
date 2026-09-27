@@ -13,10 +13,11 @@ import re
 import shutil
 import stat
 import tempfile
+import types
 import unicodedata
 import unittest
 import urllib.parse
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from unittest import mock
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
@@ -689,6 +690,32 @@ class ExportWriteGuardTests(ExportCase):
                 self.assertNotIn(text, message)
                 self.assertFalse((self.project / "exports").exists())
 
+    def test_a_windows_short_name_spelling_of_the_project_is_refused(self):
+        # O TEMP do Windows vem com o nome curto (`C:\\Users\\RUNNER~1\\...`) e o `realpath`, com o longo.
+        self.install()
+        real = str(self.project.resolve())
+        short = str(Path(real).parent / "PROJET~1")
+        files = {"index.html": f"<video src='{short}/x.mp4'></video>\n"}
+
+        def spellings(path):
+            return [path, short] if path == real else []
+
+        with (
+            mock.patch.object(export, "_windows_spellings", side_effect=spellings),
+            mock.patch.object(export, "run_exporter", return_value=self.validated(files)),
+            self.assertRaises(ValueError) as caught,
+        ):
+            export.run(self.args())
+        message = str(caught.exception)
+        self.assertIn("caminho desta máquina (a pasta do projeto)", message)
+        self.assertNotIn(short, message)
+        self.assertFalse((self.project / "exports").exists())
+        if Path(real).is_relative_to(Path.home().resolve()):
+            return  # o TEMP dentro da pasta pessoal (Windows) já recusa pela pasta pessoal
+        # Sem a grafia do Windows, o mesmo texto não é um caminho conhecido: é ela que recusa.
+        with mock.patch.object(export, "run_exporter", return_value=self.validated(files)):
+            self.assertEqual("001", export.run(self.args())["number"])
+
     def test_notes_never_show_a_machine_path(self):
         self.install()
         note = f"Abra {self.project.resolve()}/exports e {self.home}/plugins"
@@ -897,6 +924,48 @@ class SamplePlanTests(unittest.TestCase):
         plan = sample_plan()
         self.assertEqual([], errors(plan, strict()))
         self.assertEqual(__version__, plan["getbrolls_version"])
+
+
+def fake_kernel32(short_names):
+    """`GetShortPathNameW`/`GetLongPathNameW` de mentira, pasta por pasta (`{nome longo: nome curto}`), com o
+    contrato da API: sem espaço no buffer, devolve o tamanho com o NUL; com espaço, grava e devolve sem ele."""
+    long_names = {short: long for long, short in short_names.items()}
+
+    def api(table):
+        def call(path, buffer, size):
+            pure = PureWindowsPath(path)
+            name = str(PureWindowsPath(*(table.get(part, part) for part in pure.parts)))
+            if buffer is None or size <= len(name):
+                return len(name) + 1
+            buffer.value = name
+            return len(name)
+
+        return call
+
+    return types.SimpleNamespace(GetShortPathNameW=api(short_names), GetLongPathNameW=api(long_names))
+
+
+class WindowsSpellingTests(unittest.TestCase):
+    LONG = "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\gb-sync-abc"
+    TEMP = "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\gb-sync-abc"
+
+    def test_short_name_of_any_folder_is_a_spelling_on_windows(self):
+        kernel32 = fake_kernel32({"runneradmin": "RUNNER~1", "gb-sync-abc": "GB-SYN~1"})
+        found = export._windows_spellings(self.TEMP, platform="nt", kernel32=kernel32)
+        self.assertEqual(self.LONG, found[0])
+        self.assertIn(self.TEMP, found)
+        self.assertIn("C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\GB-SYN~1", found)
+        self.assertEqual(found, export._windows_spellings(self.LONG, platform="nt", kernel32=kernel32))
+
+    def test_a_path_the_system_does_not_answer_is_kept_as_is(self):
+        silent = types.SimpleNamespace(GetShortPathNameW=lambda *_: 0, GetLongPathNameW=lambda *_: 0)
+        self.assertEqual([self.LONG], export._windows_spellings(self.LONG, platform="nt", kernel32=silent))
+
+    def test_other_systems_have_no_short_names(self):
+        kernel32 = fake_kernel32({"runneradmin": "RUNNER~1"})
+        self.assertEqual([], export._windows_spellings(self.LONG, platform="posix", kernel32=kernel32))
+        if os.name != "nt":
+            self.assertEqual([], export._windows_spellings("/tmp/gb-x"))
 
 
 if __name__ == "__main__":
