@@ -901,6 +901,10 @@ def _next_steps_lines(plan, out):
         "",
         "- Render **fora** do export: sempre `-o` para `renders/` do projeto.",
         (
+            "- `render` (e editar o vídeo) é passo seu: o agente não renderiza nem edita o vídeo final, "
+            "só roda um comando destes a seu pedido explícito."
+        ),
+        (
             "- Legendas mais precisas: gere `aroll/<cena>.transcript.json` (comando em `references/roteiro.md`) "
             "e rode `gb export` de novo; sai uma pasta nova."
         ),

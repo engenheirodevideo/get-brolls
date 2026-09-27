@@ -807,6 +807,7 @@ class ExportDocTests(unittest.TestCase):
         self.assertIn("`exports/hyperframes/003`", text)
         for fixed in (
             "Render **fora** do export",
+            "é passo seu: o agente não renderiza nem edita o vídeo final",
             "Legendas mais precisas",
             "**nunca** mexe nesta",
             "`assets/clips/` compartilha o arquivo com `brolls/clips/`",
