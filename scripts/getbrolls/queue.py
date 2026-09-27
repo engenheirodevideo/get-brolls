@@ -6,8 +6,8 @@ looks like a block (403/429/challenge/login/rate limit) opens a doubling cooldow
 """
 
 # pylint: disable=missing-function-docstring,too-many-locals,cyclic-import
-# Legado: ocorrências pré-existentes (corpo idêntico à origin/main). O ciclo
-# (getbrolls.queue <-> getbrolls.rules) já existe na origin/main: `report()`
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0). O ciclo
+# (getbrolls.queue <-> getbrolls.rules) já existia antes da 2.6.0: `report()`
 # importa `rules.load_rules` tardiamente (dentro de função) exatamente para
 # quebrar esse ciclo em tempo de execução.
 

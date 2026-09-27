@@ -12,7 +12,7 @@ CDN já está recusando.
 
 # pylint: disable=missing-function-docstring,unreachable,too-many-arguments,too-many-locals
 # pylint: disable=raise-missing-from,too-many-statements,broad-exception-caught,unnecessary-lambda-assignment
-# Legado: ocorrências pré-existentes (corpo idêntico à origin/main).
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0).
 
 from __future__ import annotations
 

@@ -1,10 +1,10 @@
 """Operational diagnostics. Never log command arguments or tokens; tracebacks are stored redacted."""
 
 # pylint: disable=import-error,missing-function-docstring,broad-exception-caught,use-sequence-for-iteration,missing-class-docstring,cyclic-import
-# Legado: ocorrências pré-existentes (corpo idêntico à origin/main). `import-error`
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0). `import-error`
 # é o `fcntl`/`msvcrt` condicional por plataforma em `_acquire_lock`/`_release_lock`.
 # Os ciclos (getbrolls.runtime <-> getbrolls.logs, getbrolls.runtime <-> getbrolls.http)
-# já existem na origin/main: os imports de `logs`/`http` aqui são tardios (dentro de
+# já existiam antes da 2.6.0: os imports de `logs`/`http` aqui são tardios (dentro de
 # função) de propósito, exatamente para quebrar esses ciclos em tempo de execução
 # (ver os comentários "avoids a runtime<->logs/http import cycle" abaixo).
 
@@ -212,9 +212,15 @@ def force_rmtree(path):
 
     with contextlib.suppress(Exception):
         if sys.version_info >= (3, 12):
-            shutil.rmtree(root, onexc=retry)
+            # O pylint infere a assinatura de `shutil.rmtree` pela stdlib do
+            # interpretador que roda o lint, não pelo `sys.version_info` deste
+            # ramo: `onexc` existe a partir do 3.12, mas o CI faz lint em
+            # 3.11, que não conhece o kwarg. `**kwargs` monta fora da chamada
+            # engana o pylint mas confunde o pyright (perde a distinção entre
+            # os overloads de `onexc`/`onerror`), então a chamada fica direta
+            # com a supressão na linha.
+            shutil.rmtree(root, onexc=retry)  # pylint: disable=unexpected-keyword-arg
         else:  # pragma: no cover - Python 3.11
-            # `onexc` só existe a partir do 3.12; este ramo é só para o 3.11.
             shutil.rmtree(root, onerror=retry)  # pylint: disable=deprecated-argument
 
 
@@ -320,7 +326,15 @@ PLUGIN_ERROR_HINT = "Veja plugins --action list / doctor e docs/SDK.md."
 
 
 # Comandos cujo erro de uso sai sem traceback nem dica de recovery.
-QUIET_ERROR_COMMANDS = ("plugins", "x", "export")
+QUIET_ERROR_COMMANDS = ("plugins", "x", "export", "assets")
+
+# `roteiro` grava por journal (como o resto do core), então a parte de
+# recovery_pending da dica continua valendo — só a frase "execute review para
+# regenerar a página" é removida: ela fala do `review`/`import-review` do
+# b-roll, e se confunde com `roteiro --action review`.
+_RECOVERY_ONLY_HINT = (
+    "Se recovery_pending=true, o próximo comando retoma a gravação. Caso contrário, corrija o erro e repita."
+)
 
 
 def provider_error_message(text):
@@ -373,6 +387,14 @@ def _audited_error_failure(args, event, log, app_log_path):
         "state_committed=true e não houver pendência, execute review para "
         "regenerar a página. Caso contrário, corrija o erro e repita."
     )
+    if args.command == "roteiro" and event["type"] == "ValueError":
+        # Erro de uso do roteiro (`new` sem `--genero`, por exemplo) não é bug:
+        # sem traceback nem repr, e sem a frase "execute review", que aqui se
+        # confunde com `roteiro --action review`. O sync do roteiro grava por
+        # journal como o resto do core, então a parte de recovery_pending
+        # continua na dica.
+        event = {k: v for k, v in event.items() if k not in ("traceback", "repr")}
+        hint = _RECOVERY_ONLY_HINT
     payload = {
         **event,
         "hint": hint,
@@ -380,11 +402,12 @@ def _audited_error_failure(args, event, log, app_log_path):
         "app_log": str(app_log_path) if app_log_path and app_log_path.is_file() else None,
     }
     if args.command in QUIET_ERROR_COMMANDS and event["error_code"] != "INTERNAL_ERROR":
-        # `plugins`/`x` não gravam no projeto: erro de uso ali (flag faltando, plugin
-        # inexistente) é só a mensagem — traceback e a dica de recovery/review eram
-        # ruído. `export` grava só numa pasta nova em exports/ e nunca no manifesto nem
-        # no journal (recusa journal pendente antes de começar): a dica de recovery
-        # também não vale lá. `diagnostics.jsonl` (quando há projeto) guarda tudo igual.
+        # `plugins`/`x`/`assets` não gravam no projeto (ou, no `assets`, só leem):
+        # erro de uso ali (flag faltando, plugin inexistente) é só a mensagem —
+        # traceback e a dica de recovery/review eram ruído. `export` grava só
+        # numa pasta nova em exports/ e nunca no manifesto nem no journal (recusa
+        # journal pendente antes de começar): a dica de recovery também não vale
+        # lá. `diagnostics.jsonl` (quando há projeto) guarda tudo igual.
         for key in ("traceback", "repr", "hint"):
             payload.pop(key, None)
     return OperationError(payload)

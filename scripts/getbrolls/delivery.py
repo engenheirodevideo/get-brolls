@@ -755,7 +755,7 @@ def _deliver_refuse_symlink(root):
 
 
 class _DeliverCtx:  # pylint: disable=too-few-public-methods
-    # Contêiner simples de estado (novo nesta release), não um objeto com comportamento.
+    # Contêiner simples de estado, não um objeto com comportamento.
     """Ledger, pasta de entrega e modo dry-run, compartilhados por todo `build_delivery`."""
 
     def __init__(self, ledger, root, dry_run):

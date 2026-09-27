@@ -13,8 +13,8 @@ logger with `logs.get(__name__.rsplit(".", 1)[-1])` and log through
 """
 
 # pylint: disable=broad-exception-caught,too-few-public-methods,no-else-raise,cyclic-import
-# Legado: ocorrências pré-existentes (corpo idêntico à origin/main). O ciclo
-# (getbrolls.logs <-> getbrolls.runtime) já existe na origin/main: `runtime.py`
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0). O ciclo
+# (getbrolls.logs <-> getbrolls.runtime) já existia antes da 2.6.0: `runtime.py`
 # importa `logs` tardiamente (dentro de função) exatamente para quebrar esse
 # ciclo em tempo de execução.
 

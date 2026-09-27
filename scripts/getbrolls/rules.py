@@ -2,8 +2,8 @@
 
 # pylint: disable=missing-function-docstring,cyclic-import
 # Legado: ocorrências pré-existentes em `domain_matches`, `allowed` e
-# `format_report` (corpo idêntico à origin/main). O ciclo
-# (getbrolls.queue <-> getbrolls.rules) já existe na origin/main: quem quebra
+# `format_report` (corpo idêntico ao código anterior à 2.6.0). O ciclo
+# (getbrolls.queue <-> getbrolls.rules) já existia antes da 2.6.0: quem quebra
 # o ciclo em tempo de execução é o import tardio em `queue.report`.
 
 import logging

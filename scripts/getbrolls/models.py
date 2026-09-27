@@ -1,6 +1,6 @@
 # pylint: disable=missing-module-docstring,missing-function-docstring
 # Legado: ocorrências pré-existentes em `now`, `candidate`, `signature` e
-# `id_stem` (corpo idêntico à origin/main); módulo já não tinha docstring.
+# `id_stem` (corpo idêntico ao código anterior à 2.6.0); módulo já não tinha docstring.
 
 import hashlib
 import json

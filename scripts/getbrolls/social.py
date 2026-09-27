@@ -1,9 +1,9 @@
 """Social acquisition using the existing yt-dlp/FFmpeg engine, without API keys."""
 
 # pylint: disable=invalid-name,missing-function-docstring,global-statement,too-many-locals,cyclic-import
-# Legado: ocorrências pré-existentes (corpo idêntico à origin/main); `_sleep_logged`
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0); `_sleep_logged`
 # é módulo-privado (guarda de log único por processo), não uma constante real. O
-# ciclo (getbrolls.providers <-> getbrolls.social) já existe na origin/main: quem
+# ciclo (getbrolls.providers <-> getbrolls.social) já existia antes da 2.6.0: quem
 # quebra o ciclo em tempo de execução é o import tardio em `providers._youtube`.
 
 import hashlib

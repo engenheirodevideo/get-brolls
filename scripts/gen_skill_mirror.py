@@ -25,7 +25,7 @@ produziria.
 """
 
 # pylint: disable=missing-function-docstring,duplicate-code
-# Legado: ocorrências pré-existentes (corpo idêntico à origin/main); a
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0); a
 # duplicação é o helper `_utf8_output`, repetido porque cada script standalone
 # é autossuficiente e não importa dos outros.
 

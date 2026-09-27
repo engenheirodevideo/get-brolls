@@ -2,7 +2,7 @@
 
 # pylint: disable=missing-function-docstring
 # Legado: ocorrências pré-existentes em `safe_preview_url`, `segment_label`,
-# `source_domain` e `script_bubble` (corpo idêntico à origin/main).
+# `source_domain` e `script_bubble` (corpo idêntico ao código anterior à 2.6.0).
 
 import html
 from datetime import date

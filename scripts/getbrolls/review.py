@@ -2,7 +2,7 @@
 
 # pylint: disable=missing-function-docstring,too-many-locals,broad-exception-caught
 # pylint: disable=too-many-branches,too-many-statements
-# Legado: ocorrências pré-existentes (corpo idêntico à origin/main).
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0).
 
 import copy
 import hashlib

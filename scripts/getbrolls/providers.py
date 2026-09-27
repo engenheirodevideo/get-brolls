@@ -1,8 +1,8 @@
 """Discovery adapters: yt-dlp for YouTube and official stock APIs."""
 
 # pylint: disable=cyclic-import
-# Legado: o ciclo (getbrolls.providers <-> getbrolls.social) já existe na
-# origin/main: `_youtube` importa `social` tardiamente (dentro de função)
+# Legado: o ciclo (getbrolls.providers <-> getbrolls.social) já existia antes
+# da 2.6.0: `_youtube` importa `social` tardiamente (dentro de função)
 # exatamente para quebrar esse ciclo em tempo de execução.
 
 import html

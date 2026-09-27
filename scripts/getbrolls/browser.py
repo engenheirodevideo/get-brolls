@@ -1,7 +1,7 @@
 """Reviewable Playwright CLI capture plan; browser interactions stay with agent."""
 
 # pylint: disable=missing-function-docstring
-# Legado: ocorrências pré-existentes (corpo idêntico à origin/main).
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0).
 
 from datetime import UTC
 

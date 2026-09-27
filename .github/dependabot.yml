@@ -7,6 +7,11 @@ updates:
     groups:
       python-runtime:
         patterns: ["*"]
+    ignore:
+      # pylint/astroid mudam a régua de lint sem ninguém tocar o repositório;
+      # bump manual, junto com uma re-baseline das supressões existentes.
+      - dependency-name: pylint
+      - dependency-name: astroid
   - package-ecosystem: npm
     directory: /
     schedule:

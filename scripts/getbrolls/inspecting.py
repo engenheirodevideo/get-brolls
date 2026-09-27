@@ -6,7 +6,7 @@ frase do usuário — só biblioteca padrão, nada de rede e nada gravado.
 """
 
 # pylint: disable=use-maxsplit-arg,too-many-locals
-# Legado: ocorrências pré-existentes (corpo idêntico à origin/main).
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0).
 
 import re
 import unicodedata

@@ -33,9 +33,15 @@ def _close(node):
 
 
 def strict(schema=None):
-    """Cópia fechada do schema: o que o core grava tem que casar com ela."""
+    """Cópia fechada do schema: o que o core grava tem que casar com ela.
+
+    `plan_version` fica travado em `2` aqui (o schema publicado só exige `>= 2`,
+    informativo para o exportador): o core sempre grava `2` hoje, e a variante
+    estrita continua pegando um valor diferente por engano.
+    """
     closed = copy.deepcopy(published() if schema is None else schema)
     _close(closed)
+    closed["properties"]["plan_version"] = {"const": 2}
     return closed
 
 

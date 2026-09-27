@@ -8,6 +8,7 @@ wrapper quebrado), os testes pulam dizendo o motivo — nunca falham por isso. O
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -23,8 +24,17 @@ from test_plugin_hyperframes import fixture, hf
 ENV = {**os.environ, "HYPERFRAMES_NO_TELEMETRY": "1", "HYPERFRAMES_NO_UPDATE_CHECK": "1", "DO_NOT_TRACK": "1"}
 
 
+_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
+
+
 def find_cli():
-    """(binário, versão) da CLI HyperFrames que responde a `--version`, ou (None, motivo do skip)."""
+    """(binário, versão) da CLI HyperFrames que responde a `--version`, ou (None, motivo do skip).
+
+    Aceita só a versão no formato semver puro (`^\\d+\\.\\d+\\.\\d+$`): outro
+    programa qualquer chamado `hyperframes` no PATH (visto numa máquina real:
+    "OpenAI SDK: 2.24.0" na última linha) tem que pular com o motivo, nunca ser
+    lido como se fosse a CLI real.
+    """
     binary = os.environ.get("GB_HYPERFRAMES_CLI") or shutil.which("hyperframes")
     if not binary:
         return None, "CLI HyperFrames ausente: defina GB_HYPERFRAMES_CLI ou ponha hyperframes no PATH"
@@ -37,7 +47,10 @@ def find_cli():
     lines = done.stdout.strip().splitlines()
     if done.returncode != 0 or not lines:
         return None, f"CLI HyperFrames em {binary}: --version saiu com {done.returncode}"
-    return binary, lines[-1].strip()
+    version = lines[-1].strip()
+    if not _VERSION_RE.match(version):
+        return None, f"CLI HyperFrames em {binary}: --version não devolveu semver puro ({version!r})"
+    return binary, version
 
 
 def synth_audio_file(path, seconds=2):

@@ -1,7 +1,7 @@
 """Existing workflow command handlers; CLI parsing and reporting live separately."""
 
 # pylint: disable=too-many-lines,fixme
-# Legado: módulo já ultrapassava 1000 linhas na origin/main; `fixme` é o comentário
+# Legado: módulo já ultrapassava 1000 linhas antes da 2.6.0; `fixme` é o comentário
 # "Todo executável..." pré-existente (não é um TODO de verdade, é o nome da variável).
 
 import contextlib
@@ -511,7 +511,7 @@ def rules_from_flags(template, mode, responsible, declaration, video_format=None
 class _BriefContext:
     # pylint: disable=too-few-public-methods,too-many-arguments,too-many-positional-arguments
     # pylint: disable=too-many-instance-attributes
-    # Contêiner simples de estado (novo nesta release), não um objeto com comportamento.
+    # Contêiner simples de estado, não um objeto com comportamento.
     """Estado do BRIEF.md já carregado/validado, compartilhado pelas duas rotas de `brief`."""
 
     def __init__(  # noqa: PLR0913, PLR0917
@@ -870,7 +870,7 @@ def reject_all(ledger, only, reason=None):
                 output_cleared=True,
             )
     except Exception:  # noqa: BLE001, S110 -- pylint: disable=broad-exception-caught
-        # Legado: ocorrência pré-existente (corpo idêntico à origin/main); logging must
+        # Legado: ocorrência pré-existente (corpo idêntico ao código anterior à 2.6.0); logging must
         # never break a command.
         pass
     return {
@@ -1003,7 +1003,7 @@ def search_summary_line(  # noqa: PLR0913, PLR0917 - existing size; one field pe
     query_used=None,
     retry=None,
 ):  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    # Legado: ocorrência pré-existente (corpo idêntico à origin/main).
+    # Legado: ocorrência pré-existente (corpo idêntico ao código anterior à 2.6.0).
     """Quantos vieram e quais são os três primeiros — o resumo que cabe numa fala.
 
     Zero candidatos nunca sai calado: a linha diz qual query a fonte recebeu e, se
@@ -1615,7 +1615,7 @@ def _reference_only_step(do):
 
 
 class _StatusContext:  # pylint: disable=too-few-public-methods
-    # Contêiner simples de estado derivado (novo nesta release), não um objeto com comportamento.
+    # Contêiner simples de estado derivado, não um objeto com comportamento.
     """Estado derivado de `status`, compartilhado entre o resumo falado e a lista de itens."""
 
     def __init__(  # noqa: PLR0913, PLR0917 -- pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -2627,7 +2627,7 @@ def _execute_read_only_project_command(cmd, args, config, rules, ledger):
 
 
 class _SearchContext:  # pylint: disable=too-few-public-methods
-    # Contêiner simples de estado (novo nesta release), não um objeto com comportamento.
+    # Contêiner simples de estado, não um objeto com comportamento.
     """Estado compartilhado de uma chamada `search`: request, regras, ledger e fontes escolhidas."""
 
     def __init__(  # noqa: PLR0913, PLR0917 -- pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -3286,7 +3286,7 @@ LANGUAGE_NAMES = {"pt": "PT", "en": "EN", "es": "ES", "fr": "FR", "de": "DE", "i
 
 
 def language_warning(probe, query):  # pylint: disable=redefined-outer-name
-    # Legado: ocorrência pré-existente (corpo idêntico à origin/main).
+    # Legado: ocorrência pré-existente (corpo idêntico ao código anterior à 2.6.0).
     """Aviso de idioma: a frase da pessoa e a legenda da fonte não se falam."""
     from .inspecting import language_mismatch
 
@@ -3483,13 +3483,13 @@ def _clock(seconds):
 
 
 def _has_cues(probe):  # pylint: disable=redefined-outer-name
-    # Legado: ocorrência pré-existente (corpo idêntico à origin/main).
+    # Legado: ocorrência pré-existente (corpo idêntico ao código anterior à 2.6.0).
     """Alguma legenda chegou de fato, com falas dentro? Anunciar idioma não é ter legenda."""
     return any((entry or {}).get("cues") for entry in (probe.get("subtitles") or {}).values())
 
 
 def inspect_summary(windows, probe, cap=0.0, query=None):  # pylint: disable=redefined-outer-name
-    # Legado: ocorrência pré-existente (corpo idêntico à origin/main).
+    # Legado: ocorrência pré-existente (corpo idêntico ao código anterior à 2.6.0).
     """`{line, next}` em PT-BR: quantas janelas saíram, qual a melhor e o que fazer com ela."""
     # Sem isto, "nenhuma janela casou" parece resposta sobre o conteúdo da fonte
     # quando o que houve foi a frase e a legenda estarem em idiomas diferentes.

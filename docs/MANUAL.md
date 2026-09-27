@@ -333,6 +333,9 @@ python3 scripts/gb.py permit --candidate "<ID>" --declared-by "Seu Nome" --decla
 # SE RECUSAR: falta aprovar (passo 5) ou registrar os direitos (passo 6).
 python3 scripts/gb.py fetch --candidate "<ID>" --project /caminho/meu-video
 
+# FONTE DE PLUGIN JÁ CONSUMIDA (compra ou cota de uso único): rode de novo com --reacquire.
+python3 scripts/gb.py fetch --candidate "<ID>" --reacquire --project /caminho/meu-video
+
 # ── verify ──────────────────────────────────────────────────
 # O QUE FAZ: confere se cada arquivo baixado está inteiro e abre.
 # COMO: compara uma "impressão digital" do arquivo (hash) e tenta decodificar.

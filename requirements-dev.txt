@@ -3,6 +3,11 @@
 ruff==0.16.8
 pyright==1.1.414
 pylint==4.0.9
+# astroid infere assinatura da stdlib pelo interpretador que roda o lint; pinado
+# à parte (não é dependência direta) porque uma versão nova muda mensagens sem
+# ninguém tocar neste repositório, e o dependabot ignora bump dos dois até
+# existir uma política de re-baseline.
+astroid==4.0.4
 # pylint já roda em scripts/check.sh, scripts/check.ps1 e no job de qualidade
 # do CI, zero mensagens em scripts/examples e em tests. Rode isolado com:
 #   pylint scripts examples

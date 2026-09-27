@@ -1,7 +1,7 @@
 """Choose the existing B-roll or supplied composition for the review preview."""
 
 # pylint: disable=missing-function-docstring
-# Legado: ocorrências pré-existentes (corpo idêntico à origin/main).
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0).
 
 import hashlib
 import json

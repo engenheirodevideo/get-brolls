@@ -57,6 +57,12 @@ INTERNAL_REVIEW_ROUND_PATTERN = re.compile(
     r"(?:^\s*|(?<=[(\"])|(?<=#)\s?)(?:[Rr]ound|[Rr]odada|[Oo]nda|[Ww]ave|Task) \d+(?=:|\)| \()"
 )
 
+# Material de processo que apodrece: comparação com um branch específico (o
+# comentário fica desatualizado assim que a branch vira a própria main) e o
+# nome interno das frentes paralelas de trabalho. O motivo da supressão tem
+# que ser atemporal, não amarrado a como o código chegou até aqui.
+PROCESS_LANGUAGE_PATTERN = re.compile(r"origin/main|desta frente|novo nesta release")
+
 
 def github_slug(heading):
     value = unicodedata.normalize("NFC", heading.strip().lower())
@@ -467,6 +473,30 @@ class RepositoryDocumentationTests(unittest.TestCase):
                 patterns.append(INTERNAL_REVIEW_ROUND_PATTERN)
             for number, line in enumerate(text.splitlines(), 1):
                 match = next((m for pattern in patterns if (m := pattern.search(line))), None)
+                if match:
+                    problems.append(f"{path}:{number}: {match.group(0)}")
+        self.assertEqual([], problems)
+
+    def test_tracked_text_has_no_process_language(self):
+        """Comentário rastreado explica o motivo técnico da supressão de forma
+        atemporal: nada de comparar com `origin/main` (apodrece no próximo merge)
+        nem de nomear a frente de trabalho ("desta frente", "novo nesta
+        release") — quem lê a main não tem como saber o que isso significa."""
+        tracked = (
+            subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True)
+            .stdout.decode("utf-8")
+            .split("\0")
+        )
+        problems = []
+        for path in filter(None, tracked):
+            if path == "tests/test_repository.py":
+                continue  # o próprio padrão
+            try:
+                text = (ROOT / path).read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue  # binário, ou apagado do worktree sem commit
+            for number, line in enumerate(text.splitlines(), 1):
+                match = PROCESS_LANGUAGE_PATTERN.search(line)
                 if match:
                     problems.append(f"{path}:{number}: {match.group(0)}")
         self.assertEqual([], problems)

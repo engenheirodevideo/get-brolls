@@ -1,6 +1,7 @@
-# Régua do pylint só para tests/. Herda os limites de scripts/examples
-# (pyproject.toml) e desliga apenas o que é intrínseco ao jeito como esta
-# suíte com unittest é escrita — nunca um desconto geral de qualidade.
+# Régua do pylint só para tests/. Repete os limites do pyproject.toml
+# (--rcfile não herda: só copia o que está definido abaixo) e desliga apenas o
+# que é intrínseco ao jeito como esta suíte com unittest é escrita — nunca um
+# desconto geral de qualidade.
 #
 # `PYTHONPATH=scripts:tests pylint --rcfile tests/pylintrc tests`
 
@@ -38,7 +39,8 @@ disable =
     # montado em runtime, então sinaliza "no-member" para cada atributo real do
     # plugin (HYPERFRAMES_VERSION, generate, MediaUseResolver, ...). As 58
     # ocorrências da baseline vêm inteiras desses 3 arquivos; nenhuma é erro real
-    # (confirmado por rodar a suíte). O resto do no-member continua ligado.
+    # (confirmado por rodar a suíte). Desligado em todos os testes, não só
+    # nesses 3 arquivos: o `disable` deste rcfile vale para a pasta inteira.
     no-member,
     # Falso positivo sistemático: vários testes reimportam um módulo da stdlib já
     # importado no topo do arquivo (json, sys, tempfile, subprocess, io, Path,

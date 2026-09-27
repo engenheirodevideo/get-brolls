@@ -1,6 +1,6 @@
 # pylint: disable=missing-module-docstring,missing-function-docstring,too-many-arguments
 # pylint: disable=too-many-positional-arguments,too-many-locals
-# Legado: ocorrências pré-existentes (corpo idêntico à origin/main).
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0).
 
 import hashlib
 import json

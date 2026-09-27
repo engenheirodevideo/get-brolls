@@ -9,7 +9,7 @@ cedo com uma mensagem clara em vez de servir um diretório vazio.
 
 # pylint: disable=missing-function-docstring,invalid-name,too-many-return-statements
 # pylint: disable=redefined-builtin,too-many-locals,consider-using-with
-# Legado: ocorrências pré-existentes (corpo idêntico à origin/main); `invalid-name`
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0); `invalid-name`
 # e `redefined-builtin` vêm da API do `http.server` (`do_POST`, `log_message(...,
 # format, ...)`), que não muda.
 
@@ -458,6 +458,8 @@ def _alive(pid):  # noqa: PLR0911 - existing size; one early return per platform
         handle = kernel32.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED_INFORMATION
         if not handle:
             return False
+        # Falso positivo do pylint em 3.11: c_ulong() sem args é válido (value=0 por padrão).
+        # pylint: disable-next=no-value-for-parameter
         code = ctypes.c_ulong()
         ok = kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
         kernel32.CloseHandle(handle)

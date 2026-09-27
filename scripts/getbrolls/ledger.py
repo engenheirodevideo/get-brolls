@@ -1,7 +1,7 @@
 """Local manifest with recoverable writes and derived candidate snapshots."""
 
 # pylint: disable=missing-function-docstring,too-many-branches,missing-class-docstring
-# Legado: ocorrências pré-existentes (corpo idêntico à origin/main).
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0).
 
 import hashlib
 import json

@@ -7,7 +7,7 @@ intervalo, e toda resposta daqui repete isso em `rights_not_transferable`.
 """
 
 # pylint: disable=missing-function-docstring,too-many-locals
-# Legado: ocorrências pré-existentes (corpo idêntico à origin/main).
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0).
 
 import contextlib
 import hashlib

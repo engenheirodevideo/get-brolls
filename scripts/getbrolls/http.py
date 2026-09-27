@@ -1,12 +1,12 @@
 """Bounded HTTPS JSON transport. Cache is private and never part of reports."""
 
 # pylint: disable=missing-class-docstring,arguments-renamed,unused-argument,protected-access,cyclic-import
-# Legado: ocorrências pré-existentes (corpo idêntico à origin/main). `arguments-renamed`
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0). `arguments-renamed`
 # e `unused-argument` vêm de `_PinnedHTTPSHandler.https_open`/`connect_pinned`, que
 # seguem a assinatura fixa de `urllib.request`/`http.client`; `protected-access` é o
 # `_create_connection` interno de `HTTPSConnection`, trocado de propósito para pinar
 # o IP resolvido sem repetir a validação de TLS/hostname. O ciclo
-# (getbrolls.http <-> getbrolls.runtime) já existe na origin/main: `runtime.py`
+# (getbrolls.http <-> getbrolls.runtime) já existia antes da 2.6.0: `runtime.py`
 # importa `http.ProviderError` tardiamente (dentro de função) exatamente para
 # quebrar esse ciclo em tempo de execução.
 
@@ -246,7 +246,7 @@ def _opener():
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     # pylint: disable=too-many-arguments,too-many-positional-arguments
-    # Legado: assinatura fixa de `HTTPRedirectHandler.redirect_request` (corpo idêntico à origin/main).
+    # Legado: assinatura fixa de `HTTPRedirectHandler.redirect_request` (corpo idêntico ao código anterior à 2.6.0).
     def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ARG002, PLR0913, PLR0917
         logs.event(_logger, logging.WARNING, "request_refused", host=_host_of(req.full_url), reason="redirect_refused")
         raise ProviderError("Redirecionamento de API não permitido")
@@ -364,6 +364,7 @@ def _get_json_request_headers(headers):
 def get_json(  # noqa: C901, PLR0912, PLR0913, PLR0915, PLR0917
     url, params=None, headers=None, cache_ttl=0, keep_signed=False, quiet_errors=False, strict_scrub=False
 ):
+    # Legado: um parâmetro por opção do transporte; dividir muda a API usada pelo SDK.
     # pylint: disable=too-many-arguments,too-many-branches,too-many-locals
     # pylint: disable=too-many-positional-arguments,too-many-statements
     """`quiet_errors=True` drops the HTTPError response body from the message (the
@@ -615,7 +616,7 @@ def download(  # noqa: C901, PLR0912, PLR0915
     url, target, max_bytes=DOWNLOAD_MAX_BYTES, headers=None, allow_signed=False
 ):
     # pylint: disable=too-many-branches,too-many-statements,too-many-locals
-    # Legado (parcial): fluxo de erro/retry idêntico à origin/main; só os
+    # Legado (parcial): fluxo de erro/retry idêntico ao código anterior à 2.6.0; só os
     # parâmetros/knobs mudaram. Existing size; streaming download with cleanup
     # on every failure path.
     """Stream only public HTTPS to an exclusive file; remove partials on failure.

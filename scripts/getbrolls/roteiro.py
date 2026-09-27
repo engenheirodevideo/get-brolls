@@ -83,11 +83,10 @@ _ARITY = {
 
 
 @dataclass(frozen=True)
-# Contrato testado campo a campo fora desta frente (`.plugin`/`.name`/`.anchor`/`.word_offset`
+# Contrato testado campo a campo (`.plugin`/`.name`/`.anchor`/`.word_offset`
 # em tests/test_roteiro_hardening.py e tests/test_roteiro_parser.py): agrupar os campos
-# quebraria essas asserções, que não são desta frente para mudar.
-# pylint: disable=too-many-instance-attributes
-class Directive:
+# quebraria essas asserções, que não devem mudar sem atualizar os testes.
+class Directive:  # pylint: disable=too-many-instance-attributes
     """Diretiva `[KIND: args]` (ou nota) de uma linha do roteiro, já com a âncora de tempo."""
 
     kind: str
@@ -104,10 +103,9 @@ class Directive:
 
 
 @dataclass(frozen=True)
-# Contrato lido por vários módulos (e testado campo a campo fora desta frente): agrupar
+# Contrato lido por vários módulos (e testado campo a campo pelos testes): agrupar
 # os campos quebraria `roteiro_plan`/`export_plan` e as asserções de teste por nome.
-# pylint: disable=too-many-instance-attributes
-class Scene:
+class Scene:  # pylint: disable=too-many-instance-attributes
     """Cena lida do roteiro: título, layout, camadas, extensões, fala e as métricas de tempo dela."""
 
     title: str

@@ -1,12 +1,12 @@
 """Todas as fontes de versão do repositório concordam com `__version__`.
 
-Onze fontes (as duas ocorrências do `package-lock.json` contam separado):
+Doze fontes (as duas ocorrências do `package-lock.json` contam separado):
 `scripts/getbrolls/__init__.py`, `package.json`, `package-lock.json` (raiz e
 `packages[""]`), `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`,
-`SKILL.md`, `skills/get-brolls/SKILL.md`, `README.md`, `README.en.md` e
-`docs/QUALITY.md`. As listas de "Atualizações" dos READMEs e o corpo do
-CHANGELOG são prosa humana e ficam fora — quem escreve nelas é
-`scripts/bump_version.py`, não este teste.
+`SKILL.md`, `skills/get-brolls/SKILL.md`, `README.md`, `README.en.md`,
+`docs/QUALITY.md` e o `$id` de `schemas/export_plan.schema.json`. As listas de
+"Atualizações" dos READMEs e o corpo do CHANGELOG são prosa humana e ficam
+fora — quem escreve nelas é `scripts/bump_version.py`, não este teste.
 """
 
 import json
@@ -90,6 +90,17 @@ class VersionCoherenceTest(unittest.TestCase):
         text = _text("docs/QUALITY.md")
         match = re.search(r"^# Qualidade e evidências — GET B-ROLLS (\d+\.\d+\.\d+)$", text, re.MULTILINE)
         self.assertIsNotNone(match, "título de versão não encontrado em docs/QUALITY.md")
+        assert match is not None
+        self.assertEqual(match.group(1), __version__)
+
+    def test_export_plan_schema_id_tag(self):
+        text = _text("schemas/export_plan.schema.json")
+        match = re.search(
+            r"raw\.githubusercontent\.com/engenheirodevideo/get-brolls/"
+            r"v(\d+\.\d+\.\d+)/schemas/export_plan\.schema\.json",
+            text,
+        )
+        self.assertIsNotNone(match, "$id não encontrado em schemas/export_plan.schema.json")
         assert match is not None
         self.assertEqual(match.group(1), __version__)
 

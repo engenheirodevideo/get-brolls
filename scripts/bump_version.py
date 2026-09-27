@@ -27,7 +27,7 @@ Sem dependências externas (stdlib).
 """
 
 # pylint: disable=missing-function-docstring,duplicate-code
-# Legado: ocorrências pré-existentes (corpo idêntico à origin/main); a
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0); a
 # duplicação é o helper `_utf8_output`, repetido porque cada script standalone
 # é autossuficiente e não importa dos outros.
 
@@ -296,6 +296,35 @@ def _write_changelog(root: Path, version: str, date_str: str) -> None:
     _write(path, text.replace(marker, stub, 1))
 
 
+# -- schemas/export_plan.schema.json ($id aponta para a tag da versão) ---
+
+_EXPORT_PLAN_SCHEMA_ID_RE = re.compile(
+    r'("\$id":\s*"https://raw\.githubusercontent\.com/engenheirodevideo/get-brolls/v)'
+    r"\d+\.\d+\.\d+"
+    r'(/schemas/export_plan\.schema\.json")'
+)
+
+
+def _export_plan_schema_path(root: Path) -> Path:
+    return root / "schemas" / "export_plan.schema.json"
+
+
+def _check_export_plan_schema(root: Path, version: str) -> bool:
+    match = _EXPORT_PLAN_SCHEMA_ID_RE.search(_read(_export_plan_schema_path(root)))
+    return bool(match) and f"v{version}" in match.group(0)
+
+
+def _write_export_plan_schema(root: Path, version: str, _date_str: str) -> None:
+    path = _export_plan_schema_path(root)
+    text = _read(path)
+    # Substituição de texto, não round-trip por json.dumps: preserva a formatação
+    # manual do schema (objetos numa linha só), que json.dumps quebraria em várias.
+    text, count = _EXPORT_PLAN_SCHEMA_ID_RE.subn(rf"\g<1>{version}\g<2>", text)
+    if count != 1:
+        raise ValueError(f"$id não encontrado em {path}")
+    _write(path, text)
+
+
 # -- skills/get-brolls/SKILL.md (regerado, não editado diretamente) ---
 
 
@@ -341,6 +370,7 @@ TARGETS: list[Target] = [
     Target("README.en.md", _check_readme_en, _write_readme_en),
     Target("docs/QUALITY.md", _check_quality_md, _write_quality_md),
     Target("CHANGELOG.md", _check_changelog, _write_changelog),
+    Target("schemas/export_plan.schema.json", _check_export_plan_schema, _write_export_plan_schema),
     # A regeneração do espelho depende do SKILL.md já escrito; roda por
     # último tanto na checagem quanto na escrita.
     Target("skills/get-brolls/SKILL.md", _check_skill_mirror, _write_skill_mirror),

@@ -7,7 +7,7 @@ dita, evidência real), o comando traz o lugar em MAIÚSCULAS para ele preencher
 """
 
 # pylint: disable=too-many-arguments,too-many-positional-arguments
-# Legado: ocorrências pré-existentes em `_action` (corpo idêntico à origin/main).
+# Legado: ocorrências pré-existentes em `_action` (corpo idêntico ao código anterior à 2.6.0).
 
 import shlex
 from pathlib import Path

@@ -80,10 +80,19 @@ class PublishedSchemaTests(unittest.TestCase):
             schema = json.loads((ROOT / "schemas" / f"{name}.schema.json").read_text(encoding="utf-8"))
             self.assertIn("/get-brolls/main/schemas/", schema["$id"], name)
 
-    def test_versions_stay_const(self):
-        props = published()["properties"]
-        self.assertEqual({"const": 1}, props["export_version"])
-        self.assertEqual({"const": 2}, props["plan_version"])
+    def test_export_version_stays_const(self):
+        self.assertEqual({"const": 1}, published()["properties"]["export_version"])
+
+    def test_plan_version_accepts_any_integer_from_2_and_is_informative(self):
+        """`plan_version` pode subir sem mudar nada para o exportador (SDK.md); o
+        schema publicado só exige `>= 2`, e diz isso na description. A variante
+        estrita dos testes continua exigindo exatamente 2 (`_schemas.strict`)."""
+        node = published()["properties"]["plan_version"]
+        self.assertEqual("integer", node["type"])
+        self.assertEqual(2, node["minimum"])
+        self.assertTrue(node.get("description"))
+        self.assertEqual([], errors(3, node))
+        self.assertEqual({"const": 2}, strict()["properties"]["plan_version"])
 
     def test_description_states_the_evolution_policy(self):
         text = published()["description"]
@@ -255,23 +264,49 @@ class CheckExporterGuardTests(unittest.TestCase):
 
 
 class EvolutionDocTests(unittest.TestCase):
-    def doc_exporter(self):
-        """A função `exporta` do exemplo de Exportadores do SDK.md, executada como está."""
+    def _doc_exporter_blocks(self):
+        """Todo bloco ```python``` da seção Exportadores do SDK.md, na ordem em que aparecem."""
         text = (ROOT / "docs" / "SDK.md").read_text(encoding="utf-8")
-        code = text.split("## Exportadores", 1)[1].split("```python\n", 1)[1].split("```", 1)[0]
-        code = code.replace('api.exporter("meu_banco_html", exporta, "Exporta o plano como página HTML")', "")
+        section = text.split("## Exportadores", 1)[1].split("\n## ", 1)[0]
+        return [block.split("```", 1)[0] for block in section.split("```python\n")[1:]]
+
+    def doc_exporter(self, index=0):
+        """Namespace do exemplo `index` (0-based) de Exportadores do SDK.md, executado como está."""
+        code = self._doc_exporter_blocks()[index]
         namespace = {}
         # Roda o exemplo do próprio doc, como está.
         exec(compile(code, "SDK.md", "exec"), namespace)  # noqa: S102  # pylint: disable=exec-used
-        return namespace["exporta"]
+        return namespace
 
     def test_the_doc_example_refuses_an_unknown_export_version(self):
-        exporta = self.doc_exporter()
+        exporta = self.doc_exporter(0)["exporta"]
         self.assertEqual([], errors(sample_plan(), strict()))
         testing.check_exporter(ExporterSpec("demo_html", "Exporta", exporta))
         with self.assertRaises(PluginError) as caught:
             exporta({**sample_plan(), "export_version": 2}, {"args": {}})
         self.assertIn("export_version 2 não é suportado", str(caught.exception))
+
+    def test_the_second_doc_example_registers_under_the_manifest_id(self):
+        """O segundo exemplo ('Com mídia') roda como está — dentro de `def register(api):`, sem
+        `NameError` — e registra um nome igual ao `id` do plugin do tutorial (`meu_exporter`) ou
+        começando por `meu_exporter_`, como a regra do manifesto exige (blind-test W7: o exemplo
+        antigo chamava `api.exporter(...)` solto, fora de `register`, e com um nome que violava
+        essa regra)."""
+        namespace = self.doc_exporter(1)
+        self.assertIn("register", namespace, "o segundo exemplo tem que definir register(api)")
+
+        registered = []
+
+        class FakeApi:  # pylint: disable=too-few-public-methods
+            def exporter(self, name, func, description):
+                registered.append((name, func))
+
+        namespace["register"](FakeApi())
+        self.assertEqual(1, len(registered))
+        name, exporta = registered[0]
+        self.assertTrue(name == "meu_exporter" or name.startswith("meu_exporter_"), name)
+        result = exporta(sample_plan(), {"args": {}})
+        self.assertIsInstance(result, ExportResult)
 
     def test_sdk_doc_states_the_policy(self):
         text = (ROOT / "docs" / "SDK.md").read_text(encoding="utf-8")

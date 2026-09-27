@@ -1,6 +1,6 @@
 ---
 name: get-brolls
-description: 'Coleta, pré-visualiza e entrega B-rolls com revisão humana e origem registrada. Use quando alguém pedir b-roll, vídeos de apoio, imagens de apoio, cutaways, inserts, footage, "um corte do X falando Y", um print da tela de um site ou de uma notícia, ou material para ilustrar um vídeo, Reel ou aula — buscando em YouTube, Instagram, TikTok, Wikimedia Commons, NASA ou bancos (Pexels, Pixabay), gerando prévias para revisão humana e entregando os trechos com origem e condições de uso. Também escreve e organiza roteiros de reels (`ROTEIRO.md`) com revisão humana e exporta o projeto para editores via plugin (HyperFrames). Also in English: collect B-roll, cutaways, inserts, supporting footage, stock video, screen grabs. Não renderiza nem edita o vídeo final. Does not render or edit the finished video.'
+description: 'Coleta, pré-visualiza e entrega B-rolls com revisão humana e origem registrada. Use quando alguém pedir b-roll, vídeos de apoio, imagens de apoio, cutaways, inserts, footage, "um corte do X falando Y", um print da tela de um site ou de uma notícia, ou material para ilustrar um vídeo, Reel ou aula — buscando em YouTube, Instagram, TikTok, Wikimedia Commons, NASA ou bancos (Pexels, Pixabay), gerando prévias para revisão humana e entregando os trechos com origem e condições de uso. Também escreve e organiza roteiros de reels (`ROTEIRO.md`) com revisão humana e exporta o projeto para editores via plugin (HyperFrames). Also in English: collect B-roll, cutaways, inserts, supporting footage, stock video, screen grabs. Also writes reels scripts (ROTEIRO.md) and exports them to editors via plugin. Não renderiza nem edita o vídeo final. Does not render or edit the finished video.'
 license: MIT
 metadata:
   version: "2.6.0"
@@ -31,7 +31,7 @@ Pediram para escrever o conteúdo (cenas e fala), não só b-roll? Siga [`${CLAU
 
 ## Passo 2 — Confirme o brief
 
-Rode o CLI pelo **caminho absoluto da instalação da skill**: os exemplos escrevem `${CLAUDE_PLUGIN_ROOT}/scripts/gb.py` por brevidade. `--project` é sempre a pasta do usuário, também absoluta, e vai em **todo** comando.
+Rode o CLI pelo **caminho absoluto da instalação da skill** (`${CLAUDE_PLUGIN_ROOT}/scripts/gb.py` nos exemplos). `--project` é sempre a pasta do usuário (absoluta), em **todo** comando.
 
 Escreva o `BRIEF.md` com `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" init-brief --project <projeto>`, preencha o bloco JSON e valide com `brief --validate`. Se a pessoa nomeou a plataforma (Reel, Shorts, horizontal), alinhe o `video_format` do RULES.md antes de validar: `init-rules --format reels --force --project <projeto>`.
 
@@ -47,7 +47,7 @@ Escreva o `BRIEF.md` com `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" init-bri
 
 `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" inspect --candidate <ID> --query "fala ou alvo" --project <projeto>` devolve janelas pontuadas (duração, capítulos, legendas); escreva a `--query` no idioma da fonte. Escolha `--start/--end` a partir delas, nunca de palpite.
 
-Depois, `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" preview --candidate <ID> --start <INICIO> --end <FIM> --project <projeto>` gera poster, contact sheet e GIF: até 10 s por prévia (`GB_PREVIEW_MAX_SECONDS`) e **um `preview` por chamada**, senão estoura o tempo. A resposta traz `files.contact_sheet` (no `status` e no manifesto, `preview.contact_sheet_path`, relativo a `brolls/`) e `preview.frame_times_s`. **Abra e olhe antes de seguir.** Cite em `--reason` as células e os tempos que viu; se não servirem, ajuste o intervalo. Nunca descreva quadro que não conferiu.
+Depois, `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" preview --candidate <ID> --start <INICIO> --end <FIM> --project <projeto>` gera poster, contact sheet e GIF: até 10 s por prévia (`GB_PREVIEW_MAX_SECONDS`) e **um `preview` por chamada**. A resposta traz `files.contact_sheet` (`status`/manifesto, `preview.contact_sheet_path`, relativo a `brolls/`) e `preview.frame_times_s`. **Abra e olhe antes de seguir.** Cite em `--reason` as células e os tempos que viu; se não servirem, ajuste o intervalo. Nunca descreva quadro que não conferiu.
 
 Sem pista, `preview --scan` varre o vídeo inteiro: exploratório, depois do `inspect`, ignora o intervalo escolhido. Foto não tem trecho: `preview` sem `--start/--end`, e sem `inspect`.
 
@@ -87,4 +87,5 @@ Diga o que tentou e por quê. Pergunte se a pessoa tem material próprio ou um l
 - [`${CLAUDE_PLUGIN_ROOT}/references/rights.md`](${CLAUDE_PLUGIN_ROOT}/references/rights.md) — condições de uso e `permit`.
 - [`${CLAUDE_PLUGIN_ROOT}/references/templates-de-resposta.md`](${CLAUDE_PLUGIN_ROOT}/references/templates-de-resposta.md) — copy pronta.
 - [`${CLAUDE_PLUGIN_ROOT}/references/glossario.md`](${CLAUDE_PLUGIN_ROOT}/references/glossario.md) — termos.
+- [`${CLAUDE_PLUGIN_ROOT}/references/roteiro.md`](${CLAUDE_PLUGIN_ROOT}/references/roteiro.md) e [`${CLAUDE_PLUGIN_ROOT}/references/generos/reels.md`](${CLAUDE_PLUGIN_ROOT}/references/generos/reels.md) — roteiro (componentes, export) e regras de copy do reels.
 - [`${CLAUDE_PLUGIN_ROOT}/docs/GUIDE.md`](${CLAUDE_PLUGIN_ROOT}/docs/GUIDE.md) — detalhe técnico.

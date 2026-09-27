@@ -1,8 +1,8 @@
 """Explicit .env loading: no interpolation, evaluation or secret output."""
 
 # pylint: disable=missing-function-docstring,cyclic-import
-# Legado: ocorrência pré-existente em `settings` (corpo idêntico à origin/main).
-# `cyclic-import` é novo nesta release (getbrolls.config -> getbrolls.runtime ->
+# Legado: ocorrência pré-existente em `settings` (corpo idêntico ao código anterior à 2.6.0).
+# `cyclic-import` vem do ciclo (getbrolls.config -> getbrolls.runtime ->
 # getbrolls.http): o import de `runtime.record_warning` é tardio (dentro de
 # função) de propósito, seguindo a mesma convenção já usada em runtime.py para
 # quebrar ciclos em tempo de execução (ver "avoids a runtime<->http/logs import

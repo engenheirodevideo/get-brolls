@@ -40,6 +40,8 @@ python3 -m pip install -r requirements-dev.txt
 bash scripts/check.sh
 ```
 
+O job `quality` do CI faz o `pylint` em Python 3.11 (o `pyproject.toml` fixa `py-version = "3.11"`, mas o pylint infere assinatura de stdlib pelo interpretador que roda o lint, não por esse campo); um `.venv` criado com `python3.11` reproduz exatamente o que o CI vê, então rode `bash scripts/check.sh` também sob 3.11 antes de empurrar uma mudança que toque código de plataforma condicional.
+
 No Windows, `./scripts/check.ps1` roda a mesma bateria. Os dois executam, em ordem, `ruff check`, `ruff format --check`, `pyright`, `pylint scripts examples`, `pylint` nos testes (com `PYTHONPATH=scripts:tests` e `--rcfile tests/pylintrc`), `python3 scripts/gen_skill_mirror.py --check` (o espelho da skill em `skills/get-brolls/SKILL.md` é gerado a partir do `SKILL.md` da raiz — nunca edite o espelho à mão), `python3 scripts/check_anchors.py` e a suíte de testes — o mesmo que o CI cobre: o job `quality` roda `ruff`, `pyright` e as duas passadas de `pylint` no Ubuntu, e a matriz `Tests` roda a suíte (que inclui a conferência de âncoras) e o `--check` do espelho nos três sistemas.
 
 ## Dependências e releases

@@ -2,7 +2,7 @@
 
 # pylint: disable=missing-function-docstring,broad-exception-caught
 # Legado: ocorrências pré-existentes em `parse_args` e `entrypoint` (corpo
-# idêntico à origin/main).
+# idêntico ao código anterior à 2.6.0).
 
 import argparse
 import contextlib

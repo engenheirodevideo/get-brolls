@@ -438,7 +438,10 @@ api.command("recentes", recentes, "Lista os vídeos mais recentes da pasta")
 ### Seu exporter em 30 minutos
 
 O mínimo que passa no contrato: manifesto declarando o exporter e uma função
-pura que devolve um `index.html`, sem pedir mídia nenhuma.
+pura que devolve um `index.html`, sem pedir mídia nenhuma. A função do
+exportador recebe dois argumentos, `plan` (o plano de export, detalhado
+abaixo) e `options` (hoje sempre `{"args": {}}`; reservado para opções
+futuras — o exportador dos exemplos abaixo só o declara, sem usar).
 
 `getbrolls-plugin.json`:
 
@@ -492,6 +495,8 @@ instale de fato (`plugins --action install --source /caminho --yes --expect
 <sha256>`) e rode `gb export --to meu_exporter --project <projeto>` contra um
 roteiro revisado e sincronizado.
 
+Com mídia (dentro de `def register(api):`, como no exemplo anterior):
+
 ```python
 from html import escape
 
@@ -517,7 +522,8 @@ def exporta(plan: dict, options: dict) -> ExportResult:
     )
 
 
-api.exporter("meu_banco_html", exporta, "Exporta o plano como página HTML")
+def register(api):
+    api.exporter("meu_exporter", exporta, "Exporta o plano como página HTML, com mídia")
 ```
 
 - **O plano.** Um dict JSON descrito em
@@ -606,8 +612,9 @@ o `media_id` existe em `plan["media"]` com `available: true`; o `dest` fica em
 `assets/…`, sem trecho vazio, `.` ou `..`, e termina na extensão `ext` da mídia
 (sem diferenciar maiúsculas); dois pedidos nunca vão para o mesmo `dest`.
 Passando tudo, o core grava os `files` e põe cada mídia numa pasta nova
-`exports/<nome>/NNN/` (hardlink para clipe, clone ou cópia para a mídia da
-pessoa, cópia para acerto de resolvedor), e nunca apaga nem sobrescreve uma
+`exports/<nome>/NNN/` (clipe já congelado pelo `deliver`, por hardlink; ainda
+gravável, por clone ou cópia, como a mídia da pessoa; acerto de resolvedor,
+sempre por cópia), e nunca apaga nem sobrescreve uma
 pasta de export. Com `--dry-run`, o exportador roda, o resultado é conferido e
 nada é gravado.
 
@@ -639,7 +646,9 @@ exportador pode esperar:
 - **Duas versões.** `export_version` é o contrato entre o core e o exportador: é
   ele que diz se o seu código entende o plano. `plan_version` é o formato do
   plano de cena do roteiro (`roteiro --action plan`), de onde vêm as cenas; ele
-  pode subir sem mudar nada para o exportador.
+  pode subir sem mudar nada para o exportador. No schema publicado,
+  `plan_version` só exige `>= 2` — o exportador não deve recusar por esse
+  valor.
 - **`$id` por versão.** O `$id` do schema aponta para a tag da versão
   (`.../get-brolls/v2.6.0/schemas/export_plan.schema.json`), não para a `main`.
 
