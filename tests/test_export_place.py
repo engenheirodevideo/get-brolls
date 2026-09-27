@@ -53,18 +53,29 @@ class ClipTests(PlaceTestCase):
         self.assertFalse(dest.is_symlink())
 
     def test_forced_copy_makes_an_independent_file(self):
-        clip = self.file("brolls/clips/a.mp4")
+        clip = self.file("brolls/clips/a.mp4", mode=0o444)
         with mock.patch.dict(os.environ, {"GB_DELIVERY_COPY": "1"}):
             method, copied = export_place.place(source_of(clip, "hardlink"), self.staging / "assets/clips/x.mp4")
         self.assertEqual(("copy", len(b"conteudo")), (method, copied))
         self.assertFalse(clip.samefile(self.staging / "assets/clips/x.mp4"))
 
     def test_no_hardlink_falls_back_to_copy_never_symlink(self):
-        clip = self.file("brolls/clips/a.mp4")
+        clip = self.file("brolls/clips/a.mp4", mode=0o444)
         with mock.patch.object(export_place.delivery.os, "link", side_effect=OSError("sem hardlink")):
             method, _ = export_place.place(source_of(clip, "hardlink"), self.staging / "assets/clips/y.mp4")
         self.assertEqual("copy", method)
         self.assertFalse((self.staging / "assets/clips/y.mp4").is_symlink())
+
+    def test_clip_unfrozen_between_plan_and_place_falls_back_to_a_copy(self):
+        """`chmod u+w` depois do plano (que decidiu hardlink) vira clone/cópia, nunca hardlink."""
+        clip = self.file("brolls/clips/a.mp4", mode=0o444)
+        clip.chmod(0o644)  # destravado depois que o plano já tinha decidido "hardlink"
+        dest = self.staging / "assets/clips/z.mp4"
+        method, _ = export_place.place(source_of(clip, "hardlink"), dest)
+        self.assertNotEqual("hardlink", method)
+        self.assertFalse(clip.samefile(dest))
+        dest.write_bytes(b"editado no export")
+        self.assertEqual(b"conteudo", clip.read_bytes())  # o original não é tocado pela cópia do export
 
 
 class PersonMediaTests(PlaceTestCase):
@@ -277,7 +288,7 @@ class RecheckTests(PlaceTestCase):
             export_place.place(source, self.staging / "assets/aroll/c01.mov")
 
     def test_hardlink_to_another_file_is_undone(self):
-        clip = self.file("brolls/clips/a.mp4")
+        clip = self.file("brolls/clips/a.mp4", mode=0o444)
         other = self.file("brolls/clips/b.mp4", b"outro clipe")
         dest = self.staging / "assets/clips/a.mp4"
 

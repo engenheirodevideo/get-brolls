@@ -12,6 +12,12 @@ Antes de pôr, a fonte é conferida de novo (`lstat`): mesmo `st_dev`/`st_ino`/t
 (e data, quando o plano a tem), arquivo regular e não link. Depois de pôr, confere de
 novo a fonte e o destino (hardlink = mesmo inode; cópia = mesmo tamanho): se algo
 mudou no meio, o destino sai e o export para com "mudou durante o export".
+
+O plano decide "congelado" no momento de montar o plano; entre o plano e o `place`
+alguém pode destravar o clipe (`chmod u+w`, ACL do macOS). Por isso o `place` reconfere
+"congelado" na própria hora do link, com o mesmo `lstat` já lido: se não estiver mais
+congelado, cai para clone/cópia em vez de ligar o original a um nome gravável dentro
+do export.
 """
 # pylint: enable=line-too-long
 
@@ -83,6 +89,15 @@ def verify_source(source):
     if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or not same:
         raise _changed(path)
     return info
+
+
+def _frozen(path, info):
+    """Congelado agora: sem bit de escrita pra ninguém no modo e sem acesso de escrita real.
+
+    As duas condições juntas cobrem ACL do macOS e grupo com escrita, que um `mode`
+    sozinho não vê (`chmod +a` dá acesso de escrita sem mudar `st_mode`).
+    """
+    return not stat.S_IMODE(info.st_mode) & 0o222 and not os.access(path, os.W_OK)
 
 
 def _clone_platform():
@@ -179,6 +194,11 @@ def place(source, dest, copy_plugin=None):
     if kind not in ("hardlink", "clone"):
         raise ValueError(f"Método de mídia desconhecido: {kind!r}.")
     info = verify_source(source)
+    if kind == "hardlink" and not _frozen(source["path"], info):
+        # O plano decidiu hardlink com o clipe congelado; destravou entre o plano e o
+        # `place` (chmod, ACL). Reconfere na hora do link e cai pra clone/cópia: o
+        # original nunca fica exposto a uma escrita através do nome do export.
+        kind = "clone"
     if kind == "hardlink":
         method = delivery.link_or_copy(source["path"], dest, read_only=False, allow_symlink=False)
     else:

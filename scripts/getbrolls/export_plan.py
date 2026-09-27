@@ -194,6 +194,11 @@ class _Collector:
         avisado) sai como `"clone"`, o mesmo caminho de A-ROLL e componentes: o
         original em `brolls/clips/` nunca fica exposto a uma escrita através do
         hardlink do export.
+
+        Essa decisão é só do plano (dry-run mostra ela e para): quem destrava o clipe
+        depois do plano não muda o que o `--dry-run` relata. O `export_place.place`
+        reconfere "congelado" de novo na hora de pôr, com um `lstat` mais completo
+        (mode e `os.access`), e cai pra clone/cópia se não estiver mais congelado.
         """
         frozen = not stat.S_IMODE(info.st_mode) & stat.S_IWUSR
         return "hardlink" if frozen else "clone"
