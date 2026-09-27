@@ -26,9 +26,12 @@ PHRASES = [
     ("pega umas screen grabs da matéria", "screen grabs"),
 ]
 
-# O limite também é gatilho: sem ele a skill é chamada para editar o vídeo.
-BOUNDARY = "Not for editing or rendering"
-BOUNDARY_PT = "Não serve para editar, montar ou renderizar o vídeo final."
+# O limite também é gatilho: sem ele a skill é chamada para editar o vídeo. A partir
+# da 2.6.0 a skill também escreve e organiza roteiro, então o limite não pode mais
+# dizer "não monta": só que ela nunca renderiza nem edita o vídeo final.
+BOUNDARY = "Does not render or edit the finished video"
+BOUNDARY_PT = "Não renderiza nem edita o vídeo final."
+ROTEIRO_TRIGGER = "roteiros de reels"
 
 
 def description(path):
@@ -55,6 +58,16 @@ class DescriptionTriggerTests(unittest.TestCase):
         for path in SKILLS:
             self.assertIn(BOUNDARY, description(path))
             self.assertIn(BOUNDARY_PT, description(path))
+
+    def test_description_also_triggers_on_roteiro_and_export(self):
+        """ "Escreve roteiro" e "exporta o projeto" pedem a mesma skill que "coleta b-roll": um gatilho
+        novo não pode apagar o outro."""
+        for path in SKILLS:
+            text = description(path).lower()
+            self.assertIn(ROTEIRO_TRIGGER, text)
+            self.assertIn("exporta o projeto", text)
+            self.assertIn("hyperframes", text)
+            self.assertIn("b-roll", text)
 
     def test_descriptions_match_between_root_and_mirror(self):
         self.assertEqual(description(SKILLS[0]), description(SKILLS[1]))

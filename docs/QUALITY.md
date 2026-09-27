@@ -6,7 +6,7 @@ updated: 2026-09-19
 tags: [get-brolls, quality, qa, evidence]
 ---
 
-# Qualidade e evidências — GET B-ROLLS 2.5.0
+# Qualidade e evidências — GET B-ROLLS 2.6.0
 
 Este documento reúne o estado de qualidade, as regressões cobertas, os limites conhecidos e as evidências reais por provedor. Resultados ao vivo são registros datados, não promessa de disponibilidade futura nem aprovação editorial.
 

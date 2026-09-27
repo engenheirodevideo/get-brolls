@@ -268,7 +268,7 @@ Rota `stage="fetch"` consome licença ou cota **uma vez só**:
 - `api.exporter(name, export, description)` — experimental: registra um exportador; `name` tem que estar em `contributes.exporters`, `export(plan, options)` devolve um `ExportResult(files, media=[], notes=[])` e `description` tem de 1 a 200 caracteres. Veja [Exportadores](#exportadores).
 - `api.resolver(name, resolve, kinds)` — experimental: registra um resolvedor; `name` tem que estar em `contributes.resolvers`, `resolve(kind, name)` devolve um `ResolverHit(path, license=None)` ou `None`, e `kinds` é uma lista não vazia, sem repetição, com `"sfx"` e/ou `"musica"` (`RESOLVER_KINDS`). As pastas em que ele pode achar arquivo são as de `permissions.paths`, conferidas como em `api.local_file`. Veja [Resolvedores](#resolvedores).
 - `api.download(url, name, headers=None)` — só dentro de `Route.prepare`: baixa `url` (https, host em `permissions.network`, IP público, sem redirect, teto de 512 MB) para `workdir/name` e devolve o caminho. Aceita URL assinada (ex.: um link S3 que o próprio plugin assinou) e headers como `Authorization`; nenhum dos dois vai para log ou mensagem de erro. `name` é só nome de arquivo (`[A-Za-z0-9._-]`, sem `/` nem `..`).
-- `api.local_file(path)` — só dentro de `Route.prepare`: copia um arquivo que esteja dentro de `permissions.paths` (resolvido, com link simbólico seguido) para o `workdir`. Sempre cópia, nunca hardlink — o original da pessoa não muda. O arquivo é aberto sem seguir link (`O_NOFOLLOW`) nem travar numa FIFO (`O_NONBLOCK`), conferido pelo próprio descritor (arquivo regular, até 512 MB; o caminho, resolvido de novo, ainda fica dentro da raiz e aponta para o arquivo aberto) e copiado dele com o teto contado nos bytes lidos; o destino é criado exclusivo, sem seguir link plantado. A recusa nomeia o arquivo que o plugin pediu, nunca o alvo resolvido. No Windows, onde `O_NOFOLLOW` não existe, vale a resolução + conferência de raiz (link simbólico lá exige privilégio de administrador).
+- `api.local_file(path)` — só dentro de `Route.prepare`: copia um arquivo que esteja dentro de `permissions.paths` para o `workdir`. Sempre cópia, nunca hardlink — o original da pessoa não muda. No POSIX, a abertura desce da raiz de `permissions.paths` uma pasta por vez, sem seguir link: trocar uma pasta do caminho (ou a própria raiz) por um link depois da conferência, mesmo várias vezes durante a abertura, não entrega mais um arquivo de fora dela; o arquivo em si abre com `O_NOFOLLOW` (um link trocado ali não é seguido) e `O_NONBLOCK` (uma FIFO não trava), conferido pelo próprio descritor (arquivo regular, até 512 MB) e copiado dele com o teto contado nos bytes lidos; o destino é criado exclusivo, sem seguir link plantado. A recusa nomeia o arquivo que o plugin pediu, nunca o alvo resolvido. No Windows, onde `O_NOFOLLOW` não existe, vale a conferência antiga: resolução + conferência de raiz antes de abrir (link simbólico lá exige privilégio de administrador).
 - `api.data_dir` — `$GB_HOME/plugin-data/<id>/` (0700), criado na primeira leitura: estado e cache do plugin. Fica fora da pasta do plugin, então escrever ali não muda o pin de hash.
 - `api.config()` — lê `data_dir/settings.json` como dicionário (`{}` sem arquivo); JSON inválido ou que não é objeto vira erro com o caminho relativo.
 - `api.finish()` — chamado automaticamente pelo loader depois de `register()`; confere se tudo declarado em `contributes` foi mesmo registrado e se cada `capabilities.route` aponta para uma rota registrada pelo próprio plugin.
@@ -411,6 +411,63 @@ api.command("recentes", recentes, "Lista os vídeos mais recentes da pasta")
 > minor. Quem roda exportador é o `gb export --to <nome> --project <projeto>`,
 > sobre um roteiro revisado e sincronizado (passo a passo e portões em
 > [`references/roteiro.md`](../references/roteiro.md#export-do-roteiro-ao-projeto-de-edição)).
+
+### Seu exporter em 30 minutos
+
+O mínimo que passa no contrato: manifesto declarando o exporter e uma função
+pura que devolve um `index.html`, sem pedir mídia nenhuma.
+
+`getbrolls-plugin.json`:
+
+```json
+{
+  "id": "meu_exporter",
+  "name": "Meu exporter",
+  "description": "Exemplo mínimo de exporter: grava um índice HTML com o título de cada cena.",
+  "version": "0.1.0",
+  "sdk_api": 1,
+  "requires_getbrolls": ">=2.6,<3",
+  "entry": "plugin.py",
+  "contributes": {"exporters": ["meu_exporter"]},
+  "permissions": {"network": [], "env": [], "paths": []}
+}
+```
+
+`plugin.py`:
+
+```python
+"""Exporter mínimo: um índice com o título de cada cena, sem mídia nenhuma."""
+
+from html import escape
+
+from getbrolls.sdk import ExportResult, PluginError
+
+
+def exporta(plan, options):  # noqa: ARG001 - options fica reservado ao contrato
+    if plan["export_version"] != 1:
+        raise PluginError(f"export_version {plan['export_version']} não é suportado por este exportador.")
+    linhas = [f"<li>{escape(cena['title'])}</li>" for cena in plan["scenes"]]
+    indice = "<h1>" + escape(plan["meta"]["tema"]) + "</h1><ul>" + "".join(linhas) + "</ul>"
+    return ExportResult(files={"index.html": indice})
+
+
+def register(api):
+    api.exporter("meu_exporter", exporta, "Índice HTML com o título de cada cena")
+```
+
+Confira o contrato sem instalar nada, rodando contra a pasta local:
+
+```
+python3 scripts/gb.py plugins --action check --path /caminho/para/meu_exporter
+```
+
+`"ok": true` quer dizer que o manifesto é válido e que `exporta()` rodou de
+verdade contra o plano de exemplo
+[`examples/plans/reels.plan.json`](../examples/plans/reels.plan.json) sem
+quebrar nenhuma regra do `ExportResult` (veja a tabela abaixo). Só depois disso
+instale de fato (`plugins --action install --source /caminho --yes --expect
+<sha256>`) e rode `gb export --to meu_exporter --project <projeto>` contra um
+roteiro revisado e sincronizado.
 
 ```python
 from html import escape
@@ -606,12 +663,12 @@ do projeto e da pessoa não acharem nada.
   dentro da raiz `.../Sons`.
 - **O que o core confere.** `ResolverHit` exato, com caminho absoluto; o caminho
   não é link simbólico nem junction; resolvido, fica dentro de uma raiz; é um
-  arquivo regular com um só nome no disco (hardlink é recusado); é aberto sem
-  seguir link e sem travar numa FIFO; depois de aberto, o caminho resolvido de
-  novo ainda fica dentro da raiz e aponta para o mesmo arquivo (uma pasta do meio
-  trocada por link nesse intervalo é recusada); tem uma extensão aceita para o
-  tipo, comparada sem diferenciar maiúsculas (`PORTA.WAV` vale como `.wav`); e
-  tem até 512 MB.
+  arquivo regular com um só nome no disco (hardlink é recusado); a abertura desce
+  da raiz uma pasta por vez, sem seguir link, como em `api.local_file` — trocar
+  uma pasta do caminho, ou a própria raiz, por um link, mesmo várias vezes
+  durante a abertura, não entrega mais um arquivo de fora dela; tem uma extensão
+  aceita para o tipo, comparada sem diferenciar maiúsculas (`PORTA.WAV` vale
+  como `.wav`); e tem até 512 MB.
 - **Sempre cópia.** O arquivo é da pessoa: o core nunca faz hardlink nem muda a
   permissão dele. Na hora de copiar, o core abre de novo, confere que dispositivo,
   inode e tamanho são os mesmos do acerto e que o caminho segue dentro da raiz, e

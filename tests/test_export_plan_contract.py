@@ -71,6 +71,10 @@ class PublishedSchemaTests(unittest.TestCase):
     def test_id_points_to_a_release_tag(self):
         self.assertRegex(published()["$id"], TAG_ID)
 
+    def test_id_tag_matches_getbrolls_version(self):
+        """A tag do `$id` não é uma versão qualquer: é sempre `v{__version__}` — trava `bump_version.py`."""
+        self.assertIn(f"/get-brolls/v{__version__}/schemas/export_plan.schema.json", published()["$id"])
+
     def test_old_schemas_keep_their_id(self):
         for name in ("brief", "candidate"):
             schema = json.loads((ROOT / "schemas" / f"{name}.schema.json").read_text(encoding="utf-8"))
