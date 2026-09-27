@@ -33,21 +33,14 @@ Mudanças na revisão visual exigem conferir aprovação/ajuste/sugestão, expor
 
 O estilo de código (base Google Python Style Guide, adaptada ao nosso stack) e o checklist de revisão estão em [`docs/CODE_STYLE.md`](docs/CODE_STYLE.md).
 
-`ruff` e `pyright` são as únicas dependências de desenvolvimento e ficam pinadas em `requirements-dev.txt`; o runtime da CLI continua sem dependência nenhuma. A configuração das duas está em `pyproject.toml` (`ruff` com E/F/W/I/B/UP em 120 colunas, `pyright` em `basic` sobre `scripts/` e `tests/`).
+`ruff`, `pyright` e `pylint` são as únicas dependências de desenvolvimento e ficam pinadas em `requirements-dev.txt`; o runtime da CLI continua sem dependência nenhuma. A configuração das três está em `pyproject.toml`: `ruff` com E, F, W, I, B, UP, ISC, ICN, G, LOG, PLE, ERA, RSE, C4, PIE, RET, FURB, PERF, TC, A, N, DTZ, SIM, RUF, BLE, PLW, PTH, S, T20, ARG, C90, PLC e PLR em 120 colunas (lista completa e as exceções propositais em `[tool.ruff.lint]`), `pyright` em `basic` sobre `scripts/` e `tests/`, e `pylint` na régua de `[tool.pylint]` (`tests/pylintrc` para os testes).
 
 ```sh
 python3 -m pip install -r requirements-dev.txt
 bash scripts/check.sh
 ```
 
-No Windows, `./scripts/check.ps1` roda a mesma bateria. Os dois executam, em ordem, `ruff check`, `ruff format --check`, `pyright`, `python3 scripts/gen_skill_mirror.py --check` (o espelho da skill em `skills/get-brolls/SKILL.md` é gerado a partir do `SKILL.md` da raiz — nunca edite o espelho à mão), `python3 scripts/check_anchors.py` e a suíte de testes — o mesmo que o CI cobre: o job `quality` roda `ruff` e `pyright` no Ubuntu, e a matriz `Tests` roda a suíte (que inclui a conferência de âncoras) e o `--check` do espelho nos três sistemas.
-
-`pylint` também está pinado em `requirements-dev.txt` (régua em `pyproject.toml`, seção `[tool.pylint]`, e `tests/pylintrc` para os testes), mas ainda **não** faz parte de `scripts/check.sh`/`check.ps1` nem do CI: a régua existe antes da correção dos achados. Rode manualmente, à parte:
-
-```sh
-pylint scripts examples
-PYTHONPATH=scripts:tests pylint --rcfile tests/pylintrc tests
-```
+No Windows, `./scripts/check.ps1` roda a mesma bateria. Os dois executam, em ordem, `ruff check`, `ruff format --check`, `pyright`, `pylint scripts examples`, `pylint` nos testes (com `PYTHONPATH=scripts:tests` e `--rcfile tests/pylintrc`), `python3 scripts/gen_skill_mirror.py --check` (o espelho da skill em `skills/get-brolls/SKILL.md` é gerado a partir do `SKILL.md` da raiz — nunca edite o espelho à mão), `python3 scripts/check_anchors.py` e a suíte de testes — o mesmo que o CI cobre: o job `quality` roda `ruff`, `pyright` e as duas passadas de `pylint` no Ubuntu, e a matriz `Tests` roda a suíte (que inclui a conferência de âncoras) e o `--check` do espelho nos três sistemas.
 
 ## Dependências e releases
 

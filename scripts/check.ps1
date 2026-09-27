@@ -15,6 +15,16 @@ function Invoke-Step {
 Invoke-Step 'ruff check' 'ruff' @('check', '.')
 Invoke-Step 'ruff format --check' 'ruff' @('format', '--check', '.')
 Invoke-Step 'pyright' 'pyright' @()
+Invoke-Step 'pylint' 'pylint' @('scripts', 'examples')
+
+$previousPythonPath = $env:PYTHONPATH
+$env:PYTHONPATH = 'scripts;tests'
+try {
+    Invoke-Step 'pylint tests' 'pylint' @('--rcfile', 'tests/pylintrc', 'tests')
+} finally {
+    $env:PYTHONPATH = $previousPythonPath
+}
+
 Invoke-Step 'gen_skill_mirror --check' 'python' @('scripts/gen_skill_mirror.py', '--check')
 Invoke-Step 'check_anchors' 'python' @('scripts/check_anchors.py')
 Invoke-Step 'unittest' 'python' @('-m', 'unittest', 'discover', '-s', 'tests')

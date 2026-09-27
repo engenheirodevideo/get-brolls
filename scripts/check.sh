@@ -14,6 +14,12 @@ ruff format --check .
 echo "==> pyright"
 pyright
 
+echo "==> pylint"
+pylint scripts examples
+
+echo "==> pylint tests"
+PYTHONPATH=scripts:tests pylint --rcfile tests/pylintrc tests
+
 echo "==> gen_skill_mirror --check"
 python3 scripts/gen_skill_mirror.py --check
 

@@ -95,3 +95,5 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - run: pyright
+      - run: pylint scripts examples
+      - run: PYTHONPATH=scripts:tests pylint --rcfile tests/pylintrc tests
