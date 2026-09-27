@@ -11,6 +11,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import roteiro, roteiro_review
+from getbrolls.ledger import Ledger, existing_project_id
 
 DOC = (
     '---\ntype: roteiro\ngenero: reels\ntema: "t"\n---\n\n'
@@ -120,6 +121,50 @@ class ReviewRecordTests(unittest.TestCase):
         self.assertEqual(json.loads(lines[0])["statement"], "pode seguir")
         path.write_text("lixo\n" + lines[0] + "\n", encoding="utf-8")
         self.assertTrue(roteiro_review.review_state(self.project, doc)["reviewed"])
+
+    def test_a_corrupted_manifest_does_not_undo_a_written_review(self):
+        """O log (com `projeto_id`) nunca desfaz uma revisão que já foi gravada."""
+        doc = read(DOC)
+        brolls = self.project / "brolls"
+        brolls.mkdir(parents=True)
+        (brolls / "manifest.json").write_text("{corrompido", encoding="utf-8")
+        entry = roteiro_review.record_review(self.project, doc, "Bruno Moreira", "chat", "pode seguir")
+        path = brolls / roteiro_review.REVIEWS_FILE
+        lines = path.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(1, len(lines))
+        self.assertEqual(entry, json.loads(lines[0]))
+
+
+class ExistingProjectIdTests(unittest.TestCase):
+    """`existing_project_id` nunca levanta e só devolve uuid válido."""
+
+    def setUp(self):
+        self.project = Path(tempfile.mkdtemp(prefix="gb-pid-"))
+        self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
+
+    def test_without_a_manifest_it_is_none(self):
+        self.assertIsNone(existing_project_id(self.project))
+
+    def test_a_non_uuid_project_id_is_none(self):
+        (self.project / "brolls").mkdir(parents=True)
+        ledger = Ledger(self.project, recover=False)
+        ledger.data["project_id"] = "id-que-ja-existia"
+        ledger.save("test")
+        self.assertIsNone(existing_project_id(self.project))
+
+    def test_a_uuid_project_id_is_reused(self):
+        uid = "3fae8e4a-4d9a-4d2e-8f3b-6a1c9c9d9c11"
+        (self.project / "brolls").mkdir(parents=True)
+        ledger = Ledger(self.project, recover=False)
+        ledger.data["project_id"] = uid
+        ledger.save("test")
+        self.assertEqual(uid, existing_project_id(self.project))
+
+    def test_a_corrupted_manifest_is_none_not_raised(self):
+        brolls = self.project / "brolls"
+        brolls.mkdir(parents=True)
+        (brolls / "manifest.json").write_text("{corrompido", encoding="utf-8")
+        self.assertIsNone(existing_project_id(self.project))
 
 
 if __name__ == "__main__":

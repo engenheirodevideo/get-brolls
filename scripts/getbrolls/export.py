@@ -22,6 +22,7 @@ from pathlib import Path
 
 from . import __version__, export_folder, export_gates, export_place, export_plan, logs
 from .delivery import copies_forced
+from .ledger import existing_project_id
 from .rules import home_dir
 from .sdk import guard, loader, safe_copy
 from .sdk.contracts import CORE, NAME_RE, RESOLVER_KINDS
@@ -423,7 +424,9 @@ def _write_result(ctx):
         log,
         logging.INFO,
         "export_done",
-        projeto_id=ctx["plan"]["meta"]["projeto_id"],
+        # Relê e valida o manifesto (não confia no campo do plano): mesma regra de
+        # `roteiro_review`/`roteiro_sync`, nunca loga um id que não é uuid.
+        projeto_id=existing_project_id(project),
         exporter=name,
         plugin=ctx["owner"],
         number=written["number"],

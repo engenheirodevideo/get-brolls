@@ -519,10 +519,22 @@ class ExportPlanFileTests(ExportCase):
         self.assertEqual("id-que-ja-existia", self.saved()["meta"]["projeto_id"])
         marker = json.loads((self.folder("001") / export_folder.MARKER).read_text(encoding="utf-8"))
         self.assertEqual("id-que-ja-existia", marker["projeto_id"])
+        # Não é um uuid, então o log nunca ganha esse valor (só o plano/marcador, que são dado local).
         text = _log_path(self.project).read_text(encoding="utf-8")
-        self.assertEqual("id-que-ja-existia", _events(text, "export_done")[-1]["projeto_id"])
+        self.assertIsNone(_events(text, "export_done")[-1]["projeto_id"])
         self.export()
         self.assertEqual("id-que-ja-existia", self.saved("002")["meta"]["projeto_id"])
+
+    def test_a_uuid_project_id_is_reused_and_logged(self):
+        self.install()
+        uid = "3fae8e4a-4d9a-4d2e-8f3b-6a1c9c9d9c11"
+        ledger = Ledger(self.project, recover=False)
+        ledger.data["project_id"] = uid
+        ledger.save("test")
+        run_cli("export", "--to", "demo_export", project=self.project, env=DEBUG_ENV)
+        self.assertEqual(uid, self.saved()["meta"]["projeto_id"])
+        text = _log_path(self.project).read_text(encoding="utf-8")
+        self.assertEqual(uid, _events(text, "export_done")[-1]["projeto_id"])
 
     def test_the_exporter_cannot_write_the_plan_file(self):
         self.install()

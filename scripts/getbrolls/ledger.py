@@ -226,6 +226,21 @@ class Ledger:
 
 
 def existing_project_id(project):
-    """`project_id` do manifesto do projeto, ou `None` sem manifesto ou sem o campo; nunca cria um."""
-    project_id = Ledger(project, recover=False).data.get("project_id")
-    return project_id if isinstance(project_id, str) else None
+    """`project_id` do manifesto do projeto, só se for um uuid válido; senão `None`.
+
+    Nunca cria um `project_id` e nunca levanta: manifesto corrompido, ilegível ou sem
+    o campo devolve `None`, porque isso é usado para logar e um log nunca pode quebrar
+    o comando. Um valor que não é uuid (por exemplo, um id antigo escrito à mão) também
+    devolve `None`, para nunca colocar dado arbitrário do manifesto no log.
+    """
+    try:
+        project_id = Ledger(project, recover=False).data.get("project_id")
+    except (OSError, ValueError):
+        return None
+    if not isinstance(project_id, str):
+        return None
+    try:
+        uuid.UUID(project_id)
+    except ValueError:
+        return None
+    return project_id
