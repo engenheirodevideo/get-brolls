@@ -573,7 +573,8 @@ def register(api):
   pasta do projeto, a pasta pessoal, `GB_HOME`, o caminho de uma mídia, uma
   pasta de `permissions.paths`), em qualquer grafia: sem caixa, com `\` ou `\\`
   no lugar de `/` (`C:/Users/…`), `\/` de JSON, percent-encoded (`file:///…%20…`,
-  até três vezes), NFD ou com barras repetidas. Texto que só tem cara de caminho
+  até três vezes), NFD, com barras repetidas ou, no Windows, com o nome curto
+  (8.3, como `PROGRA~1`) de uma pasta do caminho. Texto que só tem cara de caminho
   (vindo da fala do roteiro, por exemplo) sai como está, com um aviso.
 - **Falha.** Exceção no exportador vira erro `Plugin <id>: …` (exit 2): o texto
   de um `PluginError`, ou só o tipo de qualquer outra exceção. Um resultado fora

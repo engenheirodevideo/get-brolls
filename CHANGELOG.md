@@ -54,6 +54,7 @@ O vídeo agora nasce como roteiro (`ROTEIRO.md`), segue para a coleta de b-roll 
 - **Roteiro sem HTML nem caractere invisível.** `check`/`review`/`sync` recusam elemento HTML no corpo (`<div hidden>`, por exemplo) e caractere invisível ou de direção de texto escondido em qualquer parte do `ROTEIRO.md` (detalhe em "Revisão que não deixa passar nada", acima).
 - **`review --expect`.** A revisão fica presa ao sha256 do texto mostrado; roteiro que mudou desde então (inclusive durante o próprio comando) é recusado sem gravar.
 - **Recusa de caminho normalizada.** O export recusa caminho desta máquina em qualquer grafia — barras trocadas, `NFD`, percent-encoding, `file://`, barra repetida, sem caixa — em qualquer arquivo gravado, não só na grafia óbvia.
+- **Nome curto do Windows.** No Windows, a recusa de caminho desta máquina no export vale também para o nome curto (8.3) de qualquer pasta do caminho (`PROGRA~1` no lugar de `Program Files`, por exemplo; o TEMP costuma vir assim), e não só para o nome longo que o sistema devolve. O aviso de texto com cara de caminho (`find_local_paths`) acha a pasta pessoal escrita tanto com `/` quanto com `\`.
 
 ### Migração: nada a fazer
 
@@ -81,6 +82,7 @@ Projeto da 2.5 segue exatamente igual: nada muda sem um `ROTEIRO.md` do get-brol
 - **`search --provider --help`** cita as fontes de plugin habilitado e manda rodar `providers` para listar as disponíveis.
 - **Schemas.** `schemas/candidate.schema.json` e `schemas/brief.schema.json` descrevem o formato real, fechados no topo, com `allowed_sources` por padrão de nome (aceita fonte de plugin), `ext` reservado para versões futuras e `$id` que resolve no GitHub. São documentação: o runtime não os aplica e aceita e ignora chave desconhecida. `schemas/export_plan.schema.json` descreve o plano que o `export` entrega ao exporter; ele fica aberto nos objetos que podem crescer e tem o `$id` na tag da versão.
 - **Logs do roteiro e do export.** `brolls/getbrolls.log` ganha três eventos, com os mesmos campos-base dos existentes (nunca caminho desta máquina, nunca texto do roteiro): `roteiro_review` (`projeto_id`, sha256 revisado, canal), `roteiro_sync` (`projeto_id`, beats criados, alterados e aposentados) e `export_done` (`projeto_id`, exporter, plugin, número da pasta, contagem de arquivos e de mídia, bytes).
+- **Fim de linha LF no Windows.** No Windows, os arquivos que o get-brolls grava de uma vez (`manifest.json`, `ORIGEM.md`, `credits.md`, `ROTEIRO.md`, `BRIEF.md`, entre outros) e o `brolls/roteiro-reviews.jsonl` saem com fim de linha LF, como no macOS e no Linux. Antes saíam com CRLF, e o `ROTEIRO.md` revisado voltava com o CRLF que a revisão tinha tirado.
 
 ### Docs
 
