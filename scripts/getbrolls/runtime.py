@@ -308,7 +308,8 @@ def project_lock(project):
 # `capabilities` só descreve o parser e o manifesto dos plugins, sem projeto.
 # `setup` nunca recebe nem toca projeto; instala só em `$GB_HOME/runtime` ou `GB_RUNTIME_DIR`.
 # `x` roda comando de plugin, que só lê o projeto por cópias (CommandContext).
-READ_ONLY_COMMANDS = ("status", "serve", "brief", "doctor", "setup", "x", "capabilities")
+# `profile` só grava `$GB_HOME/trusted-profiles.json` (trust/untrust), nunca um projeto.
+READ_ONLY_COMMANDS = ("status", "serve", "brief", "doctor", "setup", "x", "capabilities", "profile")
 # (comando, ação) somente leitura, além dos comandos inteiros acima: `queue --action status`
 # só consulta queue.json (mesmo contrato de `status`), nunca deve tomar a trava exclusiva.
 # `roteiro --action check|plan` e `assets` também só leem: plano de cena, sync simulado e

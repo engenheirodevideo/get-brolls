@@ -15,7 +15,7 @@ import types
 from pathlib import Path
 from typing import NamedTuple
 
-from .. import logs
+from .. import _paths, logs
 from ..ledger import atomic_write
 from ..rules import home_dir
 from . import guard, registry_state
@@ -639,8 +639,15 @@ def status_phrase(row):
 
 def status_hint(row, default):
     """O que fazer com um plugin indisponível: fora de `GB_PLUGINS`, a saída é a
-    variável — `enable` não resolve; nos outros casos, `default`."""
+    variável — `enable` não resolve; quando o teto veio do `plugins` do getbrolls.toml,
+    a saída é o perfil; nos outros casos, `default`."""
     if row.get("status") == "disabled" and row.get("reason") == GB_PLUGINS_REASON:
+        if _paths.from_profile("GB_PLUGINS"):
+            return (
+                f"O perfil getbrolls.toml deste workspace não inclui {row['id']} em `plugins`; acrescente-o lá "
+                "(e confie de novo com profile trust) para usá-lo nesta sessão; habilitar de novo não muda "
+                "essa seleção."
+            )
         return (
             f"Inclua {row['id']} em GB_PLUGINS (ou tire GB_PLUGINS do ambiente) para usá-lo nesta sessão; "
             "habilitar de novo não muda essa seleção."
