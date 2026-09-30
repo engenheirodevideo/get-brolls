@@ -541,7 +541,7 @@ Não execute `close-all` nem feche abas de outros projetos. Encerre somente a se
 
 ## Instagram — navegador/Playwright, dois streams e MP4
 
-O fluxo Instagram usa o módulo `scripts/getbrolls/instagram_pairs.py` (no pacote instalado: `python -m getbrolls.instagram_pairs`, com os mesmos argumentos). A captura acontece na sessão do navegador autorizada pelo usuário; o módulo consome os pares de vídeo e áudio capturados. Consulte também [recuperação e auditoria](#instagram--recuperação-e-auditoria).
+O fluxo Instagram usa o módulo `scripts/getbrolls/instagram_pairs.py` (no pacote instalado: `python -P -m getbrolls.instagram_pairs`, com os mesmos argumentos). A captura acontece na sessão do navegador autorizada pelo usuário; o módulo consome os pares de vídeo e áudio capturados. Consulte também [recuperação e auditoria](#instagram--recuperação-e-auditoria).
 
 ### 1. Abrir o Reel e capturar as fontes
 
