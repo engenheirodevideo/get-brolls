@@ -248,10 +248,11 @@ def read_marker(part: str, root: Path) -> dict | None:
     return marker if isinstance(marker, dict) else None
 
 
-def write_marker(part: str, root: Path, status: str) -> Path:
+def write_marker(part: str, root: Path, status: str, extra: Mapping[str, object] | None = None) -> Path:
     """Grava o marcador da parte (troca atômica do arquivo); devolve o caminho.
 
-    Registra a versão da parte e, na `.venv`, o Python base que a criou.
+    Registra a versão da parte e, na `.venv`, o Python base que a criou; `extra` acrescenta
+    campos informativos (o `upgraded` do `setup --upgrade`, por exemplo).
     """
     if status not in MARKER_STATUSES:
         raise ValueError(f"status de marcador desconhecido: {status}")
@@ -265,6 +266,7 @@ def write_marker(part: str, root: Path, status: str) -> Path:
         "status": status,
         "python": python if part == "venv" else None,
         "getbrolls": __version__,
+        **(extra or {}),
     }
     path = marker_path(part, root)
     root.mkdir(parents=True, exist_ok=True)

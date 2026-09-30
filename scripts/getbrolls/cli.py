@@ -59,7 +59,8 @@ SUMMARIES = {
     ),
     "x": "Rodar um comando de plugin habilitado (x --list mostra quais existem); só lê o projeto",
     "setup": (
-        "Conferir (--check) o runtime da instalação: venv do yt-dlp, Playwright e FFmpeg, com os comandos que faltam"
+        "Instalar o runtime da instalação (yt-dlp numa venv) em $GB_HOME/runtime; --check só confere; "
+        "Playwright, FFmpeg e Node são conferidos, com os comandos que faltam"
     ),
     "status": "Resumir onde o projeto está por etapa, sem alterar arquivos",
     "search": "Pesquisar candidatos numa fonte e registrá-los no projeto (--shot liga ao beat; --dry-run não grava)",
@@ -289,7 +290,13 @@ def _add_toolchain_subcommands(sub):
                 help="Aceito; a saída já é JSON (reservado para o modo humano)",
             )
         if name == "setup":
-            p.add_argument("--check", action="store_true", help="Só conferir, sem instalar nada")
+            mode = p.add_mutually_exclusive_group()
+            mode.add_argument("--check", action="store_true", help="Só conferir, sem instalar nada")
+            mode.add_argument(
+                "--upgrade",
+                choices=["ytdlp"],
+                help="Atualizar o yt-dlp do runtime gerenciado além da versão fixada",
+            )
         if name == "doctor":
             # O SKILL.md diz que `--project` vai em todo comando, e a primeira chamada
             # do fluxo é o `doctor`: recusá-lo ali é contradizer a instrução logo na

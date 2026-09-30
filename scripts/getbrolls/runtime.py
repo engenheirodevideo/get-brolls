@@ -306,7 +306,7 @@ def project_lock(project):
 # `doctor` aceita `--project` por uniformidade com o resto da CLI, mas diagnostica a
 # instalação: não pode criar `brolls/` numa pasta que talvez nem seja um projeto.
 # `capabilities` só descreve o parser e o manifesto dos plugins, sem projeto.
-# `setup` só confere o runtime da instalação e não recebe projeto.
+# `setup` nunca recebe nem toca projeto; instala só em `$GB_HOME/runtime` ou `GB_RUNTIME_DIR`.
 # `x` roda comando de plugin, que só lê o projeto por cópias (CommandContext).
 READ_ONLY_COMMANDS = ("status", "serve", "brief", "doctor", "setup", "x", "capabilities")
 # (comando, ação) somente leitura, além dos comandos inteiros acima: `queue --action status`
