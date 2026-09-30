@@ -5,11 +5,15 @@
 comandos que resolvem. `ready` do `setup --check` e do `doctor` batem. Nunca cria pasta
 nem arquivo.
 
-`install()` monta a `.venv` do yt-dlp no lugar definitivo (`_paths.runtime_target`): o
-console script do pip grava o caminho absoluto do Python, então a pasta não pode ser
-montada noutro lugar e renomeada. Quem lê só aceita a parte com marcador `ready`, que é
-gravado por último; uma trava do sistema (`runtime._acquire_lock`) serializa quem monta,
-e o kernel a solta se o processo morrer. `run_step` é o único ponto que abre processo.
+`install()` monta as duas partes no lugar definitivo (`_paths.runtime_target`): a `.venv`
+do yt-dlp (o console script do pip grava o caminho absoluto do Python, então a pasta não
+pode ser montada noutro lugar e renomeada) e a `.tools` do Playwright CLI (`npm ci`).
+Quem lê só aceita a parte com marcador `ready`, que é gravado por último; uma trava do
+sistema (`runtime._acquire_lock`) serializa quem monta, e o kernel a solta se o processo
+morrer. `run_step` é o único ponto que abre processo. FFmpeg, ffprobe, curl e Node são do
+sistema: só conferidos, com a dica de instalação do sistema operacional.
+
+`where()` só lê: diz onde cada parte fica e qual está em uso, sem criar nada.
 """
 
 # pylint: disable=cyclic-import
@@ -48,7 +52,13 @@ _VENV_PINS = ("GB_YTDLP_PATH", "GB_VENV_PATH")
 
 PART_STEP = {"venv": "ytdlp", "tools": "playwright"}
 # Teto de cada passo, em segundos; estourou → a árvore do processo é encerrada (código 124).
-STEP_TIMEOUT_S = {"venv": 300, "pip": 1200, "probe": 60}
+STEP_TIMEOUT_S = {"venv": 300, "pip": 1200, "npm": 1200, "probe": 60}
+MIN_NODE_MAJOR = 22
+# argv do npm: constante (sem caminho), então passa pela regra do `.cmd` no Windows; a
+# pasta vai no `cwd` (o npm usa o `package.json` dali) e o cache, pelo ambiente.
+_NPM_ARGS = ("ci", "--ignore-scripts", "--no-audit", "--no-fund")
+_TOOLS_FILES = ("package.json", "package-lock.json")
+NPM_CACHE = ".npm-cache"
 TAIL_LINES = 40
 TIMED_OUT = 124
 NOT_FOUND = 127
@@ -92,7 +102,23 @@ UPGRADE_PINNED = (
 )
 UPGRADE_FOREIGN = "A venv em uso não foi criada pelo getbrolls: `setup --upgrade ytdlp` só atualiza a venv gerenciada."
 UPGRADE_FAILED = "A atualização do yt-dlp falhou; a venv foi refeita na versão fixada. {reason}"
-TOOLS_PENDING = "O Playwright CLI ainda não é instalado pelo `setup`: siga os `commands` do passo `playwright`."
+NPM_MISSING = (
+    "npm não encontrado no PATH: o Playwright CLI (Instagram) ficou de fora. Instale o Node {major}+ "
+    "(ele traz o npm) e rode o `setup` de novo."
+)
+NODE_MISSING = (
+    "Node não encontrado no PATH: o Playwright CLI (Instagram) precisa de Node {major}+. Instale e rode o "
+    "`setup` de novo."
+)
+NODE_TOO_OLD = (
+    "O Playwright CLI (Instagram) precisa de Node {major}+; o Node do PATH é {version}. Atualize e rode o "
+    "`setup` de novo."
+)
+NPM_FAILED = (
+    "Falha ao instalar o Playwright CLI (npm ci saiu com {code}); veja `output_tail`. Sem acesso ao "
+    "registro do npm (rede, proxy, certificado), confira a conexão e rode o `setup` de novo."
+)
+TOOLS_PROBE_FAILED = "O npm terminou, mas o Playwright CLI não respondeu; veja `output_tail`."
 LOW_DISK = "Pouco espaço livre na pasta do runtime ({free} MiB; recomendado 1 GiB ou mais)."
 
 _NETWORK_MARKERS = (
@@ -111,6 +137,36 @@ _NETWORK_MARKERS = (
     "connection refused",
 )
 _VERSION_MARKERS = ("requires-python", "requires a different python")
+
+# Ferramenta do sistema → sistema operacional → como instalar. Só dica: o `setup` não instala.
+_NODE_HINTS = {
+    "darwin": "brew install node",
+    "linux": "instale o Node 22+ (nodejs.org ou o gerenciador da distribuição)",
+    "nt": "winget install --id OpenJS.NodeJS.LTS -e",
+}
+_FFMPEG_HINTS = {
+    "darwin": "brew install ffmpeg",
+    "linux": "sudo apt install ffmpeg",
+    "nt": "winget install Gyan.FFmpeg",
+}
+SYSTEM_HINTS: dict[str, dict[str, str]] = {
+    "ffmpeg": _FFMPEG_HINTS,
+    "ffprobe": _FFMPEG_HINTS,
+    "curl": {"darwin": "brew install curl", "linux": "sudo apt install curl", "nt": "winget install --id cURL.cURL -e"},
+    "node": _NODE_HINTS,
+    "npx": _NODE_HINTS,
+    "npm": _NODE_HINTS,
+}
+
+
+def system_hint(name: str, platform: str | None = None) -> str | None:
+    """Como instalar uma ferramenta do sistema aqui (`darwin`, `linux` ou `nt`); `None` se não é do sistema."""
+    if platform is None:
+        platform = "nt" if sys.platform.startswith(("win", "cygwin")) else sys.platform
+    hints = SYSTEM_HINTS.get(name)
+    if hints is None:
+        return None
+    return hints.get(platform, hints["linux"])
 
 
 @dataclass(frozen=True)
@@ -257,6 +313,17 @@ def _venv_ytdlp(folder: Path) -> Path | None:
     return next((folder / relative for relative in LAYOUTS if (folder / relative).is_file()), None)
 
 
+def _tools_cli(folder: Path) -> Path | None:
+    """O Playwright CLI que o `npm ci` deixa em `node_modules/.bin` (o `.cmd` no Windows)."""
+    names = ("playwright-cli.cmd", "playwright-cli") if os.name == "nt" else ("playwright-cli",)
+    bin_dir = folder / "node_modules" / ".bin"
+    return next((bin_dir / name for name in names if (bin_dir / name).is_file()), None)
+
+
+# Arquivo que prova que a parte funciona: o executável que o resto do getbrolls usa.
+_PROBES = {"venv": _venv_ytdlp, "tools": _tools_cli}
+
+
 def _is_link(path: Path) -> bool:
     """Link simbólico ou, no Windows, qualquer ponto de reanálise (junção inclusive)."""
     try:
@@ -270,13 +337,14 @@ def _is_link(path: Path) -> bool:
 def _part_state(part: str, root: Path) -> str:
     """`ready` | `owned` (marcador nosso, qualquer outro estado) | `foreign_ok` | `foreign_broken` | `absent`."""
     folder = root / _paths.RUNTIME_PARTS[part]
+    probe = _PROBES[part]
     if _paths.read_marker(part, root) is not None:
-        if _paths.part_ready(part, root) and not _is_link(folder) and _venv_ytdlp(folder) is not None:
+        if _paths.part_ready(part, root) and not _is_link(folder) and probe(folder) is not None:
             return "ready"
         return "owned"
     if not os.path.lexists(folder):
         return "absent"
-    return "foreign_ok" if _venv_ytdlp(folder) is not None else "foreign_broken"
+    return "foreign_ok" if probe(folder) is not None else "foreign_broken"
 
 
 def _remove_part(folder: Path) -> None:
@@ -330,9 +398,11 @@ class _StepFailedError(Exception):
         self.result = result
 
 
-def _step(argv: list[str], *, root: Path, label: str, kind: str) -> StepResult:
+def _step(argv: list[str], *, cwd: Path, label: str, kind: str, env: dict[str, str] | None = None) -> StepResult:
     _progress(f"{label}…")
-    result = run_step(argv, cwd=root, env=_install_env(), timeout=STEP_TIMEOUT_S[kind], label=label)
+    result = run_step(
+        argv, cwd=cwd, env=env if env is not None else _install_env(), timeout=STEP_TIMEOUT_S[kind], label=label
+    )
     if result.returncode == TIMED_OUT:
         raise _StepFailedError(STEP_TIMED_OUT.format(label=label, seconds=STEP_TIMEOUT_S[kind]), result)
     return result
@@ -342,7 +412,7 @@ def _ytdlp_version(folder: Path, root: Path) -> str:
     ytdlp = _venv_ytdlp(folder)
     if ytdlp is None:
         raise _StepFailedError(PROBE_FAILED, StepResult(1, ()))
-    result = _step([str(ytdlp), "--version"], root=root, label="version", kind="probe")
+    result = _step([str(ytdlp), "--version"], cwd=root, label="version", kind="probe")
     lines = [line.strip() for line in result.output if line.strip()]
     if result.returncode != 0 or not lines:
         raise _StepFailedError(PROBE_FAILED, result)
@@ -354,7 +424,7 @@ def _build_venv(root: Path) -> str:
     folder = root / _paths.RUNTIME_PARTS["venv"]
     _paths.write_marker("venv", root, "building")
     _remove_part(folder)
-    result = _step([sys.executable, "-m", "venv", str(folder)], root=root, label="venv", kind="venv")
+    result = _step([sys.executable, "-m", "venv", str(folder)], cwd=root, label="venv", kind="venv")
     if result.returncode != 0:
         text = "\n".join(result.output).lower()
         message = ENSUREPIP_MISSING if "ensurepip" in text else VENV_FAILED.format(code=result.returncode)
@@ -363,11 +433,11 @@ def _build_venv(root: Path) -> str:
     shutil.copyfile(_paths.data_path("requirements.txt"), recorded)
     python = str(_venv_python(folder))
     result = _step(
-        [python, "-m", "pip", "install", *_PIP_FLAGS, "-r", str(recorded)], root=root, label="pip", kind="pip"
+        [python, "-m", "pip", "install", *_PIP_FLAGS, "-r", str(recorded)], cwd=root, label="pip", kind="pip"
     )
     if result.returncode != 0:
         raise _StepFailedError(_classify_pip(result), result)
-    result = _step([python, "-c", "import yt_dlp, yt_dlp_ejs"], root=root, label="probe", kind="probe")
+    result = _step([python, "-c", "import yt_dlp, yt_dlp_ejs"], cwd=root, label="probe", kind="probe")
     if result.returncode != 0:
         raise _StepFailedError(PROBE_FAILED, result)
     version = _ytdlp_version(folder, root)
@@ -375,12 +445,45 @@ def _build_venv(root: Path) -> str:
     return version
 
 
+def _last_line(result: StepResult) -> str | None:
+    lines = [line.strip() for line in result.output if line.strip()]
+    return lines[-1] if lines else None
+
+
+def _build_tools(root: Path, npm: str) -> str:
+    """Monta a `.tools` em `root` com `npm ci` (marcador `building` antes, `ready` por último).
+
+    Devolve a versão do Playwright CLI. Os dois arquivos do npm são copiados para a pasta:
+    o `npm ci` instala exatamente o que o lock fixa, sem rodar scripts de pacote.
+    """
+    folder = root / _paths.RUNTIME_PARTS["tools"]
+    _paths.write_marker("tools", root, "building")
+    _remove_part(folder)
+    folder.mkdir()
+    for name in _TOOLS_FILES:
+        shutil.copyfile(_paths.data_path(name), folder / name)
+    env = _install_env(npm_config_cache=str(root / NPM_CACHE), npm_config_update_notifier="false")
+    result = _step([npm, *_NPM_ARGS], cwd=folder, env=env, label="npm", kind="npm")
+    if result.returncode != 0:
+        raise _StepFailedError(NPM_FAILED.format(code=result.returncode), result)
+    cli = _tools_cli(folder)
+    if cli is None:
+        raise _StepFailedError(TOOLS_PROBE_FAILED, result)
+    result = _step([str(cli), "--version"], cwd=root, label="playwright", kind="probe")
+    version = _last_line(result)
+    if result.returncode != 0 or version is None:
+        raise _StepFailedError(TOOLS_PROBE_FAILED, result)
+    _paths.write_marker("tools", root, "ready")
+    return version
+
+
 def _fail(entry: dict, root: Path, exc: _StepFailedError) -> dict:
     """Falha limpa: nada meio montado fica para trás e o marcador some."""
+    part = entry["part"]
     try:
-        _remove_part(root / _paths.RUNTIME_PARTS["venv"])
+        _remove_part(root / _paths.RUNTIME_PARTS[part])
     finally:
-        _clear_marker("venv", root)
+        _clear_marker(part, root)
     entry.update(status="failed", error=exc.message, output_tail=list(exc.result.output))
     _progress(f"falhou: {exc.message}")
     return entry
@@ -406,10 +509,15 @@ def _entry(part: str) -> dict:
     }
 
 
-def _ensure_venv(entry: dict) -> dict:
-    """Deixa a `.venv` pronta (ou diz por que não); chamada com a trava da raiz já tomada."""
+def _ensure(entry: dict, build) -> dict:
+    """Deixa a parte pronta (ou diz por que não); chamada com a trava da raiz já tomada.
+
+    `build(root)` monta a parte e devolve a versão; pode levantar `_SkipError` antes de
+    gravar qualquer coisa (falta um pré-requisito do sistema).
+    """
+    part = entry["part"]
     root = Path(entry["path"]).parent
-    state = _part_state("venv", root)
+    state = _part_state(part, root)
     if state == "ready":
         entry["status"] = "already"
         return entry
@@ -417,17 +525,34 @@ def _ensure_venv(entry: dict) -> dict:
         entry["status"] = "adopted"
         return entry
     if state == "foreign_broken":
-        raise UsageError(FOREIGN_BROKEN.format(folder=_paths.RUNTIME_PARTS["venv"]))
+        raise UsageError(FOREIGN_BROKEN.format(folder=_paths.RUNTIME_PARTS[part]))
+    folder = root / _paths.RUNTIME_PARTS[part]
+    if os.path.lexists(folder) and (_is_link(folder) or not folder.is_dir()):
+        # Antes de rodar qualquer passo: a parte montada por cima de um link nunca é apagada.
+        raise UsageError(NOT_A_FOLDER.format(folder=folder.name))
     warning = _free_space_warning(root)
     if warning:
         entry["warnings"].append(warning)
         _progress(warning)
     try:
-        entry["version"] = _build_venv(root)
+        entry["version"] = build(root)
+    except _SkipError as exc:
+        entry.update(status="skipped", error=exc.message, hint=exc.hint)
+        _progress(exc.message)
+        return entry
     except _StepFailedError as exc:
         return _fail(entry, root, exc)
     entry["status"] = "installed"
     return entry
+
+
+class _SkipError(Exception):
+    """A parte não pode ser montada aqui por falta de algo do sistema; nada foi gravado."""
+
+    def __init__(self, message: str, hint: str | None):
+        super().__init__(message)
+        self.message = message
+        self.hint = hint
 
 
 def _upgrade(entry: dict) -> dict:
@@ -438,7 +563,7 @@ def _upgrade(entry: dict) -> dict:
     _paths.write_marker("venv", root, "upgrading")
     argv = [str(_venv_python(folder)), "-m", "pip", "install", *_PIP_FLAGS, "--upgrade", *_UPGRADE_SPECS]
     try:
-        result = _step(argv, root=root, label="upgrade", kind="pip")
+        result = _step(argv, cwd=root, label="upgrade", kind="pip")
         if result.returncode != 0:
             raise _StepFailedError(_classify_pip(result), result)
         version = _ytdlp_version(folder, root)
@@ -476,7 +601,7 @@ def ensure_venv(upgrade: bool = False) -> tuple[dict, dict | None]:
         raise UsageError(conflict)
     upgraded = None
     with _RootLock(Path(entry["path"]).parent):
-        _ensure_venv(entry)
+        _ensure(entry, _build_venv)
         if upgrade:
             if entry["status"] == "adopted":
                 raise UsageError(UPGRADE_FOREIGN)
@@ -486,23 +611,56 @@ def ensure_venv(upgrade: bool = False) -> tuple[dict, dict | None]:
     return entry, upgraded
 
 
-def _tools_pending() -> dict:
+def _node_major(version: str) -> int | None:
+    match = re.match(r"v?(\d+)\.", version)
+    return int(match.group(1)) if match else None
+
+
+def _node_gate(node: str, npm: str):
+    """`build` que antes confere o Node do PATH: menor que o mínimo pula a parte sem gravar nada."""
+
+    def build(root: Path) -> str:
+        result = _step([node, "--version"], cwd=root, label="node", kind="probe")
+        version = _last_line(result) or "desconhecido"
+        major = _node_major(version) if result.returncode == 0 else None
+        if major is None or major < MIN_NODE_MAJOR:
+            raise _SkipError(NODE_TOO_OLD.format(major=MIN_NODE_MAJOR, version=version), system_hint("node"))
+        return _build_tools(root, npm)
+
+    return build
+
+
+def ensure_tools() -> dict:
+    """Entrada da `.tools` (Playwright CLI) para o resultado do `setup`."""
     entry = _entry("tools")
-    entry.update(status="pending", note=TOOLS_PENDING)
+    started = time.monotonic()
+    if entry["sha"] is None:
+        entry.update(status="skipped", error=commands.data_fix())
+        return entry
+    # `which` acha o `npm.cmd` no Windows (PATHEXT); o argv dele é constante (`_NPM_ARGS`).
+    npm, node = shutil.which("npm"), shutil.which("node")
+    if not npm or not node:
+        message = (NPM_MISSING if node else NODE_MISSING).format(major=MIN_NODE_MAJOR)
+        entry.update(status="skipped", error=message, hint=system_hint("node"))
+        _progress(message)
+        return entry
+    conflict = _paths.runtime_conflict("tools")
+    if conflict:
+        raise UsageError(conflict)
+    with _RootLock(Path(entry["path"]).parent):
+        _ensure(entry, _node_gate(node, npm))
+    entry["seconds"] = round(time.monotonic() - started, 1)
     return entry
 
 
 def install(upgrade: str | None = None) -> dict:
-    """Instala o que o `setup` já sabe montar e devolve o `check()` com o que foi feito."""
+    """Instala as duas partes do runtime e devolve o `check()` com o que foi feito."""
     _progress("conferindo a venv do yt-dlp")
     venv, upgraded = ensure_venv(upgrade == "ytdlp")
-    entries = [venv, _tools_pending()]
+    _progress("conferindo o Playwright CLI")
+    entries = [venv, ensure_tools()]
     result = check()
-    notes = [
-        f"{entry['step']}: {entry['status']}"
-        for entry in entries
-        if entry["status"] in ("failed", "skipped", "pending")
-    ]
+    notes = [f"{entry['step']}: {entry['status']}" for entry in entries if entry["status"] in ("failed", "skipped")]
     if upgraded is not None and upgraded["status"] == "failed":
         notes.append("upgrade do yt-dlp: failed")
     if notes:
@@ -532,26 +690,6 @@ def _resolved():
     }
 
 
-def _line(*args):
-    return " ".join(_paths.quote_arg(str(arg)) for arg in args)
-
-
-def _runtime_commands():
-    """Comandos que montam o runtime compartilhado de um pacote instalado, por passo."""
-    if _paths.part_sha("venv") is None or _paths.part_sha("tools") is None:
-        # Sem requirements.txt/package-lock.json não há o que instalar: só reinstalar repõe.
-        return {step: [_paths.REINSTALL_COMMAND] for step in RUNTIME_STEPS}
-    data = _paths.data_root()
-    tools = _paths.tools_dir().path
-    sources = (data / "package.json", data / "package-lock.json")
-    if os.name == "nt":
-        copy = [_line("mkdir", tools), *(_line("copy", source, tools) for source in sources)]
-    else:
-        copy = [_line("mkdir", "-p", tools), _line("cp", *sources, tools)]
-    npm = _line("npm", "ci", "--prefix", tools, "--ignore-scripts", "--no-audit", "--no-fund")
-    return {"ytdlp": [_paths.cli_prefix_text() + " setup"], "playwright": [*copy, npm]}
-
-
 def _data_step():
     missing = commands.missing_data_files()
     if not missing:
@@ -568,22 +706,24 @@ def _data_step():
 def check() -> dict:
     """O que falta no runtime desta instalação e como resolver; não instala nada."""
     found = _resolved()
-    if _paths.origin() == "checkout":
-        fixes = {step: [_paths.installer_hint()] for step in RUNTIME_STEPS}
+    if _paths.origin() != "checkout" and (_paths.part_sha("venv") is None or _paths.part_sha("tools") is None):
+        # Sem requirements.txt/package-lock.json não há o que instalar: só reinstalar repõe.
+        fix = _paths.REINSTALL_COMMAND
     else:
-        fixes = _runtime_commands()
+        fix = _paths.cli_prefix_text() + " setup"
     steps = []
-    for step, _name in _step_names():
+    for step, name in _step_names():
         path, pin_note = found.get(step, (None, None))
         entry: dict = {"id": step, "ok": path is not None, "found": str(Path(path)) if path else None}
         if pin_note:
             entry["commands"] = []
             entry["note"] = pin_note
         elif step in RUNTIME_STEPS:
-            entry["commands"] = [] if path else fixes[step]
+            entry["commands"] = [] if path else [fix]
         else:
             entry["commands"] = []
             entry["note"] = commands.SYSTEM_TOOLS
+            entry["hint"] = system_hint(name)
         steps.append(entry)
     steps.append(_data_step())
     missing = [entry["id"] for entry in steps if not entry["ok"]]
@@ -599,8 +739,55 @@ def check() -> dict:
     }
 
 
+def _where_part(part: str) -> dict:
+    target = _paths.runtime_target(part)
+    root = target.path.parent
+    marker = _paths.read_marker(part, root)
+    in_use = _paths.venv_dir() if part == "venv" else _paths.tools_dir()
+    executable = _PROBES[part](in_use.path)
+    return {
+        "path": str(target.path),
+        "root": str(root),
+        "source": target.source,
+        "sha": _paths.part_sha(part),
+        "exists": target.path.is_dir(),
+        "marker": marker.get("status") if marker is not None else None,
+        "managed": _paths.part_ready(part, root),
+        "conflict": _paths.runtime_conflict(part),
+        "in_use": {
+            "path": str(in_use.path),
+            "source": in_use.source,
+            "executable": str(executable) if executable is not None else None,
+        },
+    }
+
+
+def _where_safe(part: str) -> dict:
+    try:
+        return _where_part(part)
+    except (OSError, ValueError) as exc:  # `DataRootError`/`UsageError` herdam de ValueError
+        return {"error": str(exc)}
+
+
+def where(part: str = "all") -> dict:
+    """Onde fica cada parte do runtime (e qual está em uso), em JSON; só lê, nunca levanta.
+
+    `path` é onde o `setup` instala; `in_use` é o que o getbrolls usa agora (pode ser a
+    pasta do checkout enquanto a compartilhada não está pronta). Sem `ready`: sai 0.
+    """
+    if part != "all":
+        return {"part": part, **_where_safe(part)}
+    return {
+        "gb_home": str(_paths.gb_home()),
+        "explicit": bool(os.environ.get("GB_RUNTIME_DIR")),
+        **{name: _where_safe(name) for name in _paths.RUNTIME_PARTS},
+    }
+
+
 def run(args) -> dict:
-    """`setup --check` só confere; `setup` instala a venv do yt-dlp; `--upgrade ytdlp` também a atualiza."""
+    """`setup --check` só confere; `--where` só mostra as pastas; `setup` instala; `--upgrade ytdlp` também atualiza."""
     if getattr(args, "check", False):
         return check()
+    if getattr(args, "where", None):
+        return where(args.where)
     return install(upgrade=getattr(args, "upgrade", None))

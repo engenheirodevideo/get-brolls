@@ -2454,7 +2454,7 @@
       ]
     },
     "setup": {
-      "help": "Instalar o runtime da instalação (yt-dlp numa venv) em $GB_HOME/runtime; --check só confere; Playwright, FFmpeg e Node são conferidos, com os comandos que faltam",
+      "help": "Instalar o runtime da instalação (yt-dlp numa venv e Playwright via npm) em $GB_HOME/runtime; --check só confere; --where mostra as pastas; FFmpeg e Node só são verificados",
       "options": [
         {
           "action": "_HelpAction",
@@ -2504,6 +2504,22 @@
           "nargs": null,
           "option_strings": [
             "--upgrade"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "all",
+            "tools",
+            "venv"
+          ],
+          "default": null,
+          "dest": "where",
+          "help": "Mostrar onde fica cada parte do runtime (JSON), sem instalar; sem valor, todas",
+          "nargs": "?",
+          "option_strings": [
+            "--where"
           ],
           "required": false
         }
