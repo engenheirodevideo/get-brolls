@@ -2576,7 +2576,7 @@
       "choices": null,
       "default": null,
       "dest": "env_file",
-      "help": "Arquivo .env explícito; padrão: .env na raiz da skill",
+      "help": "Arquivo .env explícito; sem ele: GB_ENV_FILE, depois o .env do checkout, depois $GB_HOME/.env",
       "nargs": null,
       "option_strings": [
         "--env-file"
