@@ -402,6 +402,11 @@ class ComponentTests(StoreTestCase):
 
 
 class CommandTests(StoreTestCase):
+    def setUp(self):
+        super().setUp()
+        # Sem ffprobe no PATH o registro fica `unavailable` (sucesso), e não `failed`.
+        self.no_ffprobe = {"PATH": str(self.tmp)}
+
     def test_list_and_check_create_nothing_without_analysis(self):
         before = snapshot(self.project)
         listed = run_cli("analysis", "--action", "list", project=self.project)
@@ -411,7 +416,9 @@ class CommandTests(StoreTestCase):
         self.assertEqual(before, snapshot(self.project))
 
     def test_register_list_and_check_output_has_no_local_path(self):
-        registered = run_cli("analysis", "--action", "register", "--path", "aroll/c01.mp4", project=self.project)
+        registered = run_cli(
+            "analysis", "--action", "register", "--path", "aroll/c01.mp4", project=self.project, env=self.no_ffprobe
+        )
         listed = run_cli("analysis", "--action", "list", project=self.project)
         checked = run_cli("analysis", "--action", "check", project=self.project)
         self.assertEqual("aroll/c01.mp4", registered["path"])
@@ -427,8 +434,24 @@ class CommandTests(StoreTestCase):
         self.assertIn("--path", refused["error"])
         (self.project / "brolls").mkdir(exist_ok=True)
         with runtime.exclusive_lock(self.project / "brolls" / ".command.lock", "ocupado"):
-            done = run_cli("analysis", "--action", "register", "--path", "aroll/c01.mp4", project=self.project)
+            done = run_cli(
+                "analysis", "--action", "register", "--path", "aroll/c01.mp4", project=self.project, env=self.no_ffprobe
+            )
         self.assertTrue(done["hashed"])
+
+    @unittest.skipUnless(shutil.which("ffprobe"), "precisa do ffprobe")
+    def test_register_of_unreadable_media_exits_1_but_keeps_the_entry(self):
+        refused = run_cli("analysis", "--action", "register", "--path", "aroll/c01.mp4", project=self.project, expect=1)
+        self.assertEqual("INVALID_DATA", refused["error_code"])
+        self.assertIn("a mídia foi registrada, mas o ffprobe não conseguiu ler:", refused["error"])
+        self.assertIn("confira o arquivo", refused["error"])
+        self.assertEqual(["MEDIA_PROBE_FAILED"], [w["code"] for w in refused["warnings"]])
+        entry = self.index()["media"][0]
+        self.assertEqual("failed", entry["components"]["media"])
+        doc = ac.read_json(self.project, f"analysis/media/{entry['media_id']}/media.json")
+        self.assertEqual(("failed", True), (doc["status"], bool(doc["reason"])))
+        again = run_cli("analysis", "--action", "register", "--path", "aroll/c01.mp4", project=self.project, expect=1)
+        self.assertEqual("INVALID_DATA", again["error_code"])
 
     def test_lock_held_by_another_process_exits_1(self):
         (self.project / "analysis").mkdir()

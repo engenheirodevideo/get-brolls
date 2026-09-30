@@ -389,7 +389,7 @@ def _probe(path: Path) -> tuple[str, str | None, dict]:
     except PrerequisiteError:
         return "unavailable", "ffprobe não encontrado; instale o FFmpeg e registre de novo.", dict(_EMPTY_FACTS)
     except (ValueError, AttributeError, TypeError):
-        return "failed", "o ffprobe não conseguiu ler o arquivo.", dict(_EMPTY_FACTS)
+        return "failed", "o arquivo não tem áudio nem vídeo legível.", dict(_EMPTY_FACTS)
     video = next((s for s in streams if s.get("codec_type") == "video"), None)
     audio = next((s for s in streams if s.get("codec_type") == "audio"), None)
     facts = {
@@ -792,6 +792,18 @@ def _progress(rel: str, size: int) -> None:
     sys.stderr.flush()
 
 
+def _refuse_unreadable(project: Path, entry: dict) -> None:
+    """Sai com erro quando o ffprobe não leu a mídia: a entrada fica no índice (`failed`), mas a
+    pessoa e o agente não podem tomar um `registrada como ...` por sucesso."""
+    if (entry.get("components") or {}).get("media") != "failed":
+        return
+    doc = _read_doc(project, _media_rel(entry["media_id"], "media"), "media") or {}
+    reason = str(doc.get("reason") or "motivo não informado").rstrip(".")
+    message = f"a mídia foi registrada, mas o ffprobe não conseguiu ler: {reason}; confira o arquivo."
+    runtime.record_warning("MEDIA_PROBE_FAILED", message)
+    raise ValueError(message)
+
+
 def run(args) -> dict:
     """`analysis --action list|check|register`: nenhuma saída traz caminho absoluto."""
     project = _root(args.project)
@@ -816,6 +828,7 @@ def run(args) -> dict:
 
         raise UsageError("analysis --action register precisa de --path com a mídia, relativo ao projeto.")
     entry = ensure_media(project, args.path, getattr(args, "role", None), progress=_progress)
+    _refuse_unreadable(project, entry)
     verb = "registrada" if entry["hashed"] else "já estava registrada"
     return {
         **entry,
