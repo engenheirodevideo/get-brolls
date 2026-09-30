@@ -4,7 +4,6 @@ import contextlib
 import io
 import json
 import os
-import shlex
 import shutil
 import tempfile
 import unittest
@@ -14,7 +13,10 @@ from unittest import mock
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
+from _paths import (  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
+    ROOT,
+    suggested_argv,
+)
 from test_logging_trail import DEBUG_ENV, _events, _log_path
 
 from getbrolls import models, roteiro, roteiro_commands, roteiro_review
@@ -233,16 +235,17 @@ class GuidanceCommandTests(CliCase):
         self.reviewed()
         do = self.cli("status")["summary"]["do"]
         self.assertEqual(do["step"], "roteiro-sync")
-        argv = shlex.split(do["command"])
-        self.assertTrue(argv[1].endswith("gb.py"), argv[1])
-        parsed = build_parser().parse_args(argv[2:])
+        argv = suggested_argv(do["command"])
+        parsed = build_parser().parse_args(argv)
         self.assertEqual((parsed.command, parsed.action), ("roteiro", "sync"))
-        synced = run_cli(*argv[2:])
+        synced = run_cli(*argv)
         self.assertEqual(synced["new"], ["c02", "c03-a"])
         self.assertEqual(self.cli("brief", "--validate")["beats"], 2)
 
     def test_command_for_roteiro_sync_parses(self):
-        parsed = build_parser().parse_args(shlex.split(command_for("roteiro-sync", "/tmp/x y"))[2:])
+        command = command_for("roteiro-sync", "/tmp/x y")
+        assert command is not None
+        parsed = build_parser().parse_args(suggested_argv(command))
         self.assertEqual((parsed.command, parsed.action, parsed.project), ("roteiro", "sync", "/tmp/x y"))
 
 

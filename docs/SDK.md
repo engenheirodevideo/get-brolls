@@ -295,6 +295,7 @@ Rota `stage="fetch"` consome licença ou cota **uma vez só**:
   /J`) não exige administrador nem modo de desenvolvedor: a descida sem seguir
   link, por enquanto, é só do macOS e do Linux.
 - `api.data_dir` — `$GB_HOME/plugin-data/<id>/` (0700), criado na primeira leitura: estado e cache do plugin. Fica fora da pasta do plugin, então escrever ali não muda o pin de hash.
+- `api.cli_argv()` — argv (lista) para rodar esta mesma instalação num subprocesso: `[*api.cli_argv(), "status", "--project", p]`. Nunca monte o caminho de `gb.py` à mão: no pacote instalado ele não existe.
 - `api.config()` — lê `data_dir/settings.json` como dicionário (`{}` sem arquivo); JSON inválido ou que não é objeto vira erro com o caminho relativo.
 - `api.finish()` — chamado automaticamente pelo loader depois de `register()`; confere se tudo declarado em `contributes` foi mesmo registrado e se cada `capabilities.route` aponta para uma rota registrada pelo próprio plugin.
 

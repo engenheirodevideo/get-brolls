@@ -94,6 +94,9 @@ Projeto da 2.5 segue exatamente igual: nada muda sem um `ROTEIRO.md` do get-brol
 <!-- W1:T4 -->
 - **Instalado como pacote, acha os próprios arquivos.** `rules`, `init-rules`, `init-brief`, `review` e `plugins --action check` (exemplo `hyperframes`) funcionam fora do checkout; arquivo de dados ausente vira erro de pré-requisito com o comando de reinstalar, nunca um caminho errado.
 <!-- W1:T5 -->
+- **Comando sugerido que roda.** `summary.do.command` (status/brief/deliver) usa a CLI desta instalação: `getbrolls …` no pacote instalado, `python3 "…/scripts/gb.py" …` no checkout (igual à 2.5); no Windows, `python` e aspas duplas que funcionam no PowerShell, no cmd e no Git Bash (caminho com `$`, `%` ou `"` fica fora dessa promessa).
+- **`serve --background` no pacote instalado** sobe o servidor pelo próprio pacote.
+- **SDK: `api.cli_argv()`** para plugins que chamam o getbrolls num subprocesso.
 <!-- W1:T6 -->
 - **Onde o `.env` é lido.** `--env-file` > `GB_ENV_FILE` > `.env` da pasta da instalação (continua valendo) > `$GB_HOME/.env`. Só um é lido: dois `.env` geram o aviso `ENV_FILE_SHADOWED` em todo comando e nunca se misturam; o `doctor` mostra qual valeu em `install.env_file`. `--env-file`/`GB_ENV_FILE` apontando para arquivo que não existe é erro, antes de tocar no projeto; `GB_ENV_FILE` dentro de um `.env` é recusado.
 - **`GB_HOME` no `.env`.** Dentro de `$GB_HOME/.env` é erro. Vindo de `--env-file`, `GB_ENV_FILE` ou do `.env` da pasta da instalação ainda vale, com o aviso `DEPRECATED`: a leitura sai na 2.7; defina `GB_HOME` no ambiente.

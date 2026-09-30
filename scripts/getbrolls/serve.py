@@ -29,6 +29,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import cast
 
+from . import _paths
+
 DEFAULT_PORT = 8767
 
 # Cabeçalho do token de sessão: sem ele (ou com o token errado) o POST é recusado.
@@ -575,8 +577,10 @@ def _child_environment(source_env, scripts):
     processo solto cujo stdout/stderr vão parar num log dentro do projeto.
     """
     environment = {key: value for key, value in source_env.items() if not key.endswith(_SECRET_ENV_SUFFIXES)}
-    existing = environment.get("PYTHONPATH")
-    environment["PYTHONPATH"] = str(scripts) + (os.pathsep + existing if existing else "")
+    # Pacote instalado já está no `sys.path` do interpretador: `PYTHONPATH` fica como veio.
+    if scripts is not None:
+        existing = environment.get("PYTHONPATH")
+        environment["PYTHONPATH"] = str(scripts) + (os.pathsep + existing if existing else "")
     environment["PYTHONIOENCODING"] = "utf-8"
     return environment
 
@@ -659,18 +663,10 @@ def start_background(  # noqa: C901 - existing size; spawns, waits for and valid
     log = directory / LOG_FILE
     _rotate_log(log)
     _write_private_text(log, "")
-    scripts = Path(__file__).resolve().parents[1]
-    command = [
-        sys.executable,
-        str(scripts.parent / "scripts" / "gb.py"),
-        "serve",
-        "--project",
-        str(Path(project).expanduser().resolve()),
-        "--port",
-        str(port),
-    ]
+    command = [*_paths.cli_argv(), "serve", "--project", str(Path(project).expanduser().resolve()), "--port", str(port)]
     # O filho precisa achar `getbrolls` e falar UTF-8 mesmo num console legado:
     # nada disso pode depender do diretório de trabalho ou do locale da máquina.
+    scripts = _paths.install().package_dir.parent if _paths.origin() == "checkout" else None
     environment = _child_environment(os.environ, scripts)
     extra = {}
     if os.name == "nt":

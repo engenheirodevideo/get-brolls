@@ -23,7 +23,10 @@ from unittest.mock import patch
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import skip_unless_ffmpeg, synth_image
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
+from _paths import (  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
+    ROOT,
+    suggested_argv,
+)
 
 from getbrolls import cli, http, providers
 from getbrolls.commands import _flow_state
@@ -363,7 +366,7 @@ class RemoteImageGuidanceTests(RemoteImageFlowBase):
         self.assertNotIn("--end", step["command"])
         self.assertNotIn("inspect", step["for_human"])
         # O comando sugerido funciona de verdade, e o passo seguinte já é a decisão humana.
-        cli.main(shlex.split(step["command"])[2:])
+        cli.main(suggested_argv(step["command"]))
         self.assertEqual("approve", self.next_step()["step"])
 
     def test_inspect_on_a_photo_points_to_the_static_preview(self):
