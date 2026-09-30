@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Get B-rolls client template v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/template.schema.json",
+  "description": "O template.json de uma versão congelada de template de cliente (<pasta do cliente>/templates/<slug>/<N>/template.json), gravado pelo template --action freeze. A versão N é imutável: os arquivos ficam somente leitura e uma mudança vira N+1. O template leva a estrutura do roteiro (títulos, diretivas de layout e camadas, sem a fala nem o texto entre aspas) e os bytes dos componentes citados; licenças (.licenca.json), aprovações, A-ROLL e clipes nunca entram. Conferido em código, além deste schema: slug e versão iguais aos da pasta, ref canônica, cada components[].file um caminho relativo seguro sob components/ e o sha256 de cada arquivo. A versão do arquivo mora em schema (getbrolls.template/<N>).",
+  "type": "object",
+  "required": ["schema", "slug", "version", "client", "ref", "title", "genero", "aspecto", "canvas", "fps", "slots", "components", "engine_refs", "provenance"],
+  "properties": {
+    "schema": { "const": "getbrolls.template/1" },
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64 },
+    "version": { "type": "integer", "minimum": 1, "description": "Número da versão, igual ao nome da pasta <N>." },
+    "client": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64 },
+    "ref": {
+      "type": "string",
+      "pattern": "^cat:getbrolls/template/[a-z0-9]+(-[a-z0-9]+)*@[1-9][0-9]*$",
+      "maxLength": 256,
+      "description": "Referência canônica desta versão: cat:getbrolls/template/<slug>@<N>."
+    },
+    "title": { "type": ["string", "null"], "maxLength": 200 },
+    "genero": { "type": "string", "maxLength": 32 },
+    "aspecto": { "enum": ["9:16", "16:9"] },
+    "canvas": {
+      "type": ["object", "null"],
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "fps": {
+      "type": ["object", "null"],
+      "required": ["num", "den"],
+      "properties": {
+        "num": { "type": "integer", "minimum": 1 },
+        "den": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "slots": {
+      "type": "array",
+      "maxItems": 999,
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "layout", "layers", "placeholder"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^s[0-9]{2,3}$" },
+          "title": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "layout": { "type": "string", "pattern": "^\\[.*\\]$", "maxLength": 2000 },
+          "layers": { "type": "array", "items": { "type": "string", "pattern": "^\\[.*\\]$", "maxLength": 2000 } },
+          "placeholder": { "type": "string", "maxLength": 200 }
+        }
+      }
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "name", "file", "sha256", "licence"],
+        "properties": {
+          "kind": { "enum": ["marca", "lettering", "sfx", "musica", "imagem", "composicao"] },
+          "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "file": { "type": "string", "pattern": "^components/[a-z]+/[^/\\\\:]+$", "maxLength": 300 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "licence": { "const": "not_transferred", "description": "A licença do componente nunca vai no template." }
+        }
+      }
+    },
+    "engine_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^cat:", "maxLength": 512 },
+      "description": "Refs cat: de receitas de motor (nunca outro template do get-brolls) que o template acompanha."
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["project_id", "frozen_at", "getbrolls_version", "roteiro_sha256", "by"],
+      "properties": {
+        "project_id": { "type": ["string", "null"], "maxLength": 64 },
+        "frozen_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+        },
+        "getbrolls_version": { "type": "string", "maxLength": 64 },
+        "roteiro_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "by": { "type": ["string", "null"], "maxLength": 200 }
+      }
+    }
+  }
+}

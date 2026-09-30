@@ -802,7 +802,7 @@
       ]
     },
     "init": {
-      "help": "Criar um projeto novo de layout 1: project.json, aroll/, assets/, broll/ e analysis/",
+      "help": "Criar um projeto novo de layout 1: project.json, aroll/, assets/, broll/ e analysis/ (--template: a partir de um template do cliente)",
       "options": [
         {
           "action": "_HelpAction",
@@ -834,10 +834,34 @@
           "choices": null,
           "default": null,
           "dest": "client",
-          "help": "Slug do cliente do projeto (ex.: acme-corp)",
+          "help": "Slug do cliente registrado do projeto (ex.: acme-corp); obrigatório com --template",
           "nargs": null,
           "option_strings": [
             "--client"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "template",
+          "help": "Criar o projeto da versão de template cat:getbrolls/template/<slug>@<N> do cliente --client",
+          "nargs": null,
+          "option_strings": [
+            "--template"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "tema",
+          "help": "Tema do ROTEIRO.md criado do template (obrigatório com --template)",
+          "nargs": null,
+          "option_strings": [
+            "--tema"
           ],
           "required": false
         },
@@ -2797,6 +2821,124 @@
             "--project"
           ],
           "required": true
+        }
+      ]
+    },
+    "template": {
+      "help": "Congelar um projeto num template imutável do cliente (freeze), sem fala, licença nem aprovação",
+      "options": [
+        {
+          "action": "_HelpAction",
+          "choices": null,
+          "default": "==SUPPRESS==",
+          "dest": "help",
+          "help": "show this help message and exit",
+          "nargs": 0,
+          "option_strings": [
+            "--help",
+            "-h"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "freeze",
+            "list",
+            "show"
+          ],
+          "default": null,
+          "dest": "action",
+          "help": "freeze: congela o ROTEIRO.md e os componentes do projeto --from na próxima versão do template; list: lista as versões dos clientes registrados; show: mostra uma versão e confere o sha256 de cada arquivo (list/show só leem)",
+          "nargs": null,
+          "option_strings": [
+            "--action"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "source",
+          "help": "Pasta do projeto a congelar (freeze)",
+          "nargs": null,
+          "option_strings": [
+            "--from"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "slug",
+          "help": "Slug do template: minúsculas, números e - (freeze)",
+          "nargs": null,
+          "option_strings": [
+            "--slug"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "client",
+          "help": "Slug do cliente registrado dono do template (obrigatório em show; em freeze, sem ele vale o client do project.json; em list, filtra)",
+          "nargs": null,
+          "option_strings": [
+            "--client"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "ref",
+          "help": "Ref do template, cat:getbrolls/template/<slug>@<N> (show)",
+          "nargs": null,
+          "option_strings": [
+            "--ref"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "title",
+          "help": "Título de exibição do template (freeze)",
+          "nargs": null,
+          "option_strings": [
+            "--title"
+          ],
+          "required": false
+        },
+        {
+          "action": "_AppendAction",
+          "choices": null,
+          "default": null,
+          "dest": "engine_ref",
+          "help": "Ref cat:<motor>/<tipo>/<id>@<versão> de uma receita de motor que o template acompanha; repetível",
+          "nargs": null,
+          "option_strings": [
+            "--engine-ref"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "by",
+          "help": "Quem congelou, para a proveniência (freeze)",
+          "nargs": null,
+          "option_strings": [
+            "--by"
+          ],
+          "required": false
         }
       ]
     },

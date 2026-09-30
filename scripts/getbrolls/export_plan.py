@@ -182,6 +182,9 @@ class _Collector:
     def _where(self, origin, root, path):
         if origin == "project":
             return path.relative_to(self.project).as_posix()
+        if origin == "client":
+            slug, _ = assets.project_client(self.project)
+            return f"cliente {slug}: {root.name}/{path.name}"
         return f"biblioteca pessoal: {root.name}/{path.name}"
 
     # --- clipes -------------------------------------------------------------

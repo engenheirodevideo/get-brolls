@@ -61,6 +61,7 @@ SUMMARIES = {
         "Registrar, listar, mostrar ou desregistrar pastas de cliente (componentes e templates) no "
         "$GB_HOME/clients.json"
     ),
+    "template": ("Congelar um projeto num template imutável do cliente (freeze), sem fala, licença nem aprovação"),
     "x": "Rodar um comando de plugin habilitado (x --list mostra quais existem); só lê o projeto",
     "setup": (
         "Conferir (--check) o runtime da instalação: venv do yt-dlp, Playwright e FFmpeg, com os comandos que faltam"
@@ -77,7 +78,10 @@ SUMMARIES = {
     "verify": "Conferir integridade e decodificação dos arquivos coletados",
     "review": "Gerar o Storyboard local em brolls/review.html",
     "import-review": "Importar o JSON de decisões exportado pelo Storyboard",
-    "init": "Criar um projeto novo de layout 1: project.json, aroll/, assets/, broll/ e analysis/",
+    "init": (
+        "Criar um projeto novo de layout 1: project.json, aroll/, assets/, broll/ e analysis/ "
+        "(--template: a partir de um template do cliente)"
+    ),
     "migrate": (
         "Adotar o layout 1 num projeto antigo: só acrescenta o project.json, sem mover nada "
         "(--action plan mostra antes; apply grava)"
@@ -307,11 +311,67 @@ def _add_client_arguments(p):
     p.add_argument("--root", help="Pasta existente, em caminho absoluto, onde nasce <root>/<slug>/ (add)")
 
 
+def _template_slug(text):
+    from .templates import check_slug
+
+    return check_slug(text)
+
+
+def _template_ref(text):
+    from .refs import template_parts, template_ref
+
+    return template_ref(*template_parts(text))
+
+
+def _engine_ref(text):
+    from .templates import engine_ref
+
+    return engine_ref(text)
+
+
+def _add_template_arguments(p):
+    """Flags de `template`: versões imutáveis em <pasta do cliente>/templates/<slug>/<N>/."""
+    p.add_argument(
+        "--action",
+        required=True,
+        choices=["freeze", "list", "show"],
+        help=(
+            "freeze: congela o ROTEIRO.md e os componentes do projeto --from na próxima versão do template; "
+            "list: lista as versões dos clientes registrados; show: mostra uma versão e confere o sha256 de cada "
+            "arquivo (list/show só leem)"
+        ),
+    )
+    p.add_argument("--from", dest="source", help="Pasta do projeto a congelar (freeze)")
+    p.add_argument("--slug", type=_checked(_template_slug), help="Slug do template: minúsculas, números e - (freeze)")
+    p.add_argument(
+        "--client",
+        type=_checked(_client_slug),
+        help=(
+            "Slug do cliente registrado dono do template (obrigatório em show; em freeze, sem ele vale o client do "
+            "project.json; em list, filtra)"
+        ),
+    )
+    p.add_argument(
+        "--ref",
+        type=_checked(_template_ref),
+        help="Ref do template, cat:getbrolls/template/<slug>@<N> (show)",
+    )
+    p.add_argument("--title", help="Título de exibição do template (freeze)")
+    p.add_argument(
+        "--engine-ref",
+        action="append",
+        type=_checked(_engine_ref),
+        metavar="REF",
+        help="Ref cat:<motor>/<tipo>/<id>@<versão> de uma receita de motor que o template acompanha; repetível",
+    )
+    p.add_argument("--by", help="Quem congelou, para a proveniência (freeze)")
+
+
 def _add_toolchain_subcommands(sub):
     """Acrescenta os subcomandos sem `--project` obrigatório.
 
-    São eles: providers, doctor, plugins, x, setup, capabilities e client."""
-    for name in ("providers", "doctor", "plugins", "x", "setup", "capabilities", "client"):
+    São eles: providers, doctor, plugins, x, setup, capabilities, client e template."""
+    for name in ("providers", "doctor", "plugins", "x", "setup", "capabilities", "client", "template"):
         p = sub.add_parser(name, help=SUMMARIES[name], description=SUMMARIES[name])
         _SUBPARSERS[name] = p
         if name in ("doctor", "setup", "capabilities"):
@@ -371,6 +431,8 @@ def _add_toolchain_subcommands(sub):
             )
         if name == "client":
             _add_client_arguments(p)
+        if name == "template":
+            _add_template_arguments(p)
         if name == "x":
             p.add_argument("plugin_id", nargs="?", metavar="plugin", help="Id do plugin dono do comando")
             p.add_argument("plugin_command", nargs="?", metavar="comando", help="Nome do comando do plugin")
@@ -879,7 +941,17 @@ def _add_init_args(p, name):
     """Flags de `init`."""
     if name != "init":
         return
-    p.add_argument("--client", type=_checked(_client_slug), help="Slug do cliente do projeto (ex.: acme-corp)")
+    p.add_argument(
+        "--client",
+        type=_checked(_client_slug),
+        help="Slug do cliente registrado do projeto (ex.: acme-corp); obrigatório com --template",
+    )
+    p.add_argument(
+        "--template",
+        type=_checked(_template_ref),
+        help="Criar o projeto da versão de template cat:getbrolls/template/<slug>@<N> do cliente --client",
+    )
+    p.add_argument("--tema", help="Tema do ROTEIRO.md criado do template (obrigatório com --template)")
     p.add_argument(
         "--canvas", type=_checked(_parse_canvas), help="Tamanho do quadro em pixels, LARGURAxALTURA (ex.: 1080x1920)"
     )

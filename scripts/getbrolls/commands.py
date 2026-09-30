@@ -2542,6 +2542,10 @@ def _execute_toolchain(args):
         from getbrolls import clients
 
         return clients.run(args)
+    if args.command == "template":
+        from getbrolls import templates
+
+        return templates.run(args)
     if args.command == "capabilities":
         from getbrolls import capabilities
         from getbrolls.cli import build_parser
@@ -2634,6 +2638,9 @@ def _execute_status_or_queue(cmd, args):
             rules = load_rules(args.project)
         except (ValueError, OSError) as exc:
             rules_error = str(exc)
+        from getbrolls import templates
+
+        templates.record_lock_warnings(project)
         return status_report(Ledger(project, recover=False), rules, rules_error, queue_hint(project))
     rules = None
     try:
@@ -3239,7 +3246,7 @@ def execute(args):
             brief_present=_brief_present(args),
             provider_keys=_provider_keys_set(),
         )
-    if args.command in ("plugins", "x", "setup", "capabilities", "client"):
+    if args.command in ("plugins", "x", "setup", "capabilities", "client", "template"):
         return _execute_toolchain(args)
     if args.command in ("providers", "doctor"):
         return _execute_providers_or_doctor(args, config)

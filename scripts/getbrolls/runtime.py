@@ -333,8 +333,9 @@ READ_ONLY_COMMANDS = ("status", "serve", "brief", "doctor", "setup", "x", "capab
 # só consulta queue.json (mesmo contrato de `status`), nunca deve tomar a trava exclusiva.
 # `roteiro --action check|plan` e `assets` também só leem: plano de cena, sync simulado e
 # inventário de componentes, sem trava nem árvore nova. `client --action list|show` só lê
-# `$GB_HOME/clients.json` e o `client.json` de cada pasta. `migrate --action plan` só mostra
-# o `project.json` que o `apply` gravaria. `analysis --action list|check` só lê `analysis/`,
+# `$GB_HOME/clients.json` e o `client.json` de cada pasta; `template --action list|show` só lê
+# as pastas de template dos clientes registrados. `migrate --action plan` só mostra o
+# `project.json` que o `apply` gravaria. `analysis --action list|check` só lê `analysis/`,
 # sem criar a pasta.
 READ_ONLY_ACTIONS = {
     ("analysis", "check"),
@@ -342,6 +343,8 @@ READ_ONLY_ACTIONS = {
     ("client", "list"),
     ("client", "show"),
     ("migrate", "plan"),
+    ("template", "list"),
+    ("template", "show"),
     ("queue", "status"),
     ("roteiro", "check"),
     ("roteiro", "plan"),
@@ -364,7 +367,7 @@ PLUGIN_ERROR_HINT = "Veja plugins --action list / doctor e docs/SDK.md."
 
 # Comandos cujo erro sai sem a dica de recovery (nenhum erro mostra traceback nem
 # repr à pessoa; esses ficam só em diagnostics.jsonl).
-QUIET_ERROR_COMMANDS = ("plugins", "x", "export", "assets", "client", "analysis")
+QUIET_ERROR_COMMANDS = ("plugins", "x", "export", "assets", "client", "analysis", "template")
 
 # `error_code` → código de saída da CLI; qualquer outro código (INVALID_DATA,
 # IO_ERROR, ...) é erro de operação ou de dados: 1. A tabela completa, com o 0, fica
