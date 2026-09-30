@@ -53,7 +53,7 @@ Sem pista, `preview --scan` varre o vídeo inteiro: exploratório, depois do `in
 
 ## Passo 5 — Revisão humana
 
-Duas rotas, e você para nas duas.
+Duas rotas; você para nas duas.
 
 **Board**, quando quem revisa é outra pessoa: `python3 "scripts/gb.py" review --project <projeto>`, depois `serve --background --project <projeto>`. Entregue a URL, peça a decisão e importe com `import-review --by NOME --project <projeto>` — sem `--file`, pega o arquivo mais recente.
 
@@ -77,7 +77,7 @@ Diga o que tentou e por quê. Pergunte se a pessoa tem material próprio ou um l
 
 ## Ambiente
 
-`python3 "scripts/gb.py" doctor` confere a instalação. No Windows, use `python` no lugar de `python3`. Em código 4 (`ready` falso), leia `summary.missing` e peça `/get-brolls-setup`. Versão diferente: [CHANGELOG](CHANGELOG.md).
+`python3 "scripts/gb.py" doctor` confere a instalação. No Windows, use `python` no lugar de `python3`. Em código 4 (`ready` falso), leia `summary.missing` e peça `/get-brolls-setup` (runtime em `$GB_HOME/runtime`). Versão diferente: [CHANGELOG](CHANGELOG.md).
 
 ## Índice de references
 

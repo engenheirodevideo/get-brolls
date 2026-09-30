@@ -65,7 +65,7 @@ A skill só funciona completa com **todas** as ferramentas abaixo instaladas ant
 | Node 22+ com npm/npx | Playwright CLI e runtime EJS do yt-dlp | YouTube e Instagram falham |
 | curl | download dos pares de stream do Instagram | Instagram falha |
 | Git | clonar e atualizar | instalação manual |
-| yt-dlp e Playwright CLI | instalados pelo `install.sh`/`install.ps1` no passo 2 | YouTube/TikTok e Instagram falham |
+| yt-dlp e Playwright CLI | instalados em `$GB_HOME/runtime` pelo `setup` (ou `install.sh`/`install.ps1`) no passo 2 | YouTube/TikTok e Instagram falham |
 
 macOS (Homebrew):
 
@@ -142,7 +142,7 @@ powershell -ExecutionPolicy Bypass -File scripts/install.ps1
 python scripts/gb.py doctor
 ```
 
-O instalador cria os ambientes locais e obtém as versões registradas de yt-dlp/EJS e Playwright CLI. `--check` só valida pré-requisitos (Python, FFmpeg/ffprobe, Node, curl, Git) e não instala nada; rode-o antes do instalador completo para saber o que falta. `doctor` confere a disponibilidade das ferramentas depois de instaladas; o acesso a cada fonte depende da URL e, quando necessário, da sua sessão de navegador.
+O instalador chama o `setup`, que instala as versões registradas de yt-dlp/EJS e Playwright CLI em `$GB_HOME/runtime`, fora da pasta da skill. `--check` só valida pré-requisitos (Python, FFmpeg/ffprobe, Node, curl, Git) e não instala nada; rode-o antes do instalador completo para saber o que falta. `doctor` confere a disponibilidade das ferramentas depois de instaladas; o acesso a cada fonte depende da URL e, quando necessário, da sua sessão de navegador.
 
 ### Primeiro B-roll em 5 minutos
 
@@ -173,7 +173,7 @@ No fim, `verify` responde `"count": 1` e o clipe aprovado está em `/caminho/meu
 
 Se você nunca abriu um terminal, esta é a lista inteira. Todos os passos são conversa com o agente; nada aqui pede comando.
 
-1. **Instale uma vez.** Peça `/get-brolls-setup`. Ele instala tudo e responde em uma linha se está pronto. Repita depois de cada `/plugin update`.
+1. **Instale uma vez.** Peça `/get-brolls-setup`. Ele instala tudo em `$GB_HOME/runtime` e responde em uma linha se está pronto. O runtime sobrevive ao `/plugin update`.
 2. **Diga o que você precisa.** `/get-brolls preciso de vídeos de apoio pro meu Reel sobre X` — e diga também em que pasta o projeto vai ficar.
 3. **Responda à entrevista.** O agente faz no máximo sete perguntas, uma por vez. "Tanto faz" é resposta válida: ele assume um padrão e mostra o que assumiu. Se preferir chamar direto, use `/get-brolls-brief`.
 4. **Confira o brief.** Ele devolve em cinco linhas o que entendeu e pergunta "fecho assim?". Corrija ali mesmo.

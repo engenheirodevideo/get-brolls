@@ -61,8 +61,9 @@ def _from_checkout():
 def _ytdlp_missing_text():
     if _from_checkout():
         return (
-            "yt-dlp ausente: execute bash scripts/install.sh (ou install.ps1) na raiz da skill/plugin; "
-            f"após /plugin update é preciso reinstalar. Confira com {_paths.cli_hint('doctor')}."
+            "yt-dlp ausente: execute bash scripts/install.sh (ou install.ps1) na raiz da skill/plugin "
+            f"({_paths.cli_hint('setup')} faz o mesmo); o runtime fica em $GB_HOME/runtime e sobrevive "
+            f"ao /plugin update. Confira com {_paths.cli_hint('doctor')}."
         )
     return f"yt-dlp ausente: {_paths.installer_hint()}. Confira com {_paths.cli_hint('doctor')}."
 

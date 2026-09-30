@@ -212,7 +212,8 @@ python3 scripts/gb.py doctor
 
 # ── setup --check ───────────────────────────────────────────
 # O QUE FAZ: mostra o que falta no runtime e os comandos para resolver. Não instala nada.
-# Sai com código 4 quando falta algo. "setup" sem --check é erro de uso (código 2).
+# Sai com código 4 quando falta algo. Sem --check, "setup" instala o que falta
+# (código 0 pronto, 4 se ainda falta item do sistema); --where só mostra as pastas.
 python3 scripts/gb.py setup --check
 
 # ── doctor --live ───────────────────────────────────────────
