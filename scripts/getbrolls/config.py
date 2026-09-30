@@ -12,6 +12,8 @@
 import os
 from pathlib import Path
 
+from .errors import UsageError
+
 # Folga de ponto flutuante ao comparar um intervalo com o teto de prévia. `16.1 - 6.1`
 # dá 10.000000000000002 em binário: sem a folga, o `--end` que o próprio `inspect`
 # sugere seria recusado pelo `preview` logo depois. Um intervalo igual ao teto vale.
@@ -269,23 +271,48 @@ def _parse_env(path):
         yield number, key, value
 
 
-def load_env(path):
+_ENV_SHADOWED = (
+    "Há dois .env: usei o da pasta da instalação e ignorei o de $GB_HOME (os dois nunca se misturam). "
+    "Deixe só um; veja install.env_file no doctor."
+)
+_GB_HOME_IN_ENV_DEPRECATED = (
+    "GB_HOME definido num .env ainda vale, mas deixa de ser lido na 2.7. "
+    "Defina GB_HOME no ambiente do processo e tire a linha do .env."
+)
+
+
+def _refuse_env_entries(entries, source):
+    """Recusa, antes de exportar qualquer coisa, chaves que um `.env` não pode definir."""
+    for number, key, _value in entries:
+        if key in PROCESS_ONLY_KEYS:
+            raise UsageError(f".env: {key} (linha {number}) só vale no ambiente do processo; tire a linha do .env.")
+        if key == "GB_HOME" and source == "gb_home":
+            raise UsageError(
+                f".env de $GB_HOME: GB_HOME (linha {number}) não pode ser definido aqui; a pasta pessoal vem "
+                "do ambiente do processo ou do padrão ~/.getbrolls. Tire a linha."
+            )
+
+
+def load_env(path, *, source=None):
     """Lê o `.env`: chaves do core (`KEYS`) vão para o ambiente do processo, como
     sempre; as de `permissions.env` de plugins instalados ficam só em `_PLUGIN_ENV`,
     lidas por `api.env` do plugin dono, nunca exportadas. As do core entram primeiro —
-    `GB_HOME` no próprio `.env` decide em qual `plugins/` procurar os manifestos.
-    Chave que ninguém declara é erro."""
+    `GB_HOME` no próprio `.env` decide em qual `plugins/` procurar os manifestos
+    (menos no `.env` de `$GB_HOME`, onde ele é recusado: `source == "gb_home"`).
+    Chave que ninguém declara é erro. Devolve as chaves do core que o arquivo tem."""
     _PLUGIN_ENV.clear()
     path = Path(path)
     if not path.is_file():
-        return
+        return frozenset()
     entries = list(_parse_env(path))
+    _refuse_env_entries(entries, source)
     for _number, key, value in entries:
         if key in KEYS:
             os.environ.setdefault(key, value)
+    core_keys = frozenset(key for _number, key, _value in entries if key in KEYS)
     unknown = [entry for entry in entries if entry[1] not in KEYS]
     if not unknown:
-        return
+        return core_keys
     owners = plugin_env_owners()
     for number, key, value in unknown:
         if key not in owners:
@@ -302,6 +329,27 @@ def load_env(path):
                 f".env: {key} (linha {number}) é do plugin {owners[key]} e tem nome de variável que ferramentas "
                 "do sistema leem; ela chega só ao plugin, por api.env, nunca ao ambiente dos subprocessos.",
             )
+    return core_keys
+
+
+def load_env_choice(choice, *, warn):
+    """Carrega o `.env` escolhido por `_paths.env_file()`; com `warn`, registra os avisos.
+
+    A origem do `.env` não vira aviso em todo comando: ela fica em `install.env_file`
+    do `doctor`. Só dois `.env` ao mesmo tempo (um deles ignorado) e `GB_HOME` num
+    `.env` fora de `$GB_HOME` (compatível até a 2.7) avisam."""
+    if choice.path is None:
+        _PLUGIN_ENV.clear()
+        return
+    core_keys = load_env(choice.path, source=choice.source)
+    if not warn:
+        return
+    from .runtime import record_warning
+
+    if choice.ignored:
+        record_warning("ENV_FILE_SHADOWED", _ENV_SHADOWED)
+    if "GB_HOME" in core_keys:
+        record_warning("DEPRECATED", _GB_HOME_IN_ENV_DEPRECATED)
 
 
 def _pinned(key):

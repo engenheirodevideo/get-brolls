@@ -48,6 +48,10 @@ _DATA_ROOT_MISSING = (
 )
 _ENV_FLAG_MISSING = "--env-file não existe. Confira o caminho."
 _ENV_VAR_MISSING = "GB_ENV_FILE aponta para um arquivo que não existe. Confira o caminho ou remova a variável."
+_ENV_CHECKOUT_NOTE = (
+    "Este .env está na pasta da instalação e só vale para ela; prefira $GB_HOME/.env "
+    "(padrão ~/.getbrolls/.env), que vale para qualquer instalação."
+)
 _ALIAS_PREFIX = "GETBROLLS_"
 # Sem aspas no Windows só o que nenhum shell (Git Bash, PowerShell, cmd) reinterpreta.
 _NT_SAFE = frozenset("_-.,:/=@+")
@@ -419,6 +423,7 @@ def _env_report(env_flag: str | None) -> dict:
         "source": choice.source,
         "ignored": [str(path) for path in choice.ignored],
         "searched": [str(path) for path in choice.searched],
+        "note": _ENV_CHECKOUT_NOTE if choice.source == "checkout" else None,
     }
 
 

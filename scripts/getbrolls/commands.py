@@ -3116,11 +3116,12 @@ def _execute_project_command(cmd, args, config, rules, ledger):
 
 def execute(args):
     """Prepara ambiente/config e despacha o comando para o handler certo, em ordem de dependência crescente."""
-    from getbrolls.config import load_env, settings
+    from getbrolls import _paths
+    from getbrolls.config import load_env_choice, settings
 
-    if args.env_file and not Path(args.env_file).is_file():
-        raise ValueError("--env-file não existe. Confira o caminho.")
-    load_env(args.env_file or Path(__file__).resolve().parents[2] / ".env")
+    # `UsageError` quando `--env-file` ou `GB_ENV_FILE` apontam para um arquivo que não existe.
+    choice = _paths.env_file(getattr(args, "env_file", None))
+    load_env_choice(choice, warn=True)
     config = settings()
     with contextlib.suppress(Exception):
         logs.event(
@@ -3128,6 +3129,7 @@ def execute(args):
             logging.DEBUG,
             "config",
             env_file_present=bool(getattr(args, "env_file", None)),
+            env_file_source=choice.source,
             rules_project=_rules_project_present(args),
             brief_present=_brief_present(args),
             provider_keys=_provider_keys_set(),

@@ -11,7 +11,6 @@ import logging
 import sys
 import time
 import traceback
-from pathlib import Path
 
 from . import __version__, logs, presets
 from .runtime import READ_ONLY_ACTIONS, READ_ONLY_COMMANDS, OperationError, audited
@@ -175,7 +174,10 @@ def build_parser():
         description="Get B-rolls — pesquisar, revisar e coletar trechos por fonte.",
         epilog="Use `<subcomando> --help` para os argumentos de cada etapa.",
     )
-    parser.add_argument("--env-file", help="Arquivo .env explícito; padrão: .env na raiz da skill")
+    parser.add_argument(
+        "--env-file",
+        help="Arquivo .env explícito; sem ele: GB_ENV_FILE, depois o .env do checkout, depois $GB_HOME/.env",
+    )
     parser.add_argument(
         "--version",
         action="version",
@@ -786,11 +788,34 @@ def _given_option_names(argv, args):
     return ",".join(names) if names else None
 
 
+def _load_env_early(args):
+    """Escolhe e carrega o `.env` antes de configurar o log (GB_LOG_LEVEL pode morar nele).
+
+    Erro de uso (`UsageError`: arquivo que falta, `GB_ENV_FILE` ou `GB_HOME` onde não
+    podem) vira `OperationError` aqui mesmo, sem tocar no projeto. Outro erro do `.env`
+    (chave desconhecida) fica para `execute()`, que o levanta dentro da auditoria; o
+    carregamento repetido lá é inofensivo (`setdefault`).
+    """
+    from . import _paths
+    from .config import load_env_choice
+    from .errors import UsageError
+
+    try:
+        load_env_choice(_paths.env_file(args.env_file), warn=False)
+    except UsageError as exc:
+        raise OperationError(
+            {"operation": args.command, "status": "error", "error_code": "INVALID_DATA", "message": str(exc)}
+        ) from None
+    except ValueError:
+        pass  # `execute()` levanta de novo, dentro da auditoria
+
+
 def main(argv=None):
     """Faz o parse, configura logging/trava e roda o comando com auditoria e log de início/fim."""
+    from . import _paths
     from .commands import execute, with_summary
-    from .config import load_env
 
+    _paths.apply_env_aliases()
     args = parse_args(argv)
     if args.command == "serve" and not (args.background or args.stop):
         # `serve` blocks in serve_forever() and owns its own stdout contract (one JSON
@@ -802,13 +827,12 @@ def main(argv=None):
             print(json.dumps({"error": str(exc), "error_code": "INVALID_DATA"}, ensure_ascii=False))
             raise SystemExit(EXIT_OPERATION_ERROR) from None
 
+    # `.env` que falta ou que tenta definir o que não pode é erro de uso: sai antes do
+    # log, da trava e da auditoria, sem criar nada em `brolls/`. (`serve` em primeiro
+    # plano, acima, tem contrato próprio de saída e recebe o erro de `execute()`.)
+    _load_env_early(args)
     project = getattr(args, "project", None)
     read_only = args.command in READ_ONLY_COMMANDS or (args.command, getattr(args, "action", None)) in READ_ONLY_ACTIONS
-    # GB_LOG_LEVEL/GB_LOG_STDERR may live only in .env; load it before configuring
-    # logging. Harmless to call again inside execute() (setdefault-based); a bad
-    # .env here is silently skipped and raised properly by execute() itself.
-    with contextlib.suppress(ValueError):
-        load_env(args.env_file or Path(__file__).resolve().parents[2] / ".env")
     _check_preset_name(args)
     logs.configure(project, read_only=read_only)
 

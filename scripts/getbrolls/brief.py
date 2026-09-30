@@ -505,8 +505,8 @@ def unavailable_phrase(entries):
     return (
         f"A única fonte permitida para este trecho é {names}, e ela não está "
         f"disponível neste ambiente: falta a chave de API. Coloque {keys} no arquivo "
-        "`.env` da skill (ou no ambiente) e eu busco na hora. Enquanto a chave não "
-        "existir, nenhuma busca aqui é possível — não é falta de informação sua."
+        "`.env` (`$GB_HOME/.env`, padrão `~/.getbrolls/.env`) ou no ambiente e eu busco na hora. "
+        "Enquanto a chave não existir, nenhuma busca aqui é possível — não é falta de informação sua."
     )
 
 
@@ -517,7 +517,7 @@ def provider_warnings(beats):
     """
     return [
         f'O provedor {entry["provider"]} exigido pelo beat "{beat["id"]}" não está '
-        f"configurado neste ambiente: coloque {entry['env_key']} no `.env` da skill."
+        f"configurado neste ambiente: coloque {entry['env_key']} no `.env` (`$GB_HOME/.env`, padrão `~/.getbrolls/.env`)."
         for beat in beats
         for entry in missing_provider_keys(beat["resolved"])
     ]
@@ -586,7 +586,7 @@ def remaining_keys_phrase(beat, entries, searched):
     )
     routes = resolve_routes(beat["id"], beat["allowed_sources"])
     route = f" {routes}" if routes else " Ou me diga outra forma de buscar esse trecho."
-    return f"{head} Coloque {keys} no arquivo `.env` da skill (ou no ambiente) e eu busco na hora.{route}"
+    return f"{head} Coloque {keys} no arquivo `.env` (`$GB_HOME/.env`, padrão `~/.getbrolls/.env`) ou no ambiente e eu busco na hora.{route}"
 
 
 def search_queries(beat):
