@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Get B-rolls analysis index v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/analysis_index.schema.json",
+  "description": "analysis/index.json: uma entrada por mídia registrada, ordenada por path. media_id e path não se repetem e path é relativo e seguro (conferidos em código). Objetos abertos: campo novo opcional entra fora de required e o leitor ignora chave desconhecida; remover, renomear ou mudar o significado de um campo sobe o N de schema. Leitor recusa N maior do que conhece.",
+  "type": "object",
+  "required": [
+    "schema",
+    "updated",
+    "media"
+  ],
+  "properties": {
+    "schema": {
+      "const": "getbrolls.analysis_index/1"
+    },
+    "updated": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "media": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "media_id",
+          "path",
+          "role",
+          "quick_key",
+          "components"
+        ],
+        "properties": {
+          "media_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$",
+            "description": "Primeiros 16 hex do sha256 dos bytes da mídia (o asset_id do Nômade tem a mesma derivação)."
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "Caminho relativo à raiz do projeto, com /. Nunca absoluto, nunca com . ou .. (conferido em código)."
+          },
+          "role": {
+            "enum": [
+              "aroll",
+              "broll",
+              "footage",
+              "music",
+              "sfx",
+              "narration",
+              "title",
+              "animation",
+              "unknown"
+            ],
+            "description": "Papel da mídia no projeto; mesmos nomes do contrato do otio-edit."
+          },
+          "quick_key": {
+            "type": "object",
+            "required": [
+              "size",
+              "mtime_ns",
+              "sample_sha256"
+            ],
+            "description": "Chave rápida para saber, sem hashear tudo, se o arquivo ainda é o mesmo: tamanho, mtime em ns e sha256 de uma amostra (1 MiB do início + 1 MiB do fim).",
+            "properties": {
+              "size": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "mtime_ns": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sample_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          },
+          "components": {
+            "type": "object",
+            "description": "Estado de cada componente já registrado para a mídia.",
+            "properties": {
+              "media": {
+                "enum": [
+                  "done",
+                  "done_partial",
+                  "unavailable",
+                  "failed",
+                  "blocked",
+                  "not_run_by_this_script",
+                  "no_speech"
+                ]
+              },
+              "transcript": {
+                "enum": [
+                  "done",
+                  "done_partial",
+                  "unavailable",
+                  "failed",
+                  "blocked",
+                  "not_run_by_this_script",
+                  "no_speech"
+                ]
+              },
+              "scenes": {
+                "enum": [
+                  "done",
+                  "done_partial",
+                  "unavailable",
+                  "failed",
+                  "blocked",
+                  "not_run_by_this_script",
+                  "no_speech"
+                ]
+              },
+              "silence": {
+                "enum": [
+                  "done",
+                  "done_partial",
+                  "unavailable",
+                  "failed",
+                  "blocked",
+                  "not_run_by_this_script",
+                  "no_speech"
+                ]
+              },
+              "speakers": {
+                "enum": [
+                  "done",
+                  "done_partial",
+                  "unavailable",
+                  "failed",
+                  "blocked",
+                  "not_run_by_this_script",
+                  "no_speech"
+                ]
+              },
+              "visual": {
+                "enum": [
+                  "done",
+                  "done_partial",
+                  "unavailable",
+                  "failed",
+                  "blocked",
+                  "not_run_by_this_script",
+                  "no_speech"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

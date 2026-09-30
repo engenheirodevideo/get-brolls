@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Get B-rolls analysis scenes v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/scenes.schema.json",
+  "description": "analysis/media/<media_id>/scenes.json: cortes e cenas detectados. Schema mínimo, sem producer. Objetos abertos: campo novo opcional entra fora de required e o leitor ignora chave desconhecida; remover, renomear ou mudar o significado de um campo sobe o N de schema. Leitor recusa N maior do que conhece.",
+  "type": "object",
+  "required": [
+    "schema",
+    "media_id",
+    "status",
+    "reason",
+    "created",
+    "time_unit",
+    "scenes"
+  ],
+  "properties": {
+    "schema": {
+      "const": "getbrolls.scenes/1"
+    },
+    "media_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "Primeiros 16 hex do sha256 dos bytes da mídia (o asset_id do Nômade tem a mesma derivação)."
+    },
+    "status": {
+      "enum": [
+        "done",
+        "done_partial",
+        "unavailable",
+        "failed",
+        "blocked",
+        "not_run_by_this_script",
+        "no_speech"
+      ],
+      "description": "Estado do componente. unavailable, failed, blocked e not_run_by_this_script exigem reason (conferido em código)."
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 2000
+    },
+    "created": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "time_unit": {
+      "const": "s"
+    },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "kind",
+          "confidence"
+        ],
+        "properties": {
+          "start": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Segundos (time_unit s), número finito (NaN e infinito recusados em código)."
+          },
+          "end": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Segundos (time_unit s), número finito (NaN e infinito recusados em código)."
+          },
+          "kind": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,31}$"
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    }
+  }
+}

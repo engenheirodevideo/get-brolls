@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Get B-rolls analysis markers v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/markers.schema.json",
+  "description": "analysis/markers.json: marcadores de todos os produtores do projeto. id é único no arquivo e start <= end quando end não é null (conferidos em código). Objetos abertos: campo novo opcional entra fora de required e o leitor ignora chave desconhecida; remover, renomear ou mudar o significado de um campo sobe o N de schema. Leitor recusa N maior do que conhece.",
+  "type": "object",
+  "required": [
+    "schema",
+    "updated",
+    "time_unit",
+    "markers"
+  ],
+  "properties": {
+    "schema": {
+      "const": "getbrolls.markers/1"
+    },
+    "updated": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "time_unit": {
+      "const": "s"
+    },
+    "markers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "media_id",
+          "scene",
+          "start",
+          "end",
+          "name",
+          "color",
+          "comment",
+          "producer"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^m_[0-9a-f]{10,32}$"
+          },
+          "media_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$",
+            "description": "Primeiros 16 hex do sha256 dos bytes da mídia (o asset_id do Nômade tem a mesma derivação)."
+          },
+          "scene": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^c(?!0+$)[0-9]{2,3}$"
+          },
+          "start": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Segundos (time_unit s), número finito (NaN e infinito recusados em código)."
+          },
+          "end": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "null = marcador de ponto."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "color": {
+            "enum": [
+              "PINK",
+              "RED",
+              "ORANGE",
+              "YELLOW",
+              "GREEN",
+              "CYAN",
+              "BLUE",
+              "PURPLE",
+              "MAGENTA",
+              "BLACK",
+              "WHITE"
+            ],
+            "description": "Enum MarkerColor do OpenTimelineIO."
+          },
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "producer": {
+            "type": "object",
+            "required": [
+              "tool",
+              "model",
+              "version"
+            ],
+            "description": "Quem gerou o dado: a ferramenta (id do plugin ou getbrolls), o modelo e a versão.",
+            "properties": {
+              "tool": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 128
+              },
+              "version": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 64
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
