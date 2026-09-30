@@ -333,8 +333,11 @@ READ_ONLY_COMMANDS = ("status", "serve", "brief", "doctor", "setup", "x", "capab
 # só consulta queue.json (mesmo contrato de `status`), nunca deve tomar a trava exclusiva.
 # `roteiro --action check|plan` e `assets` também só leem: plano de cena, sync simulado e
 # inventário de componentes, sem trava nem árvore nova. `client --action list|show` só lê
-# `$GB_HOME/clients.json` e o `client.json` de cada pasta.
+# `$GB_HOME/clients.json` e o `client.json` de cada pasta. `analysis --action list|check` só
+# lê `analysis/`, sem criar a pasta.
 READ_ONLY_ACTIONS = {
+    ("analysis", "check"),
+    ("analysis", "list"),
     ("client", "list"),
     ("client", "show"),
     ("queue", "status"),
@@ -343,6 +346,11 @@ READ_ONLY_ACTIONS = {
     ("assets", "list"),
     ("assets", "where"),
 }
+
+# (comando, ação) que grava só sob a própria trava, nunca sob a do projeto: `analysis
+# --action register` calcula o sha256 de uma mídia grande sem segurar o projeto, e só a
+# troca dos arquivos de `analysis/` fica dentro de `analysis/.lock`.
+OWN_LOCK_ACTIONS = {("analysis", "register")}
 
 
 # Erro que veio de um plugin: "Plugin <id>: …" (todo erro do core sobre código de
@@ -354,7 +362,7 @@ PLUGIN_ERROR_HINT = "Veja plugins --action list / doctor e docs/SDK.md."
 
 # Comandos cujo erro sai sem a dica de recovery (nenhum erro mostra traceback nem
 # repr à pessoa; esses ficam só em diagnostics.jsonl).
-QUIET_ERROR_COMMANDS = ("plugins", "x", "export", "assets", "client")
+QUIET_ERROR_COMMANDS = ("plugins", "x", "export", "assets", "client", "analysis")
 
 # `error_code` → código de saída da CLI; qualquer outro código (INVALID_DATA,
 # IO_ERROR, ...) é erro de operação ou de dados: 1. A tabela completa, com o 0, fica
@@ -457,7 +465,8 @@ def _audited_error_failure(args, event, log, app_log_path):
         # erro de uso ali (flag faltando, plugin inexistente) é só a mensagem — a
         # dica de recovery/review era ruído. `export` grava só numa pasta nova em
         # exports/ e nunca no manifesto nem no journal (recusa journal pendente
-        # antes de começar): a dica de recovery também não vale lá.
+        # antes de começar): a dica de recovery também não vale lá. `analysis` só grava
+        # em analysis/, sob a trava própria, nunca no manifesto.
         payload.pop("hint", None)
     return OperationError(payload)
 
@@ -543,12 +552,13 @@ def audited(args, execute):
         )
         in READ_ONLY_ACTIONS
     )
+    own_lock = (args.command, getattr(args, "action", None)) in OWN_LOCK_ACTIONS
     log = diagnostics_path(project)
     app_log_path = Path(project).resolve() / "brolls" / "getbrolls.log" if project else None
     result = None
     failure = None
     try:
-        with project_lock(None if read_only else project):
+        with project_lock(None if read_only or own_lock else project):
             result = execute(args)
             event["status"] = "success"
             if event["warnings"] and isinstance(result, dict):

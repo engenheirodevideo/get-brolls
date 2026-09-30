@@ -1,5 +1,85 @@
 {
   "subcommands": {
+    "analysis": {
+      "help": "Registrar mídias do projeto em analysis/ (id por conteúdo) e listar ou conferir os arquivos de análise",
+      "options": [
+        {
+          "action": "_HelpAction",
+          "choices": null,
+          "default": "==SUPPRESS==",
+          "dest": "help",
+          "help": "show this help message and exit",
+          "nargs": 0,
+          "option_strings": [
+            "--help",
+            "-h"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "project",
+          "help": "Pasta do projeto que guarda brolls/, fora da instalação da skill",
+          "nargs": null,
+          "option_strings": [
+            "--project"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "check",
+            "list",
+            "register"
+          ],
+          "default": null,
+          "dest": "action",
+          "help": "list: mídias registradas; check: confere os arquivos de analysis/; register: calcula o id por conteúdo e grava media.json (list e check só leem)",
+          "nargs": null,
+          "option_strings": [
+            "--action"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "path",
+          "help": "Mídia a registrar, relativa ao projeto, com / (ex.: aroll/c01.mp4) (register)",
+          "nargs": null,
+          "option_strings": [
+            "--path"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "animation",
+            "aroll",
+            "broll",
+            "footage",
+            "music",
+            "narration",
+            "sfx",
+            "title",
+            "unknown"
+          ],
+          "default": null,
+          "dest": "role",
+          "help": "Papel da mídia (register); sem ele, vem da pasta: aroll/, broll/, assets/musica/, assets/sfx/",
+          "nargs": null,
+          "option_strings": [
+            "--role"
+          ],
+          "required": false
+        }
+      ]
+    },
     "approve": {
       "help": "Registrar aprovação humana já recebida para o intervalo atual",
       "options": [
