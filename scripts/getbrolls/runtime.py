@@ -373,6 +373,7 @@ READ_ONLY_ACTIONS = {
     ("roteiro", "plan"),
     ("assets", "list"),
     ("assets", "where"),
+    ("plugins", "marketplace-list"),
 }
 
 # (comando, ação) que grava só sob a própria trava, nunca sob a do projeto: `analysis

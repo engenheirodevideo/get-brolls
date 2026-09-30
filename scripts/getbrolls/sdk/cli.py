@@ -5,8 +5,17 @@ from pathlib import Path
 from ..errors import UsageError
 from . import loader
 
-# Flags que só valem em `install` (as três) e em `update` (só `--commit`).
+# Flags de pin (`--commit`, `--ref`, `--subdir`) e as ações em que cada uma vale. O
+# `update` aceita as três aqui e recusa `--ref`/`--subdir` com a própria mensagem.
 _PIN_FLAGS = ("commit", "ref", "subdir")
+_PIN_FLAG_ACTIONS = {
+    "install": _PIN_FLAGS,
+    "update": _PIN_FLAGS,
+    "marketplace-add": ("commit", "ref"),
+    "marketplace-update": ("commit",),
+}
+# Ações em que `--marketplace <nome>` vale.
+_MARKETPLACE_FLAG_ACTIONS = ("marketplace-remove", "marketplace-update")
 
 
 def kind_list():
@@ -96,6 +105,40 @@ def _new(args):
     return scaffold.new(_require_id(args), args.kind, args.path)
 
 
+def _require_marketplace(args):
+    if not getattr(args, "marketplace", None):
+        raise UsageError(f"--marketplace <nome> é obrigatório em plugins --action {args.action}.")
+    return args.marketplace
+
+
+def _marketplace_add(args):
+    from . import marketplace
+
+    if not args.source:
+        raise UsageError(
+            "--source é obrigatório em plugins --action marketplace-add (URL git ou pasta local que é repositório)."
+        )
+    return marketplace.add(args.source, ref=args.ref, commit=args.commit)
+
+
+def _marketplace_list(_args):  # mesma assinatura das outras ações
+    from . import marketplace
+
+    return marketplace.listing()
+
+
+def _marketplace_remove(args):
+    from . import marketplace
+
+    return marketplace.remove(_require_marketplace(args))
+
+
+def _marketplace_update(args):
+    from . import marketplace
+
+    return marketplace.refresh(getattr(args, "marketplace", None), commit=args.commit)
+
+
 ACTIONS = {
     "list": _list,
     "enable": _enable,
@@ -105,11 +148,21 @@ ACTIONS = {
     "update": _update,
     "remove": _remove,
     "new": _new,
+    "marketplace-add": _marketplace_add,
+    "marketplace-list": _marketplace_list,
+    "marketplace-remove": _marketplace_remove,
+    "marketplace-update": _marketplace_update,
 }
 
 
 def run(args):
     """Roda a ação de `plugins --action ...` e devolve o resultado."""
-    if args.action not in ("install", "update") and any(value is not None for value in _pin_flags(args).values()):
-        raise UsageError(f"--commit, --ref e --subdir não valem em plugins --action {args.action}.")
+    allowed_flags = _PIN_FLAG_ACTIONS.get(args.action, ())
+    misused = [
+        f"--{name}" for name, value in _pin_flags(args).items() if value is not None and name not in allowed_flags
+    ]
+    if misused:
+        raise UsageError(f"{', '.join(misused)} não vale(m) em plugins --action {args.action}.")
+    if getattr(args, "marketplace", None) is not None and args.action not in _MARKETPLACE_FLAG_ACTIONS:
+        raise UsageError(f"--marketplace não vale em plugins --action {args.action}.")
     return ACTIONS[args.action](args)
