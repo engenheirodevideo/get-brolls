@@ -1135,7 +1135,7 @@ def _internal_error(exc):
         "traceback": scrub_home(redact(traceback.format_exc())),
     }
     log = write_diagnostics_log(project, event)
-    message = "Erro interno inesperado (bug)."
+    message = f"Erro interno inesperado (bug) [type: {type(exc).__name__}]."
     if log:
         message += f" Detalhes em {log} (diagnostics.jsonl)."
     else:

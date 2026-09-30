@@ -448,6 +448,7 @@ class InProcessExitTests(unittest.TestCase):
         payload = json.loads(err)
         self.assertEqual("INTERNAL_ERROR", payload["error_code"])
         self.assertEqual("RuntimeError", payload["type"])
+        self.assertIn("[type: RuntimeError]", payload["error"])
         for key in ("traceback", "repr", "message"):
             self.assertNotIn(key, payload)
         self.assertNotIn("kaboom", err)
