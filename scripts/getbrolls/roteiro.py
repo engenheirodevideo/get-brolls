@@ -346,6 +346,28 @@ def _directive(inner, number, plugins):  # noqa: PLR0911 - one return per valida
     return Directive(kind, tuple(texts), number, quoted=flags), None, None
 
 
+def _arg_text(text, quoted):
+    """Um argumento como o parser lê: `"` literal vira `\\"`; entre aspas quando veio entre aspas."""
+    escaped = text.replace('"', '\\"')
+    return f'"{escaped}"' if quoted else escaped
+
+
+def directive_text(directive):
+    """A diretiva de layout, camada ou plugin como texto `[TIPO: a | b]`, na grafia canônica.
+
+    O parser lê o texto devolvido e chega à mesma diretiva (tipo, argumentos e aspas);
+    é o que um template grava no lugar da linha original, que o parser não guarda.
+    """
+    quoted = directive.quoted or (False,) * len(directive.args)
+    args = " | ".join(_arg_text(text, flag) for text, flag in zip(directive.args, quoted, strict=True))
+    if directive.kind == "EXT":
+        head = f"{directive.plugin}:{directive.name}"
+        return f"[{head}: {args}]" if args else f"[{head}]"
+    if directive.kind not in (*LAYOUTS, *LAYERS):
+        raise ValueError(f"{directive.kind} não é diretiva de layout, camada ou plugin.")
+    return f"[{directive.kind}: {args}]" if args else f"[{directive.kind}]"
+
+
 def _heading(line):
     """(título, id, erro) de uma linha `##`; None quando ela não é título de cena.
 
