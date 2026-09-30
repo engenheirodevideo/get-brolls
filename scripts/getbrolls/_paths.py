@@ -180,8 +180,21 @@ _SHA_CACHE: dict[str, tuple[tuple, str]] = {}
 
 
 def note_profile_env(applied: Mapping[str, str]) -> None:
-    """Registra as chaves que o perfil pôs no ambiente, para citar `profile` como origem."""
+    """Registra as chaves que o perfil pôs no ambiente, para citar `profile` como origem.
+
+    Único registro do processo: `profile` grava aqui e lê daqui (`profile_env`).
+    """
     _PROFILE_ENV.update(applied)
+
+
+def profile_env() -> dict[str, str]:
+    """Cópia do registro: chave `GB_*` → valor que o perfil pôs no ambiente."""
+    return dict(_PROFILE_ENV)
+
+
+def forget_profile_env() -> None:
+    """Esvazia o registro (nova ativação do perfil, ou testes)."""
+    _PROFILE_ENV.clear()
 
 
 def from_profile(key: str) -> bool:
@@ -551,7 +564,8 @@ def build_info() -> dict:
     }
 
 
-def _env_report(env_flag: str | None) -> dict:
+def env_report(env_flag: str | None) -> dict:
+    """Qual `.env` vale (e o que foi procurado); erro de uso vira `{"error"}`, nunca levanta."""
     try:
         choice = env_file(env_flag)
     except UsageError as exc:
@@ -576,7 +590,7 @@ def install_report(env_flag: str | None = None) -> dict:
         "data_missing": missing,
         "cli": {"argv": cli_argv(), "command": cli_command()},
         "runtime": runtime_info(),
-        "env_file": _env_report(env_flag),
+        "env_file": env_report(env_flag),
         "gb_home": str(gb_home()),
         "env_aliases": aliased_env_names(),
     }

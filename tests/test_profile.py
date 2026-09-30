@@ -428,10 +428,11 @@ class RequiresTests(ProfileCase):
         self.assertIsNone(profile.requires_problem(loaded, "2.6.0"))
         self.assertIsNotNone(profile.requires_problem(loaded, "2.6.1"))
 
-    def test_leading_version_keeps_only_the_numeric_prefix(self):
-        self.assertEqual("2.6.0", profile._leading_version("2.6.0rc1"))
-        self.assertEqual("3.2.0", profile._leading_version("3.2.0.dev4+g1"))
-        self.assertEqual("2.6", profile._leading_version("2.6"))
+    def test_installed_version_counts_only_its_numeric_prefix(self):
+        loaded = profile.load(write_profile(self.tmp, 'requires = "==2.6.0"\n'))
+        self.assertIsNone(profile.requires_problem(loaded, "2.6.0rc1"))
+        self.assertIsNone(profile.requires_problem(loaded, " 2.6.0.dev4+g1"))
+        self.assertIsNotNone(profile.requires_problem(loaded, "2.6.1rc1"))
 
 
 class ApplyTests(ProfileCase):

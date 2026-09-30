@@ -382,6 +382,23 @@ def load_env_choice(choice, *, warn):
         record_warning("DEPRECATED", _GB_HOME_IN_ENV_DEPRECATED)
 
 
+def load_environment(args, *, warn):
+    """Perfil e `.env` na ordem do contrato: `home` do perfil → escolha do `.env` → `.env` → resto do perfil.
+
+    O `home` do perfil decide qual `$GB_HOME/.env` é lido; o `.env` vence o resto do
+    perfil. Devolve a escolha do `.env` (`_paths.EnvChoice`). Perfil não confiável ou
+    inválido num comando estrito é `UsageError`; `requires` que não bate,
+    `PrerequisiteError` (ver `profile.activate`).
+    """
+    from . import _paths, profile  # tardio: o `profile` importa o `sdk`, que importa este módulo
+
+    active = profile.activate(args)
+    choice = _paths.env_file(getattr(args, "env_file", None))
+    load_env_choice(choice, warn=warn)
+    profile.finish(active)
+    return choice
+
+
 def _pinned(key):
     """Trimmed value of the pin, or None when the variable is unset or empty."""
     return (os.environ.get(key) or "").strip() or None
