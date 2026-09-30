@@ -87,9 +87,47 @@ class MigrateCommandTests(unittest.TestCase):
 
     def test_invalid_manifest_id_gets_a_new_uuid(self):
         self.write_manifest({"schema_version": 1, "project_id": "not-a-uuid", "items": []})
+        plan = run_cli("migrate", "--action", "plan", project=self.project)
         doc = run_cli("migrate", "--action", "apply", project=self.project)
         self.assertNotEqual("not-a-uuid", doc["id"])
         self.assertEqual(doc["id"], str(uuid.UUID(doc["id"])))
+        self.assertEqual(plan["doc"]["id"], doc["id"])
+
+    def test_plan_shows_the_id_that_apply_writes(self):
+        for raw in (OLD_ID, OLD_ID.upper(), "proj-antigo", None):
+            with self.subTest(raw=raw):
+                (self.project / "project.json").unlink(missing_ok=True)
+                self.write_manifest({"schema_version": 1, "items": [], **({"project_id": raw} if raw else {})})
+                plan = run_cli("migrate", "--action", "plan", project=self.project)
+                applied = run_cli("migrate", "--action", "apply", project=self.project)
+                if raw is None:
+                    self.assertIsNone(plan["doc"]["id"])
+                    self.assertTrue(any("gerado" in note for note in plan["notes"]), plan["notes"])
+                else:
+                    self.assertEqual(plan["doc"]["id"], applied["id"])
+                self.assertEqual(applied["id"], layout.project_id(self.project))
+        upper = {"schema_version": 1, "project_id": OLD_ID.upper(), "items": []}
+        (self.project / "project.json").unlink()
+        self.write_manifest(upper)
+        plan = run_cli("migrate", "--action", "plan", project=self.project)
+        self.assertEqual(OLD_ID, plan["doc"]["id"])
+        self.assertTrue(any("minúsculas" in note for note in plan["notes"]), plan["notes"])
+
+    def test_nonexistent_project_is_refused_and_nothing_is_created(self):
+        ghost = self.base / "nao-existe"
+        for action in ("plan", "apply"):
+            with self.subTest(action=action):
+                refused = run_cli("migrate", "--action", action, project=ghost, expect=1)
+                self.assertIn("não é uma pasta", refused["error"])
+                self.assertFalse(ghost.exists())
+
+    def test_plan_warns_about_a_user_broll_folder(self):
+        (self.project / "broll").mkdir()
+        (self.project / "broll" / "meu-corte.mp4").write_bytes(b"da pessoa")
+        plan = run_cli("migrate", "--action", "plan", project=self.project)
+        self.assertTrue(any("broll/" in note and "clipes finais" in note for note in plan["notes"]), plan["notes"])
+        applied = run_cli("migrate", "--action", "apply", project=self.project)
+        self.assertTrue(any(w["code"] == "MIGRATE_BROLL_EXISTS" for w in applied["warnings"]), applied)
 
     def test_client_comes_from_the_roteiro_and_flag_wins(self):
         (self.project / "ROTEIRO.md").write_text(ROTEIRO, encoding="utf-8")
@@ -116,14 +154,16 @@ class MigrateCommandTests(unittest.TestCase):
         run_cli("migrate", "--action", "apply", project=bare)
         self.assertEqual(1, layout.info(bare).version)
 
-    def test_second_apply_is_refused_and_changes_nothing(self):
-        run_cli("migrate", "--action", "apply", project=self.project)
+    def test_second_apply_is_a_no_op_and_changes_nothing(self):
+        first = run_cli("migrate", "--action", "apply", project=self.project)
         before = snapshot(self.project)
-        refused = run_cli("migrate", "--action", "apply", project=self.project, expect=1)
-        self.assertEqual("INVALID_DATA", refused["error_code"])
-        self.assertIn("project.json", refused["error"])
+        again = run_cli("migrate", "--action", "apply", project=self.project)
+        self.assertEqual((False, first["id"]), (again["changed"], again["id"]))
+        self.assertIn("nada a migrar", again["summary"]["line"])
         self.assertEqual(before, snapshot(self.project))
-        run_cli("migrate", "--action", "plan", project=self.project, expect=1)
+        plan = run_cli("migrate", "--action", "plan", project=self.project)
+        self.assertFalse(plan["changed"])
+        self.assertIn("nada a migrar", plan["summary"]["line"])
 
     def test_broken_project_json_is_refused_and_preserved(self):
         (self.project / "project.json").write_text("{", encoding="utf-8")

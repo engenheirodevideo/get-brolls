@@ -155,7 +155,8 @@ class RegisterTests(StoreTestCase):
         report = analysis.check_all(self.project)
         self.assertFalse(report["ok"])
         self.assertIn(
-            (f"analysis/media/{first['media_id']}", "ORPHAN_MEDIA"), {(p["path"], p["code"]) for p in report["problems"]}
+            (f"analysis/media/{first['media_id']}", "ORPHAN_MEDIA"),
+            {(p["path"], p["code"]) for p in report["problems"]},
         )
         self.assertNotIn(again["media_id"], json.dumps(report["problems"]))
 
@@ -438,7 +439,9 @@ class CommandTests(StoreTestCase):
 
     def test_register_of_a_non_media_file_exits_1(self):
         (self.project / "aroll" / "notas.txt").write_text("texto", encoding="utf-8")
-        refused = run_cli("analysis", "--action", "register", "--path", "aroll/notas.txt", project=self.project, expect=1)
+        refused = run_cli(
+            "analysis", "--action", "register", "--path", "aroll/notas.txt", project=self.project, expect=1
+        )
         self.assertIn("mídia", refused["error"])
         self.assertFalse((self.project / "analysis").exists())
 

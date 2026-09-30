@@ -379,11 +379,12 @@ READ_ONLY_ACTIONS = {
 # troca dos arquivos de `analysis/` fica dentro de `analysis/.lock`.
 OWN_LOCK_ACTIONS = {("analysis", "register")}
 
-# Comandos que criam o projeto e só tomam a trava dele depois de validar tudo: um `init`
-# recusado (cliente desconhecido, template adulterado, flag errada) não pode deixar para
-# trás a pasta do projeto, `brolls/.command.lock` nem um log. O log de auditoria só é
+# Comandos que criam o projeto (ou o `project.json`) e só tomam a trava dele depois de
+# validar tudo: um `init` recusado (cliente desconhecido, template adulterado, flag errada)
+# ou um `migrate` numa pasta que não existe não pode deixar para trás a pasta do projeto,
+# `brolls/.command.lock` nem um log. O log de auditoria só é
 # gravado quando `brolls/` já existe (ou seja, depois que o próprio comando a criou).
-SELF_LOCKED_COMMANDS = ("init",)
+SELF_LOCKED_COMMANDS = ("init", "migrate")
 
 
 # Erro que veio de um plugin: "Plugin <id>: …" (todo erro do core sobre código de

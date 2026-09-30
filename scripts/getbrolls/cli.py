@@ -19,6 +19,7 @@ import sys
 import time
 import traceback
 from gettext import gettext
+from pathlib import Path
 from typing import NoReturn
 
 from . import __version__, _paths, logs, presets, vocab
@@ -1216,8 +1217,9 @@ def main(argv=None):
     project = getattr(args, "project", None)
     read_only = args.command in READ_ONLY_COMMANDS or (args.command, getattr(args, "action", None)) in READ_ONLY_ACTIONS
     _check_preset_name(args)
-    # `init` cria o projeto: o log do app não pode criar `brolls/` antes da validação.
-    logs.configure(project, read_only=read_only or args.command in SELF_LOCKED_COMMANDS)
+    # `init`/`migrate` validam antes de criar: o log do app não pode criar `brolls/` antes disso.
+    creates_tree = args.command in SELF_LOCKED_COMMANDS and not (project and Path(project, "brolls").is_dir())
+    logs.configure(project, read_only=read_only or creates_tree)
 
     try:
         log = logs.get("cli")
