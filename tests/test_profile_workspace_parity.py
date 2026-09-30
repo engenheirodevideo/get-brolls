@@ -11,6 +11,7 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -176,10 +177,25 @@ class ProfileParityTests(WorkspaceParityCase):
     @unittest.skipIf(NT or WHEEL_MODE or not shutil.which("bash"), "o script do workspace é bash sobre o checkout")
     def test_env_wrapper_script_is_equivalent(self):
         self.wrapper_env()  # o script faz o mesmo `mkdir` que o ambiente de A
-        script = self.run_script("doctor", env={**self.base_env(), "GB_PROFILE": "off"})
+        env = {**self.base_env(), "GB_PROFILE": "off"}
+        env["PATH"] = self.pin_python3() + os.pathsep + env.get("PATH", "")
+        script = self.run_script("doctor", env=env)
         direct = self.doctor_a()
         self.assertEqual(direct.returncode, script.returncode, script.stderr)
         self.assertEqual(self.normalized(direct), self.normalized(script))
+
+    def pin_python3(self):
+        """Pasta com um `python3` que executa o interpretador do teste.
+
+        O script do workspace chama `python3` do PATH; sem isto ele poderia ser outra versão
+        que a de A e a comparação mediria a máquina, não o script.
+        """
+        shim_dir = self.tmp / "pinned_python"
+        shim_dir.mkdir(exist_ok=True)
+        shim = shim_dir / "python3"
+        shim.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n', encoding="utf-8")
+        shim.chmod(0o755)
+        return str(shim_dir)
 
     def run_script(self, *args, env):
         return subprocess.run(

@@ -88,6 +88,11 @@ PIP_NETWORK_FAILED = (
     "Falha ao baixar as dependências Python: sem acesso à rede ou ao índice de pacotes (PyPI, proxy, "
     "certificado). Confira a conexão e rode o `setup` de novo."
 )
+PIP_CONFLICT_FAILED = (
+    "Falha ao instalar as dependências Python: o pip não achou um conjunto compatível (conflito entre "
+    "versões ou com o arquivo de restrições requirements.txt). Isso não é sobre a versão do seu Python; "
+    "veja `output_tail` e revise o conjunto fixado."
+)
 PIP_FAILED = "Falha ao instalar as dependências Python (pip saiu com {code}); veja `output_tail`."
 ENSUREPIP_MISSING = (
     "O Python que roda o getbrolls não consegue criar venv (falta o ensurepip). No Debian/Ubuntu, "
@@ -175,6 +180,10 @@ _NETWORK_MARKERS = (
     "connection refused",
 )
 _VERSION_MARKERS = ("requires-python", "requires a different python")
+# Conflito de resolução/restrições: não é a versão do Python nem a rede.
+_CONFLICT_MARKERS = ("resolutionimpossible", "conflicting dependencies", "constraint file", "constraints.txt")
+# "No matching distribution" só aponta o Python quando o pip cita a etiqueta/versão dele.
+_PYTHON_TAG_HINTS = ("python_tag", "no wheel for tag", "different python", "python version", " cp3")
 
 # Ferramenta do sistema → sistema operacional → como instalar. Só dica: o `setup` não instala.
 _NODE_HINTS = {
@@ -404,8 +413,15 @@ def ytdlp_problem(source: str | None, executable: str | None) -> str | None:
     """
     fix = _paths.cli_prefix_text() + " setup"
     if source == "venv" and executable:
-        if venv_health(Path(executable).parent.parent).returncode == 0:  # bin/yt-dlp → .venv
+        folder = Path(executable).parent.parent  # bin/yt-dlp → .venv
+        healthy = venv_health(folder).returncode == 0
+        root = folder.parent
+        marker = _paths.read_marker("venv", root)
+        if healthy and (marker is None or _paths.part_ready("venv", root)):
             return None
+        if healthy:  # venv gerenciada que o `setup` refaz: pela metade ou sem o Python base
+            status = marker.get("status") if marker else None
+            return VENV_EXPECTED.format(status=status, fix=fix) if status != "ready" else VENV_BROKEN.format(fix=fix)
         return VENV_PIN_BROKEN if os.environ.get("GB_VENV_PATH") else VENV_BROKEN.format(fix=fix)
     if source == "path" and not _pinned_key():
         root = _paths.runtime_target("venv").path.parent
@@ -454,19 +470,18 @@ def _free_space_warning(root: Path) -> str | None:
     return LOW_DISK.format(free=free // (1 << 20)) if free < LOW_DISK_BYTES else None
 
 
-def _python_in_range() -> bool:
-    return (3, 11) <= sys.version_info[:2] <= (3, 13)
-
-
 def _classify_pip(result: StepResult) -> str:
-    """Mensagem para a falha do pip: rede/índice, versão do Python ou genérica."""
+    """Mensagem para a falha do pip: versão do Python (só se o pip disser), conflito, rede ou genérica."""
     text = "\n".join(result.output).lower()
+    version_failed = PIP_VERSION_FAILED.format(version=_python_version())
     if any(marker in text for marker in _VERSION_MARKERS):
-        return PIP_VERSION_FAILED.format(version=_python_version())
+        return version_failed
+    if any(marker in text for marker in _CONFLICT_MARKERS):
+        return PIP_CONFLICT_FAILED
     if any(marker in text for marker in _NETWORK_MARKERS):
         return PIP_NETWORK_FAILED
-    if "no matching distribution" in text:
-        return PIP_NETWORK_FAILED if _python_in_range() else PIP_VERSION_FAILED.format(version=_python_version())
+    if "no matching distribution" in text and any(hint in text for hint in _PYTHON_TAG_HINTS):
+        return version_failed
     return PIP_FAILED.format(code=result.returncode)
 
 
