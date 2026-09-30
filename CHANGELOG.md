@@ -56,7 +56,9 @@ O vídeo agora nasce como roteiro (`ROTEIRO.md`), segue para a coleta de b-roll 
 - **Recusa de caminho normalizada.** O export recusa caminho desta máquina em qualquer grafia — barras trocadas, `NFD`, percent-encoding, `file://`, barra repetida, sem caixa — em qualquer arquivo gravado, não só na grafia óbvia.
 - **Nome curto do Windows.** No Windows, a recusa de caminho desta máquina no export vale também para o nome curto (8.3) de qualquer pasta do caminho (`PROGRA~1` no lugar de `Program Files`, por exemplo; o TEMP costuma vir assim), e não só para o nome longo que o sistema devolve. O aviso de texto com cara de caminho (`find_local_paths`) acha a pasta pessoal escrita tanto com `/` quanto com `\`.
 
-### Migração: nada a fazer
+### Migração
+
+- **Script que testava `exit 2` para erro de operação/dados: agora é `1`; `2` fica só para erro de uso.** Um ID errado, falta de aprovação ou link fora do ar saía com `2`, o mesmo código de flag errada; agora sai com `1`. Quem só confere "diferente de 0" (`set -e`) não precisa mudar nada. Tabela completa em "Instalação e CLI", abaixo.
 
 Projeto da 2.5 segue exatamente igual: nada muda sem um `ROTEIRO.md` do get-brolls. As pastas `aroll/`, `assets/` e `exports/` só nascem quando alguém roda `roteiro --action new` ou `export`; um projeto que nunca usa roteiro nunca as vê.
 
@@ -107,6 +109,10 @@ Projeto da 2.5 segue exatamente igual: nada muda sem um `ROTEIRO.md` do get-brol
 - **"Você quis dizer …?"** Subcomando, flag ou valor de `choices` digitado quase certo ganha a sugestão do nome parecido (`serch` → `search`, `--limt` → `--limit`), em `suggestion` no JSON ou numa linha a mais no terminal.
 - **`usage: getbrolls …`.** A ajuda e os erros de uso chamam a CLI de `getbrolls`, também no checkout (`python3 scripts/gb.py`).
 <!-- W1:T7b -->
+- **Códigos de saída.** `0` deu certo · `1` erro de operação ou de dados (ID errado, falta aprovação, link fora do ar, `ValueError` de qualquer comando, inclusive `serve` em primeiro plano, comando de plugin e exportador) · `2` erro de uso (comando, flag ou configuração: argparse, `--env-file`/`GB_ENV_FILE` que não existe, chave que um `.env` não pode definir) · `3` erro interno (bug) · `4` falta pré-requisito da instalação (arquivos de dados, ffmpeg, yt-dlp; `error_code: "PREREQUISITE_MISSING"`) · `130` interrompido (Ctrl+C, `error_code: "INTERRUPTED"`). Antes, operação/dados, pré-requisito e interrupção saíam com `2`. Veja "Migração", acima.
+- **Nenhum traceback para a pessoa.** O JSON de erro de qualquer comando não traz mais `traceback` nem `repr` (antes só `plugins`, `x`, `export`, `assets` e `ValueError` do `roteiro` saíam limpos); os dois continuam, redigidos, no `brolls/diagnostics.jsonl`. Sem projeto, o erro vai para `$GB_HOME/diagnostics.jsonl`, e o JSON aponta o arquivo em `log`. O erro interno (código 3) mostra só `error`, `error_code`, `type`, `log` e `app_log`, e a mensagem cita o tipo (`[type: KeyError]`), não a classe.
+- **`.env` recusado é `USAGE_ERROR`.** `--env-file`/`GB_ENV_FILE` que não existe e `GB_ENV_FILE`/`GB_HOME` onde não podem saem com `error_code: "USAGE_ERROR"` (antes `INVALID_DATA`); o código de saída continua `2`.
+- **`| head` sem traceback.** Quando quem lê a saída fecha o pipe antes do fim, o comando sai com `0`, sem "Exception ignored … BrokenPipeError" no stderr.
 <!-- W1:T8 -->
 <!-- W1:T9 -->
 <!-- W1:T10 -->

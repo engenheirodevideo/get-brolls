@@ -562,7 +562,7 @@ Todo comando responde em **JSON**. Pensa como o **relatório de render**: um tex
   - `command`: o comando pronto pra copiar.
   - `why`: por que é esse o próximo passo.
   - `blocking_human`: `true` quando o próximo passo depende de **você** (aprovar, dar uma informação).
-- 🔴 **Deu erro?** A mensagem sai na última linha, também em JSON, com `error` (o que houve) e `error_code` (o tipo do erro).
+- 🔴 **Deu erro?** A mensagem de erro sai em JSON em stderr, numa linha só, com `error` (o que houve) e `error_code` (o tipo do erro). Nunca sai traceback: os detalhes técnicos ficam em `brolls/diagnostics.jsonl` (ou em `~/.getbrolls/diagnostics.jsonl`, quando o comando não tem projeto).
 - ⌨️ **Comando ou flag digitado errado** (erro de uso, código `2`): fora do terminal (agente, script) sai um JSON em stderr com `error`, `error_code: "USAGE_ERROR"`, `usage`, `prog` e `suggestion` (o nome parecido, ou `null`); no terminal, sai o texto do `usage` e, quando há nome parecido, "Você quis dizer: search?".
 
 **Código de saída** (o número que o terminal guarda depois de cada comando, útil em scripts):
@@ -570,8 +570,13 @@ Todo comando responde em **JSON**. Pensa como o **relatório de render**: um tex
 | Código | Significa |
 |---|---|
 | `0` | Deu certo |
-| `2` | Erro de uso ou de dados: um ID errado, falta aprovação, link fora do ar |
+| `1` | Erro de operação ou de dados: um ID errado, falta aprovação, link fora do ar |
+| `2` | Erro de uso: comando, flag ou configuração (`--env-file` que não existe, por exemplo) |
 | `3` | Erro interno (bug). Abra uma issue com o `brolls/diagnostics.jsonl` |
+| `4` | Falta um pré-requisito da instalação: arquivos de dados, ffmpeg, yt-dlp |
+| `130` | Interrompido (Ctrl+C) |
+
+> Até a 2.5, erro de operação ou de dados também saía com `2`. Script que testava `$? -eq 2` para esses erros agora testa `1`.
 
 ---
 

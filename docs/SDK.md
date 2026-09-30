@@ -427,7 +427,7 @@ api.command("recentes", recentes, "Lista os vídeos mais recentes da pasta")
   Comando **só lê** o projeto: não há como gravar no ledger, e `x` não toma a
   trava exclusiva nem cria `brolls/`.
 - O retorno tem que ser um objeto JSON (dict). Exceção no handler vira erro
-  `Plugin <id>: o comando <nome> falhou (<tipo>)`, exit 2; com `PluginError`,
+  `Plugin <id>: o comando <nome> falhou (<tipo>)`, exit 1; com `PluginError`,
   a mensagem é `Plugin <id>: <texto>` (veja
   [Mensagens de erro](#mensagens-de-erro-pluginerror)).
 
@@ -579,7 +579,7 @@ def register(api):
   até três vezes), NFD, com barras repetidas ou, no Windows, com o nome curto
   (8.3, como `PROGRA~1`) de uma pasta do caminho. Texto que só tem cara de caminho
   (vindo da fala do roteiro, por exemplo) sai como está, com um aviso.
-- **Falha.** Exceção no exportador vira erro `Plugin <id>: …` (exit 2): o texto
+- **Falha.** Exceção no exportador vira erro `Plugin <id>: …` (exit 1): o texto
   de um `PluginError`, ou só o tipo de qualquer outra exceção. Um resultado fora
   das regras abaixo também vira erro, que diz qual regra quebrou.
 - **Plugin indisponível.** Só plugin `enabled` exporta. Com o plugin
