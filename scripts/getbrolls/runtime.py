@@ -595,6 +595,10 @@ def audited(args, execute):
     self_locked = args.command in SELF_LOCKED_COMMANDS
     log = diagnostics_path(project)
     app_log_path = Path(project).resolve() / "brolls" / "getbrolls.log" if project else None
+    # `init` numa pasta que ainda não existe: se falhar, a pasta some e o diagnóstico vai para
+    # `$GB_HOME/diagnostics.jsonl` (o de quando não há projeto), não para uma pasta que a pessoa
+    # nunca criou.
+    fresh_init = args.command == "init" and bool(project) and not Path(project).expanduser().exists()
     result = None
     failure = None
     try:
@@ -615,9 +619,13 @@ def audited(args, execute):
         OverflowError,
     ) as exc:
         _classify_audited_error(event, exc, log if project else None)
+        if fresh_init:
+            log, app_log_path, project = diagnostics_path(None), None, None
         failure = _audited_error_failure(args, event, log, app_log_path)
         raise failure from None
     except KeyboardInterrupt:
+        if fresh_init:
+            log, app_log_path, project = diagnostics_path(None), None, None
         failure = _audited_interrupt_failure(event, log, app_log_path)
         raise failure from None
     finally:

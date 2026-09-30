@@ -1,6 +1,8 @@
 """`init --template`: projeto novo a partir de uma versão de template do cliente, com `template.lock.json`."""
 
 import argparse
+import contextlib
+import io
 import json
 import os
 import unittest
@@ -12,7 +14,7 @@ from _paths import ROOT
 from _schemas import close
 from test_template_freeze import TemplateCase, _schema, reseal_template
 
-from getbrolls import assets, export, layout, roteiro, runtime, templates
+from getbrolls import assets, cli, export, layout, roteiro, runtime, templates
 from getbrolls.sdk import jsonschema
 
 REF = "cat:getbrolls/template/reels-acme@1"
@@ -118,6 +120,62 @@ class InstantiateTests(InstantiateCase):
         refused = self.init(expect=1)
         self.assertIn("template.sha256", refused["error"])
         self.assertFalse(self.new.exists())
+
+    def test_io_error_mid_copy_logs_to_the_home_fallback_and_leaves_no_folder(self):
+        argv = [
+            "getbrolls",
+            "init",
+            "--template",
+            REF,
+            "--client",
+            "acme",
+            "--tema",
+            "Novo",
+            "--project",
+            str(self.new),
+        ]
+        err = io.StringIO()
+        with (
+            patch.object(cli.sys, "argv", argv),
+            patch.object(templates, "copy_hashed", side_effect=OSError("leitura falhou")),
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(err),
+        ):
+            code = cli.entrypoint()
+        self.assertEqual(1, code, err.getvalue())
+        self.assertFalse(self.new.exists(), "a pasta que o init criou tem que sumir, log incluído")
+        events = [
+            json.loads(line) for line in (self.home / "diagnostics.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(["init"], [e["operation"] for e in events])
+        self.assertEqual("IO_ERROR", events[0]["error_code"])
+        self.assertEqual(str(self.home / "diagnostics.jsonl"), json.loads(err.getvalue())["log"])
+
+    def test_io_error_in_a_pre_existing_folder_leaves_it_and_its_content(self):
+        self.new.mkdir()
+        (self.new / "notas.txt").write_text("meu", encoding="utf-8")
+        argv = [
+            "getbrolls",
+            "init",
+            "--template",
+            REF,
+            "--client",
+            "acme",
+            "--tema",
+            "Novo",
+            "--project",
+            str(self.new),
+        ]
+        with (
+            patch.object(cli.sys, "argv", argv),
+            patch.object(templates, "copy_hashed", side_effect=OSError("leitura falhou")),
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            code = cli.entrypoint()
+        self.assertEqual(1, code)
+        self.assertEqual(["notas.txt"], sorted(p.name for p in self.new.iterdir() if p.name != "brolls"))
+        self.assertFalse((self.new / "project.json").exists())
 
     def test_template_needs_client_and_tema(self):
         refused = run_cli("init", "--template", REF, "--tema", "x", project=self.new, expect=2)
