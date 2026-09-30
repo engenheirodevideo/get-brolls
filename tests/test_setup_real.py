@@ -70,12 +70,22 @@ class RealSetupTests(unittest.TestCase):
             self.assertEqual(0, where.returncode, where.stderr)
             self.assertTrue(Path(json.loads(where.stdout)["path"]).is_relative_to(home / "runtime"))
 
-            upgraded = _setup(home, "--upgrade", "ytdlp")
-            self.assertIn(upgraded.returncode, (0, 4), upgraded.stderr)
-            self.assertEqual("upgraded", json.loads(upgraded.stdout)["upgrade"]["status"])
-            marker = json.loads((folder.parent / ".getbrolls-runtime-venv.json").read_text(encoding="utf-8"))
-            self.assertEqual("ready", marker["status"])
+            self.check_upgrade(home, folder)
+
+    def check_upgrade(self, home, folder):
+        """`--upgrade ytdlp` de verdade: `upgraded`, ou `unchanged` quando a fixada já é a mais nova."""
+        upgraded = _setup(home, "--upgrade", "ytdlp")
+        self.assertIn(upgraded.returncode, (0, 4), upgraded.stderr)
+        upgrade = json.loads(upgraded.stdout)["upgrade"]
+        # Sem versão mais nova que a fixada no índice, o honesto é `unchanged` (com aviso).
+        self.assertIn(upgrade["status"], ("upgraded", "unchanged"), upgrade)
+        marker = json.loads((folder.parent / ".getbrolls-runtime-venv.json").read_text(encoding="utf-8"))
+        self.assertEqual("ready", marker["status"])
+        if upgrade["status"] == "upgraded":
             self.assertTrue(marker["upgraded"]["yt-dlp"])
+        else:
+            self.assertTrue(upgrade["warnings"])
+            self.assertEqual(upgrade["previous"], upgrade["version"])
 
 
 if __name__ == "__main__":

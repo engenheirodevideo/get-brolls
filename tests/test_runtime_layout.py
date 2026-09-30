@@ -51,9 +51,10 @@ def _clean_env(**values):
 
 
 def _build_venv(root, home=None):
-    """`.venv` mínima: só o `pyvenv.cfg` que o `part_ready` confere."""
+    """`.venv` mínima: o `pyvenv.cfg` e o Python da venv que o `part_ready` confere."""
     home = home if home is not None else Path(sys.executable).parent
     _touch(root / ".venv" / "pyvenv.cfg", f"home = {home}\nversion = 3\n")
+    _touch(paths.venv_python(root / ".venv"))
 
 
 class _Layout(unittest.TestCase):

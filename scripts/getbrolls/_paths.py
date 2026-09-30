@@ -289,6 +289,11 @@ def write_marker(part: str, root: Path, status: str, extra: Mapping[str, object]
     return path
 
 
+def venv_python(folder: Path) -> Path:
+    """O Python da própria `.venv` (`bin/python`, ou `Scripts/python.exe` no Windows)."""
+    return folder / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+
+
 def _venv_base_exists(venv: Path) -> bool:
     """O Python base da `.venv` (`home` do `pyvenv.cfg`) ainda existe?"""
     try:
@@ -302,15 +307,31 @@ def _venv_base_exists(venv: Path) -> bool:
     return False
 
 
+def _venv_intact(folder: Path, marker: Mapping) -> bool:
+    """A `.venv` ainda tem Python: o base que a criou (marcador e `pyvenv.cfg`) e o dela.
+
+    `Path.exists` segue links: `bin/python` → `python3.X` → um Python removido conta
+    como ausente, mesmo com a pasta `home` do `pyvenv.cfg` ainda lá (o `/usr/bin` do Debian).
+    """
+    base = marker.get("python")
+    if not isinstance(base, str) or not base or not Path(base).exists():
+        return False
+    return venv_python(folder).exists() and _venv_base_exists(folder)
+
+
 def part_ready(part: str, root: Path) -> bool:
-    """A parte em `root` está pronta: marcador `ready` da versão atual e pasta íntegra."""
+    """A parte em `root` está pronta: marcador `ready` da versão atual e pasta íntegra.
+
+    Só olha arquivos (barato, chamado a cada resolução); a sonda que roda o Python da
+    venv (`bootstrap.venv_health`) fica com `setup`, `setup --check` e `doctor`.
+    """
     marker = read_marker(part, root)
     sha = part_sha(part)
     if marker is None or sha is None or marker.get("status") != "ready" or marker.get("sha") != sha:
         return False
     folder = root / RUNTIME_PARTS[part]
     if part == "venv":
-        return _venv_base_exists(folder)
+        return _venv_intact(folder, marker)
     return folder.is_dir()
 
 

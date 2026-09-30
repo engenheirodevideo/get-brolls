@@ -1104,9 +1104,13 @@ def main(argv=None):
 
 def result_exit(command, result):
     """Código de saída de um comando que deu certo: 4 só para `doctor`/`setup` com
-    `"ready": false` (o resultado sai em stdout do mesmo jeito); 0 para o resto."""
+    `"ready": false` (o resultado sai em stdout do mesmo jeito); 1 para `setup --upgrade`
+    cuja atualização falhou com a venv refeita na versão fixada (`upgrade.status: "failed"`,
+    `ready: true`), para o script perceber; 0 para o resto."""
     if command in PREREQUISITE_COMMANDS and isinstance(result, dict) and result.get("ready") is False:
         return EXIT_PREREQUISITE
+    if command == "setup" and isinstance(result, dict) and (result.get("upgrade") or {}).get("status") == "failed":
+        return EXIT_OPERATION_ERROR
     return EXIT_OK
 
 

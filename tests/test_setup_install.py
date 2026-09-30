@@ -23,13 +23,16 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _paths import CLI_ARGV, ROOT
 
 from getbrolls import _paths, bootstrap, cli, runtime
-from getbrolls.errors import UsageError
+from getbrolls.errors import LockedError, UsageError
 
 WINDOWS = os.name == "nt"
 PYTHON_LAYOUT = "Scripts/python.exe" if WINDOWS else "bin/python"
 YTDLP_LAYOUT = "Scripts/yt-dlp.exe" if WINDOWS else "bin/yt-dlp"
 CLI_NAMES = ("playwright-cli", "playwright-cli.cmd") if WINDOWS else ("playwright-cli",)
 VENV_LABELS = ("venv", "pip", "probe", "version", "upgrade")
+# A sonda de saúde da venv (`python -I -c "import yt_dlp"`) roda em toda conferência;
+# `labels()` a deixa de fora para as sequências de montagem ficarem legíveis.
+HEALTH = bootstrap.HEALTH_LABEL
 TOOLS_LABELS = ("node", "npm", "playwright")
 _CLEARED = ("GB_HOME", "GETBROLLS_HOME", "GB_RUNTIME_DIR", "GB_ENV_FILE", "GB_YTDLP_PATH", "GB_VENV_PATH")
 
@@ -62,7 +65,7 @@ def _make_venv(folder):
     _touch(folder / "pyvenv.cfg", f"home = {Path(sys.executable).parent}\nversion = 3\n")
 
 
-class FakeRunner:
+class FakeRunner:  # pylint: disable=too-many-instance-attributes  # um botão por comportamento simulado
     """Substituto de `run_step`: registra `(label, argv, cwd, env)` e simula cada passo."""
 
     def __init__(self, fail=None, interrupt=None, version="2026.8.19"):
@@ -70,11 +73,16 @@ class FakeRunner:
         self.fail = dict(fail or {})
         self.interrupt = interrupt
         self.version = version
+        self.upgrade_to: str | None = None  # versão que o `upgrade` passa a responder (None: não muda)
+        self.health = 0  # código da sonda de saúde da venv
         self.node = "v22.11.0"
         self.markers = []  # status do marcador visto em cada chamada de pip
 
     def labels(self):
-        return [call[0] for call in self.calls]
+        return [call[0] for call in self.calls if call[0] != HEALTH]
+
+    def health_calls(self):
+        return [call for call in self.calls if call[0] == HEALTH]
 
     def __call__(self, argv, *, cwd=None, env=None, timeout, label):
         del timeout
@@ -84,6 +92,10 @@ class FakeRunner:
         if label in self.fail:
             code, output = self.fail.pop(label)
             return bootstrap.StepResult(code, tuple(output))
+        return self._simulate(label, argv, cwd)
+
+    def _simulate(self, label, argv, cwd):
+        """O que o passo real deixaria no disco, e a saída dele."""
         if label == "venv":
             _make_venv(Path(argv[-1]))
         elif label in ("pip", "upgrade"):
@@ -91,6 +103,10 @@ class FakeRunner:
             marker = _paths.read_marker("venv", venv.parent) or {}
             self.markers.append(marker.get("status"))
             _touch(venv / YTDLP_LAYOUT)
+            if label == "upgrade" and self.upgrade_to:
+                self.version = self.upgrade_to
+        elif label == HEALTH:
+            return bootstrap.StepResult(self.health, () if self.health == 0 else ("ModuleNotFoundError: yt_dlp",))
         elif label == "version":
             return bootstrap.StepResult(0, (self.version,))
         elif label == "node":
@@ -449,7 +465,7 @@ class ForeignAndPinTests(_Setup):
         with (root / bootstrap.LOCK_NAME).open("a+", encoding="utf-8") as held:
             runtime._acquire_lock(held)  # pylint: disable=protected-access
             try:
-                with self.assertRaises(ValueError) as caught:
+                with self.assertRaises(LockedError) as caught:
                     self.install()
             finally:
                 runtime._release_lock(held)  # pylint: disable=protected-access
@@ -552,7 +568,7 @@ class ToolsTests(_Setup):
         with (root / bootstrap.LOCK_NAME).open("a+", encoding="utf-8") as held:
             runtime._acquire_lock(held)  # pylint: disable=protected-access
             try:
-                with self.assertRaises(ValueError) as caught:
+                with self.assertRaises(LockedError) as caught:
                     self.install()
             finally:
                 runtime._release_lock(held)  # pylint: disable=protected-access
@@ -648,7 +664,7 @@ class SystemHintTests(unittest.TestCase):
 
 class UpgradeTests(_Setup):
     def test_upgrade_ytdlp_updates_the_managed_venv_and_records_it(self):
-        self.runner.version = "2026.9.1"
+        self.runner.upgrade_to = "2026.9.1"
         result = self.install(upgrade="ytdlp")
         _label, argv, _cwd, _env = next(call for call in self.runner.calls if call[0] == "upgrade")
         for arg in ("--upgrade", "yt-dlp[default]", "yt-dlp-ejs", "--disable-pip-version-check", "--no-input"):
@@ -668,7 +684,7 @@ class UpgradeTests(_Setup):
         result = self.install(upgrade="ytdlp")
         self.assertEqual("failed", result["upgrade"]["status"])
         self.assertIn("fixada", result["upgrade"]["error"])
-        self.assertEqual(["upgrade", "venv", "pip", "probe", "version"], self.runner.labels())
+        self.assertEqual(["version", "upgrade", "venv", "pip", "probe", "version"], self.runner.labels())
         marker = _paths.read_marker("venv", self.root())
         assert marker is not None
         self.assertEqual("ready", marker["status"])
