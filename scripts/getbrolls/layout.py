@@ -173,7 +173,8 @@ def _write_new(path, text):
         temp.unlink(missing_ok=True)
 
 
-def _slug(value, label):
+def check_client(value, label="client"):
+    """O slug de cliente como veio (ou `None`); `ValueError` quando não é um slug válido."""
     if value is None:
         return None
     if not isinstance(value, str) or len(value) > SLUG_MAX or not SLUG_RE.fullmatch(value):
@@ -190,7 +191,7 @@ def new_project_doc(*, project_id=None, client=None, template=None, canvas=None,
         {
             "id": project_id or str(uuid.uuid4()),
             "layout": LAYOUT_VERSION,
-            "client": _slug(client, "client"),
+            "client": check_client(client),
             "template": template,
             "canvas": canvas,
             "fps": fps,

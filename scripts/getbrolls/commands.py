@@ -2548,6 +2548,13 @@ def _execute_serve(args):
     return serve_module.run(args.project, port)
 
 
+def _execute_init(args):
+    """`init`: cria um projeto novo de layout 1 (`project.json` e as pastas de trabalho)."""
+    from getbrolls import project_init
+
+    return project_init.run(args)
+
+
 def _execute_init_rules(args):
     """`init-rules`: cria RULES.md a partir do template, ou regrava só o bloco JSON com --force."""
     dest = Path(args.project) / "RULES.md"
@@ -2641,6 +2648,7 @@ def _execute_export(args):
 # Comandos administrativos que não tocam em `rules`/`ledger` do vídeo. `learn`/`library` são a
 # biblioteca pessoal, que vive fora do projeto e não depende das regras dele.
 _ADMIN_COMMAND_HANDLERS = {
+    "init": _execute_init,
     "init-rules": _execute_init_rules,
     "init-brief": _execute_init_brief,
     # Somente leitura, como status: orienta a coleta sem criar nada no projeto.

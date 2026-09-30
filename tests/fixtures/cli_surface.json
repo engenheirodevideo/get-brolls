@@ -650,6 +650,72 @@
         }
       ]
     },
+    "init": {
+      "help": "Criar um projeto novo de layout 1: project.json, aroll/, assets/, broll/ e analysis/",
+      "options": [
+        {
+          "action": "_HelpAction",
+          "choices": null,
+          "default": "==SUPPRESS==",
+          "dest": "help",
+          "help": "show this help message and exit",
+          "nargs": 0,
+          "option_strings": [
+            "--help",
+            "-h"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "project",
+          "help": "Pasta do projeto que guarda brolls/, fora da instalação da skill",
+          "nargs": null,
+          "option_strings": [
+            "--project"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "client",
+          "help": "Slug do cliente do projeto (ex.: acme-corp)",
+          "nargs": null,
+          "option_strings": [
+            "--client"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "canvas",
+          "help": "Tamanho do quadro em pixels, LARGURAxALTURA (ex.: 1080x1920)",
+          "nargs": null,
+          "option_strings": [
+            "--canvas"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "fps",
+          "help": "Quadros por segundo: inteiro (30) ou fração (30000/1001)",
+          "nargs": null,
+          "option_strings": [
+            "--fps"
+          ],
+          "required": false
+        }
+      ]
+    },
     "init-brief": {
       "help": "Criar um BRIEF.md editável com o plano deste vídeo",
       "options": [
