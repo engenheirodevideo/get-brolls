@@ -596,7 +596,9 @@ def audited(args, execute):
         with project_lock(None if read_only or own_lock or self_locked else project):
             result = execute(args)
             event["status"] = "success"
-            if event["warnings"] and isinstance(result, dict):
+            # Comando que já devolve a própria lista de avisos (o `export`) marca o evento;
+            # os avisos continuam no evento, e portanto no diagnostics.jsonl.
+            if event["warnings"] and isinstance(result, dict) and not event.get("warnings_in_result"):
                 result = {**result, "warnings": event["warnings"]}
             return result
     except (

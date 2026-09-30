@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import unittest
 from unittest.mock import patch
 
@@ -188,6 +189,26 @@ class LockDriftTests(InstantiateCase):
         (self.new / "template.lock.json").write_text("{", encoding="utf-8")
         self.assertIn("template.lock.json", " ".join(templates.lock_warnings(self.new)))
 
+    def test_a_deleted_copy_is_reported_as_gone_even_if_another_one_resolves(self):
+        self.init()
+        self.put(self.client / "components" / "sfx", "whoosh.wav", b"outro whoosh do cliente")
+        (self.new / "assets" / "sfx" / "whoosh.wav").unlink()
+        warnings = [w for w in templates.lock_warnings(self.new) if "whoosh" in w]
+        self.assertEqual(1, len(warnings), warnings)
+        self.assertIn("sumiu", warnings[0])
+        self.assertNotIn("mudou", warnings[0])
+
+    def test_unchanged_components_are_not_hashed_again(self):
+        self.init()
+        rows = {row["name"]: row for row in self.lock()["components"]}
+        self.assertEqual((self.new / "assets" / "sfx" / "whoosh.wav").stat().st_size, rows["whoosh"]["size"])
+        with patch.object(templates, "sha256_file", side_effect=AssertionError("hash completo")):
+            self.assertEqual([], templates.lock_warnings(self.new))
+        path = self.new / "assets" / "sfx" / "whoosh.wav"
+        stat = path.stat()
+        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+        self.assertEqual([], templates.lock_warnings(self.new))
+
     def test_project_without_lock_has_no_warning(self):
         run_cli("init", project=self.new)
         self.assertEqual([], templates.lock_warnings(self.new))
@@ -213,7 +234,12 @@ class ExportWarningTests(unittest.TestCase):
         ):
             out = export.run(args)
         self.assertEqual(["sfx mudou", "aviso do export", "cliente ghost fora do registro"], out["warnings"])
-        self.assertEqual([], event["warnings"])
+        # O evento de diagnóstico guarda os avisos com o código, como no status.
+        self.assertEqual(
+            [("TEMPLATE_LOCK_DRIFT", "sfx mudou"), ("CLIENT_UNREGISTERED", "cliente ghost fora do registro")],
+            [(w["code"], w["message"]) for w in event["warnings"]],
+        )
+        self.assertTrue(event.get("warnings_in_result"))
 
 
 class HostileTemplateTests(InstantiateCase):

@@ -357,19 +357,23 @@ def run(args):
     project = Path(args.project).expanduser().resolve()
     from . import runtime, templates  # local: templates importa o roteiro inteiro
 
-    drift = templates.lock_warnings(project)
     event = runtime.ACTIVE.get()
+    drift = templates.lock_warnings(project)
+    for warning in drift:
+        # O mesmo código do `status`: o evento de diagnóstico guarda o aviso com ele.
+        runtime.record_warning("TEMPLATE_LOCK_DRIFT", warning)
     start = len(event["warnings"]) if event is not None else 0
     try:
         result = _run(args, name, project)
     except OSError as exc:
         raise _os_error(exc, project) from exc
     # Aviso registrado no meio do export (cliente não registrado, por exemplo) entra na lista de
-    # texto do próprio export, em vez de substituí-la na saída do comando.
+    # texto do próprio export. O evento continua com todos os avisos (e os códigos) para o
+    # diagnóstico; `warnings_in_result` só diz ao `audited` que a saída já traz a lista.
     folded = []
     if event is not None:
         folded = [row["message"] for row in event["warnings"][start:]]
-        del event["warnings"][start:]
+        event["warnings_in_result"] = True
     if drift or folded:
         result = {**result, "warnings": [*drift, *result.get("warnings", []), *folded]}
     return result

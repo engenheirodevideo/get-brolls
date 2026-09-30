@@ -61,6 +61,14 @@ class ReadSchemaTests(unittest.TestCase):
             self.assertIn("project.json é incompatível", str(ctx.exception))
             self.assertNotIn(NEWER, str(ctx.exception))
 
+    def test_newer_is_a_dedicated_exception_and_invalid_takes_a_message(self):
+        with self.assertRaises(versioning.NewerSchemaError):
+            versioning.read_schema({"schema": "getbrolls.project/2"}, "project")
+        with self.assertRaises(ValueError) as ctx:
+            versioning.read_schema({"schema": "getbrolls.client/1"}, "project", invalid="mensagem própria")
+        self.assertNotIsInstance(ctx.exception, versioning.NewerSchemaError)
+        self.assertEqual("mensagem própria", str(ctx.exception))
+
     def test_stamp_schema_puts_the_field_first_and_copies(self):
         data = {"id": "x", "schema": "velho"}
         stamped = versioning.stamp_schema(data, "project")

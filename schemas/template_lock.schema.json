@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Get B-rolls template lock v1",
   "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/template_lock.schema.json",
-  "description": "O template.lock.json na raiz de um projeto criado por init --template: qual versão de template (cliente + ref) foi aplicada, o sha256 do template.json dela e, para cada componente, o sha256 e onde ficou. installed_as é \"client\" quando a pasta do cliente já tem o mesmo arquivo (achado pelo mesmo nome e com o mesmo sha256), ou o caminho relativo do projeto (assets/<tipo>/<arquivo>) para onde ele foi copiado, sem licença. status e export avisam quando o componente achado hoje tem outro sha256. A versão do arquivo mora em schema (getbrolls.template_lock/<N>).",
+  "description": "O template.lock.json na raiz de um projeto criado por init --template: qual versão de template (cliente + ref) foi aplicada, o sha256 do template.json dela e, para cada componente, o sha256 e onde ficou. installed_as é \"client\" quando a pasta do cliente já tem o mesmo arquivo (achado pelo mesmo nome e com o mesmo sha256), ou o caminho relativo do projeto (assets/<tipo>/<arquivo>) para onde ele foi copiado, sem licença. status e export avisam quando o componente achado hoje tem outro sha256 ou sumiu; size e mtime_ns (opcionais) são só cache: iguais aos do arquivo, o sha256 não é recalculado. A versão do arquivo mora em schema (getbrolls.template_lock/<N>).",
   "type": "object",
   "required": ["schema", "ref", "client", "template_sha256", "applied", "components"],
   "properties": {
@@ -31,6 +31,12 @@
             "type": "string",
             "pattern": "^(client|assets/[a-z]+/[^/\\\\:]+)$",
             "maxLength": 300
+          },
+          "size": { "type": "integer", "minimum": 0, "description": "Tamanho em bytes do arquivo no init (cache do status)." },
+          "mtime_ns": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "mtime em ns do arquivo no init: com o tamanho igual, o status não recalcula o sha256."
           }
         }
       }

@@ -663,15 +663,16 @@ def _refuse_existing(project):
             raise ValueError(f"{name} já existe em {project}; init --template não sobrescreve nada.")
 
 
-def _client_copy(client, spec, row):
-    """A pasta do cliente já tem esse componente (mesmo nome achado e mesmo sha256)?"""
+def _client_match(client, spec, row):
+    """O arquivo único da pasta do cliente com o nome do componente, ou `None`."""
     folder = assets.client_components(client, spec)
     if folder is None:
-        return False
+        return None
     matches = assets.component_entries(folder, spec).get(fold(unicodedata.normalize("NFC", row["name"])), [])
     if len(matches) != 1 or is_link(matches[0]) or not matches[0].is_file():
-        return False
-    return sha256_file(matches[0]) == row["sha256"]
+        return None
+    return matches[0]
+
 
 
 def _install(project, folder, doc, created):
@@ -685,7 +686,8 @@ def _install(project, folder, doc, created):
     for row in doc["components"]:
         spec = assets.ASSET_KINDS[row["kind"]]
         source = component_path(folder, row["file"], row["kind"])
-        if _client_copy(client, spec, row):
+        placed = _client_match(client, spec, row)
+        if placed is not None and sha256_file(placed) == row["sha256"]:
             where = "client"
         else:
             where = f"{spec.folder}/{source.name}"
@@ -693,12 +695,24 @@ def _install(project, folder, doc, created):
             _no_link(target.parent)
             copy_hashed(source, target, expected=row["sha256"])
             created.append(target)
+            placed = target
             if spec.licensed:
                 warnings.append(
                     f"{where}: licença não transferida pelo template; registre {source.stem}{assets.LICENSE_SUFFIX} "
                     "antes de usar."
                 )
-        installed.append({"kind": row["kind"], "name": row["name"], "sha256": row["sha256"], "installed_as": where})
+        seen = placed.stat()
+        installed.append(
+            {
+                "kind": row["kind"],
+                "name": row["name"],
+                "sha256": row["sha256"],
+                "installed_as": where,
+                # Cache do `status`: tamanho e mtime iguais aos daqui pulam o sha256 do arquivo.
+                "size": seen.st_size,
+                "mtime_ns": seen.st_mtime_ns,
+            }
+        )
     return installed, warnings
 
 
@@ -840,8 +854,14 @@ def lock_warnings(project) -> list:
     declared = layout.info(project).doc or {}
     if (declared.get("client"), declared.get("template")) != (lock["client"], lock["ref"]):
         out.append(f"{LOCK_FILE} é do template {lock['ref']} do cliente {lock['client']}, diferente do project.json.")
+    root = Path(project).expanduser().resolve()
     for row in lock["components"]:
         label = f'{row["kind"]} "{row["name"]}"'
+        installed = row["installed_as"]
+        if installed != "client" and not os.path.lexists(root.joinpath(*installed.split("/"))):
+            # A cópia do init sumiu: outro arquivo com o mesmo nome achado em outro lugar não é "mudou".
+            out.append(f"{label} do template {lock['ref']} sumiu de {installed} desde o init.")
+            continue
         try:
             found = assets.resolve(project, row["kind"], row["name"])
         except ValueError as exc:
@@ -849,9 +869,20 @@ def lock_warnings(project) -> list:
             continue
         if found["status"] != "found":
             out.append(f"{label} do template {lock['ref']} sumiu desde o init.")
-        elif sha256_file(Path(found["path"])) != row["sha256"]:
+        elif not _same_component(Path(found["path"]), row):
             out.append(f"{label} mudou desde o init: o sha256 não é o do {LOCK_FILE} ({lock['ref']}).")
     return out
+
+
+def _same_component(path, row):
+    """O arquivo ainda é o do lock: tamanho e mtime iguais aos gravados pulam o sha256 (cache do `status`)."""
+    try:
+        seen = path.stat()
+    except OSError:
+        return False
+    if (seen.st_size, seen.st_mtime_ns) == (row.get("size"), row.get("mtime_ns")):
+        return True
+    return sha256_file(path) == row["sha256"]
 
 
 def record_lock_warnings(project):

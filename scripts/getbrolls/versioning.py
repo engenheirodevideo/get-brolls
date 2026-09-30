@@ -19,6 +19,10 @@ SCHEMA_FIELD = "schema"
 _SCHEMA = re.compile(r"getbrolls\.([a-z][a-z0-9_]*)/([1-9][0-9]*)")
 
 
+class NewerSchemaError(ValueError):
+    """Arquivo gravado por uma versão mais nova do get-brolls: atualizar, não "consertar" o arquivo."""
+
+
 def read_version(data: dict, label: str, supported: int = 1, invalid: str | None = None) -> int:
     """Versão declarada em `data` (ausente = 1); `ValueError` quando não dá para ler.
 
@@ -35,7 +39,7 @@ def read_version(data: dict, label: str, supported: int = 1, invalid: str | None
             invalid or f"{label} é incompatível: {FIELD} tem que ser um inteiro a partir de 1 (veio {value!r})."
         )
     if value > supported:
-        raise ValueError(
+        raise NewerSchemaError(
             f"{label} foi gravado por uma versão mais nova do get-brolls ({FIELD} {value}); "
             "atualize antes de continuar."
         )
@@ -52,12 +56,15 @@ def schema_name(family: str, version: int = 1) -> str:
     return f"getbrolls.{family}/{version}"
 
 
-def read_schema(data: dict, family: str, supported: int = 1, label: str | None = None) -> int:
+def read_schema(
+    data: dict, family: str, supported: int = 1, label: str | None = None, invalid: str | None = None
+) -> int:
     """Versão de `data` pelo campo `schema` da família `family` (ausente = 1).
 
     `ValueError` quando o valor não é `getbrolls.<family>/<N>` (texto de outra família,
-    `N` com zero à esquerda, número solto) ou quando `N` passa de `supported`, este com
-    a mesma frase de versão mais nova do `schema_version`. `label` nomeia o arquivo.
+    `N` com zero à esquerda, número solto) — com a mensagem `invalid`, quando dada — e
+    `NewerSchemaError` quando `N` passa de `supported`, com a mesma frase de versão mais
+    nova do `schema_version`. `label` nomeia o arquivo.
     """
     label = label or f"getbrolls.{family}"
     if SCHEMA_FIELD not in data:
@@ -66,12 +73,13 @@ def read_schema(data: dict, family: str, supported: int = 1, label: str | None =
     found = _SCHEMA.fullmatch(value) if isinstance(value, str) else None
     if found is None or found.group(1) != family:
         raise ValueError(
-            f"{label} é incompatível: {SCHEMA_FIELD} tem que ser {schema_name(family, 1)!r} "
+            invalid
+            or f"{label} é incompatível: {SCHEMA_FIELD} tem que ser {schema_name(family, 1)!r} "
             f"ou uma versão maior da mesma família (veio {value!r})."
         )
     version = int(found.group(2))
     if version > supported:
-        raise ValueError(
+        raise NewerSchemaError(
             f"{label} foi gravado por uma versão mais nova do get-brolls ({SCHEMA_FIELD} {value}); "
             "atualize antes de continuar."
         )
