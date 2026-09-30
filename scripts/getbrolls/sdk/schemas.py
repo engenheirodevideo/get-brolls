@@ -16,6 +16,8 @@ NAMES = (
     "silence",
     "speakers",
     "visual",
+    "client",
+    "clients",
 )
 
 

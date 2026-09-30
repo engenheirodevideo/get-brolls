@@ -283,6 +283,31 @@ def stderr_tail(stderr, limit=6):
     return joined[:STDERR_TAIL_MAX_CHARS]
 
 
+_LOCK_POLL_S = 0.05
+
+
+@contextlib.contextmanager
+def exclusive_lock(path, busy_message, wait_s=0.0):
+    """Trava exclusiva no arquivo `path` (criado se faltar); a pasta tem que existir.
+
+    Tenta de novo por até `wait_s` segundos; depois, `ValueError(busy_message)`.
+    """
+    with Path(path).open("a+", encoding="utf-8") as lock:
+        deadline = time.monotonic() + wait_s
+        while True:
+            try:
+                _acquire_lock(lock)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise ValueError(busy_message) from None
+                time.sleep(_LOCK_POLL_S)
+        try:
+            yield
+        finally:
+            _release_lock(lock)
+
+
 @contextlib.contextmanager
 def project_lock(project):
     if not project:
@@ -290,15 +315,10 @@ def project_lock(project):
         return
     root = Path(project).resolve() / "brolls"
     root.mkdir(parents=True, exist_ok=True)
-    with (root / ".command.lock").open("a+", encoding="utf-8") as lock:
-        try:
-            _acquire_lock(lock)
-        except BlockingIOError:
-            raise ValueError("Outro comando está usando este projeto. Aguarde terminar antes de repetir.") from None
-        try:
-            yield
-        finally:
-            _release_lock(lock)
+    with exclusive_lock(
+        root / ".command.lock", "Outro comando está usando este projeto. Aguarde terminar antes de repetir."
+    ):
+        yield
 
 
 # Comandos que só leem o projeto: sem trava exclusiva e sem criar a árvore.
@@ -312,8 +332,11 @@ READ_ONLY_COMMANDS = ("status", "serve", "brief", "doctor", "setup", "x", "capab
 # (comando, ação) somente leitura, além dos comandos inteiros acima: `queue --action status`
 # só consulta queue.json (mesmo contrato de `status`), nunca deve tomar a trava exclusiva.
 # `roteiro --action check|plan` e `assets` também só leem: plano de cena, sync simulado e
-# inventário de componentes, sem trava nem árvore nova.
+# inventário de componentes, sem trava nem árvore nova. `client --action list|show` só lê
+# `$GB_HOME/clients.json` e o `client.json` de cada pasta.
 READ_ONLY_ACTIONS = {
+    ("client", "list"),
+    ("client", "show"),
     ("queue", "status"),
     ("roteiro", "check"),
     ("roteiro", "plan"),
@@ -331,7 +354,7 @@ PLUGIN_ERROR_HINT = "Veja plugins --action list / doctor e docs/SDK.md."
 
 # Comandos cujo erro sai sem a dica de recovery (nenhum erro mostra traceback nem
 # repr à pessoa; esses ficam só em diagnostics.jsonl).
-QUIET_ERROR_COMMANDS = ("plugins", "x", "export", "assets")
+QUIET_ERROR_COMMANDS = ("plugins", "x", "export", "assets", "client")
 
 # `error_code` → código de saída da CLI; qualquer outro código (INVALID_DATA,
 # IO_ERROR, ...) é erro de operação ou de dados: 1. A tabela completa, com o 0, fica
@@ -430,7 +453,7 @@ def _audited_error_failure(args, event, log, app_log_path):
     payload["log"] = str(log) if log else None
     payload["app_log"] = str(app_log_path) if app_log_path and app_log_path.is_file() else None
     if args.command in QUIET_ERROR_COMMANDS and event["error_code"] != "INTERNAL_ERROR":
-        # `plugins`/`x`/`assets` não gravam no projeto (ou, no `assets`, só leem):
+        # `plugins`/`x`/`assets`/`client` não gravam no projeto (ou, no `assets`, só leem):
         # erro de uso ali (flag faltando, plugin inexistente) é só a mensagem — a
         # dica de recovery/review era ruído. `export` grava só numa pasta nova em
         # exports/ e nunca no manifesto nem no journal (recusa journal pendente
