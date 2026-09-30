@@ -38,16 +38,24 @@ getbrolls = "getbrolls.cli:entrypoint"
 [tool.hatch.version]
 path = "scripts/getbrolls/__init__.py"
 
+# `force-include` ignora o `exclude`: pastas entram por `only-include` + `sources` (o
+# `exclude` abaixo vale para elas) e só arquivos com nome entram por `force-include`.
+[tool.hatch.build]
+exclude = ["**/__pycache__", "**/*.pyc", "**/.env", "**/.env.*"]
+
 [tool.hatch.build.targets.wheel]
-packages = ["scripts/getbrolls"]
+only-include = ["scripts/getbrolls", "assets", "schemas", "references", "examples"]
 
 # Os dados vão para `getbrolls/_data/`; o `_data/MANIFEST` é a sentinela da
 # instalação por wheel (`getbrolls._paths.detect`).
-[tool.hatch.build.targets.wheel.force-include]
+[tool.hatch.build.targets.wheel.sources]
+"scripts/getbrolls" = "getbrolls"
 "assets" = "getbrolls/_data/assets"
 "schemas" = "getbrolls/_data/schemas"
 "references" = "getbrolls/_data/references"
 "examples" = "getbrolls/_data/examples"
+
+[tool.hatch.build.targets.wheel.force-include]
 "docs/RULES.md" = "getbrolls/_data/docs/RULES.md"
 "docs/BRIEF.md" = "getbrolls/_data/docs/BRIEF.md"
 "requirements.txt" = "getbrolls/_data/requirements.txt"
@@ -76,7 +84,7 @@ only-include = [
     "THIRD_PARTY_NOTICES.md",
     "CHANGELOG.md",
 ]
-exclude = ["**/__pycache__", "**/*.pyc"]
+exclude = ["**/__pycache__", "**/*.pyc", "**/.env", "**/.env.*"]
 
 [tool.ruff]
 line-length = 120

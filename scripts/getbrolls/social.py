@@ -62,7 +62,7 @@ def _ytdlp_missing_text():
     if _from_checkout():
         return (
             "yt-dlp ausente: execute bash scripts/install.sh (ou install.ps1) na raiz da skill/plugin; "
-            "após /plugin update é preciso reinstalar. Confira com python3 scripts/gb.py doctor."
+            f"após /plugin update é preciso reinstalar. Confira com {_paths.cli_hint('doctor')}."
         )
     return f"yt-dlp ausente: {_paths.installer_hint()}. Confira com {_paths.cli_hint('doctor')}."
 
@@ -74,7 +74,7 @@ def _tool_not_found_text(name):
 
 
 def _instagram_pairs_command():
-    return "scripts/getbrolls/instagram_pairs.py" if _from_checkout() else "python -m getbrolls.instagram_pairs"
+    return "scripts/getbrolls/instagram_pairs.py" if _from_checkout() else "python -P -m getbrolls.instagram_pairs"
 
 
 def local_ytdlp(root=None):

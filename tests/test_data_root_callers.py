@@ -215,7 +215,7 @@ class WheelMessageTests(unittest.TestCase):
             social.command()
         self.assertIn("setup --check", str(tool.exception))
         self.assertNotIn("scripts/gb.py", str(tool.exception))
-        self.assertIn("python -m getbrolls.instagram_pairs", social.doctor()["instagram"])
+        self.assertIn("python -P -m getbrolls.instagram_pairs", social.doctor()["instagram"])
 
 
 class ScaffoldTests(unittest.TestCase):

@@ -114,10 +114,10 @@ FORMAT_GATE_SUBCOMMANDS = (
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
-def _stdout_is_tty():
-    """Stdout num terminal? Stream fechado ou sem `isatty` conta como não."""
+def _stderr_is_tty():
+    """Stderr (para onde o erro de uso vai) num terminal? Stream fechado ou sem `isatty` conta como não."""
     try:
-        return sys.stdout.isatty()
+        return sys.stderr.isatty()
     except (AttributeError, ValueError):
         return False
 
@@ -144,6 +144,35 @@ def _suggest_option(root, ns, extras):
     return _close_match(bad, candidates)
 
 
+# Corte mais frouxo quando o candidato é uma das opções obrigatórias que faltaram:
+# `library --query x` → `--search` (o que a pessoa quis dizer é o que falta).
+_MISSING_REQUIRED_CUTOFF = 0.5
+
+
+def _missing_required(parser, args):
+    """Opções obrigatórias de `parser` que não aparecem em `args`."""
+    given = {token.split("=", 1)[0] for token in args if token.startswith("--")}
+    return [
+        next(option for option in action.option_strings if option.startswith("--"))
+        for action in parser._actions  # pylint: disable=protected-access
+        if action.required and action.option_strings and not given & set(action.option_strings)
+    ]
+
+
+def _suggest_missing_required(parser, args):
+    """Para "the following arguments are required": a opção parecida com a `--flag` desconhecida."""
+    known = {option for action in parser._actions for option in action.option_strings}  # pylint: disable=protected-access
+    bad = next((t.split("=", 1)[0] for t in args if t.startswith("--") and t.split("=", 1)[0] not in known), None)
+    if bad is None:
+        return None
+    missing = _missing_required(parser, args)
+    found = _close_match(bad, [option for option in known if option.startswith("--")])
+    if found is None:
+        close = difflib.get_close_matches(bad, missing, n=1, cutoff=_MISSING_REQUIRED_CUTOFF)
+        found = close[0] if close else (missing[0] if len(missing) == 1 else None)
+    return found
+
+
 class GbArgumentParser(argparse.ArgumentParser):
     """ArgumentParser cujo erro de uso sai em JSON fora do terminal e sugere o nome parecido.
 
@@ -153,6 +182,13 @@ class GbArgumentParser(argparse.ArgumentParser):
     """
 
     _bad_choice: tuple[str, tuple[str, ...]] | None = None
+    _args: tuple[str, ...] = ()
+
+    def parse_known_args(self, args=None, namespace=None):  # pyright: ignore[reportIncompatibleMethodOverride]
+        # O argparse não passa ao `error` os tokens que sobraram; guardá-los aqui deixa o
+        # erro de opção obrigatória sugerir a opção que a pessoa quase digitou.
+        self._args = tuple(sys.argv[1:] if args is None else map(str, args))
+        return super().parse_known_args(args, namespace)
 
     def _check_value(self, action, value):
         try:
@@ -173,8 +209,10 @@ class GbArgumentParser(argparse.ArgumentParser):
     def error(self, message, suggestion=None) -> NoReturn:
         if suggestion is None and self._bad_choice is not None:
             suggestion = _close_match(*self._bad_choice)
+        if suggestion is None and message.startswith(gettext("the following arguments are required: %s") % ""):
+            suggestion = _suggest_missing_required(self, self._args)
         self._bad_choice = None
-        if _stdout_is_tty():
+        if _stderr_is_tty():
             self.print_usage(sys.stderr)
             sys.stderr.write(gettext("%(prog)s: error: %(message)s\n") % {"prog": self.prog, "message": message})
             if suggestion:
@@ -939,7 +977,6 @@ def _load_env_early(args):
     (chave desconhecida) fica para `execute()`, que o levanta dentro da auditoria; o
     carregamento repetido lá é inofensivo (`setdefault`).
     """
-    from . import _paths
     from .config import load_env_choice
 
     try:
@@ -954,7 +991,6 @@ def _load_env_early(args):
 
 def main(argv=None):
     """Faz o parse, configura logging/trava e roda o comando com auditoria e log de início/fim."""
-    from . import _paths
     from .commands import execute, with_summary
 
     _paths.apply_env_aliases()
@@ -1075,9 +1111,10 @@ def entrypoint():
         return EXIT_INTERRUPTED
     except BrokenPipeError:
         # The consumer end of a pipe (e.g. `| head`) closed early; this is an ordinary,
-        # expected shutdown, not a bug — do not report it as INTERNAL_ERROR.
+        # expected shutdown, not a bug — do not report it as INTERNAL_ERROR. The command
+        # already ran: its exit (4 for `doctor` with `ready: false`) still stands.
         _silence_stdout()
-        return EXIT_OK
+        return _RESULT_EXIT.get()
     except Exception as exc:  # noqa: BLE001 - last-resort CLI boundary, must exit as JSON not a raw traceback
         return _internal_error(exc)
 
@@ -1098,7 +1135,7 @@ def _internal_error(exc):
         "traceback": scrub_home(redact(traceback.format_exc())),
     }
     log = write_diagnostics_log(project, event)
-    message = "Erro interno inesperado (bug)."
+    message = f"Erro interno inesperado (bug) [type: {type(exc).__name__}]."
     if log:
         message += f" Detalhes em {log} (diagnostics.jsonl)."
     else:

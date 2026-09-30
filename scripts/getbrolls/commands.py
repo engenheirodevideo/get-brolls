@@ -19,6 +19,7 @@ from pathlib import Path
 from . import __version__, _paths, logs
 from .acquisition import candidate_arg
 from .config import CAP_EPSILON
+from .errors import DataRootError
 from .guidance import blocked_beats_question, next_action
 from .ledger import Ledger, digest
 from .media import cut, probe, run
@@ -110,8 +111,31 @@ def doctor_resolved(overrides):
     return resolved
 
 
-# Reinstalar é o único jeito de repor os arquivos de dados de um pacote instalado.
-REINSTALL = "uv tool install --reinstall getbrolls"
+def data_fix():
+    """Como repor os arquivos de dados: o instalador no checkout, reinstalar no pacote."""
+    return _paths.installer_hint() if _paths.origin() == "checkout" else _paths.REINSTALL_COMMAND
+
+
+def missing_data_files():
+    """Arquivos de dados que faltam (todos, quando nem a pasta de dados existe)."""
+    try:
+        return _paths.verify_data()
+    except DataRootError:
+        return list(_paths.REQUIRED_DATA)
+
+
+def readiness_probe():
+    """A sondagem que decide o `ready` do `doctor` e do `setup --check`: pins, engine social
+    e a presença de cada executável sondado, pela mesma regra nos dois."""
+    from .social import doctor as social_doctor
+
+    # Pin inválido vira item de `missing`, não morte do diagnóstico.
+    overrides, pin_problems = doctor_overrides()
+    try:
+        social = social_doctor()
+    except ValueError as exc:
+        social = {"engine": "yt-dlp", "installed": False, "error": str(exc)}
+    return overrides, pin_problems, social, _doctor_executables(overrides, social)
 
 
 def doctor_summary(executables, pins=(), data_missing=()):
@@ -124,8 +148,7 @@ def doctor_summary(executables, pins=(), data_missing=()):
     ]
     missing += list(pins)
     if data_missing:
-        fix = _paths.installer_hint() if _paths.origin() == "checkout" else REINSTALL
-        missing.append({"item": "dados da instalação", "fix": fix, "note": "Faltam: " + ", ".join(data_missing)})
+        missing.append({"item": "dados da instalação", "fix": data_fix(), "note": "Faltam: " + ", ".join(data_missing)})
     optional = [
         {"item": name, "note": note} for name, note in sorted(OPTIONAL_EXECUTABLES.items()) if not executables.get(name)
     ]
@@ -2446,15 +2469,7 @@ def _doctor_executables(overrides, social):
 
 def _doctor_report(config, providers_result, live, env_flag=None):
     """Monta o relatório completo de `doctor`: executáveis, engine social, plugins e instalação."""
-    from .social import doctor as social_doctor
-
-    # Pin inválido vira item de `missing`, não morte do diagnóstico.
-    overrides, pin_problems = doctor_overrides()
-    try:
-        social = social_doctor()
-    except ValueError as exc:
-        social = {"engine": "yt-dlp", "installed": False, "error": str(exc)}
-    executables = _doctor_executables(overrides, social)
+    overrides, pin_problems, social, executables = readiness_probe()
     install = _paths.install_report(env_flag)
     summary = doctor_summary(executables, pin_problems, install.get("data_missing") or ())
     sheet = doctor_contact_sheet(executables.get("ffmpeg"))

@@ -42,9 +42,9 @@ WHEEL_MANIFEST = "_data/MANIFEST"  # relativo à pasta do pacote
 CHECKOUT_MANIFEST = "packaging/data_manifest.txt"  # relativo à raiz do repositório
 _REPO_SENTINELS = ("scripts/gb.py", "docs/RULES.md", "assets/brand-logo.png")
 
-_DATA_REINSTALL = (
-    "Reinstale (`uv tool install --reinstall getbrolls`) ou rode pelo repositório (`python3 scripts/gb.py`)."
-)
+# Reinstalar é o único jeito de repor os arquivos de dados de um pacote instalado.
+REINSTALL_COMMAND = "uv tool install --reinstall getbrolls"
+_DATA_REINSTALL = f"Reinstale (`{REINSTALL_COMMAND}`) ou rode pelo repositório (`python3 scripts/gb.py`)."
 _DATA_ROOT_MISSING = f"Os arquivos de dados do getbrolls não estão junto do pacote. {_DATA_REINSTALL}"
 _ENV_FLAG_MISSING = "--env-file não existe. Confira o caminho."
 _ENV_VAR_MISSING = "GB_ENV_FILE aponta para um arquivo que não existe. Confira o caminho ou remova a variável."
@@ -147,8 +147,12 @@ def verify_data() -> list[str]:
 
 
 def gb_home() -> Path:
-    """Pasta pessoal: `GB_HOME`, depois `GETBROLLS_HOME`, depois `~/.getbrolls` (sem resolve)."""
-    return Path(os.environ.get("GB_HOME") or os.environ.get("GETBROLLS_HOME") or Path.home() / ".getbrolls")
+    """Pasta pessoal: `GB_HOME`, depois `~/.getbrolls` (sem resolve).
+
+    O alias `GETBROLLS_HOME` chega aqui como `GB_HOME` por `apply_env_aliases`, que a CLI
+    aplica antes de qualquer outra coisa (`cli.main`): um só lugar resolve aliases.
+    """
+    return Path(os.environ.get("GB_HOME") or Path.home() / ".getbrolls")
 
 
 def requirements_sha() -> str | None:
@@ -245,12 +249,28 @@ def cli_argv() -> list[str]:
     return [sys.executable, "-P", "-m", "getbrolls"]
 
 
-def _console_script_is_ours() -> bool:
-    """`getbrolls` do PATH só vale se for o script deste mesmo interpretador."""
+def _started_from(found: Path) -> bool:
+    """No Windows: o `getbrolls(.exe)` achado é o arquivo que iniciou este processo?"""
+    if not sys.argv or not sys.argv[0]:
+        return False
+    started = Path(sys.argv[0]).resolve()
+    names = {started, started.with_suffix("") if started.suffix.lower() == ".exe" else started.with_suffix(".exe")}
+    return str(found).lower() in {str(name).lower() for name in names}
+
+
+def _console_script_is_ours(os_name: str | None = None) -> bool:
+    """`getbrolls` do PATH só vale se for o script deste mesmo interpretador.
+
+    No Windows vale também o `getbrolls.exe` que iniciou este processo: o `uv tool` põe o
+    executável numa pasta própria do PATH, longe do python do ambiente da ferramenta.
+    """
     found = shutil.which("getbrolls")
     if not found:
         return False
-    return Path(found).resolve().parent == Path(sys.executable).parent.resolve()
+    found_path = Path(found).resolve()
+    if found_path.parent == Path(sys.executable).parent.resolve():
+        return True
+    return _os_name(os_name) == "nt" and _started_from(found_path)
 
 
 def cli_command(os_name: str | None = None) -> list[str]:
@@ -258,9 +278,27 @@ def cli_command(os_name: str | None = None) -> list[str]:
     script = _gb_script(install())
     if script is not None:
         return [_interpreter(os_name), str(script)]
-    if _console_script_is_ours():
+    if _console_script_is_ours(os_name):
         return ["getbrolls"]
     return [sys.executable, "-P", "-m", "getbrolls"]
+
+
+def module_invocation(os_name: str | None = None) -> list[str]:
+    """`python -P -m getbrolls` sem caminho da máquina (o `-P` isola o pacote da pasta atual)."""
+    return [_interpreter(os_name), "-P", "-m", "getbrolls"]
+
+
+def portable_cli_argv(os_name: str | None = None) -> list[str]:
+    """argv da CLI para um manifesto ou documento: roda, mas não cita caminho desta máquina.
+
+    No checkout, relativo à raiz do repositório; no pacote, o `getbrolls` do PATH só quando
+    ele é o deste interpretador, senão o módulo isolado.
+    """
+    if origin() == "checkout":
+        return [_interpreter(os_name), "scripts/gb.py"]
+    if _console_script_is_ours(os_name):
+        return ["getbrolls"]
+    return module_invocation(os_name)
 
 
 def cli_prefix_text(os_name: str | None = None) -> str:
@@ -294,74 +332,6 @@ def quote_arg(value: str, os_name: str | None = None) -> str:
     return _quote_nt(value) if _os_name(os_name) == "nt" else shlex.quote(value)
 
 
-def command_text(*args: str, os_name: str | None = None) -> str:
-    """Comando completo da CLI, como texto para a pessoa copiar."""
-    return " ".join([cli_prefix_text(os_name), *(quote_arg(arg, os_name) for arg in args)])
-
-
-def _nt_backslashes(text: str, start: int) -> tuple[str, int]:
-    """Barras a partir de `start`: (texto literal, próximo índice)."""
-    end = start
-    while end < len(text) and text[end] == "\\":
-        end += 1
-    count = end - start
-    if end < len(text) and text[end] == '"':
-        if count % 2:
-            return "\\" * (count // 2) + '"', end + 1
-        return "\\" * (count // 2), end
-    return "\\" * count, end
-
-
-def _nt_token(text: str, start: int) -> tuple[str, int]:
-    """Um argumento pelas regras do CommandLineToArgvW, a partir de `start`."""
-    out: list[str] = []
-    quoted = False
-    index = start
-    while index < len(text):
-        char = text[index]
-        if char in " \t" and not quoted:
-            break
-        if char == "\\":
-            literal, index = _nt_backslashes(text, index)
-            out.append(literal)
-        elif char == '"':
-            if quoted and text[index + 1 : index + 2] == '"':
-                out.append('"')
-                index += 2
-            else:
-                quoted = not quoted
-                index += 1
-        else:
-            out.append(char)
-            index += 1
-    return "".join(out), index
-
-
-def _split_nt(text: str) -> Iterator[str]:
-    index = 0
-    while True:
-        while index < len(text) and text[index] in " \t":
-            index += 1
-        if index >= len(text):
-            return
-        token, index = _nt_token(text, index)
-        yield token
-
-
-def split_command(text: str, os_name: str | None = None) -> list[str]:
-    """Inverso de `command_text`: o argv que o terminal do sistema veria."""
-    return list(_split_nt(text)) if _os_name(os_name) == "nt" else shlex.split(text)
-
-
-def module_command(module: str, os_name: str | None = None) -> list[str]:
-    """argv para rodar um módulo do pacote (`getbrolls.x`)."""
-    inst = install()
-    if inst.origin == "checkout" and inst.checkout_root is not None:
-        script = inst.checkout_root / "scripts" / Path(*module.split(".")).with_suffix(".py")
-        return [_interpreter(os_name), str(script)]
-    return [sys.executable, "-m", module]
-
-
 def cli_hint(*args: str) -> str:
     """Comando para citar em prosa, sem caminho da máquina."""
     base = "python3 scripts/gb.py" if origin() == "checkout" else "getbrolls"
@@ -390,11 +360,12 @@ def _alias_twins(environ: Mapping[str, str]) -> Iterator[tuple[str, str]]:
 
 
 def apply_env_aliases(environ: MutableMapping[str, str] | None = None) -> list[str]:
-    """Copia `GETBROLLS_X` para `GB_X` quando `GB_X` não está definido; devolve os aliases usados."""
+    """Copia `GETBROLLS_X` para `GB_X` quando `GB_X` não está definido (vazio conta como não
+    definido); devolve os aliases usados."""
     environ = environ if environ is not None else os.environ
     used = []
     for name, twin in list(_alias_twins(environ)):
-        if twin not in environ and environ[name]:
+        if not environ.get(twin) and environ[name]:
             environ[twin] = environ[name]
             used.append(name)
     return used

@@ -166,10 +166,60 @@ class EnvFileOrderTests(unittest.TestCase):
     def test_gb_home_from_a_flag_env_is_honored_but_deprecated(self):
         other = self.base / "other-home"
         flag = self.env(self.base / "flag.env", f"GB_HOME={other}\n")
-        warnings = self.execute(flag)
-        # O ambiente do processo continua vencendo; o aviso sai do mesmo jeito.
-        self.assertEqual(str(self.home), os.environ["GB_HOME"])
+        del os.environ["GB_HOME"]
+        with patch.object(Path, "home", return_value=self.base / "user"):
+            warnings = self.execute(flag)
+        self.assertEqual(str(other), os.environ["GB_HOME"])
         self.assertEqual(["DEPRECATED"], self.codes(warnings))
+
+    def test_gb_home_in_a_env_is_not_deprecated_when_the_process_already_had_it(self):
+        """O ambiente do processo vence: a linha do `.env` não valeu, então não há o que avisar."""
+        flag = self.env(self.base / "flag.env", f"GB_HOME={self.base / 'other-home'}\n")
+        warnings = self.execute(flag)
+        self.assertEqual(str(self.home), os.environ["GB_HOME"])
+        self.assertEqual([], warnings)
+
+    def test_gb_home_deprecation_survives_the_early_load_in_main(self):
+        other = self.base / "other-home"
+        self.checkout_env(f"GB_HOME={other}\n")
+        del os.environ["GB_HOME"]
+        with patch.object(Path, "home", return_value=self.base / "user"):
+            result = cli.main(["providers"])
+        self.assertEqual(str(other), os.environ["GB_HOME"])
+        self.assertEqual(["DEPRECATED"], self.codes(result["warnings"]))
+
+    def test_gb_home_env_is_refused_by_path_whatever_route_loads_it(self):
+        """`$GB_HOME/.env` é o mesmo arquivo por `GB_ENV_FILE` ou `--env-file`: `GB_HOME` ali é recusado."""
+        self.home_env("GB_GIF_WIDTH=260\nGB_HOME=/outro\n")
+        for route in ("GB_ENV_FILE", "--env-file"):
+            with self.subTest(route=route):
+                if route == "GB_ENV_FILE":
+                    os.environ["GB_ENV_FILE"] = str(self.home / "." / ".env")
+                    flag = None
+                else:
+                    os.environ.pop("GB_ENV_FILE", None)
+                    flag = self.home / ".env"
+                with self.assertRaises(UsageError) as caught:
+                    self.execute(flag)
+                self.assertIn("GB_HOME (linha 2)", str(caught.exception))
+                self.assertNotIn("GB_GIF_WIDTH", os.environ)
+                self.assertEqual(str(self.home), os.environ["GB_HOME"])
+
+    def test_gb_home_env_by_gb_env_file_exits_2(self):
+        self.home_env("GB_HOME=/outro\n")
+        os.environ["GB_ENV_FILE"] = str(self.home / ".env")
+        with self.assertRaises(OperationError) as caught:
+            cli.main(["providers"])
+        self.assertEqual("USAGE_ERROR", caught.exception.payload["error_code"])
+        self.assertEqual(2, runtime.exit_code_for(caught.exception.payload["error_code"]))
+
+    def test_a_env_pointing_gb_home_at_its_own_folder_is_refused(self):
+        """`GB_HOME=<pasta deste .env>` faria o arquivo virar `$GB_HOME/.env`: recusado já na primeira leitura."""
+        folder = self.base / "pessoal"
+        flag = self.env(folder / ".env", f"GB_HOME={folder}\n")
+        del os.environ["GB_HOME"]
+        with self.assertRaises(UsageError):
+            self.execute(flag)
 
     def test_gb_env_file_inside_a_env_is_refused(self):
         for where in (self.base / "flag.env", self.home / ".env", _checkout_root(self.checkout) / ".env"):

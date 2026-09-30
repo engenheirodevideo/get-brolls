@@ -1,7 +1,9 @@
 """`setup`: confere (e, numa versão futura, instala) o runtime compartilhado do getbrolls.
 
-`check()` só lê: procura yt-dlp, Playwright CLI, FFmpeg, ffprobe e Node, e para o que
-faltar devolve os comandos que resolvem. Nunca cria pasta nem arquivo.
+`check()` só lê: sonda os mesmos executáveis obrigatórios do `doctor`, pela mesma regra
+(`commands.readiness_probe`), mais os arquivos de dados, e para o que faltar devolve os
+comandos que resolvem. `ready` do `setup --check` e do `doctor` batem. Nunca cria pasta
+nem arquivo.
 """
 
 # pylint: disable=cyclic-import
@@ -13,18 +15,15 @@ import os
 from pathlib import Path
 
 from . import _paths, commands
-from .errors import DataRootError, UsageError
+from .config import TOOL_PATH_KEYS
+from .errors import UsageError
 
-# (id do passo, executável que o doctor sonda): a mesma resolução do `doctor`.
-STEPS = (
-    ("ytdlp", "yt-dlp"),
-    ("playwright", "playwright-cli"),
-    ("ffmpeg", "ffmpeg"),
-    ("ffprobe", "ffprobe"),
-    ("node", "node"),
-)
-# Passos que o runtime da instalação resolve; os outros são do sistema.
+# Executável do `doctor` → id do passo; os que não estão aqui usam o próprio nome.
+STEP_IDS = {"yt-dlp": "ytdlp", "playwright-cli": "playwright"}
+# Passos que o runtime da instalação resolve (vêm primeiro); os outros são do sistema.
 RUNTIME_STEPS = ("ytdlp", "playwright")
+# Pin → executável que ele fixa: um pin quebrado reprova o passo, como no `doctor`.
+_PIN_TOOLS = {**{key: name for name, key in TOOL_PATH_KEYS.items()}, "GB_VENV_PATH": "yt-dlp"}
 
 _NO_INSTALL = (
     "`setup` sem `--check` ainda não instala nesta versão. Rode `{check}` para ver o que falta e siga os "
@@ -32,11 +31,22 @@ _NO_INSTALL = (
 )
 
 
+def _step_names():
+    """(id, executável) na ordem: runtime primeiro, depois o sistema na ordem do `doctor`."""
+    names = [(STEP_IDS.get(name, name), name) for name in commands.REQUIRED_EXECUTABLES]
+    runtime = sorted((pair for pair in names if pair[0] in RUNTIME_STEPS), key=lambda p: RUNTIME_STEPS.index(p[0]))
+    return runtime + [pair for pair in names if pair[0] not in RUNTIME_STEPS]
+
+
 def _resolved():
-    """Executável absoluto por id de passo (ou None), com os pins de caminho valendo."""
-    overrides, _problems = commands.doctor_overrides()
+    """Por id de passo: `(executável absoluto ou None, nota do pin quebrado ou None)`."""
+    overrides, pin_problems, _social, present = commands.readiness_probe()
     resolved = commands.doctor_resolved(overrides)
-    return {step: resolved.get(name) for step, name in STEPS}
+    broken = {_PIN_TOOLS.get(problem["item"]): problem["note"] for problem in pin_problems}
+    return {
+        step: (resolved.get(name) if present.get(name) and name not in broken else None, broken.get(name))
+        for step, name in _step_names()
+    }
 
 
 def _line(*args):
@@ -45,10 +55,10 @@ def _line(*args):
 
 def _runtime_commands():
     """Comandos que montam o runtime compartilhado de um pacote instalado, por passo."""
-    try:
-        data = _paths.data_root()
-    except DataRootError:
-        return {step: [commands.REINSTALL] for step in RUNTIME_STEPS}
+    if _paths.requirements_sha() is None:
+        # Sem requirements.txt/package-lock.json não há o que instalar: só reinstalar repõe.
+        return {step: [_paths.REINSTALL_COMMAND] for step in RUNTIME_STEPS}
+    data = _paths.data_root()
     venv, tools = _paths.venv_dir().path, _paths.tools_dir().path
     windows = os.name == "nt"
     python = venv / ("Scripts/python.exe" if windows else "bin/python")
@@ -65,6 +75,19 @@ def _runtime_commands():
     return {"ytdlp": ytdlp, "playwright": [*copy, npm]}
 
 
+def _data_step():
+    missing = commands.missing_data_files()
+    if not missing:
+        return {"id": "data", "ok": True, "found": str(_paths.data_root()), "commands": []}
+    return {
+        "id": "data",
+        "ok": False,
+        "found": None,
+        "commands": [commands.data_fix()],
+        "note": "Faltam: " + ", ".join(missing),
+    }
+
+
 def check() -> dict:
     """O que falta no runtime desta instalação e como resolver; não instala nada."""
     found = _resolved()
@@ -73,15 +96,19 @@ def check() -> dict:
     else:
         fixes = _runtime_commands()
     steps = []
-    for step, _name in STEPS:
-        path = found.get(step)
+    for step, _name in _step_names():
+        path, pin_note = found.get(step, (None, None))
         entry: dict = {"id": step, "ok": path is not None, "found": str(Path(path)) if path else None}
-        if step in RUNTIME_STEPS:
+        if pin_note:
+            entry["commands"] = []
+            entry["note"] = pin_note
+        elif step in RUNTIME_STEPS:
             entry["commands"] = [] if path else fixes[step]
         else:
             entry["commands"] = []
             entry["note"] = commands.SYSTEM_TOOLS
         steps.append(entry)
+    steps.append(_data_step())
     missing = [entry["id"] for entry in steps if not entry["ok"]]
     if missing:
         line = f"Faltam {len(missing)} de {len(steps)} itens do runtime: {', '.join(missing)}. Siga `commands`."

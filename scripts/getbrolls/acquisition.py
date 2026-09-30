@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from . import logs
+from .errors import PrerequisiteError
 from .http import DOWNLOAD_MAX_BYTES
 from .ledger import digest
 from .media import probe
@@ -221,6 +222,8 @@ def verified_route_file(raw_path, workdir, owner, route):
         )
     try:
         probe(real)
+    except PrerequisiteError:
+        raise  # ffprobe ausente é da instalação (saída 4), não culpa do plugin
     except ValueError as exc:
         raise ProviderError(f"Plugin {owner}: a rota {route} devolveu algo que não é vídeo nem imagem.") from exc
     return real

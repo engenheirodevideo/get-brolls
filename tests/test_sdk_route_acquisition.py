@@ -13,9 +13,10 @@ from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
 from getbrolls import acquisition, cli, providers
+from getbrolls.errors import PrerequisiteError
 from getbrolls.http import ProviderError
 from getbrolls.ledger import Ledger, digest
-from getbrolls.runtime import OperationError
+from getbrolls.runtime import OperationError, error_code_for, exit_code_for
 from getbrolls.sdk.registry import reset_registry
 
 ROUTE_MANIFEST = {**MANIFEST, "contributes": {"providers": ["demo"], "routes": ["demo"]}}
@@ -338,6 +339,18 @@ class BuiltinUntouchedTests(unittest.TestCase):
             self.assertFalse(acquisition.direct_media({"acquisition": {"method": "yt-dlp"}}))
         self.assertEqual("demo", acquisition.route_name({"acquisition": {"method": "plugin:demo"}}))
         self.assertIsNone(acquisition.route_name({"acquisition": {"method": "plugin:"}}))
+
+
+class RouteProbeWithoutFfprobe(unittest.TestCase):
+    def test_missing_ffprobe_is_a_prerequisite_not_the_plugins_fault(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "v.mp4").write_bytes(b"x")
+            missing = PrerequisiteError("ffprobe não encontrado")
+            with patch.object(acquisition, "probe", side_effect=missing), self.assertRaises(ValueError) as caught:
+                acquisition.verified_route_file("v.mp4", tmp, "demo", "demo")
+        self.assertNotIsInstance(caught.exception, ProviderError)
+        self.assertIs(missing, caught.exception)
+        self.assertEqual(4, exit_code_for(error_code_for(caught.exception)))
 
 
 if __name__ == "__main__":

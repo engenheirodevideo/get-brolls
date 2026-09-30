@@ -418,7 +418,7 @@ api.command("recentes", recentes, "Lista os vídeos mais recentes da pasta")
 
 - `gb x --list` lista os comandos dos plugins habilitados, lendo só o
   manifesto (nenhum código roda).
-- `gb capabilities --json` descreve, em JSON, os comandos do get-brolls e os `plugin_commands` habilitados (só o manifesto): plugins e agentes descobrem o que existe sem ler `--help`.
+- `getbrolls capabilities --json` (no checkout, `python3 scripts/gb.py capabilities --json`) descreve, em JSON, os comandos do get-brolls, os `plugin_commands` habilitados e os `plugins_problems` (plugin inválido, com falha ou suspenso, com o motivo), lendo só o manifesto: plugins e agentes descobrem o que existe sem ler `--help`.
 - `gb x <plugin> <comando> [--project P] [--arg chave=valor]...` carrega os
   plugins, chama `handler(args, ctx)` e imprime `{"plugin", "command",
   "result"}`. `args` é um dicionário de texto; chave repetida é erro.

@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -11,7 +12,7 @@ from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
-from _paths import ROOT
+from _paths import ROOT, command_text, split_command
 
 from getbrolls import _paths as paths
 from getbrolls.errors import DataRootError, PrerequisiteError, UsageError
@@ -132,17 +133,26 @@ class DetectTests(unittest.TestCase):
 
 class HomeAndRuntimeTests(unittest.TestCase):
     def test_gb_home_wins_then_alias_then_default(self):
+        """O alias `GETBROLLS_HOME` chega por `apply_env_aliases` (a CLI aplica antes de tudo), como os outros."""
         with patch.dict(os.environ, _clean_env(GB_HOME="/a", GETBROLLS_HOME="/b"), clear=True):
+            paths.apply_env_aliases()
             self.assertEqual(Path("/a"), paths.gb_home())
         with patch.dict(os.environ, _clean_env(GETBROLLS_HOME="/b"), clear=True):
+            paths.apply_env_aliases()
             self.assertEqual(Path("/b"), paths.gb_home())
         with patch.dict(os.environ, _clean_env(), clear=True):
             self.assertEqual(Path.home() / ".getbrolls", paths.gb_home())
 
+    def test_gb_home_reads_only_the_canonical_name(self):
+        with patch.dict(os.environ, _clean_env(GETBROLLS_HOME="/b"), clear=True):
+            self.assertEqual(Path.home() / ".getbrolls", paths.gb_home())
+
     def test_empty_gb_home_is_ignored(self):
         with patch.dict(os.environ, _clean_env(GB_HOME="", GETBROLLS_HOME="/b"), clear=True):
+            self.assertEqual(["GETBROLLS_HOME"], paths.apply_env_aliases())
             self.assertEqual(Path("/b"), paths.gb_home())
         with patch.dict(os.environ, _clean_env(GB_HOME="", GETBROLLS_HOME=""), clear=True):
+            paths.apply_env_aliases()
             self.assertEqual(Path.home() / ".getbrolls", paths.gb_home())
 
     def test_runtime_dir_env_wins(self):
@@ -346,13 +356,39 @@ class CliInvocationTests(unittest.TestCase):
             ):
                 self.assertEqual(fallback, paths.cli_command("posix"))
 
-    def test_module_command_by_origin(self):
-        self.assertEqual(
-            ["python3", str(ROOT / "scripts" / "getbrolls" / "serve.py")],
-            paths.module_command("getbrolls.serve", "posix"),
-        )
-        with patch.object(paths, "install", return_value=self._wheel()):
-            self.assertEqual([sys.executable, "-m", "getbrolls.serve"], paths.module_command("getbrolls.serve"))
+
+class WindowsConsoleScriptTests(unittest.TestCase):
+    """No Windows o `getbrolls.exe` do PATH pode morar longe do python (`uv tool`, por exemplo):
+    vale quando é o arquivo que iniciou este processo."""
+
+    def setUp(self):
+        paths.install.cache_clear()
+        self.addCleanup(paths.install.cache_clear)
+        tmp = Path(tempfile.mkdtemp(prefix="gb-nt-script-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        self.bin = tmp / "bin"
+        self.wheel = _fake_wheel(tmp)
+
+    def command(self, which, argv0, os_name="nt"):
+        with (
+            patch.object(paths, "install", return_value=self.wheel),
+            patch.object(paths.shutil, "which", return_value=str(which)),
+            patch.object(paths.sys, "argv", [str(argv0)]),
+        ):
+            return paths.cli_command(os_name)
+
+    def test_nt_accepts_the_console_script_that_started_this_process(self):
+        exe = self.bin / "getbrolls.exe"
+        self.assertEqual(["getbrolls"], self.command(exe, exe))
+        self.assertEqual(["getbrolls"], self.command(exe, self.bin / "getbrolls"))
+
+    def test_nt_refuses_a_console_script_that_did_not_start_this_process(self):
+        other = self.bin / "outro" / "getbrolls.exe"
+        self.assertEqual([sys.executable, "-P", "-m", "getbrolls"], self.command(other, self.bin / "getbrolls.exe"))
+
+    def test_posix_keeps_the_same_folder_rule(self):
+        exe = self.bin / "getbrolls"
+        self.assertEqual([sys.executable, "-P", "-m", "getbrolls"], self.command(exe, exe, os_name="posix"))
 
 
 class QuotingTests(unittest.TestCase):
@@ -367,11 +403,11 @@ class QuotingTests(unittest.TestCase):
             prefix = paths.cli_command(os_name)
             for case in self.CASES:
                 with self.subTest(os_name=os_name, case=case):
-                    text = paths.command_text(case, os_name=os_name)
-                    self.assertEqual([case], paths.split_command(text, os_name)[len(prefix) :])
+                    text = command_text(case, os_name=os_name)
+                    self.assertEqual([case], split_command(text, os_name)[len(prefix) :])
             with self.subTest(os_name=os_name, case="all"):
-                text = paths.command_text(*self.CASES, os_name=os_name)
-                self.assertEqual(list(self.CASES), paths.split_command(text, os_name)[len(prefix) :])
+                text = command_text(*self.CASES, os_name=os_name)
+                self.assertEqual(list(self.CASES), split_command(text, os_name)[len(prefix) :])
 
     def test_nt_quotes_any_backslash_for_bash(self):
         self.assertEqual('"C:\\a\\b"', paths.quote_arg(r"C:\a\b", "nt"))
@@ -452,10 +488,6 @@ LOCATOR_ALLOWLIST = {
         "_package_dir = Path(__file__).resolve().parent",
     ): "fallback do modo script (`python3 scripts/getbrolls/instagram_pairs.py`): tira a pasta "
     "do pacote de sys.path e importa o próprio pacote; não localiza dados",
-    (
-        "social.py",
-        '"após /plugin update é preciso reinstalar. Confira com python3 scripts/gb.py doctor."',
-    ): "texto só do checkout: o ramo `_from_checkout()`; o pacote usa `_paths.cli_hint`",
     (
         "sdk/api.py",
         '`[python, caminho/gb.py]` num checkout ou `[python, "-P", "-m", "getbrolls"]` no pacote',

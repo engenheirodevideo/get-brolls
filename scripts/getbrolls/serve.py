@@ -577,10 +577,13 @@ def _child_environment(source_env, scripts):
     processo solto cujo stdout/stderr vão parar num log dentro do projeto.
     """
     environment = {key: value for key, value in source_env.items() if not key.endswith(_SECRET_ENV_SUFFIXES)}
-    # Pacote instalado já está no `sys.path` do interpretador: `PYTHONPATH` fica como veio.
     if scripts is not None:
         existing = environment.get("PYTHONPATH")
         environment["PYTHONPATH"] = str(scripts) + (os.pathsep + existing if existing else "")
+    else:
+        # Pacote instalado já está no `sys.path` do interpretador; um `PYTHONPATH` herdado
+        # só poderia pôr outro `getbrolls` (ou um módulo com o mesmo nome) na frente dele.
+        environment.pop("PYTHONPATH", None)
     environment["PYTHONIOENCODING"] = "utf-8"
     return environment
 

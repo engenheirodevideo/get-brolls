@@ -55,8 +55,8 @@ getbrolls setup --check
 
 - Em todo este manual, `getbrolls …` e `python3 scripts/gb.py …` são o mesmo comando: use o primeiro no pacote instalado e o segundo dentro de um checkout.
 - **Usa o plugin do Claude Code? Nada muda.** No checkout e no plugin, `python3 scripts/gb.py` continua igual.
-- `getbrolls setup --check` mostra o que falta no runtime (yt-dlp, Playwright CLI, FFmpeg, ffprobe, Node) e os comandos para resolver, sem instalar nada. `getbrolls doctor` diz se está pronto (`ready`) e sai com código `4` quando falta algo.
-- **Windows:** os comandos sugeridos pela ferramenta (`summary.do.command`) rodam no PowerShell, no cmd e no Git Bash; não há promessa para caminho que contenha `$`, `%` ou `"` ao copiar e colar o comando.
+- `getbrolls setup --check` mostra o que falta (yt-dlp, Playwright CLI, FFmpeg, ffprobe, curl, Node, npx e os arquivos de dados, os mesmos itens obrigatórios do `doctor`) e os comandos para resolver, sem instalar nada. `getbrolls doctor` diz se está pronto (`ready`) e sai com código `4` quando falta algo; o `ready` dos dois bate.
+- **Windows:** os comandos sugeridos pela ferramenta (`summary.do.command`) usam `python` e aspas duplas e rodam colados no PowerShell, no cmd e no Git Bash quando nenhum caminho tem `$`, `%` ou `"`; com esses caracteres, ajuste as aspas à mão.
 
 ## 🧭 O caminho inteiro em 8 passos
 
@@ -573,7 +573,7 @@ python3 scripts/gb.py search --help
 python3 scripts/gb.py capabilities --json
 ```
 
-O `capabilities` serve a agentes e scripts que precisam descobrir o que esta instalação sabe fazer sem ler o `--help` de cada comando: cada comando traz `summary`, `options`, `requires_project` e `read_only` (`true`, `false` ou `"by_action"`); a resposta também traz `exit_codes`, `error_codes` e `plugin_commands` (só plugins habilitados, lidos do manifesto).
+O `capabilities` serve a agentes e scripts que precisam descobrir o que esta instalação sabe fazer sem ler o `--help` de cada comando: cada comando traz `summary`, `options`, `requires_project` e `read_only` (`true`, `false` ou `"by_action"`); a resposta também traz `invocation` (como chamar esta instalação, sem caminho da máquina), `exit_codes`, `error_codes`, `plugin_commands` (só plugins habilitados, lidos do manifesto) e `plugins_problems` (plugins inválidos, com falha ou suspensos, com o motivo).
 
 ---
 
@@ -597,7 +597,8 @@ Todo comando responde em **JSON**. Pensa como o **relatório de render**: um tex
   - `why`: por que é esse o próximo passo.
   - `blocking_human`: `true` quando o próximo passo depende de **você** (aprovar, dar uma informação).
 - 🔴 **Deu erro?** A mensagem de erro sai em JSON em stderr, numa linha só, com `error` (o que houve) e `error_code` (o tipo do erro). Nunca sai traceback: os detalhes técnicos ficam em `brolls/diagnostics.jsonl` (ou em `~/.getbrolls/diagnostics.jsonl`, quando o comando não tem projeto).
-- ⌨️ **Comando ou flag digitado errado** (erro de uso, código `2`): fora do terminal (agente, script) sai um JSON em stderr com `error`, `error_code: "USAGE_ERROR"`, `usage`, `prog` e `suggestion` (o nome parecido, ou `null`); no terminal, sai o texto do `usage` e, quando há nome parecido, "Você quis dizer: search?".
+- 💡 **`hint`** só aparece no erro quando há o que fazer além de corrigir e repetir: gravação pendente (`recovery_pending: true`, o próximo comando a retoma) ou estado já gravado (`state_committed: true`, rode `review` para regenerar a página).
+- ⌨️ **Comando ou flag digitado errado** (erro de uso, código `2`): o erro vai para stderr; com stderr fora do terminal (agente, script, `2>` para arquivo) sai um JSON com `error`, `error_code: "USAGE_ERROR"`, `usage`, `prog` e `suggestion` (o nome parecido, ou `null`); com stderr no terminal, sai o texto do `usage` e, quando há nome parecido, "Você quis dizer: search?". Vale também para opção obrigatória digitada errado (`--projct` → `--project`).
 
 **Código de saída** (o número que o terminal guarda depois de cada comando, útil em scripts):
 
@@ -609,6 +610,8 @@ Todo comando responde em **JSON**. Pensa como o **relatório de render**: um tex
 | `3` | Erro interno (bug). Abra uma issue com o `brolls/diagnostics.jsonl` |
 | `4` | Falta um pré-requisito da instalação: arquivos de dados, ffmpeg, yt-dlp |
 | `130` | Interrompido (Ctrl+C) |
+
+> `serve` em primeiro plano é a exceção do Ctrl+C: é assim que se para o servidor, e ele sai com `0`.
 
 > Até a 2.5, erro de operação ou de dados também saía com `2`. Script que testava `$? -eq 2` para esses erros agora testa `1`.
 
@@ -709,8 +712,8 @@ Arquivo opcional. Copie o [`.env.example.pt-BR`](../.env.example.pt-BR) pra `.en
 
 - `--env-file` ou `GB_ENV_FILE` apontando para arquivo que não existe é erro de uso (código `2`).
 - Com dois `.env` possíveis (o do checkout e o de `$GB_HOME`), vale o de cima e todo comando avisa `ENV_FILE_SHADOWED`; o `doctor` mostra qual valeu em `install.env_file`.
-- `GB_HOME` dentro de `$GB_HOME/.env` é recusado. Em qualquer outro `.env` ainda funciona, com o aviso `DEPRECATED` (a leitura sai na 2.7): defina `GB_HOME` no ambiente.
-- Toda variável `GB_*` também vale com o prefixo `GETBROLLS_*` no ambiente (`GETBROLLS_LOG_LEVEL` = `GB_LOG_LEVEL`). O nome `GB_*` é o canônico e vence quando os dois existem.
+- `GB_HOME` dentro de `$GB_HOME/.env` é recusado, também quando esse arquivo chega por `--env-file` ou `GB_ENV_FILE`. Em qualquer outro `.env` ainda funciona, com o aviso `DEPRECATED` quando a linha vale (a leitura sai na 2.7): defina `GB_HOME` no ambiente.
+- Qualquer variável `GB_*` do core também vale com o prefixo `GETBROLLS_*` no ambiente (`GETBROLLS_LOG_LEVEL` = `GB_LOG_LEVEL`). O nome `GB_*` é o canônico e vence quando os dois existem.
 
 ```bash
 # Chaves dos bancos de imagem (grátis nos sites deles)

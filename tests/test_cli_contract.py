@@ -1,8 +1,8 @@
 """Contrato da CLI: `prog`, `--version`, erro de uso e códigos de saída.
 
-Erro de uso sai com código 2. Com stdout fora de um terminal (agente, script,
-pipe), a mensagem vai em JSON para stderr; num terminal, sai em texto como a
-do argparse, mais "Você quis dizer: …?" quando há um nome parecido.
+Erro de uso sai com código 2. O erro vai para stderr: com stderr fora de um
+terminal (agente, script, `2>` para arquivo), sai em JSON; num terminal, sai em
+texto como o do argparse, mais "Você quis dizer: …?" quando há um nome parecido.
 
 Códigos: 0 ok, 1 operação/dados, 2 uso, 3 interno, 4 pré-requisito, 130
 interrompido. Nenhum erro mostra traceback nem repr para a pessoa: os detalhes
@@ -41,11 +41,25 @@ def run(*args):
     )
 
 
-def parse_in_process(argv, *, tty):
-    """`build_parser().parse_args(argv)` com stdout (não) terminal; devolve (código, stderr)."""
-    stderr = io.StringIO()
+class _Stderr(io.StringIO):
+    """stderr em memória que diz se é terminal."""
+
+    def __init__(self, tty):
+        super().__init__()
+        self.tty = tty
+
+    def isatty(self):
+        return self.tty
+
+
+def parse_in_process(argv, *, tty, stdout_tty=None):
+    """`build_parser().parse_args(argv)` com stderr (não) terminal; devolve (código, stderr).
+
+    `stdout_tty` (padrão: o contrário de `tty`) prova que só o stderr decide o formato.
+    """
+    stderr = _Stderr(tty)
     with (
-        mock.patch.object(cli.sys.stdout, "isatty", return_value=tty),
+        mock.patch.object(cli.sys.stdout, "isatty", return_value=(not tty) if stdout_tty is None else stdout_tty),
         contextlib.redirect_stderr(stderr),
     ):
         try:
@@ -120,6 +134,16 @@ class UsageErrorJsonTests(unittest.TestCase):
         payload = self.usage_error("zzzzzz", "--project", self.project)
         self.assertIsNone(payload["suggestion"])
 
+    def test_misspelled_required_flag_suggests_the_flag(self):
+        payload = self.usage_error("status", "--projct", self.project)
+        self.assertEqual("the following arguments are required: --project", payload["error"])
+        self.assertEqual("--project", payload["suggestion"])
+
+    def test_flag_of_another_command_suggests_the_missing_required_one(self):
+        payload = self.usage_error("library", "--query", "x")
+        self.assertIn("--search", payload["error"])
+        self.assertEqual("--search", payload["suggestion"])
+
     def test_missing_required_option_is_a_usage_error(self):
         payload = self.usage_error("search", "--project", self.project)
         self.assertIn("--query", payload["error"])
@@ -142,6 +166,12 @@ class UsageErrorTerminalTests(unittest.TestCase):
         self.assertIn("unrecognized arguments: --limt 3", stderr)
         self.assertIn("Você quis dizer: --limit?", stderr)
 
+    def test_misspelled_required_flag_on_a_tty_suggests_the_flag(self):
+        code, stderr = parse_in_process(["status", "--projct", "x"], tty=True)
+        self.assertEqual(2, code)
+        self.assertIn("the following arguments are required: --project", stderr)
+        self.assertTrue(stderr.endswith("Você quis dizer: --project?\n"), stderr)
+
     def test_tty_without_a_close_name_prints_no_suggestion(self):
         code, stderr = parse_in_process(["zzzzzz"], tty=True)
         self.assertEqual(2, code)
@@ -153,17 +183,26 @@ class UsageErrorTerminalTests(unittest.TestCase):
         self.assertEqual(1, len(stderr.strip().splitlines()))
         self.assertEqual("search", json.loads(stderr)["suggestion"])
 
-    def test_a_broken_stdout_counts_as_not_a_terminal(self):
-        with mock.patch.object(cli.sys.stdout, "isatty", side_effect=ValueError("I/O operation on closed file")):
-            self.assertFalse(cli._stdout_is_tty())
+    def test_a_broken_stderr_counts_as_not_a_terminal(self):
+        with mock.patch.object(cli.sys.stderr, "isatty", side_effect=ValueError("I/O operation on closed file")):
+            self.assertFalse(cli._stderr_is_tty())
+
+    def test_stderr_to_a_file_is_json_even_with_stdout_on_a_terminal(self):
+        code, stderr = parse_in_process(["serch"], tty=False, stdout_tty=True)
+        self.assertEqual(2, code)
+        self.assertEqual("search", json.loads(stderr)["suggestion"])
+
+    def test_stderr_on_a_terminal_is_text_even_with_stdout_piped(self):
+        code, stderr = parse_in_process(["serch"], tty=True, stdout_tty=False)
+        self.assertEqual(2, code)
+        self.assertIn("Você quis dizer: search?", stderr)
 
     def test_a_stale_choice_error_does_not_leak_into_the_next_error(self):
         parser = cli.build_parser()
         with contextlib.suppress(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             parser.parse_args(["serch"])
-        stderr = io.StringIO()
+        stderr = _Stderr(False)
         with (
-            mock.patch.object(cli.sys.stdout, "isatty", return_value=False),
             contextlib.redirect_stderr(stderr),
             contextlib.suppress(SystemExit),
         ):
@@ -239,7 +278,9 @@ class OperationExitTests(unittest.TestCase):
         self.assertEqual("INVALID_DATA", payload["error_code"])
         self.assertNotIn("traceback", payload)
         self.assertNotIn("repr", payload)
-        self.assertIn("hint", payload)
+        # Sem gravação pendente nem estado gravado, a dica de recovery/review seria ruído.
+        self.assertIs(False, payload["recovery_pending"])
+        self.assertNotIn("hint", payload)
 
     def test_the_traceback_still_reaches_the_project_diagnostics(self):
         done = run("fetch", "--candidate", "nope", "--project", self.project)
@@ -283,6 +324,62 @@ class OperationExitTests(unittest.TestCase):
         self.assertEqual(0, proc.returncode, stderr)
         self.assertNotIn(TRACEBACK, stderr)
         self.assertNotIn("BrokenPipeError", stderr)
+
+    def test_broken_pipe_keeps_the_pending_result_exit(self):
+        """`doctor` com `ready: false` num pipe fechado sai 4, não 0: o veredito não some com o pipe."""
+        env = {**os.environ, "GB_FFMPEG_PATH": str(self.project / "sem-ffmpeg")}
+        with subprocess.Popen(
+            [*CLI_ARGV, "doctor"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            env=env,
+        ) as proc:
+            assert proc.stdout is not None
+            proc.stdout.close()
+            _, stderr = proc.communicate(timeout=120)
+        self.assertEqual(4, proc.returncode, stderr)
+        self.assertNotIn(TRACEBACK, stderr)
+        self.assertNotIn("BrokenPipeError", stderr)
+
+
+class ErrorHintTests(unittest.TestCase):
+    """A dica do erro só aparece quando há o que retomar ou regenerar."""
+
+    def setUp(self):
+        self.project = Path(tempfile.mkdtemp(prefix="gb-hint-"))
+        self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
+
+    def failure(self, command="resolve", commit=False, pending=False):
+        def execute(_args):
+            if pending:
+                (self.project / "brolls").mkdir(exist_ok=True)
+                (self.project / "brolls" / ".pending-transaction.json").write_text("{}", encoding="utf-8")
+            if commit:
+                runtime.record_commit()
+            raise ValueError("falhou")
+
+        with self.assertRaises(OperationError) as caught:
+            runtime.audited(argparse.Namespace(command=command, project=str(self.project)), execute)
+        return caught.exception.payload
+
+    def test_no_hint_without_pending_recovery_or_committed_state(self):
+        self.assertNotIn("hint", self.failure())
+
+    def test_pending_recovery_gets_the_recovery_hint(self):
+        payload = self.failure(pending=True)
+        self.assertIs(True, payload["recovery_pending"])
+        self.assertIn("retoma", payload["hint"])
+        self.assertNotIn("Se recovery_pending", payload["hint"])
+
+    def test_committed_state_gets_the_review_hint(self):
+        payload = self.failure(commit=True)
+        self.assertIn("review", payload["hint"])
+        self.assertNotIn("recovery_pending", payload["hint"])
+
+    def test_roteiro_never_gets_the_review_hint(self):
+        self.assertNotIn("hint", self.failure(command="roteiro", commit=True))
 
 
 class InProcessExitTests(unittest.TestCase):
@@ -351,6 +448,7 @@ class InProcessExitTests(unittest.TestCase):
         payload = json.loads(err)
         self.assertEqual("INTERNAL_ERROR", payload["error_code"])
         self.assertEqual("RuntimeError", payload["type"])
+        self.assertIn("[type: RuntimeError]", payload["error"])
         for key in ("traceback", "repr", "message"):
             self.assertNotIn(key, payload)
         self.assertNotIn("kaboom", err)
