@@ -9,13 +9,13 @@ import shutil
 import time
 from pathlib import Path
 
-from . import assets, roteiro, roteiro_plan, roteiro_review, roteiro_sync
+from . import assets, layout, roteiro, roteiro_plan, roteiro_review, roteiro_sync
 from .brief import brief_path, load_brief
 from .export import _OS_REASONS_COMMON as _OS_REASONS
 from .ledger import atomic_write
 from .rules import load_rules
 
-NEW_FOLDERS = ("aroll", *(k.folder for k in assets.ASSET_KINDS.values() if k.folder.startswith("assets/")))
+NEW_FOLDERS = ("aroll", *(f"assets/{name}" for name in layout.ASSET_FOLDERS))
 BACKUP_SUFFIX = ".bak"
 
 

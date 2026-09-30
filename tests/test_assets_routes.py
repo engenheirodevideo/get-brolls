@@ -8,10 +8,11 @@ import unittest
 from pathlib import Path
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _cli import run_cli
 from _isolation import GB_HOME
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import assets
+from getbrolls import assets, layout
 
 
 class AssetRouteTests(unittest.TestCase):
@@ -94,3 +95,38 @@ class AssetRouteTests(unittest.TestCase):
         self._put(self.project, "assets/marca", "logo.svg")
         rows = assets.listing(self.project, "marca")
         self.assertEqual([r["name"] for r in rows], ["logo"])
+
+
+class FrozenAssetFoldersTests(unittest.TestCase):
+    def setUp(self):
+        self.project = Path(tempfile.mkdtemp(prefix="gb-assets-folders-"))
+        self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
+
+    def test_asset_folders_are_frozen_in_portuguese(self):
+        self.assertEqual(
+            ("marca", "lettering", "sfx", "musica", "imagem", "composicoes", "outros"), layout.ASSET_FOLDERS
+        )
+
+    def test_asset_folders_are_the_kind_folders_plus_outros(self):
+        tails = {
+            k.folder.removeprefix("assets/") for k in assets.ASSET_KINDS.values() if k.folder.startswith("assets/")
+        }
+        self.assertEqual(tails | {"outros"}, set(layout.ASSET_FOLDERS))
+        self.assertNotIn("outros", {k.folder.removeprefix("assets/") for k in assets.ASSET_KINDS.values()})
+
+    def test_imagem_kind_is_licensed_and_personal(self):
+        spec = assets.ASSET_KINDS["imagem"]
+        self.assertEqual("assets/imagem", spec.folder)
+        self.assertEqual(assets.IMAGE, spec.extensions)
+        self.assertTrue(spec.licensed)
+        self.assertTrue(spec.personal)
+
+    def test_where_finds_an_image_with_the_licence_warning(self):
+        path = self.project / "assets" / "imagem" / "foto.png"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"x")
+        found = run_cli("assets", "--action", "where", "--kind", "imagem", "--name", "foto", project=self.project)
+        self.assertEqual("found", found["status"])
+        self.assertEqual("project", found["origin"])
+        self.assertTrue(found["path"].endswith("foto.png"))
+        self.assertIn("foto.png: licença não registrada (foto.licenca.json)", found["warnings"])

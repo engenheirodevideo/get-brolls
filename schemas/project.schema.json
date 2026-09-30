@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Get B-rolls project v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/project.schema.json",
+  "description": "O project.json na raiz de um projeto de layout 1. Layout 0 nunca é gravado: é a ausência deste arquivo, e o projeto continua com brolls/clips/ como sempre. O id é o mesmo project_id de brolls/manifest.json, uma identidade só por projeto. A versão do arquivo mora em schema (getbrolls.project/<N>); quem lê recusa N maior do que conhece. Conferido em código, além deste schema: id em uuid canônico (minúsculas), NaN e Infinity recusados em qualquer lugar, e canvas/fps só com inteiros positivos. Objetos abertos: campo novo opcional é aditivo; o que não é do core vai em ext.",
+  "type": "object",
+  "required": ["schema", "id", "layout", "client", "template", "canvas", "fps", "created"],
+  "properties": {
+    "schema": { "const": "getbrolls.project/1" },
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "description": "uuid do projeto; o mesmo project_id de brolls/manifest.json quando ele já existe."
+    },
+    "layout": { "enum": [1] },
+    "client": {
+      "type": ["string", "null"],
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "maxLength": 64,
+      "description": "Slug do cliente, como o cliente do frontmatter do roteiro; null quando o projeto não é de cliente."
+    },
+    "template": {
+      "type": ["string", "null"],
+      "pattern": "^cat:",
+      "maxLength": 256,
+      "description": "Referência cat: do template aplicado no init; null quando o projeto não nasceu de template."
+    },
+    "canvas": {
+      "type": ["object", "null"],
+      "description": "Tamanho do quadro em pixels; o mesmo formato de meta.canvas do plano de export. null = decide pelo aspecto.",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "fps": {
+      "type": ["object", "null"],
+      "description": "Base de tempo como fração: 30 é {num: 30, den: 1}, 29,97 é {num: 30000, den: 1001}; o mesmo formato de meta.fps do plano de export.",
+      "required": ["num", "den"],
+      "properties": {
+        "num": { "type": "integer", "minimum": 1 },
+        "den": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "created": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "ext": {
+      "type": "object",
+      "description": "Espaço livre para ferramentas de fora do core; o core não lê."
+    }
+  }
+}

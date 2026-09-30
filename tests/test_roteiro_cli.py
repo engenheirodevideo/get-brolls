@@ -19,7 +19,7 @@ from _paths import (  # noqa: F401  (efeito de import: insere scripts/ em sys.pa
 )
 from test_logging_trail import DEBUG_ENV, _events, _log_path
 
-from getbrolls import models, roteiro, roteiro_commands, roteiro_review
+from getbrolls import layout, models, roteiro, roteiro_commands, roteiro_review
 from getbrolls.cli import build_parser
 from getbrolls.guidance import command_for
 from getbrolls.ledger import Ledger
@@ -113,9 +113,12 @@ class RoteiroCliTests(CliCase):
             "assets/lettering",
             "assets/sfx",
             "assets/musica",
+            "assets/imagem",
             "assets/composicoes",
+            "assets/outros",
         ):
             self.assertTrue((self.project / folder).is_dir(), folder)
+        self.assertEqual(["aroll", *(f"assets/{n}" for n in layout.ASSET_FOLDERS)], created["folders"])
         self.assertIsNone(created["backup"])
         refused = self.cli("roteiro", "--action", "new", "--genero", "reels", "--tema", "IA", expect=1)
         self.assertIn("--force", refused["error"])

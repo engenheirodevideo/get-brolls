@@ -52,7 +52,20 @@ def legacy_review_epoch(candidate):
 
 
 def project_id(ledger):
-    # Stable when project folder is copied to another reviewer/computer.
+    """Id estável do projeto (sobrevive à cópia da pasta para outra pessoa ou máquina).
+
+    Com `project.json` (layout 1), o id dele manda e é copiado para o manifesto que
+    ainda não tem `project_id`: uma identidade só. Sem ele, o manifesto guarda um uuid
+    criado na primeira vez. `project.json` inválido levanta `ValueError`.
+    """
+    from . import layout
+
+    declared = layout.project_id(ledger.root.parent)
+    if declared is not None:
+        if "project_id" not in ledger.data:
+            ledger.data["project_id"] = declared
+            ledger.save("project_identity")
+        return declared
     if "project_id" not in ledger.data:
         import uuid
 

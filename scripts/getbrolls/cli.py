@@ -77,6 +77,7 @@ SUMMARIES = {
     "verify": "Conferir integridade e decodificação dos arquivos coletados",
     "review": "Gerar o Storyboard local em brolls/review.html",
     "import-review": "Importar o JSON de decisões exportado pelo Storyboard",
+    "init": "Criar um projeto novo de layout 1: project.json, aroll/, assets/, broll/ e analysis/",
     "init-rules": "Criar um RULES.md editável no projeto (--format muda o formato-alvo)",
     "rules": "Mostrar as regras editoriais em vigor no projeto",
     "init-brief": "Criar um BRIEF.md editável com o plano deste vídeo",
@@ -90,7 +91,9 @@ SUMMARIES = {
     "serve": "Servir brolls/review.html em 127.0.0.1 para abrir o Storyboard no navegador",
     "deliver": "Organizar os trechos coletados em entrega/, uma pasta por beat",
     "roteiro": "Criar, validar, revisar e sincronizar o ROTEIRO.md com os beats do BRIEF.md",
-    "assets": "Listar componentes do projeto (marca, lettering, sfx, música, composições, A-ROLL) e resolver nomes",
+    "assets": (
+        "Listar componentes do projeto (marca, lettering, sfx, música, imagem, composições, A-ROLL) e resolver nomes"
+    ),
     "export": "Transformar o roteiro revisado num projeto de edição (--to hyperframes) numa pasta nova em exports/",
 }
 
@@ -405,6 +408,7 @@ def build_parser():
         "verify",
         "review",
         "import-review",
+        "init",
         "init-rules",
         "rules",
         "init-brief",
@@ -436,7 +440,7 @@ def build_parser():
 def _add_confirm_format_change_arg(p, name):
     """`--confirm-format-change`, visível só nos comandos que chegam a `sync_formats`."""
     # `roteiro`, `assets` e `export` nascem sem a flag: eles nunca chegam a `sync_formats`.
-    if name in ("status", "roteiro", "assets", "export"):
+    if name in ("status", "init", "roteiro", "assets", "export"):
         return
     # Mudar o formato-alvo derruba aprovações humanas; qualquer comando que
     # sincronize formato precisa deste sim explícito antes de apagá-las. Mas
@@ -808,6 +812,48 @@ def _add_library_args(p, name):
     )
 
 
+def _checked(parse):
+    """Tipo de argparse a partir de um parser que levanta `ValueError`: valor ruim é erro de uso."""
+
+    def convert(text):
+        try:
+            return parse(text)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(str(exc)) from None
+
+    convert.__name__ = parse.__name__
+    return convert
+
+
+def _client_slug(text):
+    from .layout import check_client
+
+    return check_client(text, "--client")
+
+
+def _parse_canvas(text):
+    from .layout import parse_canvas
+
+    return parse_canvas(text)
+
+
+def _parse_fps(text):
+    from .layout import parse_fps
+
+    return parse_fps(text)
+
+
+def _add_init_args(p, name):
+    """Flags de `init`."""
+    if name != "init":
+        return
+    p.add_argument("--client", type=_checked(_client_slug), help="Slug do cliente do projeto (ex.: acme-corp)")
+    p.add_argument(
+        "--canvas", type=_checked(_parse_canvas), help="Tamanho do quadro em pixels, LARGURAxALTURA (ex.: 1080x1920)"
+    )
+    p.add_argument("--fps", type=_checked(_parse_fps), help="Quadros por segundo: inteiro (30) ou fração (30000/1001)")
+
+
 def _add_init_rules_args(p, name):
     """Flags de `init-rules`."""
     if name != "init-rules":
@@ -959,6 +1005,7 @@ _PROJECT_SUBCOMMAND_ARG_ADDERS = (
     _add_remember_args,
     _add_learn_args,
     _add_library_args,
+    _add_init_args,
     _add_init_rules_args,
     _add_brief_args,
     _add_browser_plan_args,

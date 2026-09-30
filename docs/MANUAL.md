@@ -167,6 +167,13 @@ python3 scripts/gb.py status --project /caminho/meu-video
 > 💬 **No chat:** `/get-brolls-brief` faz uma entrevista de até 7 perguntas e escreve o BRIEF por você.
 
 ```bash
+# ── init [--client … --canvas … --fps …] ────────────────────
+# O QUE FAZ: cria um projeto novo de layout 1: project.json (id, cliente,
+#            quadro e fps) e as pastas aroll/, assets/<sete pastas>, broll/ e analysis/.
+# RECUSA: pasta que já tem project.json ou brolls/manifest.json (esse usa migrate).
+# OPCIONAL: projetos sem init continuam funcionando como sempre.
+python3 scripts/gb.py init --client acme --canvas 1080x1920 --fps 30 --project /caminho/meu-video
+
 # ── init-rules ──────────────────────────────────────────────
 # O QUE FAZ: cria o arquivo RULES.md na pasta do projeto.
 # DENTRO DELE: formato do vídeo, fontes preferidas e sites bloqueados.
@@ -497,7 +504,7 @@ python3 scripts/gb.py roteiro --action plan --project /caminho/meu-video
 python3 scripts/gb.py roteiro --action sync --project /caminho/meu-video
 
 # ── assets --action list / where ────────────────────────────
-# O QUE FAZ: mostra os componentes (marca, lettering, sfx, musica, composicoes)
+# O QUE FAZ: mostra os componentes (marca, lettering, sfx, musica, imagem, composicoes)
 #            e onde cada nome resolve: projeto ou biblioteca pessoal. Só lê.
 python3 scripts/gb.py assets --action list --project /caminho/meu-video
 python3 scripts/gb.py assets --action where --kind sfx --name whoosh --project /caminho/meu-video

@@ -436,7 +436,7 @@ video-01/
 ├── ROTEIRO.md               # opcional: cenas, diretivas e fala (roteiro --action new)
 ├── aroll/                   # apresentador, UGC e narração: cNN.mp4 ou cNN-<take>.mp4 (+ .transcript.json)
 ├── assets/                  # componentes do projeto (não é o assets/ da instalação)
-│   └── marca/  lettering/  sfx/  musica/  composicoes/
+│   └── marca/  lettering/  sfx/  musica/  imagem/  composicoes/  outros/
 ├── output/playwright/       # screenshots e snapshots de trabalho
 ├── entrega/                 # uma pasta NN-<beat>-<alvo> por beat, gerada pelo deliver
 ├── exports/                 # export --to <exporter>: hyperframes/001/ (com getbrolls-plan.json), 002/… e LATEST; o core nunca apaga

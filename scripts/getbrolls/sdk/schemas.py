@@ -18,6 +18,7 @@ NAMES = (
     "visual",
     "client",
     "clients",
+    "project",
 )
 
 
