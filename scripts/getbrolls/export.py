@@ -20,7 +20,7 @@ import unicodedata
 import urllib.parse
 from pathlib import Path, PureWindowsPath
 
-from . import __version__, export_folder, export_gates, export_place, export_plan, logs
+from . import __version__, assets, export_folder, export_gates, export_place, export_plan, logs
 from .delivery import copies_forced
 from .ledger import existing_project_id
 from .rules import home_dir
@@ -174,6 +174,9 @@ def _machine_paths(project, registry, sources):
         for _, spec in registry.resolvers_for(kind):
             for root in registry.resolver_roots(spec.name):
                 add(root, "uma pasta de permissions.paths", "<permissions.paths>")
+    _, client_root = assets.project_client(project)
+    if client_root is not None:
+        add(client_root, "a pasta do cliente", "<cliente>")
     add(home_dir(), "a pasta do get-brolls (GB_HOME)", "<GB_HOME>")
     with contextlib.suppress(RuntimeError):
         add(Path.home(), "a pasta pessoal", "<pasta pessoal>")

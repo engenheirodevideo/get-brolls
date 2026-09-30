@@ -6,13 +6,14 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _isolation import GB_HOME
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import assets, layout
+from getbrolls import assets, clients, export, export_plan, layout, runtime
 
 
 class AssetRouteTests(unittest.TestCase):
@@ -130,3 +131,131 @@ class FrozenAssetFoldersTests(unittest.TestCase):
         self.assertEqual("project", found["origin"])
         self.assertTrue(found["path"].endswith("foto.png"))
         self.assertIn("foto.png: licença não registrada (foto.licenca.json)", found["warnings"])
+
+
+class ClientRouteTests(unittest.TestCase):
+    """Projeto de layout 1 com cliente: projeto, depois a pasta do cliente, depois a biblioteca pessoal."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="gb-assets-client-")).resolve()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.personal = GB_HOME / "assets"
+        self.addCleanup(shutil.rmtree, self.personal, ignore_errors=True)
+        self.addCleanup(self._unregister)
+        (self.tmp / "Clientes").mkdir()
+        self.project = self.tmp / "video"
+        self.project.mkdir()
+        assets.reset_client_warnings()
+
+    def _unregister(self):
+        for row in clients.load_registry()["clients"]:
+            clients.remove(row["slug"])
+
+    def _register(self, slug="acme"):
+        clients.add(slug, str(self.tmp / "Clientes"))
+        return self.tmp / "Clientes" / slug
+
+    def _project_json(self, client="acme"):
+        layout.write_project(self.project, layout.new_project_doc(client=client))
+
+    @staticmethod
+    def _put(folder, name, data=b"x"):
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / name
+        path.write_bytes(data)
+        return path
+
+    def test_project_shadows_client_which_shadows_personal(self):
+        root = self._register()
+        self._project_json()
+        self._put(self.personal / "sfx", "whoosh.wav")
+        self.assertEqual("personal", assets.resolve(self.project, "sfx", "whoosh")["origin"])
+        client_file = self._put(root / "components" / "sfx", "whoosh.wav")
+        found = assets.resolve(self.project, "sfx", "whoosh")
+        self.assertEqual(("client", str(client_file.resolve())), (found["origin"], found["path"]))
+        self._put(self.project / "assets" / "sfx", "whoosh.wav")
+        self.assertEqual("project", assets.resolve(self.project, "sfx", "whoosh")["origin"])
+
+    def test_client_folder_names_follow_the_asset_folders(self):
+        root = self._register()
+        self._project_json()
+        self._put(root / "components" / "composicoes", "abertura.html")
+        found = assets.resolve(self.project, "composicao", "abertura")
+        self.assertEqual("client", found["origin"])
+
+    def test_client_licence_sidecar_is_honoured(self):
+        root = self._register()
+        self._project_json()
+        self._put(root / "components" / "musica", "tema.mp3")
+        licence = {"origem": "banco X", "licenca": "CC0", "credito": "Fulano"}
+        self._put(root / "components" / "musica", "tema.licenca.json", json.dumps(licence).encode())
+        found = assets.resolve(self.project, "musica", "tema")
+        self.assertEqual(("client", "CC0", []), (found["origin"], found["license"]["licenca"], found["warnings"]))
+
+    def test_aroll_never_resolves_from_the_client(self):
+        root = self._register()
+        self._project_json()
+        self._put(root / "components" / "aroll", "c01.mp4")
+        self._put(root / "aroll", "c01.mp4")
+        self.assertEqual("pending", assets.resolve(self.project, "aroll", "c01")["status"])
+        self.assertEqual(
+            ["project"], [origin for origin, _ in assets.component_roots(self.project, assets.ASSET_KINDS["aroll"])]
+        )
+
+    def test_unregistered_client_warns_once_and_falls_through_to_personal(self):
+        self._project_json("ghost")
+        self._put(self.personal / "sfx", "whoosh.wav")
+        with patch.object(runtime, "record_warning") as warn:
+            self.assertEqual("personal", assets.resolve(self.project, "sfx", "whoosh")["origin"])
+            assets.resolve(self.project, "sfx", "whoosh")
+        self.assertEqual(1, warn.call_count)
+        self.assertEqual("CLIENT_UNREGISTERED", warn.call_args.args[0])
+        self.assertIn("ghost", warn.call_args.args[1])
+
+    @unittest.skipIf(os.name == "nt", "symlink exige privilégio no Windows")
+    def test_linked_client_component_folder_is_skipped(self):
+        root = self._register()
+        self._project_json()
+        outside = self.tmp / "fora"
+        self._put(outside, "whoosh.wav")
+        shutil.rmtree(root / "components" / "sfx")
+        (root / "components" / "sfx").symlink_to(outside, target_is_directory=True)
+        self.assertEqual("pending", assets.resolve(self.project, "sfx", "whoosh")["status"])
+
+    def test_layout_zero_project_is_unaffected(self):
+        root = self._register()
+        self._put(root / "components" / "sfx", "whoosh.wav")
+        self.assertEqual("pending", assets.resolve(self.project, "sfx", "whoosh")["status"])
+        self.assertEqual(
+            ["project", "personal"], [o for o, _ in assets.component_roots(self.project, assets.ASSET_KINDS["sfx"])]
+        )
+
+    def test_listing_shows_client_rows(self):
+        root = self._register()
+        self._project_json()
+        self._put(root / "components" / "marca", "logo.svg")
+        rows = assets.listing(self.project, "marca")
+        self.assertEqual([("logo", "client")], [(r["name"], r["origin"]) for r in rows])
+
+    def test_export_scrubs_the_client_root(self):
+        root = self._register()
+        self._project_json()
+
+        class _Registry:
+            @staticmethod
+            def resolvers_for(_kind):
+                return []
+
+        machine = export._machine_paths(self.project, _Registry(), {})  # pylint: disable=protected-access
+        self.assertEqual(("a pasta do cliente", "<cliente>"), machine[str(root)])
+        text = export._scrub(f"arquivo em {root}/components/sfx/whoosh.wav", machine)  # pylint: disable=protected-access
+        self.assertNotIn(str(root), text)
+        self.assertIn("<cliente>", text)
+
+    def test_export_plan_names_the_client_origin(self):
+        root = self._register()
+        self._project_json()
+        path = self._put(root / "components" / "sfx", "whoosh.wav")
+        collector = export_plan._Collector(self.project, None)  # pylint: disable=protected-access
+        where = collector._where("client", path.parent, path)  # pylint: disable=protected-access
+        self.assertEqual("cliente acme: sfx/whoosh.wav", where)
