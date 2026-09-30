@@ -4,7 +4,6 @@ import copy
 import json
 import os
 import re
-import shlex
 import tempfile
 import time
 import unittest
@@ -13,7 +12,7 @@ from pathlib import Path
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
-from _paths import ROOT, SKILLS
+from _paths import ROOT, SKILLS, suggested_argv
 
 from getbrolls import brief as brief_module
 from getbrolls.cli import SUMMARIES, build_parser
@@ -311,9 +310,7 @@ class BeatCommandTests(unittest.TestCase):
         for name, line in commands.items():
             if name == "note":  # prosa para o agente, não comando
                 continue
-            tokens = shlex.split(line)
-            self.assertTrue(tokens[1].endswith("gb.py"), line)
-            out[name] = parser.parse_args(tokens[2:])
+            out[name] = parser.parse_args(suggested_argv(line))
         return commands, out
 
     def test_every_command_parses_and_carries_the_beat_identity(self):

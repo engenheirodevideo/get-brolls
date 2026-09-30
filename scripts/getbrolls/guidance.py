@@ -9,11 +9,7 @@ dita, evidência real), o comando traz o lugar em MAIÚSCULAS para ele preencher
 # pylint: disable=too-many-arguments,too-many-positional-arguments
 # Legado: ocorrências pré-existentes em `_action` (corpo idêntico ao código anterior à 2.6.0).
 
-import shlex
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[2]
-CLI = ROOT / "scripts" / "gb.py"
+from . import _paths
 
 # Degraus com comando próprio, do topo da escada para a base.
 STEPS = (
@@ -75,9 +71,13 @@ def command_for(step, project, candidate=None):
     template = TEMPLATES.get(step)
     if template is None:
         return None
-    return f'python3 "{CLI}" ' + template.format(
-        project=shlex.quote(str(project)),
-        candidate=shlex.quote(candidate) if candidate else "ID",
+    return (
+        _paths.cli_prefix_text()
+        + " "
+        + template.format(
+            project=_paths.quote_arg(str(project)),
+            candidate=_paths.quote_arg(candidate) if candidate else "ID",
+        )
     )
 
 
@@ -185,7 +185,7 @@ def _inspect_command(state):
     )
     query = state.get("inspect_query")
     if command and query:
-        command = command.replace("--query NARRACAO_OU_ALVO", "--query " + shlex.quote(query))
+        command = command.replace("--query NARRACAO_OU_ALVO", "--query " + _paths.quote_arg(query))
     return command
 
 

@@ -1,10 +1,8 @@
 """Próximo passo humano: toda sugestão da escada é um comando que a CLI aceita."""
 
 import json
-import shlex
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,7 +10,7 @@ from pathlib import Path
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import synth_video
-from _paths import CLI_ARGV
+from _paths import CLI_ARGV, suggested_argv
 
 from getbrolls.cli import build_parser
 from getbrolls.commands import STATUS_LADDER, status_next
@@ -80,10 +78,7 @@ class Guidance(unittest.TestCase):
                 if action["command"] is None:
                     self.assertEqual("done", step)
                     continue
-                argv = shlex.split(action["command"])
-                self.assertTrue(argv[0].endswith("python3") or "python" in argv[0], argv[0])
-                self.assertTrue(argv[1].endswith("gb.py"), argv[1])
-                parsed = parser.parse_args(argv[2:])
+                parsed = parser.parse_args(suggested_argv(action["command"]))
                 self.assertEqual(ABSOLUTE, parsed.project)
 
     def test_command_for_every_step_parses(self):
@@ -91,7 +86,8 @@ class Guidance(unittest.TestCase):
         for step in STEPS:
             with self.subTest(step=step):
                 command = command_for(step, PROJECT, "local:a")
-                parsed = parser.parse_args(shlex.split(command)[2:])
+                assert command is not None
+                parsed = parser.parse_args(suggested_argv(command))
                 self.assertEqual(ABSOLUTE, parsed.project)
 
     def test_placeholders_stay_uppercase_when_only_the_human_knows(self):
@@ -216,9 +212,8 @@ class SuggestedCommandRuns(unittest.TestCase):
             state = base_state(project=tmp, counts=full(candidates=1), candidate=candidate)
             action = next_action(state)
             self.assertEqual("preview", action["step"])
-            argv = shlex.split(action["command"])
             done = subprocess.run(
-                [sys.executable, *argv[1:]],
+                [*CLI_ARGV, *suggested_argv(action["command"])],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -244,7 +239,7 @@ class BoardRoute(unittest.TestCase):
         # Sem servidor no ar, o endereço quem imprime é o próprio `serve`.
         self.assertIsNone(action["url"])
         self.assertTrue(action["blocking_human"])
-        parsed = build_parser().parse_args(shlex.split(action["command"])[2:])
+        parsed = build_parser().parse_args(suggested_argv(action["command"]))
         self.assertEqual(ABSOLUTE, parsed.project)
 
     def test_the_board_route_imports_without_pointing_at_a_file(self):
@@ -255,7 +250,7 @@ class BoardRoute(unittest.TestCase):
         command = command_for("import-review", PROJECT)
         assert command is not None
         self.assertNotIn("--file", command)
-        build_parser().parse_args(shlex.split(command)[2:])
+        build_parser().parse_args(suggested_argv(command))
 
     def test_without_the_board_the_chat_route_stays(self):
         action = next_action(LADDER_STATES["approve"])

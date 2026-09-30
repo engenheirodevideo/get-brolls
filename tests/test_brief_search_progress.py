@@ -7,14 +7,16 @@ o degrau passa para a fonte seguinte e, esgotadas todas, diz isso à pessoa.
 """
 
 import copy
-import shlex
 import tempfile
 import unittest
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
+from _paths import (  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
+    ROOT,
+    suggested_argv,
+)
 from test_brief import VALID, write_brief
 
 from getbrolls import cli, providers
@@ -38,7 +40,7 @@ def status_do(project):
 
 
 def run(command):
-    return cli.main(shlex.split(command)[2:])
+    return cli.main(suggested_argv(command))
 
 
 class EmptySearchesMoveOn(unittest.TestCase):
@@ -216,7 +218,7 @@ class BeatsWithoutApiSearch(unittest.TestCase):
         self.assertIn("--shot abertura", action["command"])
         self.assertNotIn("TERMOS_DA_BUSCA", action["command"])
         self.assertNotIn(" search ", action["command"])
-        build_parser().parse_args(shlex.split(action["command"])[2:])
+        build_parser().parse_args(suggested_argv(action["command"]))
 
     def test_a_local_only_beat_asks_for_the_file_with_resolve(self):
         action = self._do(["local"])

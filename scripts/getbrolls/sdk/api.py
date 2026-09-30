@@ -9,8 +9,8 @@ from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
 
+from .. import _paths, logs
 from .. import http as core_http
-from .. import logs
 from ..http import ProviderError, get_json, public_url
 from ..models import candidate as core_candidate
 from ..rules import home_dir
@@ -602,6 +602,15 @@ class PluginApi:
         folder.mkdir(mode=0o700, parents=True, exist_ok=True)
         folder.chmod(0o700)
         return folder
+
+    def cli_argv(self) -> list[str]:
+        """argv que roda esta mesma instalação do getbrolls num subprocesso (lista nova a cada chamada).
+
+        Returns:
+            `[python, caminho/gb.py]` num checkout ou `[python, "-P", "-m", "getbrolls"]` no pacote
+            instalado; acrescente o subcomando e os argumentos.
+        """
+        return _paths.cli_argv()
 
     def config(self) -> dict:
         """`settings.json` de `data_dir` como dict; sem arquivo, `{}`.

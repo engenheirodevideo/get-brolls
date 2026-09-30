@@ -6,16 +6,14 @@ comando pronto (`search`/`resolve`/`preview`) e se liga ao candidato pelo `--sho
 """
 
 import re
-import shlex
 from pathlib import Path
 
-from . import brief_source
+from . import _paths, brief_source
 from .brief_source import BEAT_ID_RE, load_brief
 from .config import env_is_set
 from .limits import MAX_HINT_S, MIN_HINT_S
 
 ROOT = Path(__file__).resolve().parents[2]
-CLI = ROOT / "scripts" / "gb.py"
 
 # Reexport: quem já importava daqui (`from .brief import brief_path`, `brief.load_brief`
 # etc.) continua igual; o corpo deste módulo não os usa (mora em `brief_source`, o leaf
@@ -524,7 +522,7 @@ def provider_warnings(beats):
 
 
 def _cli_prefix():
-    return f'python3 "{CLI}"'
+    return _paths.cli_prefix_text()
 
 
 WAY_OUT = "Se não tiver esse material, remova o beat do BRIEF.md ou siga sem ele."
@@ -661,18 +659,18 @@ def beat_commands(project, beat, tried=()):
     no lugar dele vai um `note` explicando que o caminho é `resolve --url/--file`. A
     escolha da busca (e o motivo de não haver uma) sai de `search_plan`.
     """
-    project = shlex.quote(str(Path(project).expanduser().resolve()))
+    project = _paths.quote_arg(str(Path(project).expanduser().resolve()))
     prefix = f"{_cli_prefix()} "
     plan = search_plan(beat, tried)
     origin = "--file ARQUIVO" if beat["allowed_sources"] == ["local"] else "--url URL_PUBLICA"
-    narration = f" --narration {shlex.quote(beat['narration'])}" if beat.get("narration") else ""
+    narration = f" --narration {_paths.quote_arg(beat['narration'])}" if beat.get("narration") else ""
     commands = {}
     if plan["provider"]:
         media = " --media image" if plan["media_image"] else ""
         commands["search"] = (
             prefix
             + f"search --project {project} --provider {plan['provider']} "
-            + f"--query {shlex.quote(plan['query'])}{media} --intent {beat['intent']} --shot {beat['id']}"
+            + f"--query {_paths.quote_arg(plan['query'])}{media} --intent {beat['intent']} --shot {beat['id']}"
         )
     # Banco de imagem não tem página para colar: sugerir `resolve --url` num beat que
     # só aceita pexels/pixabay manda a pessoa procurar um link que não existe.
@@ -684,7 +682,7 @@ def beat_commands(project, beat, tried=()):
     commands["inspect"] = (
         prefix
         + f"inspect --project {project} --candidate ID --query "
-        + shlex.quote(beat.get("narration") or beat["target"])
+        + _paths.quote_arg(beat.get("narration") or beat["target"])
     )
     commands["preview"] = prefix + f"preview --project {project} --candidate ID" + narration
     if plan["note"]:
