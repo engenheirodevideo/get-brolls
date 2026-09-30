@@ -170,6 +170,7 @@ python3 scripts/gb.py status --project /caminho/meu-video
 # ── init [--client … --canvas … --fps …] ────────────────────
 # O QUE FAZ: cria um projeto novo de layout 1: project.json (id, cliente,
 #            quadro e fps) e as pastas aroll/, assets/<sete pastas>, broll/ e analysis/.
+# --client: cliente já registrado (client --action add). Com template: veja "Clientes e templates".
 # RECUSA: pasta que já tem project.json ou brolls/manifest.json (esse usa migrate).
 # OPCIONAL: projetos sem init continuam funcionando como sempre.
 python3 scripts/gb.py init --client acme --canvas 1080x1920 --fps 30 --project /caminho/meu-video
@@ -505,7 +506,7 @@ python3 scripts/gb.py roteiro --action sync --project /caminho/meu-video
 
 # ── assets --action list / where ────────────────────────────
 # O QUE FAZ: mostra os componentes (marca, lettering, sfx, musica, imagem, composicoes)
-#            e onde cada nome resolve: projeto ou biblioteca pessoal. Só lê.
+#            e onde cada nome resolve: projeto, pasta do cliente ou biblioteca pessoal. Só lê.
 python3 scripts/gb.py assets --action list --project /caminho/meu-video
 python3 scripts/gb.py assets --action where --kind sfx --name whoosh --project /caminho/meu-video
 
@@ -517,6 +518,33 @@ python3 scripts/gb.py assets --action where --kind sfx --name whoosh --project /
 # Passo a passo: references/roteiro.md#export-do-roteiro-ao-projeto-de-edição
 python3 scripts/gb.py export --to hyperframes --dry-run --project /caminho/meu-video
 python3 scripts/gb.py export --to hyperframes --project /caminho/meu-video
+```
+
+## 🏢 Clientes e templates (opcional)
+
+> Para quem produz para clientes: a marca e os sons do cliente ficam numa pasta dele, e um projeto bom vira template para os próximos. Licenças e aprovações nunca vão junto. Detalhes em [GUIDE.md](GUIDE.md#clientes-e-templates).
+
+```bash
+# ── client --action add ─────────────────────────────────────
+# O QUE FAZ: cria <pasta>/acme/ com client.json, components/ e templates/ e registra o cliente.
+python3 scripts/gb.py client --action add --slug acme --root /caminho/Clientes
+
+# ── template --action freeze ────────────────────────────────
+# O QUE FAZ: congela o ROTEIRO.md (sem a fala) e os componentes citados na próxima
+#            versão imutável: cat:getbrolls/template/reels-acme@1, @2…
+python3 scripts/gb.py template --action freeze --from /caminho/meu-video --slug reels-acme
+
+# ── template --action list / show ───────────────────────────
+# O QUE FAZ: list mostra as versões; show confere o sha256 de cada arquivo (intact). Só leem.
+python3 scripts/gb.py template --action list
+python3 scripts/gb.py template --action show --ref cat:getbrolls/template/reels-acme@1 --client acme
+
+# ── init --template ─────────────────────────────────────────
+# O QUE FAZ: cria o projeto novo do template íntegro: project.json, ROTEIRO.md em rascunho,
+#            componentes e template.lock.json. O que o cliente já tem fica na pasta dele;
+#            o resto é copiado sem licença (aviso LICENCE_NOT_TRANSFERRED).
+# DEPOIS: status e export avisam (TEMPLATE_LOCK_DRIFT) se um componente mudar.
+python3 scripts/gb.py init --template cat:getbrolls/template/reels-acme@1 --client acme --tema "Seu tema" --project /caminho/video-novo
 ```
 
 ## 🧩 Plugins do SDK (experimental)

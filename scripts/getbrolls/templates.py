@@ -16,6 +16,7 @@ componentes que o roteiro cita. A ref canônica é `cat:getbrolls/template/<slug
   `licence: "not_transferred"`.
 """
 
+import contextlib
 import dataclasses
 import hashlib
 import json
@@ -35,7 +36,9 @@ from .sdk.files import is_link
 from .sdk.jsonschema import errors
 
 TEMPLATE_FILE = "template.json"
+LOCK_FILE = "template.lock.json"
 FAMILY = "template"
+LOCK_FAMILY = "template_lock"
 SUPPORTED = 1
 LOCK = ".lock"
 STAGING_PREFIX = ".staging-"
@@ -556,6 +559,236 @@ def list_templates(client=None) -> dict:
             broken.append({"client": slug, "problem": problem})
     rows.sort(key=lambda row: (row["client"], row["slug"], row["version"]))
     return {"templates": rows, "clients_with_problems": broken}
+
+
+# -- init --template -----------------------------------------------------------
+
+
+def _frontmatter_value(text, flag):
+    value = unicodedata.normalize("NFC", text).strip() if isinstance(text, str) else ""
+    if not value or any(unicodedata.category(char) == "Cc" for char in value):
+        raise ValueError(f"Informe {flag} numa linha só.")
+    return value.replace('"', '\\"')
+
+
+def roteiro_text(doc, client, tema):
+    """`ROTEIRO.md` novo de um template: frontmatter com tema e cliente, uma cena por vaga."""
+    if doc["genero"] not in roteiro.GENRES:
+        raise ValueError(f'O template é do gênero "{doc["genero"]}", que esta versão não conhece.')
+    head = [
+        "---", "type: roteiro", f"genero: {doc['genero']}", f'aspecto: "{doc["aspecto"]}"',
+        f'tema: "{_frontmatter_value(tema, "--tema")}"', f"cliente: {client}", "legenda: true", "status: draft",
+        "---", "",
+    ]  # fmt: skip
+    body = []
+    for slot in doc["slots"]:
+        lines = [slot["title"], slot["layout"], *slot["layers"], slot["placeholder"]]
+        if any(unicodedata.category(char) == "Cc" for line in lines for char in line):
+            raise ValueError(f"A vaga {slot['id']} do template tem caractere de controle; o template não serve.")
+        body += [f"## {slot['title']}", slot["layout"], *slot["layers"], slot["placeholder"], ""]
+    return "\n".join(head + body)
+
+
+def _checked_roteiro(doc, text):
+    """O roteiro gerado lê de volta com as mesmas vagas; senão o template não serve."""
+    try:
+        parsed = roteiro.parse(text, plugins=frozenset())
+    except roteiro.RoteiroError as exc:
+        raise ValueError(f"O roteiro gerado pelo template não passou no check: {exc}") from None
+    scenes = [
+        (s.title, roteiro.directive_text(s.layout), [roteiro.directive_text(x) for x in s.layers])
+        for s in parsed.scenes
+    ]
+    wanted = [(slot["title"], slot["layout"], slot["layers"]) for slot in doc["slots"]]
+    if scenes != wanted:
+        raise ValueError("As vagas do template não viram as mesmas cenas no roteiro; o template não serve.")
+    return parsed
+
+
+def _refuse_existing(project):
+    if project.exists() and not project.is_dir():
+        raise ValueError(f"{project} existe e não é uma pasta; escolha outra pasta para o projeto.")
+    if os.path.lexists(project / layout.PROJECT_FILE):
+        raise ValueError(f"{layout.PROJECT_FILE} já existe em {project}; este projeto já foi criado.")
+    if os.path.lexists(project / "brolls" / "manifest.json"):
+        raise ValueError(
+            f"{project} já é um projeto do get-brolls (tem brolls/manifest.json); init --template só cria projeto novo."
+        )
+    for name in ("ROTEIRO.md", LOCK_FILE):
+        if os.path.lexists(project / name):
+            raise ValueError(f"{name} já existe em {project}; init --template não sobrescreve nada.")
+
+
+def _client_copy(client, spec, row):
+    """A pasta do cliente já tem esse componente (mesmo nome achado e mesmo sha256)?"""
+    folder = assets.client_components(client, spec)
+    if folder is None:
+        return False
+    matches = assets.component_entries(folder, spec).get(fold(unicodedata.normalize("NFC", row["name"])), [])
+    if len(matches) != 1 or is_link(matches[0]) or not matches[0].is_file():
+        return False
+    return sha256_file(matches[0]) == row["sha256"]
+
+
+def _install(project, folder, doc, created):
+    """Componentes da versão: os que o cliente já tem ficam lá; o resto é copiado sem licença.
+
+    `doc` é o `template.json` que o `show` acabou de conferir; cada arquivo é conferido
+    de novo no caminho (`component_path`) e pelo sha256 dos bytes copiados.
+    """
+    installed, warnings = [], []
+    client = doc["client"]
+    for row in doc["components"]:
+        spec = assets.ASSET_KINDS[row["kind"]]
+        source = component_path(folder, row["file"])
+        if _client_copy(client, spec, row):
+            where = "client"
+        else:
+            where = f"{spec.folder}/{source.name}"
+            target = project.joinpath(*where.split("/"))
+            _no_link(target.parent)
+            copy_hashed(source, target, expected=row["sha256"])
+            created.append(target)
+            if spec.licensed:
+                warnings.append(
+                    f"{where}: licença não transferida pelo template; registre {source.stem}{assets.LICENSE_SUFFIX} "
+                    "antes de usar."
+                )
+        installed.append({"kind": row["kind"], "name": row["name"], "sha256": row["sha256"], "installed_as": where})
+    return installed, warnings
+
+
+def validate_lock(doc, label=LOCK_FILE):
+    """Confere `doc` contra o schema publicado do `template.lock.json`; `ValueError` senão."""
+    if not isinstance(doc, dict):
+        raise ValueError(f"{label} tem que ser um objeto JSON.")
+    versioning.read_schema(doc, LOCK_FAMILY, SUPPORTED, label=label)
+    problems = errors(doc, schemas.load(LOCK_FAMILY))
+    if problems:
+        raise ValueError(f"{label} fora do schema: " + "; ".join(problems[:5]))
+    return doc
+
+
+def _undo(created):
+    for path in reversed(created):
+        with contextlib.suppress(OSError):
+            if path.is_dir() and not is_link(path):
+                path.rmdir()
+            else:
+                path.unlink()
+
+
+# pylint: disable-next=too-many-arguments,too-many-locals  # the options of init --template
+def instantiate(project, ref, client, tema, *, canvas=None, fps=None) -> dict:  # noqa: PLR0913 - options
+    """Cria o projeto `project` a partir da versão `ref` do template do cliente `client`."""
+    project = Path(project).expanduser().resolve()
+    _refuse_existing(project)
+    clients.check_slug(client)
+    shown = show(ref, client)
+    if not shown["intact"]:
+        raise ValueError(
+            f"O template {shown['ref']} do cliente {client} não está íntegro: " + "; ".join(shown["problems"][:5])
+        )
+    doc, folder = shown["template"], template_dir(client, *refs.template_parts(shown["ref"]))
+    text = roteiro_text(doc, client, tema)
+    _checked_roteiro(doc, text)
+    project_doc = layout.new_project_doc(
+        client=client,
+        template=shown["ref"],
+        canvas=canvas if canvas is not None else doc["canvas"],
+        fps=fps if fps is not None else doc["fps"],
+    )
+    created = [] if project.exists() else [project]
+    project.mkdir(parents=True, exist_ok=True)
+    try:
+        folders = _make_folders(project, created)
+        _write_file(project / "ROTEIRO.md", text)
+        created.append(project / "ROTEIRO.md")
+        installed, warnings = _install(project, folder, doc, created)
+        lock = validate_lock(
+            versioning.stamp_schema(
+                {
+                    "ref": shown["ref"],
+                    "client": client,
+                    "template_sha256": shown["template_sha256"],
+                    "applied": now(),
+                    "components": installed,
+                },
+                LOCK_FAMILY,
+            )
+        )
+        _write_file(project / LOCK_FILE, _dump(lock))
+        created.append(project / LOCK_FILE)
+        layout.write_project(project, project_doc)
+    except BaseException:
+        _undo(created)
+        raise
+    for warning in warnings:
+        runtime.record_warning("LICENCE_NOT_TRANSFERRED", warning)
+    return {
+        "project": str(project),
+        "id": project_doc["id"],
+        "layout": project_doc["layout"],
+        "client": client,
+        "template": shown["ref"],
+        "folders": folders,
+        "components": installed,
+        "summary": {
+            "line": (
+                f"Projeto criado do template {shown['ref']} do cliente {client}: ROTEIRO.md com "
+                f"{len(doc['slots'])} cena(s) para preencher, template.lock.json e project.json. Licenças e aprovações "
+                "não vêm do template. Próximo passo: preencher o ROTEIRO.md e rodar roteiro --action check."
+            )
+        },
+    }
+
+
+def _make_folders(project, created):
+    for name in layout.PROJECT_FOLDERS:
+        path = project
+        for part in name.split("/"):
+            path = path / part
+            _no_link(path)
+            if not path.exists():
+                path.mkdir()
+                created.append(path)
+    return list(layout.PROJECT_FOLDERS)
+
+
+def lock_warnings(project) -> list:
+    """Avisos de um projeto com `template.lock.json`: componente achado hoje com outro sha256, sumido,
+    ou lock ilegível. Nunca levanta; projeto sem lock não tem aviso."""
+    path = Path(project).expanduser().resolve() / LOCK_FILE
+    if not os.path.lexists(path):
+        return []
+    try:
+        if is_link(path) or path.stat().st_size > TEMPLATE_MAX:
+            raise ValueError("não é um arquivo comum")
+        lock = validate_lock(json.loads(path.read_text(encoding="utf-8"), parse_constant=_refuse_constant))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        return [runtime.scrub_home(f"{LOCK_FILE} ilegível ({exc}); não dá para conferir os componentes do template.")]
+    out = []
+    declared = layout.info(project).doc or {}
+    if (declared.get("client"), declared.get("template")) != (lock["client"], lock["ref"]):
+        out.append(f"{LOCK_FILE} é do template {lock['ref']} do cliente {lock['client']}, diferente do project.json.")
+    for row in lock["components"]:
+        label = f'{row["kind"]} "{row["name"]}"'
+        try:
+            found = assets.resolve(project, row["kind"], row["name"])
+        except ValueError as exc:
+            out.append(runtime.scrub_home(f"{label} do template: {exc}"))
+            continue
+        if found["status"] != "found":
+            out.append(f"{label} do template {lock['ref']} sumiu desde o init.")
+        elif sha256_file(Path(found["path"])) != row["sha256"]:
+            out.append(f"{label} mudou desde o init: o sha256 não é o do {LOCK_FILE} ({lock['ref']}).")
+    return out
+
+
+def record_lock_warnings(project):
+    """`lock_warnings` como avisos `TEMPLATE_LOCK_DRIFT` do comando em curso."""
+    for warning in lock_warnings(project):
+        runtime.record_warning("TEMPLATE_LOCK_DRIFT", warning)
 
 
 # -- CLI ----------------------------------------------------------------------

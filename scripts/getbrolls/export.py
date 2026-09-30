@@ -355,10 +355,24 @@ def run(args):
     if not isinstance(name, str) or not NAME_RE.fullmatch(name):
         raise ValueError("--to espera o nome de um exporter (minúsculas, números e _), ex.: --to hyperframes.")
     project = Path(args.project).expanduser().resolve()
+    from . import runtime, templates  # local: templates importa o roteiro inteiro
+
+    drift = templates.lock_warnings(project)
+    event = runtime.ACTIVE.get()
+    start = len(event["warnings"]) if event is not None else 0
     try:
-        return _run(args, name, project)
+        result = _run(args, name, project)
     except OSError as exc:
         raise _os_error(exc, project) from exc
+    # Aviso registrado no meio do export (cliente não registrado, por exemplo) entra na lista de
+    # texto do próprio export, em vez de substituí-la na saída do comando.
+    folded = []
+    if event is not None:
+        folded = [row["message"] for row in event["warnings"][start:]]
+        del event["warnings"][start:]
+    if drift or folded:
+        result = {**result, "warnings": [*drift, *result.get("warnings", []), *folded]}
+    return result
 
 
 def _plan_text(plan):

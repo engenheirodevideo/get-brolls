@@ -78,7 +78,10 @@ SUMMARIES = {
     "verify": "Conferir integridade e decodificação dos arquivos coletados",
     "review": "Gerar o Storyboard local em brolls/review.html",
     "import-review": "Importar o JSON de decisões exportado pelo Storyboard",
-    "init": "Criar um projeto novo de layout 1: project.json, aroll/, assets/, broll/ e analysis/",
+    "init": (
+        "Criar um projeto novo de layout 1: project.json, aroll/, assets/, broll/ e analysis/ "
+        "(--template: a partir de um template do cliente)"
+    ),
     "init-rules": "Criar um RULES.md editável no projeto (--format muda o formato-alvo)",
     "rules": "Mostrar as regras editoriais em vigor no projeto",
     "init-brief": "Criar um BRIEF.md editável com o plano deste vídeo",
@@ -906,7 +909,17 @@ def _add_init_args(p, name):
     """Flags de `init`."""
     if name != "init":
         return
-    p.add_argument("--client", type=_checked(_client_slug), help="Slug do cliente do projeto (ex.: acme-corp)")
+    p.add_argument(
+        "--client",
+        type=_checked(_client_slug),
+        help="Slug do cliente registrado do projeto (ex.: acme-corp); obrigatório com --template",
+    )
+    p.add_argument(
+        "--template",
+        type=_checked(_template_ref),
+        help="Criar o projeto da versão de template cat:getbrolls/template/<slug>@<N> do cliente --client",
+    )
+    p.add_argument("--tema", help="Tema do ROTEIRO.md criado do template (obrigatório com --template)")
     p.add_argument(
         "--canvas", type=_checked(_parse_canvas), help="Tamanho do quadro em pixels, LARGURAxALTURA (ex.: 1080x1920)"
     )

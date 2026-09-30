@@ -107,12 +107,27 @@ def project_client(project):
 
 
 def _client_folder(project, spec):
-    """`<pasta do cliente>/components/<tipo>/` quando existe e nenhuma pasta do caminho é link."""
+    """`<pasta do cliente>/components/<tipo>/` do cliente do projeto (ver `client_components`)."""
+    _, root = project_client(project)
+    return None if root is None else _components_of(root, spec)
+
+
+def client_components(slug, spec):
+    """`<pasta do cliente>/components/<tipo>/` do cliente registrado `slug`, ou `None`."""
+    from . import clients
+
+    try:
+        clients.load_client(slug)
+        root = clients.client_root(slug)
+    except ValueError:
+        return None
+    return None if root is None else _components_of(root, spec)
+
+
+def _components_of(root, spec):
+    """A pasta do tipo em `root/components/`, quando existe e nenhuma pasta do caminho é link."""
     from .sdk.files import is_link
 
-    _, root = project_client(project)
-    if root is None:
-        return None
     components = root / "components"
     folder = components / spec.folder.removeprefix("assets/")
     if is_link(components) or is_link(folder) or not folder.is_dir():

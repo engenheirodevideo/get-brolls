@@ -2612,6 +2612,9 @@ def _execute_status_or_queue(cmd, args):
             rules = load_rules(args.project)
         except (ValueError, OSError) as exc:
             rules_error = str(exc)
+        from getbrolls import templates
+
+        templates.record_lock_warnings(project)
         return status_report(Ledger(project, recover=False), rules, rules_error, queue_hint(project))
     rules = None
     try:

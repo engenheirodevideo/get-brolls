@@ -722,7 +722,7 @@
       ]
     },
     "init": {
-      "help": "Criar um projeto novo de layout 1: project.json, aroll/, assets/, broll/ e analysis/",
+      "help": "Criar um projeto novo de layout 1: project.json, aroll/, assets/, broll/ e analysis/ (--template: a partir de um template do cliente)",
       "options": [
         {
           "action": "_HelpAction",
@@ -754,10 +754,34 @@
           "choices": null,
           "default": null,
           "dest": "client",
-          "help": "Slug do cliente do projeto (ex.: acme-corp)",
+          "help": "Slug do cliente registrado do projeto (ex.: acme-corp); obrigatório com --template",
           "nargs": null,
           "option_strings": [
             "--client"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "template",
+          "help": "Criar o projeto da versão de template cat:getbrolls/template/<slug>@<N> do cliente --client",
+          "nargs": null,
+          "option_strings": [
+            "--template"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "tema",
+          "help": "Tema do ROTEIRO.md criado do template (obrigatório com --template)",
+          "nargs": null,
+          "option_strings": [
+            "--tema"
           ],
           "required": false
         },

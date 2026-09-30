@@ -1,7 +1,9 @@
 """`init`: cria um projeto de layout 1 numa pasta nova ou ainda sem projeto.
 
 Grava `project.json` com um id novo e cria as pastas de trabalho: `aroll/`, as sete
-pastas de `assets/`, `broll/` (clipes finais) e `analysis/`. Não cria manifesto,
+pastas de `assets/`, `broll/` (clipes finais) e `analysis/`. `--client` tem que ser um
+cliente registrado; com `--template`, o projeto nasce de uma versão de template do
+cliente (`templates.instantiate`). Não cria manifesto,
 candidatos nem clipes em `brolls/`; um projeto que já tem `brolls/manifest.json` é
 adotado pelo `migrate`, nunca recriado aqui.
 """
@@ -9,12 +11,42 @@ adotado pelo `migrate`, nunca recriado aqui.
 from pathlib import Path
 
 from . import layout
+from .errors import UsageError
 
-FOLDERS = ("aroll", *(f"assets/{name}" for name in layout.ASSET_FOLDERS), "broll", "analysis")
+FOLDERS = layout.PROJECT_FOLDERS
+
+
+def _template_args(args):
+    """`--template` pede `--client` e `--tema`; `--tema` só vale com `--template` (erro de uso)."""
+    template, client, tema = (getattr(args, name, None) for name in ("template", "client", "tema"))
+    if template and not client:
+        raise UsageError("init --template precisa de --client <slug>: o template é de um cliente registrado.")
+    if template and tema is None:
+        raise UsageError("init --template precisa de --tema: o tema do roteiro novo.")
+    if tema is not None and not template:
+        raise UsageError("--tema só vale com --template (sem template, o roteiro nasce com roteiro --action new).")
+    return template
 
 
 def run(args):
     """Cria o projeto em `args.project`; `ValueError` quando ali já existe um."""
+    template = _template_args(args)
+    client = getattr(args, "client", None)
+    if client:
+        from . import clients
+
+        clients.load_client(client)
+    if template:
+        from . import templates
+
+        return templates.instantiate(
+            args.project,
+            template,
+            client,
+            args.tema,
+            canvas=getattr(args, "canvas", None),
+            fps=getattr(args, "fps", None),
+        )
     project = Path(args.project).expanduser().resolve()
     if project.exists() and not project.is_dir():
         raise ValueError(f"{project} existe e não é uma pasta; escolha outra pasta para o projeto.")
@@ -26,7 +58,7 @@ def run(args):
             "Para adotar o layout 1 sem mover nada, use migrate nesse projeto."
         )
     doc = layout.new_project_doc(
-        client=getattr(args, "client", None),
+        client=client,
         canvas=getattr(args, "canvas", None),
         fps=getattr(args, "fps", None),
     )

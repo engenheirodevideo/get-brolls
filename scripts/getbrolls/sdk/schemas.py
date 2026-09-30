@@ -20,6 +20,7 @@ NAMES = (
     "clients",
     "project",
     "template",
+    "template_lock",
 )
 
 

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Get B-rolls template lock v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/template_lock.schema.json",
+  "description": "O template.lock.json na raiz de um projeto criado por init --template: qual versão de template (cliente + ref) foi aplicada, o sha256 do template.json dela e, para cada componente, o sha256 e onde ficou. installed_as é \"client\" quando a pasta do cliente já tem o mesmo arquivo (achado pelo mesmo nome e com o mesmo sha256), ou o caminho relativo do projeto (assets/<tipo>/<arquivo>) para onde ele foi copiado, sem licença. status e export avisam quando o componente achado hoje tem outro sha256. A versão do arquivo mora em schema (getbrolls.template_lock/<N>).",
+  "type": "object",
+  "required": ["schema", "ref", "client", "template_sha256", "applied", "components"],
+  "properties": {
+    "schema": { "const": "getbrolls.template_lock/1" },
+    "ref": {
+      "type": "string",
+      "pattern": "^cat:getbrolls/template/[a-z0-9]+(-[a-z0-9]+)*@[1-9][0-9]*$",
+      "maxLength": 256
+    },
+    "client": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64 },
+    "template_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "sha256 dos bytes do template.json aplicado." },
+    "applied": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "name", "sha256", "installed_as"],
+        "properties": {
+          "kind": { "enum": ["marca", "lettering", "sfx", "musica", "imagem", "composicao"] },
+          "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "installed_as": {
+            "type": "string",
+            "pattern": "^(client|assets/[a-z]+/[^/\\\\:]+)$",
+            "maxLength": 300
+          }
+        }
+      }
+    }
+  }
+}

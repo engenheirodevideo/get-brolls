@@ -11,7 +11,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _cli import run_cli
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import layout
+from getbrolls import clients, layout
 from getbrolls.sdk import schemas
 from getbrolls.sdk.jsonschema import errors
 
@@ -62,6 +62,9 @@ class InitCommandTests(unittest.TestCase):
             self.assertLessEqual({p.name for p in brolls.iterdir()}, allowed)
 
     def test_client_canvas_and_fps_are_recorded(self):
+        (self.base / "Clientes").mkdir()
+        clients.add("acme", str(self.base / "Clientes"))
+        self.addCleanup(clients.remove, "acme")
         run_cli("init", "--client", "acme", "--canvas", "1080x1920", "--fps", "30000/1001", project=self.project)
         doc = layout.load_project(self.project)
         assert doc is not None
