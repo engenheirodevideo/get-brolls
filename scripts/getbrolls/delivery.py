@@ -363,8 +363,12 @@ def source_label(c, plugin):
     return f"plugin {plugin} ({inert(url, plugin) if url else 'arquivo local'})"
 
 
-def render_origin(c, media_name, created=None, method="hardlink"):
-    """`ORIGEM.md` do trecho: fonte, autor, intervalo, direitos e sha256 do arquivo."""
+def render_origin(c, media_name, created=None, method="hardlink", canonical=None):
+    """`ORIGEM.md` do trecho: fonte, autor, intervalo, direitos e sha256 do arquivo.
+
+    `canonical` é onde o original está, relativo à raiz do projeto (`broll/…` no
+    layout 1); sem ele, `brolls/` + o caminho lógico do manifesto, como sempre.
+    """
     rights = c.get("rights") or {}
     approval = c.get("approval") or {}
     plugin = plugin_label(c)
@@ -389,7 +393,9 @@ def render_origin(c, media_name, created=None, method="hardlink"):
         f"- Aprovado por: {one_line(approval.get('by') or 'não registrado')}"
         + (f" ({one_line(approval.get('channel'))})" if approval.get("channel") else ""),
         f"- sha256 do arquivo coletado: `{one_line((c.get('output') or {}).get('sha256') or 'não calculado')}`",
-        f"- Original canônico: `brolls/{one_line((c.get('output') or {}).get('path'))}`",
+        "- Original canônico: `"
+        + (one_line(canonical) if canonical else f"brolls/{one_line((c.get('output') or {}).get('path'))}")
+        + "`",
         "",
         EDIT_WARNING if method in ("hardlink", "symlink") else COPY_NOTE,
         "",
@@ -624,15 +630,18 @@ def _names(group_dir, index, source_suffix, sheet_suffix):
 def _symlink_targets_brolls(path, brolls_root):
     """Um symlink só é nosso quando aponta para um clipe dentro do `brolls/` deste projeto.
 
-    Um link que a pessoa criou (para a própria mídia, um atalho, outra pasta) não bate
-    com isso e não pode ser tratado como órfão do gerador.
+    `brolls_root` é uma pasta ou uma lista delas: no layout 1 o clipe mora em `broll/`,
+    irmã de `brolls/`, e o link para lá também é do gerador. Um link que a pessoa criou
+    (para a própria mídia, um atalho, outra pasta) não bate com isso e não pode ser
+    tratado como órfão do gerador.
     """
+    roots = (brolls_root,) if isinstance(brolls_root, (str, Path)) else tuple(brolls_root or ())
     try:
         target = path.resolve()
-        brolls_real = Path(brolls_root).resolve()
+        reals = [Path(root).resolve() for root in roots]
     except OSError:
         return False
-    return target == brolls_real or brolls_real in target.parents
+    return any(target == real or real in target.parents for real in reals)
 
 
 def _ours(rel, path, owned, brolls_root):
@@ -768,9 +777,11 @@ def _deliver_materialize_item(ctx, group, c, names, sheet):
     """Liga/copia mídia e contact sheet deste item; devolve (método ou None, conflito ou None)."""
     media_rel = f"{group['dir']}/{names['media']}"
     sheet_rel_out = f"{group['dir']}/{names['sheet']}" if sheet else None
-    source = ctx.ledger.root / c["output"]["path"]
     method = None
     try:
+        # O mesmo nome em `broll/` e na antiga `brolls/clips/` sem desempate pelo
+        # sha256 vira conflito nomeado, como o arquivo editado à mão.
+        source = _clip_source(ctx, c)
         if source.is_file():
             # Só hardlink/symlink são congelados: cópia é independente.
             method = link_or_copy(source, ctx.root / media_rel, read_only=True)
@@ -803,12 +814,34 @@ def _deliver_materialize_item(ctx, group, c, names, sheet):
     return method, None
 
 
+def _clip_source(ctx, c):
+    """Arquivo coletado deste item, na pasta de clipes do layout do projeto."""
+    from . import layout
+
+    return layout.output_file(ctx.ledger.root.parent, c["output"]["path"], sha256=c["output"].get("sha256"))
+
+
+def _canonical_label(ctx, c):
+    """Onde o original está, relativo ao projeto, só quando não é `brolls/<caminho lógico>`."""
+    source = _clip_source(ctx, c)
+    project = ctx.ledger.root.parent
+    if source == ctx.ledger.root / c["output"]["path"]:
+        return None
+    try:
+        return source.relative_to(project).as_posix()
+    except ValueError:
+        return None
+
+
 def _deliver_write_origin(ctx, origin_rel, c, names, method):
     """Grava ORIGEM.md deste item, com a data de criação preservada se o arquivo já existia."""
     from .ledger import atomic_write
 
     target = ctx.root / origin_rel
-    atomic_write(target, render_origin(c, names["media"], _created_in(target), method or "hardlink"))
+    atomic_write(
+        target,
+        render_origin(c, names["media"], _created_in(target), method or "hardlink", canonical=_canonical_label(ctx, c)),
+    )
 
 
 def _deliver_process_item(ctx, group, index, c, acc):
@@ -915,6 +948,17 @@ def _deliver_owned_paths(items):
     }
 
 
+def _clip_link_roots(ledger):
+    """Pastas para onde um symlink de `entrega/` gerado por nós pode apontar: `brolls/` e as de clipe."""
+    from . import layout
+
+    try:
+        return (ledger.root, *layout.clip_roots(ledger.root.parent))
+    except ValueError:
+        # Pasta de clipes recusada (link): só `brolls/` conta, e nenhum link para fora é nosso.
+        return (ledger.root,)
+
+
 def build_delivery(project, dry_run=False, ledger=None, for_human=None):
     """Refaz `entrega/` a partir do que já está coletado em `brolls/`.
 
@@ -950,7 +994,7 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
     if not dry_run:
         root.mkdir(parents=True, exist_ok=True)
         _deliver_write_index(root, for_human, acc["rows"], acc["conflicted"], acc["listed"])
-    removed, kept = _sweep(root, acc["expected"], dry_run, _deliver_owned_paths(items), ledger.root)
+    removed, kept = _sweep(root, acc["expected"], dry_run, _deliver_owned_paths(items), _clip_link_roots(ledger))
     if not dry_run and retired:
         # A pasta do beat aposentado acabou de ser varrida: o registro de entrega dela
         # sai também, senão o beat reativado depois nunca pediria `deliver` de novo.

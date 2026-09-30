@@ -590,7 +590,7 @@
       ]
     },
     "fetch": {
-      "help": "Produzir o corte final aprovado e permitido em clips/",
+      "help": "Produzir o corte final aprovado e permitido (broll/ no layout 1, brolls/clips/ no 0)",
       "options": [
         {
           "action": "_HelpAction",

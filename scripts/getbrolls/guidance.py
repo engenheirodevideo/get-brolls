@@ -602,7 +602,7 @@ def _approved_chain_action(state, counts):
     if counts["delivered"] < counts["permitted"]:
         return _action(
             "fetch",
-            "Itens aprovados e permitidos ainda sem o corte final em clips/.",
+            "Itens aprovados e permitidos ainda sem o corte final coletado.",
             "Está tudo decidido e permitido: vou coletar os cortes finais agora.",
             state,
         )

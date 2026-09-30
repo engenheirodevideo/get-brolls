@@ -3111,7 +3111,13 @@ def _verify_one_clip(ledger, c):
     """Reconfere um clipe coletado: devolve (entrada p/ `checked`, exceção de falha) — um dos dois é None."""
     if not c["output"]["path"]:
         return None, None
-    path = ledger.root / c["output"]["path"]
+    try:
+        # Layout 1 lê `broll/` e a antiga `brolls/clips/`; o sha256 registrado
+        # desempata o mesmo nome nas duas, e sem desempate a falha diz as duas.
+        path = layout.output_file(ledger.root.parent, c["output"]["path"], sha256=c["output"].get("sha256"))
+    except ValueError as exc:
+        _verify_clip_failure(ledger, c, exc, True)
+        return None, exc
     existed = path.exists()
     try:
         info = probe(path)

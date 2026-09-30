@@ -240,5 +240,111 @@ class FetchTests(unittest.TestCase):
         self.assertFalse((self.project / "broll").exists())
 
 
+def delivered(project):
+    """(mídia entregue, texto do ORIGEM.md) do único item de `entrega/`."""
+    media = list((project / "entrega").rglob("*.mp4"))
+    origin = list((project / "entrega").rglob("ORIGEM.md"))
+    assert len(media) == 1 and len(origin) == 1, (media, origin)
+    return media[0], origin[0].read_text(encoding="utf-8")
+
+
+def adopt(project):
+    """Layout 1 num projeto de layout 0, sem mover nada (o que a adoção faz): só o `project.json`."""
+    data = json.loads((project / "brolls" / "manifest.json").read_text(encoding="utf-8"))
+    layout.write_project(project, layout.new_project_doc(project_id=data.get("project_id")))
+
+
+@skip_unless_ffmpeg
+class VerifyAndDeliverTests(unittest.TestCase):
+    def setUp(self):
+        base = Path(tempfile.mkdtemp(prefix="gb-clips-deliver-")).resolve()
+        self.addCleanup(shutil.rmtree, base, ignore_errors=True)
+        self.project = base / "video"
+
+    def test_layout_one_verifies_and_delivers_from_broll(self):
+        make_layout_one(self.project)
+        c, _ = collect_local(self, self.project)
+        rel = manifest_item(self.project, c["id"])["output"]["path"]
+        final = self.project / "broll" / rel.removeprefix("clips/")
+        checked = run_cli("verify", project=self.project)
+        self.assertEqual([c["id"]], [entry["id"] for entry in checked["verified"]])
+        run_cli("deliver", project=self.project)
+        media, origin = delivered(self.project)
+        self.assertEqual(final.stat().st_ino, media.stat().st_ino)
+        self.assertIn(f"- Original canônico: `broll/{final.name}`", origin)
+        self.assertFalse((self.project / "brolls" / "clips").exists())
+
+    def test_layout_one_reads_a_clip_left_in_the_legacy_folder(self):
+        c, _ = collect_local(self, self.project)
+        adopt(self.project)
+        rel = manifest_item(self.project, c["id"])["output"]["path"]
+        legacy = self.project / "brolls" / rel
+        run_cli("verify", project=self.project)
+        self.assertTrue(manifest_item(self.project, c["id"])["output"]["verified"])
+        run_cli("deliver", project=self.project)
+        media, origin = delivered(self.project)
+        self.assertEqual(legacy.stat().st_ino, media.stat().st_ino)
+        self.assertIn(f"- Original canônico: `brolls/{rel}`", origin)
+        self.assertFalse((self.project / "broll" / legacy.name).exists())
+
+    def test_the_recorded_hash_picks_the_right_copy_when_both_folders_have_it(self):
+        c, _ = collect_local(self, self.project)
+        adopt(self.project)
+        rel = manifest_item(self.project, c["id"])["output"]["path"]
+        (self.project / "broll").mkdir(exist_ok=True)
+        (self.project / "broll" / rel.removeprefix("clips/")).write_bytes(b"outro arquivo com o mesmo nome")
+        run_cli("verify", project=self.project)
+        self.assertTrue(manifest_item(self.project, c["id"])["output"]["verified"])
+        run_cli("deliver", project=self.project)
+        media, _ = delivered(self.project)
+        self.assertEqual((self.project / "brolls" / rel).stat().st_ino, media.stat().st_ino)
+
+    def test_two_different_copies_that_match_nothing_are_reported(self):
+        c, _ = collect_local(self, self.project)
+        adopt(self.project)
+        rel = manifest_item(self.project, c["id"])["output"]["path"]
+        legacy = self.project / "brolls" / rel
+        legacy.chmod(0o644)
+        legacy.write_bytes(b"alterado")
+        (self.project / "broll").mkdir(exist_ok=True)
+        (self.project / "broll" / legacy.name).write_bytes(b"outro")
+        refused = run_cli("verify", project=self.project, expect=1)
+        text = json.dumps(refused, ensure_ascii=False)
+        self.assertIn("broll/", text)
+        self.assertIn("brolls/clips/", text)
+        self.assertFalse(manifest_item(self.project, c["id"])["output"]["verified"])
+
+    def test_layout_zero_origin_line_is_unchanged(self):
+        c, _ = collect_local(self, self.project)
+        rel = manifest_item(self.project, c["id"])["output"]["path"]
+        run_cli("deliver", project=self.project)
+        _, origin = delivered(self.project)
+        self.assertIn(f"- Original canônico: `brolls/{rel}`", origin)
+
+
+class SweepTests(TempProject):
+    def test_a_generated_symlink_into_broll_is_ours(self):
+        from getbrolls import delivery
+
+        make_layout_one(self.project)
+        clip = self.project / "broll" / "x.mp4"
+        clip.write_bytes(b"x")
+        beat = self.project / "entrega" / "01-abertura"
+        beat.mkdir(parents=True)
+        link = beat / "01-abertura.mp4"
+        try:
+            link.symlink_to(clip)
+        except OSError:
+            self.skipTest("este sistema não cria symlink")
+        removed, kept = delivery._sweep(
+            self.project / "entrega",
+            expected=set(),
+            dry_run=True,
+            brolls_root=(self.project / "brolls", *layout.clip_roots(self.project)),
+        )
+        self.assertIn("01-abertura/01-abertura.mp4", removed)
+        self.assertEqual([], kept)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -364,7 +364,7 @@ python3 scripts/gb.py permit --candidate "<ID>" --declared-by "Seu Nome" --decla
 ```bash
 # ── fetch ───────────────────────────────────────────────────
 # O QUE FAZ: baixa e corta só o trecho aprovado (1080p quando a fonte tem).
-# VAI PARA: brolls/clips/
+# VAI PARA: broll/ (projeto criado com init, layout 1) ou brolls/clips/ (os demais)
 # SE RECUSAR: falta aprovar (passo 5) ou registrar os direitos (passo 6).
 python3 scripts/gb.py fetch --candidate "<ID>" --project /caminho/meu-video
 
@@ -409,7 +409,7 @@ meu-video/
     ├── manifest.json   # a "ficha" de todos os candidatos
     ├── review.html     # o Storyboard
     ├── previews/       # GIFs e folhas de quadros
-    ├── clips/          # cortes finais
+    ├── clips/          # cortes finais (no projeto do init, ficam em broll/)
     ├── credits.md      # créditos de tudo que foi usado
     └── getbrolls.log   # registro de cada passo (pra achar erro)
 ```
@@ -737,7 +737,7 @@ GB_GIF_WIDTH=480
 GB_PREVIEW_MAX_SECONDS=10
 
 # Entrega com cópias independentes. Sem isso, o arquivo em entrega/ é o MESMO
-# de brolls/clips/ (não ocupa disco a mais) e vem como somente leitura
+# da pasta de clipes finais, broll/ ou brolls/clips/ (não ocupa disco a mais), e vem como somente leitura
 GB_DELIVERY_COPY=1
 
 # Quanto detalhe vai pro brolls/getbrolls.log: DEBUG, INFO (padrão), WARNING, ERROR, off

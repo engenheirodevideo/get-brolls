@@ -14,7 +14,7 @@ from _media import skip_unless_ffmpeg, synth_video
 from _paths import ROOT
 from _schemas import strict
 
-from getbrolls import assets, delivery, export_plan, export_voice, roteiro, roteiro_plan
+from getbrolls import assets, delivery, export_plan, export_voice, layout, roteiro, roteiro_plan
 from getbrolls.sdk.exporters import find_local_paths
 from getbrolls.sdk.jsonschema import errors
 
@@ -396,6 +396,71 @@ class SlotAndClipTests(ExportPlanTestCase):
                 self.assertEqual(
                     ["slot", "role", "text", "beat_id", "take", "prompt", "media_id", "extra_media_ids"], list(slot)
                 )
+
+
+class LayoutOneClipTests(ExportPlanTestCase):
+    """Layout 1: o clipe mora em `broll/`; a antiga `brolls/clips/` ainda vale; o plano não muda de forma."""
+
+    def layout_one(self, move=True):
+        plan, items = min_project(self.root)
+        layout.write_project(self.root, layout.new_project_doc())
+        legacy = self.root / "brolls" / "clips" / "c02-pexels-123.mp4"
+        if move:
+            (self.root / "broll").mkdir()
+            legacy.rename(self.root / "broll" / legacy.name)
+        return plan, items
+
+    def build_plan(self, plan, items):
+        with mock.patch.object(export_plan, "probe_voice", fake_probe):
+            return export_plan.build(self.root, plan, items, "exports/hyperframes/001")
+
+    def test_clip_in_broll_is_exported_with_the_same_plan_row(self):
+        plan0, items0 = min_project(self.root)
+        before, _ = self.build_plan(plan0, items0)
+        shutil.rmtree(self.root)
+        self.root.mkdir()
+        plan, items = self.layout_one()
+        result, sources = self.build_plan(plan, items)
+        self.assertEqual(before["media"]["clip:pexels:123"], result["media"]["clip:pexels:123"])
+        self.assertEqual(before["export_version"], result["export_version"])
+        self.assertEqual(self.root.resolve() / "broll" / "c02-pexels-123.mp4", Path(sources["clip:pexels:123"]["path"]))
+        self.assertEqual("hardlink", sources["clip:pexels:123"]["method"])
+
+    def test_clip_left_in_the_legacy_folder_is_still_exported(self):
+        plan, items = self.layout_one(move=False)
+        result, sources = self.build_plan(plan, items)
+        self.assertTrue(result["media"]["clip:pexels:123"]["available"])
+        self.assertEqual(
+            self.root.resolve() / "brolls" / "clips" / "c02-pexels-123.mp4", Path(sources["clip:pexels:123"]["path"])
+        )
+
+    def test_linked_broll_folder_is_not_followed(self):
+        plan, items = self.layout_one()
+        outside = Path(tempfile.mkdtemp(prefix="gb-export-outside-"))
+        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
+        target = outside / "broll"
+        shutil.move(self.root / "broll", target)
+        try:
+            (self.root / "broll").symlink_to(target, target_is_directory=True)
+        except OSError:
+            self.skipTest("este sistema não cria symlink")
+        result, sources = self.build_plan(plan, items)
+        self.assertEqual(
+            (False, "link"),
+            (result["media"]["clip:pexels:123"]["available"], result["media"]["clip:pexels:123"]["problem"]),
+        )
+        self.assertNotIn("clip:pexels:123", sources)
+        self.assertIn("c02: clipe pexels:123 fora do export (a pasta broll/ é um link)", result["warnings"])
+
+    def test_same_name_in_both_folders_without_a_matching_hash_is_left_out(self):
+        plan, items = self.layout_one()
+        (self.root / "brolls" / "clips" / "c02-pexels-123.mp4").write_bytes(b"outro")
+        result, sources = self.build_plan(plan, items)
+        self.assertEqual("changed", result["media"]["clip:pexels:123"]["problem"])
+        self.assertNotIn("clip:pexels:123", sources)
+        self.assertIn(
+            "c02: clipe pexels:123 fora do export (o mesmo nome em broll/ e em brolls/clips/)", result["warnings"]
+        )
 
 
 class LayerTests(ExportPlanTestCase):

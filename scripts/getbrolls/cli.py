@@ -73,7 +73,7 @@ SUMMARIES = {
     "approve": "Registrar aprovação humana já recebida para o intervalo atual",
     "permit": "Registrar as condições reais de uso do trecho antes da coleta",
     "reject": "Marcar candidatos como rejeitados e invalidar suas revisões (--candidate repetível)",
-    "fetch": "Produzir o corte final aprovado e permitido em clips/",
+    "fetch": "Produzir o corte final aprovado e permitido (broll/ no layout 1, brolls/clips/ no 0)",
     "verify": "Conferir integridade e decodificação dos arquivos coletados",
     "review": "Gerar o Storyboard local em brolls/review.html",
     "import-review": "Importar o JSON de decisões exportado pelo Storyboard",
