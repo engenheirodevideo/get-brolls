@@ -19,6 +19,13 @@ jobs:
             python-version: '3.13'
           - os: ubuntu-latest
             python-version: '3.13'
+          # 3.14 também no modo checkout: é a outra ponta da faixa aceita (3.11 + 3.14).
+          - os: macos-latest
+            python-version: '3.14'
+          - os: windows-latest
+            python-version: '3.14'
+          - os: ubuntu-latest
+            python-version: '3.14'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -97,3 +104,68 @@ jobs:
       - run: pyright
       - run: pylint scripts examples
       - run: PYTHONPATH=scripts:tests pylint --rcfile tests/pylintrc tests
+
+  package:
+    # O wheel de verdade: monta de um checkout limpo para fora da raiz, instala numa venv
+    # nova e roda o smoke e a suíte inteira contra o pacote instalado (GB_TEST_CLI=wheel).
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+        python-version: ['3.11', '3.14']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install FFmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+      - name: Install FFmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg --no-progress -y
+      - name: Install FFmpeg (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install uv
+        run: python -m pip install "uv==0.11.14"
+      - name: Build and install the wheel outside the checkout
+        shell: bash
+        run: |
+          # Build de árvore limpa: nada modificado, não rastreado ou ignorado nos caminhos do sdist.
+          python -c "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml', 'rb'))['tool']['hatch']['build']['targets']['sdist']['only-include']))" > "$RUNNER_TEMP/sdist-paths.txt"
+          dirty="$(tr -d '\r' < "$RUNNER_TEMP/sdist-paths.txt" | xargs git status --porcelain --untracked-files=all --ignored -- pyproject.toml)"
+          if [ -n "$dirty" ]; then echo "$dirty"; exit 1; fi
+          python -m uv build -o "$RUNNER_TEMP/dist" .
+          test ! -e dist
+          python -m uv venv "$RUNNER_TEMP/venv" --python "$(python -c 'import sys; print(sys.executable)')"
+          PY="$RUNNER_TEMP/venv/bin/python"; [ -x "$PY" ] || PY="$RUNNER_TEMP/venv/Scripts/python.exe"
+          python -m uv pip install --python "$PY" "$RUNNER_TEMP"/dist/getbrolls-*.whl
+          echo "GB_TEST_WHEEL_PYTHON=$PY" >> "$GITHUB_ENV"
+      - name: Install runtime (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: bash scripts/install.sh
+      - name: Install runtime (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/install.ps1
+      - name: Wheel smoke
+        shell: bash
+        env:
+          GB_REQUIRE_WHEEL_TESTS: '1'
+        run: python -m unittest discover -s tests -p test_wheel_install.py -v
+      - name: Full suite against the installed wheel
+        shell: bash
+        env:
+          GB_TEST_CLI: wheel
+          GB_RUNTIME_DIR: ${{ github.workspace }}
+          GB_REQUIRE_WHEEL_TESTS: '1'
+        run: python -m unittest discover -s tests

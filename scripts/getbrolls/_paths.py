@@ -42,10 +42,10 @@ WHEEL_MANIFEST = "_data/MANIFEST"  # relativo à pasta do pacote
 CHECKOUT_MANIFEST = "packaging/data_manifest.txt"  # relativo à raiz do repositório
 _REPO_SENTINELS = ("scripts/gb.py", "docs/RULES.md", "assets/brand-logo.png")
 
-_DATA_ROOT_MISSING = (
-    "Os arquivos de dados do getbrolls não estão junto do pacote. Reinstale "
-    "(`uv tool install --reinstall getbrolls`) ou rode pelo repositório (`python3 scripts/gb.py`)."
+_DATA_REINSTALL = (
+    "Reinstale (`uv tool install --reinstall getbrolls`) ou rode pelo repositório (`python3 scripts/gb.py`)."
 )
+_DATA_ROOT_MISSING = f"Os arquivos de dados do getbrolls não estão junto do pacote. {_DATA_REINSTALL}"
 _ENV_FLAG_MISSING = "--env-file não existe. Confira o caminho."
 _ENV_VAR_MISSING = "GB_ENV_FILE aponta para um arquivo que não existe. Confira o caminho ou remova a variável."
 _ENV_CHECKOUT_NOTE = (
@@ -116,8 +116,15 @@ def data_root() -> Path:
 
 
 def data_path(*parts: str) -> Path:
-    """Caminho de um arquivo de dados do pacote."""
-    return data_root().joinpath(*parts)
+    """Caminho de um arquivo de dados do pacote; `DataRootError` quando ele falta.
+
+    Sem o arquivo, o erro nomeia só a entrada relativa (nunca o caminho desta máquina):
+    é pré-requisito da instalação (exit 4), não `FileNotFoundError` de operação.
+    """
+    path = data_root().joinpath(*parts)
+    if not path.is_file():
+        raise DataRootError(f"Falta o arquivo de dados {'/'.join(parts)} do getbrolls. {_DATA_REINSTALL}")
+    return path
 
 
 def manifest_entries(inst: Install | None = None) -> tuple[str, ...]:

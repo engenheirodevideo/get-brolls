@@ -143,6 +143,7 @@ Projeto da 2.5 segue exatamente igual: nada muda sem um `ROTEIRO.md` do get-brol
 
 - Dependências: `@playwright/cli` 0.1.20 → 0.1.21 (`package.json`, `package-lock.json` e a versão de referência no `docs/GUIDE.md`) e `idna` 3.19 → 3.20 no `requirements.txt`; substitui os PRs #78 e #79 do Dependabot.
 - Qualidade: `ruff` 0.15.12 → 0.16.8 e `pyright` 1.1.412 → 1.1.414. Sem mudança de comportamento.
+- CI: job `package` monta o wheel de um checkout limpo para fora da raiz, instala numa venv nova e roda o smoke do pacote e a suíte inteira no modo pacote (macOS, Windows, Linux × Python 3.11/3.14); o job `test` ganha Python 3.14 nos três sistemas.
 
 ## 2.5.0 — 2026-09-19
 

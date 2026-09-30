@@ -10,6 +10,7 @@ from pathlib import Path
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_video
+from _paths import suggested_argv
 
 from getbrolls.cli import build_parser
 from getbrolls.commands import status_next
@@ -216,7 +217,7 @@ class FollowingDoFinishesTheFlow(unittest.TestCase):
                 command = action["command"]
                 for placeholder, value in HUMAN_FILLS.items():
                     command = command.replace(placeholder, shlex.quote(value))
-                argv = shlex.split(command)[2:]
+                argv = suggested_argv(command)
                 parser.parse_args(argv)
                 run_cli(*argv)
             self.assertEqual("done", seen[-1], seen)
@@ -248,7 +249,7 @@ class InspectCommandCarriesTheBeat(unittest.TestCase):
             action = run_cli("status", project=root)["summary"]["do"]
         self.assertEqual("inspect", action["step"])
         self.assertNotIn("NARRACAO_OU_ALVO", action["command"])
-        argv = shlex.split(action["command"])[2:]
+        argv = suggested_argv(action["command"])
         parsed = build_parser().parse_args(argv)
         self.assertEqual(LOCAL_BRIEF["beats"][0]["narration"], parsed.query)
 

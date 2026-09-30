@@ -13,7 +13,7 @@ from unittest.mock import patch
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
-from _paths import CLI_ARGV, ROOT
+from _paths import CLI_ARGV, ROOT, WHEEL_MODE
 
 from getbrolls import config, media, social
 from getbrolls.rules import load_rules
@@ -270,8 +270,13 @@ class DoctorReportTests(unittest.TestCase):
             entries = [e for e in payload["summary"]["missing"] if e["item"] == "GB_VENV_PATH"]
             self.assertTrue(entries, payload["summary"]["missing"])
             for entry in entries:
-                self.assertIn("install.sh", entry["fix"])
-                self.assertIn(str(ROOT / "scripts" / "install.sh"), entry["fix"])
+                if WHEEL_MODE:
+                    # O pacote instalado não tem `scripts/install.sh`: o conserto é o `setup --check`.
+                    self.assertIn("setup --check", entry["fix"])
+                    self.assertNotIn("install.sh", entry["fix"])
+                else:
+                    self.assertIn("install.sh", entry["fix"])
+                    self.assertIn(str(ROOT / "scripts" / "install.sh"), entry["fix"])
 
     def test_doctor_resolves_each_tool_to_an_absolute_executable(self):
         with tempfile.TemporaryDirectory() as d:
