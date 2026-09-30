@@ -158,16 +158,34 @@ def parse_source(raw, *, commit=None, ref=None, subdir=None):
     return GitSource(validate_url(raw), commit, ref, subdir)
 
 
-# `core.hooksPath` para um diretório sem hooks desliga qualquer hook do clone;
-# `protocol.ext.allow=never` recusa o transporte `ext::` (rodaria um comando
-# arbitrário como "URL"); os três `filter.lfs.*` desarmam o smudge do Git LFS
-# especificamente. Nenhum deles é o que realmente nos protege de um filtro
-# malicioso arbitrário citado em `.gitattributes` — isso é a materialização
-# manual do `install`, que nunca aciona filtro nenhum; estes são defesa em
-# profundidade.
+# Configuração que vai em todo processo git, na linha de comando (vence qualquer
+# config de repositório ou global):
+# - `protocol.allow=never` com exceção só para `https` e `ssh`: nenhum outro
+#   transporte (`ext::` rodaria um comando arbitrário como "URL", `http://` sem TLS,
+#   `git://` sem autenticação, `file://` fora de uma pasta que a própria pessoa
+#   indicou) é aceito, nem via redirecionamento ou `url.<x>.insteadOf`.
+#   `protocol.file.allow=always` só entra para uma origem que é pasta local
+#   (`LOCAL_PROTOCOL`); `protocol.ext.allow=never` fica explícito.
+# - `transfer.fsckObjects=true`: objeto malformado vindo da origem é recusado no fetch.
+# - `init.templateDir=` vazio: o `git init` do clone não copia hook nem config de template.
+# - `core.hooksPath` para um diretório sem hooks desliga qualquer hook do clone;
+#   os três `filter.lfs.*` desarmam o smudge do Git LFS especificamente. Nenhum
+#   deles é o que realmente nos protege de um filtro malicioso arbitrário citado
+#   em `.gitattributes` — isso é a materialização manual do `install`, que nunca
+#   aciona filtro nenhum; estes são defesa em profundidade.
 GIT_HARDENING = [
     "-c",
+    "protocol.allow=never",
+    "-c",
+    "protocol.https.allow=always",
+    "-c",
+    "protocol.ssh.allow=always",
+    "-c",
     "protocol.ext.allow=never",
+    "-c",
+    "transfer.fsckObjects=true",
+    "-c",
+    "init.templateDir=",
     "-c",
     f"core.hooksPath={os.devnull}",
     "-c",
@@ -177,6 +195,7 @@ GIT_HARDENING = [
     "-c",
     "filter.lfs.required=false",
 ]
+LOCAL_PROTOCOL = ["-c", "protocol.file.allow=always"]
 
 
 def has_core_ssh_command(env):
@@ -250,8 +269,10 @@ def git_env(ssh=False):
     return env
 
 
-def run_git(args, cwd=None, ssh=False, binary=False):
-    """Roda `git <GIT_HARDENING> <args>` com `git_env`; saída não zero vira `ValueError`."""
+def run_git(args, cwd=None, ssh=False, binary=False, local=False):
+    """Roda `git <GIT_HARDENING> <args>` com `git_env`; saída não zero vira `ValueError`.
+
+    `local=True` (origem que é pasta local) libera o transporte `file://`."""
     git = shutil.which("git")
     if not git:
         raise ValueError("git não encontrado no PATH; instale o git ou use --source com uma pasta local.")
@@ -259,7 +280,7 @@ def run_git(args, cwd=None, ssh=False, binary=False):
     text_kwargs = {} if binary else {"text": True, "encoding": "utf-8", "errors": "replace"}
     try:
         done = subprocess.run(
-            [git, *GIT_HARDENING, *args],
+            [git, *GIT_HARDENING, *(LOCAL_PROTOCOL if local else []), *args],
             cwd=cwd,
             env=env,
             capture_output=True,
@@ -276,6 +297,97 @@ def run_git(args, cwd=None, ssh=False, binary=False):
     return done.stdout
 
 
-def git_text(args, cwd=None, ssh=False):
+def git_text(args, cwd=None, ssh=False, local=False):
     """`run_git` em modo texto, sem espaço nas pontas."""
-    return run_git(args, cwd=cwd, ssh=ssh).strip()
+    return run_git(args, cwd=cwd, ssh=ssh, local=local).strip()
+
+
+def _transport(spec):
+    """`(uri, ssh, local)` para falar com a origem de `spec`."""
+    if is_remote(spec.repo):
+        return spec.repo, is_ssh(spec.repo), False
+    return Path(spec.repo).as_uri(), False, True
+
+
+def _ref_names(ref):
+    """Nomes completos que `ref` pode ser na origem: `HEAD`, `refs/…` como veio, ou branch e tag."""
+    if ref in (None, "HEAD"):
+        return ["HEAD"]
+    if ref.startswith("refs/"):
+        return [ref]
+    return [f"refs/heads/{ref}", f"refs/tags/{ref}"]
+
+
+def resolve_ref(spec):
+    """`(nome completo, commit)` de `spec.ref` (ausente vale `HEAD`) na origem, via `git ls-remote`.
+
+    Tag anotada vale pelo commit a que aponta (`^{}`). Um nome que é branch e tag ao
+    mesmo tempo é ambíguo e recusado: escreva `refs/heads/<nome>` ou `refs/tags/<nome>`."""
+    ref = spec.ref or "HEAD"
+    names = _ref_names(ref)
+    uri, ssh, local = _transport(spec)
+    patterns = [pattern for name in names for pattern in (name, f"{name}^{{}}")]
+    listed = {}
+    for line in git_text(["ls-remote", "--", uri, *patterns], ssh=ssh, local=local).splitlines():
+        sha, _, name = line.partition("\t")
+        listed[name.strip()] = sha.strip()
+    found = {name: listed.get(f"{name}^{{}}") or listed[name] for name in names if name in listed}
+    if not found:
+        raise ValueError(f"A ref {ref!r} não existe na origem; confira o nome da branch ou da tag.")
+    if len(found) > 1:
+        raise ValueError(
+            f"A ref {ref!r} é ambígua na origem (branch e tag com o mesmo nome); use --ref refs/heads/{ref} "
+            f"ou --ref refs/tags/{ref}."
+        )
+    ((name, sha),) = found.items()
+    if not COMMIT_RE.fullmatch(sha):
+        raise ValueError(f"A ref {ref!r} não aponta para um commit SHA-1 de 40 caracteres; recusado.")
+    return name, sha
+
+
+def _peeled_commit(clone, rev):
+    """O commit de `rev` no clone (`rev-parse --verify <rev>^{commit}`), ou `None`."""
+    try:
+        return git_text(["rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}"], cwd=clone)
+    except ValueError:
+        return None
+
+
+def _fetch_one(spec, clone, rev):
+    """`git fetch --depth 1 <origem> <rev>` no clone: só esse commit, sem tags."""
+    uri, ssh, local = _transport(spec)
+    git_text(["fetch", "--quiet", "--no-tags", "--depth", "1", "--", uri, rev], cwd=clone, ssh=ssh, local=local)
+
+
+def _fetch_ref_tip(spec, clone, sha, ref_name):
+    """Reserva do fetch por sha: `fetch --depth 1 <ref>`, e a ponta tem que ser `sha`."""
+    try:
+        _fetch_one(spec, clone, ref_name)
+    except ValueError as exc:
+        raise ValueError(f"Não consegui buscar o commit {sha[:12]} na origem: {exc}") from exc
+    if _peeled_commit(clone, "FETCH_HEAD") != sha:
+        raise ValueError(
+            f"Commit {sha[:12]} não encontrado na origem: o servidor não entrega commit por sha e ele não é "
+            f"a ponta de {ref_name}. Confira o --commit (ou use --ref com a branch/tag que aponta para ele)."
+        )
+
+
+def fetch(spec, clone):
+    """Traz para `clone` (criado aqui, vazio) só o commit de `spec` e devolve o sha dele.
+
+    Sem `spec.commit`, resolve `spec.ref` antes (`resolve_ref`). Busca o commit pelo
+    sha (`fetch --depth 1 <sha>`); servidor que não entrega commit por sha recebe
+    `fetch --depth 1 <ref>`, e a ponta dessa ref tem que ser o próprio sha — senão,
+    recusa. Depois, `<sha>^{commit}` no clone tem que ser o sha pedido."""
+    if spec.commit is not None:
+        sha, ref_name = validate_commit(spec.commit), validate_ref(spec.ref or "HEAD")
+    else:
+        ref_name, sha = resolve_ref(spec)
+    git_text(["init", "--quiet", str(clone)])
+    try:
+        _fetch_one(spec, clone, sha)
+    except ValueError:
+        _fetch_ref_tip(spec, clone, sha, ref_name)
+    if _peeled_commit(clone, sha) != sha:
+        raise ValueError(f"Commit {sha[:12]} não encontrado na origem; confira o --commit.")
+    return sha

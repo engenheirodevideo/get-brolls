@@ -789,13 +789,21 @@ python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
 ```
 
 - `--source` aceita uma pasta local (copiada sem `.git`/`__pycache__`), uma
-  pasta que é repositório git ou uma URL git (`https://…` sem usuário/senha, ou
-  `git@host:caminho`). Um repositório nunca é `checkout`ado: o clone usa
-  `--no-checkout` e o conteúdo é materializado por nós, um blob por vez, direto
-  de `git ls-tree`/`git cat-file blob` — comandos que nunca aplicam filtro
+  pasta que é repositório git (com `.git` ou *bare*) ou uma URL git (`https://…`
+  sem usuário/senha, ou `git@host:caminho`). Repositório é sempre fixado por
+  commit: sem `--commit`, a ref (`HEAD` por padrão) é resolvida na origem com
+  `git ls-remote`, e só aquele commit é buscado (`git init` + `git fetch --depth 1
+  <sha>`; servidor que não entrega commit por sha recebe `fetch --depth 1 <ref>`,
+  e a ponta tem que ser o mesmo sha, senão o install recusa). Um repositório
+  nunca é `checkout`ado: o conteúdo é materializado por nós, um blob por vez,
+  direto de `git ls-tree`/`git cat-file blob` — comandos que nunca aplicam filtro
   `clean`/`smudge` nem hook, ao contrário de um `checkout` de verdade — com
-  `GIT_TERMINAL_PROMPT=0`; só o que está commitado entra. O clone fica numa
-  pasta de staging própria e a árvore é escrita em outra, que nunca tem `.git`.
+  `GIT_TERMINAL_PROMPT=0`; só o que está commitado entra (numa pasta local que é
+  repositório, a prévia avisa que o que não foi commitado fica de fora). O clone
+  fica numa pasta de staging própria e a árvore é escrita em outra, que nunca tem
+  `.git`. O git roda só com os transportes `https` e `ssh` (e `file` apenas para
+  a pasta local indicada), `transfer.fsckObjects=true`, sem template de `init` e
+  sem hooks.
   É recusado: link simbólico, submódulo (gitlink), qualquer caminho com um
   componente de controle de versão (`.git`, `.hg`, `.svn`, também com ponto ou
   espaço sobrando e os nomes curtos `GIT~1`/`HG~1`/`SVN~1`), `:` ou `\` em

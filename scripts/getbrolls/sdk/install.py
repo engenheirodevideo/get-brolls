@@ -92,21 +92,13 @@ def _refuse_links_and_bytecode(folder):
         raise ValueError(loader.content_reason(problem, "rode a prévia de novo"))
 
 
-def _clone_no_checkout(source_uri, dest, ssh=False):
-    """Clona sem popular a árvore de trabalho: sem `checkout`, nenhum filtro de
-    conteúdo, hook ou smudge roda — `dest` fica só com `.git` até
-    `_materialize_tree` escrever os blobs um a um."""
-    _git(["clone", "--no-checkout", "--depth", "1", "--quiet", "--", source_uri, str(dest)], ssh=ssh)
-    return _git(["rev-parse", "HEAD"], cwd=dest)
-
-
-def _tree_entries(dest):
-    """(modo, sha, caminho, tamanho) de cada entrada de `git ls-tree -r -l HEAD` —
+def _tree_entries(dest, treeish):
+    """(modo, sha, caminho, tamanho) de cada entrada de `git ls-tree -r -l <treeish>` —
     inclui todo blob recursivamente e as entradas de submódulo (que `-r` não
     expande). `-l` traz o tamanho declarado do objeto (`-` para submódulo), o que
     deixa checar o tamanho ANTES de pedir o conteúdo (`cat-file blob`) — um blob
     gigante nunca chega a ser lido só para descobrirmos que ele estoura o teto."""
-    raw = _git(["ls-tree", "-r", "-l", "-z", "HEAD"], cwd=dest)
+    raw = _git(["ls-tree", "-r", "-l", "-z", treeish], cwd=dest)
     for record in raw.split("\0"):
         if not record:
             continue
@@ -217,8 +209,8 @@ def _write_tree_entry(dest, root, path, mode, content):
         raise ValueError(f"Não consegui gravar {path!r} do histórico git ({type(exc).__name__}).") from exc
 
 
-def _materialize_tree(clone, dest, paths_only=None):
-    """Escreve o conteúdo de HEAD de `clone` (clonado com `--no-checkout`) em `dest`
+def _materialize_tree(clone, dest, treeish, paths_only=None):
+    """Escreve o conteúdo de `treeish` de `clone` (só o banco de objetos, sem checkout) em `dest`
     — uma pasta de staging SEPARADA do clone, então nenhuma entrada da árvore
     consegue alcançar o `.git` do clone —, um blob por vez, sem jamais
     passar por um `checkout` — por isso sem filtro/smudge/hook. Recusa qualquer
@@ -237,7 +229,7 @@ def _materialize_tree(clone, dest, paths_only=None):
     # gravado, senão o arquivo que roda poderia mudar sem mudar o sha256.
     entries = [
         entry
-        for entry in _tree_entries(clone)
+        for entry in _tree_entries(clone, treeish)
         if (paths_only is None or entry[2] in paths_only) and not _is_junk(entry[2])
     ]
     _refuse_tree_collisions(path for _mode, _sha, path, _size in entries)
@@ -279,25 +271,25 @@ def _peek_entry_name(dest):
     return entry if isinstance(entry, str) else None
 
 
-def _validate_manifest_early(clone, dest):
+def _validate_manifest_early(clone, dest, treeish):
     """Materializa e valida o manifesto (e o `entry` que ele declara) antes
     de trazer o resto — potencialmente grande — da árvore; falha cedo, sem gastar
     tempo/disco com um plugin incompatível ou inválido."""
-    _materialize_tree(clone, dest, paths_only={MANIFEST_NAME})
+    _materialize_tree(clone, dest, treeish, paths_only={MANIFEST_NAME})
     entry = _peek_entry_name(dest)
     if entry:
-        _materialize_tree(clone, dest, paths_only={MANIFEST_NAME, entry})
+        _materialize_tree(clone, dest, treeish, paths_only={MANIFEST_NAME, entry})
     _checked_manifest(dest)
 
 
-def _from_git(source_uri, dest, ssh=False):
-    """Clona sem checkout numa pasta de staging própria, materializa a árvore em
-    `dest` (outra pasta) e apaga o clone; devolve o commit."""
+def _from_git(spec, dest):
+    """Busca o commit de `spec` numa pasta de staging própria (sem checkout),
+    materializa a árvore em `dest` (outra pasta) e apaga o clone; devolve o commit."""
     clone = dest.with_name(_new_install_staging_name())
     try:
-        commit = _clone_no_checkout(source_uri, clone, ssh=ssh)
-        _validate_manifest_early(clone, dest)
-        _materialize_tree(clone, dest)
+        commit = git_source.fetch(spec, clone)
+        _validate_manifest_early(clone, dest, commit)
+        _materialize_tree(clone, dest, commit)
     finally:
         force_rmtree(clone)
     _refuse_links_and_bytecode(dest)
@@ -332,33 +324,43 @@ def _guard_folder_cap(folder):
             raise ValueError(f"O plugin passa de {MAX_BYTES // (1024 * 1024)} MB; recusado.")
 
 
-def _materialize(source, dest):
-    """Traz `source` para `dest` (que não existe) e devolve `(origem, commit)`.
+def local_repository_warning(commit, ref):
+    """Aviso da prévia quando a origem é uma pasta local que é repositório git."""
+    return (
+        f"A pasta é um repositório git: entra o commit {commit[:12]} ({ref or 'HEAD'}), não a árvore de "
+        "trabalho; o que não foi commitado fica de fora."
+    )
 
-    Pasta com `.git` e URL git nunca são `checkout`adas (ver o docstring do
+
+def _copy_folder(folder, dest):
+    """Copia a pasta comum `folder` para `dest`, com as mesmas recusas do caminho git."""
+    _checked_manifest(folder)
+    _refuse_nested_vcs(folder)
+    _refuse_links_and_bytecode(folder)
+    _guard_folder_cap(folder)
+    _refuse_tree_collisions(rel.as_posix() for rel, _path in counted_files(folder))
+    try:
+        shutil.copytree(folder, dest, symlinks=True, ignore=_copy_ignore)
+    except OSError as exc:
+        raise ValueError(f"Não consegui copiar a pasta do plugin ({type(exc).__name__}).") from exc
+    _refuse_links_and_bytecode(dest)
+
+
+def _materialize(spec, dest):
+    """Traz `spec` (`git_source.Source`) para `dest` (que não existe) e devolve
+    `(origem, avisos)`; a origem é o que o `plugins.json` grava em `sources`.
+
+    Repositório (pasta com `.git` ou URL) nunca é `checkout`ado (ver o docstring do
     módulo); pasta comum com link ou bytecode é recusada, e a cópia (links
     copiados como links, `symlinks=True`, sem `.git` nem lixo de SO) é
     conferida de novo — checar o resultado materializado, não só a origem,
     fecha a corrida entre "olhar" e "copiar"."""
-    raw = str(source).strip()
-    folder = Path(raw).expanduser()
-    if raw and not raw.startswith("-") and folder.is_dir():
-        folder = folder.resolve()
-        if git_source.is_repository(folder):
-            return str(folder), _from_git(folder.as_uri(), dest)
-        _checked_manifest(folder)
-        _refuse_nested_vcs(folder)
-        _refuse_links_and_bytecode(folder)
-        _guard_folder_cap(folder)
-        _refuse_tree_collisions(rel.as_posix() for rel, _path in counted_files(folder))
-        try:
-            shutil.copytree(folder, dest, symlinks=True, ignore=_copy_ignore)
-        except OSError as exc:
-            raise ValueError(f"Não consegui copiar a pasta do plugin ({type(exc).__name__}).") from exc
-        _refuse_links_and_bytecode(dest)
-        return str(folder), None
-    git_source.validate_url(raw)
-    return raw, _from_git(raw, dest, ssh=raw.startswith("git@"))
+    if isinstance(spec, git_source.FolderSource):
+        _copy_folder(Path(spec.path), dest)
+        return {"source": spec.path, "commit": None}, []
+    commit = _from_git(spec, dest)
+    warnings = [] if git_source.is_remote(spec.repo) else [local_repository_warning(commit, spec.ref)]
+    return {"source": spec.repo, "commit": commit, "ref": spec.ref}, warnings
 
 
 # O epoch de criação vai no NOME da pasta de staging, não é lido do `st_mtime`
@@ -480,14 +482,16 @@ def _checked_manifest(folder):
     return manifest
 
 
-def _summary(manifest, origin, commit, content, files):
-    """Prévia do install/update: manifesto, origem, sha256, arquivos e, quando o plugin
-    declara `permissions.paths`, as raízes resolvidas que o pin vai gravar."""
-    warnings = loader.permission_warnings(manifest)
+def _summary(manifest, origin, content, files, warnings=()):
+    """Prévia do install/update: manifesto, origem (com commit e ref), sha256, arquivos
+    e, quando o plugin declara `permissions.paths`, as raízes resolvidas que o pin vai
+    gravar. `warnings` junta os avisos da materialização aos das permissões."""
+    warnings = [*warnings, *loader.permission_warnings(manifest)]
     summary = {
         **loader.manifest_summary(manifest),
-        "source": origin,
-        "commit": commit,
+        "source": origin["source"],
+        "commit": origin["commit"],
+        "ref": origin.get("ref"),
         "sha256": content.sha,
         "files": files,
     }
@@ -503,15 +507,18 @@ def _check_expect(expect, sha):
     loader.check_expect(expect, sha)
 
 
-def install(source, confirm, expect=None):
+def install(source, confirm, expect=None, *, commit=None, ref=None):
     """Prévia (sem `confirm`) ou instalação de um plugin a partir de pasta local ou URL git.
 
-    Confirmar exige o sha256 da prévia em `expect`; o plugin sai instalado e habilitado."""
+    `commit` fixa o commit (senão, `ref` — ausente vale `HEAD` — é resolvida na
+    origem). Confirmar exige o sha256 da prévia em `expect`; o plugin sai instalado
+    e habilitado."""
+    spec = git_source.parse_source(source, commit=commit, ref=ref)
     loader.read_state()  # plugins.json corrompido recusa antes de qualquer mutação.
     _sweep_stale_staging()
     staging = _staging()
     try:
-        origin, commit = _materialize(source, staging)
+        origin, warnings = _materialize(spec, staging)
         manifest = _checked_manifest(staging)
         target = loader.plugins_root() / manifest["id"]
         if target.exists():
@@ -519,14 +526,14 @@ def install(source, confirm, expect=None):
                 f"Plugin {manifest['id']} já está instalado; use plugins --action update --id {manifest['id']}."
             )
         content = loader.PinContent(*loader.pin_digests(staging), loader.pinned_roots(manifest))
-        preview = _summary(manifest, origin, commit, content, _file_list(staging))
+        preview = _summary(manifest, origin, content, _file_list(staging), warnings)
         if not confirm:
             return {"installed": False, "plugin": preview, "note": loader.EXPECT_NOTE}
         _check_expect(expect, content.sha)
         staging.replace(target)
     finally:
         force_rmtree(staging)
-    pinned_sha = loader.pin(manifest, target, {"source": origin, "commit": commit}, content=content)
+    pinned_sha = loader.pin(manifest, target, origin, content=content)
     logs.event(_log, logging.INFO, "plugin_installed", plugin=manifest["id"], version=manifest["version"])
     return {"installed": True, "plugin": {**preview, "sha256": pinned_sha}, "note": loader.DONE_NOTE}
 
@@ -546,24 +553,23 @@ def _diff(old_folder, old_manifest, new_folder, new_manifest):
 class _Staged(NamedTuple):
     """O que o `update` materializou no staging e conferiu, antes de trocar a pasta."""
 
-    source: str
-    commit: str | None
+    origin: dict
     manifest: dict
     content: "loader.PinContent"
     preview: dict
     diff: dict
 
 
-def _stage_update(plugin_id, origin, staging, folder, current):
-    """Materializa a origem em `staging`, confere o manifesto e monta a prévia com o diff."""
-    source, commit = _materialize(origin["source"], staging)
+def _stage_update(plugin_id, spec, staging, folder, current):
+    """Materializa `spec` em `staging`, confere o manifesto e monta a prévia com o diff."""
+    origin, warnings = _materialize(spec, staging)
     manifest = _checked_manifest(staging)
     if manifest["id"] != plugin_id:
         raise ValueError(f"A origem agora traz o plugin {manifest['id']}, não {plugin_id}; nada foi trocado.")
     content = loader.PinContent(*loader.pin_digests(staging), loader.pinned_roots(manifest))
-    preview = _summary(manifest, source, commit, content, _file_list(staging))
+    preview = _summary(manifest, origin, content, _file_list(staging), warnings)
     diff = _diff(folder, current, staging, manifest)
-    return _Staged(source, commit, manifest, content, preview, diff)
+    return _Staged(origin, manifest, content, preview, diff)
 
 
 def _swap_in(plugin_id, folder, staging):
@@ -597,24 +603,25 @@ def update(plugin_id, confirm, expect=None):
         raise ValueError(
             f"Plugin {plugin_id} não foi instalado por plugins --action install; atualize a pasta à mão e rode enable."
         )
+    # A origem gravada passa pela mesma validação de um `--source` novo; sem commit
+    # fixado, a ref gravada (ausente vale `HEAD`) é resolvida de novo na origem.
+    spec = git_source.parse_source(origin["source"], ref=origin.get("ref"))
     was_enabled = plugin_id in state.get("enabled", {})
     _sweep_stale_staging()
     _, folder, current = loader.find(plugin_id)
     staging = _staging()
     try:
-        staged = _stage_update(plugin_id, origin, staging, folder, current)
+        staged = _stage_update(plugin_id, spec, staging, folder, current)
         if not confirm:
             return {"updated": False, "plugin": staged.preview, "diff": staged.diff, "note": loader.EXPECT_NOTE}
         _check_expect(expect, staged.content.sha)
         _swap_in(plugin_id, folder, staging)
     finally:
         force_rmtree(staging)
-    manifest, commit = staged.manifest, staged.commit
+    manifest, commit = staged.manifest, staged.origin["commit"]
     # Atualizar o conteúdo não liga de volta um plugin que estava desabilitado —
     # só quem já estava habilitado sai daqui com pin novo (senão o pin some).
-    sha_after = loader.pin(
-        manifest, folder, {"source": staged.source, "commit": commit}, enabled=was_enabled, content=staged.content
-    )
+    sha_after = loader.pin(manifest, folder, staged.origin, enabled=was_enabled, content=staged.content)
     logs.event(
         _log,
         logging.INFO,

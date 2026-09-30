@@ -569,7 +569,9 @@ class GitInstallTests(InstallTestCase):
         self.assertEqual(head(repo), done["plugin"]["commit"])
         self.assertFalse((installed / ".git").exists())
         self.assertFalse((installed / "rascunho.py").exists())
-        self.assertEqual({"source": str(repo.resolve()), "commit": head(repo)}, self.state()["sources"]["demo"])
+        self.assertEqual(
+            {"source": str(repo.resolve()), "commit": head(repo), "ref": None}, self.state()["sources"]["demo"]
+        )
 
     def test_update_shows_the_diff_first_then_replaces_and_repins(self):
         repo = self.repo()
