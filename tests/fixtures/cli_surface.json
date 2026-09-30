@@ -2454,7 +2454,7 @@
       ]
     },
     "setup": {
-      "help": "Conferir (--check) o runtime da instalação: venv do yt-dlp, Playwright e FFmpeg, com os comandos que faltam",
+      "help": "Instalar o runtime da instalação (yt-dlp numa venv) em $GB_HOME/runtime; --check só confere; Playwright, FFmpeg e Node são conferidos, com os comandos que faltam",
       "options": [
         {
           "action": "_HelpAction",
@@ -2490,6 +2490,20 @@
           "nargs": 0,
           "option_strings": [
             "--check"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "ytdlp"
+          ],
+          "default": null,
+          "dest": "upgrade",
+          "help": "Atualizar o yt-dlp do runtime gerenciado além da versão fixada",
+          "nargs": null,
+          "option_strings": [
+            "--upgrade"
           ],
           "required": false
         }
