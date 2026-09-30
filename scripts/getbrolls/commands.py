@@ -2429,10 +2429,14 @@ def _execute_candidate_command(cmd, args, config, rules, ledger):
 def _doctor_plugin_inventory(result, summary):
     """Sobrepõe status/reason reais do registro no inventário de plugins do `doctor`."""
     from getbrolls.sdk import loader as sdk_loader
+    from getbrolls.sdk import requirements
     from getbrolls.sdk.registry import get_registry
 
     try:
-        installed = sdk_loader.inventory()
+        installed = [
+            {**row, "requires": requirements.report(manifest)} if manifest is not None else row
+            for row, _folder, manifest in sdk_loader.entries()
+        ]
     except ValueError as exc:
         result["plugins_error"] = str(exc)
         return
@@ -2453,6 +2457,10 @@ def _doctor_plugin_inventory(result, summary):
     problems = doctor_plugin_problems(result["plugins"])
     if problems:
         summary["plugins"] = problems
+    # Só informa: requisito faltando não muda `ready` (o plugin carrega mesmo assim).
+    lacking = requirements.missing_summary(result["plugins"])
+    if lacking:
+        summary["plugins_requires"] = lacking
 
 
 def _doctor_executables(overrides, social):

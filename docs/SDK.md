@@ -163,7 +163,16 @@ recusa o manifesto; toda chave é opcional:
 - **`services`** (até 10): nomes informativos de serviços externos (`postgres`).
 
 Faltar um requisito nunca impede o plugin de carregar: o get-brolls não instala
-nada nem executa os binários do plugin para conferir.
+nada nem executa os binários do plugin para conferir. `plugins --action check` traz
+o bloco `requires` com o que foi conferido (`python[].installed`, `binaries[].found`,
+`runtimes[].ok`, que fica `null` quando não é verificado) e, em `hint`, o comando
+para instalar os pacotes Python que faltam: no pacote,
+`uv tool install getbrolls --with "<requisito>"` (ou `pipx inject getbrolls
+"<requisito>"`); no checkout, `<python> -m pip install "<requisito>"` com o mesmo
+interpretador que roda o get-brolls. O `doctor` mostra o mesmo bloco em cada linha
+de `plugins[]` e, quando algo falta, uma linha `plugins_requires` no `summary`; o
+`ready` não muda. A conferência usa o nome da distribuição, que pode diferir do
+nome do `import` (`psycopg[binary]` instala o módulo `psycopg`; `Pillow`, o `PIL`).
 Ids reservados: além de `core`, os ids `cliente`, `catalogo`, `direcao`,
 `template` e `projeto` são do get-brolls. O manifesto com um deles é recusado, e
 por isso `install`, `enable` e `new` também recusam: um plugin chamado

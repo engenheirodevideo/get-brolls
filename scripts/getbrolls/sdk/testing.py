@@ -235,14 +235,16 @@ def check_plugin(folder: str | os.PathLike[str]) -> dict:
 
     Returns:
         A prévia do plugin (manifesto, permissões, sha256, avisos) com `ok`,
-        `manifest_file` e os nomes conferidos em `contracts`.
+        `manifest_file`, os nomes conferidos em `contracts` e, em `requires`, o que
+        o `requires` do manifesto pede e o que falta nesta instalação
+        (`requirements.report`; não muda o `ok`).
 
     Raises:
         ManifestError: manifesto ausente ou fora do formato.
         ValueError: plugin incompatível, com conteúdo que o `install` recusaria, que
             falhou no `register()` ou na checagem de contrato.
     """
-    from . import guard, loader
+    from . import guard, loader, requirements
     from .manifest import MANIFEST_NAME
 
     folder = Path(folder).resolve()
@@ -266,4 +268,5 @@ def check_plugin(folder: str | os.PathLike[str]) -> dict:
         **loader.plugin_preview(manifest, folder),
         "manifest_file": MANIFEST_NAME,
         "contracts": checked.value,
+        "requires": requirements.report(manifest),
     }

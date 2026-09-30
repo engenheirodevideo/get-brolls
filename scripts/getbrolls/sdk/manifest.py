@@ -85,7 +85,8 @@ _VERSION_CLAUSE = r"(?:>=|<=|==|>|<)\d+(?:\.\d+){0,2}"
 # Requisito Python: nome da distribuição, extras opcionais e cláusulas na mesma
 # gramática de `requires_getbrolls` (sem marcadores, URLs nem caminhos).
 REQUIREMENT_RE = re.compile(
-    rf"(?P<name>{_DIST_NAME})(?:\[{_DIST_NAME}(?:,{_DIST_NAME})*\])?(?:{_VERSION_CLAUSE}(?:,{_VERSION_CLAUSE})*)?"
+    rf"(?P<name>{_DIST_NAME})(?P<extras>\[{_DIST_NAME}(?:,{_DIST_NAME})*\])?"
+    rf"(?P<spec>{_VERSION_CLAUSE}(?:,{_VERSION_CLAUSE})*)?"
 )
 REQUIRES_KEYS = ("python", "binaries", "runtimes", "services")
 ENGINES_RETIRED = "engines foi substituído por requires (requires.runtimes); veja docs/SDK.md#manifesto."
@@ -292,10 +293,15 @@ def validate_requires(where: str, raw: object) -> dict:
 
 def requirement_name(req: str) -> str:
     """Nome da distribuição de um requisito já validado: `"psycopg[binary]>=3.1"` → `"psycopg"`."""
+    return requirement_parts(req)[0]
+
+
+def requirement_parts(req: str) -> tuple[str, str | None]:
+    """`(nome, faixa ou None)` de um requisito já validado: `"psycopg[binary]>=3.1"` → `("psycopg", ">=3.1")`."""
     match = REQUIREMENT_RE.fullmatch(req)
     if match is None:
         raise ManifestError(f"requisito inválido: {req!r}.")
-    return match["name"]
+    return match["name"], match["spec"]
 
 
 def validate_platforms(where: str, raw: object) -> list[str]:
