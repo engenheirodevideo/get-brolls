@@ -132,17 +132,26 @@ class DetectTests(unittest.TestCase):
 
 class HomeAndRuntimeTests(unittest.TestCase):
     def test_gb_home_wins_then_alias_then_default(self):
+        """O alias `GETBROLLS_HOME` chega por `apply_env_aliases` (a CLI aplica antes de tudo), como os outros."""
         with patch.dict(os.environ, _clean_env(GB_HOME="/a", GETBROLLS_HOME="/b"), clear=True):
+            paths.apply_env_aliases()
             self.assertEqual(Path("/a"), paths.gb_home())
         with patch.dict(os.environ, _clean_env(GETBROLLS_HOME="/b"), clear=True):
+            paths.apply_env_aliases()
             self.assertEqual(Path("/b"), paths.gb_home())
         with patch.dict(os.environ, _clean_env(), clear=True):
             self.assertEqual(Path.home() / ".getbrolls", paths.gb_home())
 
+    def test_gb_home_reads_only_the_canonical_name(self):
+        with patch.dict(os.environ, _clean_env(GETBROLLS_HOME="/b"), clear=True):
+            self.assertEqual(Path.home() / ".getbrolls", paths.gb_home())
+
     def test_empty_gb_home_is_ignored(self):
         with patch.dict(os.environ, _clean_env(GB_HOME="", GETBROLLS_HOME="/b"), clear=True):
+            self.assertEqual(["GETBROLLS_HOME"], paths.apply_env_aliases())
             self.assertEqual(Path("/b"), paths.gb_home())
         with patch.dict(os.environ, _clean_env(GB_HOME="", GETBROLLS_HOME=""), clear=True):
+            paths.apply_env_aliases()
             self.assertEqual(Path.home() / ".getbrolls", paths.gb_home())
 
     def test_runtime_dir_env_wins(self):
@@ -345,6 +354,40 @@ class CliInvocationTests(unittest.TestCase):
                 patch.object(paths.shutil, "which", return_value=str(Path(tmp) / "getbrolls")),
             ):
                 self.assertEqual(fallback, paths.cli_command("posix"))
+
+
+class WindowsConsoleScriptTests(unittest.TestCase):
+    """No Windows o `getbrolls.exe` do PATH pode morar longe do python (`uv tool`, por exemplo):
+    vale quando é o arquivo que iniciou este processo."""
+
+    def setUp(self):
+        paths.install.cache_clear()
+        self.addCleanup(paths.install.cache_clear)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.bin = Path(tmp.name) / "bin"
+        self.wheel = _fake_wheel(Path(tmp.name))
+
+    def command(self, which, argv0, os_name="nt"):
+        with (
+            patch.object(paths, "install", return_value=self.wheel),
+            patch.object(paths.shutil, "which", return_value=str(which)),
+            patch.object(paths.sys, "argv", [str(argv0)]),
+        ):
+            return paths.cli_command(os_name)
+
+    def test_nt_accepts_the_console_script_that_started_this_process(self):
+        exe = self.bin / "getbrolls.exe"
+        self.assertEqual(["getbrolls"], self.command(exe, exe))
+        self.assertEqual(["getbrolls"], self.command(exe, self.bin / "getbrolls"))
+
+    def test_nt_refuses_a_console_script_that_did_not_start_this_process(self):
+        other = self.bin / "outro" / "getbrolls.exe"
+        self.assertEqual([sys.executable, "-P", "-m", "getbrolls"], self.command(other, self.bin / "getbrolls.exe"))
+
+    def test_posix_keeps_the_same_folder_rule(self):
+        exe = self.bin / "getbrolls"
+        self.assertEqual([sys.executable, "-P", "-m", "getbrolls"], self.command(exe, exe, os_name="posix"))
 
 
 class QuotingTests(unittest.TestCase):

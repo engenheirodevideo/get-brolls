@@ -358,13 +358,21 @@ def error_code_for(exc):
     return "IO_ERROR" if isinstance(exc, OSError) else "INVALID_DATA"
 
 
-# `roteiro` grava por journal (como o resto do core), então a parte de
-# recovery_pending da dica continua valendo — só a frase "execute review para
-# regenerar a página" é removida: ela fala do `review`/`import-review` do
-# b-roll, e se confunde com `roteiro --action review`.
-_RECOVERY_ONLY_HINT = (
-    "Se recovery_pending=true, o próximo comando retoma a gravação. Caso contrário, corrija o erro e repita."
-)
+_RECOVERY_HINT = "Há uma gravação pendente (recovery_pending=true): o próximo comando a retoma antes de rodar."
+_REVIEW_HINT = "O estado já foi gravado (state_committed=true): execute review para regenerar a página."
+
+
+def _error_hint(command, event):
+    """Dica do erro, só quando há o que fazer além de corrigir e repetir; senão `None`.
+
+    `roteiro` nunca recebe a de `review`: ela fala do Storyboard do b-roll e se confunde
+    com `roteiro --action review`.
+    """
+    if event.get("recovery_pending"):
+        return _RECOVERY_HINT
+    if event.get("state_committed") and command != "roteiro":
+        return _REVIEW_HINT
+    return None
 
 
 def provider_error_message(text):
@@ -413,25 +421,14 @@ def _classify_audited_error(event, exc, log):
 
 def _audited_error_failure(args, event, log, app_log_path):
     """Monta o `OperationError` da exceção já classificada por `_classify_audited_error`."""
-    hint = (
-        "Se recovery_pending=true, o próximo comando retoma a gravação. Se "
-        "state_committed=true e não houver pendência, execute review para "
-        "regenerar a página. Caso contrário, corrija o erro e repita."
-    )
-    if args.command == "roteiro" and event["type"] == "ValueError":
-        # Erro de uso do roteiro (`new` sem `--genero`, por exemplo): sem a frase
-        # "execute review", que aqui se confunde com `roteiro --action review`. O
-        # sync do roteiro grava por journal como o resto do core, então a parte de
-        # recovery_pending continua na dica.
-        hint = _RECOVERY_ONLY_HINT
-    payload = {
-        # Traceback e repr nunca vão para a pessoa, em nenhum comando: ficam só no
-        # evento que `audited` grava em diagnostics.jsonl.
-        **{k: v for k, v in event.items() if k not in ("traceback", "repr")},
-        "hint": hint,
-        "log": str(log) if log else None,
-        "app_log": str(app_log_path) if app_log_path and app_log_path.is_file() else None,
-    }
+    # Traceback e repr nunca vão para a pessoa, em nenhum comando: ficam só no
+    # evento que `audited` grava em diagnostics.jsonl.
+    payload = {k: v for k, v in event.items() if k not in ("traceback", "repr")}
+    hint = _error_hint(args.command, event)
+    if hint:
+        payload["hint"] = hint
+    payload["log"] = str(log) if log else None
+    payload["app_log"] = str(app_log_path) if app_log_path and app_log_path.is_file() else None
     if args.command in QUIET_ERROR_COMMANDS and event["error_code"] != "INTERNAL_ERROR":
         # `plugins`/`x`/`assets` não gravam no projeto (ou, no `assets`, só leem):
         # erro de uso ali (flag faltando, plugin inexistente) é só a mensagem — a

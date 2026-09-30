@@ -639,11 +639,11 @@ class PluginsEnvelopeTests(LoaderTestCase):
                 self.assertNotIn("hint", err)
                 self.assertTrue(err["error"])
 
-    def test_other_commands_keep_the_hint_but_never_the_traceback(self):
-
+    def test_other_commands_never_show_the_traceback(self):
         project = tempfile.mkdtemp(prefix="gb-project-", dir=self.home)
         err = run_cli("inspect", "--url", " ", project=project, expect=1, env={"GB_HOME": str(self.home)})
-        self.assertIn("hint", err)
+        # Nada pendente: sem a dica de recovery (ela só vem com recovery_pending=true).
+        self.assertNotIn("hint", err)
         self.assertNotIn("traceback", err)
         self.assertNotIn("repr", err)
         log = Path(project) / "brolls" / "diagnostics.jsonl"

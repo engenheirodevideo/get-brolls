@@ -147,8 +147,12 @@ def verify_data() -> list[str]:
 
 
 def gb_home() -> Path:
-    """Pasta pessoal: `GB_HOME`, depois `GETBROLLS_HOME`, depois `~/.getbrolls` (sem resolve)."""
-    return Path(os.environ.get("GB_HOME") or os.environ.get("GETBROLLS_HOME") or Path.home() / ".getbrolls")
+    """Pasta pessoal: `GB_HOME`, depois `~/.getbrolls` (sem resolve).
+
+    O alias `GETBROLLS_HOME` chega aqui como `GB_HOME` por `apply_env_aliases`, que a CLI
+    aplica antes de qualquer outra coisa (`cli.main`): um só lugar resolve aliases.
+    """
+    return Path(os.environ.get("GB_HOME") or Path.home() / ".getbrolls")
 
 
 def requirements_sha() -> str | None:
@@ -245,12 +249,28 @@ def cli_argv() -> list[str]:
     return [sys.executable, "-P", "-m", "getbrolls"]
 
 
-def _console_script_is_ours() -> bool:
-    """`getbrolls` do PATH só vale se for o script deste mesmo interpretador."""
+def _started_from(found: Path) -> bool:
+    """No Windows: o `getbrolls(.exe)` achado é o arquivo que iniciou este processo?"""
+    if not sys.argv or not sys.argv[0]:
+        return False
+    started = Path(sys.argv[0]).resolve()
+    names = {started, started.with_suffix("") if started.suffix.lower() == ".exe" else started.with_suffix(".exe")}
+    return str(found).lower() in {str(name).lower() for name in names}
+
+
+def _console_script_is_ours(os_name: str | None = None) -> bool:
+    """`getbrolls` do PATH só vale se for o script deste mesmo interpretador.
+
+    No Windows vale também o `getbrolls.exe` que iniciou este processo: o `uv tool` põe o
+    executável numa pasta própria do PATH, longe do python do ambiente da ferramenta.
+    """
     found = shutil.which("getbrolls")
     if not found:
         return False
-    return Path(found).resolve().parent == Path(sys.executable).parent.resolve()
+    found_path = Path(found).resolve()
+    if found_path.parent == Path(sys.executable).parent.resolve():
+        return True
+    return _os_name(os_name) == "nt" and _started_from(found_path)
 
 
 def cli_command(os_name: str | None = None) -> list[str]:
@@ -258,7 +278,7 @@ def cli_command(os_name: str | None = None) -> list[str]:
     script = _gb_script(install())
     if script is not None:
         return [_interpreter(os_name), str(script)]
-    if _console_script_is_ours():
+    if _console_script_is_ours(os_name):
         return ["getbrolls"]
     return [sys.executable, "-P", "-m", "getbrolls"]
 
@@ -276,7 +296,7 @@ def portable_cli_argv(os_name: str | None = None) -> list[str]:
     """
     if origin() == "checkout":
         return [_interpreter(os_name), "scripts/gb.py"]
-    if _console_script_is_ours():
+    if _console_script_is_ours(os_name):
         return ["getbrolls"]
     return module_invocation(os_name)
 
@@ -399,11 +419,12 @@ def _alias_twins(environ: Mapping[str, str]) -> Iterator[tuple[str, str]]:
 
 
 def apply_env_aliases(environ: MutableMapping[str, str] | None = None) -> list[str]:
-    """Copia `GETBROLLS_X` para `GB_X` quando `GB_X` não está definido; devolve os aliases usados."""
+    """Copia `GETBROLLS_X` para `GB_X` quando `GB_X` não está definido (vazio conta como não
+    definido); devolve os aliases usados."""
     environ = environ if environ is not None else os.environ
     used = []
     for name, twin in list(_alias_twins(environ)):
-        if twin not in environ and environ[name]:
+        if not environ.get(twin) and environ[name]:
             environ[twin] = environ[name]
             used.append(name)
     return used
