@@ -148,7 +148,7 @@ class SetupCheckTests(unittest.TestCase):
                 patch.object(bootstrap, "_resolved", return_value={}),
                 patch.dict(os.environ, env, clear=True),
             ):
-                shared = _paths.gb_home() / "runtime" / str(_paths.requirements_sha())
+                shared = _paths.gb_home() / "runtime" / str(_paths.part_sha("venv"))
                 result = bootstrap.check()
             self.assertFalse(shared.exists())
         ytdlp = next(s for s in result["steps"] if s["id"] == "ytdlp")
@@ -181,7 +181,7 @@ class SetupCheckTests(unittest.TestCase):
         fake = _paths.Install("wheel", Path("pkg"), Path("pkg/_data"), None)
         with (
             patch.object(_paths, "install", return_value=fake),
-            patch.object(_paths, "requirements_sha", return_value=None),
+            patch.object(_paths, "part_sha", return_value=None),
             patch.object(bootstrap, "_resolved", return_value={}),
         ):
             result = bootstrap.check()

@@ -213,7 +213,7 @@ class WheelMessageTests(unittest.TestCase):
             self.assertRaises(social.MissingToolError) as tool,
         ):
             social.command()
-        self.assertIn("setup --check", str(tool.exception))
+        self.assertIn("getbrolls setup", str(tool.exception))
         self.assertNotIn("scripts/gb.py", str(tool.exception))
         self.assertIn("python -P -m getbrolls.instagram_pairs", social.doctor()["instagram"])
 
