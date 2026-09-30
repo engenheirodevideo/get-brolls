@@ -18,8 +18,9 @@ import tempfile
 import time
 from pathlib import Path
 
-from . import logs
+from . import _paths, logs
 from .config import executable_override, venv_override
+from .errors import PrerequisiteError
 from .http import ProviderError
 from .runtime import record_warning, redact, stderr_tail
 
@@ -49,6 +50,33 @@ def sleep_settings():
     return values
 
 
+class MissingToolError(ProviderError, PrerequisiteError):
+    """Ferramenta externa ausente (yt-dlp): é falha de provedor e falta de pré-requisito ao mesmo tempo."""
+
+
+def _from_checkout():
+    return _paths.origin() == "checkout"
+
+
+def _ytdlp_missing_text():
+    if _from_checkout():
+        return (
+            "yt-dlp ausente: execute bash scripts/install.sh (ou install.ps1) na raiz da skill/plugin; "
+            "após /plugin update é preciso reinstalar. Confira com python3 scripts/gb.py doctor."
+        )
+    return f"yt-dlp ausente: {_paths.installer_hint()}. Confira com {_paths.cli_hint('doctor')}."
+
+
+def _tool_not_found_text(name):
+    if _from_checkout():
+        return f"{name} não encontrado: execute bash scripts/install.sh (ou install.ps1) na raiz da skill/plugin."
+    return f"{name} não encontrado: {_paths.installer_hint()}."
+
+
+def _instagram_pairs_command():
+    return "scripts/getbrolls/instagram_pairs.py" if _from_checkout() else "python -m getbrolls.instagram_pairs"
+
+
 def local_ytdlp(root=None):
     pinned = executable_override("GB_YTDLP_PATH")
     if pinned:
@@ -56,8 +84,7 @@ def local_ytdlp(root=None):
     base = venv_override()
     explicit = base is not None
     if not explicit:
-        root = Path(root) if root is not None else Path(__file__).resolve().parents[2]
-        base = root / ".venv"
+        base = Path(root) / ".venv" if root is not None else _paths.venv_dir().path
     for relative in LAYOUTS:
         candidate = base / relative
         if candidate.is_file():
@@ -92,10 +119,7 @@ def command():
     local = local_ytdlp()
     exe = str(local) if local else shutil.which("yt-dlp")
     if not exe:
-        raise ProviderError(
-            "yt-dlp ausente: execute bash scripts/install.sh (ou install.ps1) na raiz da skill/plugin; "
-            "após /plugin update é preciso reinstalar. Confira com python3 scripts/gb.py doctor."
-        )
+        raise MissingToolError(_ytdlp_missing_text())
     _log_tool_path("env" if pinned else "venv" if local else "path")
     requests, low, high = sleep_settings()
     _log_sleep_settings_once(requests, low, high)
@@ -226,9 +250,7 @@ def run(arguments, timeout=180, *, op=None):
     except FileNotFoundError as exc:
         _log_subprocess(op, started, status="error", exit_code=None)
         name = exc.filename or (cmd[0] if cmd else "yt-dlp")
-        raise ProviderError(
-            f"{name} não encontrado: execute bash scripts/install.sh (ou install.ps1) na raiz da skill/plugin."
-        ) from exc
+        raise MissingToolError(_tool_not_found_text(name)) from exc
     except PermissionError as exc:
         _log_subprocess(op, started, status="error", exit_code=None)
         name = exc.filename or (cmd[0] if cmd else "yt-dlp")
@@ -542,6 +564,6 @@ def doctor():
         "installed": bool(local_ytdlp() or shutil.which("yt-dlp")),
         "javascript_runtime": "deno" if shutil.which("deno") else "node" if shutil.which("node") else None,
         "youtube_api_key_required": False,
-        "instagram": "Navegador/Playwright → configs vídeo+áudio → scripts/getbrolls/instagram_pairs.py",
+        "instagram": "Navegador/Playwright → configs vídeo+áudio → " + _instagram_pairs_command(),
         "scope": "Disponibilidade de executáveis; não comprova extração ao vivo nem versão/runtime EJS.",
     }

@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from typing import NamedTuple
 
-from .. import __version__, logs
+from .. import __version__, _paths, logs
 from . import guard
 from .contracts import CORE, NAME_RE, ExportResult, MediaRequest
 from .files import bad_file_name, walk_leaves
@@ -32,16 +32,21 @@ ASSETS_DIR = "assets"
 # Plano de exemplo que `sdk.testing.check_exporter` entrega ao exportador: cenas de
 # vários layouts, mídia de clipe, A-ROLL e componente, legenda e camadas, válido pelo
 # `schemas/export_plan.schema.json`. É o mesmo arquivo que a doc mostra a quem escreve plugin.
-SAMPLE_PLAN = Path(__file__).resolve().parents[3] / "examples" / "plans" / "reels.plan.json"
+
+
+def sample_plan_path() -> Path:
+    """Onde mora o plano de exemplo dentro dos dados do pacote."""
+    return _paths.data_path("examples", "plans", "reels.plan.json")
 
 
 def sample_plan():
     """Cópia nova do plano de exemplo, com a versão instalada em `getbrolls_version`."""
+    path = sample_plan_path()  # sem os dados, `DataRootError` sobe como está
     try:
-        plan = json.loads(SAMPLE_PLAN.read_text(encoding="utf-8"))
+        plan = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        root = SAMPLE_PLAN.parents[2]
-        shown = SAMPLE_PLAN.relative_to(root).as_posix() if SAMPLE_PLAN.is_relative_to(root) else SAMPLE_PLAN.name
+        root = _paths.data_root()
+        shown = path.relative_to(root).as_posix() if path.is_relative_to(root) else path.name
         raise ValueError(f"Não consegui ler o plano de exemplo {shown}: reinstale o get-brolls.") from None
     return {**plan, "getbrolls_version": __version__}
 

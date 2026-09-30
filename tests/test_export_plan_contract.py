@@ -255,7 +255,9 @@ class CheckExporterGuardTests(unittest.TestCase):
     def test_a_missing_example_plan_is_a_clear_error(self):
 
         with (
-            mock.patch.object(exporters, "SAMPLE_PLAN", ROOT / "examples" / "plans" / "sumiu.plan.json"),
+            mock.patch.object(
+                exporters, "sample_plan_path", return_value=ROOT / "examples" / "plans" / "sumiu.plan.json"
+            ),
             self.assertRaises(ValueError) as caught,
         ):
             sample_plan()

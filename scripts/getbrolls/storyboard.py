@@ -26,13 +26,12 @@
 
 import base64
 from html import escape
-from pathlib import Path
 
-ASSETS = Path(__file__).resolve().parents[2] / "assets"
+from . import _paths
 
 
 def brand_logo():
-    encoded = base64.b64encode((ASSETS / "brand-logo.png").read_bytes()).decode("ascii")
+    encoded = base64.b64encode(_paths.data_path("assets", "brand-logo.png").read_bytes()).decode("ascii")
     return f'<img class="brand-logo" src="data:image/png;base64,{encoded}" alt="Engenheiro de vídeo">'
 
 
@@ -116,4 +115,4 @@ def render_page(
         f'<div class="header-meta"><span>{quadros}</span><span>Storyboard de B-rolls</span></div></div></div></header>'
     )
     film = any(x.get("gif") or (x.get("presenter") and not x.get("no_preview")) for x in items)
-    return f'''<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><link rel="icon" href="data:,"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GET B-ROLLS — {esc(title)}</title><style>{(ASSETS / "storyboard.css").read_text(encoding="utf-8")}</style></head><body class="{"film-board" if film else ""}">{header}<main><div class="intro"><span class="count" id="position" hidden></span></div>{board}{f"<footer>{esc(note)}</footer>" if note else ""}<noscript>Ative JavaScript para navegar entre os quadros.</noscript></main><script>{(ASSETS / "storyboard.js").read_text(encoding="utf-8")}</script></body></html>'''  # template HTML denso, quebrar mudaria o HTML gerado -- pylint: disable=line-too-long
+    return f'''<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><link rel="icon" href="data:,"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GET B-ROLLS — {esc(title)}</title><style>{_paths.data_path("assets", "storyboard.css").read_text(encoding="utf-8")}</style></head><body class="{"film-board" if film else ""}">{header}<main><div class="intro"><span class="count" id="position" hidden></span></div>{board}{f"<footer>{esc(note)}</footer>" if note else ""}<noscript>Ative JavaScript para navegar entre os quadros.</noscript></main><script>{_paths.data_path("assets", "storyboard.js").read_text(encoding="utf-8")}</script></body></html>'''  # template HTML denso, quebrar mudaria o HTML gerado -- pylint: disable=line-too-long

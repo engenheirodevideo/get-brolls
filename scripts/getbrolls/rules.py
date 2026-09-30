@@ -12,12 +12,12 @@ import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from . import logs
+from . import _paths, logs
 from .brief import read_json_block
+from .errors import PrerequisiteError
 from .models import invalidate_approval
 from .queue import validate_pacing_block
 
-ROOT = Path(__file__).resolve().parents[2]
 TYPES = {"video", "image", "news_screenshot", "web_screenshot"}
 
 log = logs.get("rules")
@@ -49,7 +49,7 @@ NEVER_INHERITED = ("copyright",)
 
 def home_dir():
     """Pasta pessoal da skill; `GB_HOME` existe para os testes não tocarem a real."""
-    return Path(os.environ.get("GB_HOME") or Path.home() / ".getbrolls")
+    return _paths.gb_home()
 
 
 def _merge(base, extra):
@@ -90,7 +90,7 @@ def rules_layers(project):
     if template_base:
         # Sem arquivo no projeto, o modelo da skill é só o piso: quem está por cima
         # (global, GB_RULES_FILE) continua valendo mais que ele.
-        template = ROOT / "docs" / "RULES.md"
+        template = _paths.data_path("docs", "RULES.md")
         layers.append((template, read_rules_block(template)))
         project_path = None
     global_path = home_dir() / "RULES.md"
@@ -102,6 +102,8 @@ def rules_layers(project):
         # cobre isso); um arquivo presente e ilegível não pode ser tratado como ausente.
         try:
             data = read_rules_block(global_path)
+        except PrerequisiteError:
+            raise
         except ValueError as e:
             raise ValueError(
                 f"O RULES.md global ({global_path}) não pôde ser lido: {e} Conserte "
