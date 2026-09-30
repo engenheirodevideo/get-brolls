@@ -7,6 +7,11 @@ import json
 import math
 from datetime import UTC, datetime
 
+from . import vocab
+
+# Reexport: os estados do candidato moram no vocabulário compartilhado.
+CANDIDATE_STATES = vocab.CANDIDATE_STATES
+
 
 def now():
     return datetime.now(UTC).isoformat()

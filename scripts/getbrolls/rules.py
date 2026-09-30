@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from . import _paths, logs
+from . import _paths, logs, vocab
 from .brief import read_json_block
 from .errors import PrerequisiteError
 from .models import invalidate_approval
@@ -198,7 +198,7 @@ def _validate_asset_types(r):
 
 def _validate_video_format(r):
     """Exige `video_format` em um dos três valores aceitos."""
-    if r.get("video_format") not in ("native", "reels", "horizontal"):
+    if r.get("video_format") not in vocab.FORMATS:
         raise ValueError('Em RULES.md, "video_format" tem que ser "native", "reels" ou "horizontal".')
 
 
