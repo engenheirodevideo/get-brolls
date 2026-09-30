@@ -23,6 +23,8 @@ node_modules/
 # Never part of the public skill.
 docs/superpowers/
 docs/discovery/
+# Internal kit (INTENT, ARCHITECTURE, ADRs...): link to the owner's vault.
+docs/internal
 .superpowers/
 .claude/
 .agents/
