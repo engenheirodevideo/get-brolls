@@ -9,6 +9,7 @@ from typing import Protocol
 from .. import vocab
 from ..http import ProviderError
 from . import names
+from .errors import ApiError
 
 # Muda só em major do get-brolls. Plugin declara o mesmo número em `sdk_api`.
 SDK_API = 1
@@ -23,6 +24,9 @@ RESERVED_IDS = (CORE, "cliente", "catalogo", "direcao", "template", "projeto")
 NAME_RE = names.NAME_RE
 MATCH_KINDS = vocab.MATCH_KINDS
 MEDIA_KINDS = vocab.MEDIA_KINDS
+# Áreas do projeto em que um comando de plugin pode gravar pela API do core, quando o pin
+# aprovado as traz em `permissions.project_write`.
+ANALYSIS_AREA = "analysis"
 # "preview": a rota pode trazer mídia de trabalho para revisão. "fetch": trazer o
 # arquivo consome licença ou cota, então só roda no `fetch`, depois de aprovação e permit.
 ROUTE_STAGES = ("preview", "fetch")
@@ -191,23 +195,172 @@ def _has_text_id(beat: object) -> bool:
     return isinstance(beat, dict) and isinstance(beat.get("id"), str)
 
 
+class AnalysisAccess:
+    """`ctx.analysis`: os arquivos de `analysis/` do projeto, pela API do core.
+
+    Ler é sempre permitido. Gravar exige `"analysis"` em `permissions.project_write` do
+    pin aprovado no enable (não do manifesto em disco) e `--project`. O core valida cada
+    documento, força `schema`, `media_id`, `created`, `time_unit` e `producer.tool` (o id
+    do plugin), grava sem seguir link e só sob a trava `analysis/.lock`. `media.json` é
+    do core e nunca passa por aqui. A permissão é uma declaração auditável, não um
+    sandbox: o plugin roda no mesmo processo do get-brolls.
+
+    Attributes:
+        plugin_id: id do plugin dono do comando.
+        writable: se o pin aprovado deu `project_write: ["analysis"]` ao plugin.
+    """
+
+    def __init__(self, plugin_id: str, project: Path | None, writable: bool) -> None:
+        """Acesso de `plugin_id` a `analysis/` de `project`.
+
+        Args:
+            plugin_id: id do plugin dono do comando.
+            project: pasta do projeto já resolvida, ou `None` sem `--project`.
+            writable: se o pin aprovado permite gravar em `analysis/`.
+        """
+        self.plugin_id = plugin_id
+        self.writable = writable
+        self._root = project
+
+    def _refuse(self, text: str) -> ApiError:
+        return ApiError(f"Plugin {self.plugin_id}: {text}")
+
+    def _project(self) -> Path:
+        if self._root is None:
+            raise self._refuse("ctx.analysis precisa de --project.")
+        return self._root
+
+    def _can_write(self) -> Path:
+        project = self._project()
+        if not self.writable:
+            raise self._refuse(
+                'gravar em analysis/ pede permissions.project_write com "analysis" no manifesto, aprovado '
+                f"no enable (plugins --action enable --id {self.plugin_id})."
+            )
+        return project
+
+    def media_id(self, rel: str) -> str:
+        """O `media_id` da mídia `rel` (caminho relativo ao projeto, como `aroll/c01.mp4`).
+
+        Com permissão de gravação, registra a mídia quando preciso (o sha256 inteiro só
+        roda quando o arquivo mudou); sem ela, só acha uma mídia já registrada.
+
+        Args:
+            rel: caminho relativo ao projeto, com `/`.
+
+        Returns:
+            Os 16 hex do `media_id`.
+
+        Raises:
+            ApiError: sem `--project`, caminho inseguro, ou mídia não registrada (sem permissão).
+        """
+        from .. import analysis
+
+        project = self._project()
+        try:
+            if self.writable:
+                return analysis.ensure_media(project, rel)["media_id"]
+            entry = analysis.lookup(project, rel)
+        except ValueError as exc:
+            raise self._refuse(str(exc)) from None
+        if entry is None:
+            raise self._refuse(f"{rel} não está registrada em analysis/; rode analysis --action register --path {rel}.")
+        return entry["media_id"]
+
+    def read(self, media_id: str, name: str) -> dict | None:
+        """Cópia validada do componente `name` (`transcript`, `scenes`...) da mídia.
+
+        Returns:
+            O documento, ou `None` quando ainda não existe.
+
+        Raises:
+            ApiError: sem `--project`, ou arquivo fora do contrato.
+        """
+        from .. import analysis
+
+        project = self._project()
+        try:
+            return analysis.read_component(project, media_id, name)
+        except ValueError as exc:
+            raise self._refuse(str(exc)) from None
+
+    def write(
+        self, media_id: str, name: str, doc: dict, *, model: str | None = None, version: str | None = None
+    ) -> None:
+        """Grava o componente `name` da mídia, com o plugin como `producer.tool`.
+
+        Args:
+            media_id: `media_id` de uma mídia já no índice (`media_id(rel)`).
+            name: `transcript`, `scenes`, `silence`, `speakers` ou `visual`; nunca `media`.
+            doc: o documento; `schema`, `media_id`, `created`, `time_unit` e `producer` são do core.
+            model: modelo usado (vai para `producer.model`).
+            version: versão do modelo ou do plugin (vai para `producer.version`).
+
+        Raises:
+            ApiError: sem permissão ou sem `--project`, mídia fora do índice, `name` inválido
+                ou documento fora do contrato (com o código, como `MISSING_REASON`).
+        """
+        from .. import analysis
+
+        project = self._can_write()
+        if name == "media":
+            raise self._refuse("media.json é do core; grave os outros componentes (transcript, scenes...).")
+        producer = {"tool": self.plugin_id, "model": model, "version": version}
+        try:
+            analysis.write_component(project, media_id, name, doc, producer=producer)
+        except ValueError as exc:
+            raise self._refuse(str(exc)) from None
+
+    def write_markers(self, markers: list[dict], *, model: str | None = None, version: str | None = None) -> None:
+        """Troca os marcadores deste plugin em `analysis/markers.json`; os dos outros ficam.
+
+        Args:
+            markers: marcadores de `schemas/markers.schema.json`; `producer` é do core.
+            model: modelo usado (vai para `producer.model`).
+            version: versão do modelo ou do plugin (vai para `producer.version`).
+
+        Raises:
+            ApiError: sem permissão ou sem `--project`, mídia fora do índice ou marcador inválido.
+        """
+        from .. import analysis
+
+        project = self._can_write()
+        producer = {"tool": self.plugin_id, "model": model, "version": version}
+        try:
+            analysis.write_markers(project, producer, markers)
+        except ValueError as exc:
+            raise self._refuse(str(exc)) from None
+
+
+def _approved_areas(permissions: dict | None) -> tuple[str, ...]:
+    areas = permissions.get("project_write") if isinstance(permissions, dict) else None
+    return tuple(area for area in areas if isinstance(area, str)) if isinstance(areas, list) else ()
+
+
 class CommandContext:
-    """O que um comando de plugin enxerga do projeto: sempre cópias, nunca o ledger.
+    """O que um comando de plugin enxerga do projeto: cópias, e `analysis/` pela API do core.
 
     Attributes:
         plugin_id: id do plugin dono do comando.
         project: pasta do projeto (`--project`), ou `None`.
     """
 
-    def __init__(self, plugin_id: str, project: Path | None) -> None:
+    def __init__(self, plugin_id: str, project: Path | None, permissions: dict | None = None) -> None:
         """Contexto do comando de `plugin_id` sobre `project`.
 
         Args:
             plugin_id: id do plugin dono do comando.
             project: pasta do projeto já resolvida, ou `None` sem `--project`.
+            permissions: as permissões aprovadas no pin do plugin (não as do manifesto em disco).
         """
         self.plugin_id = plugin_id
         self.project = project
+        self._analysis = AnalysisAccess(plugin_id, project, ANALYSIS_AREA in _approved_areas(permissions))
+
+    @property
+    def analysis(self) -> AnalysisAccess:
+        """Leitura (sempre) e gravação (com `project_write: ["analysis"]` aprovado) em `analysis/`."""
+        return self._analysis
 
     def candidates(self) -> list[dict]:
         """Cópia dos candidatos do projeto.
