@@ -99,6 +99,9 @@ SUMMARIES = {
         "Listar componentes do projeto (marca, lettering, sfx, música, imagem, composições, A-ROLL) e resolver nomes"
     ),
     "export": "Transformar o roteiro revisado num projeto de edição (--to hyperframes) numa pasta nova em exports/",
+    "analysis": (
+        "Registrar mídias do projeto em analysis/ (id por conteúdo) e listar ou conferir os arquivos de análise"
+    ),
 }
 
 # Subcomandos que `execute()` (commands.py) de fato leva até
@@ -429,6 +432,7 @@ def build_parser():
         "roteiro",
         "assets",
         "export",
+        "analysis",
     ):
         p = sub.add_parser(name, help=SUMMARIES[name], description=SUMMARIES[name])
         _SUBPARSERS[name] = p
@@ -444,8 +448,8 @@ def build_parser():
 
 def _add_confirm_format_change_arg(p, name):
     """`--confirm-format-change`, visível só nos comandos que chegam a `sync_formats`."""
-    # `roteiro`, `assets` e `export` nascem sem a flag: eles nunca chegam a `sync_formats`.
-    if name in ("status", "init", "migrate", "roteiro", "assets", "export"):
+    # `roteiro`, `assets`, `export` e `analysis` nascem sem a flag: eles nunca chegam a `sync_formats`.
+    if name in ("status", "init", "migrate", "roteiro", "assets", "export", "analysis"):
         return
     # Mudar o formato-alvo derruba aprovações humanas; qualquer comando que
     # sincronize formato precisa deste sim explícito antes de apagá-las. Mas
@@ -517,6 +521,29 @@ def _add_assets_args(p, name):
     )
     p.add_argument("--kind", choices=sorted(ASSET_KINDS), help="Tipo de componente")
     p.add_argument("--name", help="Nome do componente, sem extensão (where)")
+
+
+def _add_analysis_args(p, name):
+    """Flags de `analysis` (list/check/register)."""
+    if name != "analysis":
+        return
+    from .vocab import MEDIA_ROLES
+
+    p.add_argument(
+        "--action",
+        required=True,
+        choices=["list", "check", "register"],
+        help=(
+            "list: mídias registradas; check: confere os arquivos de analysis/; register: calcula o id por "
+            "conteúdo e grava media.json (list e check só leem)"
+        ),
+    )
+    p.add_argument("--path", help="Mídia a registrar, relativa ao projeto, com / (ex.: aroll/c01.mp4) (register)")
+    p.add_argument(
+        "--role",
+        choices=list(MEDIA_ROLES),
+        help="Papel da mídia (register); sem ele, vem da pasta: aroll/, broll/, assets/musica/, assets/sfx/",
+    )
 
 
 def _add_export_args(p, name):
@@ -1012,6 +1039,7 @@ _PROJECT_SUBCOMMAND_ARG_ADDERS = (
     _add_confirm_format_change_arg,
     _add_roteiro_args,
     _add_assets_args,
+    _add_analysis_args,
     _add_export_args,
     _add_serve_args,
     _add_deliver_args,

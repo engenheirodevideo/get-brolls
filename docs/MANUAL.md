@@ -520,6 +520,14 @@ python3 scripts/gb.py roteiro --action sync --project /caminho/meu-video
 python3 scripts/gb.py assets --action list --project /caminho/meu-video
 python3 scripts/gb.py assets --action where --kind sfx --name whoosh --project /caminho/meu-video
 
+# ── analysis --action register / list / check ───────────────
+# O QUE FAZ: register dá a uma mídia do projeto um id por conteúdo e grava
+#            analysis/media/<id>/media.json (duração, quadro, codecs pelo ffprobe);
+#            o hash só roda de novo quando o arquivo muda. list e check só leem.
+# --role só quando a pasta não diz o papel (aroll/, broll/, assets/musica/, assets/sfx/).
+python3 scripts/gb.py analysis --action register --path aroll/c01.mp4 --project /caminho/meu-video
+python3 scripts/gb.py analysis --action check --project /caminho/meu-video
+
 # ── export --to … [--dry-run] (experimental) ────────────────
 # O QUE FAZ: com o roteiro revisado e sincronizado, monta um projeto de edição numa
 #            pasta nova exports/<exporter>/001/, 002/… (LATEST guarda a mais nova).

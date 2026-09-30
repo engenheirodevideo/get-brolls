@@ -459,7 +459,9 @@ class _Collector:
         if not voice["has_audio"]:
             self.warnings.append(f"{label}: aroll/{name} não tem trilha de áudio")
             return "estimate", None
-        found, warnings = timed_words(self.sources[voice_ids[0]]["path"], voice["duration_s"], window, label)
+        found, warnings = timed_words(
+            self.sources[voice_ids[0]]["path"], voice["duration_s"], window, label, project=self.project
+        )
         self.warnings.extend(warnings)
         return ("transcript", found) if found else ("estimate", None)
 

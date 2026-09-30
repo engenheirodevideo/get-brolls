@@ -13,7 +13,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _media import skip_unless_ffmpeg, synth_video
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import export_voice
+from getbrolls import analysis, export_voice
 
 
 def synth_voice(path, duration=2):
@@ -216,6 +216,92 @@ class TimedWordsTests(unittest.TestCase):
     def test_fifo_sidecar_is_refused_without_blocking(self):
         os.mkfifo(self.root / "c03.transcript.json")
         self.assertIn("(não é um arquivo)", self.refused_reason())
+
+
+PRODUCER = {"tool": "whisper_local", "model": "large-v3", "version": "0.3.0"}
+
+
+def analysis_words(*triples):
+    return [{"text": t, "start": s, "end": e, "probability": None, "speaker": None} for t, s, e in triples]
+
+
+class AnalysisTranscriptTests(unittest.TestCase):
+    """Sem sidecar válido, a legenda vem da transcrição de `analysis/` da mesma mídia."""
+
+    def setUp(self):
+        self.project = Path(tempfile.mkdtemp(prefix="gb-voice-analysis-")).resolve()
+        self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
+        (self.project / "aroll").mkdir()
+        self.voice = self.project / "aroll" / "c03.mov"
+        self.voice.write_bytes(b"voz da cena tres")
+        os.utime(self.voice, ns=(1_000_000_000_000, 1_000_000_000_000))
+        self.media_id = analysis.ensure_media(self.project, "aroll/c03.mov", probe=False)["media_id"]
+
+    def transcript(self, words, status="done", reason=None):
+        doc = {"status": status, "reason": reason, "language": "pt", "text": "x", "word_count": len(words)}
+        analysis.write_component(self.project, self.media_id, "transcript", {**doc, "words": words}, producer=PRODUCER)
+
+    def run_words(self, duration=5.0, window=(9.6, 5.2)):
+        with mock.patch.object(analysis.ledger, "digest", side_effect=AssertionError("export não hasheia")):
+            return export_voice.timed_words(self.voice, duration, window, "c03", project=self.project)
+
+    def sidecar(self, data, mtime_ns=2_000_000_000_000):
+        path = self.project / "aroll" / "c03.transcript.json"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        os.utime(path, ns=(mtime_ns, mtime_ns))
+
+    def test_analysis_is_used_without_a_sidecar(self):
+        self.transcript(analysis_words(("Eu", 0.02, 0.2), ("digo", 0.2, 0.451)))
+        self.assertEqual((words(("Eu", 9.62, 9.8), ("digo", 9.8, 10.051)), []), self.run_words())
+
+    def test_the_sidecar_wins_over_analysis(self):
+        self.transcript(analysis_words(("analise", 0.0, 1.0)))
+        self.sidecar(words(("pessoa", 0.0, 1.0)))
+        self.assertEqual((words(("pessoa", 9.6, 10.6)), []), self.run_words())
+
+    def test_invalid_sidecar_falls_back_to_analysis_with_its_warning(self):
+        self.transcript(analysis_words(("analise", 0.0, 1.0)))
+        self.sidecar({"words": []})
+        found, warnings = self.run_words()
+        self.assertEqual(words(("analise", 9.6, 10.6)), found)
+        self.assertEqual(
+            ["c03: aroll/c03.transcript.json inválido (não é uma lista de palavras): legenda estimada"], warnings
+        )
+
+    def test_stale_analysis_warns_and_estimates(self):
+        self.transcript(analysis_words(("analise", 0.0, 1.0)))
+        self.voice.write_bytes(b"outro take, outra fala")
+        found, warnings = self.run_words()
+        self.assertIsNone(found)
+        self.assertEqual(["c03: analysis/ é de outra versão do A-ROLL: rode analysis --action register"], warnings)
+
+    def test_partial_transcript_is_used_with_a_warning(self):
+        self.transcript(analysis_words(("meio", 0.0, 1.0)), status="done_partial")
+        found, warnings = self.run_words()
+        self.assertEqual(words(("meio", 9.6, 10.6)), found)
+        self.assertEqual(["c03: transcrição de analysis/ parcial"], warnings)
+
+    def test_failed_states_estimate_silently(self):
+        for status, reason in (("no_speech", None), ("failed", "sem áudio"), ("unavailable", "sem modelo")):
+            with self.subTest(status=status):
+                self.transcript([], status=status, reason=reason)
+                self.assertEqual((None, []), self.run_words())
+
+    def test_unregistered_media_and_no_project_estimate_silently(self):
+        other = self.project / "aroll" / "c04.mov"
+        other.write_bytes(b"sem registro")
+        with mock.patch.object(analysis.ledger, "digest", side_effect=AssertionError("export não hasheia")):
+            self.assertEqual((None, []), export_voice.timed_words(other, 5.0, (0.0, 5.0), "c04", project=self.project))
+        self.transcript(analysis_words(("analise", 0.0, 1.0)))
+        self.assertEqual((None, []), export_voice.timed_words(self.voice, 5.0, (0.0, 5.0), "c03"))
+
+    def test_analysis_words_past_the_voice_are_refused(self):
+        self.transcript(analysis_words(("longe", 0.0, 9.0)))
+        found, warnings = self.run_words(duration=5.0)
+        self.assertIsNone(found)
+        self.assertEqual(
+            ["c03: transcrição de analysis/ inválida (passa da duração do vídeo): legenda estimada"], warnings
+        )
 
 
 if __name__ == "__main__":

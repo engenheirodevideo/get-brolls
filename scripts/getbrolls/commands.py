@@ -2658,6 +2658,13 @@ def _execute_roteiro_or_assets(args):
     return roteiro_commands.run(args)
 
 
+def _execute_analysis(args):
+    """`analysis`: índice de mídias por conteúdo e arquivos de `analysis/`, com trava própria."""
+    from getbrolls import analysis
+
+    return analysis.run(args)
+
+
 def _execute_export(args):
     """`export`: delega ao exporter escolhido; sem portão de formato, sem `sync_formats`, sem
     recuperar o manifesto (os portões recusam gravação pendente antes disso)."""
@@ -2680,6 +2687,7 @@ _ADMIN_COMMAND_HANDLERS = {
     "roteiro": _execute_roteiro_or_assets,
     "assets": _execute_roteiro_or_assets,
     "export": _execute_export,
+    "analysis": _execute_analysis,
 }
 
 

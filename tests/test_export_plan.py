@@ -14,7 +14,7 @@ from _media import skip_unless_ffmpeg, synth_video
 from _paths import ROOT
 from _schemas import strict
 
-from getbrolls import assets, delivery, export_plan, export_voice, roteiro, roteiro_plan
+from getbrolls import analysis, assets, delivery, export_plan, export_voice, roteiro, roteiro_plan
 from getbrolls.sdk.exporters import find_local_paths
 from getbrolls.sdk.jsonschema import errors
 
@@ -261,6 +261,26 @@ class TimingAndVoiceTests(ExportPlanTestCase):
             scenes["c01"]["words_timed"],
         )
         self.assertEqual(("estimate", None), (scenes["c03"]["words_source"], scenes["c03"]["words_timed"]))
+
+    def test_analysis_transcript_times_a_scene_without_sidecar_and_never_hashes(self):
+        plan, items = full_project(self.root)
+        media_id = analysis.ensure_media(self.root, "aroll/c03.mp4", probe=False)["media_id"]
+        spoken = [{"text": "Olá", "start": 0.1, "end": 0.5, "probability": 0.9, "speaker": None}]
+        doc = {"status": "done", "reason": None, "language": "pt", "text": "Olá", "word_count": 1, "words": spoken}
+        producer = {"tool": "whisper_local", "model": None, "version": None}
+        analysis.write_component(self.root, media_id, "transcript", doc, producer=producer)
+        with (
+            mock.patch.object(export_plan, "probe_voice", fake_probe),
+            mock.patch.object(analysis.ledger, "digest", side_effect=AssertionError("export não hasheia")),
+        ):
+            result, _ = export_plan.build(self.root, plan, items, "exports/hyperframes/001")
+        c03 = {s["id"]: s for s in result["scenes"]}["c03"]
+        start = c03["start_s"]
+        self.assertEqual("transcript", c03["words_source"])
+        self.assertEqual(
+            [{"text": "Olá", "start": round(start + 0.1, 3), "end": round(start + 0.5, 3)}], c03["words_timed"]
+        )
+        self.assertEqual([], errors(result, SCHEMA))
 
     def test_split_with_two_presenters_only_side_a_speaks_and_longest_side_sets_time(self):
         plan, _, scenes = self.full()

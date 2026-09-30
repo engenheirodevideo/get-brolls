@@ -14,7 +14,7 @@ from test_sdk_routes_contracts import ROUTE_MANIFEST, route_code
 from getbrolls.commands import PLUGIN_PROBLEM_STATUSES
 from getbrolls.media import SNIFFED_IMAGE_SUFFIXES
 from getbrolls.sdk.api import PluginApi
-from getbrolls.sdk.contracts import ProviderCapabilities
+from getbrolls.sdk.contracts import AnalysisAccess, ProviderCapabilities
 from getbrolls.sdk.registry import get_registry
 
 SDK_DOC = ROOT / "docs" / "SDK.md"
@@ -48,6 +48,7 @@ class SdkDocTests(unittest.TestCase):
             "route_consumed_at",
             "preview.route_stage",
             "rights.evidence",
+            "declaração auditável, não um sandbox",  # project_write roda in-process
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, text)
@@ -62,6 +63,11 @@ class SdkDocTests(unittest.TestCase):
         expected = [f"`{suffix}`" for suffix in SNIFFED_IMAGE_SUFFIXES]
         expected += [f"| `{field.name}` |" for field in dataclasses.fields(ProviderCapabilities)]
         expected += [f"`api.{name}" for name in dir(PluginApi) if not name.startswith("_")]
+        expected += [
+            f"`ctx.analysis.{name}("
+            for name in dir(AnalysisAccess)
+            if not name.startswith("_") and callable(getattr(AnalysisAccess, name))
+        ]
         expected += [f"`{status}`" for status in ("disabled", "enabled", *PLUGIN_PROBLEM_STATUSES)]
         for marker in expected:
             with self.subTest(marker=marker):
