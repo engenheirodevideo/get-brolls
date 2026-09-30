@@ -1,0 +1,15 @@
+# getbrolls data manifest, formato 1: um arquivo por linha, relativo a _data/
+assets/brand-logo.png
+assets/review.css
+assets/review.js
+assets/storyboard.css
+assets/storyboard.js
+docs/BRIEF.md
+docs/RULES.md
+examples/plans/reels.plan.json
+package-lock.json
+package.json
+requirements.txt
+schemas/brief.schema.json
+schemas/candidate.schema.json
+schemas/export_plan.schema.json
