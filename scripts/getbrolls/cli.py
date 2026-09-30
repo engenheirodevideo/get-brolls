@@ -322,7 +322,7 @@ def _add_toolchain_subcommands(sub):
             p.add_argument(
                 "--kind",
                 choices=list(SCAFFOLD_KINDS),
-                help="Tipo do plugin gerado por new: fonte, fonte com rota de download, ou comando",
+                help="Tipo do plugin gerado por new: fonte, fonte com rota de download, comando ou exportador",
             )
             p.add_argument(
                 "--yes",

@@ -543,7 +543,7 @@ python3 scripts/gb.py plugins --action enable --id "<id>"
 python3 scripts/gb.py plugins --action disable --id "<id>"
 
 # ── plugins --action new / check ────────────────────────────
-# O QUE FAZ: new cria um plugin mínimo (provider, route ou command) que já passa no teste;
+# O QUE FAZ: new cria um plugin mínimo (provider, route, command ou exporter) que já passa no teste;
 #            check valida uma pasta de plugin.
 # ATENÇÃO: check EXECUTA o código da pasta. Use só em plugin que você escreveu ou revisou.
 python3 scripts/gb.py plugins --action new --id meu_banco --kind route --path "<pasta>"

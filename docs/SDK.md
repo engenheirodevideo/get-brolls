@@ -497,7 +497,9 @@ api.command("recentes", recentes, "Lista os vídeos mais recentes da pasta")
 ### Seu exporter em 30 minutos
 
 O mínimo que passa no contrato: manifesto declarando o exporter e uma função
-pura que devolve um `index.html`, sem pedir mídia nenhuma. A função do
+pura que devolve um `index.html`, sem pedir mídia nenhuma. É o que
+`plugins --action new --id meu_exporter --kind exporter --path <pasta>` gera, com
+teste e README. A função do
 exportador recebe dois argumentos, `plan` (o plano de export, detalhado
 abaixo) e `options` (hoje sempre `{"args": {}}`; reservado para opções
 futuras — o exportador dos exemplos abaixo só o declara, sem usar).
@@ -941,8 +943,9 @@ $env:PYTHONDONTWRITEBYTECODE = "1"; $env:PYTHONPATH = "<pasta da skill>\scripts"
 python -m unittest discover -s <pasta>\meu_banco\tests
 ```
 
-`--kind` é `provider` (fonte), `route` (fonte + rota de `fetch` com token) ou
-`command`. Sem `PYTHONDONTWRITEBYTECODE=1`, o `__pycache__` que o teste cria
+`--kind` é `provider` (fonte), `route` (fonte + rota de `fetch` com token),
+`command` ou `exporter` (exportador puro que grava um `index.html` escapado, sem
+mídia; veja [Seu exporter em 30 minutos](#seu-exporter-em-30-minutos)). Sem `PYTHONDONTWRITEBYTECODE=1`, o `__pycache__` que o teste cria
 muda o hash do plugin — o pin cobre todo arquivo da pasta.
 
 `getbrolls.sdk.testing` traz as checagens de contrato: `check_provider`,

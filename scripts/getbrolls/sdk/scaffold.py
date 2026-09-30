@@ -8,7 +8,7 @@ from .contracts import CORE, NAME_RE, RESERVED_IDS, SDK_API
 from .manifest import MANIFEST_NAME, reserved_id_message
 
 # Tipos que o `new` sabe gerar: um subconjunto dos que o SDK carrega.
-KINDS = ("provider", "route", "command")
+KINDS = ("provider", "route", "command", "exporter")
 
 PROVIDER = '''"""Plugin __ID__ para o Get B-rolls (gerado por `plugins --action new --kind provider`)."""
 
@@ -102,6 +102,37 @@ def register(api):
     api.command("resumo", resumo, "Conta os candidatos do projeto (somente leitura)")
 '''
 
+EXPORTER = '''"""Plugin __ID__ para o Get B-rolls (gerado por `plugins --action new --kind exporter`).
+
+O exportador é uma função pura: recebe o plano do roteiro revisado e devolve o
+texto dos arquivos. Quem grava no disco é o core, em exports/__ID__/NNN/.
+"""
+
+from html import escape
+
+from getbrolls.sdk import ExportResult, PluginError
+
+
+def exporta(plan, options):  # noqa: ARG001 - options ({"args": {}}) fica reservado ao contrato
+    if plan["export_version"] != 1:
+        raise PluginError(f"export_version {plan['export_version']} não é suportado por este exportador.")
+    # Todo texto do plano é cru (vem de fontes e de outros plugins): escape no formato de saída.
+    cenas = "".join(f"<li>{escape(cena['title'])}</li>" for cena in plan["scenes"])
+    linhas = [
+        "<!doctype html>",
+        '<meta charset="utf-8">',
+        f"<h1>{escape(plan['meta']['tema'])}</h1>",
+        f"<ul>{cenas}</ul>",
+    ]
+    indice = "\\n".join(linhas) + "\\n"
+    # Sem mídia por enquanto; para pedir arquivos, veja MediaRequest no docs/SDK.md.
+    return ExportResult(files={"index.html": indice}, media=[])
+
+
+def register(api):
+    api.exporter("__ID__", exporta, "Índice HTML com o título de cada cena")
+'''
+
 TEST = '''"""Contrato do plugin __ID__: roda com o Python do getbrolls (checkout: PYTHONPATH=<skill>/scripts)."""
 
 import unittest
@@ -145,6 +176,7 @@ def _manifest(plugin_id, kind):
         "provider": {"providers": [plugin_id]},
         "route": {"providers": [plugin_id], "routes": [plugin_id]},
         "command": {"commands": ["resumo"]},
+        "exporter": {"exporters": [plugin_id]},
     }[kind]
     env = [f"{plugin_id.upper()}_TOKEN"] if kind == "route" else []
     network = ["api.example.com"] if kind == "route" else []
@@ -176,7 +208,7 @@ def new(plugin_id, kind, parent=None):
     # em `--path`/<id>, nem sobrescrevemos uma pasta (vazia ou não) já ali.
     if folder.is_symlink() or folder.exists():
         raise ValueError(f"{folder} já existe; escolha outro --id ou outra --path.")
-    code = {"provider": PROVIDER, "route": ROUTE, "command": COMMAND}[kind]
+    code = {"provider": PROVIDER, "route": ROUTE, "command": COMMAND, "exporter": EXPORTER}[kind]
     env = f"{plugin_id.upper()}_TOKEN"
     (folder / "tests").mkdir(parents=True)
     (folder / MANIFEST_NAME).write_text(
