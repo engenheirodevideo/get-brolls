@@ -113,15 +113,29 @@ def _log_sleep_settings_once(requests, low, high):
     logs.event(_log, logging.DEBUG, "ytdlp_sleep", requests=requests, min=low, max=high)
 
 
-def command():
-    # Same lookup order `local_ytdlp()` uses internally (env pin, then venv, then PATH);
-    # read here too only to classify which one supplied the binary, for `tool_path`.
+def ytdlp_in_use():
+    """O yt-dlp que `command()` usa e de onde veio: `(Path, "env" | "venv" | "path")`.
+
+    Ordem única: o pin `GB_YTDLP_PATH` (`env`), a venv do runtime ou de `GB_VENV_PATH`
+    (`venv`), o `PATH` (`path`); `(None, None)` sem nenhum. Pin quebrado levanta
+    `ValueError`. `doctor` e `setup --check` julgam este mesmo executável.
+    """
     pinned = executable_override("GB_YTDLP_PATH")
+    if pinned:
+        return Path(pinned), "env"
     local = local_ytdlp()
-    exe = str(local) if local else shutil.which("yt-dlp")
-    if not exe:
+    if local:
+        return Path(local), "venv"
+    found = shutil.which("yt-dlp")
+    return (Path(found), "path") if found else (None, None)
+
+
+def command():
+    exe, source = ytdlp_in_use()
+    if exe is None:
         raise MissingToolError(_ytdlp_missing_text())
-    _log_tool_path("env" if pinned else "venv" if local else "path")
+    exe = str(exe)
+    _log_tool_path(source)
     requests, low, high = sleep_settings()
     _log_sleep_settings_once(requests, low, high)
     # --no-warnings would hide exactly the rate-limit/PO-token/fallback warnings we want to surface.
@@ -560,9 +574,12 @@ def download_segment(url, target, start, end):
 
 
 def doctor():
+    exe, source = ytdlp_in_use()
     return {
         "engine": "yt-dlp",
-        "installed": bool(local_ytdlp() or shutil.which("yt-dlp")),
+        "installed": exe is not None,
+        "executable": str(exe) if exe is not None else None,
+        "source": source,
         "javascript_runtime": "deno" if shutil.which("deno") else "node" if shutil.which("node") else None,
         "youtube_api_key_required": False,
         "instagram": "Navegador/Playwright → configs vídeo+áudio → " + _instagram_pairs_command(),

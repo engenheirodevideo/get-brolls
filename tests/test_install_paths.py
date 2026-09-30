@@ -186,6 +186,8 @@ class HomeAndRuntimeTests(unittest.TestCase):
                 (venv.parent / ".tools").mkdir(parents=True)
                 (venv / "pyvenv.cfg").parent.mkdir(parents=True)
                 (venv / "pyvenv.cfg").write_text(f"home = {Path(sys.executable).parent}\n", encoding="utf-8")
+                paths.venv_python(venv).parent.mkdir(parents=True)
+                paths.venv_python(venv).write_text("", encoding="utf-8")
                 paths.write_marker("venv", venv.parent, "ready")
                 self.assertEqual(paths.RuntimePart(venv, "gb_home"), paths.venv_dir())
                 self.assertEqual(paths.RuntimePart(home / "runtime" / tools / ".tools", "gb_home"), paths.tools_dir())
@@ -235,6 +237,8 @@ class HomeAndRuntimeTests(unittest.TestCase):
                 shared.mkdir(parents=True)
                 self.assertEqual("checkout", paths.venv_dir().source)
                 (shared / "pyvenv.cfg").write_text(f"home = {Path(sys.executable).parent}\n", encoding="utf-8")
+                paths.venv_python(shared).parent.mkdir(parents=True)
+                paths.venv_python(shared).write_text("", encoding="utf-8")
                 paths.write_marker("venv", shared.parent, "ready")
                 self.assertEqual(paths.RuntimePart(shared, "gb_home"), paths.venv_dir())
 

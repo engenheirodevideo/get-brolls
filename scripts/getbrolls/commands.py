@@ -97,14 +97,17 @@ def doctor_resolved(overrides):
 
     resolved = {}
     for name in PROBED_EXECUTABLES:
-        found = overrides.get(TOOL_PATH_KEYS.get(name) or "") or shutil.which(name)
-        if not found and name == "yt-dlp":
-            from .social import local_ytdlp
+        if name == "yt-dlp":
+            # O que `social.command()` usaria (pin, venv, PATH), nunca o PATH na frente da venv.
+            from .social import ytdlp_in_use
 
             try:
-                found = local_ytdlp()
+                found = ytdlp_in_use()[0]
             except ValueError:
                 found = None
+            resolved[name] = str(Path(found).resolve()) if found else None
+            continue
+        found = overrides.get(TOOL_PATH_KEYS.get(name) or "") or shutil.which(name)
         if not found and name == "playwright-cli":
             found = _local_playwright()
         resolved[name] = str(Path(found).resolve()) if found else None
@@ -135,7 +138,19 @@ def readiness_probe():
         social = social_doctor()
     except ValueError as exc:
         social = {"engine": "yt-dlp", "installed": False, "error": str(exc)}
+    _judge_ytdlp(social)
     return overrides, pin_problems, social, _doctor_executables(overrides, social)
+
+
+def _judge_ytdlp(social):
+    """O yt-dlp em uso só conta se funciona: a venv dele importa o `yt_dlp` e, sem venv
+    em uso, nenhuma venv gerenciada ficou pela metade (`bootstrap.ytdlp_problem`)."""
+    from . import bootstrap  # tardio: o `bootstrap` importa este módulo
+
+    problem = bootstrap.ytdlp_problem(social.get("source"), social.get("executable"))
+    if problem:
+        social["installed"] = False
+        social["problem"] = problem
 
 
 def doctor_summary(executables, pins=(), data_missing=()):
@@ -2483,6 +2498,10 @@ def _doctor_report(config, providers_result, live, env_flag=None):
     install = _paths.install_report(env_flag)
     install["profile"] = profile.report()
     summary = doctor_summary(executables, pin_problems, install.get("data_missing") or ())
+    if social.get("problem"):
+        for entry in summary["missing"]:
+            if entry["item"] == "yt-dlp":
+                entry["note"] = social["problem"]
     summary["missing"] += profile.doctor_problems(profile.current())
     sheet = doctor_contact_sheet(executables.get("ffmpeg"))
     summary["optional"] += sheet["optional"]

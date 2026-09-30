@@ -60,10 +60,19 @@ getbrolls doctor
   - o Playwright CLI (Instagram) com `npm ci --ignore-scripts`, em `$GB_HOME/runtime/<versão>/.tools` (precisa de Node 22+ e npm no `PATH`; sem eles, essa parte fica de fora com a dica de instalação);
   - `<versão>` é a das dependências de cada parte; com `GB_RUNTIME_DIR`, as duas partes vão para essa pasta;
   - FFmpeg, ffprobe, curl e Node são do sistema: o `setup` só confere e mostra o comando do seu sistema (`brew`, `apt` ou `winget install Gyan.FFmpeg`);
-  - nunca mexe no projeto nem na pasta da instalação; progresso no stderr, resultado em JSON no stdout; sai `0` pronto e `4` se ainda falta algo.
-- **Rodar de novo é seguro:** o que já está pronto não é refeito, e uma instalação interrompida é refeita. **Depois de atualizar o getbrolls (ou o plugin), rode `getbrolls setup` de novo:** só a parte cuja versão das dependências mudou é instalada. `getbrolls setup --upgrade ytdlp` atualiza o yt-dlp além da versão fixada.
-- `getbrolls setup --where` mostra, sem instalar nada, onde cada parte fica e qual está em uso (`--where venv` ou `--where tools` para uma só).
+  - nunca mexe no projeto nem na pasta da instalação; progresso no stderr, resultado em JSON no stdout; sai `0` pronto e `4` se ainda falta algo;
+  - o ambiente dos passos não leva segredos (`*_API_KEY`, `*_TOKEN`, `*_SECRET`), com uma exceção: o `npm ci` recebe o `NPM_TOKEN`, que o `.npmrc` de um registro privado costuma ler.
+- **Rodar de novo é seguro:** o que já está pronto não é refeito, e uma instalação interrompida é refeita. **Depois de atualizar o getbrolls (ou o plugin), rode `getbrolls setup` de novo:** só a parte cuja versão das dependências mudou é instalada.
+- **Venv quebrada se refaz sozinha.** A venv só conta como pronta se o Python dela ainda existe e importa o yt-dlp (`python -I -c "import yt_dlp"`, com tempo curto). Python do sistema removido ou atualizado (link `bin/python` quebrado, "bad interpreter"): o `setup` refaz a venv em vez de responder `already`, e o `setup --check`/`doctor` dão o yt-dlp como ausente, mesmo com outro yt-dlp no `PATH`.
+- **Qual yt-dlp vale:** o do pin `GB_YTDLP_PATH`, depois o da venv (a do runtime ou `GB_VENV_PATH`), depois o do `PATH`. O `setup --check` julga esse mesmo executável: `steps[ytdlp].found` é o que está em uso e `source` diz de onde veio (`env`, `venv` ou `path`). Sem venv gerenciada, um yt-dlp do `PATH` vale, com `source: "path"` e uma nota; se o `setup` tentou montar a venv e falhou (ou ela ficou pela metade), o yt-dlp do `PATH` não esconde a falha e o `summary.line` nunca diz "Runtime pronto".
+- **`getbrolls setup --upgrade ytdlp`** atualiza o yt-dlp da venv gerenciada além da versão fixada. `upgrade.status` diz o que houve:
+  - `upgraded`: a versão mudou (`previous` → `version`);
+  - `unchanged`: o pip terminou, mas a versão é a mesma (já era a mais nova, ou o índice de pacotes não respondeu), com o motivo em `upgrade.warnings`; sai `0`;
+  - `failed`: a atualização falhou. Se a venv foi refeita na versão fixada, `ready` continua `true` e o `setup` sai com `1`, para o script perceber; se nem isso deu, a venv é removida, o `error` diz isso (rode `getbrolls setup` quando a causa for resolvida) e o `setup` sai com `4`.
+- `getbrolls setup --where` mostra, sem instalar nada, onde cada parte fica e qual está em uso (`--where venv` ou `--where tools` para uma só). Sai `0`, salvo erro de uso do `.env` (`--env-file`/`GB_ENV_FILE` que não existe, linha recusada), que vale para qualquer comando e sai `2`.
 - `getbrolls setup --check` mostra o que falta (yt-dlp, Playwright CLI, FFmpeg, ffprobe, curl, Node, npx e os arquivos de dados, os mesmos itens obrigatórios do `doctor`) e como resolver (`getbrolls setup` para yt-dlp e Playwright), sem instalar nada. `getbrolls doctor` diz se está pronto (`ready`) e sai com código `4` quando falta algo; o `ready` dos dois bate.
+- **Python antigo:** abaixo do 3.11, `python3 scripts/gb.py` e os instaladores param antes de qualquer outra coisa com "getbrolls precisa de Python 3.11 ou mais novo; você tem X.Y" e código `4`.
+- **Dois `setup` ao mesmo tempo:** o segundo para com `error_code: "LOCKED"` e código `1` (o mesmo de dois comandos no mesmo projeto); espere o primeiro terminar e rode de novo. A pasta `runtime/<versão>` nunca pode ser um link: o `setup` recusa em vez de instalar no destino dele.
 - **Windows:** os comandos sugeridos pela ferramenta (`summary.do.command`) usam `python` e aspas duplas e rodam colados no PowerShell, no cmd e no Git Bash quando nenhum caminho tem `$`, `%` ou `"`; com esses caracteres, ajuste as aspas à mão.
 
 ## 🗂️ Perfil do workspace (`getbrolls.toml`)
@@ -85,7 +94,9 @@ ffprobe = "/usr/local/bin/ffprobe"
 - **Onde é achado:** `--profile <arquivo>`, depois `GB_PROFILE`, depois subindo a partir do `--project` e, por fim, da pasta atual. `--profile off` (ou `GB_PROFILE=off`) desliga.
 - **Precedência:** flag > ambiente (incluindo o `.env`) > perfil > padrão. O `home` do perfil é aplicado antes, então decide qual `$GB_HOME/.env` é lido. `plugins` só estreita o `GB_PLUGINS`, nunca acrescenta.
 - **Confiança em dois passos:** o perfil pode apontar executáveis, então só vale depois de `getbrolls profile trust` (mostra o que ele fixaria e o sha256) e `getbrolls profile trust --yes --expect <sha256>`. Editou o arquivo, precisa confiar de novo; `getbrolls profile untrust` desfaz. O único dispensado é `$GB_HOME/getbrolls.toml`.
-- **Sem confiança:** comandos de projeto param com código `2` antes de tocar em nada; o `doctor` mostra o problema em `summary.missing`. `requires` que não bate sai com `4`.
+- **Sem confiança:** só `doctor`, `profile`, `capabilities` e `setup --where`/`setup --check` rodam, relatando o problema (o `doctor` em `summary.missing`). Todo o resto para com código `2` e a dica do `profile trust` antes de tocar em nada, inclusive comandos que não usam projeto, como `providers` e `plugins --action list`, e o `setup` que instala. `requires` que não bate sai com `4`.
+- **A prévia avisa:** `profile trust` lista em `warnings` o `home`, `runtime_dir` ou `cache_dir` que caem dentro da pasta do `getbrolls.toml` (num repositório compartilhado, quem grava ali poderia deixar um `.env` ou um `plugins.json` que o sha do perfil não cobre) e ids de `plugins` que não estão instalados (sem efeito até serem instalados).
+- **`home` do perfil:** com o `GB_HOME` vindo do perfil, o `.env` e o `plugins.json` dessa pasta só valem se forem arquivos comuns, seus e não graváveis por grupo ou outros (as mesmas recusas do próprio `getbrolls.toml`); senão, qualquer comando para com código `2`.
 - `getbrolls profile show` lista cada campo com o valor e a origem (`env`, `env_file`, `profile` ou `default`).
 - O perfil não escolhe qual instalação roda: use `requires` para exigir a versão certa.
 
@@ -676,7 +687,7 @@ Todo comando responde em **JSON**. Pensa como o **relatório de render**: um tex
 | Código | Significa |
 |---|---|
 | `0` | Deu certo |
-| `1` | Erro de operação ou de dados: um ID errado, falta aprovação, link fora do ar |
+| `1` | Erro de operação ou de dados: um ID errado, falta aprovação, link fora do ar. Outro comando usando o mesmo projeto (ou outro `setup` na mesma pasta do runtime) também sai `1`, com `error_code: "LOCKED"`: é só esperar e repetir. `setup --upgrade ytdlp` cuja atualização falhou, com a venv refeita na versão fixada, sai `1` |
 | `2` | Erro de uso: comando, flag ou configuração (`--env-file` que não existe, por exemplo) |
 | `3` | Erro interno (bug). Abra uma issue com o `brolls/diagnostics.jsonl` |
 | `4` | Falta um pré-requisito da instalação: arquivos de dados, ffmpeg, yt-dlp |
