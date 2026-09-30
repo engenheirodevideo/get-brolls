@@ -53,6 +53,9 @@ SUMMARIES = {
     "plugins": (
         "Listar, instalar, atualizar, criar, habilitar, desabilitar ou validar plugins do SDK (~/.getbrolls/plugins)"
     ),
+    "capabilities": (
+        "Descrever em JSON os comandos, flags, códigos de saída e comandos de plugin desta instalação (para agentes)"
+    ),
     "x": "Rodar um comando de plugin habilitado (x --list mostra quais existem); só lê o projeto",
     "setup": (
         "Conferir (--check) o runtime da instalação: venv do yt-dlp, Playwright e FFmpeg, com os comandos que faltam"
@@ -236,11 +239,11 @@ def _check_preset_name(args):
 
 
 def _add_toolchain_subcommands(sub):
-    """Acrescenta os subcomandos sem `--project` obrigatório: providers, doctor, plugins, x, setup."""
-    for name in ("providers", "doctor", "plugins", "x", "setup"):
+    """Acrescenta os subcomandos sem `--project` obrigatório: providers, doctor, plugins, x, setup, capabilities."""
+    for name in ("providers", "doctor", "plugins", "x", "setup", "capabilities"):
         p = sub.add_parser(name, help=SUMMARIES[name], description=SUMMARIES[name])
         _SUBPARSERS[name] = p
-        if name in ("doctor", "setup"):
+        if name in ("doctor", "setup", "capabilities"):
             p.add_argument(
                 "--json",
                 action="store_true",
