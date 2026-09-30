@@ -21,6 +21,8 @@ import time
 import traceback
 from pathlib import Path
 
+from . import _paths
+from .errors import PrerequisiteError, UsageError
 from .models import now
 
 ACTIVE: contextvars.ContextVar[dict | None] = contextvars.ContextVar("getbrolls_operation", default=None)
@@ -325,8 +327,34 @@ _PLUGIN_ERROR_RE = re.compile(r"Plugin [A-Za-z0-9_-]+: |Fonte \S+ é do plugin "
 PLUGIN_ERROR_HINT = "Veja plugins --action list / doctor e docs/SDK.md."
 
 
-# Comandos cujo erro de uso sai sem traceback nem dica de recovery.
+# Comandos cujo erro sai sem a dica de recovery (nenhum erro mostra traceback nem
+# repr à pessoa; esses ficam só em diagnostics.jsonl).
 QUIET_ERROR_COMMANDS = ("plugins", "x", "export", "assets")
+
+# `error_code` → código de saída da CLI; qualquer outro código (INVALID_DATA,
+# IO_ERROR, ...) é erro de operação ou de dados: 1. A tabela completa, com o 0, fica
+# em `cli.EXIT_CODES`; este é o único lugar que decide a saída de um erro.
+ERROR_EXIT = {"USAGE_ERROR": 2, "INTERNAL_ERROR": 3, "PREREQUISITE_MISSING": 4, "INTERRUPTED": 130}
+EXIT_FOR_OTHER_ERRORS = 1
+
+
+def exit_code_for(error_code):
+    """Código de saída de um `error_code` do JSON de erro."""
+    return ERROR_EXIT.get(error_code, EXIT_FOR_OTHER_ERRORS)
+
+
+def error_code_for(exc):
+    """`error_code` de uma exceção que a pessoa pode corrigir (não um bug).
+
+    `ValueError` genérico depois do parse continua erro de dados (1), mesmo quando é,
+    na prática, uso errado: só `UsageError` explícito vira `USAGE_ERROR`.
+    """
+    if isinstance(exc, UsageError):
+        return "USAGE_ERROR"
+    if isinstance(exc, PrerequisiteError):
+        return "PREREQUISITE_MISSING"
+    return "IO_ERROR" if isinstance(exc, OSError) else "INVALID_DATA"
+
 
 # `roteiro` grava por journal (como o resto do core), então a parte de
 # recovery_pending da dica continua valendo — só a frase "execute review para
@@ -362,21 +390,22 @@ def _classify_audited_error(event, exc, log):
         # a maintainer needs, not a RULES.md pointer.
         event["error_code"] = "INTERNAL_ERROR"
         event["message"] = (
-            f"Erro interno inesperado (bug) [type: {exc.__class__!r}]. Reporte incluindo diagnostics.jsonl"
+            f"Erro interno inesperado (bug) [type: {type(exc).__name__}]. Reporte incluindo diagnostics.jsonl"
             + (f" ({log})." if log else ".")
         )
         return
     from .http import ProviderError  # local: avoids a runtime<->http import cycle
 
+    # `MissingToolError` (yt-dlp/ffmpeg ausente) é ao mesmo tempo `ProviderError` e
+    # `PrerequisiteError`: sai 4, com a mensagem e o aviso de fonte de sempre.
+    event["error_code"] = error_code_for(exc)
     if isinstance(exc, ProviderError):
-        event["error_code"] = "INVALID_DATA"
         event["message"] = provider_error_message(redact(exc))
         current = ACTIVE.get()
         if current is not None:
             current["warnings"].append({"code": "PROVIDER_ERROR", "message": redact(exc)})
             event["warnings"] = current["warnings"]
     else:
-        event["error_code"] = "IO_ERROR" if isinstance(exc, OSError) else "INVALID_DATA"
         event["message"] = redact(exc)
 
 
@@ -388,28 +417,26 @@ def _audited_error_failure(args, event, log, app_log_path):
         "regenerar a página. Caso contrário, corrija o erro e repita."
     )
     if args.command == "roteiro" and event["type"] == "ValueError":
-        # Erro de uso do roteiro (`new` sem `--genero`, por exemplo) não é bug:
-        # sem traceback nem repr, e sem a frase "execute review", que aqui se
-        # confunde com `roteiro --action review`. O sync do roteiro grava por
-        # journal como o resto do core, então a parte de recovery_pending
-        # continua na dica.
-        event = {k: v for k, v in event.items() if k not in ("traceback", "repr")}
+        # Erro de uso do roteiro (`new` sem `--genero`, por exemplo): sem a frase
+        # "execute review", que aqui se confunde com `roteiro --action review`. O
+        # sync do roteiro grava por journal como o resto do core, então a parte de
+        # recovery_pending continua na dica.
         hint = _RECOVERY_ONLY_HINT
     payload = {
-        **event,
+        # Traceback e repr nunca vão para a pessoa, em nenhum comando: ficam só no
+        # evento que `audited` grava em diagnostics.jsonl.
+        **{k: v for k, v in event.items() if k not in ("traceback", "repr")},
         "hint": hint,
         "log": str(log) if log else None,
         "app_log": str(app_log_path) if app_log_path and app_log_path.is_file() else None,
     }
     if args.command in QUIET_ERROR_COMMANDS and event["error_code"] != "INTERNAL_ERROR":
         # `plugins`/`x`/`assets` não gravam no projeto (ou, no `assets`, só leem):
-        # erro de uso ali (flag faltando, plugin inexistente) é só a mensagem —
-        # traceback e a dica de recovery/review eram ruído. `export` grava só
-        # numa pasta nova em exports/ e nunca no manifesto nem no journal (recusa
-        # journal pendente antes de começar): a dica de recovery também não vale
-        # lá. `diagnostics.jsonl` (quando há projeto) guarda tudo igual.
-        for key in ("traceback", "repr", "hint"):
-            payload.pop(key, None)
+        # erro de uso ali (flag faltando, plugin inexistente) é só a mensagem — a
+        # dica de recovery/review era ruído. `export` grava só numa pasta nova em
+        # exports/ e nunca no manifesto nem no journal (recusa journal pendente
+        # antes de começar): a dica de recovery também não vale lá.
+        payload.pop("hint", None)
     return OperationError(payload)
 
 
@@ -427,11 +454,33 @@ def _audited_interrupt_failure(event, log, app_log_path):
     )
 
 
-def _write_audit_log(event, log, read_only, failure, result):
+def diagnostics_path(project):
+    """`<projeto>/brolls/diagnostics.jsonl`; sem projeto, `$GB_HOME/diagnostics.jsonl`.
+
+    `None` só quando nem a pasta pessoal se resolve (sem HOME no ambiente)."""
+    if project:
+        return Path(project).resolve() / "brolls/diagnostics.jsonl"
+    try:
+        return _paths.gb_home() / "diagnostics.jsonl"
+    except RuntimeError:
+        return None
+
+
+def _audit_log_wanted(event, log, read_only, in_project):
+    """Se o evento vai para `log`.
+
+    Um comando somente leitura nunca cria a árvore do projeto só para logar. Sem
+    projeto, só um erro vai para `$GB_HOME/diagnostics.jsonl` (o sucesso não deixa
+    rastro fora de um projeto)."""
+    if not log:
+        return False
+    if in_project:
+        return not read_only or log.parent.is_dir()
+    return event.get("status") != "success"
+
+
+def _write_audit_log(event, log, failure, result):
     """Grava a linha JSONL do evento; se a escrita falhar, anexa o aviso onde houver espaço."""
-    # Um comando somente leitura nunca cria a árvore do projeto só para logar.
-    if not (log and (not read_only or log.parent.is_dir())):
-        return
     try:
         log.parent.mkdir(parents=True, exist_ok=True)
         _ensure_private_file(log)
@@ -472,7 +521,7 @@ def audited(args, execute):
         )
         in READ_ONLY_ACTIONS
     )
-    log = Path(project).resolve() / "brolls/diagnostics.jsonl" if project else None
+    log = diagnostics_path(project)
     app_log_path = Path(project).resolve() / "brolls" / "getbrolls.log" if project else None
     result = None
     failure = None
@@ -491,7 +540,7 @@ def audited(args, execute):
         AttributeError,
         OverflowError,
     ) as exc:
-        _classify_audited_error(event, exc, log)
+        _classify_audited_error(event, exc, log if project else None)
         failure = _audited_error_failure(args, event, log, app_log_path)
         raise failure from None
     except KeyboardInterrupt:
@@ -499,20 +548,21 @@ def audited(args, execute):
         raise failure from None
     finally:
         event["duration_ms"] = round((time.monotonic() - started) * 1000)
-        _write_audit_log(event, log, read_only, failure, result)
+        if _audit_log_wanted(event, log, read_only, in_project=bool(project)):
+            _write_audit_log(event, log, failure, result)
         ACTIVE.reset(token)
 
 
 def write_diagnostics_log(project, event):
-    """Append one diagnostics event to <project>/brolls/diagnostics.jsonl; best-effort.
+    """Append one diagnostics event to `diagnostics_path(project)`; best-effort.
 
-    Used by audited()'s own finally block and by cli.py's fallback handler for errors that
-    happen outside audited() (e.g. before argument parsing finishes), so both paths share
-    one envelope shape and one place that can fail to write without crashing the caller.
+    Used by cli.py's fallback handler for errors that happen outside audited() (e.g.
+    before argument parsing finishes). Without a project the event goes to
+    `$GB_HOME/diagnostics.jsonl`. Returns the log path, or None when it could not write.
     """
-    if not project:
+    log = diagnostics_path(project)
+    if log is None:
         return None
-    log = Path(project).resolve() / "brolls/diagnostics.jsonl"
     event = {"at": now(), **event}
     try:
         log.parent.mkdir(parents=True, exist_ok=True)

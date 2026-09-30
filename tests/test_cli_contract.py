@@ -1,13 +1,19 @@
-"""Contrato do parser da CLI: `prog`, `--version` com a origem dos dados e erro de uso.
+"""Contrato da CLI: `prog`, `--version`, erro de uso e códigos de saída.
 
 Erro de uso sai com código 2. Com stdout fora de um terminal (agente, script,
 pipe), a mensagem vai em JSON para stderr; num terminal, sai em texto como a
 do argparse, mais "Você quis dizer: …?" quando há um nome parecido.
+
+Códigos: 0 ok, 1 operação/dados, 2 uso, 3 interno, 4 pré-requisito, 130
+interrompido. Nenhum erro mostra traceback nem repr para a pessoa: os detalhes
+ficam em `brolls/diagnostics.jsonl` (ou `$GB_HOME/diagnostics.jsonl` sem projeto).
 """
 
+import argparse
 import contextlib
 import io
 import json
+import os
 import platform
 import shutil
 import subprocess
@@ -19,7 +25,9 @@ from unittest import mock
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import CLI_ARGV, WHEEL_MODE, wheel_origin
 
-from getbrolls import __version__, _paths, cli
+from getbrolls import __version__, _paths, cli, commands, runtime
+from getbrolls.errors import DataRootError, PrerequisiteError, UsageError
+from getbrolls.runtime import OperationError
 
 
 def run(*args):
@@ -161,6 +169,246 @@ class UsageErrorTerminalTests(unittest.TestCase):
         ):
             parser.error("outra coisa")
         self.assertIsNone(json.loads(stderr.getvalue())["suggestion"])
+
+
+TRACEBACK = "Traceback (most recent call last)"
+
+
+def entry(argv, patches=()):
+    """Roda `cli.entrypoint()` com `sys.argv` = argv e os `(objeto, nome, kwargs)` de
+    `patches` aplicados; devolve (código, stdout, stderr)."""
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(mock.patch.object(cli.sys, "argv", ["getbrolls", *map(str, argv)]))
+        stack.enter_context(contextlib.redirect_stdout(out))
+        stack.enter_context(contextlib.redirect_stderr(err))
+        for obj, name, kwargs in patches:
+            stack.enter_context(mock.patch.object(obj, name, **kwargs))
+        code = cli.entrypoint()
+    return code, out.getvalue(), err.getvalue()
+
+
+def main_raising(exc):
+    return [(cli, "main", {"side_effect": exc})]
+
+
+class ExitCodeTableTests(unittest.TestCase):
+    def test_exit_code_constants_and_table(self):
+        self.assertEqual({0, 1, 2, 3, 4, 130}, {code for code, *_ in cli.EXIT_CODES})
+        self.assertEqual(
+            (0, 1, 2, 3, 4, 130),
+            (
+                cli.EXIT_OK,
+                cli.EXIT_OPERATION_ERROR,
+                cli.EXIT_USAGE_ERROR,
+                cli.EXIT_INTERNAL_ERROR,
+                cli.EXIT_PREREQUISITE,
+                cli.EXIT_INTERRUPTED,
+            ),
+        )
+        self.assertLessEqual(set(runtime.ERROR_EXIT.values()), {code for code, *_ in cli.EXIT_CODES})
+
+    def test_error_code_maps_to_exit_code_in_one_place(self):
+        self.assertEqual(2, runtime.exit_code_for("USAGE_ERROR"))
+        self.assertEqual(3, runtime.exit_code_for("INTERNAL_ERROR"))
+        self.assertEqual(4, runtime.exit_code_for("PREREQUISITE_MISSING"))
+        self.assertEqual(130, runtime.exit_code_for("INTERRUPTED"))
+        for other in ("INVALID_DATA", "IO_ERROR", None, "ALGO_NOVO"):
+            self.assertEqual(1, runtime.exit_code_for(other))
+
+    def test_exception_classes_map_to_error_codes(self):
+        self.assertEqual("USAGE_ERROR", runtime.error_code_for(UsageError("x")))
+        self.assertEqual("PREREQUISITE_MISSING", runtime.error_code_for(PrerequisiteError("x")))
+        self.assertEqual("PREREQUISITE_MISSING", runtime.error_code_for(DataRootError("x")))
+        self.assertEqual("IO_ERROR", runtime.error_code_for(OSError("x")))
+        self.assertEqual("INVALID_DATA", runtime.error_code_for(ValueError("x")))
+
+
+class OperationExitTests(unittest.TestCase):
+    def setUp(self):
+        self.project = Path(tempfile.mkdtemp(prefix="gb-exit-"))
+        self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
+
+    def test_operation_error_exits_1_without_traceback(self):
+        done = run("fetch", "--candidate", "nope", "--project", self.project)
+        self.assertEqual(1, done.returncode, done.stderr)
+        self.assertEqual("", done.stdout)
+        self.assertNotIn(TRACEBACK, done.stderr)
+        self.assertEqual(1, len(done.stderr.strip().splitlines()), done.stderr)
+        payload = json.loads(done.stderr)
+        self.assertEqual("INVALID_DATA", payload["error_code"])
+        self.assertNotIn("traceback", payload)
+        self.assertNotIn("repr", payload)
+        self.assertIn("hint", payload)
+
+    def test_the_traceback_still_reaches_the_project_diagnostics(self):
+        done = run("fetch", "--candidate", "nope", "--project", self.project)
+        self.assertEqual(1, done.returncode, done.stderr)
+        lines = (self.project / "brolls" / "diagnostics.jsonl").read_text(encoding="utf-8").splitlines()
+        event = json.loads(lines[-1])
+        self.assertIn(TRACEBACK, event["traceback"])
+        self.assertIn("repr", event)
+
+    def test_env_file_missing_is_usage_error_exit_2(self):
+        done = run("--env-file", self.project / "nao", "providers")
+        self.assertEqual(2, done.returncode, done.stderr)
+        self.assertEqual("USAGE_ERROR", json.loads(done.stderr)["error_code"])
+
+    def test_gb_env_file_inside_an_env_file_exits_2(self):
+        env_file = self.project / "custom.env"
+        env_file.write_text(f"GB_ENV_FILE={env_file}\n", encoding="utf-8")
+        done = run("--env-file", env_file, "providers")
+        self.assertEqual(2, done.returncode, done.stderr)
+        self.assertEqual("USAGE_ERROR", json.loads(done.stderr)["error_code"])
+        self.assertNotIn(TRACEBACK, done.stderr)
+
+    def test_foreground_serve_error_keeps_stdout_and_exits_1(self):
+        done = run("serve", "--project", self.project)
+        self.assertEqual(1, done.returncode, done.stdout + done.stderr)
+        self.assertNotIn(TRACEBACK, done.stdout + done.stderr)
+        payload = json.loads(done.stdout.strip().splitlines()[-1])
+        self.assertEqual("INVALID_DATA", payload["error_code"])
+
+    def test_broken_pipe_exits_0_without_traceback(self):
+        with subprocess.Popen(
+            [*CLI_ARGV, "providers"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+        ) as proc:
+            assert proc.stdout is not None
+            proc.stdout.close()  # `| head -0`: o leitor fecha antes da primeira escrita
+            _, stderr = proc.communicate(timeout=120)
+        self.assertEqual(0, proc.returncode, stderr)
+        self.assertNotIn(TRACEBACK, stderr)
+        self.assertNotIn("BrokenPipeError", stderr)
+
+
+class InProcessExitTests(unittest.TestCase):
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp(prefix="gb-home-exit-"))
+        self.addCleanup(shutil.rmtree, self.home, ignore_errors=True)
+        patcher = mock.patch.dict(os.environ, {"GB_HOME": str(self.home)})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_prerequisite_error_exits_4(self):
+        failure = OperationError({"error_code": "PREREQUISITE_MISSING", "message": "x"})
+        code, out, err = entry(["status"], main_raising(failure))
+        self.assertEqual(4, code)
+        self.assertEqual("", out)
+        self.assertEqual("PREREQUISITE_MISSING", json.loads(err)["error_code"])
+
+    def test_prerequisite_error_outside_the_audit_exits_4(self):
+        code, _, err = entry(["status"], main_raising(DataRootError("Faltam os dados; reinstale.")))
+        self.assertEqual(4, code)
+        payload = json.loads(err)
+        self.assertEqual("PREREQUISITE_MISSING", payload["error_code"])
+        self.assertIn("reinstale", payload["error"])
+        self.assertNotIn(TRACEBACK, err)
+
+    def test_usage_error_outside_the_audit_exits_2(self):
+        code, _, err = entry(["status"], main_raising(UsageError("flag errada")))
+        self.assertEqual(2, code)
+        self.assertEqual("USAGE_ERROR", json.loads(err)["error_code"])
+
+    def test_missing_data_file_exits_4(self):
+        unknown = _paths.detect(Path(tempfile.gettempdir()) / "nada" / "getbrolls")
+        project = self.home / "proj"
+        project.mkdir()
+        with mock.patch.object(_paths, "install", return_value=unknown):
+            code, out, err = entry(["init-brief", "--project", project])
+        self.assertEqual(4, code, err)
+        self.assertEqual("", out)
+        payload = json.loads(err)
+        self.assertEqual("PREREQUISITE_MISSING", payload["error_code"])
+        self.assertNotIn("traceback", payload)
+        self.assertNotIn(TRACEBACK, err)
+
+    def test_keyboard_interrupt_exits_130(self):
+        code, _, err = entry(["status"], main_raising(KeyboardInterrupt()))
+        self.assertEqual(130, code)
+        self.assertEqual("INTERRUPTED", json.loads(err)["error_code"])
+        failure = OperationError({"error_code": "INTERRUPTED", "message": "x"})
+        code, _, err = entry(["status"], main_raising(failure))
+        self.assertEqual(130, code)
+
+    def test_ctrl_c_during_a_command_exits_130(self):
+        project = self.home / "proj"
+        project.mkdir()
+        interrupt = [(commands, "execute", {"side_effect": KeyboardInterrupt()})]
+        code, out, err = entry(["status", "--project", project], interrupt)
+        self.assertEqual(130, code, err)
+        self.assertEqual("", out)
+        payload = json.loads(err)
+        self.assertEqual("INTERRUPTED", payload["error_code"])
+        self.assertNotIn(TRACEBACK, err)
+
+    def test_internal_error_without_project_logs_to_gb_home(self):
+        code, _, err = entry(["providers"], main_raising(RuntimeError("kaboom")))
+        self.assertEqual(3, code)
+        payload = json.loads(err)
+        self.assertEqual("INTERNAL_ERROR", payload["error_code"])
+        self.assertEqual("RuntimeError", payload["type"])
+        for key in ("traceback", "repr", "message"):
+            self.assertNotIn(key, payload)
+        self.assertNotIn("kaboom", err)
+        log = self.home / "diagnostics.jsonl"
+        self.assertEqual(str(log), payload["log"])
+        event = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+        self.assertIn("RuntimeError", event["traceback"])
+
+    def test_audited_error_without_project_logs_to_gb_home(self):
+        args = argparse.Namespace(command="providers", project=None)
+
+        def boom(_args):
+            raise ValueError("ruim")
+
+        with self.assertRaises(OperationError) as caught:
+            runtime.audited(args, boom)
+        payload = caught.exception.payload
+        self.assertNotIn("traceback", payload)
+        self.assertNotIn("repr", payload)
+        log = self.home / "diagnostics.jsonl"
+        self.assertEqual(str(log), payload["log"])
+        event = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+        self.assertIn("ValueError", event["traceback"])
+
+    def test_successful_command_without_project_logs_nothing(self):
+        args = argparse.Namespace(command="providers", project=None)
+        self.assertEqual({}, runtime.audited(args, lambda _args: {}))
+        self.assertFalse((self.home / "diagnostics.jsonl").exists())
+
+    def test_internal_error_message_names_the_type_not_the_repr(self):
+        args = argparse.Namespace(command="providers", project=None)
+
+        def boom(_args):
+            raise KeyError("segredo")
+
+        with self.assertRaises(OperationError) as caught:
+            runtime.audited(args, boom)
+        payload = caught.exception.payload
+        self.assertEqual("INTERNAL_ERROR", payload["error_code"])
+        self.assertIn("[type: KeyError]", payload["message"])
+        self.assertNotIn("<class", payload["message"])
+        self.assertEqual(3, runtime.exit_code_for(payload["error_code"]))
+
+    def test_usage_and_prerequisite_errors_inside_the_audit(self):
+        args = argparse.Namespace(command="providers", project=None)
+        for exc, code in ((UsageError("x"), "USAGE_ERROR"), (DataRootError("x"), "PREREQUISITE_MISSING")):
+            with self.subTest(exc=type(exc).__name__), self.assertRaises(OperationError) as caught:
+                runtime.audited(args, mock.Mock(side_effect=exc))
+            self.assertEqual(code, caught.exception.payload["error_code"])
+
+    def test_doctor_result_exit_is_command_scoped(self):
+        self.assertEqual(4, cli.result_exit("doctor", {"ready": False}))
+        self.assertEqual(0, cli.result_exit("doctor", {"ready": True}))
+        self.assertEqual(0, cli.result_exit("x", {"ready": False}))
+        self.assertEqual(0, cli.result_exit("doctor", None))
+        code, out, _ = entry(["x", "p", "c"], [(cli, "main", {"return_value": {"ready": False}})])
+        self.assertEqual(0, code)
+        self.assertEqual({"ready": False}, json.loads(out))
 
 
 if __name__ == "__main__":

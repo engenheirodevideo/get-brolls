@@ -2,7 +2,7 @@
 
 Comando de plugin só lê o projeto (por cópias, via `CommandContext`) e devolve um
 objeto JSON; nunca escreve no ledger. Falha do plugin vira `ValueError` com o id
-dele — exit 2 na CLI, não erro interno.
+dele — exit 1 na CLI, não erro interno.
 """
 
 import json

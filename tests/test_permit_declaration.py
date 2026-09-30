@@ -57,7 +57,7 @@ class PermitDeclarationTests(unittest.TestCase):
                 "usuário",
                 "--declaration-text",
                 TEXT,
-                expect=2,
+                expect=1,
             )
             self.assertIn("nome", error["error"].lower())
             short = run_cli(
@@ -66,10 +66,10 @@ class PermitDeclarationTests(unittest.TestCase):
                 "Bruno Moreira",
                 "--declaration-text",
                 "curto demais",
-                expect=2,
+                expect=1,
             )
             self.assertIn("20", short["error"])
-            alone = run_cli(*base, "--declared-by", "Bruno Moreira", expect=2)
+            alone = run_cli(*base, "--declared-by", "Bruno Moreira", expect=1)
             self.assertIn("--declaration-text", alone["error"])
 
     def test_generic_single_word_names_are_refused_by_name(self):
@@ -77,7 +77,7 @@ class PermitDeclarationTests(unittest.TestCase):
             ident = fixture(tmp)
             base = ["permit", "--candidate", ident, "--project", tmp, "--declaration-text", TEXT]
             for generic in ("eu", "user", "cliente", "usuário", "usuario", "me", "admin", "Admin"):
-                refused = run_cli(*base, "--declared-by", generic, expect=2)
+                refused = run_cli(*base, "--declared-by", generic, expect=1)
                 self.assertIn("--declared-by", refused["error"])
                 self.assertIn("não identifica ninguém", refused["error"])
 
@@ -94,7 +94,7 @@ class PermitDeclarationTests(unittest.TestCase):
                 TEXT,
                 "--declared-by",
                 "Bruno",
-                expect=2,
+                expect=1,
             )
             self.assertIn("duas palavras", refused["error"])
 
@@ -123,9 +123,9 @@ class PermitDeclarationTests(unittest.TestCase):
             result = run_cli(*base, "--evidence", "Material próprio do teste")
             self.assertEqual("per_item_evidence", result["rights"]["basis"])
             self.assertIsNone(result["rights"].get("declaration_channel"))
-            nothing = run_cli(*base, expect=2)
+            nothing = run_cli(*base, expect=1)
             self.assertIn("--evidence", nothing["error"])
-            declaration = run_cli(*base, "--declaration", expect=2)
+            declaration = run_cli(*base, "--declaration", expect=1)
             self.assertIn("RULES.md", declaration["error"])
 
 

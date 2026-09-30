@@ -571,7 +571,7 @@ class BriefCommandTests(unittest.TestCase):
                 TEMPLATE.read_text(encoding="utf-8"),
                 (Path(tmp) / "BRIEF.md").read_text(encoding="utf-8"),
             )
-            again = run_cli("init-brief", "--project", tmp, expect=2)
+            again = run_cli("init-brief", "--project", tmp, expect=1)
             self.assertIn("já existe", again["error"])
 
     def test_brief_puts_the_summary_first_and_lists_ready_commands(self):
@@ -615,7 +615,7 @@ class BriefCommandTests(unittest.TestCase):
             broken = copy.deepcopy(VALID)
             broken["beats"][0]["target"] = ""
             write_brief(tmp, broken)
-            failure = run_cli("brief", "--project", tmp, "--validate", expect=2)
+            failure = run_cli("brief", "--project", tmp, "--validate", expect=1)
             self.assertIn("target", failure["error"])
 
     def test_validate_does_not_call_a_brief_with_problems_valid(self):
@@ -644,7 +644,7 @@ class BriefCommandTests(unittest.TestCase):
             result = run_cli("brief", "--project", tmp, "--beat", "abertura")
             self.assertEqual(1, len(result["beats"]))
             self.assertEqual("abertura", result["beats"][0]["id"])
-            missing = run_cli("brief", "--project", tmp, "--beat", "inexistente", expect=2)
+            missing = run_cli("brief", "--project", tmp, "--beat", "inexistente", expect=1)
             self.assertIn("reacao-publico", missing["error"])
 
     def test_brief_never_creates_the_project_tree(self):

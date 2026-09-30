@@ -385,7 +385,7 @@ class BriefAndRulesOutsideTheProjectTests(unittest.TestCase):
     def test_a_missing_gb_brief_file_fails_naming_the_variable(self):
         with tempfile.TemporaryDirectory() as tmp:
             missing = str(Path(tmp) / "nao" / "existe" / "BRIEF.md")
-            error = run_cli("brief", "--project", tmp, env={"GB_BRIEF_FILE": missing}, expect=2)
+            error = run_cli("brief", "--project", tmp, env={"GB_BRIEF_FILE": missing}, expect=1)
             self.assertIn("GB_BRIEF_FILE", error["error"])
 
 

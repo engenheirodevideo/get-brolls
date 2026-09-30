@@ -42,7 +42,7 @@ class RunCliTests(unittest.TestCase):
     def test_expect_non_zero_parses_stderr_as_json(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_cli("init-rules", "--project", tmp)
-            refused = run_cli("init-rules", "--project", tmp, "--format", "reels", expect=2)
+            refused = run_cli("init-rules", "--project", tmp, "--format", "reels", expect=1)
             self.assertIn("--format", str(refused))
 
     def test_project_kwarg_is_equivalent_to_the_flag(self):

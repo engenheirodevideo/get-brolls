@@ -104,7 +104,7 @@ class ImportReviewRejectionTests(unittest.TestCase):
             )
             path = save_review(ledger, payload)
             before = ledger.path.read_bytes()
-            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=2)
+            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=1)
             self.assertEqual("Candidato não encontrado neste projeto.", error["error"])
             self.assertEqual("INVALID_DATA", error["error_code"])
             self.assertEqual(before, ledger.path.read_bytes())
@@ -157,7 +157,7 @@ class ImportReviewRejectionTests(unittest.TestCase):
             path = save_review(ledger, payload)
             self.assertGreater(path.stat().st_size, 2_000_000)
             before = ledger.path.read_bytes()
-            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=2)
+            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=1)
             self.assertIn("2 MB", error["error"])
             self.assertEqual(before, ledger.path.read_bytes())
 
@@ -167,7 +167,7 @@ class ImportReviewRejectionTests(unittest.TestCase):
             path = save_review(ledger, exported(ledger))
             path.write_text("{not valid json", encoding="utf-8")
             before = ledger.path.read_bytes()
-            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=2)
+            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=1)
             self.assertEqual("INVALID_DATA", error["error_code"])
             self.assertEqual(before, ledger.path.read_bytes())
 

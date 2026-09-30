@@ -72,7 +72,7 @@ class ReservedIdTests(LoaderTestCase):
                     scaffold.new(ident, "provider", parent=parent)
                 self.assertIn("reservado", str(caught.exception))
                 self.assertFalse((parent / ident).exists())
-        out = run_cli("plugins", "--action", "new", "--id", "direcao", "--kind", "command", "--path", parent, expect=2)
+        out = run_cli("plugins", "--action", "new", "--id", "direcao", "--kind", "command", "--path", parent, expect=1)
         self.assertIn("reservado", out["message"])
 
     def test_install_refuses_a_reserved_id(self):
@@ -83,7 +83,7 @@ class ReservedIdTests(LoaderTestCase):
             json.dumps({**MANIFEST, "id": "cliente", "contributes": {}}), encoding="utf-8"
         )
         (source / "plugin.py").write_text("def register(api):\n    pass\n", encoding="utf-8")
-        out = run_cli("plugins", "--action", "install", "--source", source, expect=2, env={"GB_HOME": str(self.home)})
+        out = run_cli("plugins", "--action", "install", "--source", source, expect=1, env={"GB_HOME": str(self.home)})
         self.assertIn('id "cliente" é reservado do get-brolls', out["message"])
         self.assertFalse((self.home / "plugins" / "cliente").exists())
 

@@ -297,7 +297,7 @@ class LibraryCommandTests(LibraryBase):
         build_parser().parse_args(shlex.split(with_library["command"])[2:])
 
     def test_the_cli_refuses_learn_without_anything_to_learn(self):
-        error = run_cli("learn", "--project", self.project, expect=2)
+        error = run_cli("learn", "--project", self.project, expect=1)
         self.assertIn("--query", error["error"])
 
 

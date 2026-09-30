@@ -66,7 +66,7 @@ class PluginEnvKeysTests(LoaderTestCase):
         with patch.dict(os.environ, {}), self.assertRaises(ValueError) as caught:
             config.load_env(path)
         self.assertIn("variável desconhecida na linha 2: NAO_DECLARADA", str(caught.exception))
-        err = run_cli("--env-file", str(path), "providers", expect=2, env={"GB_HOME": str(self.home)})
+        err = run_cli("--env-file", str(path), "providers", expect=1, env={"GB_HOME": str(self.home)})
         self.assertIn("NAO_DECLARADA", err["error"])
 
     def declare(self, *keys):

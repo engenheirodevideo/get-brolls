@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import unittest
 from argparse import Namespace
+from pathlib import Path
 from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
@@ -122,7 +123,7 @@ class ReenableSuspendedTests(LoaderTestCase):
         self._suspend()
         env = {"GB_HOME": str(self.home)}
         preview = run_cli("plugins", "--action", "enable", "--id", "demo", env=env)
-        err = run_cli("plugins", "--action", "enable", "--id", "demo", "--yes", expect=2, env=env)
+        err = run_cli("plugins", "--action", "enable", "--id", "demo", "--yes", expect=1, env=env)
         self.assertIn("--expect", err["error"])
         sha = preview["plugin"]["sha256"]
         done = run_cli("plugins", "--action", "enable", "--id", "demo", "--yes", "--expect", sha, env=env)
@@ -309,7 +310,7 @@ class SearchPluginErrorTests(LoaderTestCase):
         project = tempfile.mkdtemp(prefix="gb-project-", dir=self.home)
         env = {"GB_HOME": str(self.home)}
         run_cli("init-rules", "--project", project, env=env)
-        err = run_cli("search", "--provider", "demo", "--query", "mar", "--project", project, expect=2, env=env)
+        err = run_cli("search", "--provider", "demo", "--query", "mar", "--project", project, expect=1, env=env)
         self.assertIn("Plugin demo: Configure DEMO_DIR com a pasta.", err["error"])
         self.assertNotIn("demo: Plugin demo:", err["error"])
         self.assertNotIn("demo: Plugin demo:", json.dumps(err["warnings"], ensure_ascii=False))
@@ -627,23 +628,27 @@ class StrictScrubResidualNamesTests(LoaderTestCase):
 
 
 class PluginsEnvelopeTests(LoaderTestCase):
-    """Erro de uso em `plugins`/`x` sai sem traceback nem a dica de recovery_pending."""
+    """Erro em `plugins`/`x` sai sem a dica de recovery_pending; nenhum comando mostra traceback."""
 
     def test_plugins_and_x_user_errors_have_no_traceback_or_recovery_hint(self):
         env = {"GB_HOME": str(self.home)}
         for args in (("plugins", "--action", "enable"), ("x", "nao_existe", "cmd")):
             with self.subTest(args=args):
-                err = run_cli(*args, expect=2, env=env)
+                err = run_cli(*args, expect=1, env=env)
                 self.assertNotIn("traceback", err)
                 self.assertNotIn("hint", err)
                 self.assertTrue(err["error"])
 
-    def test_other_commands_keep_the_full_envelope(self):
+    def test_other_commands_keep_the_hint_but_never_the_traceback(self):
 
         project = tempfile.mkdtemp(prefix="gb-project-", dir=self.home)
-        err = run_cli("inspect", "--url", " ", project=project, expect=2, env={"GB_HOME": str(self.home)})
-        self.assertIn("traceback", err)
+        err = run_cli("inspect", "--url", " ", project=project, expect=1, env={"GB_HOME": str(self.home)})
         self.assertIn("hint", err)
+        self.assertNotIn("traceback", err)
+        self.assertNotIn("repr", err)
+        log = Path(project) / "brolls" / "diagnostics.jsonl"
+        event = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+        self.assertIn("traceback", event)
 
 
 class DocsGapsTests(LoaderTestCase):

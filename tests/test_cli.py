@@ -29,7 +29,7 @@ class CliTest(unittest.TestCase):
             encoding="utf-8",
             check=False,
         )
-        self.assertEqual(p.returncode, 0 if ok else 2, p.stderr)
+        self.assertEqual(p.returncode, 0 if ok else 1, p.stderr)
         return json.loads(p.stdout if ok else p.stderr)
 
     def test_cli_forces_utf8_when_parent_requests_cp1252(self):

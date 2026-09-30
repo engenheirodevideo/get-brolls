@@ -697,7 +697,7 @@ class Finding36CacheAndBodyReadNarrowingTests(unittest.TestCase):
 
 class Finding10CliExitCodeConstantsTests(unittest.TestCase):
     def test_cli_defines_named_exit_code_constants(self):
-        self.assertEqual(cli.EXIT_OPERATION_ERROR, 2)
+        self.assertEqual(cli.EXIT_OPERATION_ERROR, 1)
         self.assertEqual(cli.EXIT_INTERNAL_ERROR, 3)
 
 

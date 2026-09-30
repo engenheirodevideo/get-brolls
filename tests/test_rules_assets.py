@@ -126,7 +126,7 @@ class RulesTests(unittest.TestCase):
                     encoding="utf-8",
                     check=False,
                 )
-                self.assertEqual(run.returncode, 0 if ok else 2, run.stderr)
+                self.assertEqual(run.returncode, 0 if ok else 1, run.stderr)
                 return json.loads(run.stdout if ok else run.stderr)
 
             call("init-rules")
