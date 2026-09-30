@@ -1,0 +1,2 @@
+{"schema": "getbrolls.speakers/1", "media_id": "9f86d081884c7d65", "status": "done", "reason": null, "created": "2026-09-30T12:00:00.000000+00:00", "time_unit": "s",
+ "speakers": [{"id": "spk0", "label": null}], "turns": [{"speaker": "spk0", "start": 0.0, "end": 5.1}]}

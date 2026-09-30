@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Get B-rolls analysis silence v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/silence.schema.json",
+  "description": "analysis/media/<media_id>/silence.json: trechos de silêncio. Schema mínimo, sem producer. Objetos abertos: campo novo opcional entra fora de required e o leitor ignora chave desconhecida; remover, renomear ou mudar o significado de um campo sobe o N de schema. Leitor recusa N maior do que conhece.",
+  "type": "object",
+  "required": [
+    "schema",
+    "media_id",
+    "status",
+    "reason",
+    "created",
+    "time_unit",
+    "threshold_db",
+    "min_duration_s",
+    "silences"
+  ],
+  "properties": {
+    "schema": {
+      "const": "getbrolls.silence/1"
+    },
+    "media_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "Primeiros 16 hex do sha256 dos bytes da mídia (o asset_id do Nômade tem a mesma derivação)."
+    },
+    "status": {
+      "enum": [
+        "done",
+        "done_partial",
+        "unavailable",
+        "failed",
+        "blocked",
+        "not_run_by_this_script",
+        "no_speech"
+      ],
+      "description": "Estado do componente. unavailable, failed, blocked e not_run_by_this_script exigem reason (conferido em código)."
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 2000
+    },
+    "created": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "time_unit": {
+      "const": "s"
+    },
+    "threshold_db": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "maximum": 0
+    },
+    "min_duration_s": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "silences": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "properties": {
+          "start": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Segundos (time_unit s), número finito (NaN e infinito recusados em código)."
+          },
+          "end": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Segundos (time_unit s), número finito (NaN e infinito recusados em código)."
+          }
+        }
+      }
+    }
+  }
+}

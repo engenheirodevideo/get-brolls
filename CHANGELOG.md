@@ -46,6 +46,7 @@ O vídeo agora nasce como roteiro (`ROTEIRO.md`), segue para a coleta de b-roll 
 - **`GB_PLUGINS`** (ambiente ou `.env`) escolhe, entre os plugins já habilitados com pin válido, os que a sessão carrega; `off` desliga todos. Nunca carrega plugin que não foi habilitado.
 - **`fetch --reacquire`.** Rota de plugin (`stage="fetch"`) já consumida (compra ou cota de uso único) pode ser rodada de novo com `--reacquire`; sem cache presente, o comando falha pedindo essa flag.
 - **Onde o plugin aparece.** `providers` marca a fonte de plugin com `plugin` e `route`; `doctor` lista `plugins[]` e ganha a linha `plugins` no `summary` quando algum está `failed`, `suspended`, `invalid` ou `incompatible`; `ORIGEM.md` e `credits.md` dizem "Fonte: plugin <id> (URL ou arquivo local)", e o `credits.md` ganha a linha "Título na fonte:". Sem plugin instalado, a saída desses comandos não muda.
+- **Schemas de análise publicados.** `schemas/` ganha os formatos dos arquivos de análise de mídia de `analysis/` — `analysis_index`, `markers`, `media`, `transcript`, `scenes`, `silence`, `speakers` e `visual` —, cada um com `"schema": "getbrolls.<nome>/1"`, tempo em segundos (`time_unit: "s"`) e `media_id` igual aos 16 primeiros hex do sha256 da mídia. O leitor desses arquivos recusa link, chave repetida, NaN, chave com cara de segredo, caminho absoluto e arquivo acima de 16 MiB; versão mais nova ou de outro namespace é recusada. Ainda sem comando que grave esses arquivos.
 
 ### Segurança
 
