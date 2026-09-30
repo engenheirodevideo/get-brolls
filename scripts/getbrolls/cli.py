@@ -24,6 +24,7 @@ from typing import NoReturn
 from . import __version__, _paths, logs, presets
 from .errors import PrerequisiteError, UsageError
 from .runtime import READ_ONLY_ACTIONS, READ_ONLY_COMMANDS, OperationError, audited, error_code_for, exit_code_for
+from .sdk.scaffold import KINDS as SCAFFOLD_KINDS
 
 # Named so a caller (script, test, or someone scripting the CLI) never has to hardcode a
 # number. Which error leaves with which code is decided in one place: `runtime.ERROR_EXIT`.
@@ -320,7 +321,7 @@ def _add_toolchain_subcommands(sub):
             )
             p.add_argument(
                 "--kind",
-                choices=["provider", "route", "command"],
+                choices=list(SCAFFOLD_KINDS),
                 help="Tipo do plugin gerado por new: fonte, fonte com rota de download, ou comando",
             )
             p.add_argument(

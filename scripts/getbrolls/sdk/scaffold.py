@@ -7,6 +7,7 @@ from .. import __version__, _paths
 from .contracts import CORE, NAME_RE, RESERVED_IDS, SDK_API
 from .manifest import MANIFEST_NAME, reserved_id_message
 
+# Tipos que o `new` sabe gerar: um subconjunto dos que o SDK carrega.
 KINDS = ("provider", "route", "command")
 
 PROVIDER = '''"""Plugin __ID__ para o Get B-rolls (gerado por `plugins --action new --kind provider`)."""

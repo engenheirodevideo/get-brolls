@@ -21,8 +21,9 @@ from .contracts import (
     Route,
 )
 from .errors import RegistryError
+from .kinds import SUPPORTED_SINGULAR
 
-KINDS = ("provider", "preset", "route", "command", "exporter", "resolver")
+KINDS = SUPPORTED_SINGULAR
 HELP_MAX_CHARS = 200
 
 

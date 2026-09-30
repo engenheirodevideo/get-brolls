@@ -12,6 +12,7 @@ from typing import NoReturn
 
 from .. import __version__
 from .contracts import CORE, NAME_RE, RESERVED_IDS, SDK_API
+from .kinds import SUPPORTED_PLURAL
 
 MANIFEST_NAME = "getbrolls-plugin.json"
 CONTRIBUTION_KINDS = (
@@ -32,7 +33,7 @@ CONTRIBUTION_KINDS = (
     "roteiro_templates",
 )
 # Tipos que esta versão do SDK sabe carregar; os outros ficam para versões futuras.
-SUPPORTED_KINDS = ("providers", "presets", "routes", "commands", "exporters", "resolvers")
+SUPPORTED_KINDS = SUPPORTED_PLURAL
 TOP_LEVEL = frozenset(
     {
         "id",

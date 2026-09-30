@@ -19,6 +19,7 @@ from .contracts import (
     ProviderCapabilities,
     ResolverSpec,
 )
+from .kinds import SUPPORTED_SINGULAR, plural
 
 if TYPE_CHECKING:
     from .registry import Registry
@@ -188,14 +189,8 @@ def check_registry(registry: "Registry", owner: str) -> dict[str, list[str]]:
         check_exporter(registry.exporter(name))
     for name in owned["resolver"]:
         check_resolver(registry.resolver(name))
-    return {
-        "providers": owned["provider"],
-        "presets": owned["preset"],
-        "routes": owned["route"],
-        "commands": [key.split(":", 1)[1] for key in owned["command"]],
-        "exporters": owned["exporter"],
-        "resolvers": owned["resolver"],
-    }
+    names = {**owned, "command": [key.split(":", 1)[1] for key in owned["command"]]}
+    return {plural(kind): names[kind] for kind in SUPPORTED_SINGULAR}
 
 
 def _checked_folder(folder):
