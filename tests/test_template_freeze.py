@@ -229,3 +229,118 @@ class FreezeTests(TemplateCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ShowAndListTests(TemplateCase):
+    def show(self, ref="cat:getbrolls/template/reels-acme@1", client="acme", expect=0):
+        return run_cli("template", "--action", "show", "--ref", ref, "--client", client, expect=expect)
+
+    def writable(self, path):
+        path.chmod(stat.S_IWUSR | stat.S_IRUSR)
+        return path
+
+    def rewrite_template(self, change):
+        path = self.writable(self.slug_dir() / "1" / "template.json")
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        change(doc)
+        path.write_text(json.dumps(doc), encoding="utf-8")
+
+    def test_list_is_sorted_by_client_slug_and_version(self):
+        (self.tmp / "Outros").mkdir()
+        clients.add("beta", str(self.tmp / "Outros"))
+        self.freeze(slug="zeta")
+        self.freeze()
+        self.freeze()
+        self.freeze(slug="alfa")
+        self.freeze("--client", "beta", expect=1)  # o project.json é do acme
+        (self.project / "project.json").unlink()
+        self.freeze("--client", "beta")
+        listed = run_cli("template", "--action", "list")["templates"]
+        self.assertEqual(
+            [("acme", "alfa", 1), ("acme", "reels-acme", 1), ("acme", "reels-acme", 2), ("acme", "zeta", 1),
+             ("beta", "reels-acme", 1)],
+            [(row["client"], row["slug"], row["version"]) for row in listed],
+        )  # fmt: skip
+        self.assertEqual("cat:getbrolls/template/alfa@1", listed[0]["ref"])
+        only = run_cli("template", "--action", "list", "--client", "beta")["templates"]
+        self.assertEqual(["beta"], [row["client"] for row in only])
+
+    def test_list_ignores_staging_and_the_lock(self):
+        self.freeze()
+        (self.slug_dir() / ".staging-deadbeef").mkdir()
+        listed = run_cli("template", "--action", "list")["templates"]
+        self.assertEqual([1], [row["version"] for row in listed])
+
+    def test_fresh_template_is_intact(self):
+        self.freeze()
+        shown = self.show()
+        self.assertEqual((True, []), (shown["intact"], shown["problems"]))
+        self.assertEqual("cat:getbrolls/template/reels-acme@1", shown["template"]["ref"])
+        raw = (self.slug_dir() / "1" / "template.json").read_bytes()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), shown["template_sha256"])
+
+    def test_tampered_component_is_named(self):
+        self.freeze()
+        self.writable(self.slug_dir() / "1" / "components" / "sfx" / "whoosh.wav").write_bytes(b"trocado")
+        shown = self.show()
+        self.assertFalse(shown["intact"])
+        self.assertIn("components/sfx/whoosh.wav", " ".join(shown["problems"]))
+
+    def test_missing_and_extra_files_are_problems(self):
+        self.freeze()
+        target = self.slug_dir() / "1" / "components" / "marca" / "logo.svg"
+        self.writable(target)
+        target.unlink()
+        (self.slug_dir() / "1" / "components" / "sfx" / "extra.wav").write_bytes(b"x")
+        problems = " ".join(self.show()["problems"])
+        self.assertIn("components/marca/logo.svg", problems)
+        self.assertIn("components/sfx/extra.wav", problems)
+
+    def test_traversal_in_a_component_file_is_refused_before_reading(self):
+        self.freeze()
+        for bad in ("components/../../client.json", "/etc/passwd", "components/sfx/../../../client.json",
+                    "components\\sfx\\whoosh.wav", "C:/x", "components/outros/x.wav", "components/sfx"):  # fmt: skip
+            with self.subTest(bad=bad):
+                self.rewrite_template(lambda doc, bad=bad: doc["components"][0].update(file=bad))
+                shown = templates.show("cat:getbrolls/template/reels-acme@1", "acme")
+                self.assertFalse(shown["intact"])
+                self.assertTrue(any("inseguro" in p or "schema" in p for p in shown["problems"]), shown["problems"])
+
+    def test_template_json_that_disagrees_with_its_folder_is_not_intact(self):
+        self.freeze()
+        self.rewrite_template(lambda doc: doc.update(version=7, ref="cat:getbrolls/template/reels-acme@7"))
+        shown = self.show()
+        self.assertFalse(shown["intact"])
+        self.assertIn("versão", " ".join(shown["problems"]))
+
+    def test_broken_template_json_is_not_intact(self):
+        self.freeze()
+        self.writable(self.slug_dir() / "1" / "template.json").write_text("{", encoding="utf-8")
+        shown = self.show()
+        self.assertEqual((False, None), (shown["intact"], shown["template"]))
+
+    @unittest.skipIf(os.name == "nt", "symlink exige privilégio no Windows")
+    def test_linked_component_is_a_problem(self):
+        self.freeze()
+        target = self.slug_dir() / "1" / "components" / "sfx" / "whoosh.wav"
+        self.writable(target)
+        target.unlink()
+        target.symlink_to(self.project / "assets" / "sfx" / "whoosh.wav")
+        shown = self.show()
+        self.assertFalse(shown["intact"])
+        self.assertIn("link", " ".join(shown["problems"]))
+
+    def test_unknown_or_bad_ref_is_a_clear_error(self):
+        self.freeze()
+        refused = self.show("cat:getbrolls/template/reels-acme@9", expect=1)
+        self.assertIn("não existe", refused["error"])
+        for bad in ("cat:getbrolls/template/%2E%2E@1", "cat:getbrolls/template/a%2Fb@1", "cat:getbrolls/template/x@01",
+                    "cat:hyperframes/recipe/x@1", "scene:c01"):  # fmt: skip
+            with self.subTest(bad=bad):
+                self.assertEqual("USAGE_ERROR", self.show(bad, expect=2)["error_code"])
+        self.assertIn("ghost", self.show(client="ghost", expect=1)["error"])
+
+    def test_list_and_show_are_read_only_actions(self):
+        described = run_cli("capabilities")
+        command = next(row for row in described["commands"] if row["name"] == "template")
+        self.assertEqual(("by_action", ["list", "show"]), (command["read_only"], command["read_only_actions"]))

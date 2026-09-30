@@ -333,10 +333,13 @@ READ_ONLY_COMMANDS = ("status", "serve", "brief", "doctor", "setup", "x", "capab
 # só consulta queue.json (mesmo contrato de `status`), nunca deve tomar a trava exclusiva.
 # `roteiro --action check|plan` e `assets` também só leem: plano de cena, sync simulado e
 # inventário de componentes, sem trava nem árvore nova. `client --action list|show` só lê
-# `$GB_HOME/clients.json` e o `client.json` de cada pasta.
+# `$GB_HOME/clients.json` e o `client.json` de cada pasta; `template --action list|show` só lê
+# as pastas de template dos clientes registrados.
 READ_ONLY_ACTIONS = {
     ("client", "list"),
     ("client", "show"),
+    ("template", "list"),
+    ("template", "show"),
     ("queue", "status"),
     ("roteiro", "check"),
     ("roteiro", "plan"),

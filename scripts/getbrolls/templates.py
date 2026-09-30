@@ -47,6 +47,7 @@ RENAME_ATTEMPTS = 5
 LOCK_WAIT_S = 5.0
 TEXT_MAX = 200
 READ_ONLY = 0o444
+TEMPLATE_MAX = 4 * 1024 * 1024
 _CHUNK = 1024 * 1024
 _COMPONENT_DEPTH = 3  # components/<tipo>/<arquivo>
 _LAYER_KIND = {"LETTERING": "lettering", "SFX": "sfx", "MUSICA": "musica", "COMP": "composicao"}
@@ -387,6 +388,176 @@ def freeze(project, slug, *, client=None, title=None, engine_refs=(), by=None) -
     }
 
 
+# -- list / show --------------------------------------------------------------
+
+
+def _read_template_file(path):
+    """(doc, bytes, problema) de `template.json`, sem seguir link e sem nunca levantar."""
+    if is_link(path) or not path.is_file():
+        return None, None, f"{TEMPLATE_FILE} não é um arquivo comum."
+    try:
+        if path.stat().st_size > TEMPLATE_MAX:
+            return None, None, f"{TEMPLATE_FILE} é grande demais."
+        raw = path.read_bytes()
+        doc = json.loads(raw.decode("utf-8"), parse_constant=_refuse_constant)
+        validate_template(doc)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None, None, f"{TEMPLATE_FILE} não é um JSON legível."
+    except ValueError as exc:
+        return None, None, str(exc)
+    return doc, raw, None
+
+
+def _refuse_constant(token):
+    raise ValueError(f"{TEMPLATE_FILE}: {token} não é um número JSON válido.")
+
+
+def _identity_problems(doc, client, slug, number):
+    problems = []
+    if doc["client"] != client:
+        problems.append(f'{TEMPLATE_FILE} é do cliente "{doc["client"]}", não de "{client}".')
+    if doc["slug"] != slug:
+        problems.append(f'{TEMPLATE_FILE} é do template "{doc["slug"]}", não de "{slug}".')
+    if doc["version"] != number:
+        problems.append(f"{TEMPLATE_FILE} diz versão {doc['version']}, mas a pasta é a {number}.")
+    if doc["ref"] != refs.template_ref(slug, number):
+        problems.append(f"{TEMPLATE_FILE} traz a ref {doc['ref']}, não {refs.template_ref(slug, number)}.")
+    return problems
+
+
+def component_path(folder, rel):
+    """Arquivo `rel` de `components/` dentro da versão, conferido antes de qualquer leitura.
+
+    `ValueError` quando o caminho é inseguro (`..`, absoluto, `\\`, `:`, fora de
+    `components/<tipo>/`), quando algum pedaço do caminho é link ou quando não é arquivo.
+    """
+    parts = safe_relative(rel)
+    here = folder
+    for part in parts:
+        here = here / part
+        if is_link(here):
+            raise ValueError(f"{rel} é um link; o template só aceita arquivos comuns.")
+    if not here.is_file():
+        raise ValueError(f"{rel} não existe no template.")
+    return here
+
+
+def sha256_file(path):
+    """sha256 dos bytes de `path`, lido em blocos."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(_CHUNK):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _component_problems(folder, doc):
+    problems, listed = [], set()
+    for row in doc["components"]:
+        rel = row["file"]
+        if rel in listed:
+            problems.append(f"{rel} aparece duas vezes em components.")
+            continue
+        listed.add(rel)
+        try:
+            path = component_path(folder, rel)
+        except ValueError as exc:
+            problems.append(str(exc))
+            continue
+        if sha256_file(path) != row["sha256"]:
+            problems.append(f"{rel} mudou: o sha256 não bate com o template.json.")
+    for current, dirs, names in os.walk(folder):
+        base = Path(current)
+        for name in [*dirs, *names]:
+            path = base / name
+            rel = path.relative_to(folder).as_posix()
+            if is_link(path):
+                if rel not in listed:
+                    problems.append(f"{rel} é um link dentro do template.")
+                continue
+            if name in names and rel != TEMPLATE_FILE and rel not in listed:
+                problems.append(f"{rel} é um arquivo a mais, que o template.json não lista.")
+        dirs[:] = [d for d in dirs if not is_link(base / d)]
+    return problems
+
+
+def show(ref, client) -> dict:
+    """A versão `ref` do template do cliente, com a integridade conferida arquivo por arquivo."""
+    slug, number = refs.template_parts(ref)
+    clients.check_slug(client)
+    folder = template_dir(client, slug, number)
+    for path in (folder.parent, folder):
+        _no_link(path)
+    if not folder.is_dir():
+        raise ValueError(f"O template {refs.template_ref(slug, number)} não existe no cliente {client}.")
+    doc, raw, problem = _read_template_file(folder / TEMPLATE_FILE)
+    problems = [problem] if problem else []
+    if doc is not None:
+        problems += _identity_problems(doc, client, slug, number)
+        problems += _component_problems(folder, doc)
+    return {
+        "ref": refs.template_ref(slug, number),
+        "client": client,
+        "path": _shown(folder),
+        "template": doc,
+        "template_sha256": hashlib.sha256(raw).hexdigest() if raw is not None else None,
+        "intact": not problems,
+        "problems": problems,
+    }
+
+
+def _client_rows(slug):
+    try:
+        root = templates_root(slug)
+    except ValueError as exc:
+        return [], runtime.scrub_home(str(exc))
+    rows = []
+    if not root.is_dir():
+        return rows, None
+    for slug_dir in sorted(root.iterdir()):
+        name = slug_dir.name
+        if name.startswith(".") or is_link(slug_dir) or not slug_dir.is_dir():
+            continue
+        try:
+            check_slug(name)
+        except ValueError:
+            continue
+        for number in _versions(slug_dir):
+            folder = slug_dir / str(number)
+            if is_link(folder):
+                continue
+            doc, _, problem = _read_template_file(folder / TEMPLATE_FILE)
+            rows.append(
+                {
+                    "client": slug,
+                    "slug": name,
+                    "version": number,
+                    "ref": refs.template_ref(name, number),
+                    "title": doc.get("title") if doc else None,
+                    "problem": problem,
+                }
+            )
+    return rows, None
+
+
+def list_templates(client=None) -> dict:
+    """Todas as versões de template dos clientes registrados (ou só de `client`), sem rehash.
+
+    Ordem: cliente, slug, versão. `show` é quem confere a integridade de uma versão.
+    """
+    slugs = [clients.check_slug(client)] if client else [row["slug"] for row in clients.load_registry()["clients"]]
+    if client:
+        clients.load_client(client)
+    rows, broken = [], []
+    for slug in slugs:
+        found, problem = _client_rows(slug)
+        rows.extend(found)
+        if problem:
+            broken.append({"client": slug, "problem": problem})
+    rows.sort(key=lambda row: (row["client"], row["slug"], row["version"]))
+    return {"templates": rows, "clients_with_problems": broken}
+
+
 # -- CLI ----------------------------------------------------------------------
 
 
@@ -410,4 +581,6 @@ def run(args):
             engine_refs=args.engine_ref or (),
             by=args.by,
         )
-    raise ValueError(f"template --action {args.action} ainda não existe.")
+    if args.action == "list":
+        return list_templates(args.client)
+    return show(_required(args, "ref"), _required(args, "client"))

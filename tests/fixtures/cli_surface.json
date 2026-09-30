@@ -2682,11 +2682,13 @@
         {
           "action": "_StoreAction",
           "choices": [
-            "freeze"
+            "freeze",
+            "list",
+            "show"
           ],
           "default": null,
           "dest": "action",
-          "help": "freeze: congela o ROTEIRO.md e os componentes do projeto --from na próxima versão do template",
+          "help": "freeze: congela o ROTEIRO.md e os componentes do projeto --from na próxima versão do template; list: lista as versões dos clientes registrados; show: mostra uma versão e confere o sha256 de cada arquivo (list/show só leem)",
           "nargs": null,
           "option_strings": [
             "--action"
@@ -2722,10 +2724,22 @@
           "choices": null,
           "default": null,
           "dest": "client",
-          "help": "Slug do cliente registrado dono do template; sem ele, o client do project.json (freeze)",
+          "help": "Slug do cliente registrado dono do template (obrigatório em show; em freeze, sem ele vale o client do project.json; em list, filtra)",
           "nargs": null,
           "option_strings": [
             "--client"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "ref",
+          "help": "Ref do template, cat:getbrolls/template/<slug>@<N> (show)",
+          "nargs": null,
+          "option_strings": [
+            "--ref"
           ],
           "required": false
         },

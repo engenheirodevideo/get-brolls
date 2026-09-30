@@ -307,6 +307,12 @@ def _template_slug(text):
     return check_slug(text)
 
 
+def _template_ref(text):
+    from .refs import template_parts, template_ref
+
+    return template_ref(*template_parts(text))
+
+
 def _engine_ref(text):
     from .templates import engine_ref
 
@@ -318,15 +324,27 @@ def _add_template_arguments(p):
     p.add_argument(
         "--action",
         required=True,
-        choices=["freeze"],
-        help="freeze: congela o ROTEIRO.md e os componentes do projeto --from na próxima versão do template",
+        choices=["freeze", "list", "show"],
+        help=(
+            "freeze: congela o ROTEIRO.md e os componentes do projeto --from na próxima versão do template; "
+            "list: lista as versões dos clientes registrados; show: mostra uma versão e confere o sha256 de cada "
+            "arquivo (list/show só leem)"
+        ),
     )
     p.add_argument("--from", dest="source", help="Pasta do projeto a congelar (freeze)")
     p.add_argument("--slug", type=_checked(_template_slug), help="Slug do template: minúsculas, números e - (freeze)")
     p.add_argument(
         "--client",
         type=_checked(_client_slug),
-        help="Slug do cliente registrado dono do template; sem ele, o client do project.json (freeze)",
+        help=(
+            "Slug do cliente registrado dono do template (obrigatório em show; em freeze, sem ele vale o client do "
+            "project.json; em list, filtra)"
+        ),
+    )
+    p.add_argument(
+        "--ref",
+        type=_checked(_template_ref),
+        help="Ref do template, cat:getbrolls/template/<slug>@<N> (show)",
     )
     p.add_argument("--title", help="Título de exibição do template (freeze)")
     p.add_argument(
