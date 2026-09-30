@@ -18,7 +18,7 @@ from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_video
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import layout
+from getbrolls import delivery, layout
 from getbrolls.ledger import Ledger, digest
 from getbrolls.models import id_stem
 
@@ -357,8 +357,6 @@ class VerifyAndDeliverTests(unittest.TestCase):
 
 class SweepTests(TempProject):
     def test_a_generated_symlink_into_broll_is_ours(self):
-        from getbrolls import delivery
-
         make_layout_one(self.project)
         clip = self.project / "broll" / "x.mp4"
         clip.write_bytes(b"x")

@@ -120,12 +120,13 @@ def load_registry() -> dict:
         raise _invalid_registry(path, "não é um JSON legível") from None
     if not isinstance(data, dict):
         raise _invalid_registry(path, "o topo tem que ser um objeto")
-    try:
-        versioning.read_schema(data, REGISTRY_SCHEMA, SUPPORTED, label="clients.json")
-    except versioning.NewerSchemaError:
-        raise
-    except ValueError:
-        raise _invalid_registry(path, f"schema tem que ser {_schema_tag(REGISTRY_SCHEMA)}") from None
+    versioning.read_schema(
+        data,
+        REGISTRY_SCHEMA,
+        SUPPORTED,
+        label="clients.json",
+        invalid=lambda: _invalid_registry(path, f"schema tem que ser {_schema_tag(REGISTRY_SCHEMA)}"),
+    )
     rows = data.get("clients")
     if not isinstance(rows, list) or not all(_valid_entry(row) for row in rows):
         raise _invalid_registry(path, "clients tem que ser uma lista de {slug, root, added}")
