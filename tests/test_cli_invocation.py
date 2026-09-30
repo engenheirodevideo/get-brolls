@@ -105,7 +105,7 @@ class EveryInstallRuns(unittest.TestCase):
 
 class WindowsCommand(unittest.TestCase):
     def test_windows_command_is_double_quoted_and_round_trips(self):
-        project = r"C:\Users\Ana Maria\projeto do video"
+        project = r"D:\Projetos Ana\projeto do video"
         text = _paths.command_text("verify", "--project", project, os_name="nt")
         self.assertIn(f'"{project}"', text)
         self.assertEqual(["verify", "--project", project], _paths.split_command(text, os_name="nt")[2:])
