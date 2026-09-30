@@ -3,6 +3,7 @@
 import argparse
 import io
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -82,7 +83,7 @@ class CliEntrypointErrorEnvelopeTests(unittest.TestCase):
         self.assertEqual(payload["type"], "RuntimeError")
 
     def test_uses_named_exit_code_constants(self):
-        self.assertEqual(cli.EXIT_OPERATION_ERROR, 2)
+        self.assertEqual(cli.EXIT_OPERATION_ERROR, 1)
         self.assertEqual(cli.EXIT_INTERNAL_ERROR, 3)
         with (
             patch.object(cli, "main", side_effect=RuntimeError("kaboom")),
@@ -105,13 +106,21 @@ class CliEntrypointErrorEnvelopeTests(unittest.TestCase):
         self.assertNotEqual(code, cli.EXIT_INTERNAL_ERROR)
         self.assertNotIn("INTERNAL_ERROR", buf.getvalue())
 
-    def test_generic_fallback_includes_redacted_traceback(self):
-        buf = io.StringIO()
-        with patch.object(cli, "main", side_effect=RuntimeError("kaboom")), patch("sys.stderr", buf):
-            cli.entrypoint()
-        payload = json.loads(buf.getvalue())
-        self.assertIn("traceback", payload)
-        self.assertIn("RuntimeError", payload["traceback"])
+    def test_generic_fallback_keeps_the_traceback_out_of_stderr(self):
+        with tempfile.TemporaryDirectory() as home:
+            buf = io.StringIO()
+            with (
+                patch.dict(os.environ, {"GB_HOME": home}),
+                patch.object(cli, "main", side_effect=RuntimeError("kaboom")),
+                patch("sys.stderr", buf),
+                patch("sys.argv", ["gb", "providers"]),
+            ):
+                cli.entrypoint()
+            payload = json.loads(buf.getvalue())
+            self.assertNotIn("traceback", payload)
+            self.assertNotIn("repr", payload)
+            event = json.loads((Path(home) / "diagnostics.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+            self.assertIn("RuntimeError", event["traceback"])
 
     def test_generic_fallback_writes_diagnostics_log_and_mentions_it(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -94,7 +94,7 @@ class DeliveryDestinationConflictTests(unittest.TestCase):
             deliverable_project(tmp)
             dest = self._plant_conflict(tmp)
 
-            error = run_cli("deliver", project=tmp, expect=2)
+            error = run_cli("deliver", project=tmp, expect=1)
 
             self.assertEqual("INVALID_DATA", error["error_code"])
             self.assertEqual("ValueError", error["type"])
@@ -153,7 +153,7 @@ class ConcurrentWriteCommandTests(unittest.TestCase):
                     "--url",
                     "https://www.instagram.com/reel/ABC123xyz/",
                     project=tmp,
-                    expect=2,
+                    expect=1,
                 )
             self.assertEqual("INVALID_DATA", error["error_code"])
             self.assertEqual("ValueError", error["type"])
@@ -198,7 +198,7 @@ class ManifestSchemaVersionTests(unittest.TestCase):
                 raw = json.dumps({"schema_version": schema_version, "items": []})
                 path.write_text(raw, encoding="utf-8")
 
-                error = run_cli("status", project=tmp, expect=2)
+                error = run_cli("status", project=tmp, expect=1)
 
                 self.assertEqual("INVALID_DATA", error["error_code"])
                 self.assertEqual("ValueError", error["type"])
@@ -213,7 +213,7 @@ class ManifestSchemaVersionTests(unittest.TestCase):
             raw = json.dumps({"schema_version": 1, "items": [item]})
             path.write_text(raw, encoding="utf-8")
 
-            error = run_cli("status", project=tmp, expect=2)
+            error = run_cli("status", project=tmp, expect=1)
 
             self.assertEqual("INVALID_DATA", error["error_code"])
             self.assertEqual("ValueError", error["type"])
@@ -241,19 +241,19 @@ class FailureEnvelopeClassesTests(unittest.TestCase):
 
     def test_invalid_argument_value_is_invalid_data(self):
         with tempfile.TemporaryDirectory() as tmp:
-            error = run_cli("resolve", "--file", str(Path(tmp) / "missing.mp4"), project=tmp, expect=2)
+            error = run_cli("resolve", "--file", str(Path(tmp) / "missing.mp4"), project=tmp, expect=1)
         self.assertEqual("INVALID_DATA", error["error_code"])
         self.assertEqual("ValueError", error["type"])
 
     def test_missing_project_folder_is_invalid_data(self):
         with tempfile.TemporaryDirectory() as tmp:
-            error = run_cli("status", project=str(Path(tmp) / "never-created"), expect=2)
+            error = run_cli("status", project=str(Path(tmp) / "never-created"), expect=1)
         self.assertEqual("INVALID_DATA", error["error_code"])
         self.assertEqual("ValueError", error["type"])
 
     def test_unknown_candidate_id_is_invalid_data(self):
         with tempfile.TemporaryDirectory() as tmp:
-            error = run_cli("permit", "--candidate", "does-not-exist", "--evidence", "x", project=tmp, expect=2)
+            error = run_cli("permit", "--candidate", "does-not-exist", "--evidence", "x", project=tmp, expect=1)
         self.assertEqual("INVALID_DATA", error["error_code"])
         self.assertEqual("ValueError", error["type"])
 
@@ -262,7 +262,7 @@ class FailureEnvelopeClassesTests(unittest.TestCase):
             root = Path(tmp) / "brolls"
             root.mkdir(parents=True)
             (root / "manifest.json").write_text("{not json", encoding="utf-8")
-            error = run_cli("status", project=tmp, expect=2)
+            error = run_cli("status", project=tmp, expect=1)
         self.assertEqual("INVALID_DATA", error["error_code"])
         self.assertEqual("ValueError", error["type"])
 
@@ -270,7 +270,7 @@ class FailureEnvelopeClassesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             Ledger(tmp)
             with project_lock(tmp):
-                error = run_cli("permit", "--candidate", "x", "--evidence", "y", project=tmp, expect=2)
+                error = run_cli("permit", "--candidate", "x", "--evidence", "y", project=tmp, expect=1)
         self.assertEqual("INVALID_DATA", error["error_code"])
         self.assertEqual("ValueError", error["type"])
 
@@ -281,7 +281,7 @@ class FailureEnvelopeClassesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             blocked = Path(tmp) / "im-a-file"
             blocked.write_text("not a directory", encoding="utf-8")
-            error = run_cli("init-rules", project=str(blocked), expect=2)
+            error = run_cli("init-rules", project=str(blocked), expect=1)
         self.assertEqual("IO_ERROR", error["error_code"])
         self.assertIn(error["type"], ("NotADirectoryError", "FileExistsError"))
 

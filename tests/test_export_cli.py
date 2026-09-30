@@ -351,7 +351,7 @@ class ExportHappyPathTests(ExportCase):
     def test_dry_run_holds_the_project_lock(self):
         self.install()
         with project_lock(self.project):
-            out = self.export("--dry-run", expect=2)
+            out = self.export("--dry-run", expect=1)
         self.assertIn("Outro comando está usando este projeto", out["message"])
 
     def test_changed_voice_since_latest_is_a_warning_naming_the_new_folder(self):
@@ -385,40 +385,40 @@ class ExportHappyPathTests(ExportCase):
 
 class ExportRefusalTests(ExportCase):
     def test_exporter_not_installed(self):
-        out = self.export(expect=2)
+        out = self.export(expect=1)
         self.assertIn("Não há exporter demo_export instalado", out["message"])
         self.assertNotIn("traceback", out)
 
     def test_installed_but_disabled(self):
         self.install(enable=False)
-        out = self.export(expect=2)
+        out = self.export(expect=1)
         self.assertIn("Plugin demo_export está disabled", out["message"])
         self.assertIn("plugins --action enable --id demo_export", out["message"])
 
     def test_outside_gb_plugins_points_at_the_variable(self):
         self.install()
         with mock.patch.dict(os.environ, {"GB_PLUGINS": "outro"}):
-            out = self.export(expect=2)
+            out = self.export(expect=1)
         self.assertIn("GB_PLUGINS", out["message"])
 
     def test_suspended_after_the_content_changed(self):
         folder = self.install()
         with (folder / "plugin.py").open("a", encoding="utf-8") as stream:
             stream.write("\n# mudou depois do enable\n")
-        self.assertIn("Plugin demo_export está suspended", self.export(expect=2)["message"])
+        self.assertIn("Plugin demo_export está suspended", self.export(expect=1)["message"])
 
     def test_gates_run_before_the_registry(self):
         self.install()
         self.edit("Todo mundo trava.", "Todo mundo trava muito.")
         self.review()
-        self.assertIn("O BRIEF.md não reflete o roteiro", self.export(expect=2)["message"])
+        self.assertIn("O BRIEF.md não reflete o roteiro", self.export(expect=1)["message"])
         self.assertFalse((self.project / "exports").exists())
 
     def test_invalid_brief_after_sync_gets_an_export_message(self):
         self.install()
         brief = self.project / "BRIEF.md"
         brief.write_text(brief.read_text(encoding="utf-8").replace('"version": 1', '"version": 2'), encoding="utf-8")
-        out = self.export(expect=2)
+        out = self.export(expect=1)
         self.assertIn("O export não conseguiu conferir o BRIEF.md contra o roteiro", out["message"])
         self.assertIn('"version"', out["message"])
         self.assertNotIn("traceback", out)
@@ -440,7 +440,7 @@ class ExportRefusalTests(ExportCase):
         self.assertEqual("hardlink", methods[f"clip:{self.clip_id}"])
 
     def test_bad_exporter_name_is_refused_before_loading_plugins(self):
-        out = run_cli("export", "--to", "../x", project=self.project, expect=2)
+        out = run_cli("export", "--to", "../x", project=self.project, expect=1)
         self.assertIn("--to espera o nome de um exporter", out["message"])
 
     def test_path_like_speech_exports_with_one_warning(self):
@@ -457,7 +457,7 @@ class ExportRefusalTests(ExportCase):
 
     def test_paths_equal_but_for_case_are_a_clear_refusal(self):
         self.install(code=CASE_CODE)
-        out = self.export(expect=2)
+        out = self.export(expect=1)
         self.assertIn("mesmo caminho", out["message"])
         self.assertNotIn("FileExistsError", json.dumps(out))
         self.assertFalse((self.project / "exports").exists())
@@ -511,7 +511,7 @@ class ExportPlanFileTests(ExportCase):
         before = {p: p.read_bytes() for p in watched}
         for extra in ((), ("--dry-run",)):
             with self.subTest(extra=extra):
-                self.assertIn("gravação interrompida", self.export(*extra, expect=2)["message"].lower())
+                self.assertIn("gravação interrompida", self.export(*extra, expect=1)["message"].lower())
                 self.assertEqual(before, {p: p.read_bytes() for p in watched})
         self.assertFalse((self.project / "exports").exists())
 

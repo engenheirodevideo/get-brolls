@@ -6,9 +6,11 @@
 
 import argparse
 import contextlib
+import contextvars
 import difflib
 import json
 import logging
+import os
 import platform
 import re
 import sys
@@ -18,12 +20,29 @@ from gettext import gettext
 from typing import NoReturn
 
 from . import __version__, _paths, logs, presets
-from .runtime import READ_ONLY_ACTIONS, READ_ONLY_COMMANDS, OperationError, audited
+from .errors import PrerequisiteError, UsageError
+from .runtime import READ_ONLY_ACTIONS, READ_ONLY_COMMANDS, OperationError, audited, error_code_for, exit_code_for
 
-# Named so a caller (script, test, or someone scripting the CLI) never has to hardcode 2/3.
-EXIT_OPERATION_ERROR = 2
-EXIT_INTERNAL_ERROR = 3
+# Named so a caller (script, test, or someone scripting the CLI) never has to hardcode a
+# number. Which error leaves with which code is decided in one place: `runtime.ERROR_EXIT`.
+EXIT_OK = 0
+EXIT_OPERATION_ERROR = 1
 EXIT_USAGE_ERROR = 2
+EXIT_INTERNAL_ERROR = 3
+EXIT_PREREQUISITE = 4
+EXIT_INTERRUPTED = 130
+EXIT_CODES = (
+    (EXIT_OK, "ok", "Deu certo"),
+    (EXIT_OPERATION_ERROR, "operation", "Erro de operação ou de dados"),
+    (EXIT_USAGE_ERROR, "usage", "Erro de uso: comando, flag ou configuração"),
+    (EXIT_INTERNAL_ERROR, "internal", "Erro interno (bug); detalhes só em diagnostics.jsonl"),
+    (EXIT_PREREQUISITE, "prerequisite", "Falta um pré-requisito da instalação"),
+    (EXIT_INTERRUPTED, "interrupted", "Interrompido (Ctrl+C)"),
+)
+# Só estes comandos saem 4 com o resultado em stdout (`"ready": false`); nos outros, 4
+# é sempre um erro de pré-requisito em JSON no stderr.
+PREREQUISITE_COMMANDS = ("doctor", "setup")
+_RESULT_EXIT: contextvars.ContextVar[int] = contextvars.ContextVar("getbrolls_result_exit", default=EXIT_OK)
 
 # Uma linha por subcomando: o que ele faz no fluxo coleta → revisão → entrega.
 SUMMARIES = {
@@ -906,13 +925,12 @@ def _load_env_early(args):
     """
     from . import _paths
     from .config import load_env_choice
-    from .errors import UsageError
 
     try:
         load_env_choice(_paths.env_file(args.env_file), warn=False)
     except UsageError as exc:
         raise OperationError(
-            {"operation": args.command, "status": "error", "error_code": "INVALID_DATA", "message": str(exc)}
+            {"operation": args.command, "status": "error", "error_code": "USAGE_ERROR", "message": str(exc)}
         ) from None
     except ValueError:
         pass  # `execute()` levanta de novo, dentro da auditoria
@@ -932,8 +950,9 @@ def main(argv=None):
         try:
             raise SystemExit(execute(args))
         except ValueError as exc:
-            print(json.dumps({"error": str(exc), "error_code": "INVALID_DATA"}, ensure_ascii=False))
-            raise SystemExit(EXIT_OPERATION_ERROR) from None
+            code = error_code_for(exc)
+            print(json.dumps({"error": str(exc), "error_code": code}, ensure_ascii=False))
+            raise SystemExit(exit_code_for(code)) from None
 
     # `.env` que falta ou que tenta definir o que não pode é erro de uso: sai antes do
     # log, da trava e da auditoria, sem criar nada em `brolls/`. (`serve` em primeiro
@@ -977,9 +996,42 @@ def main(argv=None):
             error_code=None,
             ms=round((time.monotonic() - started) * 1000),
         )
+        _RESULT_EXIT.set(result_exit(args.command, result))
         return result
     finally:
         logs.shutdown()
+
+
+def result_exit(command, result):
+    """Código de saída de um comando que deu certo: 4 só para `doctor`/`setup` com
+    `"ready": false` (o resultado sai em stdout do mesmo jeito); 0 para o resto."""
+    if command in PREREQUISITE_COMMANDS and isinstance(result, dict) and result.get("ready") is False:
+        return EXIT_PREREQUISITE
+    return EXIT_OK
+
+
+def _print_error(payload):
+    """Uma linha JSON de erro em stderr, sem traceback nem repr (esses ficam no diagnostics)."""
+    clean = {k: v for k, v in payload.items() if k not in ("traceback", "repr")}
+    print(json.dumps(clean, ensure_ascii=False), file=sys.stderr)
+
+
+def _silence_stdout():
+    """Depois de um `BrokenPipeError`, aponta stdout para o devnull: o flush da saída do
+    interpretador não levanta de novo (nem imprime "Exception ignored ...")."""
+    try:
+        target = sys.stdout.fileno()
+    except (AttributeError, OSError, ValueError):
+        return  # stdout sem descritor (redirecionado em memória): nada a flushar no fim
+    if not isinstance(target, int):
+        return
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    try:
+        os.dup2(devnull, target)
+    except OSError:
+        pass
+    finally:
+        os.close(devnull)
 
 
 def entrypoint():
@@ -987,56 +1039,64 @@ def entrypoint():
         # TextIO não declara `reconfigure`; quem não tiver cai no except.
         with contextlib.suppress(AttributeError, OSError):
             stream.reconfigure(encoding="utf-8")  # pyright: ignore[reportAttributeAccessIssue]
+    _RESULT_EXIT.set(EXIT_OK)
     try:
         print(json.dumps(main(), ensure_ascii=False, indent=2))
-        return 0
+        # Flush aqui, dentro do `try`: com `| head` o erro de pipe chega agora, e não no
+        # encerramento do interpretador, onde viraria traceback em stderr.
+        sys.stdout.flush()
+        return _RESULT_EXIT.get()
     except OperationError as exc:
-        print(
-            json.dumps({"error": str(exc), **exc.payload}, ensure_ascii=False),
-            file=sys.stderr,
-        )
-        return EXIT_OPERATION_ERROR
+        _print_error({"error": str(exc), **exc.payload})
+        return exit_code_for(exc.payload.get("error_code"))
+    except (UsageError, PrerequisiteError) as exc:
+        # Levantado fora de `audited` (antes do parse terminar, por exemplo).
+        code = error_code_for(exc)
+        _print_error({"error": str(exc), "error_code": code})
+        return exit_code_for(code)
+    except KeyboardInterrupt:
+        _print_error({"error": "Operação interrompida.", "error_code": "INTERRUPTED"})
+        return EXIT_INTERRUPTED
     except BrokenPipeError:
         # The consumer end of a pipe (e.g. `| head`) closed early; this is an ordinary,
         # expected shutdown, not a bug — do not report it as INTERNAL_ERROR.
-        with contextlib.suppress(Exception):
-            sys.stdout.close()
-        return 0
+        _silence_stdout()
+        return EXIT_OK
     except Exception as exc:  # noqa: BLE001 - last-resort CLI boundary, must exit as JSON not a raw traceback
-        # Anything audited() didn't already turn into an OperationError (e.g. an argparse-time
-        # bug) must still exit as JSON, not a raw traceback breaking the CLI's output contract.
-        from .runtime import redact, scrub_home, write_diagnostics_log
+        return _internal_error(exc)
 
-        project = _project_from_argv()
-        event = {
-            "operation": None,
-            "status": "error",
+
+def _internal_error(exc):
+    """Último recurso: grava o traceback no diagnostics e mostra só o tipo do erro."""
+    # Anything audited() didn't already turn into an OperationError (e.g. an argparse-time
+    # bug) must still exit as JSON, not a raw traceback breaking the CLI's output contract.
+    from .runtime import redact, scrub_home, write_diagnostics_log
+
+    project = _project_from_argv()
+    event = {
+        "operation": None,
+        "status": "error",
+        "error_code": "INTERNAL_ERROR",
+        "type": type(exc).__name__,
+        "repr": scrub_home(redact(repr(exc))),
+        "traceback": scrub_home(redact(traceback.format_exc())),
+    }
+    log = write_diagnostics_log(project, event)
+    message = "Erro interno inesperado (bug)."
+    if log:
+        message += f" Detalhes em {log} (diagnostics.jsonl)."
+    else:
+        message += " Não foi possível gravar diagnostics.jsonl."
+    _print_error(
+        {
+            "error": message,
             "error_code": "INTERNAL_ERROR",
             "type": type(exc).__name__,
-            "repr": scrub_home(redact(repr(exc))),
-            "traceback": scrub_home(redact(traceback.format_exc())),
+            "log": str(log) if log else None,
+            "app_log": str(logs.log_path(project)) if logs.log_path(project) else None,
         }
-        log = write_diagnostics_log(project, event) if project else None
-        message = "Erro interno inesperado."
-        if log:
-            message += f" Detalhes em {log} (diagnostics.jsonl)."
-        else:
-            message += " Consulte diagnostics.jsonl no projeto (--project), se disponível."
-        print(
-            json.dumps(
-                {
-                    "error": message,
-                    "error_code": "INTERNAL_ERROR",
-                    "type": type(exc).__name__,
-                    "message": redact(repr(exc)),
-                    "traceback": event["traceback"],
-                    "app_log": str(logs.log_path(project)) if logs.log_path(project) else None,
-                },
-                ensure_ascii=False,
-            ),
-            file=sys.stderr,
-        )
-        return EXIT_INTERNAL_ERROR
+    )
+    return EXIT_INTERNAL_ERROR
 
 
 def _project_from_argv():

@@ -108,7 +108,7 @@ class ApproveChatTests(unittest.TestCase):
                 "Aprovo os dois.",
                 "--project",
                 tmp,
-                expect=2,
+                expect=1,
             )
             self.assertIn("local:inexistente", json.dumps(failed, ensure_ascii=False))
             self.assertEqual("pending", Ledger(tmp).get("local:a")["approval"]["status"])
@@ -237,10 +237,10 @@ class ApproveChatTests(unittest.TestCase):
                 "Aprovo.",
                 "--project",
                 tmp,
-                expect=2,
+                expect=1,
             )
             self.assertIn("--all", error["error"])
-            missing = run_cli("approve", "--by", "Ana", "--statement", "Aprovo.", "--project", tmp, expect=2)
+            missing = run_cli("approve", "--by", "Ana", "--statement", "Aprovo.", "--project", tmp, expect=1)
             self.assertIn("--candidate", missing["error"])
 
 
@@ -287,7 +287,7 @@ class RejectManyTests(unittest.TestCase):
                 "local:nao-existe",
                 "--project",
                 tmp,
-                expect=2,
+                expect=1,
             )
             self.assertIn("local:nao-existe", error["error"])
             # Validação antes da escrita: o item válido da mesma leva não mudou.
@@ -384,10 +384,10 @@ class ChatStatementRequiredTests(unittest.TestCase):
                 "Ana",
                 "--project",
                 tmp,
-                expect=2,
+                expect=1,
             )
             self.assertIn("--statement", single["error"])
-            batch = run_cli("approve", "--all", "--by", "Ana", "--project", tmp, expect=2)
+            batch = run_cli("approve", "--all", "--by", "Ana", "--project", tmp, expect=1)
             self.assertIn("--statement", batch["error"])
             # Nada foi gravado: a recusa acontece antes de tocar no ledger.
             self.assertEqual("pending", Ledger(tmp).get("local:a")["approval"]["status"])

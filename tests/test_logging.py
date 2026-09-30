@@ -60,9 +60,9 @@ class DefaultSettingsTests(unittest.TestCase):
             json.loads(ok.stdout)  # exactly one JSON document, nothing else on stdout
             self.assertEqual("", ok.stderr)
 
-            # Same file exists already: --format without --force is refused (exit 2).
+            # Same file exists already: --format without --force is refused (exit 1).
             failed = _raw_run("init-rules", "--format", "reels", project=tmp)
-            self.assertEqual(2, failed.returncode)
+            self.assertEqual(1, failed.returncode)
             self.assertEqual("", failed.stdout)
             envelope = json.loads(failed.stderr)  # exactly one JSON document on stderr
             self.assertIn("error_code", envelope)
@@ -90,7 +90,7 @@ class VerboseStderrTests(unittest.TestCase):
             env = {"GB_LOG_LEVEL": "DEBUG", "GB_LOG_STDERR": "1"}
             _raw_run("init-rules", project=tmp, env=env)
             failed = _raw_run("init-rules", "--format", "reels", project=tmp, env=env)
-            self.assertEqual(2, failed.returncode)
+            self.assertEqual(1, failed.returncode)
             lines = [line for line in failed.stderr.splitlines() if line.strip()]
             self.assertGreater(len(lines), 1, "GB_LOG_STDERR should have added lines before the envelope")
             envelope = json.loads(lines[-1])
@@ -117,7 +117,7 @@ class InvalidLogLevelTests(unittest.TestCase):
     def test_invalid_level_produces_the_standard_invalid_data_envelope(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_cli("init-rules", project=tmp)
-            payload = run_cli("status", project=tmp, env={"GB_LOG_LEVEL": "NONSENSE"}, expect=2)
+            payload = run_cli("status", project=tmp, env={"GB_LOG_LEVEL": "NONSENSE"}, expect=1)
             self.assertEqual("INVALID_DATA", payload.get("error_code"))
             self.assertIn("GB_LOG_LEVEL", payload.get("error", ""))
 
@@ -128,7 +128,7 @@ class ReadOnlyCommandTests(unittest.TestCase):
     def test_status_on_a_folder_without_brolls_creates_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
             done = _raw_run("status", project=tmp)
-            self.assertEqual(2, done.returncode)
+            self.assertEqual(1, done.returncode)
             self.assertIn("Projeto não encontrado", done.stderr)
             self.assertEqual([], list(Path(tmp).iterdir()), "status criou arquivos")
 
@@ -222,7 +222,7 @@ class OptionValuesNeverLoggedTests(unittest.TestCase):
                 secret,
                 project=tmp,
                 env={"GB_LOG_LEVEL": "DEBUG"},
-                expect=2,
+                expect=1,
             )
             text = _log_path(tmp).read_text(encoding="utf-8")
             self.assertNotIn(secret, text)
@@ -237,7 +237,7 @@ class OptionValuesNeverLoggedTests(unittest.TestCase):
                 "http://example.com/SEGREDO-URL-Z9K2",
                 project=tmp,
                 env={"GB_LOG_LEVEL": "DEBUG"},
-                expect=2,
+                expect=1,
             )
             text = _log_path(tmp).read_text(encoding="utf-8")
             self.assertNotIn("SEGREDO-URL-Z9K2", text)
@@ -404,7 +404,7 @@ class ErrorEnvelopeAppLogTests(unittest.TestCase):
     def test_app_log_present_alongside_diagnostics_log(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_cli("init-rules", project=tmp)
-            payload = run_cli("init-rules", "--format", "reels", project=tmp, expect=2)
+            payload = run_cli("init-rules", "--format", "reels", project=tmp, expect=1)
             self.assertEqual(str(Path(tmp).resolve() / "brolls" / "diagnostics.jsonl"), payload["log"])
             self.assertEqual(str(_log_path(tmp)), payload["app_log"])
 
@@ -434,7 +434,7 @@ class RecordWarningMirrorTests(unittest.TestCase):
                 "evidência sintética",
                 project=tmp,
                 env={"GB_LOG_LEVEL": "DEBUG"},
-                expect=2,
+                expect=1,
             )
             text = _log_path(tmp).read_text(encoding="utf-8")
             self.assertIn("event=warning", text)

@@ -402,7 +402,7 @@ class StatusCommandTests(unittest.TestCase):
                 encoding="utf-8",
                 check=False,
             )
-            self.assertEqual(2, done.returncode, done.stdout)
+            self.assertEqual(1, done.returncode, done.stdout)
             self.assertIn("Projeto não encontrado", done.stderr)
             self.assertIn("nenhum arquivo foi criado", done.stderr)
             self.assertEqual([], list(Path(tmp).iterdir()), "status criou arquivos")

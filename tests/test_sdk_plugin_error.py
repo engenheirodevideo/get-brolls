@@ -99,7 +99,7 @@ class PluginErrorFlowTests(LoaderTestCase):
         self.enable("PluginError('Faltou --arg pasta=...')")
         pin_plugins("demo")
         env = {"GB_HOME": str(self.home), "GB_PLUGINS": "demo"}
-        err = run_cli("x", "demo", "ola", expect=2, env=env)
+        err = run_cli("x", "demo", "ola", expect=1, env=env)
         self.assertIn("Plugin demo: Faltou --arg pasta=...", err["error"])
 
 
@@ -141,7 +141,7 @@ class ExampleGuidanceTests(LoaderTestCase):
         self.assertIn("Configure PASTA_LOCAL_DIR", str(caught.exception))
         pin_plugins("pasta_local")
         env = {"GB_HOME": str(self.home), "GB_PLUGINS": "pasta_local", "PASTA_LOCAL_DIR": str(self.media)}
-        err = run_cli("x", "pasta_local", "recentes", "--arg", "limite=abc", project=self.project, expect=2, env=env)
+        err = run_cli("x", "pasta_local", "recentes", "--arg", "limite=abc", project=self.project, expect=1, env=env)
         self.assertIn("--arg limite=N espera um número inteiro", err["error"])
 
     def test_scaffold_route_template_raises_plugin_error(self):

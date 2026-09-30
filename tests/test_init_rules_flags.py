@@ -29,7 +29,7 @@ class VideoFormatFlagTests(unittest.TestCase):
     def test_format_on_an_existing_file_requires_force(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_cli("init-rules", "--project", tmp)
-            refused = run_cli("init-rules", "--project", tmp, "--format", "reels", expect=2)
+            refused = run_cli("init-rules", "--project", tmp, "--format", "reels", expect=1)
             self.assertIn("--format", json.dumps(refused, ensure_ascii=False))
             run_cli("init-rules", "--project", tmp, "--format", "reels", "--force")
             self.assertEqual("reels", load_rules(tmp)["video_format"])
@@ -71,7 +71,7 @@ class InitRulesFlagTests(unittest.TestCase):
             rules = load_rules(tmp)
             self.assertEqual("per_item_evidence", rules["copyright"]["mode"])
             self.assertIsNone(rules["copyright"]["responsible_person"])
-            again = run_cli("init-rules", "--project", tmp, expect=2)
+            again = run_cli("init-rules", "--project", tmp, expect=1)
             self.assertIn("já existe", again["error"])
 
     def test_flags_fill_the_json_block_and_keep_the_prose(self):
@@ -104,7 +104,7 @@ class InitRulesFlagTests(unittest.TestCase):
                 "user_declaration",
                 "--project",
                 tmp,
-                expect=2,
+                expect=1,
             )
             self.assertIn("--responsible", error["error"])
             self.assertFalse((Path(tmp) / "RULES.md").exists())
@@ -117,7 +117,7 @@ class InitRulesFlagTests(unittest.TestCase):
                 path.read_text(encoding="utf-8").replace('"blocked_domains": []', '"blocked_domains": ["exemplo.com"]'),
                 encoding="utf-8",
             )
-            error = run_cli("init-rules", "--force", "--project", tmp, expect=2)
+            error = run_cli("init-rules", "--force", "--project", tmp, expect=1)
             self.assertIn("--mode", error["error"])
             self.assertEqual(["exemplo.com"], load_rules(tmp)["blocked_domains"])
 

@@ -395,7 +395,7 @@ class InspectCliTests(FetchRouteCase):
         ident = self.gb("search", "--provider", "demo", "--query", "mar")["items"][0]["id"]
         for args in (("--candidate", ident), ("--url", "https://demo.example/v/1")):
             with self.subTest(args=args):
-                err = run_cli("inspect", *args, project=self.project, expect=2, env=self.env)
+                err = run_cli("inspect", *args, project=self.project, expect=1, env=self.env)
                 self.assertIn("--reference-only", err["error"])
         self.assertEqual([], self.calls_made())
 

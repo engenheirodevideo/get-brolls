@@ -90,27 +90,27 @@ class PluginCommandCliTests(LoaderTestCase):
         self.assertFalse((self.project / "brolls").exists())
 
     def test_failing_command_is_exit_2_with_the_plugin_id(self):
-        err = run_cli("x", "demo", "quebra", expect=2, env=self.env())
+        err = run_cli("x", "demo", "quebra", expect=1, env=self.env())
         self.assertIn("Plugin demo", err["error"])
         self.assertIn("RuntimeError", err["error"])
         self.assertNotEqual("INTERNAL_ERROR", err.get("error_code"))
 
     def test_non_object_result_is_refused(self):
-        err = run_cli("x", "demo", "lista", expect=2, env=self.env())
+        err = run_cli("x", "demo", "lista", expect=1, env=self.env())
         self.assertIn("objeto JSON", err["error"])
 
     def test_unknown_command_and_disabled_plugin_are_named(self):
-        err = run_cli("x", "demo", "nao_existe", expect=2, env=self.env())
+        err = run_cli("x", "demo", "nao_existe", expect=1, env=self.env())
         self.assertIn("x --list", err["error"])
         run_cli("plugins", "--action", "disable", "--id", "demo", env={"GB_HOME": str(self.home)})
-        err = run_cli("x", "demo", "contar", expect=2, env={"GB_HOME": str(self.home)})
+        err = run_cli("x", "demo", "contar", expect=1, env={"GB_HOME": str(self.home)})
         self.assertIn("disabled", err["error"])
 
     def test_bad_args_are_refused(self):
         for bad in (("--arg", "sem_igual"), ("--arg", "Chave=1"), ("--arg", "a=1", "--arg", "a=2")):
             with self.subTest(bad=bad):
-                run_cli("x", "demo", "contar", *bad, expect=2, env=self.env())
-        run_cli("x", expect=2, env=self.env())
+                run_cli("x", "demo", "contar", *bad, expect=1, env=self.env())
+        run_cli("x", expect=1, env=self.env())
 
 
 class PluginCommandLoggingTests(LoaderTestCase):

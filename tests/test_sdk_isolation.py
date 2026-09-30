@@ -310,7 +310,7 @@ class ResolveLeakCliTests(LoaderTestCase):
         self.addCleanup(shutil.rmtree, project, ignore_errors=True)
         pin_plugins("demo")
         env = {"GB_HOME": str(self.home), "GB_PLUGINS": "demo", "DEMO_TOKEN": SECRET}
-        err = run_cli("resolve", "--url", "https://demo.example/v/1", project=project, expect=2, env=env)
+        err = run_cli("resolve", "--url", "https://demo.example/v/1", project=project, expect=1, env=env)
         self.assertNotIn(SECRET, json.dumps(err))
         for name in ("diagnostics.jsonl", "getbrolls.log"):
             path = project / "brolls" / name

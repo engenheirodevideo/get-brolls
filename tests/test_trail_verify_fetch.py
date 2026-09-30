@@ -91,7 +91,7 @@ class VerifyTamperTests(unittest.TestCase):
             data[len(data) // 2] ^= 0xFF
             clip.write_bytes(bytes(data))
 
-            error = run_cli("verify", project=root, expect=2)
+            error = run_cli("verify", project=root, expect=1)
             self.assertEqual(error["error_code"], "INVALID_DATA")
             self.assertIn("Arquivo alterado após coleta", error["message"])
             self.assertIn(cid, error["message"])
@@ -110,7 +110,7 @@ class VerifyTamperTests(unittest.TestCase):
             clip = root / "brolls" / out["output"]["path"]
             clip.unlink()
 
-            error = run_cli("verify", project=root, expect=2)
+            error = run_cli("verify", project=root, expect=1)
             self.assertEqual(error["error_code"], "INVALID_DATA")
             # A missing file fails inside ffprobe (probe() runs before the sha comparison),
             # so the message names the tool and the path, not the tamper wording.
@@ -163,7 +163,7 @@ class StaleApprovalTests(unittest.TestCase):
             # the only thing blocking fetch is the stale/missing approval.
             self.assertEqual(after["rights"]["status"], "permitted")
 
-            refused = run_cli("fetch", *base, expect=2)
+            refused = run_cli("fetch", *base, expect=1)
             self.assertEqual(refused["error_code"], "INVALID_DATA")
             self.assertIn("Aprovação humana ausente ou inválida", refused["message"])
             still_nothing = _item(root, cid)
@@ -196,7 +196,7 @@ class StaleApprovalTests(unittest.TestCase):
             self.assertEqual(permitted["rights"]["status"], "permitted")
             self.assertEqual(permitted["state"], "rejected")
 
-            refused = run_cli("fetch", *base, expect=2)
+            refused = run_cli("fetch", *base, expect=1)
             self.assertEqual(refused["error_code"], "INVALID_DATA")
             self.assertIn("Aprovação humana ausente ou inválida", refused["message"])
 

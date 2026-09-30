@@ -173,14 +173,14 @@ class FolderInstallTests(InstallTestCase):
             preview["plugin"]["sha256"],
             env=self.env(),
         )
-        err = run_cli("plugins", "--action", "install", "--source", source, expect=2, env=self.env())
+        err = run_cli("plugins", "--action", "install", "--source", source, expect=1, env=self.env())
         self.assertIn("--action update", err["error"])
 
     @unittest.skipIf(os.name == "nt", "symlink exige privilégio no Windows")
     def test_symlink_in_the_source_is_refused(self):
         source = write_plugin(self.work / "demo_src")
         (source / "atalho.txt").symlink_to(Path(tempfile.gettempdir()))
-        err = run_cli("plugins", "--action", "install", "--source", source, expect=2, env=self.env())
+        err = run_cli("plugins", "--action", "install", "--source", source, expect=1, env=self.env())
         self.assertIn("link simbólico", err["error"])
         self.assertFalse((self.home / "plugins" / "demo").exists())
 
@@ -194,13 +194,13 @@ class FolderInstallTests(InstallTestCase):
             "git@example.com:org/repo.git?x=1",
         ):
             with self.subTest(source=source):
-                err = run_cli("plugins", "--action", "install", "--source", source, expect=2, env=self.env())
+                err = run_cli("plugins", "--action", "install", "--source", source, expect=1, env=self.env())
                 self.assertNotIn("segredo", json.dumps(err, ensure_ascii=False))
-        run_cli("plugins", "--action", "install", expect=2, env=self.env())
+        run_cli("plugins", "--action", "install", expect=1, env=self.env())
 
     def test_update_needs_a_recorded_origin(self):
         self.install()
-        err = run_cli("plugins", "--action", "update", "--id", "demo", expect=2, env=self.env())
+        err = run_cli("plugins", "--action", "update", "--id", "demo", expect=1, env=self.env())
         self.assertIn("plugins --action install", err["error"])
 
     def test_old_plugins_json_without_sources_is_still_valid(self):
@@ -221,7 +221,7 @@ class FolderInstallTests(InstallTestCase):
         preview = run_cli("plugins", "--action", "install", "--source", source, env=self.env())
         sha = preview["plugin"]["sha256"]
 
-        missing = run_cli("plugins", "--action", "install", "--source", source, "--yes", expect=2, env=self.env())
+        missing = run_cli("plugins", "--action", "install", "--source", source, "--yes", expect=1, env=self.env())
         self.assertIn("--expect", missing["error"])
 
         wrong = run_cli(
@@ -233,7 +233,7 @@ class FolderInstallTests(InstallTestCase):
             "--yes",
             "--expect",
             "0" * 64,
-            expect=2,
+            expect=1,
             env=self.env(),
         )
         self.assertIn("sha256", wrong["error"])
@@ -687,7 +687,7 @@ class GitInstallTests(InstallTestCase):
         git(repo, "commit", "--quiet", "-m", "symlink")
         link.unlink()  # some do disco local, mas continua no histórico (HEAD) do repo
 
-        err = run_cli("plugins", "--action", "install", "--source", repo, expect=2, env=self.env())
+        err = run_cli("plugins", "--action", "install", "--source", repo, expect=1, env=self.env())
         self.assertIn("link simbólico", err["error"])
         self.assertFalse((self.home / "plugins" / "demo").exists())
 
@@ -766,7 +766,7 @@ class GitInstallTests(InstallTestCase):
         )
         git(repo, "commit", "--quiet", "-m", "colisao de nomes")
 
-        err = run_cli("plugins", "--action", "install", "--source", repo, expect=2, env=self.env())
+        err = run_cli("plugins", "--action", "install", "--source", repo, expect=1, env=self.env())
         self.assertIn("colidem", err["error"])
         self.assertFalse((self.home / "plugins" / "demo").exists())
 
@@ -775,7 +775,7 @@ class GitInstallTests(InstallTestCase):
     def test_git_url_with_query_or_fragment_is_refused(self):
         for source in ("https://example.com/demo.git?token=segredo", "git@example.com:demo.git#ref"):
             with self.subTest(source=source):
-                err = run_cli("plugins", "--action", "install", "--source", source, expect=2, env=self.env())
+                err = run_cli("plugins", "--action", "install", "--source", source, expect=1, env=self.env())
                 self.assertIn("query", err["error"])
 
 

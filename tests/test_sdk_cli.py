@@ -42,15 +42,15 @@ class PluginsCommandTests(LoaderTestCase):
 
     def test_check_surfaces_the_plugins_own_error_instead_of_internal_error(self):
         """`register()` estourando RuntimeError não pode virar INTERNAL_ERROR
-        (exit 3, bug interno) — é erro do plugin, exit 2, com tipo e mensagem visíveis."""
+        (exit 3, bug interno) — é erro do plugin, exit 1, com tipo e mensagem visíveis."""
         folder = self.install(code="def register(api):\n    raise RuntimeError('boom')\n")
-        err = run_cli("plugins", "--action", "check", "--path", folder, expect=2, env=self.env())
+        err = run_cli("plugins", "--action", "check", "--path", folder, expect=1, env=self.env())
         self.assertNotEqual("INTERNAL_ERROR", err.get("error_code"))
         self.assertIn("RuntimeError", err["error"])
         self.assertIn("boom", err["error"])
 
     def test_missing_id_is_a_clear_error(self):
-        err = run_cli("plugins", "--action", "enable", expect=2, env=self.env())
+        err = run_cli("plugins", "--action", "enable", expect=1, env=self.env())
         self.assertIn("--id", json.dumps(err, ensure_ascii=False))
 
     def test_doctor_without_plugins_keeps_its_shape(self):

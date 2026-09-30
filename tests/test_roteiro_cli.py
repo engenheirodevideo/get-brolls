@@ -117,7 +117,7 @@ class RoteiroCliTests(CliCase):
         ):
             self.assertTrue((self.project / folder).is_dir(), folder)
         self.assertIsNone(created["backup"])
-        refused = self.cli("roteiro", "--action", "new", "--genero", "reels", "--tema", "IA", expect=2)
+        refused = self.cli("roteiro", "--action", "new", "--genero", "reels", "--tema", "IA", expect=1)
         self.assertIn("--force", refused["error"])
         (self.project / "ROTEIRO.md").write_text(
             (self.project / "ROTEIRO.md").read_text(encoding="utf-8") + "\n", encoding="utf-8"
@@ -125,7 +125,7 @@ class RoteiroCliTests(CliCase):
         forced = self.cli("roteiro", "--action", "new", "--genero", "reels", "--tema", "IA", "--force")
         self.assertTrue(Path(forced["backup"]).read_text(encoding="utf-8").endswith("\n\n"))
 
-        native = self.cli("roteiro", "--action", "check", expect=2)
+        native = self.cli("roteiro", "--action", "check", expect=1)
         self.assertIn("init-rules --format reels", native["error"])
         self.cli("init-rules", "--format", "reels")
         skeleton = self.cli("roteiro", "--action", "check")
@@ -136,11 +136,11 @@ class RoteiroCliTests(CliCase):
         self.assertFalse(checked["review"]["reviewed"])
         self.assertNotIn("esqueleto", " ".join(checked["warnings"]))
 
-        self.assertIn("revisão humana", self.cli("roteiro", "--action", "sync", expect=2)["error"])
-        self.cli("roteiro", "--action", "review", "--by", "Bruno Moreira", expect=2)
+        self.assertIn("revisão humana", self.cli("roteiro", "--action", "sync", expect=1)["error"])
+        self.cli("roteiro", "--action", "review", "--by", "Bruno Moreira", expect=1)
         self.review()
         self.assertIn("status: revisado", (self.project / "ROTEIRO.md").read_text(encoding="utf-8"))
-        self.assertIn("/get-brolls-brief", self.cli("roteiro", "--action", "sync", expect=2)["error"])
+        self.assertIn("/get-brolls-brief", self.cli("roteiro", "--action", "sync", expect=1)["error"])
 
         self.write_brief()
         planned = self.cli("roteiro", "--action", "plan")
@@ -183,7 +183,7 @@ class RoteiroCliTests(CliCase):
         (self.project / "brolls" / ".pending-transaction.json").write_text("{}", encoding="utf-8")
         for action in ("check", "plan"):
             with self.subTest(action=action):
-                self.assertIn("gravação interrompida", self.cli("roteiro", "--action", action, expect=2)["error"])
+                self.assertIn("gravação interrompida", self.cli("roteiro", "--action", action, expect=1)["error"])
 
     def test_unknown_plugin_prefix_is_refused_end_to_end(self):
         self.ready()
@@ -191,7 +191,7 @@ class RoteiroCliTests(CliCase):
         path.write_text(
             path.read_text(encoding="utf-8").replace("[A-ROLL]", "[A-ROLL]\n[hf:zoom-in]", 1), encoding="utf-8"
         )
-        self.assertIn("não está habilitado", self.cli("roteiro", "--action", "check", expect=2)["error"])
+        self.assertIn("não está habilitado", self.cli("roteiro", "--action", "check", expect=1)["error"])
 
     def test_assets_list_and_where(self):
         (self.project / "assets/sfx").mkdir(parents=True)
@@ -200,7 +200,7 @@ class RoteiroCliTests(CliCase):
         self.assertEqual([r["name"] for r in listed["assets"]], ["whoosh"])
         where = self.cli("assets", "--action", "where", "--kind", "sfx", "--name", "whoosh")
         self.assertEqual(where["status"], "found")
-        self.cli("assets", "--action", "where", "--kind", "sfx", "--name", "../x", expect=2)
+        self.cli("assets", "--action", "where", "--kind", "sfx", "--name", "../x", expect=1)
         self.assertFalse((self.project / "brolls").exists())
 
 
@@ -225,7 +225,7 @@ class FrontmatterCliTests(CliCase):
 
     def test_a_client_that_is_not_a_slug_is_a_clear_error(self):
         self.with_head("cliente: Acme Corp\n")
-        error = self.cli("roteiro", "--action", "check", expect=2)["error"]
+        error = self.cli("roteiro", "--action", "check", expect=1)["error"]
         self.assertIn('"cliente" tem que ser um slug', error)
         self.assertIn("acme-corp", error)
 
@@ -332,7 +332,7 @@ class ReviewExpectTests(CliCase):
         return self.project / "brolls" / "roteiro-reviews.jsonl"
 
     def test_review_requires_the_hash_that_check_and_plan_show(self):
-        refused = self.cli("roteiro", "--action", "review", *REVIEW, expect=2)
+        refused = self.cli("roteiro", "--action", "review", *REVIEW, expect=1)
         self.assertIn("--expect", refused["error"])
         self.assertIn("review.sha256", refused["error"])
         checked = self.cli("roteiro", "--action", "check")["review"]["sha256"]
@@ -347,7 +347,7 @@ class ReviewExpectTests(CliCase):
         sha = self.cli("roteiro", "--action", "check")["review"]["sha256"]
         self.edit("Todo mundo trava.", "Todo mundo desiste.")
         before = self.path.read_bytes()
-        refused = self.cli("roteiro", "--action", "review", *REVIEW, "--expect", sha, expect=2)
+        refused = self.cli("roteiro", "--action", "review", *REVIEW, "--expect", sha, expect=1)
         self.assertIn(self.CHANGED, refused["error"])
         self.assertEqual(before, self.path.read_bytes())
         self.assertFalse(self.reviews().exists())
@@ -383,7 +383,7 @@ class TargetGateSummaryTests(CliCase):
         planned = self.cli("roteiro", "--action", "plan")
         self.assertEqual(planned["affected_approvals"], [{"candidate": candidate, "beat": "c02"}])
         self.assertIn(candidate, planned["summary"]["line"])
-        refused = self.cli("roteiro", "--action", "sync", expect=2)
+        refused = self.cli("roteiro", "--action", "sync", expect=1)
         self.assertIn("--confirm-target-change", refused["error"])
         synced = self.cli("roteiro", "--action", "sync", "--confirm-target-change")
         self.assertEqual(synced["invalidated"], [candidate])
@@ -424,7 +424,7 @@ class BrokenRoteiroPathTests(CliCase):
         for action in self.ACTIONS:
             with self.subTest(action=action):
                 before = self.content()
-                error = self.cli("roteiro", "--action", *action, expect=2)["error"]
+                error = self.cli("roteiro", "--action", *action, expect=1)["error"]
                 self.assertNotIn(MISSING, error)
                 self.assertNotIn("Crie com", error)
                 self.assertIn("ROTEIRO.md", error)
@@ -438,7 +438,7 @@ class BrokenRoteiroPathTests(CliCase):
     def test_dangling_link(self):
         (self.project / "ROTEIRO.md").symlink_to(self.project / "sumiu.md")
         self.assert_refused("link quebrado")
-        self.assertIn("sumiu.md", self.cli("roteiro", "--action", "check", expect=2)["error"])
+        self.assertIn("sumiu.md", self.cli("roteiro", "--action", "check", expect=1)["error"])
         self.assertTrue((self.project / "ROTEIRO.md").is_symlink())
 
     def test_looping_link(self):
@@ -470,15 +470,15 @@ class WriteErrorTests(CliCase):
         sha = self.cli("roteiro", "--action", "check")["review"]["sha256"]  # cria brolls/ antes de travar a raiz
         (self.project / "brolls").mkdir(exist_ok=True)
         self.lock_project_root()
-        self.assert_clean(self.cli("roteiro", "--action", "review", *REVIEW, "--expect", sha, expect=2))
+        self.assert_clean(self.cli("roteiro", "--action", "review", *REVIEW, "--expect", sha, expect=1))
         # O review que não gravou o ROTEIRO.md não registra nada; o sync abaixo precisa de uma revisão válida.
         self.assertFalse((self.project / "brolls" / "roteiro-reviews.jsonl").exists())
         doc = roteiro.parse(roteiro.load_text(self.project))
         roteiro_review.record_review(self.project, doc, "Bruno Moreira", "chat", "aprovado, pode seguir")
         self.assert_clean(
-            self.cli("roteiro", "--action", "new", "--genero", "reels", "--tema", "IA", "--force", expect=2)
+            self.cli("roteiro", "--action", "new", "--genero", "reels", "--tema", "IA", "--force", expect=1)
         )
-        self.assert_clean(self.cli("roteiro", "--action", "sync", expect=2))
+        self.assert_clean(self.cli("roteiro", "--action", "sync", expect=1))
 
 
 class RoteiroLoggingTests(CliCase):

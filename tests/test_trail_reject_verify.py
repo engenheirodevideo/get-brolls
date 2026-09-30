@@ -237,7 +237,7 @@ class VerifyRestoresVerifiedFlagTests(unittest.TestCase):
             tampered[len(tampered) // 2] ^= 0xFF
             clip.write_bytes(bytes(tampered))
 
-            error = run_cli("verify", project=root, expect=2)
+            error = run_cli("verify", project=root, expect=1)
             self.assertEqual("INVALID_DATA", error["error_code"])
             failed = _item(root, cid)
             self.assertFalse(failed["output"]["verified"])
@@ -299,7 +299,7 @@ class VerifyChecksEveryClipTests(unittest.TestCase):
                 data[len(data) // 2] ^= 0xFF
                 clip.write_bytes(bytes(data))
 
-            run_cli("verify", project=root, expect=2)
+            run_cli("verify", project=root, expect=1)
             self.assertFalse(_item(root, first)["output"]["verified"])
             self.assertFalse(_item(root, second)["output"]["verified"])
 
@@ -316,7 +316,7 @@ class VerifyChecksEveryClipTests(unittest.TestCase):
             data = bytearray(clip.read_bytes())
             data[len(data) // 2] ^= 0xFF
             clip.write_bytes(bytes(data))
-            run_cli("verify", project=root, expect=2)
+            run_cli("verify", project=root, expect=1)
 
             clip.unlink()
             run_cli("fetch", *base)
@@ -393,7 +393,7 @@ class ManifestItemSchemaVersionTests(unittest.TestCase):
             raw = json.dumps({"schema_version": 1, "items": [item]})
             path.write_text(raw, encoding="utf-8")
 
-            error = run_cli("status", project=tmp, expect=2)
+            error = run_cli("status", project=tmp, expect=1)
             self.assertEqual("INVALID_DATA", error["error_code"])
             self.assertIn("manifest.json inválido", error["error"])
             self.assertEqual(raw, path.read_text(encoding="utf-8"))
@@ -411,7 +411,7 @@ class ManifestItemSchemaVersionTests(unittest.TestCase):
                 raw = json.dumps({"schema_version": 1, "items": [item]})
                 path.write_text(raw, encoding="utf-8")
 
-                error = run_cli("status", project=tmp, expect=2)
+                error = run_cli("status", project=tmp, expect=1)
                 self.assertEqual("INVALID_DATA", error["error_code"])
                 self.assertIn("manifest.json inválido", error["error"])
 
@@ -450,7 +450,7 @@ class ReviewTemplateVersionTypeConfusionTests(unittest.TestCase):
             payload = self._payload(ledger)
             payload["templateVersion"] = 2.0
             path = _save_review(ledger, payload, "20260918-100000.json")
-            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=2)
+            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=1)
             self.assertIn("outra coleta", error["error"])
 
     def test_a_boolean_template_version_is_refused(self):
@@ -463,7 +463,7 @@ class ReviewTemplateVersionTypeConfusionTests(unittest.TestCase):
             payload = self._payload(ledger)
             payload["templateVersion"] = True
             path = _save_review(ledger, payload, "20260918-100000.json")
-            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=2)
+            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=1)
             self.assertIn("outra coleta", error["error"])
 
     def test_the_real_int_template_version_still_works(self):
@@ -498,7 +498,7 @@ class PermitOnPendingCandidateTests(unittest.TestCase):
             self.assertEqual("permitted", permitted["rights"]["status"])
             self.assertEqual("pending", permitted["approval"]["status"])
 
-            refused = run_cli("fetch", *base, expect=2)
+            refused = run_cli("fetch", *base, expect=1)
             self.assertEqual("INVALID_DATA", refused["error_code"])
             self.assertIn("Aprovação humana ausente ou inválida", refused["message"])
             self.assertIsNone(_item(root, cid)["output"]["path"])

@@ -114,7 +114,7 @@ class ServeMissingStoryboardEnvelopeTests(unittest.TestCase):
                 encoding="utf-8",
                 check=False,
             )
-            self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+            self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
             payload = json.loads(proc.stdout.strip().splitlines()[-1])
             self.assertEqual(payload["error_code"], "INVALID_DATA")
             self.assertNotIn("traceback", payload)

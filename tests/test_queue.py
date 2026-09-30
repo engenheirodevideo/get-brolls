@@ -241,7 +241,7 @@ class QueueCliTests(unittest.TestCase):
             env={**clean_env(), "GB_PACE_MIN_S": "30", "GB_PACE_MAX_S": "30"},
             check=False,
         )
-        self.assertEqual(0 if ok else 2, done.returncode, done.stderr)
+        self.assertEqual(0 if ok else 1, done.returncode, done.stderr)
         return json.loads(done.stdout if ok else done.stderr)
 
     def test_queue_is_a_documented_subcommand(self):
