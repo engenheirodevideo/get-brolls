@@ -379,7 +379,7 @@ explícito. O comando `plugins` gerencia esse ciclo:
 - `plugins --action check --path <pasta>` — valida o manifesto, roda `register()` contra um registro descartável e confere o contrato de cada contribuição, sem instalar nada. **Executa o código da pasta** com as suas permissões: é ferramenta de quem escreve o plugin, não uma checagem segura de um download que você ainda não revisou. Recusa o mesmo que o `install` recusaria (link simbólico, bytecode, pasta de controle de versão aninhada) e avisa, em `warnings`, sobre `permissions.env`/`permissions.paths` que não vão valer.
 - `plugins --action install --source <pasta-ou-url-git>` — mostra id, versão, permissões, origem, commit e o `sha256` do conteúdo materializado; com `--yes --expect <sha256>` (o mesmo valor da prévia) instala em `plugins/<id>`, habilita com pin de hash e grava a origem.
 - `plugins --action update --id <id>` — mostra a diferença de versão, permissões e arquivos contra a origem gravada; com `--yes --expect <sha256>` troca a pasta e refaz o pin.
-- `plugins --action new --id <id> --kind provider|route|command [--path <pasta>]` — gera um plugin mínimo que já passa no próprio teste e no `check`.
+- `plugins --action new --id <id> --kind provider|route|command|exporter [--path <pasta>]` — gera um plugin mínimo que já passa no próprio teste e no `check`.
 
 Fonte de plugin aparece em `providers` com `plugin` (e `route`, quando o
 arquivo vem por uma rota do plugin). Rota `stage="fetch"` só baixa no `fetch`:
