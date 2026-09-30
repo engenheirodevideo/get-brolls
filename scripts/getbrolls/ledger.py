@@ -117,8 +117,9 @@ class Ledger:
         """recover=False abre o manifesto sem criar pastas nem concluir pendências."""
         self.root = Path(project).resolve() / "brolls"
         if recover:
-            for directory in ("candidates", "previews", "clips"):
+            for directory in ("candidates", "previews"):
                 (self.root / directory).mkdir(parents=True, exist_ok=True)
+            self._make_clips_dir()
         self.path = self.root / "manifest.json"
         self.pending = self.root / ".pending-transaction.json"
         self.recovered = self.pending.exists()
@@ -196,6 +197,20 @@ class Ledger:
 
         record_commit()  # Journal is durable, even if completing snapshots fails.
         self._finish_transaction()
+
+    def _make_clips_dir(self):
+        """Cria a pasta de clipes finais do layout (`brolls/clips/` no 0, `broll/` no 1).
+
+        Pasta de clipes que não dá para usar (link, `project.json` quebrado) não trava
+        o comando aqui: quem grava o clipe (`fetch`) é que recusa, dizendo o motivo.
+        """
+        from . import layout
+
+        try:
+            folder = layout.clips_dir(self.root.parent)
+        except ValueError:
+            return
+        folder.mkdir(parents=True, exist_ok=True)
 
     def _finish_transaction(self):
         try:

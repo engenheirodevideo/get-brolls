@@ -3,8 +3,8 @@
 
 | Fonte | Método |
 |---|---|
-| clipe (`brolls/clips/`) **congelado** (somente leitura, como o `deliver` deixa) | hardlink, cópia como alternativa (`delivery.link_or_copy`, sem symlink e sem chmod) |
-| clipe (`brolls/clips/`) ainda **gravável** | clone ou cópia, o mesmo caminho de A-ROLL e componentes: nunca hardlink, para o original nunca ficar exposto a uma escrita através do export |
+| clipe (`broll/` no layout 1, `brolls/clips/` no 0) **congelado** (somente leitura, como o `deliver` deixa) | hardlink, cópia como alternativa (`delivery.link_or_copy`, sem symlink e sem chmod) |
+| clipe (`broll/` no layout 1, `brolls/clips/` no 0) ainda **gravável** | clone ou cópia, o mesmo caminho de A-ROLL e componentes: nunca hardlink, para o original nunca ficar exposto a uma escrita através do export |
 | mídia da pessoa (`aroll/`, `assets/`, biblioteca pessoal) | clone (`cp -c` no macOS, `cp --reflink=auto` no Linux) ou `shutil.copy2`; nunca hardlink |
 | mídia de resolvedor de plugin | cópia pelo descritor, pela função `copy_plugin(source, dest)` que o chamador injeta |
 

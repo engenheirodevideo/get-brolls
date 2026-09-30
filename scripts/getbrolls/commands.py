@@ -16,7 +16,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, _paths, logs
+from . import __version__, _paths, layout, logs
 from .acquisition import candidate_arg
 from .config import CAP_EPSILON
 from .errors import DataRootError
@@ -2085,15 +2085,17 @@ def _fetch_local_source(c):
 def _fetch_routed_check_existing(ledger, c):
     """Recusa a rota de plugin se a revisão atual já foi coletada (sem gastar licença/cota)."""
     stem = id_stem(c["id"]) + f"-r{c['segment']['revision']}"
+    project = ledger.root.parent
     if c.get("media", {}).get("kind") == "image":
-        existing = sorted((ledger.root / "clips").glob(stem + ".*"))
+        # Todas as pastas de clipes do layout: no 1, a antiga `brolls/clips/` também.
+        existing = layout.existing_clips(project, stem + ".*")
         if existing:
             # Recusa antes de gastar licença/cota numa revisão já coletada, seja
             # qual for a extensão que a imagem coletada usou.
-            raise ValueError(_already_collected("clips/" + existing[0].name))
+            raise ValueError(_already_collected(existing[0]))
         return
     planned = "clips/" + stem + ".mp4"
-    if (ledger.root / planned).exists():
+    if layout.clip_taken(project, planned):
         # Recusa antes de gastar licença/cota numa revisão já coletada.
         raise ValueError(_already_collected(planned))
 
@@ -2218,8 +2220,8 @@ def _fetch_image_output(ledger, c, source):
         if c["provider"] != "local" or suffix not in IMAGE_SUFFIXES:
             suffix = image_suffix(src)
         rel = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}" + suffix
-        dest = ledger.root / rel
-        if dest.exists():
+        dest = layout.clip_file(ledger.root.parent, rel, for_write=True)
+        if layout.clip_taken(ledger.root.parent, rel):
             raise ValueError(_already_collected(rel))
         copy_image(src, dest)
     finally:
@@ -2252,10 +2254,16 @@ def _fetch_video_output(ledger, c, source):
     """Corta o vídeo para clips/, recusando sobrescrever uma revisão já coletada."""
     src, temp = source["src"], source["temp"]
     rel = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}.mp4"
+    try:
+        dest = layout.clip_file(ledger.root.parent, rel, for_write=True)
+    except ValueError:
+        if temp:
+            temp.unlink(missing_ok=True)
+        raise
     # O arquivo entregue nasce somente-leitura (delivery._freeze congela o inode
     # compartilhado): sem esta checagem o ffmpeg falharia por permissão, sem dizer
     # o motivo. Recusar aqui, antes de gastar a fonte, explica o que fazer.
-    if (ledger.root / rel).exists():
+    if layout.clip_taken(ledger.root.parent, rel):
         if temp:
             temp.unlink(missing_ok=True)
         raise ValueError(_already_collected(rel))
@@ -2265,17 +2273,17 @@ def _fetch_video_output(ledger, c, source):
         end = c["segment"]["end_s"] - offset
         if start < 0 or (c.get("local_duration_s") is not None and end > c["local_duration_s"] + 0.1):
             raise ValueError("Gere uma nova prévia para este intervalo antes da coleta.")
-        cut(src, ledger.root / rel, start, end)
+        cut(src, dest, start, end)
     finally:
         if temp:
             temp.unlink(missing_ok=True)
     c["output"] = {
         "path": rel,
-        "sha256": digest(ledger.root / rel),
+        "sha256": digest(dest),
         "verified": True,
     }
     c["state"] = "verified"
-    c["output_media"] = probe(ledger.root / rel)
+    c["output_media"] = probe(dest)
 
 
 def _fetch_finish_video(ledger, c, source, fetch_started_at):
@@ -2290,7 +2298,9 @@ def _fetch_finish_video(ledger, c, source, fetch_started_at):
             "fetch",
             candidate=c["id"],
             kind="remote" if source["temp"] or source["routed_remote"] else "local",
-            bytes=_safe_size(ledger.root / c["output"]["path"]) if c["output"].get("path") else None,
+            bytes=_safe_size(layout.clip_file(ledger.root.parent, c["output"]["path"], for_write=True))
+            if c["output"].get("path")
+            else None,
             sha256_prefix=_sha256_prefix(c["output"].get("sha256")),
             ms=round((time.monotonic() - fetch_started_at) * 1000),
         )
@@ -3126,7 +3136,13 @@ def _verify_one_clip(ledger, c):
     """Reconfere um clipe coletado: devolve (entrada p/ `checked`, exceção de falha) — um dos dois é None."""
     if not c["output"]["path"]:
         return None, None
-    path = ledger.root / c["output"]["path"]
+    try:
+        # Layout 1 lê `broll/` e a antiga `brolls/clips/`; o sha256 registrado
+        # desempata o mesmo nome nas duas, e sem desempate a falha diz as duas.
+        path = layout.output_file(ledger.root.parent, c["output"]["path"], sha256=c["output"].get("sha256"))
+    except ValueError as exc:
+        _verify_clip_failure(ledger, c, exc, True)
+        return None, exc
     existed = path.exists()
     try:
         info = probe(path)

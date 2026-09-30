@@ -301,6 +301,34 @@ def _render_item(c, esc):
     return record, story_item, credit_lines
 
 
+# Layout 1 guarda o clipe final em `broll/`, fora de `brolls/`: a página aberta direto
+# do disco não alcança essa pasta, e só `serve` sabe achar o clipe pelo caminho lógico.
+FILE_NOTICE = (
+    '<div id="gb-file-notice" hidden style="position:sticky;top:0;z-index:9;padding:10px 16px;'
+    'background:#fff3cd;color:#3d2c00;font:14px/1.4 system-ui,sans-serif;border-bottom:1px solid #e0c36b">'
+    "Este Storyboard é de um projeto com <code>project.json</code> (layout 1), que guarda os clipes finais "
+    "em <code>broll/</code>: aberto direto do disco, eles não aparecem. Abra com <code>getbrolls serve</code>."
+    "</div>"
+    '<script>if (location.protocol === "file:") '
+    'document.getElementById("gb-file-notice").hidden = false;</script>'
+)
+
+
+def _with_file_notice(page, ledger):
+    """A página do layout 1 avisa, quando aberta por `file://`, que precisa do `serve`; a do 0 fica igual."""
+    from . import layout
+
+    if layout.info(ledger.root.parent).version != 1:
+        return page
+    head, sep, rest = page.partition("<body")
+    if not sep:
+        return page.replace("</body>", FILE_NOTICE + "</body>", 1)
+    tag_end = rest.find(">")
+    if tag_end < 0:
+        return page
+    return head + sep + rest[: tag_end + 1] + FILE_NOTICE + rest[tag_end + 1 :]
+
+
 def render(ledger):
     """Regenera review.html e credits.md a partir do manifesto; devolve o caminho de review.html."""
     records = []
@@ -319,6 +347,7 @@ def render(ledger):
     from .review import enhance
     from .storyboard import render_page
 
-    atomic_write(ledger.root / "review.html", enhance(render_page(story_items), ledger, records))
+    page = enhance(render_page(story_items), ledger, records)
+    atomic_write(ledger.root / "review.html", _with_file_notice(page, ledger))
     atomic_write(ledger.root / "credits.md", "\n".join(credits_lines))
     return str(ledger.root / "review.html")

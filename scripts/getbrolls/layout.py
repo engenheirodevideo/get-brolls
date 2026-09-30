@@ -11,6 +11,7 @@ O `id` do `project.json` é o mesmo `project_id` de `brolls/manifest.json`: um p
 tem uma identidade só, e quem lê prefere a do `project.json`.
 """
 
+import hashlib
 import json
 import math
 import os
@@ -219,3 +220,144 @@ def parse_fps(text):
     if num < 1 or den < 1:
         raise ValueError(f"fps inválido {text!r}: use um inteiro (30) ou uma fração (30000/1001).")
     return {"num": num, "den": den}
+
+
+# --- clipes finais -----------------------------------------------------------
+#
+# O manifesto guarda o clipe final pelo caminho lógico `clips/<arquivo>` (relativo a
+# `brolls/`, como sempre). Só este módulo sabe em que pasta ele está de fato:
+#
+# - layout 0: `brolls/clips/`, e nenhuma outra (uma `broll/` da pessoa nunca é lida);
+# - layout 1: `broll/`, na raiz do projeto, e, só para leitura, a antiga
+#   `brolls/clips/` quando ela existe (projeto adotado pelo `migrate` sem mover nada).
+#
+# `project.json` que não dá para usar conta como layout 0, a menos que já exista
+# `broll/` ao lado: aí a leitura olha as duas pastas e a escrita recusa, em vez de
+# adivinhar para qual delas o clipe iria.
+
+CLIPS_PREFIX = "clips/"
+CLIP_FOLDER = "broll"
+LEGACY_CLIPS = ("brolls", "clips")
+
+
+class ClipConflictError(ValueError):
+    """O mesmo nome de clipe em `broll/` e em `brolls/clips/`, sem `sha256` que decida."""
+
+
+def _project_root(project):
+    return Path(project).expanduser().resolve()
+
+
+def _clip_folders(project):
+    """(pasta de escrita ou `None` quando a escrita é recusada, pastas de leitura, motivo da recusa)."""
+    root = _project_root(project)
+    legacy = root.joinpath(*LEGACY_CLIPS)
+    broll = root / CLIP_FOLDER
+    found = info(root)
+    if found.version == 0 and found.problem is None:
+        return legacy, (legacy,), None
+    if files.is_link(broll):
+        raise ValueError(
+            f"A pasta {CLIP_FOLDER}/ é um link: os clipes finais precisam de uma pasta real dentro do "
+            "projeto. Troque o link pela pasta real e rode o comando de novo."
+        )
+    if found.version == 0:
+        if not broll.is_dir():
+            return legacy, (legacy,), None
+        # `project.json` quebrado ao lado de `broll/`: não dá para saber qual pasta vale.
+        refusal = f"{found.problem} Corrija o {PROJECT_FILE} antes de gravar clipes: {CLIP_FOLDER}/ já existe aqui."
+        return None, (broll, legacy) if legacy.is_dir() else (broll,), refusal
+    return broll, (broll, legacy) if legacy.is_dir() else (broll,), None
+
+
+def clips_dir(project):
+    """Pasta onde o `fetch` grava o clipe final; `ValueError` quando não há uma segura."""
+    write, _, refusal = _clip_folders(project)
+    if write is None:
+        raise ValueError(refusal)
+    return write
+
+
+def clip_roots(project):
+    """Pastas onde um clipe final pode estar, na ordem de busca (a de escrita primeiro)."""
+    return _clip_folders(project)[1]
+
+
+def _clip_tail(rel):
+    if (
+        not isinstance(rel, str)
+        or not rel.startswith(CLIPS_PREFIX)
+        or rel == CLIPS_PREFIX
+        or "\\" in rel
+        or ".." in Path(rel).parts
+    ):
+        raise ValueError(f"Caminho de clipe inválido {rel!r}: tem que ser clips/<arquivo>, sem .. nem barra invertida.")
+    return rel[len(CLIPS_PREFIX) :]
+
+
+def _digest(path):
+    # O mesmo sha256 em blocos de `ledger.digest`, aqui para `layout` não importar `ledger`.
+    h = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def _label(project, path):
+    try:
+        return path.relative_to(_project_root(project)).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def clip_file(project, rel, *, for_write=False, sha256=None):
+    """Arquivo do clipe lógico `rel` (`clips/<arquivo>`).
+
+    Na escrita, sempre em `clips_dir`. Na leitura, a primeira pasta de `clip_roots` que
+    tem o arquivo (ou a de escrita, quando nenhuma tem). Achado nas duas pastas, só o
+    `sha256` registrado desempata; sem ele, ou sem nenhuma cópia que bata, levanta
+    `ClipConflictError` nomeando as duas, nunca escolhe calado.
+    """
+    tail = _clip_tail(rel)
+    if for_write:
+        return clips_dir(project) / tail
+    roots = clip_roots(project)
+    found = [root / tail for root in roots if (root / tail).exists() or (root / tail).is_symlink()]
+    if not found:
+        return roots[0] / tail
+    if len(found) == 1:
+        return found[0]
+    if sha256:
+        matching = [path for path in found if path.is_file() and _digest(path) == sha256]
+        if matching:
+            # Mais de uma cópia com o mesmo conteúdo: são o mesmo clipe, qualquer uma serve.
+            return matching[0]
+    places = " e ".join(f"{_label(project, path.parent)}/" for path in found)
+    raise ClipConflictError(
+        f"O clipe {rel} existe em {places}"
+        + (" e nenhuma cópia bate com o sha256 registrado" if sha256 else "")
+        + ": deixe só a cópia certa (a outra pode ir para fora do projeto) e rode o comando de novo."
+    )
+
+
+def output_file(project, rel, *, sha256=None):
+    """Arquivo de um caminho lógico do manifesto (relativo a `brolls/`); `clips/` passa por `clip_file`."""
+    if isinstance(rel, str) and rel.startswith(CLIPS_PREFIX):
+        return clip_file(project, rel, sha256=sha256)
+    return _project_root(project) / "brolls" / rel
+
+
+def clip_taken(project, rel):
+    """Caminho lógico de uma cópia já existente de `rel` em qualquer pasta de clipes, ou `None`."""
+    tail = _clip_tail(rel)
+    for root in clip_roots(project):
+        if (root / tail).exists():
+            return rel
+    return None
+
+
+def existing_clips(project, pattern):
+    """Caminhos lógicos (`clips/<nome>`, em ordem) dos arquivos que casam `pattern` em qualquer pasta de clipes."""
+    names = {path.name for root in clip_roots(project) if root.is_dir() for path in root.glob(pattern)}
+    return [CLIPS_PREFIX + name for name in sorted(names)]
