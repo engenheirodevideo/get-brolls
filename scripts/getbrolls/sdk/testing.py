@@ -19,6 +19,7 @@ from .contracts import (
     ProviderCapabilities,
     ResolverSpec,
 )
+from .kinds import SUPPORTED_SINGULAR, plural
 
 if TYPE_CHECKING:
     from .registry import Registry
@@ -188,14 +189,8 @@ def check_registry(registry: "Registry", owner: str) -> dict[str, list[str]]:
         check_exporter(registry.exporter(name))
     for name in owned["resolver"]:
         check_resolver(registry.resolver(name))
-    return {
-        "providers": owned["provider"],
-        "presets": owned["preset"],
-        "routes": owned["route"],
-        "commands": [key.split(":", 1)[1] for key in owned["command"]],
-        "exporters": owned["exporter"],
-        "resolvers": owned["resolver"],
-    }
+    names = {**owned, "command": [key.split(":", 1)[1] for key in owned["command"]]}
+    return {plural(kind): names[kind] for kind in SUPPORTED_SINGULAR}
 
 
 def _checked_folder(folder):
@@ -240,14 +235,16 @@ def check_plugin(folder: str | os.PathLike[str]) -> dict:
 
     Returns:
         A prévia do plugin (manifesto, permissões, sha256, avisos) com `ok`,
-        `manifest_file` e os nomes conferidos em `contracts`.
+        `manifest_file`, os nomes conferidos em `contracts` e, em `requires`, o que
+        o `requires` do manifesto pede e o que falta nesta instalação
+        (`requirements.report`; não muda o `ok`).
 
     Raises:
         ManifestError: manifesto ausente ou fora do formato.
         ValueError: plugin incompatível, com conteúdo que o `install` recusaria, que
             falhou no `register()` ou na checagem de contrato.
     """
-    from . import guard, loader
+    from . import guard, loader, requirements
     from .manifest import MANIFEST_NAME
 
     folder = Path(folder).resolve()
@@ -271,4 +268,5 @@ def check_plugin(folder: str | os.PathLike[str]) -> dict:
         **loader.plugin_preview(manifest, folder),
         "manifest_file": MANIFEST_NAME,
         "contracts": checked.value,
+        "requires": requirements.report(manifest),
     }

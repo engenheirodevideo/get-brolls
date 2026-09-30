@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-23
-updated: 2026-09-26
+updated: 2026-09-30
 tags: [get-brolls, sdk, plugins]
 ---
 
@@ -75,7 +75,14 @@ Campos de `getbrolls-plugin.json`:
 | `requires_getbrolls` | string | sim | Faixa de compatibilidade, ex.: `">=2.5,<3"`. |
 | `entry` | string | sim | Nome do arquivo de entrada na raiz da pasta do plugin: `[A-Za-z0-9_]{1,64}\.py` (sem subpasta, hífen ou ponto extra). |
 | `contributes` | objeto | não (padrão `{}`) | Listas por tipo de contribuição — veja abaixo. Chave ausente vale lista vazia. |
-| `permissions` | objeto | não (padrão `{}`) | `network` (hosts liberados para `get_json`/`download`), `env` (variáveis liberadas para `env`) e `paths` (pastas liberadas para `local_file`); cada chave ausente vale lista vazia. |
+| `permissions` | objeto | não (padrão `{}`) | `network` (hosts liberados para `get_json`/`download`), `env` (variáveis liberadas para `env`), `paths` (pastas liberadas para `local_file`) e `project_write` (áreas do projeto em que o plugin pode gravar pela API do core; hoje só `"analysis"`); cada chave ausente vale lista vazia. |
+| `homepage` | string | não | Página do plugin: URL `https://`, sem usuário nem senha, até 2048 caracteres. |
+| `license` | string | não | Licença do código do plugin, como identificador ou expressão SPDX curta (`MIT`, `MIT OR Apache-2.0`), até 128 caracteres. |
+| `author` | string | não | Quem mantém o plugin, até 120 caracteres. |
+| `keywords` | lista | não | Até 10 palavras-chave únicas, `a-z0-9` e hífen (ex.: `["acervo", "stock-video"]`). |
+| `platforms` | lista | não | Sistemas em que o plugin roda: subconjunto não vazio de `darwin`, `linux` e `windows`. Ausente vale todos. Fora da lista, o plugin fica `incompatible` e o `install` o recusa. |
+| `requires` | objeto | não | O que o plugin precisa fora dele — veja [Dependências (`requires`)](#dependências-requires). |
+| `metadata` | objeto | não | Objeto JSON livre para ferramentas de terceiros (catálogo, hub). O core confere que é um objeto e não lê o conteúdo. |
 
 `contributes` aceita as chaves `providers`, `presets`, `routes`, `commands`,
 `exporters`, `resolvers`, `rules`, `hooks`, `themes`, `brief_templates`,
@@ -115,13 +122,57 @@ e o `plugins --action check` listam essas raízes em `warnings`. Num disco que n
 diferencia maiúsculas de minúsculas, escreva a raiz com a mesma caixa que o
 sistema mostra.
 
-Os campos `schema`, `signed_fields` e `engines` existem no formato do manifesto
-para versões futuras do SDK; nesta versão eles têm que ficar ausentes ou ser o
-objeto vazio `{}` — conteúdo, `[]`, `""` ou `null` são recusados com "ainda não é
-suportado nesta versão do SDK". `engines` vai dizer a faixa de versão de cada
-motor que o plugin chama (ex.: `{"hyperframes": ">=0.8.73,<0.9"}`). Qualquer
-outro campo de topo fora da tabela também recusa o manifesto.
+Os campos `schema` e `signed_fields` existem no formato do manifesto para
+versões futuras do SDK; nesta versão eles têm que ficar ausentes ou ser o objeto
+vazio `{}` — conteúdo, `[]`, `""` ou `null` são recusados com "ainda não é
+suportado nesta versão do SDK". O campo de topo `engines` foi aposentado: `{}`
+continua aceito (manifestos antigos), e qualquer conteúdo é recusado com "engines
+foi substituído por requires (requires.runtimes)" — a faixa de versão de um motor
+vai em `requires.runtimes` (ex.: `{"hyperframes": ">=0.8.73,<0.9"}`). A chave
+`engines` dentro de `contributes` é outra coisa e continua reservada (veja acima).
 
+**Os campos de topo e as chaves de `permissions` estão congelados em `sdk_api` 1.**
+Qualquer campo de topo fora da tabela recusa o manifesto, e uma chave de
+`permissions` fora de `network`, `env`, `paths` e `project_write` também. Campo
+novo só entra de dois jeitos: dentro de `metadata` (que o core ignora) ou com um
+`sdk_api` novo (2). Assim um manifesto válido hoje continua válido, e um plugin
+escrito para uma versão mais nova nunca é carregado pela metade numa mais velha.
+
+### Dependências (`requires`)
+
+`requires` diz o que o plugin precisa e o get-brolls não traz. Chave desconhecida
+recusa o manifesto; toda chave é opcional:
+
+```json
+"requires": {
+  "python":   ["psycopg[binary]>=3.1"],
+  "binaries": ["node"],
+  "runtimes": {"node": ">=18", "python": ">=3.11"},
+  "services": ["postgres"]
+}
+```
+
+- **`python`** (até 20): requisitos de distribuição Python — o nome publicado no
+  PyPI (que pode diferir do nome do `import`), com extras e cláusulas de versão
+  opcionais na mesma gramática de `requires_getbrolls` (`>=`, `<=`, `==`, `>`,
+  `<`). Sem URL, caminho nem marcador de ambiente.
+- **`binaries`** (até 20): nomes de executável procurados no `PATH`, nunca um
+  caminho (`node`, não `/usr/bin/node`).
+- **`runtimes`** (até 20): `{nome: faixa de versão}`. `python` é conferido contra
+  o interpretador que roda o get-brolls; os outros ficam como declarados.
+- **`services`** (até 10): nomes informativos de serviços externos (`postgres`).
+
+Faltar um requisito nunca impede o plugin de carregar: o get-brolls não instala
+nada nem executa os binários do plugin para conferir. `plugins --action check` traz
+o bloco `requires` com o que foi conferido (`python[].installed`, `binaries[].found`,
+`runtimes[].ok`, que fica `null` quando não é verificado) e, em `hint`, o comando
+para instalar os pacotes Python que faltam: no pacote,
+`uv tool install getbrolls --with "<requisito>"` (ou `pipx inject getbrolls
+"<requisito>"`); no checkout, `<python> -m pip install "<requisito>"` com o mesmo
+interpretador que roda o get-brolls. O `doctor` mostra o mesmo bloco em cada linha
+de `plugins[]` e, quando algo falta, uma linha `plugins_requires` no `summary`; o
+`ready` não muda. A conferência usa o nome da distribuição, que pode diferir do
+nome do `import` (`psycopg[binary]` instala o módulo `psycopg`; `Pillow`, o `PIL`).
 Ids reservados: além de `core`, os ids `cliente`, `catalogo`, `direcao`,
 `template` e `projeto` são do get-brolls. O manifesto com um deles é recusado, e
 por isso `install`, `enable` e `new` também recusam: um plugin chamado
@@ -446,7 +497,9 @@ api.command("recentes", recentes, "Lista os vídeos mais recentes da pasta")
 ### Seu exporter em 30 minutos
 
 O mínimo que passa no contrato: manifesto declarando o exporter e uma função
-pura que devolve um `index.html`, sem pedir mídia nenhuma. A função do
+pura que devolve um `index.html`, sem pedir mídia nenhuma. É o que
+`plugins --action new --id meu_exporter --kind exporter --path <pasta>` gera, com
+teste e README. A função do
 exportador recebe dois argumentos, `plan` (o plano de export, detalhado
 abaixo) e `options` (hoje sempre `{"args": {}}`; reservado para opções
 futuras — o exportador dos exemplos abaixo só o declara, sem usar).
@@ -790,7 +843,7 @@ python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
   desligou com `disable`.
 - **Re-enable de plugin `suspended`.** Quando o conteúdo mudou desde o pin, a
   prévia do `enable` (sem `--yes`) traz o `diff`: versão, permissões
-  (`permissions.from`/`to`, com `network`, `env` e `paths`, como no `update`) e
+  (`permissions.from`/`to`, com `network`, `env`, `paths` e `project_write`, como no `update`) e
   arquivos adicionados, removidos e alterados, comparados com o que o pin
   guarda em `plugins.json` (`enabled.<id>.permissions` e `.files`). Confirmar exige
   `--yes --expect <sha256>`, o mesmo valor da prévia — `--yes` sozinho é
@@ -890,8 +943,9 @@ $env:PYTHONDONTWRITEBYTECODE = "1"; $env:PYTHONPATH = "<pasta da skill>\scripts"
 python -m unittest discover -s <pasta>\meu_banco\tests
 ```
 
-`--kind` é `provider` (fonte), `route` (fonte + rota de `fetch` com token) ou
-`command`. Sem `PYTHONDONTWRITEBYTECODE=1`, o `__pycache__` que o teste cria
+`--kind` é `provider` (fonte), `route` (fonte + rota de `fetch` com token),
+`command` ou `exporter` (exportador puro que grava um `index.html` escapado, sem
+mídia; veja [Seu exporter em 30 minutos](#seu-exporter-em-30-minutos)). Sem `PYTHONDONTWRITEBYTECODE=1`, o `__pycache__` que o teste cria
 muda o hash do plugin — o pin cobre todo arquivo da pasta.
 
 `getbrolls.sdk.testing` traz as checagens de contrato: `check_provider`,

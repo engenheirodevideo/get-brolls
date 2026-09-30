@@ -19,6 +19,7 @@ from . import guard, safe_copy
 from .contracts import CommandContext, CommandSpec, Exporter, ExporterSpec, Provider, Resolver, ResolverSpec, Route
 from .errors import ApiError
 from .files import bad_file_name, checked_roots, resolved_roots
+from .kinds import SUPPORTED_PLURAL, singular
 
 if TYPE_CHECKING:
     from .registry import Registry
@@ -99,14 +100,7 @@ class PluginApi:
         self.plugin_id = manifest["id"]
         self._manifest = manifest
         self._registry = registry
-        self._registered = {
-            "providers": set(),
-            "presets": set(),
-            "routes": set(),
-            "commands": set(),
-            "exporters": set(),
-            "resolvers": set(),
-        }
+        self._registered = {kind: set() for kind in SUPPORTED_PLURAL}
         # Raízes de `permissions.paths` resolvidas uma vez só por instância (no primeiro
         # uso): a raiz trocada por link depois disso não muda para onde `local_file` olha.
         self._root_cache: tuple[list[Path], list[str]] | None = None
@@ -117,7 +111,9 @@ class PluginApi:
 
     def _own(self, kind, name):
         if name not in self._manifest["contributes"][kind]:
-            raise ApiError(f"Plugin {self.plugin_id}: {kind[:-1]} {name!r} não está declarado em contributes.{kind}.")
+            raise ApiError(
+                f"Plugin {self.plugin_id}: {singular(kind)} {name!r} não está declarado em contributes.{kind}."
+            )
         if name != self.plugin_id and not str(name).startswith(self.plugin_id + "_"):
             raise ApiError(
                 f"Plugin {self.plugin_id}: nomes têm que ser {self.plugin_id} ou começar por {self.plugin_id}_."

@@ -38,11 +38,11 @@ class ReservedContributionTests(unittest.TestCase):
 
 
 class EnginesKeyTests(unittest.TestCase):
-    def test_top_level_engines_is_refused_as_not_supported_yet(self):
+    def test_top_level_engines_with_content_points_to_requires(self):
         manifest = {**BASE, "engines": {"hyperframes": ">=0.8.73,<0.9"}}
         with tempfile.TemporaryDirectory() as tmp, self.assertRaises(ManifestError) as caught:
             read_manifest(write_plugin(tmp, manifest))
-        self.assertIn("engines ainda não é suportado nesta versão", str(caught.exception))
+        self.assertIn("engines foi substituído por requires (requires.runtimes)", str(caught.exception))
         self.assertNotIn("campo desconhecido", str(caught.exception))
 
     def test_empty_engines_is_accepted_like_schema(self):

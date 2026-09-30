@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-29
-updated: 2026-09-29
+updated: 2026-09-30
 tags: [get-brolls, sdk, plugins, quickstart]
 ---
 
@@ -42,7 +42,7 @@ Crie o scaffold em uma pasta de trabalho **fora da instalação do Get B-rolls**
 
 ```sh
 mkdir -p "$HOME/getbrolls-plugin-lab"
-python3 scripts/gb.py plugins --action new --id meu_motion --kind command --path "$HOME/getbrolls-plugin-lab"
+python3 scripts/gb.py plugins --action new --id meu_motion --kind exporter --path "$HOME/getbrolls-plugin-lab"
 ```
 
 No Windows PowerShell:
@@ -50,10 +50,10 @@ No Windows PowerShell:
 ```powershell
 $lab = Join-Path $env:USERPROFILE "getbrolls-plugin-lab"
 New-Item -ItemType Directory -Force $lab | Out-Null
-python scripts\gb.py plugins --action new --id meu_motion --kind command --path $lab
+python scripts\gb.py plugins --action new --id meu_motion --kind exporter --path $lab
 ```
 
-O scaffold `new` gera **provider**, **route** ou **command**. Ele não tem `--kind exporter` no Get B-rolls 2.6. Use `command` só como degrau inicial para aprender manifesto, testes e permissões. Depois de revisar o código gerado, valide:
+O scaffold `new` gera **provider**, **route**, **command** ou **exporter**. O `--kind exporter` traz um exportador puro que devolve um `index.html` com o título de cada cena, escapado com `html.escape`, sem pedir mídia, e recusa `export_version` diferente de 1. Depois de revisar o código gerado, valide:
 
 ```sh
 python3 scripts/gb.py plugins --action check --path "$HOME/getbrolls-plugin-lab/meu_motion"
@@ -65,7 +65,32 @@ No PowerShell:
 python scripts\gb.py plugins --action check --path (Join-Path $lab "meu_motion")
 ```
 
-Para **exporter/motion**, use o exemplo mínimo em [`SDK.md#exportadores`](SDK.md#exportadores) ou copie [`../examples/plugins/hyperframes`](../examples/plugins/hyperframes/) como referência e reduza ao menor caso possível. Lembre: `check` executa `register()` e, para exporter, roda o exportador contra um plano sintético; não use em código não revisado.
+Para ir além do exporter gerado (pedir mídia, gravar outros formatos), veja [`SDK.md#exportadores`](SDK.md#exportadores) e use [`../examples/plugins/hyperframes`](../examples/plugins/hyperframes/) como referência, reduzindo ao menor caso possível. Lembre: `check` executa `register()` e, para exporter, roda o exportador contra um plano sintético; não use em código não revisado.
+
+## O manifesto em uma tela
+
+O `getbrolls-plugin.json` gerado já traz o obrigatório. Os campos opcionais que valem a pena preencher antes de publicar:
+
+```json
+{
+  "homepage": "https://example.com/meu_motion",
+  "license": "MIT",
+  "author": "Seu nome",
+  "keywords": ["motion", "export"],
+  "platforms": ["darwin", "linux", "windows"],
+  "requires": {"python": ["jinja2>=3.1"], "binaries": ["node"], "runtimes": {"node": ">=18"}},
+  "permissions": {"network": [], "env": [], "paths": [], "project_write": []},
+  "metadata": {}
+}
+```
+
+- `platforms` ausente vale todos os sistemas; fora da lista, o plugin fica `incompatible`.
+- `requires` só informa: o get-brolls não instala nada nem executa binários do plugin para conferir.
+- `permissions.project_write` aceita só `"analysis"` nesta versão; deixe `[]` se o plugin não grava no projeto.
+- `metadata` é livre para ferramentas de terceiros e o core o ignora.
+- `engines` no topo foi aposentado: a faixa de versão de um motor vai em `requires.runtimes`.
+
+Os campos de topo e as chaves de `permissions` estão congelados em `sdk_api` 1: campo novo só dentro de `metadata` ou com `sdk_api` 2. Qualquer outro campo recusa o manifesto. Referência completa em [`SDK.md#manifesto`](SDK.md#manifesto).
 
 ## Instale em dois passos
 
@@ -91,6 +116,7 @@ Se a pasta mudar, o plugin fica suspenso até nova revisão e novo `--expect`.
 - [ ] `permissions.network` contém só hosts necessários;
 - [ ] `permissions.env` contém só variáveis do próprio plugin;
 - [ ] `permissions.paths` não aponta para home inteira, raiz do disco ou pasta ampla demais;
+- [ ] `permissions.project_write` fica `[]`, a menos que o plugin grave análises no projeto;
 - [ ] você leu `plugin.py` e `getbrolls-plugin.json` antes do `check`;
 - [ ] `plugins --action check --path <plugin>` retorna `"ok": true`;
 - [ ] README do plugin explica o que faz, permissões, instalação e teste;
@@ -106,7 +132,7 @@ Se a pasta mudar, o plugin fica suspenso até nova revisão e novo `--expect`.
 
 ## Caminho recomendado para plugin de motion
 
-1. Faça um exporter mínimo que gera só `index.html` ou `project.json`.
+1. Gere o exporter mínimo com `plugins --action new --kind exporter` (só `index.html`) e adapte para o formato do seu editor.
 2. Revise a fonte e rode `plugins --action check` até passar.
 3. Instale/habilite com `install --yes --expect <sha256>` depois da prévia.
 4. Exporte com `gb export --to <id> --dry-run --project <projeto-teste>` somente em projeto revisado/sincronizado.

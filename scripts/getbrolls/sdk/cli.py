@@ -5,6 +5,13 @@ from pathlib import Path
 from . import loader
 
 
+def kind_list():
+    """`provider, route ou command`: os tipos do `new`, na ordem do scaffold."""
+    from .scaffold import KINDS
+
+    return f"{', '.join(KINDS[:-1])} ou {KINDS[-1]}"
+
+
 def _list(_args):  # mesma assinatura das outras ações
     return {
         "plugins_dir": str(loader.plugins_root()),
@@ -60,7 +67,7 @@ def _new(args):
     from . import scaffold
 
     if not args.kind:
-        raise ValueError("plugins --action new precisa de --kind (provider, route ou command).")
+        raise ValueError(f"plugins --action new precisa de --kind ({kind_list()}).")
     return scaffold.new(_require_id(args), args.kind, args.path)
 
 

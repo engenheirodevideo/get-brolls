@@ -1287,12 +1287,13 @@
           "action": "_StoreAction",
           "choices": [
             "command",
+            "exporter",
             "provider",
             "route"
           ],
           "default": null,
           "dest": "kind",
-          "help": "Tipo do plugin gerado por new: fonte, fonte com rota de download, ou comando",
+          "help": "Tipo do plugin gerado por new: fonte, fonte com rota de download, comando ou exportador",
           "nargs": null,
           "option_strings": [
             "--kind"
