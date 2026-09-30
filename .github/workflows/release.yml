@@ -104,7 +104,7 @@ jobs:
           GB_REQUIRE_WHEEL_TESTS: '1'
         run: python -m unittest discover -s tests -p test_wheel_install.py -v
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v3 # TODO(pin): replace with commit SHA before push
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
         with:
           subject-path: ${{ runner.temp }}/dist/*
       - name: Attach sdist and wheel to the release
