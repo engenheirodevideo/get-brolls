@@ -16,7 +16,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, _paths, logs
+from . import __version__, _paths, layout, logs
 from .acquisition import candidate_arg
 from .config import CAP_EPSILON
 from .errors import DataRootError
@@ -1759,6 +1759,12 @@ def _status_items(ctx):
     ]
 
 
+def _status_layout(project):
+    """`{version, source, problem}` do layout do projeto; somente leitura."""
+    found = layout.info(project)
+    return {"version": found.version, "source": found.source, "problem": found.problem}
+
+
 def status_report(ledger, rules=None, rules_error=None, queue=None):
     """Onde o projeto está, por etapa. Somente leitura: não grava nada."""
     items = ledger.data["items"]
@@ -1782,6 +1788,7 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
         "format_pending": format_pending,
         # Somente leitura: lê o PID file e pergunta ao sistema se o processo vive.
         "serve": serve_state(ledger.root.parent),
+        "layout": _status_layout(ledger.root.parent),
         "rules_error": rules_error,
         "references": remembered,
         "references_error": references_error,
@@ -2091,15 +2098,17 @@ def _fetch_local_source(c):
 def _fetch_routed_check_existing(ledger, c):
     """Recusa a rota de plugin se a revisão atual já foi coletada (sem gastar licença/cota)."""
     stem = id_stem(c["id"]) + f"-r{c['segment']['revision']}"
+    project = ledger.root.parent
     if c.get("media", {}).get("kind") == "image":
-        existing = sorted((ledger.root / "clips").glob(stem + ".*"))
+        # Todas as pastas de clipes do layout: no 1, a antiga `brolls/clips/` também.
+        existing = layout.existing_clips(project, stem + ".*")
         if existing:
             # Recusa antes de gastar licença/cota numa revisão já coletada, seja
             # qual for a extensão que a imagem coletada usou.
-            raise ValueError(_already_collected("clips/" + existing[0].name))
+            raise ValueError(_already_collected(existing[0]))
         return
     planned = "clips/" + stem + ".mp4"
-    if (ledger.root / planned).exists():
+    if layout.clip_taken(project, planned):
         # Recusa antes de gastar licença/cota numa revisão já coletada.
         raise ValueError(_already_collected(planned))
 
@@ -2224,8 +2233,8 @@ def _fetch_image_output(ledger, c, source):
         if c["provider"] != "local" or suffix not in IMAGE_SUFFIXES:
             suffix = image_suffix(src)
         rel = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}" + suffix
-        dest = ledger.root / rel
-        if dest.exists():
+        dest = layout.clip_file(ledger.root.parent, rel, for_write=True)
+        if layout.clip_taken(ledger.root.parent, rel):
             raise ValueError(_already_collected(rel))
         copy_image(src, dest)
     finally:
@@ -2258,10 +2267,16 @@ def _fetch_video_output(ledger, c, source):
     """Corta o vídeo para clips/, recusando sobrescrever uma revisão já coletada."""
     src, temp = source["src"], source["temp"]
     rel = "clips/" + id_stem(c["id"]) + f"-r{c['segment']['revision']}.mp4"
+    try:
+        dest = layout.clip_file(ledger.root.parent, rel, for_write=True)
+    except ValueError:
+        if temp:
+            temp.unlink(missing_ok=True)
+        raise
     # O arquivo entregue nasce somente-leitura (delivery._freeze congela o inode
     # compartilhado): sem esta checagem o ffmpeg falharia por permissão, sem dizer
     # o motivo. Recusar aqui, antes de gastar a fonte, explica o que fazer.
-    if (ledger.root / rel).exists():
+    if layout.clip_taken(ledger.root.parent, rel):
         if temp:
             temp.unlink(missing_ok=True)
         raise ValueError(_already_collected(rel))
@@ -2271,17 +2286,17 @@ def _fetch_video_output(ledger, c, source):
         end = c["segment"]["end_s"] - offset
         if start < 0 or (c.get("local_duration_s") is not None and end > c["local_duration_s"] + 0.1):
             raise ValueError("Gere uma nova prévia para este intervalo antes da coleta.")
-        cut(src, ledger.root / rel, start, end)
+        cut(src, dest, start, end)
     finally:
         if temp:
             temp.unlink(missing_ok=True)
     c["output"] = {
         "path": rel,
-        "sha256": digest(ledger.root / rel),
+        "sha256": digest(dest),
         "verified": True,
     }
     c["state"] = "verified"
-    c["output_media"] = probe(ledger.root / rel)
+    c["output_media"] = probe(dest)
 
 
 def _fetch_finish_video(ledger, c, source, fetch_started_at):
@@ -2296,7 +2311,9 @@ def _fetch_finish_video(ledger, c, source, fetch_started_at):
             "fetch",
             candidate=c["id"],
             kind="remote" if source["temp"] or source["routed_remote"] else "local",
-            bytes=_safe_size(ledger.root / c["output"]["path"]) if c["output"].get("path") else None,
+            bytes=_safe_size(layout.clip_file(ledger.root.parent, c["output"]["path"], for_write=True))
+            if c["output"].get("path")
+            else None,
             sha256_prefix=_sha256_prefix(c["output"].get("sha256")),
             ms=round((time.monotonic() - fetch_started_at) * 1000),
         )
@@ -2539,29 +2556,27 @@ def _execute_providers_or_doctor(args, config):
     return _doctor_report(config, result, args.live, getattr(args, "env_file", None))
 
 
-def _execute_toolchain(args):
-    """`plugins`/`x` vão ao SDK, `setup` ao `bootstrap`, `capabilities` ao manifesto, `profile` ao perfil;
-    nenhum toca projeto."""
-    if args.command == "profile":
-        from getbrolls import profile
+_TOOLCHAIN_RUNNERS = {
+    "profile": "getbrolls.profile",
+    "client": "getbrolls.clients",
+    "template": "getbrolls.templates",
+    "setup": "getbrolls.bootstrap",
+    "plugins": "getbrolls.sdk.cli",
+    "x": "getbrolls.sdk.plugin_commands",
+}
 
-        return profile.run(args)
+
+def _execute_toolchain(args):
+    """`plugins`/`x` vão ao SDK, `setup` ao `bootstrap`, `capabilities` ao manifesto, `profile` ao perfil,
+    `client` ao registro de clientes e `template` aos templates; nenhum toca projeto."""
     if args.command == "capabilities":
         from getbrolls import capabilities
         from getbrolls.cli import build_parser
 
         return capabilities.describe(build_parser())
-    if args.command == "setup":
-        from getbrolls import bootstrap
+    import importlib
 
-        return bootstrap.run(args)
-    if args.command == "plugins":
-        from getbrolls.sdk import cli as sdk_cli
-
-        return sdk_cli.run(args)
-    from getbrolls.sdk import plugin_commands
-
-    return plugin_commands.run(args)
+    return importlib.import_module(_TOOLCHAIN_RUNNERS[args.command]).run(args)
 
 
 def _execute_serve(args):
@@ -2574,6 +2589,20 @@ def _execute_serve(args):
     if getattr(args, "background", False):
         return serve_module.start_background(args.project, port)
     return serve_module.run(args.project, port)
+
+
+def _execute_init(args):
+    """`init`: cria um projeto novo de layout 1 (`project.json` e as pastas de trabalho)."""
+    from getbrolls import project_init
+
+    return project_init.run(args)
+
+
+def _execute_migrate(args):
+    """`migrate`: adota o layout 1 sem mover arquivos (`plan` só mostra, `apply` grava `project.json`)."""
+    from getbrolls import migrate
+
+    return migrate.run(args)
 
 
 def _execute_init_rules(args):
@@ -2624,6 +2653,9 @@ def _execute_status_or_queue(cmd, args):
             rules = load_rules(args.project)
         except (ValueError, OSError) as exc:
             rules_error = str(exc)
+        from getbrolls import templates
+
+        templates.record_lock_warnings(project)
         return status_report(Ledger(project, recover=False), rules, rules_error, queue_hint(project))
     rules = None
     try:
@@ -2658,6 +2690,13 @@ def _execute_roteiro_or_assets(args):
     return roteiro_commands.run(args)
 
 
+def _execute_analysis(args):
+    """`analysis`: índice de mídias por conteúdo e arquivos de `analysis/`, com trava própria."""
+    from getbrolls import analysis
+
+    return analysis.run(args)
+
+
 def _execute_export(args):
     """`export`: delega ao exporter escolhido; sem portão de formato, sem `sync_formats`, sem
     recuperar o manifesto (os portões recusam gravação pendente antes disso)."""
@@ -2669,6 +2708,8 @@ def _execute_export(args):
 # Comandos administrativos que não tocam em `rules`/`ledger` do vídeo. `learn`/`library` são a
 # biblioteca pessoal, que vive fora do projeto e não depende das regras dele.
 _ADMIN_COMMAND_HANDLERS = {
+    "init": _execute_init,
+    "migrate": _execute_migrate,
     "init-rules": _execute_init_rules,
     "init-brief": _execute_init_brief,
     # Somente leitura, como status: orienta a coleta sem criar nada no projeto.
@@ -2678,6 +2719,7 @@ _ADMIN_COMMAND_HANDLERS = {
     "roteiro": _execute_roteiro_or_assets,
     "assets": _execute_roteiro_or_assets,
     "export": _execute_export,
+    "analysis": _execute_analysis,
 }
 
 
@@ -2698,8 +2740,9 @@ def _execute_read_only_project_command(cmd, args, config, rules, ledger):
 
         return plan(ledger, args.url, rules)
     if cmd == "references":
-        path = ledger.root / "references.json"
-        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"items": []}
+        from getbrolls.memory import load_references
+
+        return load_references(ledger.root)
     if cmd == "inspect":
         return inspect_source(ledger, args, config)
     return None
@@ -3115,7 +3158,13 @@ def _verify_one_clip(ledger, c):
     """Reconfere um clipe coletado: devolve (entrada p/ `checked`, exceção de falha) — um dos dois é None."""
     if not c["output"]["path"]:
         return None, None
-    path = ledger.root / c["output"]["path"]
+    try:
+        # Layout 1 lê `broll/` e a antiga `brolls/clips/`; o sha256 registrado
+        # desempata o mesmo nome nas duas, e sem desempate a falha diz as duas.
+        path = layout.output_file(ledger.root.parent, c["output"]["path"], sha256=c["output"].get("sha256"))
+    except ValueError as exc:
+        _verify_clip_failure(ledger, c, exc, True)
+        return None, exc
     existed = path.exists()
     try:
         info = probe(path)
@@ -3211,7 +3260,7 @@ def execute(args):
             brief_present=_brief_present(args),
             provider_keys=_provider_keys_set(),
         )
-    if args.command in ("plugins", "x", "setup", "capabilities", "profile"):
+    if args.command in ("plugins", "x", "setup", "capabilities", "profile", "client", "template"):
         return _execute_toolchain(args)
     if args.command in ("providers", "doctor"):
         return _execute_providers_or_doctor(args, config)

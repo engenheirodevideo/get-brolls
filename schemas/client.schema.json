@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Get B-rolls client folder v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/client.schema.json",
+  "description": "O arquivo client.json da pasta de um cliente (<raiz>/<cliente>/client.json), ao lado de components/<tipo>/ e templates/. Gravado pelo client --action add e conferido em código (scripts/getbrolls/clients.py) a cada leitura. A versão mora em schema (getbrolls.client/<n>): ausente vale 1, e um número maior que o suportado é recusado. Os objetos ficam abertos para campos novos.",
+  "type": "object",
+  "required": ["schema", "slug", "name", "created"],
+  "properties": {
+    "schema": { "const": "getbrolls.client/1" },
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "maxLength": 64,
+      "description": "Slug do cliente, igual ao nome da pasta e ao do registro; a mesma regra de cliente no frontmatter do roteiro."
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 120, "description": "Nome de exibição; sem --name, o slug." },
+    "created": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "defaults": {
+      "type": "object",
+      "description": "Padrões do cliente para projetos novos; vazio quando ninguém definiu. Todos opcionais.",
+      "properties": {
+        "aspecto": { "enum": ["9:16", "16:9"] },
+        "canvas": {
+          "type": ["object", "null"],
+          "required": ["width", "height"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "fps": {
+          "type": ["object", "null"],
+          "description": "Fração de quadros por segundo: 29,97 é {num: 30000, den: 1001}.",
+          "required": ["num", "den"],
+          "properties": {
+            "num": { "type": "integer", "minimum": 1 },
+            "den": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    }
+  }
+}

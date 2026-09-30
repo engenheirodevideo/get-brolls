@@ -10,6 +10,7 @@
 
 import contextlib
 import contextvars
+import errno
 import json
 import logging
 import os
@@ -283,6 +284,52 @@ def stderr_tail(stderr, limit=6):
     return joined[:STDERR_TAIL_MAX_CHARS]
 
 
+_LOCK_POLL_S = 0.05
+
+
+_LOCK_FLAGS = os.O_RDWR | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
+
+
+def _open_lock_file(path):
+    refusal = ValueError(f"{path.name} em {scrub_home(str(path.parent))} é um link; apague o link e repita o comando.")
+    if not getattr(os, "O_NOFOLLOW", 0) and path.is_symlink():
+        raise refusal
+    try:
+        fd = os.open(path, _LOCK_FLAGS, 0o644)
+    except OSError as exc:
+        if exc.errno in (errno.ELOOP, errno.EMLINK):
+            raise refusal from None
+        raise
+    return os.fdopen(fd, "a+", encoding="utf-8")
+
+
+@contextlib.contextmanager
+def exclusive_lock(path, busy_message, wait_s=0.0):
+    """Trava exclusiva no arquivo `path` (criado se faltar); a pasta tem que existir.
+
+    O arquivo é aberto sem seguir link (`O_NOFOLLOW`; onde não existe, um `lstat` antes):
+    uma trava trocada por link nunca cria nem trava um arquivo fora do lugar.
+    Tenta de novo por até `wait_s` segundos; depois, `LockedError(busy_message)` (código `LOCKED`).
+    """
+    with _open_lock_file(Path(path)) as lock:
+        deadline = time.monotonic() + wait_s
+        while True:
+            try:
+                _acquire_lock(lock)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise LockedError(busy_message) from None
+                time.sleep(_LOCK_POLL_S)
+        try:
+            yield
+        finally:
+            _release_lock(lock)
+
+
+COMMAND_LOCK = ".command.lock"
+
+
 @contextlib.contextmanager
 def project_lock(project):
     if not project:
@@ -290,15 +337,10 @@ def project_lock(project):
         return
     root = Path(project).resolve() / "brolls"
     root.mkdir(parents=True, exist_ok=True)
-    with (root / ".command.lock").open("a+", encoding="utf-8") as lock:
-        try:
-            _acquire_lock(lock)
-        except BlockingIOError:
-            raise LockedError("Outro comando está usando este projeto. Aguarde terminar antes de repetir.") from None
-        try:
-            yield
-        finally:
-            _release_lock(lock)
+    with exclusive_lock(
+        root / COMMAND_LOCK, "Outro comando está usando este projeto. Aguarde terminar antes de repetir."
+    ):
+        yield
 
 
 # Comandos que só leem o projeto: sem trava exclusiva e sem criar a árvore.
@@ -313,14 +355,37 @@ READ_ONLY_COMMANDS = ("status", "serve", "brief", "doctor", "setup", "x", "capab
 # (comando, ação) somente leitura, além dos comandos inteiros acima: `queue --action status`
 # só consulta queue.json (mesmo contrato de `status`), nunca deve tomar a trava exclusiva.
 # `roteiro --action check|plan` e `assets` também só leem: plano de cena, sync simulado e
-# inventário de componentes, sem trava nem árvore nova.
+# inventário de componentes, sem trava nem árvore nova. `client --action list|show` só lê
+# `$GB_HOME/clients.json` e o `client.json` de cada pasta; `template --action list|show` só lê
+# as pastas de template dos clientes registrados. `migrate --action plan` só mostra o
+# `project.json` que o `apply` gravaria. `analysis --action list|check` só lê `analysis/`,
+# sem criar a pasta.
 READ_ONLY_ACTIONS = {
+    ("analysis", "check"),
+    ("analysis", "list"),
+    ("client", "list"),
+    ("client", "show"),
+    ("migrate", "plan"),
+    ("template", "list"),
+    ("template", "show"),
     ("queue", "status"),
     ("roteiro", "check"),
     ("roteiro", "plan"),
     ("assets", "list"),
     ("assets", "where"),
 }
+
+# (comando, ação) que grava só sob a própria trava, nunca sob a do projeto: `analysis
+# --action register` calcula o sha256 de uma mídia grande sem segurar o projeto, e só a
+# troca dos arquivos de `analysis/` fica dentro de `analysis/.lock`.
+OWN_LOCK_ACTIONS = {("analysis", "register")}
+
+# Comandos que criam o projeto (ou o `project.json`) e só tomam a trava dele depois de
+# validar tudo: um `init` recusado (cliente desconhecido, template adulterado, flag errada)
+# ou um `migrate` numa pasta que não existe não pode deixar para trás a pasta do projeto,
+# `brolls/.command.lock` nem um log. O log de auditoria só é
+# gravado quando `brolls/` já existe (ou seja, depois que o próprio comando a criou).
+SELF_LOCKED_COMMANDS = ("init", "migrate")
 
 
 # Erro que veio de um plugin: "Plugin <id>: …" (todo erro do core sobre código de
@@ -332,7 +397,7 @@ PLUGIN_ERROR_HINT = "Veja plugins --action list / doctor e docs/SDK.md."
 
 # Comandos cujo erro sai sem a dica de recovery (nenhum erro mostra traceback nem
 # repr à pessoa; esses ficam só em diagnostics.jsonl).
-QUIET_ERROR_COMMANDS = ("plugins", "x", "export", "assets")
+QUIET_ERROR_COMMANDS = ("plugins", "x", "export", "assets", "client", "analysis", "template")
 
 # `error_code` → código de saída da CLI; qualquer outro código (INVALID_DATA,
 # IO_ERROR, ...) é erro de operação ou de dados: 1. A tabela completa, com o 0, fica
@@ -435,11 +500,12 @@ def _audited_error_failure(args, event, log, app_log_path):
     payload["log"] = str(log) if log else None
     payload["app_log"] = str(app_log_path) if app_log_path and app_log_path.is_file() else None
     if args.command in QUIET_ERROR_COMMANDS and event["error_code"] != "INTERNAL_ERROR":
-        # `plugins`/`x`/`assets` não gravam no projeto (ou, no `assets`, só leem):
+        # `plugins`/`x`/`assets`/`client` não gravam no projeto (ou, no `assets`, só leem):
         # erro de uso ali (flag faltando, plugin inexistente) é só a mensagem — a
         # dica de recovery/review era ruído. `export` grava só numa pasta nova em
         # exports/ e nunca no manifesto nem no journal (recusa journal pendente
-        # antes de começar): a dica de recovery também não vale lá.
+        # antes de começar): a dica de recovery também não vale lá. `analysis` só grava
+        # em analysis/, sob a trava própria, nunca no manifesto.
         payload.pop("hint", None)
     return OperationError(payload)
 
@@ -525,15 +591,23 @@ def audited(args, execute):
         )
         in READ_ONLY_ACTIONS
     )
+    own_lock = (args.command, getattr(args, "action", None)) in OWN_LOCK_ACTIONS
+    self_locked = args.command in SELF_LOCKED_COMMANDS
     log = diagnostics_path(project)
     app_log_path = Path(project).resolve() / "brolls" / "getbrolls.log" if project else None
+    # `init` numa pasta que ainda não existe: se falhar, a pasta some e o diagnóstico vai para
+    # `$GB_HOME/diagnostics.jsonl` (o de quando não há projeto), não para uma pasta que a pessoa
+    # nunca criou.
+    fresh_init = args.command == "init" and bool(project) and not Path(project).expanduser().exists()
     result = None
     failure = None
     try:
-        with project_lock(None if read_only else project):
+        with project_lock(None if read_only or own_lock or self_locked else project):
             result = execute(args)
             event["status"] = "success"
-            if event["warnings"] and isinstance(result, dict):
+            # Comando que já devolve a própria lista de avisos (o `export`) marca o evento;
+            # os avisos continuam no evento, e portanto no diagnostics.jsonl.
+            if event["warnings"] and isinstance(result, dict) and not event.get("warnings_in_result"):
                 result = {**result, "warnings": event["warnings"]}
             return result
     except (
@@ -545,14 +619,18 @@ def audited(args, execute):
         OverflowError,
     ) as exc:
         _classify_audited_error(event, exc, log if project else None)
+        if fresh_init:
+            log, app_log_path, project = diagnostics_path(None), None, None
         failure = _audited_error_failure(args, event, log, app_log_path)
         raise failure from None
     except KeyboardInterrupt:
+        if fresh_init:
+            log, app_log_path, project = diagnostics_path(None), None, None
         failure = _audited_interrupt_failure(event, log, app_log_path)
         raise failure from None
     finally:
         event["duration_ms"] = round((time.monotonic() - started) * 1000)
-        if _audit_log_wanted(event, log, read_only, in_project=bool(project)):
+        if _audit_log_wanted(event, log, read_only or self_locked, in_project=bool(project)):
             _write_audit_log(event, log, failure, result)
         ACTIVE.reset(token)
 

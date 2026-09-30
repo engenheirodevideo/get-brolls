@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Get B-rolls analysis speakers v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/speakers.schema.json",
+  "description": "analysis/media/<media_id>/speakers.json: quem fala quando. Todo turns[].speaker existe em speakers[].id (conferido em código). Schema mínimo, sem producer. Objetos abertos: campo novo opcional entra fora de required e o leitor ignora chave desconhecida; remover, renomear ou mudar o significado de um campo sobe o N de schema. Leitor recusa N maior do que conhece.",
+  "type": "object",
+  "required": [
+    "schema",
+    "media_id",
+    "status",
+    "reason",
+    "created",
+    "time_unit",
+    "speakers",
+    "turns"
+  ],
+  "properties": {
+    "schema": {
+      "const": "getbrolls.speakers/1"
+    },
+    "media_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "Primeiros 16 hex do sha256 dos bytes da mídia (o asset_id do contrato de ingest externo tem a mesma derivação)."
+    },
+    "status": {
+      "enum": [
+        "done",
+        "done_partial",
+        "unavailable",
+        "failed",
+        "blocked",
+        "not_run_by_this_script",
+        "no_speech"
+      ],
+      "description": "Estado do componente. unavailable, failed, blocked e not_run_by_this_script exigem reason (conferido em código)."
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 2000
+    },
+    "created": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "time_unit": {
+      "const": "s"
+    },
+    "speakers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "label"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,32}$"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200,
+            "description": "Rótulo dado por uma pessoa; nunca um nome real inferido."
+          }
+        }
+      }
+    },
+    "turns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "speaker",
+          "start",
+          "end"
+        ],
+        "properties": {
+          "speaker": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,32}$"
+          },
+          "start": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Segundos (time_unit s), número finito (NaN e infinito recusados em código)."
+          },
+          "end": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Segundos (time_unit s), número finito (NaN e infinito recusados em código)."
+          }
+        }
+      }
+    }
+  }
+}

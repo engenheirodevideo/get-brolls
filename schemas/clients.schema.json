@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Get B-rolls client registry v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/clients.schema.json",
+  "description": "O registro $GB_HOME/clients.json: cada cliente e a pasta dele. Gravado de uma vez (temporário + troca) sob $GB_HOME/.clients.lock pelo client --action add|remove e conferido em código (scripts/getbrolls/clients.py) a cada leitura. Desregistrar nunca apaga a pasta do cliente. A versão mora em schema (getbrolls.clients/<n>): ausente vale 1, e um número maior que o suportado é recusado. Os objetos ficam abertos para campos novos.",
+  "type": "object",
+  "required": ["schema", "clients"],
+  "properties": {
+    "schema": { "const": "getbrolls.clients/1" },
+    "clients": {
+      "type": "array",
+      "description": "Ordenada por slug; slug nunca se repete (conferido em código).",
+      "items": {
+        "type": "object",
+        "required": ["slug", "root", "added"],
+        "properties": {
+          "slug": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64 },
+          "root": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Caminho absoluto e resolvido da pasta do cliente (<raiz>/<slug>) nesta máquina; na saída da CLI a pasta pessoal aparece como ~."
+          },
+          "added": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+          }
+        }
+      }
+    }
+  }
+}

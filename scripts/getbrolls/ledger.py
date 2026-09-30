@@ -9,6 +9,7 @@ import os
 import uuid
 from pathlib import Path
 
+from . import versioning
 from .models import id_stem, now
 
 
@@ -37,14 +38,19 @@ def atomic_write(path, text):
         temp.unlink(missing_ok=True)
 
 
+_INVALID_MANIFEST = (
+    "manifest.json inválido ou incompatível. Preserve o arquivo e restaure uma cópia válida; "
+    "nenhum dado foi reiniciado."
+)
+
+
 def validate_manifest(data):  # noqa: C901, PLR0912 - existing size; validator with one check per manifest field
+    # Manifesto anterior ao campo carrega (ausente = 1); o de versão mais nova sai com a
+    # frase própria, e qualquer outro valor com a mensagem genérica.
+    if isinstance(data, dict):
+        versioning.read_version(data, "manifest.json", invalid=_INVALID_MANIFEST)
     try:
-        if (
-            not isinstance(data, dict)
-            or type(data.get("schema_version")) is not int
-            or data["schema_version"] != 1
-            or not isinstance(data.get("items"), list)
-        ):
+        if not isinstance(data, dict) or not isinstance(data.get("items"), list):
             raise ValueError
         seen = set()
         for c in data["items"]:
@@ -102,10 +108,7 @@ def validate_manifest(data):  # noqa: C901, PLR0912 - existing size; validator w
                 ):
                     raise ValueError
     except (ValueError, TypeError, KeyError):
-        raise ValueError(
-            "manifest.json inválido ou incompatível. Preserve o arquivo e restaure uma cópia válida; "
-            "nenhum dado foi reiniciado."
-        ) from None
+        raise ValueError(_INVALID_MANIFEST) from None
     return data
 
 
@@ -114,8 +117,9 @@ class Ledger:
         """recover=False abre o manifesto sem criar pastas nem concluir pendências."""
         self.root = Path(project).resolve() / "brolls"
         if recover:
-            for directory in ("candidates", "previews", "clips"):
+            for directory in ("candidates", "previews"):
                 (self.root / directory).mkdir(parents=True, exist_ok=True)
+            self._make_clips_dir()
         self.path = self.root / "manifest.json"
         self.pending = self.root / ".pending-transaction.json"
         self.recovered = self.pending.exists()
@@ -131,7 +135,7 @@ class Ledger:
             )
         try:
             self.data = (
-                validate_manifest(json.loads(self.path.read_text(encoding="utf-8")))
+                versioning.stamp(validate_manifest(json.loads(self.path.read_text(encoding="utf-8"))))
                 if self.path.exists()
                 else {"schema_version": 1, "items": []}
             )
@@ -194,6 +198,20 @@ class Ledger:
         record_commit()  # Journal is durable, even if completing snapshots fails.
         self._finish_transaction()
 
+    def _make_clips_dir(self):
+        """Cria a pasta de clipes finais do layout (`brolls/clips/` no 0, `broll/` no 1).
+
+        Pasta de clipes que não dá para usar (link, `project.json` quebrado) não trava
+        o comando aqui: quem grava o clipe (`fetch`) é que recusa, dizendo o motivo.
+        """
+        from . import layout
+
+        try:
+            folder = layout.clips_dir(self.root.parent)
+        except ValueError:
+            return
+        folder.mkdir(parents=True, exist_ok=True)
+
     def _finish_transaction(self):
         try:
             transaction = json.loads(self.pending.read_text(encoding="utf-8"))
@@ -230,13 +248,22 @@ class Ledger:
 
 
 def existing_project_id(project):
-    """`project_id` do manifesto do projeto, só se for um uuid válido; senão `None`.
+    """Id do projeto: o do `project.json` quando válido, senão o `project_id` do manifesto
+    se for um uuid válido; senão `None`.
 
     Nunca cria um `project_id` e nunca levanta: manifesto corrompido, ilegível ou sem
     o campo devolve `None`, porque isso é usado para logar e um log nunca pode quebrar
     o comando. Um valor que não é uuid (por exemplo, um id antigo escrito à mão) também
     devolve `None`, para nunca colocar dado arbitrário do manifesto no log.
     """
+    from . import layout
+
+    try:
+        declared = layout.project_id(project)
+    except (OSError, ValueError):
+        declared = None
+    if declared is not None:
+        return declared
     try:
         project_id = Ledger(project, recover=False).data.get("project_id")
     except (OSError, ValueError):

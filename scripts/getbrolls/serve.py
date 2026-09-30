@@ -87,29 +87,47 @@ class _ExclusiveServer(ThreadingHTTPServer):
     session_id: str = ""
 
 
-def _resolve_allowed_target(base, parts, relative):
-    """Resolve the top-level allowed folder and the request's target file for
+def _resolve_allowed_target(folder, served_parent, candidate):
+    """Resolve an allowed folder and the request's target file inside it for
     `_served_file_allowed`. Returns `(folder, resolved)`, or `None` when the folder
     is a symlink, resolution fails, or the resolved folder is not a direct child of
-    the served directory (see `_served_file_allowed` for why each check exists).
+    the directory it is trusted under (`brolls/` for `previews`/`clips`, the project
+    for `broll/` in layout 1; see `_served_file_allowed` for why each check exists).
     """
-    unresolved_folder = base / parts[0]
-    # `previews`/`clips` resolved THROUGH its own symlink would serve the whole link
-    # target tree; only a real folder directly under the served directory is trusted
-    # as an allowlisted top-level folder.
-    if unresolved_folder.is_symlink():
+    # `previews`/`clips`/`broll` resolved THROUGH its own symlink would serve the whole
+    # link target tree; only a real folder directly under its trusted directory is
+    # trusted as an allowlisted folder.
+    if folder.is_symlink():
         return None
     try:
-        served_root = base.resolve(strict=False)
-        folder = unresolved_folder.resolve(strict=False)
-        resolved = (base / relative).resolve(strict=False)
+        served_root = served_parent.resolve(strict=False)
+        real_folder = folder.resolve(strict=False)
+        resolved = candidate.resolve(strict=False)
     except (OSError, ValueError):
         # `ValueError` covers an embedded NUL byte (e.g. a percent-encoded `%00` in
         # the request path), which `Path.resolve()` raises instead of `OSError`.
         return None
-    if folder.parent != served_root:
+    if real_folder.parent != served_root:
         return None
-    return folder, resolved
+    return real_folder, resolved
+
+
+def _clip_roots(project, directory):
+    """Pastas servidas em `/clips/` e o diretório em que cada uma é confiável.
+
+    `None` no layout 0 (só `brolls/clips/`, como sempre). No layout 1, `broll/` (irmã
+    de `brolls/`, confiável sob o projeto) e a antiga `brolls/clips/` quando existe;
+    `broll/` como link não serve clipe nenhum, mas a página abre.
+    """
+    from . import layout
+
+    try:
+        roots = layout.clip_roots(project)
+    except ValueError:
+        return ()
+    if roots == (directory / "clips",):
+        return None
+    return tuple((root, directory if root.parent == directory else project) for root in roots)
 
 
 class _NoCacheHandler(SimpleHTTPRequestHandler):
@@ -140,6 +158,50 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         return io.BytesIO(body)
 
+    def __init__(self, *args, clip_roots=None, **kwargs):
+        # Antes do `super().__init__`: a stdlib atende o pedido dentro do construtor.
+        self.clip_roots = clip_roots
+        super().__init__(*args, **kwargs)
+
+    def _allowed_roots(self, name):
+        """(pasta, diretório em que ela é confiável) para a pasta de URL `name`."""
+        base = Path(self.directory)
+        if name == "clips" and self.clip_roots is not None:
+            return self.clip_roots
+        return ((base / name, base),)
+
+    def _pick(self, name, tail):
+        """(pasta, diretório confiável, arquivo) de `/<name>/<tail>`, ou `None`.
+
+        Com mais de uma pasta (layout 1), vale a que tem o arquivo; o mesmo nome em duas
+        pastas nunca é escolhido calado: responde 404, e `verify` diz qual é qual.
+        """
+        roots = self._allowed_roots(name)
+        found = [(folder, parent) for folder, parent in roots if os.path.lexists(folder.joinpath(*tail))]
+        if len(found) > 1 or not roots:
+            return None
+        folder, parent = found[0] if found else roots[0]
+        return folder, parent, folder.joinpath(*tail)
+
+    def _logical_parts(self, path):
+        """Partes do caminho pedido, relativas a `brolls/` e já decodificadas pela stdlib, ou `None`."""
+        try:
+            return Path(super().translate_path(path)).relative_to(Path(self.directory)).parts
+        except ValueError:
+            return None
+
+    def translate_path(self, path):
+        # Só `/clips/` do layout 1 muda de lugar: o arquivo sai da pasta de clipe que o
+        # tem. O resto (e todo o layout 0) é a tradução da stdlib, sem mudança.
+        translated = super().translate_path(path)
+        if self.clip_roots is None:
+            return translated
+        parts = self._logical_parts(path)
+        if not parts or parts[0] != "clips" or not parts[1:]:
+            return translated
+        picked = self._pick("clips", parts[1:])
+        return translated if picked is None else str(picked[2])
+
     def _served_file_allowed(self, path_only):
         """Only files under `previews/` or `clips/` (`/` and `/review.html` are handled apart).
 
@@ -147,20 +209,20 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         raw URL: `translate_path` percent-decodes and normalizes AFTER any check on the
         request text, so `/previews/%2e%2e/manifest.json` would pass a prefix test on
         the URL and still land on `manifest.json`. The real target must also stay inside
-        the allowed folder once symlinks are resolved.
+        the allowed folder once symlinks are resolved. In layout 1, `/clips/` maps to
+        `broll/` (a sibling of `brolls/`), so each allowed folder is checked against the
+        directory it is trusted under, never against `brolls/` alone.
         """
-        base = Path(self.directory)
-        try:
-            relative = Path(self.translate_path(path_only)).relative_to(base)
-        except ValueError:
-            return False
-        parts = relative.parts
+        parts = self._logical_parts(path_only)
         # A folder name alone (`/previews`) is not a file: something must follow it.
-        if not parts[1:] or parts[0] not in ALLOWED_GET_FOLDERS:
+        if not parts or not parts[1:] or parts[0] not in ALLOWED_GET_FOLDERS:
             return False
         if any(part.startswith(".") or _CONTROL_CHARACTERS.search(part) for part in parts):
             return False
-        target = _resolve_allowed_target(base, parts, relative)
+        picked = self._pick(parts[0], parts[1:])
+        if picked is None:
+            return False
+        target = _resolve_allowed_target(*picked)
         if target is None:
             return False
         folder, resolved = target
@@ -398,7 +460,11 @@ def start(project, port: int = DEFAULT_PORT):
     review = directory / "review.html"
     if not review.is_file():
         raise ValueError(f"Storyboard não encontrado em {review}. Gere-o antes com o comando `review`.")
-    handler = partial(_NoCacheHandler, directory=str(directory))
+    handler = partial(
+        _NoCacheHandler,
+        directory=str(directory),
+        clip_roots=_clip_roots(Path(project).expanduser().resolve(), directory),
+    )
     try:
         server = _ExclusiveServer(("127.0.0.1", port), handler)
     except OSError:

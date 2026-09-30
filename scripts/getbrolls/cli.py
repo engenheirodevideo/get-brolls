@@ -19,11 +19,20 @@ import sys
 import time
 import traceback
 from gettext import gettext
+from pathlib import Path
 from typing import NoReturn
 
-from . import __version__, _paths, logs, presets
+from . import __version__, _paths, logs, presets, vocab
 from .errors import PrerequisiteError, UsageError
-from .runtime import READ_ONLY_ACTIONS, READ_ONLY_COMMANDS, OperationError, audited, error_code_for, exit_code_for
+from .runtime import (
+    READ_ONLY_ACTIONS,
+    READ_ONLY_COMMANDS,
+    SELF_LOCKED_COMMANDS,
+    OperationError,
+    audited,
+    error_code_for,
+    exit_code_for,
+)
 from .sdk.scaffold import KINDS as SCAFFOLD_KINDS
 
 # Named so a caller (script, test, or someone scripting the CLI) never has to hardcode a
@@ -57,6 +66,11 @@ SUMMARIES = {
     "capabilities": (
         "Descrever em JSON os comandos, flags, códigos de saída e comandos de plugin desta instalação (para agentes)"
     ),
+    "client": (
+        "Registrar, listar, mostrar ou desregistrar pastas de cliente (componentes e templates) no "
+        "$GB_HOME/clients.json"
+    ),
+    "template": ("Congelar um projeto num template imutável do cliente (freeze), sem fala, licença nem aprovação"),
     "x": "Rodar um comando de plugin habilitado (x --list mostra quais existem); só lê o projeto",
     "profile": "Mostrar o perfil getbrolls.toml em vigor (valor e origem de cada campo) ou confiar/desconfiar dele",
     "setup": (
@@ -71,10 +85,18 @@ SUMMARIES = {
     "approve": "Registrar aprovação humana já recebida para o intervalo atual",
     "permit": "Registrar as condições reais de uso do trecho antes da coleta",
     "reject": "Marcar candidatos como rejeitados e invalidar suas revisões (--candidate repetível)",
-    "fetch": "Produzir o corte final aprovado e permitido em clips/",
+    "fetch": "Produzir o corte final aprovado e permitido (broll/ no layout 1, brolls/clips/ no 0)",
     "verify": "Conferir integridade e decodificação dos arquivos coletados",
     "review": "Gerar o Storyboard local em brolls/review.html",
     "import-review": "Importar o JSON de decisões exportado pelo Storyboard",
+    "init": (
+        "Criar um projeto novo de layout 1: project.json, aroll/, assets/, broll/ e analysis/ "
+        "(--template: a partir de um template do cliente)"
+    ),
+    "migrate": (
+        "Adotar o layout 1 num projeto antigo: só acrescenta o project.json, sem mover nada "
+        "(--action plan mostra antes; apply grava)"
+    ),
     "init-rules": "Criar um RULES.md editável no projeto (--format muda o formato-alvo)",
     "rules": "Mostrar as regras editoriais em vigor no projeto",
     "init-brief": "Criar um BRIEF.md editável com o plano deste vídeo",
@@ -88,8 +110,13 @@ SUMMARIES = {
     "serve": "Servir brolls/review.html em 127.0.0.1 para abrir o Storyboard no navegador",
     "deliver": "Organizar os trechos coletados em entrega/, uma pasta por beat",
     "roteiro": "Criar, validar, revisar e sincronizar o ROTEIRO.md com os beats do BRIEF.md",
-    "assets": "Listar componentes do projeto (marca, lettering, sfx, música, composições, A-ROLL) e resolver nomes",
+    "assets": (
+        "Listar componentes do projeto (marca, lettering, sfx, música, imagem, composições, A-ROLL) e resolver nomes"
+    ),
     "export": "Transformar o roteiro revisado num projeto de edição (--to hyperframes) numa pasta nova em exports/",
+    "analysis": (
+        "Registrar mídias do projeto em analysis/ (id por conteúdo) e listar ou conferir os arquivos de análise"
+    ),
 }
 
 # Subcomandos que `execute()` (commands.py) de fato leva até
@@ -279,12 +306,84 @@ def _check_preset_name(args):
         parser.error(str(exc))
 
 
+def _add_client_arguments(p):
+    """Flags de `client`: a pasta de cada cliente fica onde a pessoa escolher, registrada no GB_HOME."""
+    p.add_argument(
+        "--action",
+        required=True,
+        choices=["add", "list", "show", "remove"],
+        help=(
+            "add: cria (ou reaproveita) <root>/<slug>/ e registra; list/show: só leem o registro e o client.json; "
+            "remove: desregistra, sem apagar a pasta"
+        ),
+    )
+    p.add_argument("--slug", help="Slug do cliente: minúsculas, números e - (add/show/remove)")
+    p.add_argument("--name", help="Nome de exibição do cliente novo (add); sem ele, o slug")
+    p.add_argument("--root", help="Pasta existente, em caminho absoluto, onde nasce <root>/<slug>/ (add)")
+
+
+def _template_slug(text):
+    from .templates import check_slug
+
+    return check_slug(text)
+
+
+def _template_ref(text):
+    from .refs import template_parts, template_ref
+
+    return template_ref(*template_parts(text))
+
+
+def _engine_ref(text):
+    from .templates import engine_ref
+
+    return engine_ref(text)
+
+
+def _add_template_arguments(p):
+    """Flags de `template`: versões imutáveis em <pasta do cliente>/templates/<slug>/<N>/."""
+    p.add_argument(
+        "--action",
+        required=True,
+        choices=["freeze", "list", "show"],
+        help=(
+            "freeze: congela o ROTEIRO.md e os componentes do projeto --from na próxima versão do template; "
+            "list: lista as versões dos clientes registrados; show: mostra uma versão e confere o sha256 de cada "
+            "arquivo (list/show só leem)"
+        ),
+    )
+    p.add_argument("--from", dest="source", help="Pasta do projeto a congelar (freeze)")
+    p.add_argument("--slug", type=_checked(_template_slug), help="Slug do template: minúsculas, números e - (freeze)")
+    p.add_argument(
+        "--client",
+        type=_checked(_client_slug),
+        help=(
+            "Slug do cliente registrado dono do template (obrigatório em show; em freeze, sem ele vale o client do "
+            "project.json; em list, filtra)"
+        ),
+    )
+    p.add_argument(
+        "--ref",
+        type=_checked(_template_ref),
+        help="Ref do template, cat:getbrolls/template/<slug>@<N> (show)",
+    )
+    p.add_argument("--title", help="Título de exibição do template (freeze)")
+    p.add_argument(
+        "--engine-ref",
+        action="append",
+        type=_checked(_engine_ref),
+        metavar="REF",
+        help="Ref cat:<motor>/<tipo>/<id>@<versão> de uma receita de motor que o template acompanha; repetível",
+    )
+    p.add_argument("--by", help="Quem congelou, para a proveniência (freeze)")
+
+
 def _add_toolchain_subcommands(sub):
     """Acrescenta os subcomandos sem `--project` obrigatório.
 
-    São eles: providers, doctor, plugins, x, setup, capabilities e profile.
+    São eles: providers, doctor, plugins, x, setup, capabilities, profile, client e template.
     """
-    for name in ("providers", "doctor", "plugins", "x", "setup", "capabilities", "profile"):
+    for name in ("providers", "doctor", "plugins", "x", "setup", "capabilities", "profile", "client", "template"):
         p = sub.add_parser(name, help=SUMMARIES[name], description=SUMMARIES[name])
         _SUBPARSERS[name] = p
         if name in ("doctor", "setup", "capabilities", "profile"):
@@ -357,6 +456,10 @@ def _add_toolchain_subcommands(sub):
             )
         if name == "profile":
             _add_profile_args(p)
+        if name == "client":
+            _add_client_arguments(p)
+        if name == "template":
+            _add_template_arguments(p)
         if name == "x":
             p.add_argument("plugin_id", nargs="?", metavar="plugin", help="Id do plugin dono do comando")
             p.add_argument("plugin_command", nargs="?", metavar="comando", help="Nome do comando do plugin")
@@ -422,6 +525,8 @@ def build_parser():
         "verify",
         "review",
         "import-review",
+        "init",
+        "migrate",
         "init-rules",
         "rules",
         "init-brief",
@@ -437,6 +542,7 @@ def build_parser():
         "roteiro",
         "assets",
         "export",
+        "analysis",
     ):
         p = sub.add_parser(name, help=SUMMARIES[name], description=SUMMARIES[name])
         _SUBPARSERS[name] = p
@@ -452,8 +558,8 @@ def build_parser():
 
 def _add_confirm_format_change_arg(p, name):
     """`--confirm-format-change`, visível só nos comandos que chegam a `sync_formats`."""
-    # `roteiro`, `assets` e `export` nascem sem a flag: eles nunca chegam a `sync_formats`.
-    if name in ("status", "roteiro", "assets", "export"):
+    # `roteiro`, `assets`, `export` e `analysis` nascem sem a flag: eles nunca chegam a `sync_formats`.
+    if name in ("status", "init", "migrate", "roteiro", "assets", "export", "analysis"):
         return
     # Mudar o formato-alvo derruba aprovações humanas; qualquer comando que
     # sincronize formato precisa deste sim explícito antes de apagá-las. Mas
@@ -525,6 +631,29 @@ def _add_assets_args(p, name):
     )
     p.add_argument("--kind", choices=sorted(ASSET_KINDS), help="Tipo de componente")
     p.add_argument("--name", help="Nome do componente, sem extensão (where)")
+
+
+def _add_analysis_args(p, name):
+    """Flags de `analysis` (list/check/register)."""
+    if name != "analysis":
+        return
+    from .vocab import MEDIA_ROLES
+
+    p.add_argument(
+        "--action",
+        required=True,
+        choices=["list", "check", "register"],
+        help=(
+            "list: mídias registradas; check: confere os arquivos de analysis/; register: calcula o id por "
+            "conteúdo e grava media.json (list e check só leem)"
+        ),
+    )
+    p.add_argument("--path", help="Mídia a registrar, relativa ao projeto, com / (ex.: aroll/c01.mp4) (register)")
+    p.add_argument(
+        "--role",
+        choices=list(MEDIA_ROLES),
+        help="Papel da mídia (register); sem ele, vem da pasta: aroll/, broll/, assets/musica/, assets/sfx/",
+    )
 
 
 def _add_export_args(p, name):
@@ -825,6 +954,75 @@ def _add_library_args(p, name):
     )
 
 
+def _checked(parse):
+    """Tipo de argparse a partir de um parser que levanta `ValueError`: valor ruim é erro de uso."""
+
+    def convert(text):
+        try:
+            return parse(text)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(str(exc)) from None
+
+    convert.__name__ = parse.__name__
+    return convert
+
+
+def _client_slug(text):
+    from .layout import check_client
+
+    return check_client(text, "--client")
+
+
+def _parse_canvas(text):
+    from .layout import parse_canvas
+
+    return parse_canvas(text)
+
+
+def _parse_fps(text):
+    from .layout import parse_fps
+
+    return parse_fps(text)
+
+
+def _add_init_args(p, name):
+    """Flags de `init`."""
+    if name != "init":
+        return
+    p.add_argument(
+        "--client",
+        type=_checked(_client_slug),
+        help="Slug do cliente registrado do projeto (ex.: acme-corp); obrigatório com --template",
+    )
+    p.add_argument(
+        "--template",
+        type=_checked(_template_ref),
+        help="Criar o projeto da versão de template cat:getbrolls/template/<slug>@<N> do cliente --client",
+    )
+    p.add_argument("--tema", help="Tema do ROTEIRO.md criado do template (obrigatório com --template)")
+    p.add_argument(
+        "--canvas", type=_checked(_parse_canvas), help="Tamanho do quadro em pixels, LARGURAxALTURA (ex.: 1080x1920)"
+    )
+    p.add_argument("--fps", type=_checked(_parse_fps), help="Quadros por segundo: inteiro (30) ou fração (30000/1001)")
+
+
+def _add_migrate_args(p, name):
+    """Flags de `migrate`."""
+    if name != "migrate":
+        return
+    p.add_argument(
+        "--action",
+        required=True,
+        choices=["plan", "apply"],
+        help="plan: mostra o project.json que seria gravado, sem gravar; apply: grava",
+    )
+    p.add_argument(
+        "--client",
+        type=_checked(_client_slug),
+        help="Slug do cliente (padrão: o cliente do frontmatter do ROTEIRO.md, se houver)",
+    )
+
+
 def _add_init_rules_args(p, name):
     """Flags de `init-rules`."""
     if name != "init-rules":
@@ -845,7 +1043,7 @@ def _add_init_rules_args(p, name):
     p.add_argument(
         "--format",
         dest="video_format",
-        choices=["native", "reels", "horizontal"],
+        choices=list(vocab.FORMATS),
         help="Formato-alvo gravado em video_format; regravar exige --force",
     )
     p.add_argument(
@@ -961,6 +1159,7 @@ _PROJECT_SUBCOMMAND_ARG_ADDERS = (
     _add_confirm_format_change_arg,
     _add_roteiro_args,
     _add_assets_args,
+    _add_analysis_args,
     _add_export_args,
     _add_serve_args,
     _add_deliver_args,
@@ -976,6 +1175,8 @@ _PROJECT_SUBCOMMAND_ARG_ADDERS = (
     _add_remember_args,
     _add_learn_args,
     _add_library_args,
+    _add_init_args,
+    _add_migrate_args,
     _add_init_rules_args,
     _add_brief_args,
     _add_browser_plan_args,
@@ -1061,7 +1262,9 @@ def main(argv=None):
     project = getattr(args, "project", None)
     read_only = args.command in READ_ONLY_COMMANDS or (args.command, getattr(args, "action", None)) in READ_ONLY_ACTIONS
     _check_preset_name(args)
-    logs.configure(project, read_only=read_only)
+    # `init`/`migrate` validam antes de criar: o log do app não pode criar `brolls/` antes disso.
+    creates_tree = args.command in SELF_LOCKED_COMMANDS and not (project and Path(project, "brolls").is_dir())
+    logs.configure(project, read_only=read_only or creates_tree)
 
     try:
         log = logs.get("cli")
@@ -1096,19 +1299,22 @@ def main(argv=None):
             error_code=None,
             ms=round((time.monotonic() - started) * 1000),
         )
-        _RESULT_EXIT.set(result_exit(args.command, result))
+        _RESULT_EXIT.set(result_exit(args.command, result, getattr(args, "action", None)))
         return result
     finally:
         logs.shutdown()
 
 
-def result_exit(command, result):
-    """Código de saída de um comando que deu certo: 4 só para `doctor`/`setup` com
-    `"ready": false` (o resultado sai em stdout do mesmo jeito); 1 para `setup --upgrade`
-    cuja atualização falhou com a venv refeita na versão fixada (`upgrade.status: "failed"`,
-    `ready: true`), para o script perceber; 0 para o resto."""
+def result_exit(command, result, action=None):
+    """Código de saída de um comando que deu certo: 4 para `doctor`/`setup` com
+    `"ready": false`; 1 para `analysis --action check` com `"ok": false` e para
+    `setup --upgrade` cuja atualização falhou com a venv refeita na versão fixada
+    (`upgrade.status: "failed"`, `ready: true`) — o resultado sai em stdout do mesmo jeito,
+    para portões por código de saída; 0 para o resto."""
     if command in PREREQUISITE_COMMANDS and isinstance(result, dict) and result.get("ready") is False:
         return EXIT_PREREQUISITE
+    if (command, action) == ("analysis", "check") and isinstance(result, dict) and result.get("ok") is False:
+        return EXIT_OPERATION_ERROR
     if command == "setup" and isinstance(result, dict) and (result.get("upgrade") or {}).get("status") == "failed":
         return EXIT_OPERATION_ERROR
     return EXIT_OK

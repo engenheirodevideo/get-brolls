@@ -16,6 +16,8 @@ escreve, numa passada só, a versão nova em:
 - `docs/MANUAL.md` (linha `Versão <v>.` do começo);
 - `CHANGELOG.md` (stub `## <v> — <data>` abaixo de `## Unreleased`, só se
   ainda não existir uma seção para essa versão);
+- `schemas/*.schema.json` (`$id` de cada schema publicado, apontando para a tag
+  `v<v>` em `SCHEMA_ID_BASE`; todo arquivo que casar com o glob entra);
 - `skills/get-brolls/SKILL.md`, regerado chamando `gen_skill_mirror.py`.
 
 `--check` não escreve nada: lê as mesmas fontes (exceto `CHANGELOG.md`, cujo
@@ -319,33 +321,48 @@ def _write_changelog(root: Path, version: str, date_str: str) -> None:
     _write(path, text.replace(marker, stub, 1))
 
 
-# -- schemas/export_plan.schema.json ($id aponta para a tag da versão) ---
+# -- schemas/*.schema.json ($id de cada schema publicado aponta para a tag da versão) ---
 
-_EXPORT_PLAN_SCHEMA_ID_RE = re.compile(
-    r'("\$id":\s*"https://raw\.githubusercontent\.com/engenheirodevideo/get-brolls/v)'
-    r"\d+\.\d+\.\d+"
-    r'(/schemas/export_plan\.schema\.json")'
-)
-
-
-def _export_plan_schema_path(root: Path) -> Path:
-    return root / "schemas" / "export_plan.schema.json"
+# Endereço de onde os schemas são servidos. Quando o repositório mudar de nome, só esta
+# constante muda: a escrita reescreve o `$id` inteiro, host antigo incluído, e a
+# checagem exige exatamente este prefixo.
+SCHEMA_ID_BASE = "https://raw.githubusercontent.com/engenheirodevideo/get-brolls"
+# O primeiro `"$id": "..."` do arquivo, qualquer que seja o endereço atual.
+_SCHEMA_ID_RE = re.compile(r'("\$id":\s*")[^"]*(")')
 
 
-def _check_export_plan_schema(root: Path, version: str) -> bool:
-    match = _EXPORT_PLAN_SCHEMA_ID_RE.search(_read(_export_plan_schema_path(root)))
-    return bool(match) and f"v{version}" in match.group(0)
+def _schema_id(version: str, name: str) -> str:
+    return f"{SCHEMA_ID_BASE}/v{version}/schemas/{name}"
 
 
-def _write_export_plan_schema(root: Path, version: str, _date_str: str) -> None:
-    path = _export_plan_schema_path(root)
+def _check_schema_id(path: Path, version: str) -> bool:
+    try:
+        schema = json.loads(_read(path))
+    except (OSError, ValueError):
+        return False
+    return isinstance(schema, dict) and schema.get("$id") == _schema_id(version, path.name)
+
+
+def _write_schema_id(path: Path, version: str) -> None:
     text = _read(path)
     # Substituição de texto, não round-trip por json.dumps: preserva a formatação
     # manual do schema (objetos numa linha só), que json.dumps quebraria em várias.
-    text, count = _EXPORT_PLAN_SCHEMA_ID_RE.subn(rf"\g<1>{version}\g<2>", text)
+    text, count = _SCHEMA_ID_RE.subn(rf"\g<1>{_schema_id(version, path.name)}\g<2>", text, count=1)
     if count != 1:
         raise ValueError(f"$id não encontrado em {path}")
     _write(path, text)
+
+
+def schema_targets(root: Path) -> list[Target]:
+    """Um alvo por `schemas/*.schema.json` de `root`: schema novo entra sem editar este script."""
+    return [
+        Target(
+            f"schemas/{path.name}",
+            lambda r, v, name=path.name: _check_schema_id(r / "schemas" / name, v),
+            lambda r, v, _d, name=path.name: _write_schema_id(r / "schemas" / name, v),
+        )
+        for path in sorted((root / "schemas").glob("*.schema.json"))
+    ]
 
 
 # -- skills/get-brolls/SKILL.md (regerado, não editado diretamente) ---
@@ -394,11 +411,15 @@ TARGETS: list[Target] = [
     Target("docs/QUALITY.md", _check_quality_md, _write_quality_md),
     Target("docs/MANUAL.md", _check_manual_md, _write_manual_md),
     Target("CHANGELOG.md", _check_changelog, _write_changelog),
-    Target("schemas/export_plan.schema.json", _check_export_plan_schema, _write_export_plan_schema),
-    # A regeneração do espelho depende do SKILL.md já escrito; roda por
-    # último tanto na checagem quanto na escrita.
-    Target("skills/get-brolls/SKILL.md", _check_skill_mirror, _write_skill_mirror),
 ]
+# A regeneração do espelho depende do SKILL.md já escrito; roda por último tanto na
+# checagem quanto na escrita.
+MIRROR_TARGET = Target("skills/get-brolls/SKILL.md", _check_skill_mirror, _write_skill_mirror)
+
+
+def targets(root: Path) -> list[Target]:
+    """Todas as fontes de versão de `root`, na ordem de escrita."""
+    return [*TARGETS, *schema_targets(root), MIRROR_TARGET]
 
 
 def run(root: Path, version: str, date_str: str, check: bool) -> int:
@@ -410,7 +431,7 @@ def run(root: Path, version: str, date_str: str, check: bool) -> int:
         return 2
 
     if check:
-        divergent = [t.name for t in TARGETS if not t.check(root, version)]
+        divergent = [t.name for t in targets(root) if not t.check(root, version)]
         if divergent:
             print("fora de sincronia com a versão " + version + ":", file=sys.stderr)
             for name in divergent:
@@ -419,7 +440,7 @@ def run(root: Path, version: str, date_str: str, check: bool) -> int:
         print(f"todas as fontes coerentes com a versão {version}.")
         return 0
 
-    for target in TARGETS:
+    for target in targets(root):
         target.write(root, version, date_str)
     print(f"versão atualizada para {version}.")
     return 0

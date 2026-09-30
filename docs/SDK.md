@@ -481,11 +481,54 @@ api.command("recentes", recentes, "Lista os vídeos mais recentes da pasta")
   na ordem do BRIEF.md; beat marcado `retired` com id fora do formato continua
   em `beats`.
   Comando **só lê** o projeto: não há como gravar no ledger, e `x` não toma a
-  trava exclusiva nem cria `brolls/`.
+  trava exclusiva nem cria `brolls/`. A única gravação possível é em `analysis/`,
+  por `ctx.analysis` (veja [Escrever em analysis/](#escrever-em-analysis)).
 - O retorno tem que ser um objeto JSON (dict). Exceção no handler vira erro
   `Plugin <id>: o comando <nome> falhou (<tipo>)`, exit 1; com `PluginError`,
   a mensagem é `Plugin <id>: <texto>` (veja
   [Mensagens de erro](#mensagens-de-erro-pluginerror)).
+
+### Escrever em analysis/
+
+Um comando de plugin pode ler e gravar os arquivos de análise de mídia do projeto
+(`analysis/`, formatos em `schemas/`: `transcript`, `scenes`, `silence`,
+`speakers`, `visual` e `markers`) por `ctx.analysis`:
+
+```python
+def transcrever(args: dict, ctx: CommandContext) -> dict:
+    media_id = ctx.analysis.media_id("aroll/c01.mp4")
+    ctx.analysis.write(media_id, "transcript", documento, model="large-v3", version="0.3.0")
+    return {"media_id": media_id}
+```
+
+- `ctx.analysis.media_id(rel)` devolve o `media_id` (16 hex do sha256 dos bytes)
+  da mídia `rel`, relativa ao projeto. Com permissão de gravação, registra a mídia
+  quando preciso, como `analysis --action register`; sem ela, só acha uma mídia já
+  registrada.
+- `ctx.analysis.read(media_id, name)` devolve uma cópia validada do componente, ou
+  `None`. Ler é sempre permitido.
+- `ctx.analysis.write(media_id, name, doc, model=None, version=None)` grava o
+  componente. A mídia tem que estar no índice (`analysis/index.json`) e `name`
+  nunca é `media`: `media.json` é do core. O core força `schema`, `media_id`,
+  `created`, `time_unit` e `producer` (`tool` é sempre o id do plugin, mesmo que o
+  documento diga outra coisa), valida contra o schema e as regras entre campos
+  (`reason` em estado de falha, `word_count`, tempos) e recusa caminho absoluto,
+  chave com cara de segredo, NaN e arquivo acima de 16 MiB, com o código do
+  problema na mensagem.
+- `ctx.analysis.write_markers(markers, model=None, version=None)` troca os
+  marcadores deste plugin em `analysis/markers.json`; os de outros produtores ficam.
+
+Gravar exige `"project_write": ["analysis"]` em `permissions`, aprovado no enable:
+vale a permissão guardada no pin (`plugins.json`), não a do manifesto em disco.
+Sem ela, ou sem `--project`, `write` e `write_markers` levantam `ApiError`
+(`Plugin <id>: …`, exit 1). A gravação nunca segue link, troca o arquivo de uma vez
+e usa só a trava `analysis/.lock`; o `x` continua sem tomar a trava do projeto.
+
+`project_write` é uma declaração auditável, não um sandbox: o plugin roda no mesmo
+processo do get-brolls, e a permissão diz o que ele se propõe a gravar pela API do
+core, conferido no enable e no diff do update. Ela não impede um plugin mal
+intencionado de escrever por conta própria; o que protege é o opt-in por id e o
+pin do conteúdo.
 
 ## Exportadores
 
@@ -951,7 +994,9 @@ muda o hash do plugin — o pin cobre todo arquivo da pasta.
 `getbrolls.sdk.testing` traz as checagens de contrato: `check_provider`,
 `check_route`, `check_command`, `check_exporter`, `check_resolver` (cada uma
 levanta `AssertionError` com o que corrigir) e `check_plugin(pasta)`, que roda
-tudo. Antes de instalar de
+tudo. `command_context(plugin_id, pasta, project_write=["analysis"])` monta o mesmo
+`CommandContext` que o `x` entrega, para testar um handler contra uma pasta de
+projeto temporária (`ctx.analysis` grava de verdade nela). Antes de instalar de
 verdade, valide o manifesto e rode `register()` contra um registro descartável
 (com os built-ins, para pegar colisão de nome), sem habilitar nada — o `check`
 roda as mesmas checagens de contrato e lista o que conferiu em `contracts`:

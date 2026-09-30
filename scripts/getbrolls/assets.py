@@ -1,7 +1,10 @@
 """Rotas de componentes: onde mora cada coisa que o roteiro cita.
 
-`[SFX: whoosh]` procura `whoosh.*` em `assets/sfx/` do projeto e depois em
-`~/.getbrolls/assets/sfx/`. Só o nível da pasta, sem recursão, só arquivo regular
+`[SFX: whoosh]` procura `whoosh.*` em `assets/sfx/` do projeto, depois, quando o
+`project.json` tem cliente registrado, em `<pasta do cliente>/components/sfx/`, e por
+fim em `~/.getbrolls/assets/sfx/`. A-ROLL é só do projeto. Cliente do `project.json`
+que não está registrado gera o aviso `CLIENT_UNREGISTERED` e é pulado; pasta de
+componentes do cliente que é link também é pulada. Só o nível da pasta, sem recursão, só arquivo regular
 (symlink para arquivo vale se não sair da pasta). A decisão de ambiguidade sai da
 listagem da pasta (e não do sistema de arquivos), então dá o mesmo resultado em
 Linux, macOS e Windows. A biblioteca pessoal não transfere licença: cada arquivo
@@ -14,15 +17,18 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import versioning, vocab
 from .roteiro import fold
 from .rules import home_dir
 
 LICENSE_SUFFIX = ".licenca.json"
 LICENSE_FIELDS = ("origem", "licenca", "credito")
+# Grafia em inglês aceita na leitura; a gravação continua em português.
+LICENSE_ALIASES = {"origem": ("source",), "licenca": ("license_name",), "credito": ("attribution",)}
 _NAME = re.compile(r"^[\w][\w \-]{0,79}$")
-VIDEO = (".mp4", ".mov", ".m4v")
-AUDIO = (".wav", ".mp3", ".m4a", ".aac", ".aif", ".aiff", ".ogg")
-IMAGE = (".png", ".svg", ".webp", ".jpg", ".jpeg")
+VIDEO = vocab.VIDEO_EXTENSIONS
+AUDIO = vocab.AUDIO_EXTENSIONS
+IMAGE = vocab.IMAGE_EXTENSIONS
 
 
 @dataclass(frozen=True)
@@ -42,6 +48,7 @@ ASSET_KINDS = {
     "lettering": AssetKind("lettering", "assets/lettering", (".json", ".html"), licensed=False, personal=True),
     "sfx": AssetKind("sfx", "assets/sfx", AUDIO, licensed=True, personal=True),
     "musica": AssetKind("musica", "assets/musica", AUDIO, licensed=True, personal=True),
+    "imagem": AssetKind("imagem", "assets/imagem", IMAGE, licensed=True, personal=True),
     "composicao": AssetKind("composicao", "assets/composicoes", (".html", ".json"), licensed=False, personal=True),
 }
 
@@ -60,10 +67,81 @@ def valid_name(name):
     return ".." not in name and _NAME.match(name) is not None
 
 
+_WARNED_CLIENTS = set()
+
+
+def reset_client_warnings():
+    """Esquece quais clientes não registrados já foram avisados neste processo."""
+    _WARNED_CLIENTS.clear()
+
+
+def project_client(project):
+    """`(slug, pasta registrada)` do cliente do `project.json`; `(None, None)` sem cliente utilizável.
+
+    Cliente fora do registro (ou com a pasta quebrada) vira o aviso `CLIENT_UNREGISTERED`,
+    uma vez por processo e cliente, e o projeto segue sem ele.
+    """
+    from . import clients, layout, runtime  # local: clients importa ledger e runtime
+
+    doc = layout.info(project).doc
+    slug = doc.get("client") if doc else None
+    if not slug:
+        return None, None
+    try:
+        root = clients.client_root(slug)
+        if root is not None:
+            clients.load_client(slug)
+    except ValueError as exc:
+        root, problem = None, str(exc)
+    else:
+        problem = f'O cliente "{slug}" do project.json não está registrado'
+    if root is None:
+        if slug not in _WARNED_CLIENTS:
+            _WARNED_CLIENTS.add(slug)
+            runtime.record_warning(
+                "CLIENT_UNREGISTERED",
+                runtime.scrub_home(f"{problem}; componentes do cliente ignorados (client --action add registra)."),
+            )
+        return slug, None
+    return slug, root
+
+
+def _client_folder(project, spec):
+    """`<pasta do cliente>/components/<tipo>/` do cliente do projeto (ver `client_components`)."""
+    _, root = project_client(project)
+    return None if root is None else _components_of(root, spec)
+
+
+def client_components(slug, spec):
+    """`<pasta do cliente>/components/<tipo>/` do cliente registrado `slug`, ou `None`."""
+    from . import clients
+
+    try:
+        clients.load_client(slug)
+        root = clients.client_root(slug)
+    except ValueError:
+        return None
+    return None if root is None else _components_of(root, spec)
+
+
+def _components_of(root, spec):
+    """A pasta do tipo em `root/components/`, quando existe e nenhuma pasta do caminho é link."""
+    from .sdk.files import is_link
+
+    components = root / "components"
+    folder = components / spec.folder.removeprefix("assets/")
+    if is_link(components) or is_link(folder) or not folder.is_dir():
+        return None
+    return folder
+
+
 def component_roots(project, spec):
-    """(origem, pasta) onde um componente pode morar: a do projeto e, se aplicável, a pessoal."""
+    """(origem, pasta) onde um componente pode morar: projeto, cliente do projeto e pessoal, nessa ordem."""
     yield "project", Path(project).expanduser().resolve() / spec.folder
     if spec.personal:
+        folder = _client_folder(project, spec)
+        if folder is not None:
+            yield "client", folder
         yield "personal", home_dir() / "assets" / spec.folder.removeprefix("assets/")
 
 
@@ -95,13 +173,34 @@ def _license(path):
         data = json.loads(sidecar.read_text(encoding="utf-8-sig"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None, f"{sidecar.name} não é um JSON válido: conserte ou apague o arquivo."
-    if (
-        not isinstance(data, dict)
-        or any(not isinstance(v, str) for v in data.values())
-        or any(not (data.get(k) or "").strip() for k in LICENSE_FIELDS)
-    ):
-        return None, f"{sidecar.name} precisa de origem, licenca e credito preenchidos, em texto."
-    return data, None
+    return _normalize_license(sidecar.name, data)
+
+
+def _normalize_license(name, data):
+    """(licença com chaves em português, erro): aceita o sidecar em português ou inglês."""
+    *first, last = (f"{k} (ou {' ou '.join(LICENSE_ALIASES[k])})" for k in LICENSE_FIELDS)
+    missing = f"{name} precisa de {', '.join(first)} e {last} preenchidos, em texto."
+    if not isinstance(data, dict):
+        return None, missing
+    try:
+        versioning.read_version(data, name)
+    except ValueError as exc:
+        return None, str(exc)
+    fields = {k: v for k, v in data.items() if k != versioning.FIELD}
+    if any(not isinstance(v, str) for v in fields.values()):
+        return None, missing
+    aliases = {alias for spellings in LICENSE_ALIASES.values() for alias in spellings}
+    license_ = {}
+    for key in LICENSE_FIELDS:
+        spelled = [(k, fields[k]) for k in (key, *LICENSE_ALIASES[key]) if k in fields]
+        if len({v for _, v in spelled}) > 1:
+            return None, f"{name}: {spelled[0][0]} e {spelled[1][0]} dizem coisas diferentes"
+        value = spelled[0][1] if spelled else ""
+        if not value.strip():
+            return None, missing
+        license_[key] = value
+    extras = {k: v for k, v in fields.items() if k not in LICENSE_FIELDS and k not in aliases}
+    return {**license_, **extras}, None
 
 
 def _outside(path, root):

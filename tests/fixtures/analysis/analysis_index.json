@@ -1,0 +1,5 @@
+{"schema": "getbrolls.analysis_index/1", "updated": "2026-09-30T12:00:00.000000+00:00",
+ "media": [{"media_id": "9f86d081884c7d65", "path": "aroll/c01.mp4", "role": "aroll", "quick_key": {"size": 10485760, "mtime_ns": 1727700000000000000, "sample_sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"},
+            "components": {"media": "done", "transcript": "done", "scenes": "not_run_by_this_script",
+                           "silence": "not_run_by_this_script", "speakers": "not_run_by_this_script",
+                           "visual": "not_run_by_this_script"}}]}

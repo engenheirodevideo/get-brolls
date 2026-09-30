@@ -62,7 +62,8 @@ def _relocated_wheel(base):
 
 
 class _Ledger:
-    def __init__(self):
+    def __init__(self, root):
+        self.root = root / "brolls"
         self.data = {"project_id": "p1"}
 
 
@@ -94,7 +95,7 @@ class RelocatedDataRootTests(unittest.TestCase):
         self.assertIn("sentinela.example", (project / "RULES.md").read_text(encoding="utf-8"))
 
     def test_review_page_carries_the_relocated_css(self):
-        page = review.enhance("<style></style><body></body>", _Ledger(), [])
+        page = review.enhance("<style></style><body></body>", _Ledger(self.tmp), [])
         self.assertIn("/*sentinela*/", page)
 
     def test_storyboard_logo_comes_from_the_relocated_assets(self):

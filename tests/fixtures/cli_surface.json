@@ -1,5 +1,85 @@
 {
   "subcommands": {
+    "analysis": {
+      "help": "Registrar mídias do projeto em analysis/ (id por conteúdo) e listar ou conferir os arquivos de análise",
+      "options": [
+        {
+          "action": "_HelpAction",
+          "choices": null,
+          "default": "==SUPPRESS==",
+          "dest": "help",
+          "help": "show this help message and exit",
+          "nargs": 0,
+          "option_strings": [
+            "--help",
+            "-h"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "project",
+          "help": "Pasta do projeto que guarda brolls/, fora da instalação da skill",
+          "nargs": null,
+          "option_strings": [
+            "--project"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "check",
+            "list",
+            "register"
+          ],
+          "default": null,
+          "dest": "action",
+          "help": "list: mídias registradas; check: confere os arquivos de analysis/; register: calcula o id por conteúdo e grava media.json (list e check só leem)",
+          "nargs": null,
+          "option_strings": [
+            "--action"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "path",
+          "help": "Mídia a registrar, relativa ao projeto, com / (ex.: aroll/c01.mp4) (register)",
+          "nargs": null,
+          "option_strings": [
+            "--path"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "animation",
+            "aroll",
+            "broll",
+            "footage",
+            "music",
+            "narration",
+            "sfx",
+            "title",
+            "unknown"
+          ],
+          "default": null,
+          "dest": "role",
+          "help": "Papel da mídia (register); sem ele, vem da pasta: aroll/, broll/, assets/musica/, assets/sfx/",
+          "nargs": null,
+          "option_strings": [
+            "--role"
+          ],
+          "required": false
+        }
+      ]
+    },
     "approve": {
       "help": "Registrar aprovação humana já recebida para o intervalo atual",
       "options": [
@@ -130,7 +210,7 @@
       ]
     },
     "assets": {
-      "help": "Listar componentes do projeto (marca, lettering, sfx, música, composições, A-ROLL) e resolver nomes",
+      "help": "Listar componentes do projeto (marca, lettering, sfx, música, imagem, composições, A-ROLL) e resolver nomes",
       "options": [
         {
           "action": "_HelpAction",
@@ -177,6 +257,7 @@
           "choices": [
             "aroll",
             "composicao",
+            "imagem",
             "lettering",
             "marca",
             "musica",
@@ -355,6 +436,77 @@
         }
       ]
     },
+    "client": {
+      "help": "Registrar, listar, mostrar ou desregistrar pastas de cliente (componentes e templates) no $GB_HOME/clients.json",
+      "options": [
+        {
+          "action": "_HelpAction",
+          "choices": null,
+          "default": "==SUPPRESS==",
+          "dest": "help",
+          "help": "show this help message and exit",
+          "nargs": 0,
+          "option_strings": [
+            "--help",
+            "-h"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "add",
+            "list",
+            "remove",
+            "show"
+          ],
+          "default": null,
+          "dest": "action",
+          "help": "add: cria (ou reaproveita) <root>/<slug>/ e registra; list/show: só leem o registro e o client.json; remove: desregistra, sem apagar a pasta",
+          "nargs": null,
+          "option_strings": [
+            "--action"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "slug",
+          "help": "Slug do cliente: minúsculas, números e - (add/show/remove)",
+          "nargs": null,
+          "option_strings": [
+            "--slug"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "name",
+          "help": "Nome de exibição do cliente novo (add); sem ele, o slug",
+          "nargs": null,
+          "option_strings": [
+            "--name"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "root",
+          "help": "Pasta existente, em caminho absoluto, onde nasce <root>/<slug>/ (add)",
+          "nargs": null,
+          "option_strings": [
+            "--root"
+          ],
+          "required": false
+        }
+      ]
+    },
     "deliver": {
       "help": "Organizar os trechos coletados em entrega/, uma pasta por beat",
       "options": [
@@ -518,7 +670,7 @@
       ]
     },
     "fetch": {
-      "help": "Produzir o corte final aprovado e permitido em clips/",
+      "help": "Produzir o corte final aprovado e permitido (broll/ no layout 1, brolls/clips/ no 0)",
       "options": [
         {
           "action": "_HelpAction",
@@ -646,6 +798,96 @@
             "--by"
           ],
           "required": true
+        }
+      ]
+    },
+    "init": {
+      "help": "Criar um projeto novo de layout 1: project.json, aroll/, assets/, broll/ e analysis/ (--template: a partir de um template do cliente)",
+      "options": [
+        {
+          "action": "_HelpAction",
+          "choices": null,
+          "default": "==SUPPRESS==",
+          "dest": "help",
+          "help": "show this help message and exit",
+          "nargs": 0,
+          "option_strings": [
+            "--help",
+            "-h"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "project",
+          "help": "Pasta do projeto que guarda brolls/, fora da instalação da skill",
+          "nargs": null,
+          "option_strings": [
+            "--project"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "client",
+          "help": "Slug do cliente registrado do projeto (ex.: acme-corp); obrigatório com --template",
+          "nargs": null,
+          "option_strings": [
+            "--client"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "template",
+          "help": "Criar o projeto da versão de template cat:getbrolls/template/<slug>@<N> do cliente --client",
+          "nargs": null,
+          "option_strings": [
+            "--template"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "tema",
+          "help": "Tema do ROTEIRO.md criado do template (obrigatório com --template)",
+          "nargs": null,
+          "option_strings": [
+            "--tema"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "canvas",
+          "help": "Tamanho do quadro em pixels, LARGURAxALTURA (ex.: 1080x1920)",
+          "nargs": null,
+          "option_strings": [
+            "--canvas"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "fps",
+          "help": "Quadros por segundo: inteiro (30) ou fração (30000/1001)",
+          "nargs": null,
+          "option_strings": [
+            "--fps"
+          ],
+          "required": false
         }
       ]
     },
@@ -1092,6 +1334,63 @@
           "nargs": null,
           "option_strings": [
             "--limit"
+          ],
+          "required": false
+        }
+      ]
+    },
+    "migrate": {
+      "help": "Adotar o layout 1 num projeto antigo: só acrescenta o project.json, sem mover nada (--action plan mostra antes; apply grava)",
+      "options": [
+        {
+          "action": "_HelpAction",
+          "choices": null,
+          "default": "==SUPPRESS==",
+          "dest": "help",
+          "help": "show this help message and exit",
+          "nargs": 0,
+          "option_strings": [
+            "--help",
+            "-h"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "project",
+          "help": "Pasta do projeto que guarda brolls/, fora da instalação da skill",
+          "nargs": null,
+          "option_strings": [
+            "--project"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "apply",
+            "plan"
+          ],
+          "default": null,
+          "dest": "action",
+          "help": "plan: mostra o project.json que seria gravado, sem gravar; apply: grava",
+          "nargs": null,
+          "option_strings": [
+            "--action"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "client",
+          "help": "Slug do cliente (padrão: o cliente do frontmatter do ROTEIRO.md, se houver)",
+          "nargs": null,
+          "option_strings": [
+            "--client"
           ],
           "required": false
         }
@@ -2642,6 +2941,124 @@
             "--project"
           ],
           "required": true
+        }
+      ]
+    },
+    "template": {
+      "help": "Congelar um projeto num template imutável do cliente (freeze), sem fala, licença nem aprovação",
+      "options": [
+        {
+          "action": "_HelpAction",
+          "choices": null,
+          "default": "==SUPPRESS==",
+          "dest": "help",
+          "help": "show this help message and exit",
+          "nargs": 0,
+          "option_strings": [
+            "--help",
+            "-h"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "freeze",
+            "list",
+            "show"
+          ],
+          "default": null,
+          "dest": "action",
+          "help": "freeze: congela o ROTEIRO.md e os componentes do projeto --from na próxima versão do template; list: lista as versões dos clientes registrados; show: mostra uma versão e confere o sha256 de cada arquivo (list/show só leem)",
+          "nargs": null,
+          "option_strings": [
+            "--action"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "source",
+          "help": "Pasta do projeto a congelar (freeze)",
+          "nargs": null,
+          "option_strings": [
+            "--from"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "slug",
+          "help": "Slug do template: minúsculas, números e - (freeze)",
+          "nargs": null,
+          "option_strings": [
+            "--slug"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "client",
+          "help": "Slug do cliente registrado dono do template (obrigatório em show; em freeze, sem ele vale o client do project.json; em list, filtra)",
+          "nargs": null,
+          "option_strings": [
+            "--client"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "ref",
+          "help": "Ref do template, cat:getbrolls/template/<slug>@<N> (show)",
+          "nargs": null,
+          "option_strings": [
+            "--ref"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "title",
+          "help": "Título de exibição do template (freeze)",
+          "nargs": null,
+          "option_strings": [
+            "--title"
+          ],
+          "required": false
+        },
+        {
+          "action": "_AppendAction",
+          "choices": null,
+          "default": null,
+          "dest": "engine_ref",
+          "help": "Ref cat:<motor>/<tipo>/<id>@<versão> de uma receita de motor que o template acompanha; repetível",
+          "nargs": null,
+          "option_strings": [
+            "--engine-ref"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "by",
+          "help": "Quem congelou, para a proveniência (freeze)",
+          "nargs": null,
+          "option_strings": [
+            "--by"
+          ],
+          "required": false
         }
       ]
     },

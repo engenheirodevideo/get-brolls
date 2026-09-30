@@ -263,10 +263,10 @@ class EncodedPathAllowlistTests(unittest.TestCase):
             previews.mkdir()
             (previews / "poster.jpg").write_bytes(b"poster")
 
-            def permissive(base, parts, relative):
-                del relative
-                folder = (base / parts[0]).resolve()
-                return folder, folder / "anything"
+            def permissive(folder, served_parent, candidate):
+                del served_parent, candidate
+                real = folder.resolve()
+                return real, real / "anything"
 
             with patch.object(serve, "_resolve_allowed_target", side_effect=permissive), _serving(root) as (_s, port):
                 self.assertEqual(404, self._status(port, "/previews/%00x.jpg"))

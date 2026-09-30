@@ -2,7 +2,8 @@
 
 Cada `check_*` levanta `AssertionError` com uma frase que diz o que corrigir; use
 direto no `unittest` do seu plugin, ou `check_plugin(pasta)` para conferir tudo o
-que o `register(api)` registra, sem instalar nada.
+que o `register(api)` registra, sem instalar nada. `command_context` monta o mesmo
+`CommandContext` que o `x` entrega ao handler, sobre uma pasta de projeto de teste.
 """
 
 import inspect
@@ -14,6 +15,7 @@ from .contracts import (
     NAME_RE,
     RESOLVER_KINDS,
     ROUTE_STAGES,
+    CommandContext,
     CommandSpec,
     ExporterSpec,
     ProviderCapabilities,
@@ -23,6 +25,23 @@ from .kinds import SUPPORTED_SINGULAR, plural
 
 if TYPE_CHECKING:
     from .registry import Registry
+
+
+def command_context(
+    plugin_id: str, project: str | os.PathLike[str] | None = None, *, project_write: tuple | list = ()
+) -> CommandContext:
+    """O `CommandContext` que `x <plugin> <comando>` entregaria, para testar um handler.
+
+    Args:
+        plugin_id: id do plugin.
+        project: pasta do projeto de teste (um temporário), ou `None` como sem `--project`.
+        project_write: as áreas aprovadas no pin, como `["analysis"]`; vazio só lê.
+
+    Returns:
+        O contexto, com `ctx.analysis` gravando de verdade em `<project>/analysis/`.
+    """
+    root = Path(project).expanduser().resolve() if project is not None else None
+    return CommandContext(plugin_id, root, permissions={"project_write": list(project_write)})
 
 
 def _fail(message: str) -> NoReturn:

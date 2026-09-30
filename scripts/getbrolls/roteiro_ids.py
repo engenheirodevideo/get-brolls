@@ -10,6 +10,7 @@ readotar uma cena cujo comentário `<!-- cNN -->` sumiu; na dúvida, recusa.
 import json
 from pathlib import Path
 
+from . import versioning
 from .ledger import atomic_write
 from .roteiro import SCENE_BEAT_RE
 
@@ -36,6 +37,8 @@ def read_state(project):
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         raise ValueError(_BAD_STATE) from None
+    if isinstance(data, dict):
+        versioning.read_version(data, f"brolls/{STATE_FILE}", invalid=_BAD_STATE)
     if (
         not isinstance(data, dict)
         or type(data.get("next_id")) is not int
@@ -50,7 +53,7 @@ def write_state(project, state):
     """Grava `brolls/roteiro-state.json` (cria a pasta se faltar), de forma atômica."""
     path = state_path(project)
     path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write(path, json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    atomic_write(path, json.dumps(versioning.stamp(state), ensure_ascii=False, indent=2, sort_keys=True) + "\n")
 
 
 def signature(scene):

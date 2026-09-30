@@ -182,6 +182,9 @@ class _Collector:
     def _where(self, origin, root, path):
         if origin == "project":
             return path.relative_to(self.project).as_posix()
+        if origin == "client":
+            slug, _ = assets.project_client(self.project)
+            return f"cliente {slug}: {root.name}/{path.name}"
         return f"biblioteca pessoal: {root.name}/{path.name}"
 
     # --- clipes -------------------------------------------------------------
@@ -203,29 +206,50 @@ class _Collector:
         frozen = not stat.S_IMODE(info.st_mode) & stat.S_IWUSR
         return "hardlink" if frozen else "clone"
 
-    def _clip_problem(self, c, clips_root):
+    def _clip_file(self, c, rel):
+        """(arquivo, pasta de clipe onde ele está, None) pelo layout do projeto, ou (None, None, problema)."""
+        from . import layout
+
+        try:
+            roots = layout.clip_roots(self.project)
+            path = layout.clip_file(self.project, rel, sha256=(c.get("output") or {}).get("sha256"))
+        except layout.ClipConflictError:
+            return None, None, "o mesmo nome em broll/ e em brolls/clips/"
+        except ValueError:
+            # A pasta de clipes do layout 1 recusada: `broll/` é link.
+            linked = self._linked_dir(layout.CLIP_FOLDER)
+            return None, None, f"a pasta {linked}/ é um link" if linked else "caminho fora de clips/"
+        return path, next(root for root in roots if path.is_relative_to(root)), None
+
+    def _clip_problem(self, c):
         rel = (c.get("output") or {}).get("path")
         if not isinstance(rel, str) or not rel.startswith("clips/"):
             return None, "caminho fora de clips/"
-        path = self.project / "brolls" / rel
-        linked = self._linked_dir(Path("brolls", rel).parent)
+        path, root, problem = self._clip_file(c, rel)
+        if path is None or root is None:
+            return None, problem
+        return path, self._clip_file_problem(path, root)
+
+    def _clip_file_problem(self, path, root):
+        """O que impede o export de usar `path` (dentro da pasta de clipes `root`), ou None."""
+        linked = self._linked_dir(path.parent.relative_to(self.project))
         if linked:
-            return path, f"a pasta {linked}/ é um link"
+            return f"a pasta {linked}/ é um link"
         if path.is_symlink():
-            return path, "é um link"
+            return "é um link"
         try:
             real = path.resolve(strict=True)
             info = path.lstat()
+            clips_root = root.resolve()
         except OSError:
-            return path, "o arquivo sumiu"
+            return "o arquivo sumiu"
         if not real.is_relative_to(clips_root) or not stat.S_ISREG(info.st_mode) or info.st_size == 0:
-            return path, "não é um arquivo de brolls/clips/"
-        return path, None
+            return f"não é um arquivo de {root.relative_to(self.project).as_posix()}/"
+        return None
 
     def clips_by_beat(self, items):
         """{beat: [ids de clipe]} na ordem do manifesto: primeiro os que existem, depois os que mudaram."""
         collected, _ = delivery.deliverable(self.project, items, log_event="export_skipped")
-        clips_root = (self.project / "brolls" / "clips").resolve()
         good, changed = {}, {}
         for c in collected:
             media_id = f"clip:{c['id']}"
@@ -235,7 +259,7 @@ class _Collector:
                     f"{shot or 'sem beat'}: clipe {c['id']} com id fora do padrão: fica fora do export"
                 )
                 continue
-            path, problem = self._clip_problem(c, clips_root)
+            path, problem = self._clip_problem(c)
             if problem or path is None:
                 self.warnings.append(f"{shot or 'sem beat'}: clipe {c['id']} fora do export ({problem})")
                 self.media[media_id] = _row(
@@ -459,7 +483,9 @@ class _Collector:
         if not voice["has_audio"]:
             self.warnings.append(f"{label}: aroll/{name} não tem trilha de áudio")
             return "estimate", None
-        found, warnings = timed_words(self.sources[voice_ids[0]]["path"], voice["duration_s"], window, label)
+        found, warnings = timed_words(
+            self.sources[voice_ids[0]]["path"], voice["duration_s"], window, label, project=self.project
+        )
         self.warnings.extend(warnings)
         return ("transcript", found) if found else ("estimate", None)
 

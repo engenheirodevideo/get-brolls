@@ -20,7 +20,7 @@ import unicodedata
 import urllib.parse
 from pathlib import Path, PureWindowsPath
 
-from . import __version__, export_folder, export_gates, export_place, export_plan, logs
+from . import __version__, assets, export_folder, export_gates, export_place, export_plan, logs
 from .delivery import copies_forced
 from .ledger import existing_project_id
 from .rules import home_dir
@@ -174,6 +174,9 @@ def _machine_paths(project, registry, sources):
         for _, spec in registry.resolvers_for(kind):
             for root in registry.resolver_roots(spec.name):
                 add(root, "uma pasta de permissions.paths", "<permissions.paths>")
+    _, client_root = assets.project_client(project)
+    if client_root is not None:
+        add(client_root, "a pasta do cliente", "<cliente>")
     add(home_dir(), "a pasta do get-brolls (GB_HOME)", "<GB_HOME>")
     with contextlib.suppress(RuntimeError):
         add(Path.home(), "a pasta pessoal", "<pasta pessoal>")
@@ -352,10 +355,28 @@ def run(args):
     if not isinstance(name, str) or not NAME_RE.fullmatch(name):
         raise ValueError("--to espera o nome de um exporter (minúsculas, números e _), ex.: --to hyperframes.")
     project = Path(args.project).expanduser().resolve()
+    from . import runtime, templates  # local: templates importa o roteiro inteiro
+
+    event = runtime.ACTIVE.get()
+    drift = templates.lock_warnings(project)
+    for warning in drift:
+        # O mesmo código do `status`: o evento de diagnóstico guarda o aviso com ele.
+        runtime.record_warning("TEMPLATE_LOCK_DRIFT", warning)
+    start = len(event["warnings"]) if event is not None else 0
     try:
-        return _run(args, name, project)
+        result = _run(args, name, project)
     except OSError as exc:
         raise _os_error(exc, project) from exc
+    # Aviso registrado no meio do export (cliente não registrado, por exemplo) entra na lista de
+    # texto do próprio export. O evento continua com todos os avisos (e os códigos) para o
+    # diagnóstico; `warnings_in_result` só diz ao `audited` que a saída já traz a lista.
+    folded = []
+    if event is not None:
+        folded = [row["message"] for row in event["warnings"][start:]]
+        event["warnings_in_result"] = True
+    if drift or folded:
+        result = {**result, "warnings": [*drift, *result.get("warnings", []), *folded]}
+    return result
 
 
 def _plan_text(plan):

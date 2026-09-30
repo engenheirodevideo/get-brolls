@@ -75,10 +75,10 @@ class PublishedSchemaTests(unittest.TestCase):
         """A tag do `$id` não é uma versão qualquer: é sempre `v{__version__}` — trava `bump_version.py`."""
         self.assertIn(f"/get-brolls/v{__version__}/schemas/export_plan.schema.json", published()["$id"])
 
-    def test_old_schemas_keep_their_id(self):
-        for name in ("brief", "candidate"):
-            schema = json.loads((ROOT / "schemas" / f"{name}.schema.json").read_text(encoding="utf-8"))
-            self.assertIn("/get-brolls/main/schemas/", schema["$id"], name)
+    def test_every_published_schema_points_to_the_release_tag(self):
+        for path in sorted((ROOT / "schemas").glob("*.schema.json")):
+            schema = json.loads(path.read_text(encoding="utf-8"))
+            self.assertIn(f"/get-brolls/v{__version__}/schemas/{path.name}", schema["$id"], path.name)
 
     def test_export_version_stays_const(self):
         self.assertEqual({"const": 1}, published()["properties"]["export_version"])

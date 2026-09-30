@@ -1,8 +1,9 @@
 """`gb x`: comandos que plugins habilitados contribuem, cada um no espaço do plugin.
 
 Comando de plugin só lê o projeto (por cópias, via `CommandContext`) e devolve um
-objeto JSON; nunca escreve no ledger. Falha do plugin vira `ValueError` com o id
-dele — exit 1 na CLI, não erro interno.
+objeto JSON; nunca escreve no ledger. A única gravação possível é em `analysis/`, pela
+API do core (`ctx.analysis`), e só com `permissions.project_write: ["analysis"]` no pin.
+Falha do plugin vira `ValueError` com o id dele — exit 1 na CLI, não erro interno.
 """
 
 import json
@@ -165,6 +166,19 @@ def _missing(registry, plugin_id, name):
     return f"Plugin {plugin_id} não tem o comando {name}. Rode x --list para ver os comandos disponíveis."
 
 
+def pinned_permissions(plugin_id):
+    """As permissões aprovadas no pin de `plugin_id` (`plugins.json`), nunca as do manifesto em disco.
+
+    Pin antigo sem permissões, ou `plugins.json` ilegível, vale `{}`: nada de gravação.
+    """
+    try:
+        entry = loader.read_state()["enabled"].get(plugin_id) or {}
+    except (ValueError, OSError):
+        return {}
+    permissions = entry.get("permissions")
+    return permissions if isinstance(permissions, dict) else {}
+
+
 def run(args):
     """`x --list` ou `x <plugin> <comando>`: roda o comando do plugin isolado e devolve o resultado."""
     if args.list:
@@ -189,7 +203,7 @@ def run(args):
         raise ValueError(_missing(registry, plugin_id, name))
     project = Path(args.project).expanduser().resolve() if args.project else None
     started = time.monotonic()
-    ctx = CommandContext(plugin_id, project)
+    ctx = CommandContext(plugin_id, project, permissions=pinned_permissions(plugin_id))
     raw = _isolate(
         lambda: spec.handler(dict(values), ctx),
         plugin_id,

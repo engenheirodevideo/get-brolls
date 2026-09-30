@@ -1,0 +1,5 @@
+{"schema": "getbrolls.media/1", "media_id": "9f86d081884c7d65", "status": "done", "reason": null, "producer": {"tool": "getbrolls", "model": null, "version": "2.6.0"}, "created": "2026-09-30T12:00:00.000000+00:00", "time_unit": "s",
+ "path": "aroll/c01.mp4", "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+ "size_bytes": 10485760, "quick_key": {"size": 10485760, "mtime_ns": 1727700000000000000, "sample_sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"}, "role": "aroll",
+ "duration_s": 12.48, "fps": "30000/1001", "width": 1080, "height": 1920,
+ "has_audio": true, "video_codec": "h264", "audio_codec": "aac"}

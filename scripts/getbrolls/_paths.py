@@ -35,9 +35,22 @@ REQUIRED_DATA: tuple[str, ...] = (
     "package-lock.json",
     "package.json",
     "requirements.txt",
+    "schemas/analysis_index.schema.json",
     "schemas/brief.schema.json",
     "schemas/candidate.schema.json",
+    "schemas/client.schema.json",
+    "schemas/clients.schema.json",
     "schemas/export_plan.schema.json",
+    "schemas/markers.schema.json",
+    "schemas/media.schema.json",
+    "schemas/project.schema.json",
+    "schemas/scenes.schema.json",
+    "schemas/silence.schema.json",
+    "schemas/speakers.schema.json",
+    "schemas/template.schema.json",
+    "schemas/template_lock.schema.json",
+    "schemas/transcript.schema.json",
+    "schemas/visual.schema.json",
 )
 WHEEL_MANIFEST = "_data/MANIFEST"  # relativo à pasta do pacote
 CHECKOUT_MANIFEST = "packaging/data_manifest.txt"  # relativo à raiz do repositório

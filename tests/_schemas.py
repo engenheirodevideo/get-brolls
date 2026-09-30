@@ -32,6 +32,13 @@ def _close(node):
     _close(node.get("additionalProperties"))
 
 
+def close(schema):
+    """Cópia fechada de qualquer schema publicado, pela mesma regra de `strict`."""
+    closed = copy.deepcopy(schema)
+    _close(closed)
+    return closed
+
+
 def strict(schema=None):
     """Cópia fechada do schema: o que o core grava tem que casar com ela.
 
