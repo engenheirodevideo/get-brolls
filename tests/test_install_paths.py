@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
-from _paths import ROOT
+from _paths import ROOT, command_text, split_command
 
 from getbrolls import _paths as paths
 from getbrolls.errors import DataRootError, PrerequisiteError, UsageError
@@ -402,11 +402,11 @@ class QuotingTests(unittest.TestCase):
             prefix = paths.cli_command(os_name)
             for case in self.CASES:
                 with self.subTest(os_name=os_name, case=case):
-                    text = paths.command_text(case, os_name=os_name)
-                    self.assertEqual([case], paths.split_command(text, os_name)[len(prefix) :])
+                    text = command_text(case, os_name=os_name)
+                    self.assertEqual([case], split_command(text, os_name)[len(prefix) :])
             with self.subTest(os_name=os_name, case="all"):
-                text = paths.command_text(*self.CASES, os_name=os_name)
-                self.assertEqual(list(self.CASES), paths.split_command(text, os_name)[len(prefix) :])
+                text = command_text(*self.CASES, os_name=os_name)
+                self.assertEqual(list(self.CASES), split_command(text, os_name)[len(prefix) :])
 
     def test_nt_quotes_any_backslash_for_bash(self):
         self.assertEqual('"C:\\a\\b"', paths.quote_arg(r"C:\a\b", "nt"))

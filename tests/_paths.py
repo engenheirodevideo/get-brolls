@@ -20,8 +20,10 @@ import importlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -63,6 +65,72 @@ def _wheel_cli_command() -> tuple[str, ...]:
     return tuple(json.loads(done.stdout))
 
 
+def _install():
+    # Import tardio: `_isolation` precisa vir antes de qualquer `getbrolls`.
+    return importlib.import_module("getbrolls._paths")
+
+
+def command_text(*args: str, os_name: str | None = None) -> str:
+    """Comando completo da CLI desta instalação, como o `status` o escreveria."""
+    install = _install()
+    return " ".join([install.cli_prefix_text(os_name), *(install.quote_arg(arg, os_name) for arg in args)])
+
+
+def _nt_backslashes(text: str, start: int) -> tuple[str, int]:
+    """Barras a partir de `start`: (texto literal, próximo índice)."""
+    end = start
+    while end < len(text) and text[end] == "\\":
+        end += 1
+    count = end - start
+    if end < len(text) and text[end] == '"':
+        if count % 2:
+            return "\\" * (count // 2) + '"', end + 1
+        return "\\" * (count // 2), end
+    return "\\" * count, end
+
+
+def _nt_token(text: str, start: int) -> tuple[str, int]:
+    """Um argumento pelas regras do CommandLineToArgvW, a partir de `start`."""
+    out: list[str] = []
+    quoted = False
+    index = start
+    while index < len(text):
+        char = text[index]
+        if char in " \t" and not quoted:
+            break
+        if char == "\\":
+            literal, index = _nt_backslashes(text, index)
+            out.append(literal)
+        elif char == '"':
+            if quoted and text[index + 1 : index + 2] == '"':
+                out.append('"')
+                index += 2
+            else:
+                quoted = not quoted
+                index += 1
+        else:
+            out.append(char)
+            index += 1
+    return "".join(out), index
+
+
+def _split_nt(text: str) -> Iterator[str]:
+    index = 0
+    while True:
+        while index < len(text) and text[index] in " \t":
+            index += 1
+        if index >= len(text):
+            return
+        token, index = _nt_token(text, index)
+        yield token
+
+
+def split_command(text: str, os_name: str | None = None) -> list[str]:
+    """Inverso de `command_text`: o argv que o terminal do sistema veria (sem SO, o da instalação)."""
+    system = os_name if os_name is not None else _install()._os_name()  # pylint: disable=protected-access
+    return list(_split_nt(text)) if system == "nt" else shlex.split(text)
+
+
 def suggested_argv(command: str) -> list[str]:
     """Tira o prefixo da CLI de um comando sugerido (status/brief), no formato do SO.
 
@@ -70,9 +138,8 @@ def suggested_argv(command: str) -> list[str]:
     que roda os testes. No modo wheel, o que sai de um subprocesso traz o do pacote
     instalado; aí vale um dos dois, e nenhum outro.
     """
-    # Import tardio: `_isolation` precisa vir antes de qualquer `getbrolls`.
-    install = importlib.import_module("getbrolls._paths")
-    tokens = install.split_command(command)
+    install = _install()
+    tokens = split_command(command)
     prefixes = [install.cli_command()]
     if WHEEL_MODE:
         prefixes.append(list(_wheel_cli_command()))

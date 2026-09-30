@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
-from _paths import ROOT, suggested_argv
+from _paths import ROOT, command_text, split_command, suggested_argv
 from test_guidance import ABSOLUTE, LADDER_STATES
 from test_sdk_loader import LoaderTestCase
 
@@ -77,7 +77,7 @@ class EveryInstallRuns(unittest.TestCase):
             with self.subTest(which=which), ExitStack() as stack:
                 as_wheel(stack, which)
                 command = command_for("verify", "/tmp/p")
-                self.assertEqual(["-P", "-m", "getbrolls", "verify"], _paths.split_command(command)[1:5])
+                self.assertEqual(["-P", "-m", "getbrolls", "verify"], split_command(command)[1:5])
 
     def test_brief_beat_commands_use_the_same_prefix(self):
         beat = {
@@ -114,14 +114,14 @@ class ModuleText(unittest.TestCase):
 class WindowsCommand(unittest.TestCase):
     def test_windows_command_is_double_quoted_and_round_trips(self):
         project = r"D:\Projetos Ana\projeto do video"
-        text = _paths.command_text("verify", "--project", project, os_name="nt")
+        text = command_text("verify", "--project", project, os_name="nt")
         self.assertIn(f'"{project}"', text)
-        self.assertEqual(["verify", "--project", project], _paths.split_command(text, os_name="nt")[2:])
+        self.assertEqual(["verify", "--project", project], split_command(text, os_name="nt")[2:])
         with mock.patch.object(_paths, "_os_name", return_value="nt"):
             command = command_for("verify", project)
             self.assertTrue(command.startswith('python "'), command)
             self.assertNotIn("'", command)
-            argv = _paths.split_command(command)
+            argv = split_command(command)
             self.assertEqual(["verify", "--project", project], argv[2:])
 
 

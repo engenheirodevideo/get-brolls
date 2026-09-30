@@ -977,7 +977,6 @@ def _load_env_early(args):
     (chave desconhecida) fica para `execute()`, que o levanta dentro da auditoria; o
     carregamento repetido lá é inofensivo (`setdefault`).
     """
-    from . import _paths
     from .config import load_env_choice
 
     try:
@@ -992,7 +991,6 @@ def _load_env_early(args):
 
 def main(argv=None):
     """Faz o parse, configura logging/trava e roda o comando com auditoria e log de início/fim."""
-    from . import _paths
     from .commands import execute, with_summary
 
     _paths.apply_env_aliases()

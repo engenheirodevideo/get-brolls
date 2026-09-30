@@ -332,65 +332,6 @@ def quote_arg(value: str, os_name: str | None = None) -> str:
     return _quote_nt(value) if _os_name(os_name) == "nt" else shlex.quote(value)
 
 
-def command_text(*args: str, os_name: str | None = None) -> str:
-    """Comando completo da CLI, como texto para a pessoa copiar."""
-    return " ".join([cli_prefix_text(os_name), *(quote_arg(arg, os_name) for arg in args)])
-
-
-def _nt_backslashes(text: str, start: int) -> tuple[str, int]:
-    """Barras a partir de `start`: (texto literal, próximo índice)."""
-    end = start
-    while end < len(text) and text[end] == "\\":
-        end += 1
-    count = end - start
-    if end < len(text) and text[end] == '"':
-        if count % 2:
-            return "\\" * (count // 2) + '"', end + 1
-        return "\\" * (count // 2), end
-    return "\\" * count, end
-
-
-def _nt_token(text: str, start: int) -> tuple[str, int]:
-    """Um argumento pelas regras do CommandLineToArgvW, a partir de `start`."""
-    out: list[str] = []
-    quoted = False
-    index = start
-    while index < len(text):
-        char = text[index]
-        if char in " \t" and not quoted:
-            break
-        if char == "\\":
-            literal, index = _nt_backslashes(text, index)
-            out.append(literal)
-        elif char == '"':
-            if quoted and text[index + 1 : index + 2] == '"':
-                out.append('"')
-                index += 2
-            else:
-                quoted = not quoted
-                index += 1
-        else:
-            out.append(char)
-            index += 1
-    return "".join(out), index
-
-
-def _split_nt(text: str) -> Iterator[str]:
-    index = 0
-    while True:
-        while index < len(text) and text[index] in " \t":
-            index += 1
-        if index >= len(text):
-            return
-        token, index = _nt_token(text, index)
-        yield token
-
-
-def split_command(text: str, os_name: str | None = None) -> list[str]:
-    """Inverso de `command_text`: o argv que o terminal do sistema veria."""
-    return list(_split_nt(text)) if _os_name(os_name) == "nt" else shlex.split(text)
-
-
 def cli_hint(*args: str) -> str:
     """Comando para citar em prosa, sem caminho da máquina."""
     base = "python3 scripts/gb.py" if origin() == "checkout" else "getbrolls"

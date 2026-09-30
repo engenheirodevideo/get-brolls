@@ -25,7 +25,7 @@ from typing import NoReturn
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
-from _paths import ROOT
+from _paths import ROOT, split_command
 
 from getbrolls import __version__
 from getbrolls import _paths as install_paths
@@ -272,7 +272,7 @@ class WheelInstallTests(unittest.TestCase):
         env = {**self.env, "PATH": f"{self.venv_bin}{os.pathsep}{self.env.get('PATH', '')}"}
         do = self.gb_json("status", "--project", project, env=env)["summary"]["do"]
         self.assertEqual("init-brief", do["step"])
-        argv = install_paths.split_command(do["command"])
+        argv = split_command(do["command"])
         if argv[0] == "getbrolls":
             found = shutil.which("getbrolls", path=str(self.venv_bin))
             self.assertIsNotNone(found)
