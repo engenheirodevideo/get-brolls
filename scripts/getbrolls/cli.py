@@ -316,6 +316,18 @@ def _add_toolchain_subcommands(sub):
             p.add_argument("--id", help="Id do plugin (enable/disable/update/new)")
             p.add_argument("--source", help="Pasta local ou URL git (https:// ou git@) do plugin a instalar (install)")
             p.add_argument(
+                "--commit",
+                help=(
+                    "install/update: sha completo (40 hex) do commit a instalar; sem ele, a ref é resolvida na "
+                    "origem (update com --commit volta a um commit anterior)"
+                ),
+            )
+            p.add_argument(
+                "--ref",
+                help="install: branch, tag ou refs/... a resolver na origem (padrão HEAD); o update resolve a mesma",
+            )
+            p.add_argument("--subdir", help="install: pasta do plugin dentro do repositório git (ex.: plugins/demo)")
+            p.add_argument(
                 "--path",
                 help="check: pasta do plugin a validar (executa o register()); new: pasta onde criar o plugin",
             )

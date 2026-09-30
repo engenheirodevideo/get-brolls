@@ -597,6 +597,20 @@ def _check_expect(expect, sha):
     loader.check_expect(expect, sha)
 
 
+# Chaves que um chamador (o marketplace) pode acrescentar à origem gravada.
+ORIGIN_EXTRA_KEYS = ("marketplace", "tier", "index_commit")
+
+
+def _with_extra(origin, origin_extra):
+    extra = dict(origin_extra or {})
+    unknown = set(extra) - set(ORIGIN_EXTRA_KEYS)
+    if unknown:
+        raise ValueError(f"origin_extra só aceita {', '.join(ORIGIN_EXTRA_KEYS)}: {', '.join(sorted(unknown))}.")
+    if any(value is not None and not isinstance(value, str) for value in extra.values()):
+        raise ValueError("origin_extra só aceita texto ou None.")
+    return {**origin, **extra}
+
+
 def install(  # noqa: PLR0913 - keyword-only pin options, one per CLI flag
     source, confirm, expect=None, *, commit=None, ref=None, subdir=None
 ):  # pylint: disable=too-many-arguments  # keyword-only pin options, one per CLI flag
@@ -606,11 +620,21 @@ def install(  # noqa: PLR0913 - keyword-only pin options, one per CLI flag
     origem); `subdir` é a pasta do plugin dentro do repositório. Confirmar exige o
     sha256 da prévia em `expect`; o plugin sai instalado e habilitado."""
     spec = git_source.parse_source(source, commit=commit, ref=ref, subdir=subdir)
+    return install_from(spec, confirm, expect)
+
+
+def install_from(spec, confirm, expect=None, *, verify=None, origin_extra=None):
+    """`install` a partir de um `git_source.Source` já montado.
+
+    `verify(manifest, sha256)` roda depois de materializar e antes da prévia; um
+    `ValueError` dele recusa o install e o staging é apagado. `origin_extra`
+    acrescenta `marketplace`/`tier`/`index_commit` à origem gravada."""
     loader.read_state()  # plugins.json corrompido recusa antes de qualquer mutação.
     _sweep_stale_staging()
     staging = _staging()
     try:
         origin, warnings = _materialize(spec, staging)
+        origin = _with_extra(origin, origin_extra)
         manifest = _checked_manifest(staging)
         target = loader.plugins_root() / manifest["id"]
         if target.exists():
@@ -618,6 +642,8 @@ def install(  # noqa: PLR0913 - keyword-only pin options, one per CLI flag
                 f"Plugin {manifest['id']} já está instalado; use plugins --action update --id {manifest['id']}."
             )
         content = loader.PinContent(*loader.pin_digests(staging), loader.pinned_roots(manifest))
+        if verify is not None:
+            verify(manifest, content.sha)
         preview = _summary(manifest, origin, content, _file_list(staging), warnings)
         if not confirm:
             return {"installed": False, "plugin": preview, "note": loader.EXPECT_NOTE}
@@ -633,11 +659,13 @@ def install(  # noqa: PLR0913 - keyword-only pin options, one per CLI flag
 def _diff(old_folder, old_manifest, new_folder, new_manifest):
     before = loader.file_digests(old_folder)
     after = loader.file_digests(new_folder)
+    old_permissions = old_manifest["permissions"] if old_manifest else None
+    added = loader.permissions_added(old_permissions, new_manifest["permissions"])
     return {
         "version": {"from": old_manifest["version"] if old_manifest else None, "to": new_manifest["version"]},
-        "permissions": loader.permissions_diff(
-            old_manifest["permissions"] if old_manifest else None, new_manifest["permissions"]
-        ),
+        "permissions": loader.permissions_diff(old_permissions, new_manifest["permissions"]),
+        "permissions_added": added,
+        "permissions_increased": any(added.values()),
         "files": loader.files_diff(before, after),
     }
 
@@ -652,13 +680,20 @@ class _Staged(NamedTuple):
     diff: dict
 
 
-def _stage_update(plugin_id, spec, staging, folder, current):
-    """Materializa `spec` em `staging`, confere o manifesto e monta a prévia com o diff."""
+def _stage_update(plugin_id, spec, staging, installed, hooks):
+    """Materializa `spec` em `staging`, confere o manifesto e monta a prévia com o diff.
+
+    `installed` é `(pasta, manifesto)` do plugin instalado; `hooks`, `(verify, origin_extra)`."""
+    folder, current = installed
+    verify, origin_extra = hooks
     origin, warnings = _materialize(spec, staging)
+    origin = _with_extra(origin, origin_extra)
     manifest = _checked_manifest(staging)
     if manifest["id"] != plugin_id:
         raise ValueError(f"A origem agora traz o plugin {manifest['id']}, não {plugin_id}; nada foi trocado.")
     content = loader.PinContent(*loader.pin_digests(staging), loader.pinned_roots(manifest))
+    if verify is not None:
+        verify(manifest, content.sha)
     preview = _summary(manifest, origin, content, _file_list(staging), warnings)
     diff = _diff(folder, current, staging, manifest)
     return _Staged(origin, manifest, content, preview, diff)
@@ -685,42 +720,59 @@ def _swap_in(plugin_id, folder, staging):
     force_rmtree(retired)
 
 
-def update(plugin_id, confirm, expect=None):
-    """Prévia (com o diff) ou troca de um plugin instalado pela versão atual da origem.
+def update(plugin_id, confirm, expect=None, *, commit=None):
+    """Prévia (com o diff) ou troca de um plugin instalado pela versão da origem gravada.
 
-    Confirmar exige o sha256 da prévia em `expect`; um plugin desabilitado continua desabilitado."""
-    state = loader.read_state()  # plugins.json corrompido recusa antes de qualquer mutação.
+    Sem `commit`, a ref gravada (ausente vale `HEAD`) é resolvida de novo na origem;
+    com `commit`, fixa aquele commit (inclusive um anterior, para voltar atrás).
+    Confirmar exige o sha256 da prévia em `expect`; um plugin desabilitado continua
+    desabilitado."""
+    origin = _recorded_origin(plugin_id, loader.read_state())
+    # A origem gravada passa pela mesma validação de um `--source` novo.
+    spec = git_source.parse_source(origin["source"], commit=commit, ref=origin.get("ref"), subdir=origin.get("subdir"))
+    return update_from(plugin_id, spec, confirm, expect)
+
+
+def _recorded_origin(plugin_id, state):
     origin = (state.get("sources") or {}).get(plugin_id)
     if origin is None:
         raise ValueError(
             f"Plugin {plugin_id} não foi instalado por plugins --action install; atualize a pasta à mão e rode enable."
         )
-    # A origem gravada passa pela mesma validação de um `--source` novo; sem commit
-    # fixado, a ref gravada (ausente vale `HEAD`) é resolvida de novo na origem.
-    spec = git_source.parse_source(origin["source"], ref=origin.get("ref"), subdir=origin.get("subdir"))
+    return origin
+
+
+def update_from(  # noqa: PLR0913 - keyword-only hooks, as in install_from
+    plugin_id, spec, confirm, expect=None, *, verify=None, origin_extra=None
+):  # pylint: disable=too-many-arguments  # keyword-only hooks, as in install_from
+    """`update` de `plugin_id` a partir de um `git_source.Source` já montado.
+
+    `verify` e `origin_extra` como em `install_from`. O plugin tem que ter sido
+    instalado por `install` (origem gravada)."""
+    state = loader.read_state()  # plugins.json corrompido recusa antes de qualquer mutação.
+    _recorded_origin(plugin_id, state)
     was_enabled = plugin_id in state.get("enabled", {})
     _sweep_stale_staging()
     _, folder, current = loader.find(plugin_id)
     staging = _staging()
     try:
-        staged = _stage_update(plugin_id, spec, staging, folder, current)
+        staged = _stage_update(plugin_id, spec, staging, (folder, current), (verify, origin_extra))
         if not confirm:
             return {"updated": False, "plugin": staged.preview, "diff": staged.diff, "note": loader.EXPECT_NOTE}
         _check_expect(expect, staged.content.sha)
         _swap_in(plugin_id, folder, staging)
     finally:
         force_rmtree(staging)
-    manifest, commit = staged.manifest, staged.origin["commit"]
     # Atualizar o conteúdo não liga de volta um plugin que estava desabilitado —
     # só quem já estava habilitado sai daqui com pin novo (senão o pin some).
-    sha_after = loader.pin(manifest, folder, staged.origin, enabled=was_enabled, content=staged.content)
+    sha_after = loader.pin(staged.manifest, folder, staged.origin, enabled=was_enabled, content=staged.content)
     logs.event(
         _log,
         logging.INFO,
         "plugin_updated",
         plugin=plugin_id,
-        version=manifest["version"],
-        commit=(commit or "-")[:12],
+        version=staged.manifest["version"],
+        commit=(staged.origin["commit"] or "-")[:12],
     )
     result = {
         "updated": True,

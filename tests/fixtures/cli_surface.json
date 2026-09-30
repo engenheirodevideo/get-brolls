@@ -1275,6 +1275,42 @@
           "action": "_StoreAction",
           "choices": null,
           "default": null,
+          "dest": "commit",
+          "help": "install/update: sha completo (40 hex) do commit a instalar; sem ele, a ref é resolvida na origem (update com --commit volta a um commit anterior)",
+          "nargs": null,
+          "option_strings": [
+            "--commit"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "ref",
+          "help": "install: branch, tag ou refs/... a resolver na origem (padrão HEAD); o update resolve a mesma",
+          "nargs": null,
+          "option_strings": [
+            "--ref"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "subdir",
+          "help": "install: pasta do plugin dentro do repositório git (ex.: plugins/demo)",
+          "nargs": null,
+          "option_strings": [
+            "--subdir"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
           "dest": "path",
           "help": "check: pasta do plugin a validar (executa o register()); new: pasta onde criar o plugin",
           "nargs": null,

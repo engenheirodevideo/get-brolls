@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -11,7 +12,10 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _cli import run_cli
 from _paths import CLI_ARGV
 from _plugin_pins import pin_plugins
+from test_sdk_install import git, head, write_plugin
 from test_sdk_loader import MANIFEST, LoaderTestCase
+
+from getbrolls import runtime
 
 
 class PluginsCommandTests(LoaderTestCase):
@@ -142,6 +146,45 @@ class PluginsCommandTests(LoaderTestCase):
         )
         self.assertEqual(2, done.returncode)
         self.assertIn("invalid choice: 'demo'", done.stderr)
+
+
+@unittest.skipUnless(shutil.which("git"), "git required")
+class PluginsPinFlagsTests(LoaderTestCase):
+    def env(self):
+        return {"GB_HOME": str(self.home)}
+
+    def test_cli_install_with_commit_ref_subdir_records_origin(self):
+        root = Path(tempfile.mkdtemp(prefix="gb-cli-mono-"))
+        self.addCleanup(runtime.force_rmtree, root)
+        write_plugin(root / "plugins" / "demo")
+        git(root, "init", "--quiet")
+        git(root, "add", ".")
+        git(root, "commit", "--quiet", "-m", "mono")
+        git(root, "branch", "estavel")
+        commit = head(root)
+        flags = ("--source", root, "--commit", commit, "--ref", "estavel", "--subdir", "plugins/demo")
+        preview = run_cli("plugins", "--action", "install", *flags, env=self.env())
+        self.assertEqual(("estavel", "plugins/demo"), (preview["plugin"]["ref"], preview["plugin"]["subdir"]))
+        run_cli(
+            "plugins", "--action", "install", *flags, "--yes", "--expect", preview["plugin"]["sha256"], env=self.env()
+        )
+        state = json.loads((self.home / "plugins.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            {"source": str(root.resolve()), "commit": commit, "ref": "estavel", "subdir": "plugins/demo"},
+            state["sources"]["demo"],
+        )
+
+    def test_subdir_without_source_is_usage_error_exit_2(self):
+        for args in (
+            ("--action", "install", "--subdir", "plugins/demo"),
+            ("--action", "install", "--ref", "main"),
+            ("--action", "update", "--id", "demo", "--subdir", "x"),
+            ("--action", "update", "--id", "demo", "--ref", "main"),
+            ("--action", "enable", "--id", "demo", "--commit", "0" * 40),
+        ):
+            with self.subTest(args=args):
+                err = run_cli("plugins", *args, expect=2, env=self.env())
+                self.assertEqual("USAGE_ERROR", err["error_code"])
 
 
 if __name__ == "__main__":

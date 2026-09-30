@@ -1,5 +1,6 @@
 """`plugins install` de git fixado por commit: ref resolvida, fetch pelo sha, git endurecido."""
 
+import json
 import os
 import subprocess
 import unittest
@@ -9,7 +10,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from test_sdk_install import HAS_GIT, InstallTestCase, _git_test_env, git, head, write_plugin
 from test_sdk_loader import MANIFEST, PLUGIN_CODE
 
-from getbrolls.sdk import git_source
+from getbrolls.sdk import git_source, loader
 from getbrolls.sdk import install as install_mod
 
 
@@ -211,6 +212,139 @@ class CommitPinTests(InstallTestCase):
             install_mod.install(str(repo), confirm=False)
         self.assertEqual(1, len(clones))
         self.assertNotIn("hooks", clones[0])
+
+
+@unittest.skipUnless(HAS_GIT, "git required")
+class UpdateFromOriginTests(InstallTestCase):
+    def setUp(self):
+        super().setUp()
+        self.first = self.tip = ""
+
+    def repo(self):
+        folder = write_plugin(self.work / "demo_repo")
+        git(folder, "init", "--quiet")
+        git(folder, "add", ".")
+        git(folder, "commit", "--quiet", "-m", "v0.1.0")
+        git(folder, "branch", "estavel")
+        self.first = head(folder)
+        return folder
+
+    def install_at(self, repo, **pin):
+        preview = install_mod.install(str(repo), confirm=False, **pin)
+        return install_mod.install(str(repo), confirm=True, expect=preview["plugin"]["sha256"], **pin)
+
+    def test_update_reresolves_recorded_ref_and_shows_permissions_added(self):
+        repo = self.repo()
+        self.install_at(repo, ref="estavel")
+        wider = {
+            **MANIFEST,
+            "version": "0.2.0",
+            "permissions": {
+                "network": ["demo.example", "novo.example"],
+                "env": ["DEMO_TOKEN"],
+                "paths": ["~/Midia"],
+                "project_write": ["analysis"],
+            },
+        }
+        write_plugin(repo, wider)
+        git(repo, "commit", "--quiet", "-am", "v0.2.0")
+        self.tip = head(repo)
+        # A branch gravada ainda aponta para o primeiro commit: nada muda.
+        same = install_mod.update("demo", confirm=False)
+        self.assertEqual(self.first, same["plugin"]["commit"])
+        self.assertFalse(same["diff"]["permissions_increased"])
+        git(repo, "branch", "-f", "estavel", self.tip)
+        preview = install_mod.update("demo", confirm=False)
+        self.assertEqual((self.tip, "estavel"), (preview["plugin"]["commit"], preview["plugin"]["ref"]))
+        self.assertEqual(
+            {"network": ["novo.example"], "env": [], "paths": ["~/Midia"], "project_write": ["analysis"]},
+            preview["diff"]["permissions_added"],
+        )
+        self.assertTrue(preview["diff"]["permissions_increased"])
+        install_mod.update("demo", confirm=True, expect=preview["plugin"]["sha256"])
+        self.assertEqual((self.tip, "estavel"), tuple(self.state()["sources"]["demo"][k] for k in ("commit", "ref")))
+
+    def test_update_with_commit_pins_a_specific_commit(self):
+        repo = self.repo()
+        write_plugin(repo, {**MANIFEST, "version": "0.2.0"})
+        git(repo, "commit", "--quiet", "-am", "v0.2.0")
+        self.install_at(repo)
+        self.assertEqual("0.2.0", self.state()["enabled"]["demo"]["version"])
+        preview = install_mod.update("demo", confirm=False, commit=self.first)
+        self.assertEqual({"from": "0.2.0", "to": "0.1.0"}, preview["diff"]["version"])
+        install_mod.update("demo", confirm=True, expect=preview["plugin"]["sha256"], commit=self.first)
+        self.assertEqual(self.first, self.state()["sources"]["demo"]["commit"])
+        self.assertEqual("0.1.0", self.state()["enabled"]["demo"]["version"])
+
+    def test_update_of_a_folder_origin_refuses_commit(self):
+        folder = write_plugin(self.work / "plain")
+        self.install_at(folder)
+        with self.assertRaises(ValueError) as ctx:
+            install_mod.update("demo", confirm=False, commit="0" * 40)
+        self.assertIn("repositório git", str(ctx.exception))
+
+    def test_verify_hook_failure_leaves_no_staging(self):
+        repo = self.repo()
+        seen = []
+
+        def refuse(manifest, sha):
+            seen.append((manifest["id"], sha))
+            raise ValueError("o índice diz outro sha256")
+
+        with self.assertRaises(ValueError) as ctx:
+            install_mod.install_from(git_source.GitSource(str(repo.resolve())), False, verify=refuse)
+        self.assertIn("outro sha256", str(ctx.exception))
+        self.assertEqual("demo", seen[0][0])
+        self.assertEqual([], self.leftover_staging())
+        self.assertFalse((self.home / "plugins" / "demo").exists())
+
+        self.install_at(repo)
+        with self.assertRaises(ValueError):
+            install_mod.update_from("demo", git_source.GitSource(str(repo.resolve())), False, verify=refuse)
+        self.assertEqual([], self.leftover_staging())
+
+    def test_origin_extra_is_recorded_and_limited_to_known_keys(self):
+        repo = self.repo()
+        spec = git_source.GitSource(str(repo.resolve()), self.first)
+        extra = {"marketplace": "loja", "tier": "verified", "index_commit": "a" * 40}
+        preview = install_mod.install_from(spec, False, origin_extra=extra)
+        install_mod.install_from(spec, True, preview["plugin"]["sha256"], origin_extra=extra)
+        origin = self.state()["sources"]["demo"]
+        self.assertEqual(
+            ("loja", "verified", "a" * 40), (origin["marketplace"], origin["tier"], origin["index_commit"])
+        )
+        self.assertEqual("enabled", loader.inventory()[0]["status"])
+        with self.assertRaises(ValueError):
+            install_mod.update_from("demo", spec, False, origin_extra={"source": "/outro"})
+
+
+class OriginStateTests(InstallTestCase):
+    def test_old_plugins_json_origin_without_new_keys_still_valid(self):
+        state = {"enabled": {}, "sources": {"demo": {"source": "/x", "commit": None}}}
+        (self.home / "plugins.json").write_text(json.dumps(state), encoding="utf-8")
+        self.assertEqual(state, loader.read_state())
+        full = {"source": "/x", "commit": "a" * 40, "ref": "main", "subdir": "p", "marketplace": None}
+        (self.home / "plugins.json").write_text(
+            json.dumps({"enabled": {}, "sources": {"demo": full}}), encoding="utf-8"
+        )
+        self.assertEqual(full, loader.read_state()["sources"]["demo"])
+        for key in ("ref", "subdir", "marketplace", "tier", "index_commit"):
+            bad = {"enabled": {}, "sources": {"demo": {"source": "/x", "commit": None, key: 1}}}
+            (self.home / "plugins.json").write_text(json.dumps(bad), encoding="utf-8")
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                loader.read_state()
+
+    def test_permissions_added_covers_every_permission_key(self):
+        before = {"network": ["a.example"], "env": [], "paths": ["~/Midia/sfx"], "project_write": []}
+        after = {"network": ["a.example"], "env": ["X_TOKEN"], "paths": ["~/Midia"], "project_write": ["analysis"]}
+        self.assertEqual(
+            {"network": [], "env": ["X_TOKEN"], "paths": ["~/Midia"], "project_write": ["analysis"]},
+            loader.permissions_added(before, after),
+        )
+        self.assertEqual(
+            {"network": ["a.example"], "env": [], "paths": ["~/Midia/sfx"], "project_write": []},
+            loader.permissions_added(None, before),
+        )
 
 
 if __name__ == "__main__":

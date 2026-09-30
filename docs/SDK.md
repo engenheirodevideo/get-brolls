@@ -786,7 +786,24 @@ python3 scripts/gb.py plugins --action install --source <pasta-ou-url-git>
 python3 scripts/gb.py plugins --action install --source <pasta-ou-url-git> --yes --expect <sha256>
 python3 scripts/gb.py plugins --action update --id <id>
 python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
+python3 scripts/gb.py plugins --action install --source <url-git> --ref <branch-ou-tag> --subdir <pasta>
+python3 scripts/gb.py plugins --action install --source <url-git> --commit <sha> --yes --expect <sha256>
+python3 scripts/gb.py plugins --action update --id <id> --commit <sha-anterior>
 ```
+
+- `--commit <sha>` fixa o commit (o sha completo, 40 caracteres hexadecimais
+  minúsculos; abreviado ou maiúsculo é recusado). Sem ele, `--ref` (branch, tag
+  ou `refs/...`; padrão `HEAD`) é resolvida na origem e a prévia mostra o commit
+  que ela aponta agora. Um nome que é branch e tag ao mesmo tempo é ambíguo:
+  use `refs/heads/<nome>` ou `refs/tags/<nome>`. `--commit`, `--ref` e
+  `--subdir` só valem com `--source` (senão, erro de uso, saída 2).
+- A origem gravada em `plugins.json` (`sources.<id>`) guarda `source`,
+  `commit`, `ref` e `subdir`. `update --id` busca de novo a mesma ref e
+  subpasta; `update --id <id> --commit <sha>` fixa outro commit (inclusive um
+  anterior, para voltar atrás), sempre com a mesma prévia e `--expect`. O `diff`
+  da prévia traz `permissions_added` (o que é novo em `network`, `env`,
+  `paths` e `project_write` — uma pasta mais larga em `paths` conta como nova) e
+  `permissions_increased` (`true` quando alguma permissão foi acrescentada).
 
 - `--source` aceita uma pasta local (copiada sem `.git`/`__pycache__`), uma
   pasta que é repositório git (com `.git` ou *bare*) ou uma URL git (`https://…`
