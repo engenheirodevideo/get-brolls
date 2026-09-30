@@ -24,24 +24,10 @@ retired_beat_ids = brief_source.retired_beat_ids
 FORMATS = vocab.FORMATS
 INTENTS = vocab.MATCH_KINDS
 POSTURES = ("per_item_evidence", "user_declaration")
-SOURCES = (
-    "youtube",
-    "instagram",
-    "tiktok",
-    "pexels",
-    "pixabay",
-    "commons",
-    "nasa",
-    "local",
-)
-STOCK_SOURCES = ("pexels", "pixabay")
-SEARCHABLE = ("youtube", "pexels", "pixabay", "commons", "nasa")
 
 # Teto de palavras da query sugerida, igual ao de `search`: fonte de vídeo casa por
 # palavra, e o `target` é escrito para gente ler, não para a API procurar.
 QUERY_MAX_TOKENS = 6
-# Fontes que publicam foto, na ordem em que valem a tentativa para um beat de imagem.
-STILL_SOURCES = ("commons", "nasa")
 
 
 def _registry():

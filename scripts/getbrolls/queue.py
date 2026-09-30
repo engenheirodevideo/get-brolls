@@ -24,7 +24,6 @@ from . import logs
 
 log = logs.get("queue")
 
-PROVIDERS = ("instagram", "tiktok", "youtube")
 QUEUE_FILE = Path("work") / "queue.json"
 SCHEMA_VERSION = 1
 STATUSES = ("pending", "active", "done", "failed", "skipped")
@@ -32,6 +31,8 @@ TERMINAL_STATUSES = ("done", "failed", "skipped")
 
 # Defaults per provider: (min_s, max_s) between items.
 DEFAULT_PACE = {"instagram": (45, 120), "tiktok": (15, 40), "youtube": (15, 40)}
+# Providers the queue accepts: exactly those with a default pace above.
+PROVIDERS = tuple(DEFAULT_PACE)
 DEFAULT_MAX_PER_HOUR = 20
 DEFAULT_MAX_PER_DAY = 60
 COOLDOWN_BASE_S = 30 * 60

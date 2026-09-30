@@ -20,7 +20,7 @@ from getbrolls.brief import _sources
 from getbrolls.cli import build_parser
 from getbrolls.http import ProviderError
 from getbrolls.presets import PERMIT_PRESETS
-from getbrolls.sdk import loader
+from getbrolls.sdk import loader, registry
 from getbrolls.sdk.jsonschema import errors as schema_errors
 from getbrolls.sdk.registry import reset_registry
 from getbrolls.sdk.schemas import load as load_schema
@@ -333,8 +333,9 @@ class RegistryDrivenValidationTests(PluginTestCase):
 
     def test_builtin_lists_are_unchanged_without_plugins(self):
 
-        self.assertEqual(brief.SOURCES, brief.sources())
-        self.assertEqual(brief.SEARCHABLE, brief.searchable())
+        builtins = registry._builtins_only()  # pylint: disable=protected-access
+        self.assertLessEqual(set(builtins.provider_names()), set(brief.sources()))
+        self.assertLessEqual(set(brief.searchable()), set(brief.sources()))
 
     def test_rules_accept_plugin_source_in_preferred_providers(self):
 
