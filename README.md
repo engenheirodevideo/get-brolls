@@ -97,6 +97,18 @@ No Claude Code, você também pode instalar a skill como plugin, sem clonar manu
 /plugin marketplace add engenheirodevideo/get-brolls
 /plugin install get-brolls@engenheirodevideo
 ```
+#### Instalação como comando
+
+Sem clonar, o getbrolls instala como pacote e ganha o comando `getbrolls`:
+
+```sh
+uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0
+getbrolls doctor
+getbrolls setup --check
+```
+
+`pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0` também serve. Nos exemplos abaixo, `python3 scripts/gb.py …` (checkout e plugin) equivale a `getbrolls …` (pacote). O `.env` do pacote fica em `$GB_HOME/.env`, e o runtime em `$GB_HOME/runtime/`. Quem usa o plugin do Claude Code não precisa mudar nada.
+
 #### Instalação como plugin do Codex e Outros
 
 ```sh

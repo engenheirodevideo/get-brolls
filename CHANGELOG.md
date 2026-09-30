@@ -59,6 +59,9 @@ O vídeo agora nasce como roteiro (`ROTEIRO.md`), segue para a coleta de b-roll 
 ### Migração
 
 - **Script que testava `exit 2` para erro de operação/dados: agora é `1`; `2` fica só para erro de uso.** Um ID errado, falta de aprovação ou link fora do ar saía com `2`, o mesmo código de flag errada; agora sai com `1`. Quem só confere "diferente de 0" (`set -e`) não precisa mudar nada. Tabela completa em "Instalação e CLI", abaixo.
+- **Usa o plugin do Claude Code? Não há nada a fazer.** `python3 scripts/gb.py` e o plugin seguem iguais; o comando `getbrolls` é uma forma a mais de instalar.
+- **Onde o `.env` é lido.** Ordem: `--env-file` > `GB_ENV_FILE` > `.env` da pasta da instalação (como na 2.5) > `$GB_HOME/.env`. Quem já tem um `.env` no checkout não muda nada; se existir um segundo, o primeiro vale e todo comando avisa `ENV_FILE_SHADOWED`. `GB_HOME` dentro de `$GB_HOME/.env` passa a ser recusado, e em outro `.env` sai com o aviso `DEPRECATED` (a leitura some na 2.7): mova para o ambiente.
+- **`doctor` sai com `4` quando falta algo.** Antes saía sempre com `0`; script que conferia só o JSON continua igual, e quem conferia o código agora pode testar `4`.
 
 Projeto da 2.5 segue exatamente igual: nada muda sem um `ROTEIRO.md` do get-brolls. As pastas `aroll/`, `assets/` e `exports/` só nascem quando alguém roda `roteiro --action new` ou `export`; um projeto que nunca usa roteiro nunca as vê.
 
@@ -122,6 +125,7 @@ Projeto da 2.5 segue exatamente igual: nada muda sem um `ROTEIRO.md` do get-brol
 - **`capabilities --json`.** Descreve comandos, flags, o que só lê, códigos de saída e comandos de plugin desta instalação, gerado do próprio parser, para agentes e scripts.
 <!-- W1:T10 -->
 <!-- W1:T11 -->
+- **Documentação do pacote.** MANUAL, GUIDE, README, CONTRIBUTING, AGENTS, SDK e SECURITY passam a citar `getbrolls …` (pacote instalado) ao lado de `python3 scripts/gb.py …` (checkout e plugin); o MANUAL ganha "Instalar como comando", a ordem do `.env`, os aliases `GETBROLLS_*`, o `setup --check` e o `ready`/código `4` do `doctor`. No Windows, não há promessa para caminho com `$`, `%` ou `"` ao copiar e colar comando sugerido no PowerShell ou no cmd.
 
 ### Docs
 

@@ -103,6 +103,18 @@ cd get-brolls
 
 When copying a development folder, exclude `.venv/`, `.tools/`, caches, projects, and private files. `skills/` and `.claude-plugin/` are Claude Code plugin artifacts and can be omitted when copying to Codex. Install dependencies in the final destination and open a new agent session. [See installation, updates, and compatibility.](docs/GUIDE.md#instalação)
 
+#### Install as a command
+
+Without cloning, getbrolls installs as a package and provides the `getbrolls` command:
+
+```sh
+uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0
+getbrolls doctor
+getbrolls setup --check
+```
+
+`pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0` works too. In the examples below, `python3 scripts/gb.py …` (checkout and plugin) is the same as `getbrolls …` (package). The package reads its `.env` from `$GB_HOME/.env` and keeps its runtime in `$GB_HOME/runtime/`. Claude Code plugin users need to change nothing.
+
 #### Install as a Claude Code plugin
 
 In Claude Code, you can also install the skill as a plugin, without cloning manually:

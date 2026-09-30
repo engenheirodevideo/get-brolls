@@ -2,13 +2,13 @@
 type: documentation
 status: current
 created: 2026-09-23
-updated: 2026-09-25
+updated: 2026-09-30
 tags: [get-brolls, manual, tutorial, commands]
 ---
 
 # 🎬 Get B-rolls: manual + tutorial
 
-Versão 2.5.0. Feito pra **videomaker que está começando a mexer com código**.
+Versão 2.6.0. Feito pra **videomaker que está começando a mexer com código**.
 
 Você pede o B-roll, vê a prévia, aprova, e **só o trecho aprovado** é baixado, com a fonte anotada.
 
@@ -39,6 +39,24 @@ Você pede o B-roll, vê a prévia, aprova, e **só o trecho aprovado** é baixa
 | **Flag** | As opções que começam com `--`. Ex.: `--project` diz *qual* projeto |
 | **JSON** | O formato da resposta. Um texto organizado em `"chave": valor`, que tanto você quanto um script conseguem ler |
 | **Script** | Um arquivo com vários comandos em sequência, que roda sozinho |
+
+## 📦 Instalar como comando
+
+Além do plugin do Claude Code e do checkout, o getbrolls instala como pacote e ganha o comando `getbrolls`:
+
+```bash
+uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0
+# ou
+pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0
+
+getbrolls doctor
+getbrolls setup --check
+```
+
+- Em todo este manual, `getbrolls …` e `python3 scripts/gb.py …` são o mesmo comando: use o primeiro no pacote instalado e o segundo dentro de um checkout.
+- **Usa o plugin do Claude Code? Nada muda.** No checkout e no plugin, `python3 scripts/gb.py` continua igual.
+- `getbrolls setup --check` mostra o que falta no runtime (yt-dlp, Playwright CLI, FFmpeg, ffprobe, Node) e os comandos para resolver, sem instalar nada. `getbrolls doctor` diz se está pronto (`ready`) e sai com código `4` quando falta algo.
+- **Windows:** os comandos sugeridos pela ferramenta (`summary.do.command`) rodam no PowerShell, no cmd e no Git Bash; não há promessa para caminho que contenha `$`, `%` ou `"` ao copiar e colar o comando.
 
 ## 🧭 O caminho inteiro em 8 passos
 
@@ -119,6 +137,16 @@ python3 scripts/gb.py providers
 # QUANDO USAR: na primeira vez e sempre que algo der erro.
 # DEU CERTO QUANDO: "summary.missing" vem vazio: [].
 python3 scripts/gb.py doctor
+
+# ── doctor: pronto ou não ───────────────────────────────────
+# O doctor traz "ready" logo depois de "summary" e sai com código 4 quando
+# "summary.missing" não está vazio (o JSON sai igual). No bloco "install" ele
+# mostra a origem (pacote ou checkout), a pasta de dados, o runtime e qual .env valeu.
+
+# ── setup --check ───────────────────────────────────────────
+# O QUE FAZ: mostra o que falta no runtime e os comandos para resolver. Não instala nada.
+# Sai com código 4 quando falta algo. "setup" sem --check é erro de uso (código 2).
+python3 scripts/gb.py setup --check
 
 # ── doctor --live ───────────────────────────────────────────
 # O QUE FAZ: igual ao doctor, mas faz buscas de teste de verdade nas fontes.
@@ -531,7 +559,7 @@ python3 scripts/gb.py x pasta_local recentes --arg limite=5 --project /caminho/m
 ## ❓ Ajuda
 
 ```bash
-# Lista todos os comandos
+# Lista todos os comandos (no pacote instalado: getbrolls --help, getbrolls --version)
 python3 scripts/gb.py --help
 
 # Mostra a versão, o Python e de onde vêm os dados: getbrolls 2.6.0 (Python 3.12.4; dados: checkout)
@@ -670,7 +698,19 @@ Criado pelo `init-rules`. Vale pra todo o projeto.
 
 ## .env: configurações da ferramenta
 
-Arquivo opcional na pasta da skill. Copie o [`.env.example.pt-BR`](../.env.example.pt-BR) pra `.env` e mude só o que quiser. A lista completa, com faixas e padrões, está nesse arquivo.
+Arquivo opcional. Copie o [`.env.example.pt-BR`](../.env.example.pt-BR) pra `.env` e mude só o que quiser. A lista completa, com faixas e padrões, está nesse arquivo.
+
+**Qual `.env` vale** (só um é lido, nunca se misturam), do mais forte ao mais fraco:
+
+1. `--env-file CAMINHO` (vem antes do subcomando);
+2. a variável `GB_ENV_FILE`, só no ambiente do processo;
+3. o `.env` da pasta do checkout ou do plugin;
+4. `$GB_HOME/.env` (por padrão, `~/.getbrolls/.env`): é o lugar certo no pacote instalado.
+
+- `--env-file` ou `GB_ENV_FILE` apontando para arquivo que não existe é erro de uso (código `2`).
+- Com dois `.env` possíveis (o do checkout e o de `$GB_HOME`), vale o de cima e todo comando avisa `ENV_FILE_SHADOWED`; o `doctor` mostra qual valeu em `install.env_file`.
+- `GB_HOME` dentro de `$GB_HOME/.env` é recusado. Em qualquer outro `.env` ainda funciona, com o aviso `DEPRECATED` (a leitura sai na 2.7): defina `GB_HOME` no ambiente.
+- Toda variável `GB_*` também vale com o prefixo `GETBROLLS_*` no ambiente (`GETBROLLS_LOG_LEVEL` = `GB_LOG_LEVEL`). O nome `GB_*` é o canônico e vence quando os dois existem.
 
 ```bash
 # Chaves dos bancos de imagem (grátis nos sites deles)
