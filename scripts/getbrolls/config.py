@@ -393,6 +393,7 @@ def load_environment(args, *, warn):
     from . import _paths, profile  # tardio: o `profile` importa o `sdk`, que importa este módulo
 
     active = profile.activate(args)
+    profile.check_home_files()
     choice = _paths.env_file(getattr(args, "env_file", None))
     load_env_choice(choice, warn=warn)
     profile.finish(active)

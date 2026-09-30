@@ -10,6 +10,7 @@ import json
 import os
 import unittest
 
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from test_profile_cli import ProfileCliCase, write
 
 from getbrolls import profile

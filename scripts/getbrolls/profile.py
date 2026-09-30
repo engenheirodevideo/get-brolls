@@ -13,7 +13,10 @@ vale quando é confiável:
   senão ele se autoconfiaria.
 
 O arquivo em si nunca é um link simbólico e, no POSIX, é do usuário atual e não é
-gravável por grupo nem por outros.
+gravável por grupo nem por outros. Com o `GB_HOME` vindo do perfil, o `.env` e o
+`plugins.json` dessa pasta passam pelas mesmas recusas (`check_home_files`): eles não
+entram no sha do perfil, e um `home` relativo pode cair dentro de um repositório
+compartilhado. A prévia de `profile trust` avisa desse caso (`trust_warnings`).
 
 Precedência: ambiente (inclusive `.env`) vence o perfil, que vence o padrão. `home` é
 aplicado antes da escolha do `.env` (`apply_home`), o resto depois (`apply_rest`).
@@ -83,6 +86,18 @@ _REQUIRES = (
     "Use uma instalação compatível ou ajuste `requires`."
 )
 MESSAGES = {"untrusted": _UNTRUSTED, "changed": _CHANGED}
+_INSIDE_FOLDER = (
+    "`{field}` fica dentro da pasta do getbrolls.toml ({value}): quem grava nessa pasta (um repositório "
+    "compartilhado, por exemplo) pode deixar ali um `.env`, um `plugins.json` ou um runtime que o sha do "
+    "perfil não cobre. Prefira uma pasta fora do repositório; com `home` do perfil, o `.env` e o "
+    "`plugins.json` de lá só valem se forem seus e não graváveis por outros."
+)
+_UNKNOWN_PLUGINS = (
+    "`plugins` cita ids que não estão instalados em {folder}: {ids}. Eles não têm efeito até serem "
+    "instalados e habilitados."
+)
+# Arquivos do `GB_HOME` que, com o `home` do perfil, passam pelas recusas do próprio toml.
+HOME_FILES = (".env", "plugins.json")
 
 
 @dataclass(frozen=True)
@@ -192,6 +207,63 @@ def _read_guarded(path: Path, label: str, *, missing_ok: bool = False) -> bytes 
     if len(data) > MAX_BYTES:
         raise UsageError(f"O {label} passa de {MAX_BYTES // 1024} KiB; um perfil é um arquivo pequeno.")
     return data
+
+
+def _guard_file(path: Path, label: str) -> None:
+    """As recusas de `_read_guarded` (link, não regular, dono, gravável) sem ler o arquivo."""
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise UsageError(f"Não consegui ler o {label}: {exc.strerror}.") from None
+    if stat.S_ISLNK(info.st_mode):
+        raise UsageError(f"O {label} é um link simbólico; use o arquivo de verdade no lugar do link.")
+    _check_owner(info, label)
+
+
+def check_home_files(home: Path | None = None) -> None:
+    """Com o `GB_HOME` vindo do perfil: `.env` e `plugins.json` de lá passam pelas recusas do toml.
+
+    Sem o `home` do perfil não faz nada: o `GB_HOME` do ambiente ou o padrão é da pessoa.
+    """
+    if not _paths.from_profile("GB_HOME"):
+        return
+    home = _paths.gb_home() if home is None else home
+    for name in HOME_FILES:
+        _guard_file(home / name, f"{name} do GB_HOME do perfil")
+
+
+def _inside(value: str, folder: Path) -> bool:
+    target = os.path.normcase(os.path.realpath(value))
+    base = os.path.normcase(os.path.realpath(folder))
+    try:
+        return os.path.commonpath([target, base]) == base
+    except ValueError:  # unidades diferentes no Windows
+        return False
+
+
+def _installed_plugins(home: Path) -> set[str]:
+    try:
+        return {child.name for child in (home / "plugins").iterdir() if child.is_dir()}
+    except OSError:
+        return set()
+
+
+def trust_warnings(loaded: Profile) -> list[str]:
+    """Avisos da prévia de confiança: pastas dentro da pasta do toml e plugins desconhecidos."""
+    warnings = []
+    folder = loaded.path.parent
+    for field in DIR_FIELDS:
+        value = loaded.values.get(FIELDS[field])
+        if value is not None and _inside(value, folder):
+            warnings.append(_INSIDE_FOLDER.format(field=field, value=value))
+    if loaded.plugins:
+        home = Path(loaded.values["GB_HOME"]) if "GB_HOME" in loaded.values else trust_home()
+        unknown = [item for item in loaded.plugins if item not in _installed_plugins(home)]
+        if unknown:
+            warnings.append(_UNKNOWN_PLUGINS.format(folder=home / "plugins", ids=", ".join(unknown)))
+    return warnings
 
 
 def _suggest(key: str, options: tuple[str, ...]) -> str:
@@ -493,6 +565,7 @@ def trust(path: Path | None, *, located: Located, yes: bool, expect: str | None)
         "sha256": loaded.sha256,
         "requires": loaded.requires,
         "would_set": dict(loaded.values),
+        "warnings": trust_warnings(loaded),
     }
     if not yes:
         command = " ".join(
