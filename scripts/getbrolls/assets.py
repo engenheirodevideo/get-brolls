@@ -14,11 +14,14 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import versioning
 from .roteiro import fold
 from .rules import home_dir
 
 LICENSE_SUFFIX = ".licenca.json"
 LICENSE_FIELDS = ("origem", "licenca", "credito")
+# Grafia em inglês aceita na leitura; a gravação continua em português.
+LICENSE_ALIASES = {"origem": ("source",), "licenca": ("license_name",), "credito": ("attribution",)}
 _NAME = re.compile(r"^[\w][\w \-]{0,79}$")
 VIDEO = (".mp4", ".mov", ".m4v")
 AUDIO = (".wav", ".mp3", ".m4a", ".aac", ".aif", ".aiff", ".ogg")
@@ -95,13 +98,34 @@ def _license(path):
         data = json.loads(sidecar.read_text(encoding="utf-8-sig"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None, f"{sidecar.name} não é um JSON válido: conserte ou apague o arquivo."
-    if (
-        not isinstance(data, dict)
-        or any(not isinstance(v, str) for v in data.values())
-        or any(not (data.get(k) or "").strip() for k in LICENSE_FIELDS)
-    ):
-        return None, f"{sidecar.name} precisa de origem, licenca e credito preenchidos, em texto."
-    return data, None
+    return _normalize_license(sidecar.name, data)
+
+
+def _normalize_license(name, data):
+    """(licença com chaves em português, erro): aceita o sidecar em português ou inglês."""
+    *first, last = (f"{k} (ou {' ou '.join(LICENSE_ALIASES[k])})" for k in LICENSE_FIELDS)
+    missing = f"{name} precisa de {', '.join(first)} e {last} preenchidos, em texto."
+    if not isinstance(data, dict):
+        return None, missing
+    try:
+        versioning.read_version(data, name)
+    except ValueError as exc:
+        return None, str(exc)
+    fields = {k: v for k, v in data.items() if k != versioning.FIELD}
+    if any(not isinstance(v, str) for v in fields.values()):
+        return None, missing
+    aliases = {alias for spellings in LICENSE_ALIASES.values() for alias in spellings}
+    license_ = {}
+    for key in LICENSE_FIELDS:
+        spelled = [(k, fields[k]) for k in (key, *LICENSE_ALIASES[key]) if k in fields]
+        if len({v for _, v in spelled}) > 1:
+            return None, f"{name}: {spelled[0][0]} e {spelled[1][0]} dizem coisas diferentes"
+        value = spelled[0][1] if spelled else ""
+        if not value.strip():
+            return None, missing
+        license_[key] = value
+    extras = {k: v for k, v in fields.items() if k not in LICENSE_FIELDS and k not in aliases}
+    return {**license_, **extras}, None
 
 
 def _outside(path, root):

@@ -61,7 +61,7 @@ A pasta `assets/` do projeto guarda componentes do vídeo; não confunda com a `
 
 O nome é comparado sem extensão, sem acento e sem caixa; vale letra, número, espaço, `-` e `_`. A busca olha a pasta do projeto e depois a biblioteca pessoal `~/.getbrolls/assets/<tipo>/` (A-ROLL e UGC só no projeto), sem subpastas; dois arquivos com o mesmo nome é erro. Não achou = pendente: aviso, nunca erro. A descrição do `[UGC]` é o pedido; o arquivo em `aroll/` é o que a preenche.
 
-`sfx`, `musica` e `marca` levam licença em `<nome>.licenca.json`, ao lado do arquivo, com `origem`, `licenca` e `credito` preenchidos; sem ela, o aviso "licença não registrada". A biblioteca pessoal não transfere licença: cada arquivo carrega a sua. Não invente licença.
+`sfx`, `musica` e `marca` levam licença em `<nome>.licenca.json`, ao lado do arquivo, com `origem`, `licenca` e `credito` preenchidos (a leitura também aceita `source`, `license_name` e `attribution`; a mesma informação com valores diferentes nas duas grafias é erro); sem ela, o aviso "licença não registrada". A biblioteca pessoal não transfere licença: cada arquivo carrega a sua. Não invente licença.
 
 `assets --action list --project <projeto>` (com `--kind` opcional) lista o que existe; `assets --action where --kind sfx --name whoosh --project <projeto>` diz onde um nome resolve. Nenhum dos dois cria pasta.
 
