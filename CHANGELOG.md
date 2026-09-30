@@ -102,6 +102,10 @@ Projeto da 2.5 segue exatamente igual: nada muda sem um `ROTEIRO.md` do get-brol
 - **`GB_HOME` no `.env`.** Dentro de `$GB_HOME/.env` é erro. Vindo de `--env-file`, `GB_ENV_FILE` ou do `.env` da pasta da instalação ainda vale, com o aviso `DEPRECATED`: a leitura sai na 2.7; defina `GB_HOME` no ambiente.
 - **`GETBROLLS_*`** vale como nome alternativo de qualquer `GB_*` no ambiente (o `GB_*` vence).
 <!-- W1:T7a -->
+- **`--version`** imprime `getbrolls 2.6.0 (Python 3.12.4; dados: checkout)`: versão, Python e origem dos dados (`wheel` no pacote instalado, `checkout` no repositório, `ausentes` quando faltam). Antes: `get-brolls 2.6.0`.
+- **Erro de uso em JSON.** Comando, flag ou valor errado continua saindo com código 2. Fora de um terminal (agente, script, pipe), stderr traz uma linha JSON com `error` (a mensagem do argparse, igual à de antes), `error_code: "USAGE_ERROR"`, `usage`, `prog` e `suggestion`; no terminal, sai o texto de sempre.
+- **"Você quis dizer …?"** Subcomando, flag ou valor de `choices` digitado quase certo ganha a sugestão do nome parecido (`serch` → `search`, `--limt` → `--limit`), em `suggestion` no JSON ou numa linha a mais no terminal.
+- **`usage: getbrolls …`.** A ajuda e os erros de uso chamam a CLI de `getbrolls`, também no checkout (`python3 scripts/gb.py`).
 <!-- W1:T7b -->
 <!-- W1:T8 -->
 <!-- W1:T9 -->
