@@ -170,6 +170,7 @@ Projeto da 2.5 segue exatamente igual: nada muda sem um `ROTEIRO.md` do get-brol
 - Formatos, tipos de casamento e estados do candidato vêm de um vocabulário só, conferido contra os schemas publicados; as fontes aceitas e as da fila saem do registro de fontes, sem listas fixas repetidas. Sem mudança de comportamento.
 - Referências de catálogo (`cat:<motor>/<tipo>/<id>@<versão>`, como `cat:getbrolls/template/reels-acme@3`) passam por um parser e um formatador só: id e versão em NFC, reservados (`%` `:` `/` `\` `@` `#` `?`), espaços e controles como `%XX` maiúsculo (`%xx` minúsculo é aceito na leitura), até 512 caracteres, e o slug de template é conferido já decodificado. As refs locais (`scene:`, `beat:`…) ficam reservadas para a 2.7.
 - CI: job `package` monta o wheel de um checkout limpo para fora da raiz, instala numa venv nova e roda o smoke do pacote e a suíte inteira no modo pacote (macOS, Windows, Linux × Python 3.11/3.14); o job `test` ganha Python 3.14 nos três sistemas.
+- Release: o workflow de tag monta sdist e wheel de um checkout limpo, roda o smoke do wheel, atesta a procedência (`actions/attest-build-provenance`) e anexa os arquivos ao Release; novo workflow CodeQL para Python.
 
 ## 2.5.0 — 2026-09-19
 

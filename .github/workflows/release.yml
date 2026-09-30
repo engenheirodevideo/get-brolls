@@ -4,10 +4,12 @@ on:
     tags:
       - 'v*'
 permissions:
-  contents: write
+  contents: read
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -55,3 +57,57 @@ jobs:
             --notes-file release-notes.md \
             --verify-tag \
             "${PRERELEASE[@]}"
+
+  assets:
+    # Monta sdist + wheel de um checkout limpo (para fora da raiz), roda o smoke do wheel,
+    # atesta a procedência e anexa tudo ao Release criado acima.
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install uv
+        run: python -m pip install "uv==0.11.14"
+      - name: Build sdist and wheel outside the checkout
+        run: |
+          set -euo pipefail
+          python -m uv build -o "$RUNNER_TEMP/dist" .
+          test ! -e dist
+          ls -l "$RUNNER_TEMP/dist"
+      - name: Install the wheel in a fresh venv
+        run: |
+          set -euo pipefail
+          python -m uv venv "$RUNNER_TEMP/venv" --python "$(python -c 'import sys; print(sys.executable)')"
+          PY="$RUNNER_TEMP/venv/bin/python"
+          python -m uv pip install --python "$PY" "$RUNNER_TEMP"/dist/getbrolls-*.whl
+          echo "GB_TEST_WHEEL_PYTHON=$PY" >> "$GITHUB_ENV"
+          echo "GB_RUNTIME_DIR=$RUNNER_TEMP/gb-runtime" >> "$GITHUB_ENV"
+      - name: Install runtime
+        run: bash scripts/install.sh
+      - name: Wheel smoke
+        env:
+          GB_REQUIRE_WHEEL_TESTS: '1'
+        run: python -m unittest discover -s tests -p test_wheel_install.py -v
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-path: ${{ runner.temp }}/dist/*
+      - name: Attach sdist and wheel to the release
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" "$RUNNER_TEMP"/dist/* --clobber

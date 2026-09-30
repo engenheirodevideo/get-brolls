@@ -642,16 +642,17 @@ class RepositoryDocumentationTests(unittest.TestCase):
         # Disparo manual validaria um commit diferente da tag publicada;
         # só o push de tag pode acionar o release.
         self.assertNotIn("workflow_dispatch", release)
-        # O comentário da versão acompanha a Action; o contrato é só o SHA.
-        self.assertEqual(
-            [f"uses: {checkout}"],
-            [
-                re.sub(r"\s*#.*$", "", line).strip().lstrip("- ").strip()
-                for line in release.splitlines()
-                if "uses:" in line
-            ],
-            "release.yml deve usar apenas o checkout já fixado por SHA",
-        )
+        # O comentário da versão acompanha a Action; o contrato é só o SHA de 40 dígitos.
+        # Action que o test.yml também usa repete o mesmo SHA de lá.
+        used = [line.split("uses:", 1)[1].strip() for line in release.splitlines() if "uses:" in line]
+        for entry in used:
+            action = re.sub(r"\s*#.*$", "", entry)
+            self.assertRegex(action, r"@[0-9a-f]{40}$", f"{action} sem SHA de 40 dígitos")
+            name = action.split("@", 1)[0]
+            if f"{name}@" in tests:
+                self.assertIn(action, tests, f"{action} fixado por SHA diferente do test.yml")
+        self.assertIn("actions/attest-build-provenance", release)
+        self.assertIn("id-token: write", release)
 
     def test_preflight_script_exists_and_contains_the_release_gates(self):
         """`scripts/preflight.sh` é o portão de fato: quem lê `release.yml`
