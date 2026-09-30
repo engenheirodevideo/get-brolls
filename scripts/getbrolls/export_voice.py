@@ -1,10 +1,17 @@
-"""Voz de cada cena no export: duração real e trilha de áudio pelo ffprobe, e legenda por sidecar.
+"""Voz de cada cena no export: duração real e trilha de áudio pelo ffprobe, e legenda por transcrição.
 
 O A-ROLL gravado (`aroll/cNN[-take].<ext>`) manda na duração da cena. A legenda
-palavra a palavra vem de `aroll/<mesmo nome>.transcript.json`, ao lado do vídeo, no
-formato de palavras do HyperFrames (`[{"text", "start", "end"}]`, segundos relativos
-ao arquivo). O sidecar é da pessoa: qualquer problema vira aviso e a cena volta para a
-legenda estimada; o export nunca cai por causa dele.
+palavra a palavra vem, nesta ordem:
+
+1. de `aroll/<mesmo nome>.transcript.json`, ao lado do vídeo, no formato de palavras
+   do HyperFrames (`[{"text", "start", "end"}]`, segundos relativos ao arquivo). O
+   sidecar é da pessoa e sempre ganha quando é válido;
+2. da transcrição de `analysis/media/<media_id>/transcript.json` da mesma mídia,
+   achada pelo índice sem hashear o vídeo (a chave rápida tem que conferir);
+3. da estimativa.
+
+Qualquer problema numa fonte vira aviso e a cena passa para a próxima; o export
+nunca cai por causa delas.
 """
 
 import errno
@@ -19,6 +26,8 @@ from . import media
 SIDECAR_SUFFIX = ".transcript.json"
 SIDECAR_MAX_BYTES = 1024 * 1024
 MAX_WORDS = 5000
+# Teto de palavras de uma transcrição de `analysis/` (o arquivo pode ter até 16 MiB).
+MAX_ANALYSIS_WORDS = 200_000
 MAX_WORD_CHARS = 100
 # Folga do fim da última palavra sobre a duração do arquivo (arredondamento do whisper).
 END_TOLERANCE_S = 0.05
@@ -198,13 +207,8 @@ def _shifted(words, start_s, duration_s):
     return kept, dropped
 
 
-def timed_words(voice_path, voice_duration_s, window, label):
-    """(palavras em tempo global ou None, avisos) para a voz que toca na cena.
-
-    `window` = `(start_s, duration_s)` da cena no vídeo inteiro; `label` = id da cena.
-    Sem sidecar: `(None, [])` — a legenda é estimada, sem aviso.
-    """
-    voice_path = Path(voice_path)
+def _sidecar_words(voice_path, voice_duration_s, window, label):
+    """(palavras globais ou None, avisos) pelo sidecar da pessoa; sem sidecar, `(None, [])`."""
     sidecar = sidecar_path(voice_path)
     relative = f"aroll/{sidecar.name}"
     if not sidecar.exists() and not sidecar.is_symlink():
@@ -225,3 +229,66 @@ def timed_words(voice_path, voice_duration_s, window, label):
     words, dropped = _shifted(data, *window)
     warnings = [f"{label}: {dropped} palavra(s) de {relative} passam do fim da cena"] if dropped else []
     return words, warnings
+
+
+def _relative_to(voice_path, project):
+    try:
+        return Path(voice_path).resolve().relative_to(Path(project).expanduser().resolve()).as_posix()
+    except (OSError, ValueError):
+        return None
+
+
+def _analysis_transcript(voice_path, label, project):
+    """(transcrição `done`/`done_partial` de `analysis/` ou None, avisos); nunca hasheia o vídeo."""
+    from . import analysis
+    from .analysis_contract import Invalid
+
+    rel = _relative_to(voice_path, project)
+    state, entry = analysis.match(project, rel) if rel is not None else ("absent", None)
+    if state == "stale":
+        return None, [f"{label}: analysis/ é de outra versão do A-ROLL: rode analysis --action register"]
+    if entry is None:
+        return None, []
+    try:
+        doc = analysis.read_component(project, entry["media_id"], "transcript")
+    except (Invalid, ValueError) as exc:
+        code = getattr(exc, "code", "ilegível")
+        return None, [f"{label}: transcrição de analysis/ inválida ({code}): legenda estimada"]
+    if doc is None or doc["status"] not in ("done", "done_partial"):
+        return None, []
+    return doc, [f"{label}: transcrição de analysis/ parcial"] if doc["status"] == "done_partial" else []
+
+
+def _analysis_words(voice_path, voice_duration_s, window, label, project):
+    """(palavras globais ou None, avisos) pela transcrição de `analysis/` da mesma mídia."""
+    doc, warnings = _analysis_transcript(voice_path, label, project)
+    if doc is None:
+        return None, warnings
+    if len(doc["words"]) > MAX_ANALYSIS_WORDS:
+        return None, [*warnings, f"{label}: transcrição de analysis/ com mais de {MAX_ANALYSIS_WORDS} palavras"]
+    # Palavra de duração zero (comum no whisper) não vira legenda: sai antes da conferência.
+    spoken = [{k: w[k] for k in ("text", "start", "end")} for w in doc["words"] if w["end"] > w["start"]]
+    data, problem = _validated(spoken, voice_duration_s)
+    if problem is not None or data is None:
+        return None, [*warnings, f"{label}: transcrição de analysis/ inválida ({problem}): legenda estimada"]
+    if not data:
+        return None, warnings
+    words, dropped = _shifted(data, *window)
+    if dropped:
+        warnings.append(f"{label}: {dropped} palavra(s) da transcrição de analysis/ passam do fim da cena")
+    return words, warnings
+
+
+def timed_words(voice_path, voice_duration_s, window, label, project=None):
+    """(palavras em tempo global ou None, avisos) para a voz que toca na cena.
+
+    `window` = `(start_s, duration_s)` da cena no vídeo inteiro; `label` = id da cena;
+    `project` = raiz do projeto, para achar a transcrição de `analysis/` (sem ele, só o
+    sidecar vale). Sem nenhuma transcrição: `(None, [])` — a legenda é estimada, sem aviso.
+    """
+    voice_path = Path(voice_path)
+    words, warnings = _sidecar_words(voice_path, voice_duration_s, window, label)
+    if words is not None or project is None:
+        return words, warnings
+    found, more = _analysis_words(voice_path, voice_duration_s, window, label, project)
+    return found, warnings + more
