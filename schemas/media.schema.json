@@ -110,7 +110,7 @@
         "mtime_ns",
         "sample_sha256"
       ],
-      "description": "Chave rápida para saber, sem hashear tudo, se o arquivo ainda é o mesmo: tamanho, mtime em ns e sha256 de uma amostra (1 MiB do início + 1 MiB do fim).",
+      "description": "Cache do registro: tamanho, mtime em ns e sha256 de uma amostra (1 MiB do início + 1 MiB do fim). Tamanho e mtime iguais pulam o hash completo; qualquer mudança em um dos dois refaz o sha256 inteiro (a amostra nunca prova que o conteúdo é o mesmo).",
       "properties": {
         "size": {
           "type": "integer",

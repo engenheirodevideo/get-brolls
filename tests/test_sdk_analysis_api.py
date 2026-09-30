@@ -112,6 +112,14 @@ class WriteTests(AnalysisApiTestCase):
         doc = json.loads((self.project / "analysis" / "markers.json").read_text(encoding="utf-8"))
         self.assertEqual(["legenda"], [m["producer"]["tool"] for m in doc["markers"]])
 
+    def test_plugin_registration_keeps_the_recorded_role(self):
+        analysis.ensure_media(self.project, "aroll/c01.mp4", "narration", probe=False)
+        (self.project / "aroll" / "c01.mp4").write_bytes(b"regravado" * 50)
+        env = self.enable(WRITER)
+        media_id = self.x("legenda", "transcreve", env)["result"]["media_id"]
+        index = json.loads((self.project / "analysis" / "index.json").read_text(encoding="utf-8"))
+        self.assertEqual([(media_id, "narration")], [(e["media_id"], e["role"]) for e in index["media"]])
+
     def test_x_still_takes_no_project_lock(self):
         env = self.enable(WRITER)
         (self.project / "brolls").mkdir()

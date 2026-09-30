@@ -1,11 +1,15 @@
 """`analysis/`: índice das mídias do projeto por conteúdo e os arquivos de análise de cada uma.
 
-Cada mídia registrada ganha um `media_id` (os 16 primeiros hex do sha256 dos bytes) e
-uma pasta `analysis/media/<media_id>/` com `media.json` (do core) e os componentes
-(`transcript`, `scenes`, ...), gravados pelo core ou por plugins com permissão. O
-`analysis/index.json` liga caminho, papel, `media_id` e uma chave rápida
+Cada mídia registrada ganha um `media_id` (os 16 primeiros hex do sha256 de TODOS os
+bytes) e uma pasta `analysis/media/<media_id>/` com `media.json` (do core) e os
+componentes (`transcript`, `scenes`, ...), gravados pelo core ou por plugins com
+permissão. O `analysis/index.json` liga caminho, papel, `media_id` e uma chave rápida
 (`quick_key`: tamanho, mtime em ns e sha256 de uma amostra de 1 MiB do início + 1 MiB
-do fim) que diz, sem hashear o arquivo inteiro, se a mídia ainda é a mesma.
+do fim). A chave rápida é só cache: tamanho E mtime iguais pulam o hash completo;
+qualquer mudança em um dos dois refaz o sha256 inteiro (a amostra nunca prova que o
+conteúdo é o mesmo — uma edição no meio do arquivo fica fora dela). Quando o conteúdo
+mudou, a pasta `media/<media_id antigo>/` fica onde está e o `check` a aponta como
+órfã (`ORPHAN_MEDIA`); nada é apagado.
 
 Regras de integridade:
 
@@ -30,7 +34,7 @@ import sys
 from pathlib import Path
 
 from . import analysis_contract as contract
-from . import ledger, media, runtime, versioning, vocab
+from . import assets, ledger, media, runtime, versioning, vocab
 from .errors import PrerequisiteError
 from .models import now
 from .sdk import files
@@ -54,6 +58,10 @@ ROLE_BY_FOLDER = (
     ("brolls/clips/", "broll"),
     ("assets/musica/", "music"),
     ("assets/sfx/", "sfx"),
+)
+# Extensões que o `register` aceita como mídia; um `.txt` ou `.json` é recusado antes do hash.
+MEDIA_EXTENSIONS = frozenset(
+    (*assets.VIDEO, *assets.AUDIO, *assets.IMAGE, ".mkv", ".webm", ".avi", ".mxf", ".mts", ".flac", ".gif")
 )
 # Campos do cabeçalho que o core sempre define ao gravar um componente.
 _FORCED = ("schema", "media_id", "producer", "created", "time_unit")
@@ -263,6 +271,11 @@ def _media_file(project: Path, rel: str) -> tuple[Path, os.stat_result]:
             raise ValueError(f"{rel} passa por um link; registre a mídia pelo caminho real, dentro do projeto.")
     if not stat.S_ISREG(info.st_mode):
         raise ValueError(f"{rel} não é um arquivo comum.")
+    if current.suffix.lower() not in MEDIA_EXTENSIONS:
+        raise ValueError(
+            f"{rel} não é um arquivo de mídia (vídeo, áudio ou imagem); analysis/ só registra mídia. "
+            f"Extensões aceitas: {', '.join(sorted(MEDIA_EXTENSIONS))}."
+        )
     return current, info
 
 
@@ -304,12 +317,13 @@ def quick_key(path: Path, info: os.stat_result, rel: str) -> dict:
 
 
 def media_id_for_bytes(path) -> str:
-    """Os 16 primeiros hex do sha256 dos bytes: a mesma derivação do `asset_id` do Nômade."""
+    """Os 16 primeiros hex do sha256 de todos os bytes (a derivação do `asset_id` do contrato de ingest externo)."""
     return ledger.digest(path)[:16]
 
 
-def _same_content(key: dict, other: dict) -> bool:
-    return key["size"] == other["size"] and key["sample_sha256"] == other["sample_sha256"]
+def _unchanged(info: os.stat_result, saved: dict) -> bool:
+    """Tamanho E mtime iguais aos do registro: o único caso em que o hash completo é pulado."""
+    return (info.st_size, info.st_mtime_ns) == (saved["size"], saved["mtime_ns"])
 
 
 def _inferred_role(rel: str) -> str | None:
@@ -422,20 +436,20 @@ def _entry(index: dict | None, *, path=None, media_id=None) -> dict | None:
     return None
 
 
-def _renew(project: Path, rel: str, key: dict, role: str) -> dict:
-    """Mesmo tamanho e mesma amostra: só atualiza mtime e papel, sem hash completo."""
+def _set_role(project: Path, rel: str, role: str) -> dict:
+    """Mídia sem mudança (tamanho e mtime iguais) com papel novo: troca só o papel, sem hash completo."""
     with analysis_lock(project):
         index = _read_index(project) or _new_index()
         entry = _entry(index, path=rel)
-        if entry is None or not _same_content(key, entry["quick_key"]):
+        if entry is None:
             return {}
-        entry["quick_key"], entry["role"] = key, role
+        entry["role"] = role
         try:
             doc = _read_doc(project, _media_rel(entry["media_id"], "media"), "media")
         except contract.Invalid:
             doc = None
         if doc is not None:
-            _write_json(project, _media_rel(entry["media_id"], "media"), {**doc, "quick_key": key, "role": role})
+            _write_json(project, _media_rel(entry["media_id"], "media"), {**doc, "role": role})
         _write_index(project, index)
         return dict(entry)
 
@@ -487,10 +501,10 @@ def ensure_media(project, rel, role=None, *, probe=True, progress=None) -> dict:
     """
     project = _root(project)
     path, info = _media_file(project, rel)
-    key = quick_key(path, info, rel)
     index = _read_index(project)
     known = _entry(index, path=rel)
-    role = role or _inferred_role(rel) or (known["role"] if known else None)
+    # O papel gravado (um `--role` de antes) vale mais que o inferido pela pasta.
+    role = role or (known["role"] if known else None) or _inferred_role(rel)
     if role is not None and role not in vocab.MEDIA_ROLES:
         raise ValueError(f"Papel {role!r} desconhecido; use um de: {', '.join(vocab.MEDIA_ROLES)}.")
     if role is None:
@@ -498,12 +512,13 @@ def ensure_media(project, rel, role=None, *, probe=True, progress=None) -> dict:
             f"Não sei o papel de {rel} pela pasta; passe --role (aroll, broll, footage, music, sfx, narration, "
             "title, animation ou unknown)."
         )
-    if known is not None and _same_content(key, known["quick_key"]):
-        if known["quick_key"]["mtime_ns"] == key["mtime_ns"] and known["role"] == role:
+    if known is not None and _unchanged(info, known["quick_key"]):
+        if known["role"] == role:
             return {**known, "hashed": False}
-        renewed = _renew(project, rel, key, role)
+        renewed = _set_role(project, rel, role)
         if renewed:
             return {**renewed, "hashed": False}
+    key = quick_key(path, info, rel)
     sha = _full_hash(path, info, rel, progress)
     unprobed = ("not_run_by_this_script", "registrado sem ffprobe.", dict(_EMPTY_FACTS))
     doc = _media_doc(rel, sha, key, role, _probe(path) if probe else unprobed)
@@ -532,14 +547,8 @@ def match(project, rel) -> tuple[str, dict | None]:
         path, info = _media_file(project, rel)
     except ValueError:
         return "stale", entry
-    saved = entry["quick_key"]
-    if (info.st_size, info.st_mtime_ns) == (saved["size"], saved["mtime_ns"]):
-        return "fresh", entry
-    try:
-        key = quick_key(path, info, rel)
-    except ValueError:
-        return "stale", entry
-    return ("fresh" if _same_content(key, saved) else "stale"), entry
+    del path  # só o `lstat` importa: tamanho ou mtime diferente é `stale`, sem ler a amostra
+    return ("fresh" if _unchanged(info, entry["quick_key"]) else "stale"), entry
 
 
 def lookup(project, rel) -> dict | None:
@@ -672,14 +681,16 @@ def _scan(folder: Path, rel: str, problems: list) -> list[os.DirEntry]:
     return kept
 
 
-def _check_media_dir(project: Path, folder: Path, problems: list) -> list[str]:
-    checked = []
+def _check_media_dir(project: Path, folder: Path, problems: list) -> tuple[list[str], list[str]]:
+    """(arquivos conferidos, `media_id` de cada pasta em `media/`)."""
+    checked, seen = [], []
     base = f"{ANALYSIS_DIR}/{MEDIA_DIR}"
     for entry in _scan(folder, base, problems):
         rel = f"{base}/{entry.name}"
         if not entry.is_dir(follow_symlinks=False) or not MEDIA_ID_RE.fullmatch(entry.name):
             problems.append({"path": rel, "code": "UNKNOWN_FILE", "where": "$"})
             continue
+        seen.append(entry.name)
         for item in _scan(Path(entry.path), rel, problems):
             name = item.name.removesuffix(".json")
             item_rel = f"{rel}/{item.name}"
@@ -688,7 +699,7 @@ def _check_media_dir(project: Path, folder: Path, problems: list) -> list[str]:
                 continue
             checked.append(item_rel)
             _check_file(project, item_rel, name, problems, media_id=entry.name)
-    return checked
+    return checked, seen
 
 
 def check_all(project) -> dict:
@@ -702,6 +713,7 @@ def check_all(project) -> dict:
     if files.is_link(folder) or not folder.is_dir():
         return {"ok": False, "files": [], "problems": [{"path": ANALYSIS_DIR, "code": "UNSAFE_LINK", "where": "$"}]}
     index = None
+    folders: list[str] = []
     for entry in _scan(folder, ANALYSIS_DIR, problems):
         rel = f"{ANALYSIS_DIR}/{entry.name}"
         if entry.name == INDEX_FILE:
@@ -711,7 +723,8 @@ def check_all(project) -> dict:
             checked.append(rel)
             _check_file(project, rel, "markers", problems)
         elif entry.name == MEDIA_DIR and entry.is_dir(follow_symlinks=False):
-            checked.extend(_check_media_dir(project, Path(entry.path), problems))
+            found, folders = _check_media_dir(project, Path(entry.path), problems)
+            checked.extend(found)
         else:
             problems.append({"path": rel, "code": "UNKNOWN_FILE", "where": "$"})
     problems.extend(
@@ -720,6 +733,15 @@ def check_all(project) -> dict:
         for name in item["components"]
         if _media_rel(item["media_id"], name) not in checked
     )
+    if index is not None:
+        # Pasta de uma mídia que saiu do índice (o conteúdo mudou e ganhou outro
+        # `media_id`): fica no disco, mas é apontada; quem apaga é a pessoa.
+        known = {item["media_id"] for item in index["media"]}
+        problems.extend(
+            {"path": f"{ANALYSIS_DIR}/{MEDIA_DIR}/{media_id}", "code": "ORPHAN_MEDIA", "where": "$"}
+            for media_id in folders
+            if media_id not in known
+        )
     return {"ok": not problems, "files": checked, "problems": problems}
 
 
@@ -779,7 +801,9 @@ def run(args) -> dict:
         )
         return {**report, "summary": {"line": line}}
     if not getattr(args, "path", None):
-        raise ValueError("analysis --action register precisa de --path com a mídia, relativo ao projeto.")
+        from .errors import UsageError
+
+        raise UsageError("analysis --action register precisa de --path com a mídia, relativo ao projeto.")
     entry = ensure_media(project, args.path, getattr(args, "role", None), progress=_progress)
     verb = "registrada" if entry["hashed"] else "já estava registrada"
     return {

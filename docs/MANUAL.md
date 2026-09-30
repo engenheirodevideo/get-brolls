@@ -524,7 +524,8 @@ python3 scripts/gb.py assets --action where --kind sfx --name whoosh --project /
 # ── analysis --action register / list / check ───────────────
 # O QUE FAZ: register dá a uma mídia do projeto um id por conteúdo e grava
 #            analysis/media/<id>/media.json (duração, quadro, codecs pelo ffprobe);
-#            o hash só roda de novo quando o arquivo muda. list e check só leem.
+#            o hash só roda de novo quando tamanho ou mtime mudam. list e check só leem;
+#            check sai com código 1 quando acha problema (pasta órfã, JSON inválido, link).
 # --role só quando a pasta não diz o papel (aroll/, broll/, assets/musica/, assets/sfx/).
 python3 scripts/gb.py analysis --action register --path aroll/c01.mp4 --project /caminho/meu-video
 python3 scripts/gb.py analysis --action check --project /caminho/meu-video
