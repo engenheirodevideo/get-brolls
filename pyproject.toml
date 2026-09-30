@@ -169,6 +169,9 @@ ignore = ["E501", "RUF001", "RUF002", "RUF003", "PLC0415"]
 # `patch("getbrolls.sdk.install.os.replace", ...)` sem capturar todo método
 # `Path.replace` usado por qualquer outro código nesse processo.
 "scripts/getbrolls/sdk/install.py" = ["S603", "PTH105"]
+# Todo processo git do SDK (ls-remote, fetch, ls-tree, cat-file) sai daqui: argv em
+# lista, executável de `shutil.which`, e `commit`/`ref`/`subdir` validados antes.
+"scripts/getbrolls/sdk/git_source.py" = ["S603"]
 
 # `print` é o mecanismo de saída legítimo destes programas: stdout/stderr são
 # a interface deles (CLI entrypoint, script de lote independente, aviso de

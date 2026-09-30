@@ -20,24 +20,20 @@ import logging
 import os
 import re
 import shutil
-import subprocess
 import time
 import uuid
 from pathlib import Path
 from typing import NamedTuple
-from urllib.parse import urlsplit
 
 from .. import logs
-from ..runtime import force_rmtree, stderr_tail
-from . import loader
+from ..runtime import force_rmtree
+from . import git_source, loader
 from .contracts import NAME_RE
-from .files import JUNK_FILENAMES, counted_files, is_link
+from .files import JUNK_FILENAMES, counted_files
 from .manifest import MANIFEST_MAX_BYTES, MANIFEST_NAME, compatibility_problem, read_manifest
 
 _log = logs.get("sdk")
 
-GIT_URL_RE = re.compile(r"(https://\S+|git@[A-Za-z0-9.-]+:\S+)")
-GIT_TIMEOUT_S = 120
 # Cópia de pasta local: sem metadado de VCS de topo (VCS aninhado é recusado antes,
 # em `_refuse_nested_vcs`) e sem lixo de SO (`files.JUNK_FILENAMES`), que fica fora
 # do hash. Bytecode e link simbólico não são ignorados: são recusados.
@@ -72,125 +68,13 @@ _ALLOWED_TREE_MODES = {"100644", "100755"}
 # quem já passou desse prazo.
 STALE_STAGING_MAX_AGE_S = 3600
 
-# `core.hooksPath` para um diretório sem hooks desliga qualquer hook do clone;
-# `protocol.ext.allow=never` recusa o transporte `ext::` (rodaria um comando
-# arbitrário como "URL"); os três `filter.lfs.*` desarmam o smudge do Git LFS
-# especificamente. Nenhum deles é o que realmente nos protege de um filtro
-# malicioso arbitrário citado em `.gitattributes` — isso é o `--no-checkout` +
-# materialização manual abaixo, que nunca aciona filtro nenhum; estes são
-# defesa em profundidade.
-_GIT_HARDENING = [
-    "-c",
-    "protocol.ext.allow=never",
-    "-c",
-    f"core.hooksPath={os.devnull}",
-    "-c",
-    "filter.lfs.process=",
-    "-c",
-    "filter.lfs.smudge=",
-    "-c",
-    "filter.lfs.required=false",
-]
-
-
-def _has_core_ssh_command(env):
-    """`git config --global --includes --get core.sshCommand` já configurado
-    pela pessoa — nesse caso o próprio git já sabe como conectar (e não
-    precisamos, nem devemos, empurrar um `GIT_SSH_COMMAND` nosso por cima).
-    `--global` de propósito: ainda não existe repositório clonado (isto roda
-    antes do `clone`), então sem `--global` a busca cairia no cwd deste
-    processo, que pode por acaso estar dentro de outro repositório qualquer.
-    `--includes` resolve `[include]`/`[includeIf]` do config global, senão um
-    `core.sshCommand` guardado num arquivo incluído passaria despercebido."""
-    git = shutil.which("git")
-    if not git:
-        return False
-    done = subprocess.run(
-        [git, "config", "--global", "--includes", "--get", "core.sshCommand"],
-        env=env,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=10,
-        check=False,
-    )
-    return bool(done.stdout.strip())
-
-
-# GIT_* que não redirecionam o git pra um repositório/config diferente do
-# clone que acabamos de criar, e que a pessoa pode legitimamente precisar:
-# CA customizada (proxy corporativo, registro interno) sem elas quebraria todo
-# clone HTTPS que dependesse dela. Só voltam se já estivessem no ambiente de
-# quem chamou; nunca inventamos valor pra elas.
-_SAFE_GIT_ENV = ("GIT_SSL_CAINFO", "GIT_SSL_CAPATH")
-
-
-def _git_env(ssh=False):
-    """Ambiente do subprocesso git: toda variável `GIT_*` herdada é removida
-    primeiro — nenhuma delas (`GIT_DIR`, `GIT_CONFIG_GLOBAL`, `GIT_COMMON_DIR`,
-    `GIT_CONFIG_COUNT`, etc.) tem uso legítimo aqui, e preservar qualquer uma
-    por engano reabriria a porta que estamos fechando (redirecionar o git pra
-    um `.git`/índice/config que não é o do clone que acabamos de criar). Só
-    depois disso o código volta a acrescentar, de propósito, as poucas que
-    ele mesmo decide usar — as fixas, as de `_SAFE_GIT_ENV` quando a pessoa já
-    as tinha, e (só pra fonte SSH) a de conexão."""
-    original = os.environ
-    env = {k: v for k, v in original.items() if not k.startswith("GIT_")}
-    for key in _SAFE_GIT_ENV:
-        if key in original:
-            env[key] = original[key]
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    env["GIT_CONFIG_NOSYSTEM"] = "1"
-    env["GIT_LFS_SKIP_SMUDGE"] = "1"
-    if not ssh:
-        return env
-    # SSH sem terminal para responder a um prompt de host novo/senha trava o
-    # processo; só usamos o `BatchMode=yes` de reserva quando a pessoa não já
-    # tem a própria forma de conectar (variável de ambiente ou `core.sshCommand`).
-    user_ssh_command = original.get("GIT_SSH_COMMAND")
-    user_ssh = original.get("GIT_SSH")
-    if user_ssh_command:
-        env["GIT_SSH_COMMAND"] = user_ssh_command
-    elif user_ssh:
-        env["GIT_SSH"] = user_ssh
-        # GIT_SSH_VARIANT (ex.: "ssh" x "putty"/"plink") só faz sentido junto
-        # com GIT_SSH — diz ao git como montar os argumentos pro cliente
-        # legado que essa variável aponta; sem GIT_SSH não há o que descrever.
-        if "GIT_SSH_VARIANT" in original:
-            env["GIT_SSH_VARIANT"] = original["GIT_SSH_VARIANT"]
-    elif not _has_core_ssh_command(env):
-        env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes"
-    return env
-
 
 def _run_git(args, cwd=None, ssh=False, binary=False):
-    git = shutil.which("git")
-    if not git:
-        raise ValueError("git não encontrado no PATH; instale o git ou use --source com uma pasta local.")
-    env = _git_env(ssh=ssh)
-    text_kwargs = {} if binary else {"text": True, "encoding": "utf-8", "errors": "replace"}
-    try:
-        done = subprocess.run(
-            [git, *_GIT_HARDENING, *args],
-            cwd=cwd,
-            env=env,
-            capture_output=True,
-            timeout=GIT_TIMEOUT_S,
-            check=False,
-            **text_kwargs,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise ValueError(f"git excedeu {GIT_TIMEOUT_S} s; confira a rede e a URL do repositório.") from exc
-    if done.returncode != 0:
-        stderr = done.stderr if binary is False else (done.stderr or b"").decode("utf-8", errors="replace")
-        detail = stderr_tail(stderr)
-        raise ValueError(f"git falhou (exit {done.returncode})" + (f": {detail}" if detail else "."))
-    return done.stdout
+    return git_source.run_git(args, cwd=cwd, ssh=ssh, binary=binary)
 
 
 def _git(args, cwd=None, ssh=False):
-    return _run_git(args, cwd=cwd, ssh=ssh).strip()
+    return git_source.git_text(args, cwd=cwd, ssh=ssh)
 
 
 def _git_blob(dest, sha):
@@ -206,14 +90,6 @@ def _refuse_links_and_bytecode(folder):
     problem = loader.content_problem(folder)
     if problem is not None:
         raise ValueError(loader.content_reason(problem, "rode a prévia de novo"))
-
-
-def _refuse_query_or_fragment(raw):
-    # Verificação por substring, não `urlsplit`: cobre tanto `https://…` quanto a
-    # sintaxe `git@host:caminho` (que não é uma URL de verdade e não tem "query"
-    # nem "fragment" pro `urlsplit` reconhecer).
-    if "?" in raw or "#" in raw:
-        raise ValueError("URL git não pode ter query (?) nem fragmento (#); use uma URL sem esses caracteres.")
 
 
 def _clone_no_checkout(source_uri, dest, ssh=False):
@@ -468,11 +344,7 @@ def _materialize(source, dest):
     folder = Path(raw).expanduser()
     if raw and not raw.startswith("-") and folder.is_dir():
         folder = folder.resolve()
-        git_dir = folder / ".git"
-        # Só uma PASTA `.git` de verdade faz da origem um repositório: um arquivo
-        # `.git` (gitfile de worktree/submódulo) ou um link apontaria o clone para
-        # outro repositório, não para a pasta que a pessoa está vendo.
-        if git_dir.is_dir() and not is_link(git_dir):
+        if git_source.is_repository(folder):
             return str(folder), _from_git(folder.as_uri(), dest)
         _checked_manifest(folder)
         _refuse_nested_vcs(folder)
@@ -485,13 +357,7 @@ def _materialize(source, dest):
             raise ValueError(f"Não consegui copiar a pasta do plugin ({type(exc).__name__}).") from exc
         _refuse_links_and_bytecode(dest)
         return str(folder), None
-    if not GIT_URL_RE.fullmatch(raw):
-        raise ValueError("--source tem que ser uma pasta local ou uma URL git (https://… ou git@host:caminho).")
-    _refuse_query_or_fragment(raw)
-    if raw.startswith("https://"):
-        parts = urlsplit(raw)
-        if parts.username or parts.password:
-            raise ValueError("URL git com usuário/senha não é aceita; use uma URL sem credencial.")
+    git_source.validate_url(raw)
     return raw, _from_git(raw, dest, ssh=raw.startswith("git@"))
 
 
