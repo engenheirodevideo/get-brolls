@@ -1746,8 +1746,6 @@ def _status_items(ctx):
 
 def _status_layout(project):
     """`{version, source, problem}` do layout do projeto; somente leitura."""
-    from getbrolls import layout
-
     found = layout.info(project)
     return {"version": found.version, "source": found.source, "problem": found.problem}
 
