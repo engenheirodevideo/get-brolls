@@ -303,7 +303,9 @@ class DeclaredKeys(unittest.TestCase):
     def test_every_gb_variable_the_code_reads_is_declared_in_keys(self):
         found = self._read_keys()
         self.assertTrue(found)
-        undeclared = {key: where for key, where in found.items() if key not in config.KEYS}
+        undeclared = {
+            key: where for key, where in found.items() if key not in config.KEYS and key not in config.PROCESS_ONLY_KEYS
+        }
         self.assertEqual({}, undeclared)
 
     def test_every_declared_key_appears_in_the_env_example(self):

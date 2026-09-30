@@ -43,6 +43,9 @@ KEYS = {
     "GB_STATIC_FRAMES",
     "GB_YTDLP_PATH",
     "GB_VENV_PATH",
+    # Pasta com `.venv/` (yt-dlp) e `.tools/` (Playwright); padrão
+    # `$GB_HOME/runtime/<versão das dependências>/`, e o checkout usa os da própria pasta.
+    "GB_RUNTIME_DIR",
     "GB_FFMPEG_PATH",
     "GB_FFPROBE_PATH",
     # Fonte TrueType para rotular o contact sheet (CLI e helpers Bash de YouTube).
@@ -65,6 +68,9 @@ KEYS = {
     # `1` espelha as linhas do getbrolls.log em stderr, antes do envelope JSON.
     "GB_LOG_STDERR",
 }
+
+# Só do ambiente do processo; nunca num .env.
+PROCESS_ONLY_KEYS = frozenset({"GB_ENV_FILE"})
 
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
 
