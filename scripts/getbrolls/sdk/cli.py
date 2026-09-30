@@ -80,6 +80,14 @@ def _update(args):
     return install.update(_require_id(args), confirm=bool(args.yes), expect=args.expect, commit=flags["commit"])
 
 
+def _remove(args):
+    from . import remove
+
+    if args.expect:
+        raise UsageError("plugins --action remove não usa --expect: remover não aprova conteúdo; use só --yes.")
+    return remove.remove(_require_id(args), confirm=bool(args.yes))
+
+
 def _new(args):
     from . import scaffold
 
@@ -95,6 +103,7 @@ ACTIONS = {
     "check": _check,
     "install": _install,
     "update": _update,
+    "remove": _remove,
     "new": _new,
 }
 

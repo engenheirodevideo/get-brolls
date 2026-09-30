@@ -415,10 +415,19 @@ def _materialize(spec, dest, compat=True):
 # tarde, tentasse a própria troca). O nome é a única fonte de verdade da idade.
 _INSTALL_STAGING_RE = re.compile(r"^\.install-(\d+)-[0-9a-f]{32}$")
 _OLD_STAGING_RE = re.compile(r"^\.old-(\d+)-(.+)-[0-9a-f]{32}$")
+# Pasta de um `plugins --action remove` (trocada de lugar antes de apagar). Nunca
+# reusa o prefixo `.old-*`: esse a varredura devolve ao lugar quando o plugin sumiu,
+# e um plugin removido de propósito voltaria sozinho. Resto `.removed-*` é sempre apagado.
+_REMOVED_STAGING_RE = re.compile(r"^\.removed-(\d+)-[0-9a-f]{32}$")
 
 
 def _new_install_staging_name():
     return f".install-{int(time.time())}-{uuid.uuid4().hex}"
+
+
+def new_removed_staging_name():
+    """Nome da pasta para onde o `remove` tira o plugin antes de apagá-lo."""
+    return f".removed-{int(time.time())}-{uuid.uuid4().hex}"
 
 
 def _new_old_staging_name(plugin_id):
@@ -429,6 +438,13 @@ def _sweep_stale_install(entry, name, now):
     match = _INSTALL_STAGING_RE.match(name)
     if not match or now - int(match.group(1)) < STALE_STAGING_MAX_AGE_S:
         return  # nome não reconhecido (versão anterior/lixo) ou jovem demais: não mexe
+    force_rmtree(entry)
+
+
+def _sweep_stale_removed(entry, name, now):
+    match = _REMOVED_STAGING_RE.match(name)
+    if not match or now - int(match.group(1)) < STALE_STAGING_MAX_AGE_S:
+        return  # nome não reconhecido ou jovem demais (um `remove` ainda apagando): não mexe
     force_rmtree(entry)
 
 
@@ -473,10 +489,12 @@ def _sweep_one_stale_entry(root, entry, now):
         _sweep_stale_install(entry, name, now)
     elif name.startswith(".old-"):
         _sweep_stale_old(root, entry, name, now)
+    elif name.startswith(".removed-"):
+        _sweep_stale_removed(entry, name, now)
 
 
 def _sweep_stale_staging():
-    """Uma pasta `.install-*`/`.old-*` que sobrou de um processo anterior morto
+    """Uma pasta `.install-*`/`.old-*`/`.removed-*` que sobrou de um processo anterior morto
     no meio (sem chance de rodar o próprio `finally`) não deve ficar acumulando
     disco nem confundir uma leitura futura de `plugins/`. Duas ressalvas, e uma
     regra de nunca-quebrar (ver `_sweep_one_stale_entry`):

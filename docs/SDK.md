@@ -451,7 +451,7 @@ if not token:
 Eventos do log estruturado relacionados a plugins:
 `plugin_loaded` (plugin, versão, providers, presets e a quantidade de rotas e
 comandos registrados), `plugin_skipped`, `plugin_failed`, `plugin_enabled`,
-`plugin_disabled`, `plugin_installed`, `plugin_updated`,
+`plugin_disabled`, `plugin_installed`, `plugin_updated`, `plugin_removed`,
 `plugin_request_refused`, `plugin_path_refused`, `plugin_call_failed`,
 `plugin_candidate_sanitized`, `plugin_route` (plugin, rota, estágio, bytes, ms)
 e `plugin_command` (plugin, comando, quantidade de argumentos, ms). Nenhum
@@ -866,6 +866,23 @@ python3 scripts/gb.py plugins --action update --id <id> --commit <sha-anterior>
   diferença de versão, de permissões e de arquivos (adicionados, removidos,
   alterados) contra a origem gravada. Nenhum código do plugin roda durante
   install/update — só o manifesto é lido.
+
+## Remover
+
+```sh
+python3 scripts/gb.py plugins --action remove --id <id>
+python3 scripts/gb.py plugins --action remove --id <id> --yes
+```
+
+- Sem `--yes`, só mostra o que sai: a pasta `plugins/<id>` (id, versão,
+  status) e o que o `plugins.json` guarda do plugin (`enabled`, `last_pins`,
+  `sources`). Com `--yes`, apaga a pasta e essas três entradas. Não há
+  `--expect` (remover não aprova conteúdo); passá-lo é erro de uso.
+- `plugin-data/<id>` (estado e cache do plugin) fica; a resposta mostra onde
+  (`kept.plugin_data`), para apagar à mão se quiser.
+- Se `plugins/<id>` é um link simbólico (ou junction), só o link sai; o alvo
+  não é tocado. Um id que só sobrou no `plugins.json`, sem pasta, também pode
+  ser removido. `plugins.json` corrompido recusa antes de mexer em qualquer coisa.
 
 ## Opt-in e confiança
 

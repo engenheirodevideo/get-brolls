@@ -365,9 +365,14 @@ def read_state():
     raise ValueError(f"plugins.json inválido em {path}. Corrija ou apague o arquivo para recomeçar sem plugins.")
 
 
-def _write_state(data):
+def write_state(data):
+    """Grava `plugins.json` (troca atômica), criando `$GB_HOME` se preciso."""
     home_dir().mkdir(parents=True, exist_ok=True)
     atomic_write(state_path(), json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+
+
+def _write_state(data):
+    write_state(data)
 
 
 def env_selection():

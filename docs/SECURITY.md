@@ -81,7 +81,9 @@ topo; ponteiro do Git LFS (o LFS nunca roda); e nome de arquivo fora de NFC. Nen
 código do plugin roda no install. Limites do sha256 do pin: os bits de modo
 (executável ou não) não entram na conta, e lixo de SO (`.DS_Store`,
 `Thumbs.db`, `desktop.ini`) commitado no repositório é materializado mas não
-entra no hash — o código do plugin não deve ler esses nomes. `GB_PLUGINS=off` desliga tudo; `GB_PLUGINS=id1,id2`
+entra no hash — o código do plugin não deve ler esses nomes. `plugins --action remove`
+apaga a pasta do plugin e o estado dele em `plugins.json`; quando `plugins/<id>`
+é um link, só o link sai, e o alvo não é tocado. `GB_PLUGINS=off` desliga tudo; `GB_PLUGINS=id1,id2`
 só escolhe entre os plugins já habilitados com pin válido — nunca carrega um
 plugin não habilitado nem um com conteúdo mudado desde o `enable`.
 
