@@ -238,8 +238,10 @@ class DoctorReportTests(unittest.TestCase):
             timeout=120,
             check=False,
         )
-        self.assertEqual(done.returncode, 0, done.stderr)
-        return json.loads(done.stdout)
+        payload = json.loads(done.stdout)
+        # 4 é o `doctor` dizendo que falta algo obrigatório, com o JSON em stdout.
+        self.assertEqual(4 if payload["summary"]["missing"] else 0, done.returncode, done.stderr)
+        return payload
 
     def test_doctor_reports_active_override(self):
         with tempfile.TemporaryDirectory() as d:

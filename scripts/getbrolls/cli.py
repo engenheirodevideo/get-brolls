@@ -1,6 +1,8 @@
 """Argument contract and structured command output."""
 
-# pylint: disable=missing-function-docstring,broad-exception-caught
+# pylint: disable=missing-function-docstring,broad-exception-caught,too-many-lines
+# `too-many-lines`: o contrato inteiro da CLI (parser, erro de uso, saída e códigos de
+# saída) fica num módulo só, para quem lê a superfície não caçar em vários arquivos.
 # Legado: ocorrências pré-existentes em `parse_args` e `entrypoint` (corpo
 # idêntico ao código anterior à 2.6.0).
 
@@ -52,6 +54,9 @@ SUMMARIES = {
         "Listar, instalar, atualizar, criar, habilitar, desabilitar ou validar plugins do SDK (~/.getbrolls/plugins)"
     ),
     "x": "Rodar um comando de plugin habilitado (x --list mostra quais existem); só lê o projeto",
+    "setup": (
+        "Conferir (--check) o runtime da instalação: venv do yt-dlp, Playwright e FFmpeg, com os comandos que faltam"
+    ),
     "status": "Resumir onde o projeto está por etapa, sem alterar arquivos",
     "search": "Pesquisar candidatos numa fonte e registrá-los no projeto (--shot liga ao beat; --dry-run não grava)",
     "resolve": "Registrar um candidato a partir de URL pública ou arquivo local",
@@ -231,10 +236,18 @@ def _check_preset_name(args):
 
 
 def _add_toolchain_subcommands(sub):
-    """Acrescenta os subcomandos sem `--project` obrigatório: providers, doctor, plugins, x."""
-    for name in ("providers", "doctor", "plugins", "x"):
+    """Acrescenta os subcomandos sem `--project` obrigatório: providers, doctor, plugins, x, setup."""
+    for name in ("providers", "doctor", "plugins", "x", "setup"):
         p = sub.add_parser(name, help=SUMMARIES[name], description=SUMMARIES[name])
         _SUBPARSERS[name] = p
+        if name in ("doctor", "setup"):
+            p.add_argument(
+                "--json",
+                action="store_true",
+                help="Aceito; a saída já é JSON (reservado para o modo humano)",
+            )
+        if name == "setup":
+            p.add_argument("--check", action="store_true", help="Só conferir, sem instalar nada")
         if name == "doctor":
             # O SKILL.md diz que `--project` vai em todo comando, e a primeira chamada
             # do fluxo é o `doctor`: recusá-lo ali é contradizer a instrução logo na
