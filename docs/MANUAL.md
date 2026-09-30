@@ -49,13 +49,21 @@ uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0
 # ou
 pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0
 
+getbrolls setup
 getbrolls doctor
-getbrolls setup --check
 ```
 
 - Em todo este manual, `getbrolls …` e `python3 scripts/gb.py …` são o mesmo comando: use o primeiro no pacote instalado e o segundo dentro de um checkout.
 - **Usa o plugin do Claude Code? Nada muda.** No checkout e no plugin, `python3 scripts/gb.py` continua igual.
-- `getbrolls setup --check` mostra o que falta (yt-dlp, Playwright CLI, FFmpeg, ffprobe, curl, Node, npx e os arquivos de dados, os mesmos itens obrigatórios do `doctor`) e os comandos para resolver, sem instalar nada. `getbrolls doctor` diz se está pronto (`ready`) e sai com código `4` quando falta algo; o `ready` dos dois bate.
+- **`getbrolls setup` instala o runtime** e nunca pergunta nada:
+  - o yt-dlp numa venv criada com o Python que roda o getbrolls, em `$GB_HOME/runtime/<versão>/.venv`;
+  - o Playwright CLI (Instagram) com `npm ci --ignore-scripts`, em `$GB_HOME/runtime/<versão>/.tools` (precisa de Node 22+ e npm no `PATH`; sem eles, essa parte fica de fora com a dica de instalação);
+  - `<versão>` é a das dependências de cada parte; com `GB_RUNTIME_DIR`, as duas partes vão para essa pasta;
+  - FFmpeg, ffprobe, curl e Node são do sistema: o `setup` só confere e mostra o comando do seu sistema (`brew`, `apt` ou `winget install Gyan.FFmpeg`);
+  - nunca mexe no projeto nem na pasta da instalação; progresso no stderr, resultado em JSON no stdout; sai `0` pronto e `4` se ainda falta algo.
+- **Rodar de novo é seguro:** o que já está pronto não é refeito, e uma instalação interrompida é refeita. **Depois de atualizar o getbrolls (ou o plugin), rode `getbrolls setup` de novo:** só a parte cuja versão das dependências mudou é instalada. `getbrolls setup --upgrade ytdlp` atualiza o yt-dlp além da versão fixada.
+- `getbrolls setup --where` mostra, sem instalar nada, onde cada parte fica e qual está em uso (`--where venv` ou `--where tools` para uma só).
+- `getbrolls setup --check` mostra o que falta (yt-dlp, Playwright CLI, FFmpeg, ffprobe, curl, Node, npx e os arquivos de dados, os mesmos itens obrigatórios do `doctor`) e como resolver (`getbrolls setup` para yt-dlp e Playwright), sem instalar nada. `getbrolls doctor` diz se está pronto (`ready`) e sai com código `4` quando falta algo; o `ready` dos dois bate.
 - **Windows:** os comandos sugeridos pela ferramenta (`summary.do.command`) usam `python` e aspas duplas e rodam colados no PowerShell, no cmd e no Git Bash quando nenhum caminho tem `$`, `%` ou `"`; com esses caracteres, ajuste as aspas à mão.
 
 ## 🗂️ Perfil do workspace (`getbrolls.toml`)

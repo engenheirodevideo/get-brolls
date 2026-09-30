@@ -60,8 +60,8 @@ SUMMARIES = {
     "x": "Rodar um comando de plugin habilitado (x --list mostra quais existem); só lê o projeto",
     "profile": "Mostrar o perfil getbrolls.toml em vigor (valor e origem de cada campo) ou confiar/desconfiar dele",
     "setup": (
-        "Instalar o runtime da instalação (yt-dlp numa venv) em $GB_HOME/runtime; --check só confere; "
-        "Playwright, FFmpeg e Node são conferidos, com os comandos que faltam"
+        "Instalar o runtime da instalação (yt-dlp numa venv e Playwright via npm) em $GB_HOME/runtime; "
+        "--check só confere; --where mostra as pastas; FFmpeg e Node só são verificados"
     ),
     "status": "Resumir onde o projeto está por etapa, sem alterar arquivos",
     "search": "Pesquisar candidatos numa fonte e registrá-los no projeto (--shot liga ao beat; --dry-run não grava)",
@@ -300,6 +300,13 @@ def _add_toolchain_subcommands(sub):
                 "--upgrade",
                 choices=["ytdlp"],
                 help="Atualizar o yt-dlp do runtime gerenciado além da versão fixada",
+            )
+            mode.add_argument(
+                "--where",
+                nargs="?",
+                const="all",
+                choices=["all", "venv", "tools"],
+                help="Mostrar onde fica cada parte do runtime (JSON), sem instalar; sem valor, todas",
             )
         if name == "doctor":
             # O SKILL.md diz que `--project` vai em todo comando, e a primeira chamada

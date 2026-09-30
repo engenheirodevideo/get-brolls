@@ -43,7 +43,17 @@ Instale a stack inteira antes de rodar o instalador: Python 3.11+, FFmpeg/ffprob
 
 ### Instalar como pacote
 
-Além do checkout e do plugin, o getbrolls instala como comando: `uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0` (ou `pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0`), seguido de `getbrolls doctor` e `getbrolls setup --check`. `python -m getbrolls` também funciona. No checkout e no plugin do Claude Code nada muda: `python3 scripts/gb.py …` continua sendo o comando, e todo exemplo deste guia com `python3 scripts/gb.py` vale como `getbrolls …` no pacote instalado. No pacote não existe `.env` de checkout: use `$GB_HOME/.env`. O runtime (yt-dlp e Playwright) fica em `$GB_RUNTIME_DIR` ou, sem ela, em `$GB_HOME/runtime/<versão das dependências>/`. No Windows, os comandos sugeridos pela ferramenta não prometem funcionar com caminho que contenha `$`, `%` ou `"` ao copiar e colar no PowerShell ou no cmd.
+Além do checkout e do plugin, o getbrolls instala como comando: `uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0` (ou `pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0`), seguido de `getbrolls setup` e `getbrolls doctor`. `python -m getbrolls` também funciona. No checkout e no plugin do Claude Code nada muda: `python3 scripts/gb.py …` continua sendo o comando, e todo exemplo deste guia com `python3 scripts/gb.py` vale como `getbrolls …` no pacote instalado. No pacote não existe `.env` de checkout: use `$GB_HOME/.env`. O runtime (yt-dlp e Playwright) fica em `$GB_RUNTIME_DIR` ou, sem ela, em `$GB_HOME/runtime/<versão das dependências>/`.
+
+`getbrolls setup` instala esse runtime, sem perguntar nada:
+
+- **yt-dlp:** uma venv criada com o Python que roda o getbrolls, com o `requirements.txt` fixado, em `.venv/`.
+- **Playwright CLI:** `npm ci --ignore-scripts` a partir do `package.json`/`package-lock.json` fixados, em `.tools/`; precisa de Node 22+ e npm no `PATH` (sem eles, essa parte fica de fora, com a dica de instalação).
+- **Onde:** cada parte numa pasta própria, `$GB_HOME/runtime/<versão>/`, com a versão calculada dos arquivos de dependência dela; com `GB_RUNTIME_DIR`, as duas vão para essa pasta. `getbrolls setup --where` mostra os caminhos e qual está em uso, sem instalar nada.
+- **Sistema:** FFmpeg, ffprobe, curl e Node só são conferidos, com o comando do sistema operacional (`brew install ffmpeg`, `sudo apt install ffmpeg`, `winget install Gyan.FFmpeg`).
+- **Idempotente:** rodar de novo não refaz o que está pronto; uma instalação interrompida é refeita na próxima. Nunca mexe no projeto nem na pasta da instalação.
+- **Depois de atualizar o getbrolls, rode `getbrolls setup` de novo:** só a parte cuja versão das dependências mudou é instalada. `getbrolls setup --upgrade ytdlp` atualiza o yt-dlp além da versão fixada.
+- **Saída:** progresso no stderr, JSON no stdout; código `0` pronto, `4` se ainda falta algo. `getbrolls setup --check` só confere. No Windows, os comandos sugeridos pela ferramenta não prometem funcionar com caminho que contenha `$`, `%` ou `"` ao copiar e colar no PowerShell ou no cmd.
 
 Git é opcional. API key YouTube não é necessária. Pexels/Pixabay usam apenas suas próprias chaves opcionais. `curl-cffi` é extra opcional do yt-dlp, não requisito universal.
 
