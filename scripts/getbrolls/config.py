@@ -271,6 +271,9 @@ def _parse_env(path):
         yield number, key, value
 
 
+# Chave do core → valor que um `.env` pôs no ambiente deste processo (nunca o que já estava lá).
+_ENV_APPLIED: dict[str, str] = {}
+
 _ENV_SHADOWED = (
     "Há dois .env: usei o da pasta da instalação e ignorei o de $GB_HOME (os dois nunca se misturam). "
     "Deixe só um; veja install.env_file no doctor."
@@ -281,12 +284,25 @@ _GB_HOME_IN_ENV_DEPRECATED = (
 )
 
 
-def _refuse_env_entries(entries, source):
+def _is_home_env(path, gb_home_value):
+    """O arquivo é o `.env` da pasta pessoal: a atual ou a que a própria linha `GB_HOME` apontaria.
+
+    Compara caminhos resolvidos, não a rota que trouxe o arquivo: `$GB_HOME/.env` lido por
+    `GB_ENV_FILE` ou `--env-file` continua sendo o `.env` de `$GB_HOME`.
+    """
+    from . import _paths  # tardio: o `_paths` importa este módulo dentro de funções
+
+    target = Path(path).resolve()
+    homes = (_paths.gb_home(), Path(gb_home_value).expanduser()) if gb_home_value else (_paths.gb_home(),)
+    return any(target == (home / ".env").resolve() for home in homes)
+
+
+def _refuse_env_entries(entries, source, path=None):
     """Recusa, antes de exportar qualquer coisa, chaves que um `.env` não pode definir."""
-    for number, key, _value in entries:
+    for number, key, value in entries:
         if key in PROCESS_ONLY_KEYS:
             raise UsageError(f".env: {key} (linha {number}) só vale no ambiente do processo; tire a linha do .env.")
-        if key == "GB_HOME" and source == "gb_home":
+        if key == "GB_HOME" and (source == "gb_home" or (path is not None and _is_home_env(path, value))):
             raise UsageError(
                 f".env de $GB_HOME: GB_HOME (linha {number}) não pode ser definido aqui; a pasta pessoal vem "
                 "do ambiente do processo ou do padrão ~/.getbrolls. Tire a linha."
@@ -299,17 +315,25 @@ def load_env(path, *, source=None):
     lidas por `api.env` do plugin dono, nunca exportadas. As do core entram primeiro —
     `GB_HOME` no próprio `.env` decide em qual `plugins/` procurar os manifestos
     (menos no `.env` de `$GB_HOME`, onde ele é recusado: `source == "gb_home"`).
-    Chave que ninguém declara é erro. Devolve as chaves do core que o arquivo tem."""
+    Chave que ninguém declara é erro. Devolve as chaves do core que valeram deste arquivo
+    (as que o ambiente do processo já tinha ficam de fora: o processo vence)."""
     _PLUGIN_ENV.clear()
     path = Path(path)
     if not path.is_file():
         return frozenset()
     entries = list(_parse_env(path))
-    _refuse_env_entries(entries, source)
+    _refuse_env_entries(entries, source, path)
+    applied = set()
     for _number, key, value in entries:
-        if key in KEYS:
-            os.environ.setdefault(key, value)
-    core_keys = frozenset(key for _number, key, _value in entries if key in KEYS)
+        if key not in KEYS:
+            continue
+        if key not in os.environ:
+            os.environ[key] = value
+            _ENV_APPLIED[key] = value
+        # Uma leitura anterior deste `.env` (a antecipada do `main`) já pode ter posto o valor.
+        if _ENV_APPLIED.get(key) == os.environ.get(key) == value:
+            applied.add(key)
+    core_keys = frozenset(applied)
     unknown = [entry for entry in entries if entry[1] not in KEYS]
     if not unknown:
         return core_keys

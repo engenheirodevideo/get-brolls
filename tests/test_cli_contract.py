@@ -284,6 +284,24 @@ class OperationExitTests(unittest.TestCase):
         self.assertNotIn(TRACEBACK, stderr)
         self.assertNotIn("BrokenPipeError", stderr)
 
+    def test_broken_pipe_keeps_the_pending_result_exit(self):
+        """`doctor` com `ready: false` num pipe fechado sai 4, não 0: o veredito não some com o pipe."""
+        env = {**os.environ, "GB_FFMPEG_PATH": str(self.project / "sem-ffmpeg")}
+        with subprocess.Popen(
+            [*CLI_ARGV, "doctor"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            env=env,
+        ) as proc:
+            assert proc.stdout is not None
+            proc.stdout.close()
+            _, stderr = proc.communicate(timeout=120)
+        self.assertEqual(4, proc.returncode, stderr)
+        self.assertNotIn(TRACEBACK, stderr)
+        self.assertNotIn("BrokenPipeError", stderr)
+
 
 class InProcessExitTests(unittest.TestCase):
     def setUp(self):

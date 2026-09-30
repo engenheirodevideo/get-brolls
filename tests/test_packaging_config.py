@@ -11,6 +11,7 @@ import sys
 import tempfile
 import tomllib
 import unittest
+from pathlib import Path
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT
@@ -32,8 +33,17 @@ def _covers(parent: str, child: str) -> bool:
     return child == parent or child.startswith(parent.rstrip("/") + "/")
 
 
+def _wheel() -> dict:
+    return _config()["tool"]["hatch"]["build"]["targets"]["wheel"]
+
+
 def _force_include() -> dict[str, str]:
-    return _config()["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
+    return _wheel()["force-include"]
+
+
+def _wheel_mapping() -> dict[str, str]:
+    """Origem no repositório → destino no wheel: pastas por `sources`, arquivos por `force-include`."""
+    return {**_wheel()["sources"], **_force_include()}
 
 
 def _sdist_allowlist() -> list[str]:
@@ -58,16 +68,19 @@ class DistributionMetadata(unittest.TestCase):
         self.assertEqual("scripts/getbrolls/__init__.py", config["tool"]["hatch"]["version"]["path"])
         self.assertEqual("hatchling.build", config["build-system"]["build-backend"])
         self.assertTrue(any(req.startswith("hatchling") for req in config["build-system"]["requires"]))
-        self.assertEqual(["scripts/getbrolls"], config["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"])
+        self.assertEqual("getbrolls", _wheel()["sources"]["scripts/getbrolls"])
+        self.assertIn("scripts/getbrolls", _wheel()["only-include"])
 
 
 class WheelData(unittest.TestCase):
-    def test_force_include_ships_every_required_data_file(self):
-        mapping = _force_include()
+    def test_wheel_mapping_ships_every_required_data_file(self):
+        mapping = _wheel_mapping()
         self.assertEqual(DATA_PREFIX + "MANIFEST", mapping.get(paths.CHECKOUT_MANIFEST))
         for source, target in mapping.items():
-            self.assertTrue(target.startswith(DATA_PREFIX), (source, target))
+            if source != "scripts/getbrolls":
+                self.assertTrue(target.startswith(DATA_PREFIX), (source, target))
             self.assertTrue((ROOT / source).exists(), source)
+        self.assertEqual(sorted(_wheel()["sources"]), sorted(_wheel()["only-include"]))
         for entry in paths.REQUIRED_DATA:
             sources = [source for source in mapping if _covers(source, entry)]
             self.assertTrue(sources, entry)
@@ -76,10 +89,28 @@ class WheelData(unittest.TestCase):
                 self.assertEqual(DATA_PREFIX + entry, shipped, entry)
 
 
+class NoSecretsShipped(unittest.TestCase):
+    """`force-include` ignora o `exclude` do hatch: por ele só passam arquivos com nome, nunca pastas."""
+
+    ENV_PATTERNS = ("**/.env", "**/.env.*")
+
+    def test_force_include_is_only_named_files(self):
+        for source in _force_include():
+            self.assertTrue((ROOT / source).is_file(), source)
+            self.assertFalse(Path(source).name.startswith(".env"), source)
+
+    def test_every_build_excludes_env_files(self):
+        build = _config()["tool"]["hatch"]["build"]
+        for label, excludes in (("build", build["exclude"]), ("sdist", build["targets"]["sdist"]["exclude"])):
+            for pattern in (*self.ENV_PATTERNS, "**/__pycache__", "**/*.pyc"):
+                self.assertIn(pattern, excludes, label)
+        self.assertNotIn("exclude", _wheel(), "o wheel herda o `exclude` global")
+
+
 class SdistAllowlist(unittest.TestCase):
     def test_sdist_allowlist_covers_the_wheel_sources(self):
         allowlist = _sdist_allowlist()
-        needed = [*_force_include(), "scripts/getbrolls", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"]
+        needed = [*_wheel_mapping(), "scripts/getbrolls", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"]
         for source in needed:
             self.assertTrue(any(_covers(item, source) for item in allowlist), source)
         for item in allowlist:

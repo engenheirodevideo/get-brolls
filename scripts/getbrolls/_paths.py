@@ -353,15 +353,6 @@ def split_command(text: str, os_name: str | None = None) -> list[str]:
     return list(_split_nt(text)) if _os_name(os_name) == "nt" else shlex.split(text)
 
 
-def module_command(module: str, os_name: str | None = None) -> list[str]:
-    """argv para rodar um módulo do pacote (`getbrolls.x`)."""
-    inst = install()
-    if inst.origin == "checkout" and inst.checkout_root is not None:
-        script = inst.checkout_root / "scripts" / Path(*module.split(".")).with_suffix(".py")
-        return [_interpreter(os_name), str(script)]
-    return [sys.executable, "-m", module]
-
-
 def cli_hint(*args: str) -> str:
     """Comando para citar em prosa, sem caminho da máquina."""
     base = "python3 scripts/gb.py" if origin() == "checkout" else "getbrolls"

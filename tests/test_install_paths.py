@@ -346,14 +346,6 @@ class CliInvocationTests(unittest.TestCase):
             ):
                 self.assertEqual(fallback, paths.cli_command("posix"))
 
-    def test_module_command_by_origin(self):
-        self.assertEqual(
-            ["python3", str(ROOT / "scripts" / "getbrolls" / "serve.py")],
-            paths.module_command("getbrolls.serve", "posix"),
-        )
-        with patch.object(paths, "install", return_value=self._wheel()):
-            self.assertEqual([sys.executable, "-m", "getbrolls.serve"], paths.module_command("getbrolls.serve"))
-
 
 class QuotingTests(unittest.TestCase):
     CASES = ("a b", r"C:\Program Files\x y\gb.py", "it's", 'say "hi"', "", "ação", "tail\\", r"C:\a\b")
@@ -452,10 +444,6 @@ LOCATOR_ALLOWLIST = {
         "_package_dir = Path(__file__).resolve().parent",
     ): "fallback do modo script (`python3 scripts/getbrolls/instagram_pairs.py`): tira a pasta "
     "do pacote de sys.path e importa o próprio pacote; não localiza dados",
-    (
-        "social.py",
-        '"após /plugin update é preciso reinstalar. Confira com python3 scripts/gb.py doctor."',
-    ): "texto só do checkout: o ramo `_from_checkout()`; o pacote usa `_paths.cli_hint`",
     (
         "sdk/api.py",
         '`[python, caminho/gb.py]` num checkout ou `[python, "-P", "-m", "getbrolls"]` no pacote',

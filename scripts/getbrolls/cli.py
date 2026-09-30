@@ -1075,9 +1075,10 @@ def entrypoint():
         return EXIT_INTERRUPTED
     except BrokenPipeError:
         # The consumer end of a pipe (e.g. `| head`) closed early; this is an ordinary,
-        # expected shutdown, not a bug — do not report it as INTERNAL_ERROR.
+        # expected shutdown, not a bug — do not report it as INTERNAL_ERROR. The command
+        # already ran: its exit (4 for `doctor` with `ready: false`) still stands.
         _silence_stdout()
-        return EXIT_OK
+        return _RESULT_EXIT.get()
     except Exception as exc:  # noqa: BLE001 - last-resort CLI boundary, must exit as JSON not a raw traceback
         return _internal_error(exc)
 

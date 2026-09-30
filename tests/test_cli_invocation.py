@@ -15,7 +15,7 @@ from _paths import ROOT, suggested_argv
 from test_guidance import ABSOLUTE, LADDER_STATES
 from test_sdk_loader import LoaderTestCase
 
-from getbrolls import _paths, brief, guidance, serve
+from getbrolls import _paths, brief, guidance, serve, social
 from getbrolls.cli import build_parser
 from getbrolls.sdk.api import PluginApi
 from getbrolls.sdk.manifest import read_manifest
@@ -103,6 +103,14 @@ class EveryInstallRuns(unittest.TestCase):
                     self.assertEqual("abertura", parsed.shot)
 
 
+class ModuleText(unittest.TestCase):
+    def test_instagram_pairs_text_isolates_the_package(self):
+        self.assertEqual("scripts/getbrolls/instagram_pairs.py", social._instagram_pairs_command())  # pylint: disable=protected-access
+        with ExitStack() as stack:
+            as_wheel(stack, OURS)
+            self.assertEqual("python -P -m getbrolls.instagram_pairs", social._instagram_pairs_command())  # pylint: disable=protected-access
+
+
 class WindowsCommand(unittest.TestCase):
     def test_windows_command_is_double_quoted_and_round_trips(self):
         project = r"D:\Projetos Ana\projeto do video"
@@ -149,13 +157,14 @@ class ServeBackground(unittest.TestCase):
             scripts = str(ROOT / "scripts")
             self.assertEqual(scripts + os.pathsep + "/antes", call.kwargs["env"]["PYTHONPATH"])
 
-    def test_serve_background_from_the_package_does_not_inject_pythonpath(self):
+    def test_serve_background_from_the_package_drops_the_inherited_pythonpath(self):
+        """No pacote, um `PYTHONPATH` herdado poria outro `getbrolls` na frente do instalado."""
         with ExitStack() as stack:
             as_wheel(stack, OURS)
             call = self.spawn(stack)
             argv = call.args[0]
             self.assertEqual([sys.executable, "-P", "-m", "getbrolls", "serve"], argv[:5])
-            self.assertEqual("/antes", call.kwargs["env"]["PYTHONPATH"])
+            self.assertNotIn("PYTHONPATH", call.kwargs["env"])
 
 
 class PluginApiCliArgv(LoaderTestCase):
