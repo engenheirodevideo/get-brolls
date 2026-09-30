@@ -1540,11 +1540,12 @@
             "marketplace-update",
             "new",
             "remove",
+            "search",
             "update"
           ],
           "default": null,
           "dest": "action",
-          "help": "list: inventário sem executar código; enable/disable: liga/desliga por id; check: valida uma pasta; install/update: traz de pasta ou git, em dois passos; remove: tira a pasta e o estado, em dois passos; new: gera um plugin mínimo; marketplace-add/-list/-remove/-update: índices de plugins fixados por commit",
+          "help": "list: inventário sem executar código; enable/disable: liga/desliga por id; check: valida uma pasta; install/update: traz de pasta ou git, em dois passos; remove: tira a pasta e o estado, em dois passos; new: gera um plugin mínimo; marketplace-add/-list/-remove/-update: índices de plugins fixados por commit; search: procura nos índices em cache, sem rede",
           "nargs": null,
           "option_strings": [
             "--action"
@@ -1580,10 +1581,22 @@
           "choices": null,
           "default": null,
           "dest": "marketplace",
-          "help": "Nome do marketplace (marketplace-remove; marketplace-update, que sem ele atualiza todos)",
+          "help": "Nome do marketplace (marketplace-remove; marketplace-update e search, que sem ele usam todos)",
           "nargs": null,
           "option_strings": [
             "--marketplace"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "query",
+          "help": "search: trecho do id, da descrição ou do tipo de extensão a procurar",
+          "nargs": null,
+          "option_strings": [
+            "--query"
           ],
           "required": false
         },

@@ -15,7 +15,7 @@ _PIN_FLAG_ACTIONS = {
     "marketplace-update": ("commit",),
 }
 # Ações em que `--marketplace <nome>` vale.
-_MARKETPLACE_FLAG_ACTIONS = ("marketplace-remove", "marketplace-update")
+_MARKETPLACE_FLAG_ACTIONS = ("marketplace-remove", "marketplace-update", "search")
 
 
 def kind_list():
@@ -139,6 +139,12 @@ def _marketplace_update(args):
     return marketplace.refresh(getattr(args, "marketplace", None), commit=args.commit)
 
 
+def _search(args):
+    from . import marketplace
+
+    return marketplace.search(args.query or "", getattr(args, "marketplace", None))
+
+
 ACTIONS = {
     "list": _list,
     "enable": _enable,
@@ -152,6 +158,7 @@ ACTIONS = {
     "marketplace-list": _marketplace_list,
     "marketplace-remove": _marketplace_remove,
     "marketplace-update": _marketplace_update,
+    "search": _search,
 }
 
 
@@ -165,4 +172,6 @@ def run(args):
         raise UsageError(f"{', '.join(misused)} não vale(m) em plugins --action {args.action}.")
     if getattr(args, "marketplace", None) is not None and args.action not in _MARKETPLACE_FLAG_ACTIONS:
         raise UsageError(f"--marketplace não vale em plugins --action {args.action}.")
+    if getattr(args, "query", None) is not None and args.action != "search":
+        raise UsageError(f"--query só vale em plugins --action search, não em {args.action}.")
     return ACTIONS[args.action](args)

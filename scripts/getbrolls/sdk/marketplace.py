@@ -29,7 +29,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
 
-from .. import versioning
+from .. import _paths, versioning
 from ..errors import UsageError
 from ..rules import home_dir
 from ..runtime import force_rmtree
@@ -42,6 +42,7 @@ from .marketplace_index import (
     SHA256_RE,
     MarketplaceIndexError,
     parse_index,
+    resolve_rename,
     validate_marketplace_name,
 )
 
@@ -438,3 +439,89 @@ def refresh(name: str | None = None, commit: str | None = None) -> dict:
 def resolve_repo(entry_repo: str, pin: Pin) -> str:
     """`source.repo` de uma entrada como origem git: `"."` é o próprio repositório do marketplace."""
     return pin.source if entry_repo == SELF_REPO else entry_repo
+
+
+def _installed():
+    """`{id: {"version", "marketplace"}}` dos plugins com pasta em `plugins/`, pelo plugins.json (sem rodar nada)."""
+    state = loader.read_state()
+    root = loader.plugins_root()
+    found = {}
+    for plugin_id in {*state.get("enabled", {}), *state.get("last_pins", {}), *state.get("sources", {})}:
+        if not (root / plugin_id).is_dir():
+            continue
+        pinned = state.get("enabled", {}).get(plugin_id) or state.get("last_pins", {}).get(plugin_id) or {}
+        origin = state.get("sources", {}).get(plugin_id) or {}
+        found[plugin_id] = {"version": pinned.get("version"), "marketplace": origin.get("marketplace")}
+    return found
+
+
+def _install_hint(plugin_id, name):
+    return _paths.cli_hint("plugins", "--action", "install", "--id", f"{plugin_id}@{name}")
+
+
+def _matches(needle, entry):
+    haystack = [entry["id"], entry["description"] or "", *entry["contributes"]]
+    return any(needle in text.casefold() for text in haystack)
+
+
+def _row(pin, entry, installed):
+    return {
+        "id": entry["id"],
+        "marketplace": pin.name,
+        "version": entry["version"],
+        "description": entry["description"],
+        "tier": entry["tier"],
+        "contributes": entry["contributes"],
+        "yanked": entry["yanked"],
+        "deprecated": entry["deprecated"],
+        "installed": installed.get(entry["id"]),
+        "renamed_to": None,
+        "install": None if entry["yanked"] else _install_hint(entry["id"], pin.name),
+    }
+
+
+def _renamed_row(pin, old, new, installed):
+    return {
+        "id": old,
+        "marketplace": pin.name,
+        "version": None,
+        "description": None,
+        "tier": None,
+        "contributes": [],
+        "yanked": False,
+        "deprecated": None,
+        "installed": installed.get(old),
+        "renamed_to": new,
+        "install": _install_hint(new, pin.name),
+    }
+
+
+def search(query: str, marketplace: str | None = None) -> dict:
+    """Procura `query` (sem diferenciar maiúsculas) em `id`, `description` e `contributes`
+    das entradas dos índices em cache — nunca na rede.
+
+    Só marketplaces permitidos pelo teto; `marketplace` restringe a um. Resultados em
+    ordem de `(id, marketplace)`, com `installed`, `tier`, `yanked`, `deprecated`, o
+    comando de `install` (nenhum para entrada retirada) e, para um id antigo de
+    `renames`, `renamed_to` com o id atual."""
+    needle = query.strip().casefold() if isinstance(query, str) else ""
+    if not needle:
+        raise UsageError("--query é obrigatório em plugins --action search (um trecho do id ou da descrição).")
+    if marketplace is not None:
+        pin, index = load_index(marketplace)
+        if not allowed(pin.name):
+            raise _not_allowed(pin.name)
+        indexes = [(pin, index)]
+    else:
+        indexes = pinned_indexes()
+    installed = _installed()
+    results = []
+    for pin, index in indexes:
+        results += [_row(pin, entry, installed) for entry in index["plugins"] if _matches(needle, entry)]
+        results += [
+            _renamed_row(pin, old, resolve_rename(index, old) or new, installed)
+            for old, new in index["renames"].items()
+            if needle in old.casefold()
+        ]
+    results.sort(key=lambda row: (row["id"], row["marketplace"]))
+    return {"query": query, "marketplaces": [pin.name for pin, _ in indexes], "results": results}

@@ -438,12 +438,13 @@ def _add_toolchain_subcommands(sub):
                     "marketplace-list",
                     "marketplace-remove",
                     "marketplace-update",
+                    "search",
                 ],
                 help=(
                     "list: inventário sem executar código; enable/disable: liga/desliga por id; check: valida uma "
                     "pasta; install/update: traz de pasta ou git, em dois passos; remove: tira a pasta e o estado, "
                     "em dois passos; new: gera um plugin mínimo; marketplace-add/-list/-remove/-update: índices de "
-                    "plugins fixados por commit"
+                    "plugins fixados por commit; search: procura nos índices em cache, sem rede"
                 ),
             )
             p.add_argument("--id", help="Id do plugin (enable/disable/update/remove/new)")
@@ -456,8 +457,9 @@ def _add_toolchain_subcommands(sub):
             )
             p.add_argument(
                 "--marketplace",
-                help="Nome do marketplace (marketplace-remove; marketplace-update, que sem ele atualiza todos)",
+                help=("Nome do marketplace (marketplace-remove; marketplace-update e search, que sem ele usam todos)"),
             )
+            p.add_argument("--query", help="search: trecho do id, da descrição ou do tipo de extensão a procurar")
             p.add_argument(
                 "--commit",
                 help=(

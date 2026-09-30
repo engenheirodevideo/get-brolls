@@ -331,5 +331,93 @@ class CliTests(MarketplaceTestCase):
                 run_cli("plugins", *args, expect=2, env=self.env())
 
 
+class SearchTests(MarketplaceTestCase):
+    def two_marketplaces(self):
+        """`alfa`: demo (instalado), velho→demo renomeado, extra retirado e depreciado; `beta`: demo e zeta."""
+        alfa = self.index_repo(name="alfa", folder="a")
+        write_plugin(alfa / "plugins" / "extra", {**MANIFEST, "id": "extra", "description": "Sons de chuva"})
+        git(alfa, "add", ".")
+        git(alfa, "commit", "--quiet", "-m", "extra")
+        commit = head(alfa)
+        extra = {
+            **build_entry(alfa, commit, "extra"),
+            "yanked": True,
+            "deprecated": {"reason": "use demo", "replacement": "demo"},
+        }
+        self.commit_index(alfa, "alfa", [build_entry(alfa, commit), extra], renames={"velho": "demo"})
+        beta = self.index_repo(name="beta", folder="b")
+        write_plugin(beta / "plugins" / "zeta", {**MANIFEST, "id": "zeta", "description": "Acervo DEMO local"})
+        git(beta, "add", ".")
+        git(beta, "commit", "--quiet", "-m", "zeta")
+        commit = head(beta)
+        self.commit_index(beta, "beta", [build_entry(beta, commit, "zeta"), build_entry(beta, commit)])
+        marketplace.add(str(alfa))
+        marketplace.add(str(beta))
+        (loader.plugins_root() / "demo").mkdir(parents=True)
+        state = loader.read_state()
+        state["enabled"]["demo"] = {"sha256": "c" * 64, "version": "0.1.0"}
+        state.setdefault("sources", {})["demo"] = {"source": "x", "commit": "a" * 40, "marketplace": "alfa"}
+        loader.write_state(state)
+
+    def test_search_matches_id_and_description_sorted(self):
+        self.two_marketplaces()
+        found = marketplace.search("demo")
+        keys = [(row["id"], row["marketplace"]) for row in found["results"]]
+        self.assertEqual([("demo", "alfa"), ("demo", "beta"), ("zeta", "beta")], keys)
+        self.assertEqual(["alfa", "beta"], found["marketplaces"])
+        self.assertEqual(["extra"], [row["id"] for row in marketplace.search("CHUVA")["results"]])
+        self.assertEqual(3 + 1, len(marketplace.search("provider")["results"]))
+        self.assertEqual([], marketplace.search("nada-disso")["results"])
+        with self.assertRaises(UsageError):
+            marketplace.search("  ")
+
+    def test_search_flags_installed_yanked_deprecated_renamed(self):
+        self.two_marketplaces()
+        rows = {(row["id"], row["marketplace"]): row for row in marketplace.search("e")["results"]}
+        demo = rows[("demo", "alfa")]
+        self.assertEqual({"version": "0.1.0", "marketplace": "alfa"}, demo["installed"])
+        self.assertEqual("community", demo["tier"])
+        self.assertFalse(demo["yanked"])
+        self.assertIn("plugins --action install --id demo@alfa", demo["install"])
+        self.assertEqual({"version": "0.1.0", "marketplace": "alfa"}, rows[("demo", "beta")]["installed"])
+        self.assertIsNone(rows[("zeta", "beta")]["installed"])
+        extra = rows[("extra", "alfa")]
+        self.assertTrue(extra["yanked"])
+        self.assertIsNone(extra["install"])
+        self.assertEqual({"reason": "use demo", "replacement": "demo"}, extra["deprecated"])
+        renamed = marketplace.search("velho")["results"]
+        self.assertEqual(1, len(renamed))
+        self.assertEqual(
+            ("velho", "alfa", "demo"), (renamed[0]["id"], renamed[0]["marketplace"], renamed[0]["renamed_to"])
+        )
+        self.assertIn("--id demo@alfa", renamed[0]["install"])
+
+    def test_search_never_touches_network(self):
+        self.two_marketplaces()
+        with self.no_network(), patch.object(install_mod, "_run_git", side_effect=AssertionError("rede")):
+            self.assertEqual(3, len(marketplace.search("demo")["results"]))
+            run = run_cli("plugins", "--action", "search", "--query", "demo", env=self.env())
+        self.assertEqual(3, len(run["results"]))
+
+    def test_search_respects_policy_and_marketplace_filter(self):
+        self.two_marketplaces()
+        only_beta = marketplace.search("demo", marketplace="beta")
+        self.assertEqual({"beta"}, {row["marketplace"] for row in only_beta["results"]})
+        with self.assertRaises(ValueError):
+            marketplace.search("demo", marketplace="gama")
+        marketplace.set_policy(frozenset({"alfa"}))
+        self.assertEqual({"alfa"}, {row["marketplace"] for row in marketplace.search("demo")["results"]})
+        with self.assertRaises(ValueError):
+            marketplace.search("demo", marketplace="beta")
+
+    def test_search_cli_flags(self):
+        self.assertIn(("plugins", "search"), runtime.READ_ONLY_ACTIONS)
+        run_cli("plugins", "--action", "search", expect=2, env=self.env())
+        run_cli("plugins", "--action", "list", "--query", "x", expect=2, env=self.env())
+        run_cli("plugins", "--action", "search", "--query", "x", "--commit", "a" * 40, expect=2, env=self.env())
+        empty = run_cli("plugins", "--action", "search", "--query", "x", env=self.env())
+        self.assertEqual([], empty["results"])
+
+
 if __name__ == "__main__":
     unittest.main()
