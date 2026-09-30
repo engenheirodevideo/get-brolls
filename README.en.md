@@ -65,7 +65,7 @@ The skill only works end to end with **all** of the tools below installed before
 | Node 22+ with npm/npx | Playwright CLI and yt-dlp EJS runtime | YouTube and Instagram fail |
 | curl | Instagram stream pair download | Instagram fails |
 | Git | clone and update | manual installation |
-| yt-dlp and Playwright CLI | installed by `install.sh`/`install.ps1` in step 2 | YouTube/TikTok and Instagram fail |
+| yt-dlp and Playwright CLI | installed in `$GB_HOME/runtime` by `setup` (or `install.sh`/`install.ps1`) in step 2 | YouTube/TikTok and Instagram fail |
 
 macOS (Homebrew):
 
@@ -124,7 +124,7 @@ In Claude Code, you can also install the skill as a plugin, without cloning manu
 /plugin install get-brolls@engenheirodevideo
 ```
 
-Then run `/get-brolls-setup` in the session: the command runs the installer inside the plugin folder — `~/.claude/plugins/cache/engenheirodevideo/get-brolls/<version>/` — and reports the `doctor` verdict. You can also follow step 2 manually in that folder. Repeat the setup after each `/plugin update`. For Codex, the full-folder clone described above remains the way to install.
+Then run `/get-brolls-setup` in the session: the command runs `setup --check`, `setup` and `doctor` from the plugin folder — `~/.claude/plugins/cache/engenheirodevideo/get-brolls/<version>/` — and reports the `doctor` verdict. The runtime goes to `$GB_HOME/runtime`, shared across plugin versions, so it survives `/plugin update`. You can also follow step 2 manually in that folder. For Codex, the full-folder clone described above remains the way to install.
 
 The skill triggers from the context of your request ("collect b-roll for this video"); the explicit form is `/get-brolls:get-brolls`, and setup is `/get-brolls-setup`. Do not confuse it with generic download skills: this one is the complete pipeline, with human review and a recorded license.
 
@@ -150,7 +150,7 @@ powershell -ExecutionPolicy Bypass -File scripts/install.ps1
 python scripts/gb.py doctor
 ```
 
-The installer creates local environments and obtains yt-dlp/EJS and Playwright CLI. `--check` only validates prerequisites (Python, FFmpeg/ffprobe, Node, curl, Git) and installs nothing; run it before the full installer to see what is missing. `doctor` checks tool availability once installed; access to each source depends on the URL and, when required, your browser session.
+The installer calls `setup`, which installs the pinned yt-dlp/EJS and Playwright CLI in `$GB_HOME/runtime`, outside the skill folder. `--check` only validates prerequisites (Python, FFmpeg/ffprobe, Node, curl, Git) and installs nothing; run it before the full installer to see what is missing. `doctor` checks tool availability once installed; access to each source depends on the URL and, when required, your browser session.
 
 **YouTube works without an API key.** Pexels and Pixabay use their own optional keys, configured in the environment or in the skill's private `.env` file. Available settings are documented in [.env.example](.env.example).
 
@@ -194,7 +194,7 @@ At the end, `verify` answers `"count": 1` and the approved clip is in `/path/to/
 
 If you have never opened a terminal, this is the whole list. Every step is a conversation with the agent; none of them asks for a command.
 
-1. **Install once.** Ask for `/get-brolls-setup`. It installs everything and answers in one line whether you are ready. Repeat after every `/plugin update`.
+1. **Install once.** Ask for `/get-brolls-setup`. It installs everything in `$GB_HOME/runtime` and answers in one line whether you are ready. The runtime survives `/plugin update`.
 2. **Say what you need.** `/get-brolls I need supporting footage for my Reel about X` — and say which folder the project lives in.
 3. **Answer the interview.** At most seven questions, one at a time. "Whatever you think" is a valid answer: the agent applies a default and shows you what it assumed. To start there directly, use `/get-brolls-brief`.
 4. **Check the brief.** It hands back five lines of what it understood and asks whether that is right. Correct it there.

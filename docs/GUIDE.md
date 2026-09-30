@@ -72,11 +72,11 @@ bash scripts/install.sh --check
 bash scripts/install.sh
 ```
 
-O instalador cria `.venv` e instala `yt-dlp[default]`/EJS do PyPI via `requirements.txt`; instala também `@playwright/cli@0.1.21` do npm em `.tools`. Valida Python 3.11+, Node 22+, npm/npx e os executáveis base. Essas pastas de dependências ficam somente na máquina de quem instala e não fazem parte do repositório. Não instala executáveis do sistema nem altera a instalação do agente. A CLI procura primeiro o yt-dlp da `.venv`, depois o `PATH`. Ativar a venv é opcional:
+O instalador confere Python 3.11+, Node 22+, npm/npx e os executáveis base e delega ao `setup` (`python3 scripts/gb.py setup`, que também pode ser rodado direto): `yt-dlp[default]`/EJS do PyPI via `requirements.txt` e `@playwright/cli@0.1.21` do npm vão para `$GB_HOME/runtime/<versão>/` (ou `GB_RUNTIME_DIR`), compartilhados entre instalações e versões do plugin, fora do repositório. No fim ele roda o `doctor` e sai com o código dele (`4` = faltam itens, listados). Não instala executáveis do sistema nem altera a instalação do agente. Uma `.venv`/`.tools` antiga na pasta da skill continua valendo enquanto o runtime compartilhado não existe. A CLI procura o yt-dlp do runtime em uso, depois o `PATH`; `python3 scripts/gb.py setup --where` mostra qual é:
 
 ```sh
-source .venv/bin/activate
-python scripts/gb.py doctor
+python3 scripts/gb.py setup --where
+python3 scripts/gb.py doctor
 ```
 
 ### Windows
@@ -89,7 +89,7 @@ powershell -ExecutionPolicy Bypass -File scripts/install.ps1
 python scripts/gb.py doctor
 ```
 
-O instalador usa `.venv\Scripts\python.exe` e o launcher `.cmd` do Playwright; não exige Git Bash nem WSL. Se a política local já permite scripts, também é possível executar `& .\scripts\install.ps1`. Os helpers `.sh` de YouTube são opcionais; no Windows, use `search`, `preview`, `fetch` e `verify` pela CLI principal.
+O instalador delega ao `python scripts/gb.py setup`, com o runtime em `$GB_HOME\runtime` (layout `.venv\Scripts`), e o launcher `.cmd` do Playwright; não exige Git Bash nem WSL. Se a política local já permite scripts, também é possível executar `& .\scripts\install.ps1`. Os helpers `.sh` de YouTube são opcionais; no Windows, use `search`, `preview`, `fetch` e `verify` pela CLI principal.
 
 Linux continua compatível como plataforma secundária. Em Ubuntu/Debian, instale `python3`, `python3-venv`, `ffmpeg` e `curl`, além de Node 22+, e use `scripts/install.sh` como no macOS.
 
@@ -139,8 +139,8 @@ Quatro variáveis opcionais fixam onde cada ferramenta está, úteis quando há 
 
 | Variável | Fixa | Descoberta padrão quando ausente |
 |---|---|---|
-| `GB_YTDLP_PATH` | Executável do yt-dlp | `.venv/Scripts/yt-dlp.exe`, `.venv/Scripts/yt-dlp`, `.venv/bin/yt-dlp` e depois o `PATH` |
-| `GB_VENV_PATH` | Pasta `.venv` usada para localizar o yt-dlp | `.venv/` na raiz da skill |
+| `GB_YTDLP_PATH` | Executável do yt-dlp | `.venv/Scripts/yt-dlp.exe`, `.venv/Scripts/yt-dlp`, `.venv/bin/yt-dlp` da venv em uso e depois o `PATH` |
+| `GB_VENV_PATH` | Pasta `.venv` usada para localizar o yt-dlp | a do runtime (`setup --where venv`) |
 | `GB_FFMPEG_PATH` | Executável do FFmpeg | `ffmpeg` no `PATH` |
 | `GB_FFPROBE_PATH` | Executável do ffprobe | `ffprobe` no `PATH` |
 
@@ -197,11 +197,11 @@ Defina `GB_SKILL_DIR` e `GB_PROJECT` com os caminhos reais. A trava de projeto u
 
 ### Verificação e atualização
 
-Após instalar, confirme `yt-dlp` e `playwright-cli` em `doctor`. Para a CLI Playwright local, execute `bash scripts/playwright.sh --version` no macOS ou `& .\scripts\playwright.ps1 --version` no Windows. Um status positivo indica disponibilidade, não que todas as URLs serão acessíveis.
+Após instalar, confirme `yt-dlp` e `playwright-cli` em `doctor`. Para a CLI Playwright local, execute `bash scripts/playwright.sh --version` no macOS ou `& .\scripts\playwright.ps1 --version` no Windows; os dois (e os helpers de YouTube) acham o runtime por `setup --where tools` (ou `venv`). Um status positivo indica disponibilidade, não que todas as URLs serão acessíveis.
 
-O conjunto de referência é yt-dlp 2026.08.19, EJS 0.8.0 e Playwright CLI 0.1.21. A partir da 2.3.5, `requirements.txt` fixa também as dependências Python transitivas nas versões instaladas pela CI macOS/Windows da 2.3.4. `package.json` e `package-lock.json` registram o conjunto npm; o instalador copia esses manifestos para `.tools/` e executa `npm ci --ignore-scripts`. Nenhuma biblioteca é incluída no repositório. Os executáveis Python, Node, FFmpeg e curl continuam sendo instalados pelo usuário.
+O conjunto de referência é yt-dlp 2026.08.19, EJS 0.8.0 e Playwright CLI 0.1.21. A partir da 2.3.5, `requirements.txt` fixa também as dependências Python transitivas nas versões instaladas pela CI macOS/Windows da 2.3.4. `package.json` e `package-lock.json` registram o conjunto npm; o `setup` copia esses manifestos para a `.tools/` do runtime e executa `npm ci --ignore-scripts`. Nenhuma biblioteca é incluída no repositório. Os executáveis Python, Node, FFmpeg e curl continuam sendo instalados pelo usuário.
 
-Atualizações de dependências devem entrar por PR, com instalação completa e testes; o Dependabot está configurado para propor essas mudanças semanalmente. Preserve configurações privadas antes de atualizar a skill e repita um ensaio da rota utilizada se as dependências mudarem. Se você personalizou `.tools/node_modules`, `npm ci` substituirá essa árvore pela versão registrada no lockfile; mantenha ferramentas próprias fora da pasta gerenciada da skill.
+Atualizações de dependências devem entrar por PR, com instalação completa e testes; o Dependabot está configurado para propor essas mudanças semanalmente. Preserve configurações privadas antes de atualizar a skill e repita um ensaio da rota utilizada se as dependências mudarem. Se você personalizou a `.tools/node_modules` do runtime, `npm ci` substituirá essa árvore pela versão registrada no lockfile; mantenha ferramentas próprias fora da pasta gerenciada da skill.
 
 Se `--check` falhar, instale o executável/versão apontado. Se a extração falhar, confirme primeiro que a URL abre no navegador autorizado; confira instalação, sessão e disponibilidade do post. Não peça chave YouTube. Para URL CDN Instagram expirada, recapture os dois canais e siga o guia de recuperação. Os testes reais documentados estão em [Qualidade e evidências](QUALITY.md).
 
@@ -235,9 +235,9 @@ A partir da 2.3.6, o repositório também é um marketplace de plugin do Claude 
 /plugin install get-brolls@engenheirodevideo
 ```
 
-Na primeira sessão, execute `/get-brolls-setup`: o comando em `commands/get-brolls-setup.md` roda `scripts/install.sh --check`, o instalador completo do sistema e o `doctor` pela raiz do plugin, e devolve o veredito em uma linha. A skill é acionada pelo contexto do pedido; a forma explícita é `/get-brolls:get-brolls`.
+Na primeira sessão, execute `/get-brolls-setup`: o comando em `commands/get-brolls-setup.md` roda `setup --check`, `setup` e `doctor` pela raiz do plugin, e devolve o veredito em uma linha. A skill é acionada pelo contexto do pedido; a forma explícita é `/get-brolls:get-brolls`.
 
-A skill do plugin fica em `skills/get-brolls/SKILL.md` e referencia os arquivos por `${CLAUDE_PLUGIN_ROOT}`, a raiz do plugin instalado — um diretório de cache versionado (`~/.claude/plugins/cache/engenheirodevideo/get-brolls/<versão>/`). Execute o instalador e o `doctor` pelo caminho absoluto dessa pasta, de qualquer cwd. As dependências ficam em `.venv/` e `.tools/` dentro da pasta do plugin: repita o instalador após cada `/plugin update` ou reinstalação, e prefira variáveis de ambiente ou um `.env` fora da pasta gerenciada para as chaves opcionais, apontado na raiz do parser: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" --env-file CAMINHO <subcomando> …`. O fluxo clone-como-skill continua suportado sem mudanças para Codex e instalações manuais, com o SKILL.md da raiz como fonte canônica.
+A skill do plugin fica em `skills/get-brolls/SKILL.md` e referencia os arquivos por `${CLAUDE_PLUGIN_ROOT}`, a raiz do plugin instalado — um diretório de cache versionado (`~/.claude/plugins/cache/engenheirodevideo/get-brolls/<versão>/`). Execute o instalador e o `doctor` pelo caminho absoluto dessa pasta, de qualquer cwd. As dependências ficam em `$GB_HOME/runtime`, fora da pasta do plugin, e sobrevivem ao `/plugin update`: rode o `setup` de novo só se o `doctor` apontar yt-dlp ou Playwright ausentes (a versão das dependências mudou). Prefira variáveis de ambiente ou um `.env` fora da pasta gerenciada para as chaves opcionais, apontado na raiz do parser: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" --env-file CAMINHO <subcomando> …`. O fluxo clone-como-skill continua suportado sem mudanças para Codex e instalações manuais, com o SKILL.md da raiz como fonte canônica.
 
 #### Permissões (opcional)
 
