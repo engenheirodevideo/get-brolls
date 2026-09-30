@@ -2588,7 +2588,7 @@
       "choices": null,
       "default": "==SUPPRESS==",
       "dest": "version",
-      "help": "Mostrar a versão instalada da skill e sair",
+      "help": "Mostrar a versão instalada, o Python e a origem dos dados (wheel ou checkout) e sair",
       "nargs": 0,
       "option_strings": [
         "--version"

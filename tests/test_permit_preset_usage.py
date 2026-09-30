@@ -1,9 +1,13 @@
 """`permit --preset <desconhecido>` é erro de uso, como no 2.5.0 — nada do
-projeto é aberto, travado ou registrado, e nenhum `brolls/` é criado."""
+projeto é aberto, travado ou registrado, e nenhum `brolls/` é criado.
+
+Fora de um terminal (como aqui, com stdout capturado) o erro de uso sai em JSON
+em stderr; `error` guarda a mensagem do argparse byte a byte."""
 
 import argparse
 import contextlib
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -22,7 +26,7 @@ from getbrolls.sdk import loader
 def argparse_choice_error(name, choices):
     """A linha de erro que o parser do 2.5.0 (`--preset` com `choices=`) imprimia."""
 
-    parser = argparse.ArgumentParser(prog="gb.py")
+    parser = argparse.ArgumentParser(prog="getbrolls")
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("permit").add_argument("--preset", choices=choices)
     stderr = io.StringIO()
@@ -49,16 +53,18 @@ class UnknownPresetTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
         done = permit_stderr(folder, "naoexiste")
         self.assertEqual(2, done.returncode)
-        self.assertIn("usage:", done.stderr)
-        self.assertIn("invalid choice: 'naoexiste'", done.stderr)
+        payload = json.loads(done.stderr)
+        self.assertEqual("USAGE_ERROR", payload["error_code"])
+        self.assertIn("usage: getbrolls permit", payload["usage"])
+        self.assertIn("invalid choice: 'naoexiste'", payload["error"])
         self.assertEqual("", done.stdout)
         self.assertEqual([], sorted(p.name for p in folder.iterdir()))
 
     def test_message_is_byte_identical_to_the_argparse_choices_error(self):
         folder = Path(tempfile.mkdtemp(prefix="gb-preset-"))
         self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
-        last = permit_stderr(folder, "naoexiste").stderr.strip().splitlines()[-1]
-        self.assertEqual(argparse_choice_error("naoexiste", sorted(PERMIT_PRESETS)), last.split("error: ", 1)[1])
+        payload = json.loads(permit_stderr(folder, "naoexiste").stderr)
+        self.assertEqual(argparse_choice_error("naoexiste", sorted(PERMIT_PRESETS)), payload["error"])
 
 
 class UnknownPresetWithPluginTests(LoaderTestCase):
@@ -70,7 +76,7 @@ class UnknownPresetWithPluginTests(LoaderTestCase):
         done = permit_stderr(folder, "naoexiste", env={"GB_HOME": str(self.home)})
         self.assertEqual(2, done.returncode)
         expected = argparse_choice_error("naoexiste", sorted({*PERMIT_PRESETS, "demo"}))
-        self.assertEqual(expected, done.stderr.strip().splitlines()[-1].split("error: ", 1)[1])
+        self.assertEqual(expected, json.loads(done.stderr)["error"])
         self.assertIn("demo", expected)
 
 

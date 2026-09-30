@@ -6,18 +6,24 @@
 
 import argparse
 import contextlib
+import difflib
 import json
 import logging
+import platform
+import re
 import sys
 import time
 import traceback
+from gettext import gettext
+from typing import NoReturn
 
-from . import __version__, logs, presets
+from . import __version__, _paths, logs, presets
 from .runtime import READ_ONLY_ACTIONS, READ_ONLY_COMMANDS, OperationError, audited
 
 # Named so a caller (script, test, or someone scripting the CLI) never has to hardcode 2/3.
 EXIT_OPERATION_ERROR = 2
 EXIT_INTERNAL_ERROR = 3
+EXIT_USAGE_ERROR = 2
 
 # Uma linha por subcomando: o que ele faz no fluxo coleta → revisão → entrega.
 SUMMARIES = {
@@ -75,6 +81,108 @@ FORMAT_GATE_SUBCOMMANDS = (
     "browser-plan",
     "deliver",
 )
+
+
+# Cor que o argparse do Python 3.14+ pode pôr no `usage`: fora do JSON.
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _stdout_is_tty():
+    """Stdout num terminal? Stream fechado ou sem `isatty` conta como não."""
+    try:
+        return sys.stdout.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
+def _close_match(bad, candidates):
+    found = difflib.get_close_matches(bad, candidates, n=1, cutoff=0.6)
+    return found[0] if found else None
+
+
+def _suggest_option(root, ns, extras):
+    """A opção mais parecida com a primeira `--flag` desconhecida, no subcomando e na raiz."""
+    bad = next((token.split("=", 1)[0] for token in extras if token.startswith("--")), None)
+    if bad is None:
+        return None
+    parsers = [_SUBPARSERS.get(str(getattr(ns, "command", ""))), root]
+    candidates = [
+        option
+        for parser in parsers
+        if parser is not None
+        for action in parser._actions  # pylint: disable=protected-access
+        for option in action.option_strings
+        if option.startswith("--")
+    ]
+    return _close_match(bad, candidates)
+
+
+class GbArgumentParser(argparse.ArgumentParser):
+    """ArgumentParser cujo erro de uso sai em JSON fora do terminal e sugere o nome parecido.
+
+    A mensagem (`error`) é a do argparse, byte a byte; o código de saída é 2.
+    Num terminal, sai o texto de sempre (`usage` + `prog: error: …`) e, quando há
+    nome parecido, uma linha "Você quis dizer: …?".
+    """
+
+    _bad_choice: tuple[str, tuple[str, ...]] | None = None
+
+    def _check_value(self, action, value):
+        try:
+            super()._check_value(action, value)
+        except argparse.ArgumentError:
+            self._bad_choice = (str(value), tuple(map(str, action.choices or ())))
+            raise
+
+    def parse_args(self, args=None, namespace=None):  # pyright: ignore[reportIncompatibleMethodOverride]
+        self._bad_choice = None
+        ns, extras = self.parse_known_args(args, namespace)
+        if extras:
+            self.error(
+                gettext("unrecognized arguments: %s") % " ".join(extras), suggestion=_suggest_option(self, ns, extras)
+            )
+        return ns
+
+    def error(self, message, suggestion=None) -> NoReturn:
+        if suggestion is None and self._bad_choice is not None:
+            suggestion = _close_match(*self._bad_choice)
+        self._bad_choice = None
+        if _stdout_is_tty():
+            self.print_usage(sys.stderr)
+            sys.stderr.write(gettext("%(prog)s: error: %(message)s\n") % {"prog": self.prog, "message": message})
+            if suggestion:
+                sys.stderr.write(f"Você quis dizer: {suggestion}?\n")
+        else:
+            payload = {
+                "error": message,
+                "error_code": "USAGE_ERROR",
+                "usage": _ANSI.sub("", self.format_usage()).strip(),
+                "suggestion": suggestion,
+                "prog": self.prog,
+            }
+            print(json.dumps(payload, ensure_ascii=False), file=sys.stderr)
+        self.exit(EXIT_USAGE_ERROR)
+
+
+def version_line():
+    """`getbrolls <versão> (Python <x.y.z>; dados: wheel|checkout|ausentes)`."""
+    origin = _paths.origin()
+    label = "ausentes" if origin == "unknown" else origin
+    return f"getbrolls {__version__} (Python {platform.python_version()}; dados: {label})"
+
+
+class _VersionAction(argparse.Action):
+    """`--version`: imprime `version_line()` em stdout e sai com 0."""
+
+    def __init__(self, option_strings, **kwargs):
+        kwargs.setdefault("dest", argparse.SUPPRESS)
+        kwargs.setdefault("default", argparse.SUPPRESS)
+        super().__init__(option_strings, nargs=0, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        del namespace, values, option_string  # só imprime e sai
+        print(version_line())
+        parser.exit(0)
 
 
 # Subparsers da última `build_parser()`: um erro de uso validado depois do parse
@@ -170,8 +278,9 @@ def _add_toolchain_subcommands(sub):
 
 def build_parser():
     """Monta o parser: opções globais e um subparser por subcomando, com as flags específicas de cada um."""
-    parser = argparse.ArgumentParser(
-        description="Get B-rolls — pesquisar, revisar e coletar trechos por fonte.",
+    parser = GbArgumentParser(
+        prog="getbrolls",
+        description="getbrolls — pesquisar, revisar e coletar trechos por fonte.",
         epilog="Use `<subcomando> --help` para os argumentos de cada etapa.",
     )
     parser.add_argument(
@@ -180,9 +289,8 @@ def build_parser():
     )
     parser.add_argument(
         "--version",
-        action="version",
-        version=f"get-brolls {__version__}",
-        help="Mostrar a versão instalada da skill e sair",
+        action=_VersionAction,
+        help="Mostrar a versão instalada, o Python e a origem dos dados (wheel ou checkout) e sair",
     )
     sub = parser.add_subparsers(dest="command", required=True)
     _add_toolchain_subcommands(sub)

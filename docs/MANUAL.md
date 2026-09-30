@@ -534,7 +534,7 @@ python3 scripts/gb.py x pasta_local recentes --arg limite=5 --project /caminho/m
 # Lista todos os comandos
 python3 scripts/gb.py --help
 
-# Mostra a versão instalada
+# Mostra a versão, o Python e de onde vêm os dados: getbrolls 2.6.0 (Python 3.12.4; dados: checkout)
 python3 scripts/gb.py --version
 
 # Mostra tudo o que um comando aceita (troque "search" por qualquer um)
@@ -563,6 +563,7 @@ Todo comando responde em **JSON**. Pensa como o **relatório de render**: um tex
   - `why`: por que é esse o próximo passo.
   - `blocking_human`: `true` quando o próximo passo depende de **você** (aprovar, dar uma informação).
 - 🔴 **Deu erro?** A mensagem sai na última linha, também em JSON, com `error` (o que houve) e `error_code` (o tipo do erro).
+- ⌨️ **Comando ou flag digitado errado** (erro de uso, código `2`): fora do terminal (agente, script) sai um JSON em stderr com `error`, `error_code: "USAGE_ERROR"`, `usage`, `prog` e `suggestion` (o nome parecido, ou `null`); no terminal, sai o texto do `usage` e, quando há nome parecido, "Você quis dizer: search?".
 
 **Código de saída** (o número que o terminal guarda depois de cada comando, útil em scripts):
 
