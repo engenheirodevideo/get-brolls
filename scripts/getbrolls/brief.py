@@ -13,8 +13,6 @@ from .brief_source import BEAT_ID_RE, load_brief
 from .config import env_is_set
 from .limits import MAX_HINT_S, MIN_HINT_S
 
-ROOT = Path(__file__).resolve().parents[2]
-
 # Reexport: quem já importava daqui (`from .brief import brief_path`, `brief.load_brief`
 # etc.) continua igual; o corpo deste módulo não os usa (mora em `brief_source`, o leaf
 # que `sdk.contracts` lê sem reabrir o ciclo `brief <-> sdk.contracts`).
