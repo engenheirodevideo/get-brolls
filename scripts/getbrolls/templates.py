@@ -36,6 +36,10 @@ from .sdk.files import is_link
 from .sdk.jsonschema import errors
 
 TEMPLATE_FILE = "template.json"
+# O sha256 do `template.json` mora FORA dele, ao lado, no formato do `sha256sum`: quem
+# edita o template.json à mão não consegue manter a versão "íntegra" sem mexer aqui também.
+SEAL_FILE = "template.sha256"
+SEAL_MAX = 256
 LOCK_FILE = "template.lock.json"
 FAMILY = "template"
 LOCK_FAMILY = "template_lock"
@@ -230,9 +234,8 @@ def copy_hashed(source, target, expected=None):
 def _stage_components(staging, rows):
     out = []
     for kind, name, path in rows:
-        tail = assets.ASSET_KINDS[kind].folder.removeprefix("assets/")
-        rel = f"{COMPONENTS}/{tail}/{_file_name(name, path)}"
-        safe_relative(rel)
+        rel = f"{COMPONENTS}/{_kind_folder(kind)}/{_file_name(name, path)}"
+        safe_relative(rel, kind)
         target = staging.joinpath(*rel.split("/"))
         target.parent.mkdir(parents=True, exist_ok=True)
         sha = copy_hashed(path, target)
@@ -270,8 +273,11 @@ def _publish(staging, slug_dir, doc):
         if not os.path.lexists(target):
             doc = {**doc, "version": number, "ref": refs.template_ref(doc["slug"], number)}
             validate_template(doc)
-            (staging / TEMPLATE_FILE).unlink(missing_ok=True)
-            _write_file(staging / TEMPLATE_FILE, _dump(doc))
+            text = _dump(doc)
+            for name in (TEMPLATE_FILE, SEAL_FILE):
+                (staging / name).unlink(missing_ok=True)
+            _write_file(staging / TEMPLATE_FILE, text)
+            _write_file(staging / SEAL_FILE, _seal_text(hashlib.sha256(text.encode("utf-8")).hexdigest()))
             try:
                 staging.rename(target)
             except OSError:
@@ -292,17 +298,31 @@ def _freeze_files(folder, warnings):
             warnings.append(f"{path.relative_to(folder).as_posix()}: não consegui deixar somente leitura.")
 
 
-def safe_relative(rel):
-    """Caminho relativo seguro de componente (`components/<tipo>/<arquivo>`); `ValueError` senão."""
+def _kind_folder(kind):
+    return assets.ASSET_KINDS[kind].folder.removeprefix("assets/")
+
+
+def safe_relative(rel, kind=None):
+    """Caminho relativo seguro de componente (`components/<pasta do tipo>/<arquivo>`); `ValueError` senão.
+
+    O arquivo nunca começa com `.` nem termina em `.licenca.json` (uma licença nunca viaja
+    no template) e, com `kind`, a pasta tem que ser a do tipo (`sfx` só em `components/sfx/`).
+    """
     from .analysis_contract import Invalid, relative
 
+    unsafe = ValueError(f'Caminho de componente inseguro no template: "{rel}".')
     try:
         parts = relative(rel)
     except Invalid:
-        raise ValueError(f'Caminho de componente inseguro no template: "{rel}".') from None
-    folders = {spec.folder.removeprefix("assets/") for spec in assets.ASSET_KINDS.values() if spec.personal}
+        raise unsafe from None
+    folders = {_kind_folder(name) for name, spec in assets.ASSET_KINDS.items() if spec.personal}
     if len(parts) != _COMPONENT_DEPTH or parts[0] != COMPONENTS or parts[1] not in folders:
-        raise ValueError(f'Caminho de componente inseguro no template: "{rel}".')
+        raise unsafe
+    name = parts[2]
+    if name.startswith(".") or name.lower().endswith(assets.LICENSE_SUFFIX):
+        raise unsafe
+    if kind is not None and (kind not in assets.ASSET_KINDS or parts[1] != _kind_folder(kind)):
+        raise unsafe
     return parts
 
 
@@ -415,6 +435,27 @@ def _refuse_constant(token):
     raise ValueError(f"{TEMPLATE_FILE}: {token} não é um número JSON válido.")
 
 
+def _seal_text(digest):
+    return f"{digest}  {TEMPLATE_FILE}\n"
+
+
+def _seal_problem(folder, raw):
+    """Problema do `template.sha256` da versão (ausente, ilegível ou outro hash), ou `None`."""
+    path = folder / SEAL_FILE
+    unproven = f"não dá para provar que o {TEMPLATE_FILE} é o congelado."
+    if is_link(path) or not path.is_file():
+        return f"{SEAL_FILE} não existe (ou não é um arquivo comum): {unproven}"
+    try:
+        if path.stat().st_size > SEAL_MAX:
+            raise ValueError
+        text = path.read_text(encoding="ascii")
+    except (OSError, UnicodeDecodeError, ValueError):
+        return f"{SEAL_FILE} ilegível: {unproven}"
+    if text != _seal_text(hashlib.sha256(raw).hexdigest()):
+        return f"{TEMPLATE_FILE} mudou depois do congelamento: o sha256 não é o do {SEAL_FILE}."
+    return None
+
+
 def _identity_problems(doc, client, slug, number):
     problems = []
     if doc["client"] != client:
@@ -428,13 +469,13 @@ def _identity_problems(doc, client, slug, number):
     return problems
 
 
-def component_path(folder, rel):
+def component_path(folder, rel, kind=None):
     """Arquivo `rel` de `components/` dentro da versão, conferido antes de qualquer leitura.
 
     `ValueError` quando o caminho é inseguro (`..`, absoluto, `\\`, `:`, fora de
     `components/<tipo>/`), quando algum pedaço do caminho é link ou quando não é arquivo.
     """
-    parts = safe_relative(rel)
+    parts = safe_relative(rel, kind)
     here = folder
     for part in parts:
         here = here / part
@@ -463,7 +504,7 @@ def _component_problems(folder, doc):
             continue
         listed.add(rel)
         try:
-            path = component_path(folder, rel)
+            path = component_path(folder, rel, row["kind"])
         except ValueError as exc:
             problems.append(str(exc))
             continue
@@ -478,7 +519,7 @@ def _component_problems(folder, doc):
                 if rel not in listed:
                     problems.append(f"{rel} é um link dentro do template.")
                 continue
-            if name in names and rel != TEMPLATE_FILE and rel not in listed:
+            if name in names and rel not in (TEMPLATE_FILE, SEAL_FILE) and rel not in listed:
                 problems.append(f"{rel} é um arquivo a mais, que o template.json não lista.")
         dirs[:] = [d for d in dirs if not is_link(base / d)]
     return problems
@@ -495,6 +536,9 @@ def show(ref, client) -> dict:
         raise ValueError(f"O template {refs.template_ref(slug, number)} não existe no cliente {client}.")
     doc, raw, problem = _read_template_file(folder / TEMPLATE_FILE)
     problems = [problem] if problem else []
+    if raw is not None:
+        sealed = _seal_problem(folder, raw)
+        problems += [sealed] if sealed else []
     if doc is not None:
         problems += _identity_problems(doc, client, slug, number)
         problems += _component_problems(folder, doc)
@@ -640,7 +684,7 @@ def _install(project, folder, doc, created):
     client = doc["client"]
     for row in doc["components"]:
         spec = assets.ASSET_KINDS[row["kind"]]
-        source = component_path(folder, row["file"])
+        source = component_path(folder, row["file"], row["kind"])
         if _client_copy(client, spec, row):
             where = "client"
         else:
@@ -678,18 +722,24 @@ def _undo(created):
                 path.unlink()
 
 
-# pylint: disable-next=too-many-arguments,too-many-locals  # the options of init --template
-def instantiate(project, ref, client, tema, *, canvas=None, fps=None) -> dict:  # noqa: PLR0913 - options
-    """Cria o projeto `project` a partir da versão `ref` do template do cliente `client`."""
+# pylint: disable-next=too-many-arguments  # the options of init --template
+def plan_instance(project, ref, client, tema, *, canvas=None, fps=None) -> dict:  # noqa: PLR0913 - options
+    """Tudo o que `init --template` confere antes de criar qualquer coisa; devolve o plano de `write_instance`.
+
+    Recusa projeto existente, pasta de trabalho que é link, template que não está
+    íntegro (inclusive `template.json` que não bate com o `template.sha256`) e tema ou
+    vagas que não viram um roteiro válido — sem criar nem a pasta do projeto.
+    """
     project = Path(project).expanduser().resolve()
     _refuse_existing(project)
+    layout.refuse_linked_folders(project)
     clients.check_slug(client)
     shown = show(ref, client)
     if not shown["intact"]:
         raise ValueError(
             f"O template {shown['ref']} do cliente {client} não está íntegro: " + "; ".join(shown["problems"][:5])
         )
-    doc, folder = shown["template"], template_dir(client, *refs.template_parts(shown["ref"]))
+    doc = shown["template"]
     text = roteiro_text(doc, client, tema)
     _checked_roteiro(doc, text)
     project_doc = layout.new_project_doc(
@@ -698,13 +748,32 @@ def instantiate(project, ref, client, tema, *, canvas=None, fps=None) -> dict:  
         canvas=canvas if canvas is not None else doc["canvas"],
         fps=fps if fps is not None else doc["fps"],
     )
+    return {
+        "project": project,
+        "shown": shown,
+        "folder": template_dir(client, *refs.template_parts(shown["ref"])),
+        "roteiro": text,
+        "project_doc": project_doc,
+    }
+
+
+# pylint: disable-next=too-many-arguments  # the options of init --template
+def instantiate(project, ref, client, tema, *, canvas=None, fps=None) -> dict:  # noqa: PLR0913 - options
+    """Cria o projeto `project` a partir da versão `ref` do template do cliente `client`."""
+    return write_instance(plan_instance(project, ref, client, tema, canvas=canvas, fps=fps))
+
+
+def write_instance(plan) -> dict:
+    """Grava o plano de `plan_instance`; desfaz o que gravou quando algo falha no meio."""
+    project, shown, project_doc = plan["project"], plan["shown"], plan["project_doc"]
+    doc, client = shown["template"], shown["client"]
     created = [] if project.exists() else [project]
     project.mkdir(parents=True, exist_ok=True)
     try:
         folders = _make_folders(project, created)
-        _write_file(project / "ROTEIRO.md", text)
+        _write_file(project / "ROTEIRO.md", plan["roteiro"])
         created.append(project / "ROTEIRO.md")
-        installed, warnings = _install(project, folder, doc, created)
+        installed, warnings = _install(project, plan["folder"], doc, created)
         lock = validate_lock(
             versioning.stamp_schema(
                 {

@@ -153,6 +153,24 @@ def write_project(project, doc):
     return path
 
 
+def refuse_linked_folders(project):
+    """`ValueError` quando alguma pasta de trabalho do layout 1 (ou um pedaço dela) já existe como link.
+
+    O `init` confere isto antes de criar qualquer coisa: seguir `broll/` ou `analysis/`
+    link gravaria o projeto novo em outro lugar.
+    """
+    root = Path(project).expanduser().resolve()
+    for name in PROJECT_FOLDERS:
+        here = root
+        for part in name.split("/"):
+            here = here / part
+            if files.is_link(here):
+                raise ValueError(
+                    f"{here.relative_to(root).as_posix()}/ é um link: as pastas do projeto precisam ser pastas "
+                    "reais. Troque o link pela pasta real (ou escolha outra pasta) e rode o init de novo."
+                )
+
+
 def _write_new(path, text):
     """Cria `path` com `text` inteiro (UTF-8, `\\n` em qualquer sistema), sem nunca sobrescrever.
 

@@ -316,7 +316,7 @@ def project_lock(project):
     root = Path(project).resolve() / "brolls"
     root.mkdir(parents=True, exist_ok=True)
     with exclusive_lock(
-        root / ".command.lock", "Outro comando está usando este projeto. Aguarde terminar antes de repetir."
+        root / COMMAND_LOCK, "Outro comando está usando este projeto. Aguarde terminar antes de repetir."
     ):
         yield
 
@@ -327,6 +327,9 @@ def project_lock(project):
 # instalação: não pode criar `brolls/` numa pasta que talvez nem seja um projeto.
 # `capabilities` só descreve o parser e o manifesto dos plugins, sem projeto.
 # `setup` só confere o runtime da instalação e não recebe projeto.
+COMMAND_LOCK = ".command.lock"
+
+
 # `x` roda comando de plugin, que só lê o projeto por cópias (CommandContext).
 READ_ONLY_COMMANDS = ("status", "serve", "brief", "doctor", "setup", "x", "capabilities")
 # (comando, ação) somente leitura, além dos comandos inteiros acima: `queue --action status`
@@ -375,6 +378,12 @@ QUIET_ERROR_COMMANDS = ("plugins", "x", "export", "assets", "client", "analysis"
 ERROR_EXIT = {"USAGE_ERROR": 2, "INTERNAL_ERROR": 3, "PREREQUISITE_MISSING": 4, "INTERRUPTED": 130}
 EXIT_FOR_OTHER_ERRORS = 1
 
+
+# Comandos que criam o projeto e só tomam a trava dele depois de validar tudo: um `init`
+# recusado (cliente desconhecido, template adulterado, flag errada) não pode deixar para
+# trás a pasta do projeto, `brolls/.command.lock` nem um log. O log de auditoria só é
+# gravado quando `brolls/` já existe (ou seja, depois que o próprio comando a criou).
+SELF_LOCKED_COMMANDS = ("init",)
 
 def exit_code_for(error_code):
     """Código de saída de um `error_code` do JSON de erro."""
@@ -563,7 +572,7 @@ def audited(args, execute):
     result = None
     failure = None
     try:
-        with project_lock(None if read_only or own_lock else project):
+        with project_lock(None if read_only or own_lock or self_locked else project):
             result = execute(args)
             event["status"] = "success"
             if event["warnings"] and isinstance(result, dict):
@@ -577,6 +586,7 @@ def audited(args, execute):
         AttributeError,
         OverflowError,
     ) as exc:
+    self_locked = args.command in SELF_LOCKED_COMMANDS
         _classify_audited_error(event, exc, log if project else None)
         failure = _audited_error_failure(args, event, log, app_log_path)
         raise failure from None
@@ -585,7 +595,7 @@ def audited(args, execute):
         raise failure from None
     finally:
         event["duration_ms"] = round((time.monotonic() - started) * 1000)
-        if _audit_log_wanted(event, log, read_only, in_project=bool(project)):
+        if _audit_log_wanted(event, log, read_only or self_locked, in_project=bool(project)):
             _write_audit_log(event, log, failure, result)
         ACTIVE.reset(token)
 

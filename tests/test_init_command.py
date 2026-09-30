@@ -103,6 +103,34 @@ class InitCommandTests(unittest.TestCase):
                 self.assertEqual("USAGE_ERROR", refused["error_code"])
                 self.assertFalse((self.project / "project.json").exists())
 
+    def test_refused_init_leaves_no_folder_behind(self):
+        """Cliente desconhecido, flag de uso errada: nada nasce, nem a pasta nem brolls/."""
+        run_cli("init", "--client", "ghost", project=self.project, expect=1)
+        run_cli("init", "--tema", "x", project=self.project, expect=2)
+        self.assertFalse(self.project.exists())
+
+    def test_refused_init_in_an_existing_folder_does_not_create_brolls(self):
+        self.project.mkdir()
+        (self.project / "notas.txt").write_text("meu", encoding="utf-8")
+        run_cli("init", "--client", "ghost", project=self.project, expect=1)
+        self.assertEqual(["notas.txt"], sorted(p.name for p in self.project.iterdir()))
+
+    def test_linked_broll_or_analysis_is_refused_before_anything_is_created(self):
+        outside = self.base / "fora"
+        outside.mkdir()
+        for name in ("broll", "analysis"):
+            with self.subTest(name=name):
+                shutil.rmtree(self.project, ignore_errors=True)
+                self.project.mkdir()
+                try:
+                    (self.project / name).symlink_to(outside, target_is_directory=True)
+                except OSError:
+                    self.skipTest("este sistema não cria symlink")
+                refused = run_cli("init", project=self.project, expect=1)
+                self.assertIn("link", refused["error"])
+                self.assertEqual([name], sorted(p.name for p in self.project.iterdir()))
+                self.assertEqual([], list(outside.iterdir()))
+
     def test_project_path_that_is_a_file_is_refused(self):
         self.project.write_text("x", encoding="utf-8")
         run_cli("init", project=self.project, expect=1)

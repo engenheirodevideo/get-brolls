@@ -8,9 +8,11 @@ candidatos nem clipes em `brolls/`; um projeto que já tem `brolls/manifest.json
 adotado pelo `migrate`, nunca recriado aqui.
 """
 
+import contextlib
+import os
 from pathlib import Path
 
-from . import layout
+from . import layout, runtime
 from .errors import UsageError
 
 FOLDERS = layout.PROJECT_FOLDERS
@@ -28,26 +30,7 @@ def _template_args(args):
     return template
 
 
-def run(args):
-    """Cria o projeto em `args.project`; `ValueError` quando ali já existe um."""
-    template = _template_args(args)
-    client = getattr(args, "client", None)
-    if client:
-        from . import clients
-
-        clients.load_client(client)
-    if template:
-        from . import templates
-
-        return templates.instantiate(
-            args.project,
-            template,
-            client,
-            args.tema,
-            canvas=getattr(args, "canvas", None),
-            fps=getattr(args, "fps", None),
-        )
-    project = Path(args.project).expanduser().resolve()
+def _refuse_existing(project):
     if project.exists() and not project.is_dir():
         raise ValueError(f"{project} existe e não é uma pasta; escolha outra pasta para o projeto.")
     if (project / layout.PROJECT_FILE).exists():
@@ -57,15 +40,70 @@ def run(args):
             f"{project} já é um projeto do get-brolls (tem brolls/manifest.json). "
             "Para adotar o layout 1 sem mover nada, use migrate nesse projeto."
         )
-    doc = layout.new_project_doc(
-        client=client,
-        canvas=getattr(args, "canvas", None),
-        fps=getattr(args, "fps", None),
-    )
-    project.mkdir(parents=True, exist_ok=True)
-    layout.write_project(project, doc)
-    for folder in FOLDERS:
-        (project / folder).mkdir(parents=True, exist_ok=True)
+    layout.refuse_linked_folders(project)
+
+
+def _remove_if_empty(path):
+    with contextlib.suppress(OSError):
+        path.rmdir()
+
+
+@contextlib.contextmanager
+def creating(project):
+    """Trava do projeto para gravar, e desfaz o que só ela criou quando a gravação falha.
+
+    Tudo é validado ANTES daqui: um `init` recusado não chega a criar a pasta do
+    projeto nem `brolls/`. Se a gravação falhar depois, sai a trava e as pastas que
+    esta execução criou (vazias); nada que já existia é tocado.
+    """
+    had_project = project.exists()
+    had_brolls = os.path.lexists(project / "brolls")
+    try:
+        with runtime.project_lock(project):
+            yield
+    except BaseException:
+        if not had_brolls:
+            with contextlib.suppress(OSError):
+                (project / "brolls" / runtime.COMMAND_LOCK).unlink()
+            _remove_if_empty(project / "brolls")
+        if not had_project:
+            _remove_if_empty(project)
+        raise
+
+
+def run(args):
+    """Cria o projeto em `args.project`; `ValueError` quando ali já existe um."""
+    template = _template_args(args)
+    client = getattr(args, "client", None)
+    if client:
+        from . import clients
+
+        clients.load_client(client)
+    project = Path(args.project).expanduser().resolve()
+    canvas, fps = getattr(args, "canvas", None), getattr(args, "fps", None)
+    if template:
+        from . import templates
+
+        plan = templates.plan_instance(project, template, client, args.tema, canvas=canvas, fps=fps)
+        with creating(project):
+            return templates.write_instance(plan)
+    _refuse_existing(project)
+    doc = layout.new_project_doc(client=client, canvas=canvas, fps=fps)
+    with creating(project):
+        created = []
+        try:
+            for folder in FOLDERS:
+                here = project
+                for part in folder.split("/"):
+                    here = here / part
+                    if not here.exists():
+                        here.mkdir()
+                        created.append(here)
+            layout.write_project(project, doc)
+        except BaseException:
+            for path in reversed(created):
+                _remove_if_empty(path)
+            raise
     return {
         "project": str(project),
         "id": doc["id"],

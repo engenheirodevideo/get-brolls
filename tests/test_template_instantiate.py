@@ -9,7 +9,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _cli import run_cli
 from _paths import ROOT
 from _schemas import close
-from test_template_freeze import TemplateCase, _schema
+from test_template_freeze import TemplateCase, _schema, reseal_template
 
 from getbrolls import assets, export, layout, roteiro, runtime, templates
 from getbrolls.sdk import jsonschema
@@ -107,6 +107,16 @@ class InstantiateTests(InstantiateCase):
         self.assertIn("components/sfx/whoosh.wav", refused["error"])
         self.assertFalse((self.new / "project.json").exists())
         self.assertFalse((self.new / "ROTEIRO.md").exists())
+
+    def test_edited_template_json_is_refused_and_nothing_is_created(self):
+        path = self.slug_dir() / "1" / "template.json"
+        path.chmod(0o644)
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        doc["slots"][0]["title"] = "Cena trocada"
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        refused = self.init(expect=1)
+        self.assertIn("template.sha256", refused["error"])
+        self.assertFalse(self.new.exists())
 
     def test_template_needs_client_and_tema(self):
         refused = run_cli("init", "--template", REF, "--tema", "x", project=self.new, expect=2)
@@ -217,6 +227,7 @@ class HostileTemplateTests(InstantiateCase):
         doc = json.loads(self.original)
         change(doc)
         path.write_text(json.dumps(doc), encoding="utf-8")
+        reseal_template(path.parent)
 
     def test_injected_lines_are_refused(self):
         changes = (

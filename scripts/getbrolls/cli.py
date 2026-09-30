@@ -23,7 +23,15 @@ from typing import NoReturn
 
 from . import __version__, _paths, logs, presets, vocab
 from .errors import PrerequisiteError, UsageError
-from .runtime import READ_ONLY_ACTIONS, READ_ONLY_COMMANDS, OperationError, audited, error_code_for, exit_code_for
+from .runtime import (
+    READ_ONLY_ACTIONS,
+    READ_ONLY_COMMANDS,
+    SELF_LOCKED_COMMANDS,
+    OperationError,
+    audited,
+    error_code_for,
+    exit_code_for,
+)
 from .sdk.scaffold import KINDS as SCAFFOLD_KINDS
 
 # Named so a caller (script, test, or someone scripting the CLI) never has to hardcode a
@@ -1208,7 +1216,8 @@ def main(argv=None):
     project = getattr(args, "project", None)
     read_only = args.command in READ_ONLY_COMMANDS or (args.command, getattr(args, "action", None)) in READ_ONLY_ACTIONS
     _check_preset_name(args)
-    logs.configure(project, read_only=read_only)
+    # `init` cria o projeto: o log do app não pode criar `brolls/` antes da validação.
+    logs.configure(project, read_only=read_only or args.command in SELF_LOCKED_COMMANDS)
 
     try:
         log = logs.get("cli")
