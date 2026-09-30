@@ -12,7 +12,7 @@ from unittest import mock
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 
 # efeito de import: insere scripts/ em sys.path
-from _paths import CLI, CLI_ARGV, ROOT  # noqa: F401  # pylint: disable=unused-import
+from _paths import CLI, CLI_ARGV, ROOT, WHEEL_MODE  # noqa: F401  # pylint: disable=unused-import
 
 from getbrolls import __version__, media, social
 from getbrolls.cli import FORMAT_GATE_SUBCOMMANDS, SUMMARIES, build_parser
@@ -61,7 +61,8 @@ class HelpContractTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(0, done.returncode, done.stderr)
-        self.assertEqual(f"get-brolls {__version__}", done.stdout.strip())
+        self.assertTrue(done.stdout.startswith(f"getbrolls {__version__} (Python "), done.stdout)
+        self.assertIn("dados: wheel" if WHEEL_MODE else "dados: checkout", done.stdout)
 
 
 class DoctorVerdictTests(unittest.TestCase):
