@@ -18,6 +18,16 @@ function Invoke-Native {
 }
 
 $Root = Split-Path -Parent $PSScriptRoot
+# Python antes de tudo: abaixo do 3.11 o getbrolls nem importa; sai 4 (pré-requisito), com mensagem legível.
+if (Get-Command 'python' -CommandType Application -ErrorAction SilentlyContinue) {
+    & python -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        $PythonVersion = (& python -c 'import sys; print(''%d.%d'' % sys.version_info[:2])' 2>$null | Out-String).Trim()
+        if (-not $PythonVersion) { $PythonVersion = '?' }
+        [Console]::Error.WriteLine("getbrolls precisa de Python 3.11 ou mais novo; você tem $PythonVersion.")
+        exit 4
+    }
+}
 $Missing = $false
 foreach ($Tool in @('python', 'ffmpeg', 'ffprobe', 'curl', 'node', 'npm', 'npx')) {
     if (-not (Get-Command $Tool -CommandType Application -ErrorAction SilentlyContinue)) {
@@ -28,8 +38,6 @@ foreach ($Tool in @('python', 'ffmpeg', 'ffprobe', 'curl', 'node', 'npm', 'npx')
 if ($Missing) {
     throw 'Instale os executáveis conforme docs/GUIDE.md e repita.'
 }
-
-Invoke-Native -Label 'Verificação do Python' -File 'python' -Arguments @('-c', 'import sys; assert sys.version_info >= (3,11), ''Python 3.11+ obrigatório''')
 
 $Filters = (& ffmpeg -hide_banner -filters 2>$null | Out-String)
 if ($Filters -notmatch ' drawtext ') {
@@ -62,8 +70,7 @@ if ($SetupStatus -ne 0 -and $SetupStatus -ne 4) {
     throw "setup falhou (código $SetupStatus); veja a mensagem acima."
 }
 if ($SetupStatus -eq 0) {
-    & (Join-Path $PSScriptRoot 'playwright.ps1') '--version'
-    if ($LASTEXITCODE -ne 0) { throw "Verificação Playwright CLI falhou com código $LASTEXITCODE." }
+    Invoke-Native -Label 'Verificação Playwright CLI' -File (Join-Path $PSScriptRoot 'playwright.ps1') -Arguments @('--version')
 }
 # doctor sai 4 quando summary.missing não está vazio (faltam itens), com o JSON em stdout.
 try {

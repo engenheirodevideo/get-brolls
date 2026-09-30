@@ -155,8 +155,8 @@ class ConcurrentWriteCommandTests(unittest.TestCase):
                     project=tmp,
                     expect=1,
                 )
-            self.assertEqual("INVALID_DATA", error["error_code"])
-            self.assertEqual("ValueError", error["type"])
+            self.assertEqual("LOCKED", error["error_code"])
+            self.assertEqual("LockedError", error["type"])
             # Nothing got queued: the write never reached queue.json.
             queue_file = Path(tmp) / "work" / "queue.json"
             self.assertFalse(queue_file.exists())
@@ -266,13 +266,13 @@ class FailureEnvelopeClassesTests(unittest.TestCase):
         self.assertEqual("INVALID_DATA", error["error_code"])
         self.assertEqual("ValueError", error["type"])
 
-    def test_lock_held_is_invalid_data(self):
+    def test_lock_held_is_locked_and_exits_1(self):
         with tempfile.TemporaryDirectory() as tmp:
             Ledger(tmp)
             with project_lock(tmp):
                 error = run_cli("permit", "--candidate", "x", "--evidence", "y", project=tmp, expect=1)
-        self.assertEqual("INVALID_DATA", error["error_code"])
-        self.assertEqual("ValueError", error["type"])
+        self.assertEqual("LOCKED", error["error_code"])
+        self.assertEqual("LockedError", error["type"])
 
     def test_io_error_from_a_project_path_that_cannot_hold_a_folder(self):
         """A regular file where the project directory should be: the project

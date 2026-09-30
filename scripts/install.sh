@@ -4,6 +4,13 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 case "${1:-}" in ''|--check) ;; *) printf 'Uso: bash scripts/install.sh [--check]\n'; exit 2;; esac
+# Python antes de tudo: abaixo do 3.11 o getbrolls nem importa; sai 4 (pré-requisito), com mensagem legível.
+if command -v python3 >/dev/null 2>&1 \
+  && ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+  python_version="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || printf '?')"
+  printf 'getbrolls precisa de Python 3.11 ou mais novo; você tem %s.\n' "$python_version" >&2
+  exit 4
+fi
 missing=0
 for tool in python3 ffmpeg ffprobe curl bash awk node npm npx; do
   if ! command -v "$tool" >/dev/null 2>&1; then
@@ -20,7 +27,6 @@ fi
 if [ "$missing" -ne 0 ]; then
   printf 'Instale os executáveis conforme docs/GUIDE.md e repita.\n'; exit 1
 fi
-python3 -c 'import sys; assert sys.version_info >= (3,11), "Python 3.11+ obrigatório"'
 if ! ffmpeg -hide_banner -filters 2>/dev/null | grep -q ' drawtext '; then
   printf 'AVISO: FFmpeg sem o filtro drawtext (libfreetype): o contact sheet sai sem número e timecode nas células. Reinstale o FFmpeg com freetype (Homebrew: brew reinstall ffmpeg; Ubuntu: apt install ffmpeg).\n'
 fi

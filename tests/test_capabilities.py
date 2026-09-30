@@ -89,6 +89,7 @@ class ManifestShapeTests(unittest.TestCase):
         self.assertEqual(2, exits["USAGE_ERROR"])
         self.assertEqual(4, exits["PREREQUISITE_MISSING"])
         self.assertEqual(1, exits["INVALID_DATA"])
+        self.assertEqual(1, exits["LOCKED"])
 
     def test_hidden_options_are_flagged(self):
         serve = by_name(self.manifest)["serve"]
