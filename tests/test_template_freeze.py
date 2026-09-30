@@ -47,6 +47,14 @@ def tree_hash(folder):
     return digest.hexdigest()
 
 
+def reseal_template(folder):
+    """Regrava `template.sha256` com o sha256 do `template.json` atual (simula quem adultera os dois)."""
+    seal = folder / "template.sha256"
+    seal.chmod(stat.S_IWUSR | stat.S_IRUSR)
+    digest = hashlib.sha256((folder / "template.json").read_bytes()).hexdigest()
+    seal.write_text(f"{digest}  template.json\n", encoding="utf-8")
+
+
 def _schema(name):
     return json.loads((ROOT / "schemas" / f"{name}.schema.json").read_text(encoding="utf-8"))
 
@@ -221,6 +229,16 @@ class FreezeTests(TemplateCase):
         self.assertIn("link", refused["error"])
         self.assertEqual([], list(outside.iterdir()))
 
+    @unittest.skipIf(os.name == "nt", "symlink exige privilégio no Windows")
+    def test_linked_templates_lock_is_never_followed(self):
+        (self.client / "templates").mkdir(exist_ok=True)
+        target = self.tmp / "fora.lock"
+        (self.client / "templates" / ".lock").symlink_to(target)
+        refused = self.freeze(expect=1)
+        self.assertIn("link", refused["error"])
+        self.assertFalse(os.path.lexists(target))
+        self.assertFalse(self.slug_dir().exists() and any(self.slug_dir().iterdir()))
+
     def test_help_and_capabilities_list_freeze(self):
         described = run_cli("capabilities")
         command = next(row for row in described["commands"] if row["name"] == "template")
@@ -239,11 +257,14 @@ class ShowAndListTests(TemplateCase):
         path.chmod(stat.S_IWUSR | stat.S_IRUSR)
         return path
 
-    def rewrite_template(self, change):
+    def rewrite_template(self, change, *, reseal=True):
+        """Edita o template.json; com `reseal`, regrava também o template.sha256 (adulteração coerente)."""
         path = self.writable(self.slug_dir() / "1" / "template.json")
         doc = json.loads(path.read_text(encoding="utf-8"))
         change(doc)
         path.write_text(json.dumps(doc), encoding="utf-8")
+        if reseal:
+            reseal_template(self.slug_dir() / "1")
 
     def test_list_is_sorted_by_client_slug_and_version(self):
         (self.tmp / "Outros").mkdir()
@@ -278,6 +299,55 @@ class ShowAndListTests(TemplateCase):
         self.assertEqual("cat:getbrolls/template/reels-acme@1", shown["template"]["ref"])
         raw = (self.slug_dir() / "1" / "template.json").read_bytes()
         self.assertEqual(hashlib.sha256(raw).hexdigest(), shown["template_sha256"])
+
+    def test_template_json_is_sealed_outside_itself_and_read_only(self):
+        self.freeze()
+        folder = self.slug_dir() / "1"
+        raw = (folder / "template.json").read_bytes()
+        self.assertEqual(
+            f"{hashlib.sha256(raw).hexdigest()}  template.json\n",
+            (folder / "template.sha256").read_text(encoding="utf-8"),
+        )
+        if os.name != "nt":
+            self.assertEqual(0o444, stat.S_IMODE((folder / "template.sha256").stat().st_mode))
+
+    def test_edited_template_json_is_not_intact(self):
+        self.freeze()
+        self.rewrite_template(lambda doc: doc.update(title="Trocado depois"), reseal=False)
+        shown = self.show()
+        self.assertFalse(shown["intact"])
+        self.assertIn("template.sha256", " ".join(shown["problems"]))
+
+    def test_missing_or_broken_seal_is_not_intact(self):
+        self.freeze()
+        seal = self.writable(self.slug_dir() / "1" / "template.sha256")
+        for text in ("não é hash\n", "0" * 63 + "  template.json\n"):
+            with self.subTest(text=text):
+                seal.write_text(text, encoding="utf-8")
+                self.assertFalse(self.show()["intact"])
+        seal.unlink()
+        shown = self.show()
+        self.assertFalse(shown["intact"])
+        self.assertIn("template.sha256", " ".join(shown["problems"]))
+
+    def test_components_cannot_smuggle_licences_hidden_files_or_cross_folders(self):
+        self.freeze()
+        folder = self.slug_dir() / "1"
+        for bad, kind in (
+            ("components/sfx/whoosh.licenca.json", "sfx"),
+            ("components/sfx/WHOOSH.LICENCA.JSON", "sfx"),
+            ("components/sfx/.whoosh.wav", "sfx"),
+            ("components/musica/whoosh.wav", "sfx"),
+        ):
+            with self.subTest(bad=bad):
+                self.rewrite_template(lambda doc, bad=bad, kind=kind: doc["components"][0].update(file=bad, kind=kind))
+                shown = templates.show("cat:getbrolls/template/reels-acme@1", "acme")
+                self.assertFalse(shown["intact"])
+                self.assertTrue(any("inseguro" in p or "schema" in p for p in shown["problems"]), shown["problems"])
+        with self.assertRaises(ValueError):
+            templates.safe_relative("components/musica/x.wav", kind="sfx")
+        self.assertEqual(("components", "sfx", "x.wav"), templates.safe_relative("components/sfx/x.wav", kind="sfx"))
+        del folder
 
     def test_tampered_component_is_named(self):
         self.freeze()

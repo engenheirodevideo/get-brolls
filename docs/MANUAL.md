@@ -178,10 +178,12 @@ python3 scripts/gb.py init --client acme --canvas 1080x1920 --fps 30 --project /
 # ── migrate --action plan|apply [--client …] ────────────────
 # O QUE FAZ: adota o layout 1 num projeto antigo (com brolls/manifest.json) só
 #            acrescentando o project.json. Não move, renomeia nem apaga nada.
-#            O id é o project_id do manifesto, quando válido; o cliente vem do
-#            ROTEIRO.md (ou de --client).
-# plan:  só lê; mostra o project.json que seria gravado e avisa de cliente não registrado.
-# apply: grava. Recusa se já existe project.json (válido ou quebrado) ou gravação interrompida.
+#            O id é o project_id do manifesto (uuid em minúsculas; outro texto vira
+#            um uuid derivado dele); o cliente vem do ROTEIRO.md (ou de --client).
+# plan:  só lê; mostra o project.json com o MESMO id que o apply grava (sem project_id,
+#        "será gerado") e avisa de cliente não registrado e de broll/ sua com arquivos.
+# apply: grava. Já migrado: sai 0 com changed false ("nada a migrar"). Recusa pasta que
+#        não existe, project.json quebrado ou gravação interrompida.
 # status mostra o resultado em layout {version, source, problem}.
 python3 scripts/gb.py migrate --action plan --project /caminho/meu-video
 python3 scripts/gb.py migrate --action apply --project /caminho/meu-video
@@ -524,7 +526,8 @@ python3 scripts/gb.py assets --action where --kind sfx --name whoosh --project /
 # ── analysis --action register / list / check ───────────────
 # O QUE FAZ: register dá a uma mídia do projeto um id por conteúdo e grava
 #            analysis/media/<id>/media.json (duração, quadro, codecs pelo ffprobe);
-#            o hash só roda de novo quando o arquivo muda. list e check só leem.
+#            o hash só roda de novo quando tamanho ou mtime mudam. list e check só leem;
+#            check sai com código 1 quando acha problema (pasta órfã, JSON inválido, link).
 # --role só quando a pasta não diz o papel (aroll/, broll/, assets/musica/, assets/sfx/).
 python3 scripts/gb.py analysis --action register --path aroll/c01.mp4 --project /caminho/meu-video
 python3 scripts/gb.py analysis --action check --project /caminho/meu-video

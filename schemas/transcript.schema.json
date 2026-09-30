@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Get B-rolls analysis transcript v1",
   "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/transcript.schema.json",
-  "description": "analysis/media/<media_id>/transcript.json: fala palavra a palavra. A palavra fica em text (convenção do sidecar HyperFrames), não em word como no Nômade; word_count é len(words) e start <= end (conferidos em código). Objetos abertos: campo novo opcional entra fora de required e o leitor ignora chave desconhecida; remover, renomear ou mudar o significado de um campo sobe o N de schema. Leitor recusa N maior do que conhece.",
+  "description": "analysis/media/<media_id>/transcript.json: fala palavra a palavra. A palavra fica em text (convenção do sidecar HyperFrames), não em word como no contrato de ingest externo; word_count é len(words) e start <= end (conferidos em código). Objetos abertos: campo novo opcional entra fora de required e o leitor ignora chave desconhecida; remover, renomear ou mudar o significado de um campo sobe o N de schema. Leitor recusa N maior do que conhece.",
   "type": "object",
   "required": [
     "schema",
@@ -24,7 +24,7 @@
     "media_id": {
       "type": "string",
       "pattern": "^[0-9a-f]{16}$",
-      "description": "Primeiros 16 hex do sha256 dos bytes da mídia (o asset_id do Nômade tem a mesma derivação)."
+      "description": "Primeiros 16 hex do sha256 dos bytes da mídia (o asset_id do contrato de ingest externo tem a mesma derivação)."
     },
     "status": {
       "enum": [

@@ -17,7 +17,7 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import versioning
+from . import versioning, vocab
 from .roteiro import fold
 from .rules import home_dir
 
@@ -26,9 +26,9 @@ LICENSE_FIELDS = ("origem", "licenca", "credito")
 # Grafia em inglês aceita na leitura; a gravação continua em português.
 LICENSE_ALIASES = {"origem": ("source",), "licenca": ("license_name",), "credito": ("attribution",)}
 _NAME = re.compile(r"^[\w][\w \-]{0,79}$")
-VIDEO = (".mp4", ".mov", ".m4v")
-AUDIO = (".wav", ".mp3", ".m4a", ".aac", ".aif", ".aiff", ".ogg")
-IMAGE = (".png", ".svg", ".webp", ".jpg", ".jpeg")
+VIDEO = vocab.VIDEO_EXTENSIONS
+AUDIO = vocab.AUDIO_EXTENSIONS
+IMAGE = vocab.IMAGE_EXTENSIONS
 
 
 @dataclass(frozen=True)

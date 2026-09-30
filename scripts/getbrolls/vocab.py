@@ -42,8 +42,13 @@ ANALYSIS_STATUSES = (
 # Estados de análise que exigem `reason` preenchido.
 ANALYSIS_STATUSES_WITH_REASON = ("unavailable", "failed", "blocked", "not_run_by_this_script")
 # Papel de uma mídia do projeto na edição (`role` da análise), com os mesmos nomes do
-# contrato de edição em OTIO que consome a análise.
+# contrato de edição que consome a análise.
 MEDIA_ROLES = ("aroll", "broll", "footage", "music", "sfx", "narration", "title", "animation", "unknown")
+# Extensões de mídia que o projeto reconhece: componentes de `assets/` (por tipo) e o
+# `analysis --action register` (que só registra mídia).
+VIDEO_EXTENSIONS = (".mp4", ".mov", ".m4v")
+AUDIO_EXTENSIONS = (".wav", ".mp3", ".m4a", ".aac", ".aif", ".aiff", ".ogg")
+IMAGE_EXTENSIONS = (".png", ".svg", ".webp", ".jpg", ".jpeg")
 # Cores de marcador: o enum `MarkerColor` do OpenTimelineIO, mesmos nomes.
 MARKER_COLORS = (
     "PINK",

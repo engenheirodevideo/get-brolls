@@ -7,6 +7,7 @@ nunca vira escolha calada: ou o `sha256` registrado desempata, ou é um problema
 """
 
 import json
+import os
 import shutil
 import tempfile
 import unittest
@@ -17,7 +18,7 @@ from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_video
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import layout
+from getbrolls import delivery, layout
 from getbrolls.ledger import Ledger, digest
 from getbrolls.models import id_stem
 
@@ -314,6 +315,38 @@ class VerifyAndDeliverTests(unittest.TestCase):
         self.assertIn("brolls/clips/", text)
         self.assertFalse(manifest_item(self.project, c["id"])["output"]["verified"])
 
+    def test_a_clip_conflict_never_empties_entrega(self):
+        """verify acha o conflito e derruba `verified`; deliver depois recusa nomeando o clipe e não
+        apaga o link que já estava entregue."""
+        c, _ = collect_local(self, self.project)
+        adopt(self.project)
+        rel = manifest_item(self.project, c["id"])["output"]["path"]
+        run_cli("deliver", project=self.project)
+        media, _ = delivered(self.project)
+        legacy = self.project / "brolls" / rel
+        legacy.chmod(0o644)
+        legacy.write_bytes(b"alterado")
+        (self.project / "broll").mkdir(exist_ok=True)
+        (self.project / "broll" / legacy.name).write_bytes(b"outro")
+        run_cli("verify", project=self.project, expect=1)
+        refused = run_cli("deliver", project=self.project, expect=1)
+        text = json.dumps(refused, ensure_ascii=False)
+        self.assertIn(rel, text)
+        self.assertIn("brolls/clips/", text)
+        self.assertTrue(os.path.lexists(media), "o link entregue sumiu por causa do conflito")
+        self.assertTrue(list((self.project / "entrega").rglob("ORIGEM.md")))
+
+    def test_a_leftover_divergent_copy_is_named_in_a_warning(self):
+        c, _ = collect_local(self, self.project)
+        adopt(self.project)
+        rel = manifest_item(self.project, c["id"])["output"]["path"]
+        (self.project / "broll").mkdir(exist_ok=True)
+        (self.project / "broll" / rel.removeprefix("clips/")).write_bytes(b"sobra diferente")
+        done = run_cli("deliver", project=self.project)
+        leftovers = [w for w in done.get("warnings", []) if w["code"] == "CLIP_LEFTOVER_COPY"]
+        self.assertEqual(1, len(leftovers), done.get("warnings"))
+        self.assertIn(f"broll/{rel.removeprefix('clips/')}", leftovers[0]["message"])
+
     def test_layout_zero_origin_line_is_unchanged(self):
         c, _ = collect_local(self, self.project)
         rel = manifest_item(self.project, c["id"])["output"]["path"]
@@ -324,8 +357,6 @@ class VerifyAndDeliverTests(unittest.TestCase):
 
 class SweepTests(TempProject):
     def test_a_generated_symlink_into_broll_is_ours(self):
-        from getbrolls import delivery
-
         make_layout_one(self.project)
         clip = self.project / "broll" / "x.mp4"
         clip.write_bytes(b"x")

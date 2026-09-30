@@ -19,11 +19,20 @@ import sys
 import time
 import traceback
 from gettext import gettext
+from pathlib import Path
 from typing import NoReturn
 
 from . import __version__, _paths, logs, presets, vocab
 from .errors import PrerequisiteError, UsageError
-from .runtime import READ_ONLY_ACTIONS, READ_ONLY_COMMANDS, OperationError, audited, error_code_for, exit_code_for
+from .runtime import (
+    READ_ONLY_ACTIONS,
+    READ_ONLY_COMMANDS,
+    SELF_LOCKED_COMMANDS,
+    OperationError,
+    audited,
+    error_code_for,
+    exit_code_for,
+)
 from .sdk.scaffold import KINDS as SCAFFOLD_KINDS
 
 # Named so a caller (script, test, or someone scripting the CLI) never has to hardcode a
@@ -1208,7 +1217,9 @@ def main(argv=None):
     project = getattr(args, "project", None)
     read_only = args.command in READ_ONLY_COMMANDS or (args.command, getattr(args, "action", None)) in READ_ONLY_ACTIONS
     _check_preset_name(args)
-    logs.configure(project, read_only=read_only)
+    # `init`/`migrate` validam antes de criar: o log do app não pode criar `brolls/` antes disso.
+    creates_tree = args.command in SELF_LOCKED_COMMANDS and not (project and Path(project, "brolls").is_dir())
+    logs.configure(project, read_only=read_only or creates_tree)
 
     try:
         log = logs.get("cli")
@@ -1243,17 +1254,20 @@ def main(argv=None):
             error_code=None,
             ms=round((time.monotonic() - started) * 1000),
         )
-        _RESULT_EXIT.set(result_exit(args.command, result))
+        _RESULT_EXIT.set(result_exit(args.command, result, getattr(args, "action", None)))
         return result
     finally:
         logs.shutdown()
 
 
-def result_exit(command, result):
-    """Código de saída de um comando que deu certo: 4 só para `doctor`/`setup` com
-    `"ready": false` (o resultado sai em stdout do mesmo jeito); 0 para o resto."""
+def result_exit(command, result, action=None):
+    """Código de saída de um comando que deu certo: 4 para `doctor`/`setup` com
+    `"ready": false`, 1 para `analysis --action check` com `"ok": false` (nos dois, o
+    resultado sai em stdout do mesmo jeito, para portões por código de saída); 0 para o resto."""
     if command in PREREQUISITE_COMMANDS and isinstance(result, dict) and result.get("ready") is False:
         return EXIT_PREREQUISITE
+    if (command, action) == ("analysis", "check") and isinstance(result, dict) and result.get("ok") is False:
+        return EXIT_OPERATION_ERROR
     return EXIT_OK
 
 

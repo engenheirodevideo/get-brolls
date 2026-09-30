@@ -13,6 +13,7 @@ Módulo folha: não importa nada do get-brolls.
 """
 
 import re
+from collections.abc import Callable
 
 FIELD = "schema_version"
 SCHEMA_FIELD = "schema"
@@ -52,12 +53,21 @@ def schema_name(family: str, version: int = 1) -> str:
     return f"getbrolls.{family}/{version}"
 
 
-def read_schema(data: dict, family: str, supported: int = 1, label: str | None = None) -> int:
+def read_schema(
+    data: dict,
+    family: str,
+    supported: int = 1,
+    label: str | None = None,
+    invalid: str | Callable[[], Exception] | None = None,
+) -> int:
     """Versão de `data` pelo campo `schema` da família `family` (ausente = 1).
 
-    `ValueError` quando o valor não é `getbrolls.<family>/<N>` (texto de outra família,
-    `N` com zero à esquerda, número solto) ou quando `N` passa de `supported`, este com
-    a mesma frase de versão mais nova do `schema_version`. `label` nomeia o arquivo.
+    Valor que não é `getbrolls.<family>/<N>` (texto de outra família, `N` com zero à
+    esquerda, número solto) é inválido: `ValueError` com a frase padrão, com o texto
+    `invalid` ou, quando `invalid` é uma função, a exceção que ela devolve (quem lê um
+    registro inteiro troca pela própria mensagem sem comparar texto). `N` maior que
+    `supported` é sempre `ValueError` com a frase de versão mais nova do `schema_version`.
+    `label` nomeia o arquivo.
     """
     label = label or f"getbrolls.{family}"
     if SCHEMA_FIELD not in data:
@@ -65,8 +75,11 @@ def read_schema(data: dict, family: str, supported: int = 1, label: str | None =
     value = data[SCHEMA_FIELD]
     found = _SCHEMA.fullmatch(value) if isinstance(value, str) else None
     if found is None or found.group(1) != family:
+        if callable(invalid):
+            raise invalid()
         raise ValueError(
-            f"{label} é incompatível: {SCHEMA_FIELD} tem que ser {schema_name(family, 1)!r} "
+            invalid
+            or f"{label} é incompatível: {SCHEMA_FIELD} tem que ser {schema_name(family, 1)!r} "
             f"ou uma versão maior da mesma família (veio {value!r})."
         )
     version = int(found.group(2))

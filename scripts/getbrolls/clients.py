@@ -15,7 +15,6 @@ saída, a pasta pessoal aparece como `~`.
 
 import json
 import os
-import re
 import unicodedata
 from pathlib import Path
 
@@ -44,27 +43,10 @@ _REGISTRY_MAX = 16 * 1024 * 1024
 # Pastas de `$GB_HOME` onde uma pasta de cliente nunca pode morar.
 _HOME_RESERVED = ("plugins", "plugin-data", "runtime")
 _BUSY = "Outro comando está mudando o registro de clientes. Aguarde terminar antes de repetir."
-_SCHEMA_RE = re.compile(r"getbrolls\.([a-z][a-z0-9_]*)/([1-9][0-9]{0,8})")
 
 
 def _schema_tag(name, version=SUPPORTED):
     return versioning.schema_name(name, version)
-
-
-def _schema_version(data, name, label):
-    """Versão de `"schema": "getbrolls.<name>/<n>"` (ausente = 1); `ValueError` se não der para ler."""
-    if "schema" not in data:
-        return 1
-    value = data["schema"]
-    match = _SCHEMA_RE.fullmatch(value) if isinstance(value, str) else None
-    if match is None or match.group(1) != name:
-        raise ValueError(f"{label}: schema tem que ser {_schema_tag(name)} (veio {value!r}).")
-    version = int(match.group(2))
-    if version > SUPPORTED:
-        raise ValueError(
-            f"{label} foi gravado por uma versão mais nova do get-brolls (schema {value}); atualize antes de continuar."
-        )
-    return version
 
 
 def registry_path() -> Path:
@@ -138,12 +120,13 @@ def load_registry() -> dict:
         raise _invalid_registry(path, "não é um JSON legível") from None
     if not isinstance(data, dict):
         raise _invalid_registry(path, "o topo tem que ser um objeto")
-    try:
-        _schema_version(data, REGISTRY_SCHEMA, "clients.json")
-    except ValueError as exc:
-        if "versão mais nova" in str(exc):
-            raise
-        raise _invalid_registry(path, f"schema tem que ser {_schema_tag(REGISTRY_SCHEMA)}") from None
+    versioning.read_schema(
+        data,
+        REGISTRY_SCHEMA,
+        SUPPORTED,
+        label="clients.json",
+        invalid=lambda: _invalid_registry(path, f"schema tem que ser {_schema_tag(REGISTRY_SCHEMA)}"),
+    )
     rows = data.get("clients")
     if not isinstance(rows, list) or not all(_valid_entry(row) for row in rows):
         raise _invalid_registry(path, "clients tem que ser uma lista de {slug, root, added}")
@@ -188,7 +171,13 @@ def _read_client_file(folder, slug):
         raise ValueError(f"{label} não é um JSON legível: corrija o arquivo ou restaure uma cópia.") from None
     if not isinstance(data, dict):
         raise ValueError(f"{label} tem que ser um objeto JSON.")
-    _schema_version(data, CLIENT_SCHEMA, label)
+    versioning.read_schema(
+        data,
+        CLIENT_SCHEMA,
+        SUPPORTED,
+        label=label,
+        invalid=f"{label}: schema tem que ser {_schema_tag(CLIENT_SCHEMA)} (veio {data.get('schema')!r}).",
+    )
     if data.get("slug") != slug:
         raise ValueError(f'{label} é do cliente "{data.get("slug")}", não de "{slug}".')
     if not isinstance(data.get("name"), str):

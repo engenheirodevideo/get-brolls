@@ -12,19 +12,18 @@ Duas partes que não se misturam:
   as regras entre campos que esse subconjunto não expressa. Não toca o disco, então
   vale igual para o que o core lê e para o que um plugin entrega.
 
-Portado do contrato de ingest do Nômade (`validator.py` e `real_contract.py`), com as
-mesmas regras de leitura e os mesmos códigos de erro onde a regra é a mesma. Mapa
-entre os dois lados:
+Segue um contrato de ingest externo: as mesmas regras de leitura e os mesmos códigos
+de erro onde a regra é a mesma. Mapa entre os dois lados:
 
-- `asset_id` (Nômade) e `media_id` (aqui) têm a mesma derivação: os 16 primeiros hex
-  do sha256 dos bytes da mídia. A mesma mídia tem o mesmo id nos dois; o sha256
-  inteiro fica em `media.json`.
-- Tempo: o Nômade normaliza para milissegundos inteiros (`start_ms = round(s * 1000)`);
-  aqui o tempo fica em segundos, número finito `>= 0`, com `time_unit: "s"` no
-  arquivo. A conversão é a mesma `round(s * 1000)`.
+- `asset_id` (no contrato de ingest) e `media_id` (aqui) têm a mesma derivação: os 16
+  primeiros hex do sha256 dos bytes da mídia. A mesma mídia tem o mesmo id nos dois; o
+  sha256 inteiro fica em `media.json`.
+- Tempo: o contrato de ingest normaliza para milissegundos inteiros
+  (`start_ms = round(s * 1000)`); aqui o tempo fica em segundos, número finito `>= 0`,
+  com `time_unit: "s"` no arquivo. A conversão é a mesma `round(s * 1000)`.
 - A palavra da transcrição fica em `text` (convenção do sidecar HyperFrames), não em
-  `word` como no Nômade.
-- Os estados de componente e a exigência de `reason` são os do Nômade
+  `word` como no contrato de ingest.
+- Os estados de componente e a exigência de `reason` são os do contrato de ingest
   (`vocab.ANALYSIS_STATUSES`, `vocab.ANALYSIS_STATUSES_WITH_REASON`).
 
 Leitura sem seguir link: no macOS e no Linux, desce componente por componente com
@@ -57,10 +56,6 @@ MAX_TEXT = 1024 * 1024
 MAX_DEPTH = 32
 SECRET_KEYS = ("password", "secret", "token", "credential", "api_key", "authorization")
 
-# Espelho local de `vocab.MEDIA_ROLES`, que a integração passa a importar de lá: mesmos
-# nomes do contrato de papéis do otio-edit.
-_MEDIA_ROLES = vocab.MEDIA_ROLES
-
 _SCHEMA_RE = re.compile(r"([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)/([1-9][0-9]{0,5})")
 # Texto com cara de caminho absoluto: POSIX (`/x`, não uma barra solta), `//host`, UNC
 # (`\\host`), unidade do Windows (`C:\`, `C:/`) e pasta pessoal (`~/`).
@@ -71,7 +66,7 @@ _READ_FLAGS = os.O_RDONLY | _NOFOLLOW | getattr(os, "O_NONBLOCK", 0) | getattr(o
 _DIR_FLAGS = _READ_FLAGS | getattr(os, "O_DIRECTORY", 0)
 
 
-# Mesmo nome da exceção do contrato do Nômade, de onde as regras vêm.
+# Mesmo nome da exceção do contrato de ingest externo, de onde as regras vêm.
 class Invalid(ValueError):  # noqa: N818
     """Arquivo ou documento fora do contrato: `code` estável e `where` (caminho ou campo)."""
 

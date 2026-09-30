@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import unittest
 from unittest.mock import patch
 
@@ -9,7 +10,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _cli import run_cli
 from _paths import ROOT
 from _schemas import close
-from test_template_freeze import TemplateCase, _schema
+from test_template_freeze import TemplateCase, _schema, reseal_template
 
 from getbrolls import assets, export, layout, roteiro, runtime, templates
 from getbrolls.sdk import jsonschema
@@ -108,6 +109,16 @@ class InstantiateTests(InstantiateCase):
         self.assertFalse((self.new / "project.json").exists())
         self.assertFalse((self.new / "ROTEIRO.md").exists())
 
+    def test_edited_template_json_is_refused_and_nothing_is_created(self):
+        path = self.slug_dir() / "1" / "template.json"
+        path.chmod(0o644)
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        doc["slots"][0]["title"] = "Cena trocada"
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        refused = self.init(expect=1)
+        self.assertIn("template.sha256", refused["error"])
+        self.assertFalse(self.new.exists())
+
     def test_template_needs_client_and_tema(self):
         refused = run_cli("init", "--template", REF, "--tema", "x", project=self.new, expect=2)
         self.assertIn("--client", refused["error"])
@@ -178,6 +189,26 @@ class LockDriftTests(InstantiateCase):
         (self.new / "template.lock.json").write_text("{", encoding="utf-8")
         self.assertIn("template.lock.json", " ".join(templates.lock_warnings(self.new)))
 
+    def test_a_deleted_copy_is_reported_as_gone_even_if_another_one_resolves(self):
+        self.init()
+        self.put(self.client / "components" / "sfx", "whoosh.wav", b"outro whoosh do cliente")
+        (self.new / "assets" / "sfx" / "whoosh.wav").unlink()
+        warnings = [w for w in templates.lock_warnings(self.new) if "whoosh" in w]
+        self.assertEqual(1, len(warnings), warnings)
+        self.assertIn("sumiu", warnings[0])
+        self.assertNotIn("mudou", warnings[0])
+
+    def test_unchanged_components_are_not_hashed_again(self):
+        self.init()
+        rows = {row["name"]: row for row in self.lock()["components"]}
+        self.assertEqual((self.new / "assets" / "sfx" / "whoosh.wav").stat().st_size, rows["whoosh"]["size"])
+        with patch.object(templates, "sha256_file", side_effect=AssertionError("hash completo")):
+            self.assertEqual([], templates.lock_warnings(self.new))
+        path = self.new / "assets" / "sfx" / "whoosh.wav"
+        stat = path.stat()
+        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+        self.assertEqual([], templates.lock_warnings(self.new))
+
     def test_project_without_lock_has_no_warning(self):
         run_cli("init", project=self.new)
         self.assertEqual([], templates.lock_warnings(self.new))
@@ -203,7 +234,12 @@ class ExportWarningTests(unittest.TestCase):
         ):
             out = export.run(args)
         self.assertEqual(["sfx mudou", "aviso do export", "cliente ghost fora do registro"], out["warnings"])
-        self.assertEqual([], event["warnings"])
+        # O evento de diagnóstico guarda os avisos com o código, como no status.
+        self.assertEqual(
+            [("TEMPLATE_LOCK_DRIFT", "sfx mudou"), ("CLIENT_UNREGISTERED", "cliente ghost fora do registro")],
+            [(w["code"], w["message"]) for w in event["warnings"]],
+        )
+        self.assertTrue(event.get("warnings_in_result"))
 
 
 class HostileTemplateTests(InstantiateCase):
@@ -217,6 +253,7 @@ class HostileTemplateTests(InstantiateCase):
         doc = json.loads(self.original)
         change(doc)
         path.write_text(json.dumps(doc), encoding="utf-8")
+        reseal_template(path.parent)
 
     def test_injected_lines_are_refused(self):
         changes = (

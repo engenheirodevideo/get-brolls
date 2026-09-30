@@ -10,6 +10,7 @@
 
 import contextlib
 import contextvars
+import errno
 import json
 import logging
 import os
@@ -286,13 +287,31 @@ def stderr_tail(stderr, limit=6):
 _LOCK_POLL_S = 0.05
 
 
+_LOCK_FLAGS = os.O_RDWR | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
+
+
+def _open_lock_file(path):
+    refusal = ValueError(f"{path.name} em {scrub_home(str(path.parent))} é um link; apague o link e repita o comando.")
+    if not getattr(os, "O_NOFOLLOW", 0) and path.is_symlink():
+        raise refusal
+    try:
+        fd = os.open(path, _LOCK_FLAGS, 0o644)
+    except OSError as exc:
+        if exc.errno in (errno.ELOOP, errno.EMLINK):
+            raise refusal from None
+        raise
+    return os.fdopen(fd, "a+", encoding="utf-8")
+
+
 @contextlib.contextmanager
 def exclusive_lock(path, busy_message, wait_s=0.0):
     """Trava exclusiva no arquivo `path` (criado se faltar); a pasta tem que existir.
 
+    O arquivo é aberto sem seguir link (`O_NOFOLLOW`; onde não existe, um `lstat` antes):
+    uma trava trocada por link nunca cria nem trava um arquivo fora do lugar.
     Tenta de novo por até `wait_s` segundos; depois, `ValueError(busy_message)`.
     """
-    with Path(path).open("a+", encoding="utf-8") as lock:
+    with _open_lock_file(Path(path)) as lock:
         deadline = time.monotonic() + wait_s
         while True:
             try:
@@ -308,6 +327,9 @@ def exclusive_lock(path, busy_message, wait_s=0.0):
             _release_lock(lock)
 
 
+COMMAND_LOCK = ".command.lock"
+
+
 @contextlib.contextmanager
 def project_lock(project):
     if not project:
@@ -316,7 +338,7 @@ def project_lock(project):
     root = Path(project).resolve() / "brolls"
     root.mkdir(parents=True, exist_ok=True)
     with exclusive_lock(
-        root / ".command.lock", "Outro comando está usando este projeto. Aguarde terminar antes de repetir."
+        root / COMMAND_LOCK, "Outro comando está usando este projeto. Aguarde terminar antes de repetir."
     ):
         yield
 
@@ -356,6 +378,13 @@ READ_ONLY_ACTIONS = {
 # --action register` calcula o sha256 de uma mídia grande sem segurar o projeto, e só a
 # troca dos arquivos de `analysis/` fica dentro de `analysis/.lock`.
 OWN_LOCK_ACTIONS = {("analysis", "register")}
+
+# Comandos que criam o projeto (ou o `project.json`) e só tomam a trava dele depois de
+# validar tudo: um `init` recusado (cliente desconhecido, template adulterado, flag errada)
+# ou um `migrate` numa pasta que não existe não pode deixar para trás a pasta do projeto,
+# `brolls/.command.lock` nem um log. O log de auditoria só é
+# gravado quando `brolls/` já existe (ou seja, depois que o próprio comando a criou).
+SELF_LOCKED_COMMANDS = ("init", "migrate")
 
 
 # Erro que veio de um plugin: "Plugin <id>: …" (todo erro do core sobre código de
@@ -558,15 +587,18 @@ def audited(args, execute):
         in READ_ONLY_ACTIONS
     )
     own_lock = (args.command, getattr(args, "action", None)) in OWN_LOCK_ACTIONS
+    self_locked = args.command in SELF_LOCKED_COMMANDS
     log = diagnostics_path(project)
     app_log_path = Path(project).resolve() / "brolls" / "getbrolls.log" if project else None
     result = None
     failure = None
     try:
-        with project_lock(None if read_only or own_lock else project):
+        with project_lock(None if read_only or own_lock or self_locked else project):
             result = execute(args)
             event["status"] = "success"
-            if event["warnings"] and isinstance(result, dict):
+            # Comando que já devolve a própria lista de avisos (o `export`) marca o evento;
+            # os avisos continuam no evento, e portanto no diagnostics.jsonl.
+            if event["warnings"] and isinstance(result, dict) and not event.get("warnings_in_result"):
                 result = {**result, "warnings": event["warnings"]}
             return result
     except (
@@ -585,7 +617,7 @@ def audited(args, execute):
         raise failure from None
     finally:
         event["duration_ms"] = round((time.monotonic() - started) * 1000)
-        if _audit_log_wanted(event, log, read_only, in_project=bool(project)):
+        if _audit_log_wanted(event, log, read_only or self_locked, in_project=bool(project)):
             _write_audit_log(event, log, failure, result)
         ACTIVE.reset(token)
 

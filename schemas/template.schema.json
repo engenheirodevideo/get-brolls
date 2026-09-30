@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Get B-rolls client template v1",
   "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/template.schema.json",
-  "description": "O template.json de uma versão congelada de template de cliente (<pasta do cliente>/templates/<slug>/<N>/template.json), gravado pelo template --action freeze. A versão N é imutável: os arquivos ficam somente leitura e uma mudança vira N+1. O template leva a estrutura do roteiro (títulos, diretivas de layout e camadas, sem a fala nem o texto entre aspas) e os bytes dos componentes citados; licenças (.licenca.json), aprovações, A-ROLL e clipes nunca entram. Conferido em código, além deste schema: slug e versão iguais aos da pasta, ref canônica, cada components[].file um caminho relativo seguro sob components/ e o sha256 de cada arquivo. A versão do arquivo mora em schema (getbrolls.template/<N>).",
+  "description": "O template.json de uma versão congelada de template de cliente (<pasta do cliente>/templates/<slug>/<N>/template.json), gravado pelo template --action freeze. A versão N é imutável: os arquivos ficam somente leitura e uma mudança vira N+1. O template leva a estrutura do roteiro (títulos, diretivas de layout e camadas, sem a fala nem o texto entre aspas) e os bytes dos componentes citados; licenças (.licenca.json), aprovações, A-ROLL e clipes nunca entram. Conferido em código, além deste schema: slug e versão iguais aos da pasta, ref canônica, cada components[].file um caminho relativo seguro sob components/<pasta do kind>/, o sha256 de cada arquivo e o sha256 deste próprio arquivo, guardado fora dele no template.sha256 ao lado (formato do sha256sum). A versão do arquivo mora em schema (getbrolls.template/<N>).",
   "type": "object",
   "required": ["schema", "slug", "version", "client", "ref", "title", "genero", "aspecto", "canvas", "fps", "slots", "components", "engine_refs", "provenance"],
   "properties": {
@@ -58,7 +58,12 @@
         "properties": {
           "kind": { "enum": ["marca", "lettering", "sfx", "musica", "imagem", "composicao"] },
           "name": { "type": "string", "minLength": 1, "maxLength": 80 },
-          "file": { "type": "string", "pattern": "^components/[a-z]+/[^/\\\\:]+$", "maxLength": 300 },
+          "file": {
+            "type": "string",
+            "pattern": "^components/[a-z]+/(?!\\.)(?![^/]*\\.[Ll][Ii][Cc][Ee][Nn][Cc][Aa]\\.[Jj][Ss][Oo][Nn]$)[^/\\\\:]+$",
+            "maxLength": 300,
+            "description": "components/<pasta do tipo>/<arquivo>: nunca começa com ponto nem é uma licença (.licenca.json); a pasta é a do kind (conferido em código)."
+          },
           "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "licence": { "const": "not_transferred", "description": "A licença do componente nunca vai no template." }
         }

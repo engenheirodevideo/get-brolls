@@ -32,7 +32,7 @@
     "media_id": {
       "type": "string",
       "pattern": "^[0-9a-f]{16}$",
-      "description": "Primeiros 16 hex do sha256 dos bytes da mídia (o asset_id do Nômade tem a mesma derivação)."
+      "description": "Primeiros 16 hex do sha256 dos bytes da mídia (o asset_id do contrato de ingest externo tem a mesma derivação)."
     },
     "status": {
       "enum": [
@@ -110,7 +110,7 @@
         "mtime_ns",
         "sample_sha256"
       ],
-      "description": "Chave rápida para saber, sem hashear tudo, se o arquivo ainda é o mesmo: tamanho, mtime em ns e sha256 de uma amostra (1 MiB do início + 1 MiB do fim).",
+      "description": "Cache do registro: tamanho, mtime em ns e sha256 de uma amostra (1 MiB do início + 1 MiB do fim). Tamanho e mtime iguais pulam o hash completo; qualquer mudança em um dos dois refaz o sha256 inteiro (a amostra nunca prova que o conteúdo é o mesmo).",
       "properties": {
         "size": {
           "type": "integer",
@@ -138,7 +138,7 @@
         "animation",
         "unknown"
       ],
-      "description": "Papel da mídia no projeto; mesmos nomes do contrato do otio-edit."
+      "description": "Papel da mídia no projeto; mesmos nomes do contrato de edição que consome a análise."
     },
     "duration_s": {
       "type": [
