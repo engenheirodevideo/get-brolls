@@ -93,6 +93,9 @@ Projeto da 2.5 segue exatamente igual: nada muda sem um `ROTEIRO.md` do get-brol
 <!-- W1:T4 -->
 <!-- W1:T5 -->
 <!-- W1:T6 -->
+- **Onde o `.env` é lido.** `--env-file` > `GB_ENV_FILE` > `.env` da pasta da instalação (continua valendo) > `$GB_HOME/.env`. Só um é lido: dois `.env` geram o aviso `ENV_FILE_SHADOWED` em todo comando e nunca se misturam; o `doctor` mostra qual valeu em `install.env_file`. `--env-file`/`GB_ENV_FILE` apontando para arquivo que não existe é erro, antes de tocar no projeto; `GB_ENV_FILE` dentro de um `.env` é recusado.
+- **`GB_HOME` no `.env`.** Dentro de `$GB_HOME/.env` é erro. Vindo de `--env-file`, `GB_ENV_FILE` ou do `.env` da pasta da instalação ainda vale, com o aviso `DEPRECATED`: a leitura sai na 2.7; defina `GB_HOME` no ambiente.
+- **`GETBROLLS_*`** vale como nome alternativo de qualquer `GB_*` no ambiente (o `GB_*` vence).
 <!-- W1:T7a -->
 <!-- W1:T7b -->
 <!-- W1:T8 -->

@@ -26,6 +26,10 @@ Sem telemetria: a skill não envia dados a nenhum serviço próprio. Não há en
 
 **Export HyperFrames.** O `EXPORT.md` e o `package.json` do export mandam rodar `npx hyperframes@0.8.73`. O `npx` baixa e executa a CLI e as dependências dela (inclusive scripts de instalação); rode num ambiente em que você confia. A CLI HyperFrames, que não é do get-brolls, envia telemetria de uso (PostHog) por padrão: `HYPERFRAMES_NO_TELEMETRY=1` desliga (no PowerShell, `$env:HYPERFRAMES_NO_TELEMETRY = "1"`). O `EXPORT.md` já traz essa linha antes dos comandos; os scripts do `package.json` não trazem, porque `VAR=1 comando` não funciona no `cmd` do Windows. O projeto gerado busca o GSAP no jsdelivr com Subresource Integrity (`integrity="sha384-…"` e `crossorigin="anonymous"` na tag `<script>`, travado por teste): o navegador recusa o arquivo se ele não bater com o hash pinado. A fonte Inter (Google Fonts) não tem esse mecanismo, e o `transcribe` pode baixar o modelo do whisper.
 
+## `.env` e caminhos que viram execução
+
+O `.env` que vale é, nesta ordem: `--env-file`, `GB_ENV_FILE` (só no ambiente do processo, nunca dentro de um `.env`), o `.env` da pasta da instalação (checkout) e, por fim, `$GB_HOME/.env`. Só um é lido; os dois nunca se misturam. Quem escreve em qualquer um deles escolhe executáveis e pastas de runtime: `GB_VENV_PATH` e os `GB_*_PATH` apontam o yt-dlp/ffmpeg/ffprobe, e `GB_RUNTIME_DIR` aponta a pasta com `.venv/` e `.tools/` de onde saem o yt-dlp e o Playwright. `GB_RUNTIME_DIR` pode vir de `GB_ENV_FILE` ou do `.env` do checkout, o mesmo vetor de `GB_VENV_PATH`: trate esses arquivos (e a pasta da instalação) com a mesma confiança que os próprios executáveis.
+
 ## Plugins
 
 Plugins do SDK (`docs/SDK.md`) são opt-in por id: nada em `$GB_HOME/plugins/`
