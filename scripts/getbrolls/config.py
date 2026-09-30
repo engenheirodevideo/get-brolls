@@ -74,6 +74,10 @@ KEYS = {
 # Só do ambiente do processo; nunca num .env.
 PROCESS_ONLY_KEYS = frozenset({"GB_ENV_FILE"})
 
+# Sufixos que marcam uma variável como segredo: nenhuma delas tem por que alcançar um
+# processo filho que nunca fala com um provedor.
+SECRET_ENV_SUFFIXES = ("_API_KEY", "_TOKEN", "_SECRET")
+
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
 
 # Optional pins: an explicit path always wins over the usual discovery.

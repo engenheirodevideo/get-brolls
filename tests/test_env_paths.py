@@ -271,8 +271,8 @@ class DoctorReportTests(unittest.TestCase):
             self.assertTrue(entries, payload["summary"]["missing"])
             for entry in entries:
                 if WHEEL_MODE:
-                    # O pacote instalado não tem `scripts/install.sh`: o conserto é o `setup --check`.
-                    self.assertIn("setup --check", entry["fix"])
+                    # O pacote instalado não tem `scripts/install.sh`: o conserto é o `setup`.
+                    self.assertIn("getbrolls setup", entry["fix"])
                     self.assertNotIn("install.sh", entry["fix"])
                 else:
                     self.assertIn("install.sh", entry["fix"])

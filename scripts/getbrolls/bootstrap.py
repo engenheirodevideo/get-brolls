@@ -55,7 +55,7 @@ def _line(*args):
 
 def _runtime_commands():
     """Comandos que montam o runtime compartilhado de um pacote instalado, por passo."""
-    if _paths.requirements_sha() is None:
+    if _paths.part_sha("venv") is None or _paths.part_sha("tools") is None:
         # Sem requirements.txt/package-lock.json não há o que instalar: só reinstalar repõe.
         return {step: [_paths.REINSTALL_COMMAND] for step in RUNTIME_STEPS}
     data = _paths.data_root()
