@@ -15,9 +15,12 @@ Importar este módulo tem o efeito colateral de inserir `scripts/` em
 abertura — aqui isso acontece uma vez só, no import.
 """
 
+import functools
 import importlib
+import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -50,11 +53,30 @@ def wheel_origin(version_output: str) -> str | None:
     return found.group(1).lower() if found else None
 
 
+@functools.cache
+def _wheel_cli_command() -> tuple[str, ...]:
+    """Prefixo que o pacote instalado põe nos comandos sugeridos (perguntado a ele, uma vez)."""
+    probe = "import json; from getbrolls import _paths; print(json.dumps(_paths.cli_command()))"
+    done = subprocess.run(
+        [str(WHEEL_PYTHON), "-P", "-c", probe], capture_output=True, text=True, encoding="utf-8", check=True
+    )
+    return tuple(json.loads(done.stdout))
+
+
 def suggested_argv(command: str) -> list[str]:
-    """Tira o prefixo da CLI de um comando sugerido (status/brief), no formato do SO."""
+    """Tira o prefixo da CLI de um comando sugerido (status/brief), no formato do SO.
+
+    O comando gerado em processo (`command_for`, `next_action`) traz o prefixo do checkout
+    que roda os testes. No modo wheel, o que sai de um subprocesso traz o do pacote
+    instalado; aí vale um dos dois, e nenhum outro.
+    """
     # Import tardio: `_isolation` precisa vir antes de qualquer `getbrolls`.
     install = importlib.import_module("getbrolls._paths")
     tokens = install.split_command(command)
-    prefix = install.cli_command()
-    assert tokens[: len(prefix)] == prefix, (tokens, prefix)
-    return tokens[len(prefix) :]
+    prefixes = [install.cli_command()]
+    if WHEEL_MODE:
+        prefixes.append(list(_wheel_cli_command()))
+    for prefix in prefixes:
+        if tokens[: len(prefix)] == prefix:
+            return tokens[len(prefix) :]
+    raise AssertionError((tokens, prefixes))
