@@ -513,7 +513,8 @@ def provider_warnings(beats):
     """
     return [
         f'O provedor {entry["provider"]} exigido pelo beat "{beat["id"]}" não está '
-        f"configurado neste ambiente: coloque {entry['env_key']} no `.env` (`$GB_HOME/.env`, padrão `~/.getbrolls/.env`)."
+        f"configurado neste ambiente: coloque {entry['env_key']} no `.env` "
+        "(`$GB_HOME/.env`, padrão `~/.getbrolls/.env`)."
         for beat in beats
         for entry in missing_provider_keys(beat["resolved"])
     ]
@@ -582,7 +583,10 @@ def remaining_keys_phrase(beat, entries, searched):
     )
     routes = resolve_routes(beat["id"], beat["allowed_sources"])
     route = f" {routes}" if routes else " Ou me diga outra forma de buscar esse trecho."
-    return f"{head} Coloque {keys} no arquivo `.env` (`$GB_HOME/.env`, padrão `~/.getbrolls/.env`) ou no ambiente e eu busco na hora.{route}"
+    return (
+        f"{head} Coloque {keys} no arquivo `.env` (`$GB_HOME/.env`, padrão `~/.getbrolls/.env`) "
+        f"ou no ambiente e eu busco na hora.{route}"
+    )
 
 
 def search_queries(beat):
