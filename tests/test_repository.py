@@ -372,6 +372,19 @@ class RepositoryDocumentationTests(unittest.TestCase):
             self.assertIn("winget install", readme)
             self.assertIn("contact_sheet.labels: true", readme)
 
+    def test_installers_surface_the_doctor_exit_code(self):
+        # O doctor sai 4 quando `summary.missing` não está vazio: o instalador repassa o
+        # código e diz o que ele significa, em vez de morrer calado pelo `set -e`/`throw`.
+        shell = (ROOT / "scripts/install.sh").read_text(encoding="utf-8")
+        powershell = (ROOT / "scripts/install.ps1").read_text(encoding="utf-8")
+        self.assertIn("status=$?", shell)
+        self.assertIn('exit "$status"', shell)
+        for script in (shell, powershell):
+            self.assertIn("doctor encontrou pendências", script)
+            self.assertIn("faltam itens", script)
+            self.assertIn("summary.missing", script)
+        self.assertIn("exit 4", powershell)
+
     def test_installers_warn_about_missing_drawtext(self):
         for name in ("scripts/install.sh", "scripts/install.ps1"):
             script = (ROOT / name).read_text(encoding="utf-8")

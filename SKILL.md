@@ -31,7 +31,7 @@ Pediram para escrever o conteúdo (cenas e fala), não só b-roll? Siga [`refere
 
 ## Passo 2 — Confirme o brief
 
-Rode o CLI pelo **caminho absoluto da instalação da skill** (`scripts/gb.py` nos exemplos). `--project` é sempre a pasta do usuário (absoluta), em **todo** comando.
+Rode o CLI pelo **caminho absoluto da instalação da skill** (`scripts/gb.py`; pacote: `getbrolls`). `--project` é sempre a pasta do usuário (absoluta), em **todo** comando.
 
 Escreva o `BRIEF.md` com `python3 "scripts/gb.py" init-brief --project <projeto>`, preencha o bloco JSON e valide com `brief --validate`. Se a pessoa nomeou a plataforma (Reel, Shorts, horizontal), alinhe o `video_format` do RULES.md antes de validar: `init-rules --format reels --force --project <projeto>`.
 
@@ -77,7 +77,7 @@ Diga o que tentou e por quê. Pergunte se a pessoa tem material próprio ou um l
 
 ## Ambiente
 
-`python3 "scripts/gb.py" doctor` diz o que está pronto e o que falta. No Windows, use `python` no lugar de `python3`. Faltando algo, peça `/get-brolls-setup`. Versão diferente? Leia o [CHANGELOG](CHANGELOG.md).
+`python3 "scripts/gb.py" doctor` confere a instalação. No Windows, use `python` no lugar de `python3`. Em código 4 (`ready` falso), leia `summary.missing` e peça `/get-brolls-setup`. Versão diferente: [CHANGELOG](CHANGELOG.md).
 
 ## Índice de references
 

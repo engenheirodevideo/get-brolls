@@ -40,6 +40,17 @@ mkdir -p "$ROOT/.tools"
 cp "$ROOT/package.json" "$ROOT/package-lock.json" "$ROOT/.tools/"
 npm --cache "$ROOT/.tools/npm-cache" ci --prefix "$ROOT/.tools" --ignore-scripts --no-audit --no-fund
 bash "$ROOT/scripts/playwright.sh" --version
-PATH="$ROOT/.venv/bin:$PATH" "$ROOT/.venv/bin/python" "$ROOT/scripts/gb.py" doctor
+# doctor sai 4 quando summary.missing não está vazio (faltam itens), com o JSON em stdout.
+status=0
+doctor_json="$(PATH="$ROOT/.venv/bin:$PATH" "$ROOT/.venv/bin/python" "$ROOT/scripts/gb.py" doctor)" || status=$?
+printf '%s\n' "$doctor_json"
+if [ "$status" -eq 4 ]; then
+  printf '\ndoctor encontrou pendências (código 4: faltam itens). O que falta e como resolver, de summary.missing:\n' >&2
+  printf '%s' "$doctor_json" \
+    | "$ROOT/.venv/bin/python" -c 'import json, sys; [print("- %s: %s" % (m["item"], m["fix"])) for m in json.load(sys.stdin)["summary"]["missing"]]' >&2 || true
+fi
+if [ "$status" -ne 0 ]; then
+  exit "$status"
+fi
 printf '\nDependências instaladas em .venv/ e .tools/, não fazem parte dos arquivos de distribuição.\n'
 printf 'Navegador existente: siga docs/GUIDE.md para reutilizar a sessão autorizada.\n'
