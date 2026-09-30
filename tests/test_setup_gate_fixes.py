@@ -280,3 +280,91 @@ class KillTreeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CheckAgreesWithSetupTests(_Gate):
+    """`setup --check`/`doctor` dizem "não pronta" exatamente quando o `setup` refaria a venv."""
+
+    def assert_not_ready(self):
+        step = _step(bootstrap.check(), "ytdlp")
+        self.assertIs(False, step["ok"], step)
+        self.assertIn("setup", step["note"])
+        self.assertIs(False, cli.main(["doctor"])["executables"]["yt-dlp"])
+
+    def test_healthy_ready_venv_is_ok(self):
+        self.install()
+        self.assertIs(True, _step(bootstrap.check(), "ytdlp")["ok"])
+
+    def test_pyvenv_home_pointing_to_a_missing_folder(self):
+        self.install()
+        (self.venv() / "pyvenv.cfg").write_text(f"home = {self.base / 'gone'}\nversion = 3\n", encoding="utf-8")
+        self.assertEqual(0, bootstrap.venv_health(self.venv()).returncode)  # a sonda sozinha passaria
+        self.assert_not_ready()
+        self.runner.calls.clear()
+        self.assertEqual("installed", self.venv_entry(self.install())["status"])  # e o setup refaz
+
+    def test_marker_left_at_upgrading_with_a_working_venv(self):
+        self.install()
+        _paths.write_marker("venv", self.root(), "upgrading")
+        self.assert_not_ready()
+        self.assertEqual("installed", self.venv_entry(self.install())["status"])
+
+    def test_marker_left_at_building(self):
+        self.install()
+        _paths.write_marker("venv", self.root(), "building")
+        self.assert_not_ready()
+        self.assertEqual("installed", self.venv_entry(self.install())["status"])
+
+    def test_a_venv_without_marker_is_judged_by_the_probe_alone(self):
+        self.install()
+        _paths.marker_path("venv", self.root()).unlink()
+        self.assertIsNone(bootstrap.ytdlp_problem("venv", str(self.venv() / YTDLP_LAYOUT)))
+
+
+class ClassifyPipTests(unittest.TestCase):
+    def classify(self, *lines, code=1):
+        return bootstrap._classify_pip(bootstrap.StepResult(code, lines))  # pylint: disable=protected-access
+
+    def test_requires_python_blames_the_python_version(self):
+        message = self.classify(
+            "ERROR: Package 'yt-dlp' requires a different Python: 3.9.6 not in '>=3.10'",
+        )
+        self.assertIn("Python", message)
+        self.assertIn("3.11", message)
+        self.assertNotEqual(bootstrap.PIP_CONFLICT_FAILED, message)
+
+    def test_ignored_versions_with_requires_python(self):
+        message = self.classify(
+            "INFO: Ignored versions that require a different python version: 2.0 Requires-Python >=3.14",
+            "ERROR: No matching distribution found for yt-dlp==2026.8.19",
+        )
+        self.assertTrue(message.startswith("Falha ao instalar as dependências Python: seu Python"))
+
+    def test_no_matching_distribution_with_a_python_tag_hint(self):
+        message = self.classify(
+            "ERROR: Could not find a version that satisfies the requirement wheel==1 (from versions: none)",
+            "ERROR: No matching distribution found for wheel==1",
+            "  (no wheel for tag cp315-cp315-macosx_14_0_arm64)",
+        )
+        self.assertIn("seu Python", message)
+
+    def test_no_matching_distribution_alone_is_not_blamed_on_python(self):
+        message = self.classify("ERROR: No matching distribution found for yt-dlp==0.0.0")
+        self.assertNotIn("seu Python", message)
+
+    def test_resolution_conflict_has_its_own_message(self):
+        message = self.classify(
+            "ERROR: Cannot install yt-dlp and requests==2.0 because these versions have conflicting dependencies.",
+            "ERROR: ResolutionImpossible: for help visit https://pip.pypa.io/en/latest/topics/dependency-resolution/",
+        )
+        self.assertEqual(bootstrap.PIP_CONFLICT_FAILED, message)
+
+    def test_constraint_file_conflict(self):
+        message = self.classify("ERROR: Double requirement given: a==1 (from -c constraints.txt)", "constraint file")
+        self.assertEqual(bootstrap.PIP_CONFLICT_FAILED, message)
+
+    def test_network_and_generic_classes_stay(self):
+        self.assertEqual(
+            bootstrap.PIP_NETWORK_FAILED, self.classify("WARNING: Retrying ... NewConnectionError: Failed to establish")
+        )
+        self.assertEqual(bootstrap.PIP_FAILED.format(code=2), self.classify("boom", code=2))
