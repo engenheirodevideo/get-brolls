@@ -20,7 +20,9 @@ import logging
 import os
 import re
 import shutil
+import tempfile
 import time
+import unicodedata
 import uuid
 from pathlib import Path
 from typing import NamedTuple
@@ -29,7 +31,7 @@ from .. import logs
 from ..runtime import force_rmtree
 from . import git_source, loader
 from .contracts import NAME_RE
-from .files import JUNK_FILENAMES, counted_files
+from .files import JUNK_FILENAMES, LFS_POINTER_MAX_BYTES, counted_files, is_lfs_pointer
 from .manifest import MANIFEST_MAX_BYTES, MANIFEST_NAME, compatibility_problem, read_manifest
 
 _log = logs.get("sdk")
@@ -115,6 +117,25 @@ def _tree_entries(dest, treeish):
 _VCS_SHORT_ALIASES = frozenset({"git~1", "hg~1", "svn~1"})
 
 
+def _refuse_non_nfc(path, where):
+    """Nome de arquivo fora da forma NFC (ex.: acento decomposto, comum em pasta
+    criada no HFS+) ou que não era UTF-8 (vira U+FFFD na leitura) é recusado: o
+    mesmo nome viraria bytes diferentes em outro sistema, e o sha256 do pin
+    deixaria de ser o mesmo entre macOS, Linux e Windows."""
+    if "\ufffd" in path or not unicodedata.is_normalized("NFC", path):
+        raise ValueError(
+            f"Nome de arquivo fora da forma Unicode NFC (ou que não é UTF-8) {where}: {path!r}; renomeie o arquivo."
+        )
+
+
+def _refuse_lfs_pointer(path, content):
+    if is_lfs_pointer(content, len(content)):
+        raise ValueError(
+            f"O plugin tem um ponteiro do Git LFS em {path!r}, não o arquivo de verdade; o install não roda o "
+            "Git LFS. Commite o arquivo sem LFS (ou tire-o do plugin)."
+        )
+
+
 def _refuse_git_path_component(path):
     """Recusa qualquer entrada cujo caminho tenha um componente de VCS — `.git`,
     `.hg` ou `.svn` — em qualquer maiúsc./minúsc.; com ponto(s)/espaço(s) sobrando
@@ -127,6 +148,7 @@ def _refuse_git_path_component(path):
     histórico git ficariam fora do hash do pin; nenhum deles é conteúdo de
     plugin — na melhor das hipóteses é lixo, na pior é metadado plantado que outra
     ferramenta trataria como especial mais adiante."""
+    _refuse_non_nfc(path, "no histórico git")
     for part in path.split("/"):
         if ":" in part or "\\" in part:
             raise ValueError(f"Caminho com ':' ou '\\' no histórico git não é aceito: {path!r}.")
@@ -250,6 +272,7 @@ def _materialize_tree(clone, dest, treeish, paths_only=None):
             if total_bytes > MAX_BYTES:
                 raise ValueError(f"O plugin passa de {MAX_BYTES // (1024 * 1024)} MB; recusado.")
         content = _git_blob(clone, sha)
+        _refuse_lfs_pointer(path, content)
         _write_tree_entry(dest, root, path, mode, content)
 
 
@@ -271,7 +294,7 @@ def _peek_entry_name(dest):
     return entry if isinstance(entry, str) else None
 
 
-def _validate_manifest_early(clone, dest, treeish):
+def _validate_manifest_early(clone, dest, treeish, compat=True):
     """Materializa e valida o manifesto (e o `entry` que ele declara) antes
     de trazer o resto — potencialmente grande — da árvore; falha cedo, sem gastar
     tempo/disco com um plugin incompatível ou inválido."""
@@ -279,17 +302,19 @@ def _validate_manifest_early(clone, dest, treeish):
     entry = _peek_entry_name(dest)
     if entry:
         _materialize_tree(clone, dest, treeish, paths_only={MANIFEST_NAME, entry})
-    _checked_manifest(dest)
+    _checked_manifest(dest, compat)
 
 
-def _from_git(spec, dest):
+def _from_git(spec, dest, compat=True):
     """Busca o commit de `spec` numa pasta de staging própria (sem checkout),
-    materializa a árvore em `dest` (outra pasta) e apaga o clone; devolve o commit."""
+    materializa a árvore (de `spec.subdir`, quando há) em `dest` (outra pasta) e
+    apaga o clone; devolve o commit."""
     clone = dest.with_name(_new_install_staging_name())
     try:
         commit = git_source.fetch(spec, clone)
-        _validate_manifest_early(clone, dest, commit)
-        _materialize_tree(clone, dest, commit)
+        treeish = _subdir_tree(clone, commit, spec.subdir)
+        _validate_manifest_early(clone, dest, treeish, compat)
+        _materialize_tree(clone, dest, treeish)
     finally:
         force_rmtree(clone)
     _refuse_links_and_bytecode(dest)
@@ -314,14 +339,31 @@ def _file_list(folder):
 def _guard_folder_cap(folder):
     """Teto de árvore antes de copiar, no caminho de pasta comum: mesmo recorte de `folder_digest`
     (`files.counted_files`), então o que conta aqui é exatamente o que seria
-    materializado por `shutil.copytree` com `_copy_ignore`."""
+    materializado por `shutil.copytree` com `_copy_ignore`. Recusa também, como no
+    caminho git, nome fora de NFC e ponteiro do Git LFS."""
     total_bytes = 0
-    for total_files, (_rel, path) in enumerate(counted_files(folder), start=1):
+    for total_files, (rel, path) in enumerate(counted_files(folder), start=1):
         if total_files > MAX_FILES:
             raise ValueError(f"O plugin tem mais de {MAX_FILES} arquivos; recusado.")
-        total_bytes += path.stat().st_size
+        _refuse_non_nfc(rel.as_posix(), "na pasta")
+        size = path.stat().st_size
+        total_bytes += size
         if total_bytes > MAX_BYTES:
             raise ValueError(f"O plugin passa de {MAX_BYTES // (1024 * 1024)} MB; recusado.")
+        if size <= LFS_POINTER_MAX_BYTES:
+            _refuse_lfs_pointer(rel.as_posix(), path.read_bytes())
+
+
+def _subdir_tree(clone, commit, subdir):
+    """`<commit>:<subdir>` conferido como pasta (`tree`) no commit; sem `subdir`, o próprio commit."""
+    if not subdir:
+        return commit
+    entry = git_source.tree_entry(clone, commit, subdir)
+    if entry is None:
+        raise ValueError(f"--subdir {subdir!r} não existe no commit {commit[:12]}.")
+    if entry[1] != "tree" or entry[0] != "040000":
+        raise ValueError(f"--subdir {subdir!r} não é uma pasta no commit {commit[:12]}; aponte para a pasta do plugin.")
+    return f"{commit}:{subdir}"
 
 
 def local_repository_warning(commit, ref):
@@ -332,9 +374,9 @@ def local_repository_warning(commit, ref):
     )
 
 
-def _copy_folder(folder, dest):
+def _copy_folder(folder, dest, compat=True):
     """Copia a pasta comum `folder` para `dest`, com as mesmas recusas do caminho git."""
-    _checked_manifest(folder)
+    _checked_manifest(folder, compat)
     _refuse_nested_vcs(folder)
     _refuse_links_and_bytecode(folder)
     _guard_folder_cap(folder)
@@ -346,7 +388,7 @@ def _copy_folder(folder, dest):
     _refuse_links_and_bytecode(dest)
 
 
-def _materialize(spec, dest):
+def _materialize(spec, dest, compat=True):
     """Traz `spec` (`git_source.Source`) para `dest` (que não existe) e devolve
     `(origem, avisos)`; a origem é o que o `plugins.json` grava em `sources`.
 
@@ -356,11 +398,11 @@ def _materialize(spec, dest):
     conferida de novo — checar o resultado materializado, não só a origem,
     fecha a corrida entre "olhar" e "copiar"."""
     if isinstance(spec, git_source.FolderSource):
-        _copy_folder(Path(spec.path), dest)
+        _copy_folder(Path(spec.path), dest, compat)
         return {"source": spec.path, "commit": None}, []
-    commit = _from_git(spec, dest)
+    commit = _from_git(spec, dest, compat)
     warnings = [] if git_source.is_remote(spec.repo) else [local_repository_warning(commit, spec.ref)]
-    return {"source": spec.repo, "commit": commit, "ref": spec.ref}, warnings
+    return {"source": spec.repo, "commit": commit, "ref": spec.ref, "subdir": spec.subdir}, warnings
 
 
 # O epoch de criação vai no NOME da pasta de staging, não é lido do `st_mtime`
@@ -474,9 +516,10 @@ def _staging():
     return root / _new_install_staging_name()
 
 
-def _checked_manifest(folder):
+def _checked_manifest(folder, compat=True):
+    """Manifesto de `folder`; com `compat`, também compatível com esta instalação."""
     manifest = read_manifest(folder, require_folder_match=False)
-    problem = compatibility_problem(manifest)
+    problem = compatibility_problem(manifest) if compat else None
     if problem:
         raise ValueError(f"Plugin {manifest['id']}: {problem}")
     return manifest
@@ -492,6 +535,7 @@ def _summary(manifest, origin, content, files, warnings=()):
         "source": origin["source"],
         "commit": origin["commit"],
         "ref": origin.get("ref"),
+        "subdir": origin.get("subdir"),
         "sha256": content.sha,
         "files": files,
     }
@@ -502,18 +546,66 @@ def _summary(manifest, origin, content, files, warnings=()):
     return summary
 
 
+def _as_spec(source):
+    if isinstance(source, git_source.GitSource | git_source.FolderSource):
+        return source
+    return git_source.parse_source(source)
+
+
+def content_digest(source):
+    """`(sha256 do conteúdo, manifesto)` de `source` (`GitSource`, `FolderSource` ou
+    `--source`), sem instalar nada: o mesmo sha256 que a prévia do `install` mostraria.
+
+    Materializa numa pasta temporária do sistema (nunca em `plugins/`), sempre
+    apagada no fim, e só lê o manifesto — nenhum código do plugin roda. Não confere
+    compatibilidade com esta instalação (`platforms`, `requires_getbrolls`): quem
+    monta um índice pode estar em outro sistema."""
+    spec = _as_spec(source)
+    tmp = Path(tempfile.mkdtemp(prefix="gb-digest-"))
+    try:
+        dest = tmp / "plugin"
+        _materialize(spec, dest, compat=False)
+        return loader.folder_digest(dest), read_manifest(dest, require_folder_match=False)
+    finally:
+        force_rmtree(tmp)
+
+
+def fetch_file(source, path, max_bytes):
+    """`(commit, bytes)` do arquivo `path` (relativo a `source.subdir`, quando há) no
+    commit de `source`, sem checkout: recusa o que não é arquivo regular e o que
+    passa de `max_bytes` antes de ler o conteúdo."""
+    if not isinstance(source, git_source.GitSource):
+        raise ValueError("fetch_file só lê de um repositório git.")
+    git_source.validate_repo_path(path, "caminho")
+    full = f"{source.subdir}/{path}" if source.subdir else path
+    tmp = Path(tempfile.mkdtemp(prefix="gb-fetch-"))
+    try:
+        clone = tmp / "clone"
+        commit = git_source.fetch(source, clone)
+        entry = git_source.tree_entry(clone, commit, full)
+        if entry is None or entry[0] not in _ALLOWED_TREE_MODES:
+            raise ValueError(f"{full!r} não é um arquivo regular no commit {commit[:12]}.")
+        if entry[3] is None or entry[3] > max_bytes:
+            raise ValueError(f"{full!r} passa de {max_bytes} bytes no commit {commit[:12]}; recusado.")
+        return commit, _git_blob(clone, entry[2])
+    finally:
+        force_rmtree(tmp)
+
+
 def _check_expect(expect, sha):
     """Ver `loader.check_expect` (compartilhado com o `enable` de plugin suspenso)."""
     loader.check_expect(expect, sha)
 
 
-def install(source, confirm, expect=None, *, commit=None, ref=None):
+def install(  # noqa: PLR0913 - keyword-only pin options, one per CLI flag
+    source, confirm, expect=None, *, commit=None, ref=None, subdir=None
+):  # pylint: disable=too-many-arguments  # keyword-only pin options, one per CLI flag
     """Prévia (sem `confirm`) ou instalação de um plugin a partir de pasta local ou URL git.
 
     `commit` fixa o commit (senão, `ref` — ausente vale `HEAD` — é resolvida na
-    origem). Confirmar exige o sha256 da prévia em `expect`; o plugin sai instalado
-    e habilitado."""
-    spec = git_source.parse_source(source, commit=commit, ref=ref)
+    origem); `subdir` é a pasta do plugin dentro do repositório. Confirmar exige o
+    sha256 da prévia em `expect`; o plugin sai instalado e habilitado."""
+    spec = git_source.parse_source(source, commit=commit, ref=ref, subdir=subdir)
     loader.read_state()  # plugins.json corrompido recusa antes de qualquer mutação.
     _sweep_stale_staging()
     staging = _staging()
@@ -605,7 +697,7 @@ def update(plugin_id, confirm, expect=None):
         )
     # A origem gravada passa pela mesma validação de um `--source` novo; sem commit
     # fixado, a ref gravada (ausente vale `HEAD`) é resolvida de novo na origem.
-    spec = git_source.parse_source(origin["source"], ref=origin.get("ref"))
+    spec = git_source.parse_source(origin["source"], ref=origin.get("ref"), subdir=origin.get("subdir"))
     was_enabled = plugin_id in state.get("enabled", {})
     _sweep_stale_staging()
     _, folder, current = loader.find(plugin_id)

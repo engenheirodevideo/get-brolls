@@ -67,9 +67,21 @@ não exige administrador. `api.local_file` aceita hardlink e o registra no log;
 os resolvedores o recusam. `permissions.paths` e `permissions.network` aparecem
 no preview do `enable` e do `install`. A resposta de `api.get_json` de um plugin
 nunca vai para o cache em disco. Comandos de plugin (`gb x`) só leem o projeto,
-por cópias. `install`/`update` clonam com `GIT_TERMINAL_PROMPT=0`, recusam URL
-com credencial, link simbólico e pasta de controle de versão fora do topo, e não
-executam código do plugin. `GB_PLUGINS=off` desliga tudo; `GB_PLUGINS=id1,id2`
+por cópias. `install`/`update` fixam todo repositório git por commit (sha
+completo de 40 caracteres, buscado sozinho com `fetch --depth 1`), nunca fazem
+`checkout` e escrevem cada arquivo a partir do blob cru, sem filtro, hook nem
+`autocrlf`. O git roda com `GIT_TERMINAL_PROMPT=0`, sem nenhuma variável `GIT_*`
+herdada, só com os transportes `https` e `ssh` (e `file` apenas quando a origem
+é uma pasta local indicada pela pessoa; `ext::` é recusado), com
+`transfer.fsckObjects=true`, sem template de `init` e sem hooks. `--commit`,
+`--ref` e `--subdir` são validados antes de qualquer git rodar (nada que comece
+com `-`, sem `..`, sem pasta de VCS). São recusados: URL com credencial, query
+ou fragmento; link simbólico e submódulo; pasta de controle de versão fora do
+topo; ponteiro do Git LFS (o LFS nunca roda); e nome de arquivo fora de NFC. Nenhum
+código do plugin roda no install. Limites do sha256 do pin: os bits de modo
+(executável ou não) não entram na conta, e lixo de SO (`.DS_Store`,
+`Thumbs.db`, `desktop.ini`) commitado no repositório é materializado mas não
+entra no hash — o código do plugin não deve ler esses nomes. `GB_PLUGINS=off` desliga tudo; `GB_PLUGINS=id1,id2`
 só escolhe entre os plugins já habilitados com pin válido — nunca carrega um
 plugin não habilitado nem um com conteúdo mudado desde o `enable`.
 

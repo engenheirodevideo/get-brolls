@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 
 from ..runtime import stderr_tail
 from .files import is_link
+from .loader import VCS_DIRNAMES
 
 GIT_URL_RE = re.compile(r"(https://\S+|git@[A-Za-z0-9.-]+:\S+)")
 GIT_TIMEOUT_S = 120
@@ -31,6 +32,12 @@ REF_MAX_CHARS = 200
 # git, nem `/` ou `.`) e só usa ASCII seguro; `_ref_problem` recusa o resto do que o
 # `git check-ref-format` recusa (`..`, `//`, `@{`, `.lock`, componente com ponto).
 REF_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/+-]*")
+# Caminho dentro do repositório (`--subdir`, arquivo de `fetch_file`): componentes
+# ASCII seguros separados por `/` — sem `\\`, `:`, espaço, caminho absoluto nem
+# acento (que mudaria de forma entre sistemas); `.`, `..` e pasta de VCS são
+# recusados à parte, em `validate_repo_path`.
+SUBDIR_RE = re.compile(r"[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*")
+SUBDIR_MAX_CHARS = 255
 
 
 class GitSource(NamedTuple):
@@ -98,6 +105,24 @@ def validate_ref(ref):
     return ref
 
 
+def validate_repo_path(path, flag="--subdir"):
+    """`path` como veio, se for um caminho relativo seguro dentro do repositório.
+
+    Cada componente é comparado em casefold (e sem ponto/espaço à direita, que o
+    Windows apaga) com `.git`, `.hg` e `.svn`: `.GIT` também é recusado."""
+    if not isinstance(path, str) or not path or len(path) > SUBDIR_MAX_CHARS or not SUBDIR_RE.fullmatch(path):
+        raise ValueError(
+            f"{flag} tem que ser um caminho relativo com letras, dígitos e . _ -, separado por / "
+            f"(até {SUBDIR_MAX_CHARS} caracteres): {str(path)[:80]!r}."
+        )
+    for part in path.split("/"):
+        if part in (".", ".."):
+            raise ValueError(f"{flag} não pode ter '.' nem '..' como componente: {path!r}.")
+        if part.casefold().rstrip(". ") in VCS_DIRNAMES:
+            raise ValueError(f"{flag} não pode passar por uma pasta de controle de versão (.git, .hg, .svn): {path!r}.")
+    return path
+
+
 def _refuse_query_or_fragment(raw):
     # Verificação por substring, não `urlsplit`: cobre tanto `https://…` quanto a
     # sintaxe `git@host:caminho` (que não é uma URL de verdade e não tem "query"
@@ -144,6 +169,8 @@ def parse_source(raw, *, commit=None, ref=None, subdir=None):
         validate_commit(commit)
     if ref is not None:
         validate_ref(ref)
+    if subdir is not None:
+        validate_repo_path(subdir)
     folder = Path(raw).expanduser()
     if raw and not raw.startswith("-") and folder.is_dir():
         folder = folder.resolve()
@@ -152,7 +179,7 @@ def parse_source(raw, *, commit=None, ref=None, subdir=None):
         if commit is not None or ref is not None or subdir is not None:
             raise ValueError(
                 "--commit, --ref e --subdir só valem para repositório git; para uma pasta comum, aponte "
-                "--source direto para a pasta do plugin."
+                "--source direto para a pasta do plugin (--source <pasta>/<subpasta>)."
             )
         return FolderSource(str(folder))
     return GitSource(validate_url(raw), commit, ref, subdir)
@@ -343,6 +370,20 @@ def resolve_ref(spec):
     if not COMMIT_RE.fullmatch(sha):
         raise ValueError(f"A ref {ref!r} não aponta para um commit SHA-1 de 40 caracteres; recusado.")
     return name, sha
+
+
+def tree_entry(clone, commit, path):
+    """`(modo, tipo, sha, tamanho)` de `path` no `commit` do clone, ou `None` se não existe.
+
+    `git ls-tree -l <commit> -- <path>` mostra a própria entrada (uma pasta aparece
+    como `040000 tree`, sem descer nela); tamanho é `None` para pasta e submódulo."""
+    raw = git_text(["ls-tree", "-l", "-z", commit, "--", path], cwd=clone)
+    for record in raw.split("\0"):
+        meta, _, name = record.partition("\t")
+        if name == path:
+            mode, kind, sha, size = meta.split()
+            return mode, kind, sha, int(size) if size.isdigit() else None
+    return None
 
 
 def _peeled_commit(clone, rev):

@@ -809,6 +809,19 @@ python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
   espaço sobrando e os nomes curtos `GIT~1`/`HG~1`/`SVN~1`), `:` ou `\` em
   qualquer componente, colisão de maiúsculas/minúsculas entre dois caminhos,
   mais de 2000 arquivos e mais de 200 MB (no total ou num arquivo só).
+- `--subdir <caminho>` instala só a pasta `<caminho>` de dentro do repositório
+  (um monorepo com vários plugins, por exemplo): ela tem que ser uma pasta
+  (`tree`) naquele commit, e o caminho só aceita letras, dígitos e `. _ -`
+  separados por `/`, sem `.`/`..` e sem passar por `.git`/`.hg`/`.svn` em
+  qualquer grafia (`.GIT` também). Numa pasta comum, `--subdir` é recusado:
+  aponte `--source` direto para a pasta do plugin. O sha256 é o mesmo de uma
+  cópia comum daquela pasta.
+- Também são recusados, vindo de git ou de pasta: ponteiro do Git LFS (o
+  install nunca roda o LFS, então chegaria o ponteiro, não o arquivo) e nome de
+  arquivo fora da forma Unicode NFC ou que não é UTF-8 (o mesmo nome viraria
+  bytes diferentes em outro sistema, e o sha256 mudaria). O conteúdo é o blob
+  cru do commit: `core.autocrlf`, `eol` e filtros do `.gitattributes` não mudam
+  nada, então o sha256 é o mesmo em macOS, Linux e Windows.
 - Uma pasta local só é tratada como repositório git quando `.git` é uma pasta
   de verdade (um arquivo `.git` de worktree/submódulo ou um link apontariam
   para outro repositório). Pasta local comum é copiada sem `.git`/`.hg`/`.svn`

@@ -21,6 +21,18 @@ JUNK_FILENAMES = frozenset({".DS_Store", "Thumbs.db", "desktop.ini"})
 TOP_LEVEL_VCS = ".git"
 
 
+# Ponteiro do Git LFS: um arquivo de texto pequeno no lugar do conteúdo de verdade,
+# que só o `smudge` do LFS (nunca rodado pelo `install`) trocaria pelo binário. Um
+# plugin assim chegaria com o ponteiro, não com o arquivo — recusado no install.
+LFS_POINTER_PREFIX = b"version https://git-lfs.github.com/spec/v1\n"
+LFS_POINTER_MAX_BYTES = 1024
+
+
+def is_lfs_pointer(head, size):
+    """`head` (os primeiros bytes de um arquivo de `size` bytes) é um ponteiro do Git LFS?"""
+    return size <= LFS_POINTER_MAX_BYTES and head.startswith(LFS_POINTER_PREFIX)
+
+
 def counted_files(folder):
     """(caminho relativo, caminho) de cada arquivo que entra no hash, em ordem estável.
 
