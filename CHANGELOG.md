@@ -119,6 +119,7 @@ Projeto da 2.5 segue exatamente igual: nada muda sem um `ROTEIRO.md` do get-brol
 - **Instaladores repassam o `4`.** `scripts/install.sh` e `install.ps1` terminam com o código do `doctor`: com `4`, dizem "doctor encontrou pendências (código 4: faltam itens)" e listam cada item de `summary.missing` com o comando que resolve. Antes, o `doctor` sempre saía `0`, faltando algo ou não.
 - **`/get-brolls-setup`** lê o código 4 como pendência (lê `summary`, não para ali) e indica `$GB_HOME/.env` para as chaves opcionais.
 <!-- W1:T9 -->
+- **`capabilities --json`.** Descreve comandos, flags, o que só lê, códigos de saída e comandos de plugin desta instalação, gerado do próprio parser, para agentes e scripts.
 <!-- W1:T10 -->
 <!-- W1:T11 -->
 

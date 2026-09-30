@@ -1,6 +1,8 @@
 """Existing workflow command handlers; CLI parsing and reporting live separately."""
 
-# pylint: disable=too-many-lines,fixme
+# pylint: disable=too-many-lines,fixme,cyclic-import
+# `cyclic-import`: `_execute_toolchain` importa `cli.build_parser` e `capabilities` de forma tardia (só roda
+# com tudo carregado); o pylint só permite suprimir R0401 no módulo.
 # Legado: módulo já ultrapassava 1000 linhas antes da 2.6.0; `fixme` é o comentário
 # "Todo executável..." pré-existente (não é um TODO de verdade, é o nome da variável).
 
@@ -2492,7 +2494,12 @@ def _execute_providers_or_doctor(args, config):
 
 
 def _execute_toolchain(args):
-    """`plugins`/`x` delegam inteiramente ao SDK e `setup` ao `bootstrap`, sem tocar em projeto nem regras."""
+    """`plugins`/`x` vão ao SDK, `setup` ao `bootstrap`, `capabilities` ao manifesto; nenhum toca projeto."""
+    if args.command == "capabilities":
+        from getbrolls import capabilities
+        from getbrolls.cli import build_parser
+
+        return capabilities.describe(build_parser())
     if args.command == "setup":
         from getbrolls import bootstrap
 
@@ -3154,7 +3161,7 @@ def execute(args):
             brief_present=_brief_present(args),
             provider_keys=_provider_keys_set(),
         )
-    if args.command in ("plugins", "x", "setup"):
+    if args.command in ("plugins", "x", "setup", "capabilities"):
         return _execute_toolchain(args)
     if args.command in ("providers", "doctor"):
         return _execute_providers_or_doctor(args, config)

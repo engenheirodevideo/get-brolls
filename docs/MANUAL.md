@@ -539,7 +539,13 @@ python3 scripts/gb.py --version
 
 # Mostra tudo o que um comando aceita (troque "search" por qualquer um)
 python3 scripts/gb.py search --help
+
+# Descreve em JSON todos os comandos, flags, o que só lê, códigos de saída e comandos de plugin
+# (gerado do próprio parser; não precisa de projeto e não grava nada). --json é aceito.
+python3 scripts/gb.py capabilities --json
 ```
+
+O `capabilities` serve a agentes e scripts que precisam descobrir o que esta instalação sabe fazer sem ler o `--help` de cada comando: cada comando traz `summary`, `options`, `requires_project` e `read_only` (`true`, `false` ou `"by_action"`); a resposta também traz `exit_codes`, `error_codes` e `plugin_commands` (só plugins habilitados, lidos do manifesto).
 
 ---
 
