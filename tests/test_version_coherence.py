@@ -93,6 +93,13 @@ class VersionCoherenceTest(unittest.TestCase):
         assert match is not None
         self.assertEqual(match.group(1), __version__)
 
+    def test_manual_md_version(self):
+        text = _text("docs/MANUAL.md")
+        match = re.search(r"^Versão (\d+\.\d+\.\d+)\.", text, re.MULTILINE)
+        self.assertIsNotNone(match, "linha de versão não encontrada em docs/MANUAL.md")
+        assert match is not None
+        self.assertEqual(match.group(1), __version__)
+
     def test_export_plan_schema_id_tag(self):
         text = _text("schemas/export_plan.schema.json")
         match = re.search(

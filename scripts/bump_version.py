@@ -13,6 +13,7 @@ escreve, numa passada só, a versão nova em:
 - `SKILL.md` (`metadata.version` e `metadata.updated`);
 - `README.md` / `README.en.md` (badge: URL e `alt`);
 - `docs/QUALITY.md` (título `# Qualidade e evidências — GET B-ROLLS <v>`);
+- `docs/MANUAL.md` (linha `Versão <v>.` do começo);
 - `CHANGELOG.md` (stub `## <v> — <data>` abaixo de `## Unreleased`, só se
   ainda não existir uma seção para essa versão);
 - `skills/get-brolls/SKILL.md`, regerado chamando `gen_skill_mirror.py`.
@@ -272,6 +273,28 @@ def _write_quality_md(root: Path, version: str, _date_str: str) -> None:
     _write(path, text)
 
 
+_MANUAL_VERSION_RE = re.compile(r"^Versão (\d+\.\d+\.\d+)\.", re.MULTILINE)
+_MANUAL_VERSION_SUB_RE = re.compile(r"^(Versão )\d+\.\d+\.\d+(\.)", re.MULTILINE)
+
+
+def _manual_md_path(root: Path) -> Path:
+    return root / "docs" / "MANUAL.md"
+
+
+def _check_manual_md(root: Path, version: str) -> bool:
+    match = _MANUAL_VERSION_RE.search(_read(_manual_md_path(root)))
+    return bool(match) and match.group(1) == version
+
+
+def _write_manual_md(root: Path, version: str, _date_str: str) -> None:
+    path = _manual_md_path(root)
+    text = _read(path)
+    text, count = _MANUAL_VERSION_SUB_RE.subn(rf"\g<1>{version}\g<2>", text)
+    if count != 1:
+        raise ValueError(f"linha de versão não encontrada em {path}")
+    _write(path, text)
+
+
 # -- CHANGELOG.md (fora da coerência: corpo é prosa humana) -----------
 
 
@@ -369,6 +392,7 @@ TARGETS: list[Target] = [
     Target("README.md", _check_readme_pt, _write_readme_pt),
     Target("README.en.md", _check_readme_en, _write_readme_en),
     Target("docs/QUALITY.md", _check_quality_md, _write_quality_md),
+    Target("docs/MANUAL.md", _check_manual_md, _write_manual_md),
     Target("CHANGELOG.md", _check_changelog, _write_changelog),
     Target("schemas/export_plan.schema.json", _check_export_plan_schema, _write_export_plan_schema),
     # A regeneração do espelho depende do SKILL.md já escrito; roda por
