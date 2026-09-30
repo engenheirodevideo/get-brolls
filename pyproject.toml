@@ -1,6 +1,82 @@
-# Configuração das ferramentas de qualidade (dev-only).
-# O runtime da CLI continua sem dependência nenhuma: ruff e pyright são
-# instalados só por quem desenvolve, via requirements-dev.txt.
+# Distribuição do pacote `getbrolls` e configuração das ferramentas de qualidade.
+# O runtime da CLI continua sem dependência nenhuma (`dependencies = []`); ruff,
+# pyright e pylint são dev-only, instalados por quem desenvolve via requirements-dev.txt.
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "getbrolls"
+dynamic = ["version"]
+description = "Coleta de b-roll com revisão humana: pesquisa, prévia, aprovação, direitos e entrega."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+authors = [{ name = "Bruno Moreira" }]
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Environment :: Console",
+]
+
+[project.urls]
+Homepage = "https://github.com/engenheirodevideo/get-brolls"
+Changelog = "https://github.com/engenheirodevideo/get-brolls/blob/main/CHANGELOG.md"
+
+[project.scripts]
+getbrolls = "getbrolls.cli:entrypoint"
+
+[tool.hatch.version]
+path = "scripts/getbrolls/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["scripts/getbrolls"]
+
+# Os dados vão para `getbrolls/_data/`; o `_data/MANIFEST` é a sentinela da
+# instalação por wheel (`getbrolls._paths.detect`).
+[tool.hatch.build.targets.wheel.force-include]
+"assets" = "getbrolls/_data/assets"
+"schemas" = "getbrolls/_data/schemas"
+"references" = "getbrolls/_data/references"
+"examples" = "getbrolls/_data/examples"
+"docs/RULES.md" = "getbrolls/_data/docs/RULES.md"
+"docs/BRIEF.md" = "getbrolls/_data/docs/BRIEF.md"
+"requirements.txt" = "getbrolls/_data/requirements.txt"
+"package.json" = "getbrolls/_data/package.json"
+"package-lock.json" = "getbrolls/_data/package-lock.json"
+"packaging/data_manifest.txt" = "getbrolls/_data/MANIFEST"
+
+# `uv build` monta o sdist primeiro e o wheel a partir dele: tudo o que o wheel
+# força acima precisa estar nesta allowlist, senão o wheel sai sem dados.
+[tool.hatch.build.targets.sdist]
+only-include = [
+    "scripts/getbrolls",
+    "scripts/gb.py",
+    "assets",
+    "schemas",
+    "references",
+    "examples",
+    "docs/RULES.md",
+    "docs/BRIEF.md",
+    "packaging",
+    "requirements.txt",
+    "package.json",
+    "package-lock.json",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "CHANGELOG.md",
+]
+exclude = ["**/__pycache__", "**/*.pyc"]
 
 [tool.ruff]
 line-length = 120
