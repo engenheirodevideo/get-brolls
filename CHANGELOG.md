@@ -92,6 +92,9 @@ Projeto da 2.5 segue exatamente igual: nada muda sem um `ROTEIRO.md` do get-brol
 <!-- W1:T3 -->
 <!-- W1:T4 -->
 <!-- W1:T5 -->
+- **Comando sugerido que roda.** `summary.do.command` (status/brief/deliver) usa a CLI desta instalação: `getbrolls …` no pacote instalado, `python3 "…/scripts/gb.py" …` no checkout (igual à 2.5); no Windows, `python` e aspas duplas que funcionam no PowerShell, no cmd e no Git Bash (caminho com `$`, `%` ou `"` fica fora dessa promessa).
+- **`serve --background` no pacote instalado** sobe o servidor pelo próprio pacote.
+- **SDK: `api.cli_argv()`** para plugins que chamam o getbrolls num subprocesso.
 <!-- W1:T6 -->
 <!-- W1:T7a -->
 <!-- W1:T7b -->
