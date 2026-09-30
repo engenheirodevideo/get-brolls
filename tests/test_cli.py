@@ -3,7 +3,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 from html.parser import HTMLParser
@@ -12,7 +11,7 @@ from pathlib import Path
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import synth_image, synth_video
-from _paths import CLI
+from _paths import CLI_ARGV
 
 
 def _review_payload(page):
@@ -24,7 +23,7 @@ def _review_payload(page):
 class CliTest(unittest.TestCase):
     def call(self, *args, ok=True):
         p = subprocess.run(
-            [sys.executable, str(CLI), *map(str, args)],
+            [*CLI_ARGV, *map(str, args)],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -36,7 +35,7 @@ class CliTest(unittest.TestCase):
     def test_cli_forces_utf8_when_parent_requests_cp1252(self):
         environment = {**os.environ, "PYTHONIOENCODING": "cp1252"}
         result = subprocess.run(
-            [sys.executable, str(CLI), "doctor"],
+            [*CLI_ARGV, "doctor"],
             capture_output=True,
             env=environment,
             check=False,
@@ -222,7 +221,7 @@ class CliTest(unittest.TestCase):
             src = root / "original.mp4"
             src.write_bytes(b"not a real video")
             resolved = subprocess.run(
-                [sys.executable, str(CLI), "resolve", "--file", str(src), "--project", str(root)],
+                [*CLI_ARGV, "resolve", "--file", str(src), "--project", str(root)],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

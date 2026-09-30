@@ -17,11 +17,10 @@ em toda chamada.
 import json
 import os
 import subprocess
-import sys
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
-from _paths import CLI
+from _paths import CLI_ARGV
 
 
 def run_cli(*args, project=None, expect=0, env=None):
@@ -35,7 +34,7 @@ def run_cli(*args, project=None, expect=0, env=None):
         environment.update(env)
 
     done = subprocess.run(
-        [sys.executable, str(CLI), *map(str, command_args)],
+        [*CLI_ARGV, *map(str, command_args)],
         capture_output=True,
         text=True,
         encoding="utf-8",

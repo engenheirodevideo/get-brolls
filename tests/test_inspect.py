@@ -22,7 +22,7 @@ from unittest.mock import patch
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import synth_video
-from _paths import ROOT, SKILLS
+from _paths import CLI_ARGV, ROOT, SKILLS
 
 from getbrolls import commands, inspecting, social
 from getbrolls.cli import SUMMARIES, build_parser
@@ -461,7 +461,7 @@ class SummaryTests(unittest.TestCase):
 def run_cli(args, env=None):
     environment = {**os.environ, **(env or {})}
     return subprocess.run(
-        [sys.executable, str(ROOT / "scripts/gb.py"), *args],
+        [*CLI_ARGV, *args],
         capture_output=True,
         text=True,
         encoding="utf-8",

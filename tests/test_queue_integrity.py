@@ -8,7 +8,6 @@ import json
 import os
 import random
 import subprocess
-import sys
 import tempfile
 import textwrap
 import unittest
@@ -22,7 +21,7 @@ from unittest.mock import patch
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 
 # efeito de import: insere scripts/ em sys.path
-from _paths import CLI, ROOT  # noqa: F401  # pylint: disable=unused-import
+from _paths import CLI, CLI_ARGV, ROOT  # noqa: F401  # pylint: disable=unused-import
 
 from getbrolls import commands, queue
 from getbrolls.ledger import Ledger
@@ -282,8 +281,7 @@ class ActiveItemNextTests(unittest.TestCase):
             env = {**clean_env(), "GB_PACE_MIN_S": "30", "GB_PACE_MAX_S": "30"}
             subprocess.run(
                 [
-                    sys.executable,
-                    str(CLI),
+                    *CLI_ARGV,
                     "queue",
                     "--project",
                     tmp,
@@ -302,7 +300,7 @@ class ActiveItemNextTests(unittest.TestCase):
                 check=True,
             )
             subprocess.run(
-                [sys.executable, str(CLI), "queue", "--project", tmp, "--action", "next"],
+                [*CLI_ARGV, "queue", "--project", tmp, "--action", "next"],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -312,7 +310,7 @@ class ActiveItemNextTests(unittest.TestCase):
             path = Path(tmp) / "work/queue.json"
             before = (path.stat().st_mtime_ns, path.read_bytes())
             blocked = subprocess.run(
-                [sys.executable, str(CLI), "queue", "--project", tmp, "--action", "next"],
+                [*CLI_ARGV, "queue", "--project", tmp, "--action", "next"],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -387,7 +385,7 @@ class Schema99StatusStaysExit0Tests(unittest.TestCase):
             path.write_text(json.dumps({"schema_version": 99, "items": [], "providers": {}}), encoding="utf-8")
             before = (path.stat().st_mtime_ns, path.read_bytes())
             done = subprocess.run(
-                [sys.executable, str(CLI), "status", "--project", tmp],
+                [*CLI_ARGV, "status", "--project", tmp],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

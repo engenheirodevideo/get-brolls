@@ -4,14 +4,13 @@ Uma subclasse de KeyboardInterrupt levantada pelo plugin é falha dele."""
 import json
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
-from _paths import CLI
+from _paths import CLI_ARGV
 from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
@@ -67,7 +66,7 @@ class PluginStdoutTests(LoaderTestCase):
     def run_gb(self, *args):
         env = {**os.environ, "GB_HOME": str(self.home)}
         done = subprocess.run(
-            [sys.executable, str(CLI), *args],
+            [*CLI_ARGV, *args],
             capture_output=True,
             text=True,
             encoding="utf-8",

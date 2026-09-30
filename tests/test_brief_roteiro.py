@@ -4,7 +4,6 @@ import copy
 import json
 import shutil
 import subprocess
-import sys
 import tempfile
 import types
 import unittest
@@ -14,7 +13,7 @@ from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
-from _paths import ROOT
+from _paths import CLI_ARGV, ROOT
 
 from getbrolls import brief, delivery, roteiro
 from getbrolls.commands import _beat_search_names, brief_report, brief_state, record_empty_searches, status_report
@@ -172,14 +171,11 @@ class DocsAndSchemaTests(unittest.TestCase):
                 self.assertNotIn("até o primeiro sync", path.read_text(encoding="utf-8").lower())
 
 
-CLI = ROOT / "scripts" / "gb.py"
 RETIRED_REASON = "beat aposentado pelo roteiro"
 
 
 def run_cli(test, *args):
-    done = subprocess.run(
-        [sys.executable, str(CLI), *map(str, args)], capture_output=True, text=True, encoding="utf-8", check=False
-    )
+    done = subprocess.run([*CLI_ARGV, *map(str, args)], capture_output=True, text=True, encoding="utf-8", check=False)
     test.assertEqual(0, done.returncode, done.stderr + done.stdout)
     return json.loads(done.stdout)
 
@@ -401,7 +397,7 @@ class SearchRetiredShotTests(unittest.TestCase):
         write_brief_at(project, BASE)
         write_roteiro_at(project)
         done = subprocess.run(
-            [sys.executable, str(CLI), "search", "--query", "mapa", "--shot", "c02", "--provider", "youtube",
+            [*CLI_ARGV, "search", "--query", "mapa", "--shot", "c02", "--provider", "youtube",
              "--project", str(project)],
             capture_output=True, text=True, encoding="utf-8", check=False,
         )  # fmt: skip
@@ -474,7 +470,7 @@ class RetiredShotEverywhereTests(unittest.TestCase):
 
     def failed(self, *args):
         done = subprocess.run(
-            [sys.executable, str(CLI), *map(str, args), "--project", str(self.project)],
+            [*CLI_ARGV, *map(str, args), "--project", str(self.project)],
             capture_output=True, text=True, encoding="utf-8", check=False,
         )  # fmt: skip
         self.assertNotEqual(done.returncode, 0)

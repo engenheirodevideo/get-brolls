@@ -12,7 +12,7 @@ from pathlib import Path
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import synth_video
-from _paths import CLI
+from _paths import CLI_ARGV
 
 from getbrolls.cli import build_parser
 from getbrolls.commands import STATUS_LADDER, status_next
@@ -201,12 +201,11 @@ class SuggestedCommandRuns(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
     def test_preview_rung_command_runs_on_a_local_candidate(self):
-        cli = str(CLI)
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "original.mp4"
             synth_video(src, size="160x90", duration=6, rate=10)
             resolved = subprocess.run(
-                [sys.executable, cli, "resolve", "--file", str(src), "--project", tmp],
+                [*CLI_ARGV, "resolve", "--file", str(src), "--project", tmp],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

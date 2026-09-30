@@ -2,21 +2,20 @@
 
 import json
 import subprocess
-import sys
 import tempfile
 import unittest
 from typing import Any
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
-from _paths import CLI
+from _paths import CLI_ARGV
 
 from getbrolls.commands import PERMIT_PRESETS
 
 
 def call(*args, ok=True) -> Any:
     proc = subprocess.run(
-        [sys.executable, str(CLI), *[str(a) for a in args]],
+        [*CLI_ARGV, *[str(a) for a in args]],
         capture_output=True,
         text=True,
         encoding="utf-8",

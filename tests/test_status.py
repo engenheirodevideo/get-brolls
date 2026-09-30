@@ -5,7 +5,6 @@ import hashlib
 import json
 import shlex
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,7 +13,7 @@ from unittest import mock
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
-from _paths import CLI, ROOT
+from _paths import CLI_ARGV, ROOT
 from test_brief import VALID, write_brief
 
 from getbrolls import serve
@@ -38,7 +37,7 @@ AUDIT_FILES = {"diagnostics.jsonl", ".command.lock"}
 def run_cli(test, *args):
     """Chamada barata de CLI: o ciclo real com FFmpeg vive em tests/test_cli.py."""
     done = subprocess.run(
-        [sys.executable, str(CLI), *map(str, args)],
+        [*CLI_ARGV, *map(str, args)],
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -397,7 +396,7 @@ class StatusCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             absent = Path(tmp) / "projeto-inexistente"
             done = subprocess.run(
-                [sys.executable, str(CLI), "status", "--project", str(absent)],
+                [*CLI_ARGV, "status", "--project", str(absent)],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

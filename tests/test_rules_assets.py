@@ -1,7 +1,6 @@
 import json
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,6 +11,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 # efeito de import: insere scripts/ em sys.path; ROOT é de getbrolls.rules, não deste helper
 import _paths  # noqa: F401  # pylint: disable=unused-import
 from _media import synth_image
+from _paths import CLI_ARGV
 
 from getbrolls.browser import plan
 from getbrolls.http import _scrub
@@ -19,9 +19,7 @@ from getbrolls.ledger import Ledger
 from getbrolls.memory import remember
 from getbrolls.models import approve, candidate, set_segment, signature
 from getbrolls.review import import_review, project_id, review_epoch
-from getbrolls.rules import ROOT, allowed, format_report, load_rules, sync_formats
-
-CLI = ROOT / "scripts/gb.py"
+from getbrolls.rules import allowed, format_report, load_rules, sync_formats
 
 
 class RulesTests(unittest.TestCase):
@@ -122,7 +120,7 @@ class RulesTests(unittest.TestCase):
 
             def call(*args, ok=True):
                 run = subprocess.run(
-                    [sys.executable, str(CLI), *map(str, args), "--project", d],
+                    [*CLI_ARGV, *map(str, args), "--project", d],
                     text=True,
                     capture_output=True,
                     encoding="utf-8",
@@ -234,7 +232,7 @@ class FormatChangeGateTests(unittest.TestCase):
             rules["video_format"] = "reels"
             path.write_text("```json\n" + json.dumps(rules) + "\n```", encoding="utf-8")
             proc = subprocess.run(
-                [sys.executable, str(CLI), "status", "--project", folder],
+                [*CLI_ARGV, "status", "--project", folder],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -255,7 +253,7 @@ class FormatChangeGateTests(unittest.TestCase):
                 with self.subTest(command=command[0]):
                     # Só stdout/stderr importam aqui; o código de saída não é verificado.
                     proc = subprocess.run(  # noqa: PLW1510  # pylint: disable=subprocess-run-check
-                        [sys.executable, str(CLI), *command, "--project", folder],
+                        [*CLI_ARGV, *command, "--project", folder],
                         capture_output=True,
                         text=True,
                     )
@@ -264,7 +262,7 @@ class FormatChangeGateTests(unittest.TestCase):
             self.assertEqual("approved", Ledger(folder).data["items"][0]["approval"]["status"])
             # Um comando de escrita continua barrado até o sim explícito.
             blocked = subprocess.run(
-                [sys.executable, str(CLI), "review", "--project", folder],
+                [*CLI_ARGV, "review", "--project", folder],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
