@@ -72,7 +72,7 @@ class UnknownPresetWithPluginTests(LoaderTestCase):
         self.assertEqual(2, done.returncode)
         expected = argparse_choice_error("naoexiste", sorted({*PERMIT_PRESETS, "demo"}))
         self.assertEqual(expected, done.stderr.strip().splitlines()[-1].split("error: ", 1)[1])
-        self.assertIn("'demo'", expected)
+        self.assertIn("demo", expected)
 
 
 if __name__ == "__main__":

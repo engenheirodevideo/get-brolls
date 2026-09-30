@@ -392,10 +392,13 @@ só-metadados sai `search_ok` com `refresh: "no_media_url (fonte só-metadados)"
 fonte com rota sai `refresh: "route"`, e o texto de um `PluginError` (ex.:
 "Configure PASTA_LOCAL_DIR…") aparece no `detail`.
 
-Escrever ou revisar um plugin é assunto do [SDK.md](SDK.md) — manifesto,
-contrato de `Provider`/`Route`, `PluginApi`, o que o core reescreve nos
-candidatos e o modelo de confiança (não é uma caixa de areia). Os exemplos
-funcionais estão em
+Escrever ou revisar um plugin começa pelo caminho curto em
+[PLUGIN_DEV_QUICKSTART.md](PLUGIN_DEV_QUICKSTART.md) e a referência completa fica
+em [SDK.md](SDK.md) — manifesto, contrato de `Provider`/`Route`, `PluginApi`,
+o que o core reescreve nos candidatos e o modelo de confiança (não é uma caixa
+de areia). Exporter/resolver para motion ou editor é experimental e está
+documentado no SDK; use o exemplo HyperFrames só depois de revisar permissões e
+dependências externas. Os exemplos funcionais estão em
 [`examples/plugins/pasta_local`](../examples/plugins/pasta_local/README.md)
 (acervo local, rota de prévia e comando) e
 [`examples/plugins/banco_http`](../examples/plugins/banco_http/README.md)

@@ -15,7 +15,9 @@ O Get B-rolls aceita extensões locais em Python: **plugins** instalados numa
 pasta pessoal, com opt-in explícito, que contribuem fontes de busca
 (`providers`), rotas que trazem o arquivo (`routes`), comandos próprios
 (`commands`) e presets de licença. Este documento é a referência do SDK; para
-exemplos completos e funcionais, veja
+o caminho curto de criação, segurança e testes, veja
+[`PLUGIN_DEV_QUICKSTART.md`](PLUGIN_DEV_QUICKSTART.md). Para exemplos completos
+e funcionais, veja
 [`examples/plugins/pasta_local`](../examples/plugins/pasta_local/README.md)
 (acervo local, rota de prévia e comando) e
 [`examples/plugins/banco_http`](../examples/plugins/banco_http/README.md)

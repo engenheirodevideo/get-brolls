@@ -94,6 +94,7 @@ Projeto da 2.5 segue exatamente igual: nada muda sem um `ROTEIRO.md` do get-brol
 - CONTRIBUTING mostra como rodar um arquivo de teste só (`discover -s tests -p "test_x.py"`).
 - **SKILL.md.** A `description` ganha o gatilho de roteiro e export, ao lado do de b-roll, e não diz mais que a skill "não serve para editar/montar" o vídeo — ela agora também escreve e exporta o roteiro, só não renderiza nem edita o vídeo final. O espelho (`skills/get-brolls/SKILL.md`) é gerado de novo pelo `scripts/gen_skill_mirror.py`.
 - **`docs/SDK.md`** ganha a seção "Seu exporter em 30 minutos" (um exporter mínimo, a partir de `examples/plans/reels.plan.json`, e `plugins --action check`) e atualiza `api.local_file` para a conferência de link pasta a pasta descrita em Segurança.
+- **`docs/PLUGIN_DEV_QUICKSTART.md`** (novo): o caminho curto para quem cria plugin — tipos, scaffold, `check` (executa o `register()`), instalação em dois passos com `--expect` e checklist de segurança. README, GUIDE, SDK e AGENTS apontam para ele.
 
 ### Manutenção
 

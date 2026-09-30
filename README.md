@@ -344,7 +344,7 @@ Execute um comando por projeto de cada vez. Preserve originais, cache e históri
 | [AGENTS.md](AGENTS.md) | Índice para agentes e mantenedores: mapa do repositório, instalação por agente e regras de manutenção. |
 | [docs/MANUAL.md](docs/MANUAL.md) | Manual + tutorial: cada comando explicado, formato da resposta, BRIEF/RULES/.env e automação. Comece por aqui se está chegando agora. |
 | [docs/GUIDE.md](docs/GUIDE.md) · [SKILL.md](SKILL.md) | Manual completo e instruções de execução para o agente. |
-| [docs/SDK.md](docs/SDK.md) | Plugins do SDK (experimental): fontes, rotas e comandos próprios em `~/.getbrolls/plugins`. Não confunda com o plugin do Claude Code. |
+| [docs/PLUGIN_DEV_QUICKSTART.md](docs/PLUGIN_DEV_QUICKSTART.md) · [docs/SDK.md](docs/SDK.md) | Criar plugins do SDK (experimental): caminho curto, exemplos, segurança, fontes, rotas, comandos e exportadores em `~/.getbrolls/plugins`. Não confunda com o plugin do Claude Code. |
 | [docs/QUALITY.md](docs/QUALITY.md) | Testes, evidências reais e limites conhecidos. |
 | [docs/RULES.md](docs/RULES.md) · [.env.example.pt-BR](.env.example.pt-BR) | Regras editoriais e opções de configuração. |
 | [docs/SECURITY.md](docs/SECURITY.md) | Tratamento de dados privados e relato de vulnerabilidades. |
