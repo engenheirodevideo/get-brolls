@@ -1,8 +1,10 @@
 """`doctor` diz se está pronto (`ready`, saída 4) e `setup --check` confere o runtime sem instalar."""
 
+import contextlib
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -87,6 +89,7 @@ class DoctorReadyTests(unittest.TestCase):
             summary = commands.doctor_summary({}, (), ["docs/RULES.md"])
         entry = next(e for e in summary["missing"] if e["item"] == "dados da instalação")
         self.assertEqual("uv tool install --reinstall getbrolls", entry["fix"])
+        self.assertEqual(_paths.REINSTALL_COMMAND, entry["fix"])
         self.assertEqual("Faltam: docs/RULES.md", entry["note"])
 
 
@@ -99,7 +102,10 @@ class SetupCheckTests(unittest.TestCase):
             payload = json.loads(done.stdout)
             self.assertEqual(ready_exit(payload), done.returncode)
             self.assertFalse((home / "runtime").exists())
-        self.assertEqual(["ytdlp", "playwright", "ffmpeg", "ffprobe", "node"], [s["id"] for s in payload["steps"]])
+        self.assertEqual(
+            ["ytdlp", "playwright", "ffmpeg", "ffprobe", "curl", "node", "npx", "data"],
+            [s["id"] for s in payload["steps"]],
+        )
         self.assertTrue(payload["summary"]["line"])
         for step in payload["steps"]:
             self.assertEqual(step["ok"], step["found"] is not None, step)
@@ -150,6 +156,65 @@ class SetupCheckTests(unittest.TestCase):
         self.assertTrue(any("requirements.txt" in command for command in ytdlp["commands"]), ytdlp["commands"])
         playwright = next(s for s in result["steps"] if s["id"] == "playwright")
         self.assertTrue(any(c.startswith("npm ci --prefix ") for c in playwright["commands"]), playwright["commands"])
+
+    def test_setup_check_names_every_required_executable_of_the_doctor(self):
+        ids = {s["id"] for s in bootstrap.check()["steps"]}
+        expected = {bootstrap.STEP_IDS.get(name, name) for name in commands.REQUIRED_EXECUTABLES}
+        self.assertEqual(expected | {"data"}, ids)
+
+    def test_missing_data_is_a_setup_step_with_the_reinstall(self):
+        fake = _paths.Install("wheel", Path("pkg"), Path("pkg/_data"), None)
+        with (
+            patch.object(_paths, "install", return_value=fake),
+            patch.object(_paths, "verify_data", return_value=["docs/RULES.md"]),
+        ):
+            result = bootstrap.check()
+        data = next(s for s in result["steps"] if s["id"] == "data")
+        self.assertIs(False, data["ok"])
+        self.assertIsNone(data["found"])
+        self.assertEqual([_paths.REINSTALL_COMMAND], data["commands"])
+        self.assertIn("docs/RULES.md", data["note"])
+        self.assertIs(False, result["ready"])
+        self.assertIn("data", result["summary"]["missing"])
+
+    def test_without_the_dependency_files_the_runtime_fix_is_the_reinstall(self):
+        fake = _paths.Install("wheel", Path("pkg"), Path("pkg/_data"), None)
+        with (
+            patch.object(_paths, "install", return_value=fake),
+            patch.object(_paths, "requirements_sha", return_value=None),
+            patch.object(bootstrap, "_resolved", return_value={}),
+        ):
+            result = bootstrap.check()
+        for step in (s for s in result["steps"] if s["id"] in bootstrap.RUNTIME_STEPS):
+            self.assertEqual([_paths.REINSTALL_COMMAND], step["commands"], step)
+            self.assertFalse(any("pip install -r" in command for command in step["commands"]), step)
+
+    def test_setup_check_ready_agrees_with_doctor_ready(self):
+        """Tudo no PATH e um único item quebrado por vez: os dois vereditos sempre batem."""
+
+        def which(missing=None):
+            return lambda name, *_args, **_kwargs: None if name == missing else sys.executable
+
+        pins = ("GB_FFMPEG_PATH", "GB_FFPROBE_PATH", "GB_YTDLP_PATH", "GB_VENV_PATH")
+        clean = {key: value for key, value in os.environ.items() if key not in pins}
+        with tempfile.TemporaryDirectory() as tmp:
+            cases = {
+                "ready": (),
+                "broken-pin": (patch.dict(os.environ, {"GB_FFMPEG_PATH": str(Path(tmp) / "sem-ffmpeg")}),),
+                "no-curl": (patch.object(commands.shutil, "which", side_effect=which("curl")),),
+                "no-npx": (patch.object(commands.shutil, "which", side_effect=which("npx")),),
+                "no-data": (patch.object(_paths, "verify_data", return_value=["docs/RULES.md"]),),
+            }
+            for label, patches in cases.items():
+                with self.subTest(case=label), contextlib.ExitStack() as stack:
+                    stack.enter_context(patch.dict(os.environ, clean, clear=True))
+                    stack.enter_context(patch.object(commands.shutil, "which", side_effect=which()))
+                    for item in patches:
+                        stack.enter_context(item)
+                    doctor = cli.main(["doctor"])
+                    setup = bootstrap.check()
+                    self.assertEqual(doctor["ready"], setup["ready"], (doctor["summary"], setup["summary"]))
+                    self.assertIs(label == "ready", setup["ready"], setup["summary"])
 
     def test_setup_is_read_only_and_a_prerequisite_command(self):
         self.assertIn("setup", READ_ONLY_COMMANDS)

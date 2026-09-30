@@ -42,9 +42,9 @@ WHEEL_MANIFEST = "_data/MANIFEST"  # relativo à pasta do pacote
 CHECKOUT_MANIFEST = "packaging/data_manifest.txt"  # relativo à raiz do repositório
 _REPO_SENTINELS = ("scripts/gb.py", "docs/RULES.md", "assets/brand-logo.png")
 
-_DATA_REINSTALL = (
-    "Reinstale (`uv tool install --reinstall getbrolls`) ou rode pelo repositório (`python3 scripts/gb.py`)."
-)
+# Reinstalar é o único jeito de repor os arquivos de dados de um pacote instalado.
+REINSTALL_COMMAND = "uv tool install --reinstall getbrolls"
+_DATA_REINSTALL = f"Reinstale (`{REINSTALL_COMMAND}`) ou rode pelo repositório (`python3 scripts/gb.py`)."
 _DATA_ROOT_MISSING = f"Os arquivos de dados do getbrolls não estão junto do pacote. {_DATA_REINSTALL}"
 _ENV_FLAG_MISSING = "--env-file não existe. Confira o caminho."
 _ENV_VAR_MISSING = "GB_ENV_FILE aponta para um arquivo que não existe. Confira o caminho ou remova a variável."
