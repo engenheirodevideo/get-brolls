@@ -57,6 +57,10 @@ SUMMARIES = {
     "capabilities": (
         "Descrever em JSON os comandos, flags, códigos de saída e comandos de plugin desta instalação (para agentes)"
     ),
+    "client": (
+        "Registrar, listar, mostrar ou desregistrar pastas de cliente (componentes e templates) no "
+        "$GB_HOME/clients.json"
+    ),
     "x": "Rodar um comando de plugin habilitado (x --list mostra quais existem); só lê o projeto",
     "setup": (
         "Conferir (--check) o runtime da instalação: venv do yt-dlp, Playwright e FFmpeg, com os comandos que faltam"
@@ -277,9 +281,27 @@ def _check_preset_name(args):
         parser.error(str(exc))
 
 
+def _add_client_arguments(p):
+    """Flags de `client`: a pasta de cada cliente fica onde a pessoa escolher, registrada no GB_HOME."""
+    p.add_argument(
+        "--action",
+        required=True,
+        choices=["add", "list", "show", "remove"],
+        help=(
+            "add: cria (ou reaproveita) <root>/<slug>/ e registra; list/show: só leem o registro e o client.json; "
+            "remove: desregistra, sem apagar a pasta"
+        ),
+    )
+    p.add_argument("--slug", help="Slug do cliente: minúsculas, números e - (add/show/remove)")
+    p.add_argument("--name", help="Nome de exibição do cliente novo (add); sem ele, o slug")
+    p.add_argument("--root", help="Pasta existente, em caminho absoluto, onde nasce <root>/<slug>/ (add)")
+
+
 def _add_toolchain_subcommands(sub):
-    """Acrescenta os subcomandos sem `--project` obrigatório: providers, doctor, plugins, x, setup, capabilities."""
-    for name in ("providers", "doctor", "plugins", "x", "setup", "capabilities"):
+    """Acrescenta os subcomandos sem `--project` obrigatório.
+
+    São eles: providers, doctor, plugins, x, setup, capabilities e client."""
+    for name in ("providers", "doctor", "plugins", "x", "setup", "capabilities", "client"):
         p = sub.add_parser(name, help=SUMMARIES[name], description=SUMMARIES[name])
         _SUBPARSERS[name] = p
         if name in ("doctor", "setup", "capabilities"):
@@ -337,6 +359,8 @@ def _add_toolchain_subcommands(sub):
                     "para confirmar que o conteúdo não mudou desde a prévia"
                 ),
             )
+        if name == "client":
+            _add_client_arguments(p)
         if name == "x":
             p.add_argument("plugin_id", nargs="?", metavar="plugin", help="Id do plugin dono do comando")
             p.add_argument("plugin_command", nargs="?", metavar="comando", help="Nome do comando do plugin")

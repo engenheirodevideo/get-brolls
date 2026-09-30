@@ -355,6 +355,77 @@
         }
       ]
     },
+    "client": {
+      "help": "Registrar, listar, mostrar ou desregistrar pastas de cliente (componentes e templates) no $GB_HOME/clients.json",
+      "options": [
+        {
+          "action": "_HelpAction",
+          "choices": null,
+          "default": "==SUPPRESS==",
+          "dest": "help",
+          "help": "show this help message and exit",
+          "nargs": 0,
+          "option_strings": [
+            "--help",
+            "-h"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "add",
+            "list",
+            "remove",
+            "show"
+          ],
+          "default": null,
+          "dest": "action",
+          "help": "add: cria (ou reaproveita) <root>/<slug>/ e registra; list/show: só leem o registro e o client.json; remove: desregistra, sem apagar a pasta",
+          "nargs": null,
+          "option_strings": [
+            "--action"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "slug",
+          "help": "Slug do cliente: minúsculas, números e - (add/show/remove)",
+          "nargs": null,
+          "option_strings": [
+            "--slug"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "name",
+          "help": "Nome de exibição do cliente novo (add); sem ele, o slug",
+          "nargs": null,
+          "option_strings": [
+            "--name"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "root",
+          "help": "Pasta existente, em caminho absoluto, onde nasce <root>/<slug>/ (add)",
+          "nargs": null,
+          "option_strings": [
+            "--root"
+          ],
+          "required": false
+        }
+      ]
+    },
     "deliver": {
       "help": "Organizar os trechos coletados em entrega/, uma pasta por beat",
       "options": [

@@ -12,4 +12,6 @@ package.json
 requirements.txt
 schemas/brief.schema.json
 schemas/candidate.schema.json
+schemas/client.schema.json
+schemas/clients.schema.json
 schemas/export_plan.schema.json

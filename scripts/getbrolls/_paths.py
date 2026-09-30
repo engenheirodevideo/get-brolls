@@ -36,6 +36,8 @@ REQUIRED_DATA: tuple[str, ...] = (
     "requirements.txt",
     "schemas/brief.schema.json",
     "schemas/candidate.schema.json",
+    "schemas/client.schema.json",
+    "schemas/clients.schema.json",
     "schemas/export_plan.schema.json",
 )
 WHEEL_MANIFEST = "_data/MANIFEST"  # relativo à pasta do pacote
