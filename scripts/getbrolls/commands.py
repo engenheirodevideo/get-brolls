@@ -97,14 +97,17 @@ def doctor_resolved(overrides):
 
     resolved = {}
     for name in PROBED_EXECUTABLES:
-        found = overrides.get(TOOL_PATH_KEYS.get(name) or "") or shutil.which(name)
-        if not found and name == "yt-dlp":
-            from .social import local_ytdlp
+        if name == "yt-dlp":
+            # O que `social.command()` usaria (pin, venv, PATH), nunca o PATH na frente da venv.
+            from .social import ytdlp_in_use
 
             try:
-                found = local_ytdlp()
+                found = ytdlp_in_use()[0]
             except ValueError:
                 found = None
+            resolved[name] = str(Path(found).resolve()) if found else None
+            continue
+        found = overrides.get(TOOL_PATH_KEYS.get(name) or "") or shutil.which(name)
         if not found and name == "playwright-cli":
             found = _local_playwright()
         resolved[name] = str(Path(found).resolve()) if found else None
@@ -135,7 +138,19 @@ def readiness_probe():
         social = social_doctor()
     except ValueError as exc:
         social = {"engine": "yt-dlp", "installed": False, "error": str(exc)}
+    _judge_ytdlp(social)
     return overrides, pin_problems, social, _doctor_executables(overrides, social)
+
+
+def _judge_ytdlp(social):
+    """O yt-dlp em uso só conta se funciona: a venv dele importa o `yt_dlp` e, sem venv
+    em uso, nenhuma venv gerenciada ficou pela metade (`bootstrap.ytdlp_problem`)."""
+    from . import bootstrap  # tardio: o `bootstrap` importa este módulo
+
+    problem = bootstrap.ytdlp_problem(social.get("source"), social.get("executable"))
+    if problem:
+        social["installed"] = False
+        social["problem"] = problem
 
 
 def doctor_summary(executables, pins=(), data_missing=()):
@@ -2477,9 +2492,17 @@ def _doctor_executables(overrides, social):
 
 def _doctor_report(config, providers_result, live, env_flag=None):
     """Monta o relatório completo de `doctor`: executáveis, engine social, plugins e instalação."""
+    from getbrolls import profile
+
     overrides, pin_problems, social, executables = readiness_probe()
     install = _paths.install_report(env_flag)
+    install["profile"] = profile.report()
     summary = doctor_summary(executables, pin_problems, install.get("data_missing") or ())
+    if social.get("problem"):
+        for entry in summary["missing"]:
+            if entry["item"] == "yt-dlp":
+                entry["note"] = social["problem"]
+    summary["missing"] += profile.doctor_problems(profile.current())
     sheet = doctor_contact_sheet(executables.get("ffmpeg"))
     summary["optional"] += sheet["optional"]
     result = {
@@ -2517,7 +2540,12 @@ def _execute_providers_or_doctor(args, config):
 
 
 def _execute_toolchain(args):
-    """`plugins`/`x` vão ao SDK, `setup` ao `bootstrap`, `capabilities` ao manifesto; nenhum toca projeto."""
+    """`plugins`/`x` vão ao SDK, `setup` ao `bootstrap`, `capabilities` ao manifesto, `profile` ao perfil;
+    nenhum toca projeto."""
+    if args.command == "profile":
+        from getbrolls import profile
+
+        return profile.run(args)
     if args.command == "capabilities":
         from getbrolls import capabilities
         from getbrolls.cli import build_parser
@@ -3166,12 +3194,11 @@ def _execute_project_command(cmd, args, config, rules, ledger):
 
 def execute(args):
     """Prepara ambiente/config e despacha o comando para o handler certo, em ordem de dependência crescente."""
-    from getbrolls import _paths
-    from getbrolls.config import load_env_choice, settings
+    from getbrolls.config import load_environment, settings
 
-    # `UsageError` quando `--env-file` ou `GB_ENV_FILE` apontam para um arquivo que não existe.
-    choice = _paths.env_file(getattr(args, "env_file", None))
-    load_env_choice(choice, warn=True)
+    # `UsageError` quando `--env-file` ou `GB_ENV_FILE` apontam para um arquivo que não existe,
+    # ou quando o getbrolls.toml não vale para este comando (ver `profile.activate`).
+    choice = load_environment(args, warn=True)
     config = settings()
     with contextlib.suppress(Exception):
         logs.event(
@@ -3184,7 +3211,7 @@ def execute(args):
             brief_present=_brief_present(args),
             provider_keys=_provider_keys_set(),
         )
-    if args.command in ("plugins", "x", "setup", "capabilities"):
+    if args.command in ("plugins", "x", "setup", "capabilities", "profile"):
         return _execute_toolchain(args)
     if args.command in ("providers", "doctor"):
         return _execute_providers_or_doctor(args, config)

@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import cast
 
 from . import _paths
+from .config import SECRET_ENV_SUFFIXES as _SECRET_ENV_SUFFIXES
 
 DEFAULT_PORT = 8767
 
@@ -561,11 +562,6 @@ def _rotate_log(log):
             stream.write(kept)
     except OSError:
         return
-
-
-# Sufixos que marcam uma variável como segredo: nenhuma delas tem por que alcançar
-# o filho detached, que nunca fala com um provedor.
-_SECRET_ENV_SUFFIXES = ("_API_KEY", "_TOKEN", "_SECRET")
 
 
 def _child_environment(source_env, scripts):

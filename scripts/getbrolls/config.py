@@ -71,8 +71,14 @@ KEYS = {
     "GB_LOG_STDERR",
 }
 
-# Só do ambiente do processo; nunca num .env.
-PROCESS_ONLY_KEYS = frozenset({"GB_ENV_FILE"})
+# Só do ambiente do processo; nunca num .env. `GB_PROFILE` (caminho do getbrolls.toml ou
+# `off`) e `GB_PROFILE_SHA256` (o sha que o processo pai conferiu) passam o perfil já
+# ativado aos filhos: vindos de um .env, forjariam a confiança no perfil.
+PROCESS_ONLY_KEYS = frozenset({"GB_ENV_FILE", "GB_PROFILE", "GB_PROFILE_SHA256"})
+
+# Sufixos que marcam uma variável como segredo: nenhuma delas tem por que alcançar um
+# processo filho que nunca fala com um provedor.
+SECRET_ENV_SUFFIXES = ("_API_KEY", "_TOKEN", "_SECRET")
 
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
 
@@ -374,6 +380,24 @@ def load_env_choice(choice, *, warn):
         record_warning("ENV_FILE_SHADOWED", _ENV_SHADOWED)
     if "GB_HOME" in core_keys:
         record_warning("DEPRECATED", _GB_HOME_IN_ENV_DEPRECATED)
+
+
+def load_environment(args, *, warn):
+    """Perfil e `.env` na ordem do contrato: `home` do perfil → escolha do `.env` → `.env` → resto do perfil.
+
+    O `home` do perfil decide qual `$GB_HOME/.env` é lido; o `.env` vence o resto do
+    perfil. Devolve a escolha do `.env` (`_paths.EnvChoice`). Perfil não confiável ou
+    inválido num comando estrito é `UsageError`; `requires` que não bate,
+    `PrerequisiteError` (ver `profile.activate`).
+    """
+    from . import _paths, profile  # tardio: o `profile` importa o `sdk`, que importa este módulo
+
+    active = profile.activate(args)
+    profile.check_home_files()
+    choice = _paths.env_file(getattr(args, "env_file", None))
+    load_env_choice(choice, warn=warn)
+    profile.finish(active)
+    return choice
 
 
 def _pinned(key):

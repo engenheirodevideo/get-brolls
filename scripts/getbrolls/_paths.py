@@ -10,6 +10,7 @@ a origem é `unknown` e nada é adivinhado por `exists()` em pasta vizinha.
 
 import functools
 import hashlib
+import json
 import os
 import platform
 import shlex
@@ -72,7 +73,7 @@ class RuntimePart:
     """Pasta do runtime (`.venv` ou `.tools`) e de onde ela veio."""
 
     path: Path
-    source: str  # "GB_RUNTIME_DIR", "gb_home" ou "checkout"
+    source: str  # "GB_RUNTIME_DIR", "profile", "gb_home" ou "checkout"
 
 
 @dataclass(frozen=True)
@@ -155,47 +156,242 @@ def gb_home() -> Path:
     return Path(os.environ.get("GB_HOME") or Path.home() / ".getbrolls")
 
 
-def requirements_sha() -> str | None:
-    """Versão das dependências (requirements.txt + package-lock.json); `None` sem os dados."""
+# Partes do runtime e a pasta de cada uma dentro da raiz.
+RUNTIME_PARTS: dict[str, str] = {"venv": ".venv", "tools": ".tools"}
+# Arquivos que definem a versão de cada parte: o `npm ci` exige os dois do npm em acordo.
+_PART_FILES: dict[str, tuple[str, ...]] = {
+    "venv": ("requirements.txt",),
+    "tools": ("package.json", "package-lock.json"),
+}
+# Marcador de cada parte, na raiz dela (ao lado de `.venv`/`.tools`). Quem instala grava
+# `building` antes e `ready` por último: quem lê só aceita uma parte compartilhada `ready`.
+RUNTIME_MARKER = ".getbrolls-runtime-{part}.json"
+MARKER_SCHEMA_VERSION = 1
+MARKER_STATUSES = ("building", "upgrading", "ready")
+_RUNTIME_CONFLICT = (
+    "{source} aponta para uma pasta de runtime montada por outra versão do getbrolls ({part}). "
+    "Pastas explícitas não são trocadas sozinhas: use uma pasta por versão ou apague essa à mão."
+)
+
+# Chaves que o perfil aplicou ao ambiente, com o valor aplicado (ver `note_profile_env`).
+_PROFILE_ENV: dict[str, str] = {}
+# Por parte: (assinatura dos arquivos por mtime/tamanho, sha calculado).
+_SHA_CACHE: dict[str, tuple[tuple, str]] = {}
+
+
+def note_profile_env(applied: Mapping[str, str]) -> None:
+    """Registra as chaves que o perfil pôs no ambiente, para citar `profile` como origem.
+
+    Único registro do processo: `profile` grava aqui e lê daqui (`profile_env`).
+    """
+    _PROFILE_ENV.update(applied)
+
+
+def profile_env() -> dict[str, str]:
+    """Cópia do registro: chave `GB_*` → valor que o perfil pôs no ambiente."""
+    return dict(_PROFILE_ENV)
+
+
+def forget_profile_env() -> None:
+    """Esvazia o registro (nova ativação do perfil, ou testes)."""
+    _PROFILE_ENV.clear()
+
+
+def from_profile(key: str) -> bool:
+    """A chave veio do perfil e ninguém a trocou depois?"""
+    return key in _PROFILE_ENV and os.environ.get(key) == _PROFILE_ENV[key]
+
+
+def part_sha(part: str) -> str | None:
+    """Versão de uma parte do runtime pelos arquivos que a definem; `None` sem eles.
+
+    Guardada por mtime e tamanho dos arquivos: só relê quando um deles muda.
+    """
     try:
-        root = data_root()
-        blob = (root / "requirements.txt").read_bytes() + b"\0" + (root / "package-lock.json").read_bytes()
+        files = [data_root() / name for name in _PART_FILES[part]]
+        signature = tuple((str(path), stat.st_mtime_ns, stat.st_size) for path, stat in ((p, p.stat()) for p in files))
+        cached = _SHA_CACHE.get(part)
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+        blob = b"\0".join(path.read_bytes() for path in files)
     except (DataRootError, OSError):
         return None
-    return hashlib.sha256(blob).hexdigest()[:16]
+    sha = hashlib.sha256(blob).hexdigest()[:16]
+    _SHA_CACHE[part] = (signature, sha)
+    return sha
 
 
-def _runtime_part(name: str) -> RuntimePart:
+def _explicit_root() -> tuple[Path, str] | None:
     explicit = os.environ.get("GB_RUNTIME_DIR")
-    if explicit:
-        return RuntimePart(Path(explicit) / name, "GB_RUNTIME_DIR")
-    # Sem os dados não há versão das dependências; a pasta compartilhada ganha um nome fixo.
-    shared = gb_home() / "runtime" / (requirements_sha() or "unknown") / name
-    if shared.is_dir():
-        return RuntimePart(shared, "gb_home")
+    if not explicit:
+        return None
+    return Path(explicit), "profile" if from_profile("GB_RUNTIME_DIR") else "GB_RUNTIME_DIR"
+
+
+def runtime_root(part: str) -> tuple[Path, str]:
+    """Raiz de uma parte e sua origem: a pasta explícita ou `$GB_HOME/runtime/<sha da parte>`.
+
+    Numa pasta explícita (`GB_RUNTIME_DIR` ou o `runtime_dir` do perfil) as duas partes
+    dividem a raiz e não há garantia de troca atômica: quem lê usa o que estiver lá.
+    """
+    explicit = _explicit_root()
+    if explicit is not None:
+        return explicit
+    # Sem os dados não há versão da parte; a pasta compartilhada ganha um nome fixo.
+    return gb_home() / "runtime" / (part_sha(part) or "unknown"), "gb_home"
+
+
+def runtime_target(part: str) -> RuntimePart:
+    """Onde a parte seria instalada; nunca a pasta do checkout."""
+    root, source = runtime_root(part)
+    return RuntimePart(root / RUNTIME_PARTS[part], source)
+
+
+def marker_path(part: str, root: Path) -> Path:
+    """Arquivo do marcador de uma parte, na raiz dela."""
+    return root / RUNTIME_MARKER.format(part=part)
+
+
+def read_marker(part: str, root: Path) -> dict | None:
+    """Conteúdo do marcador, ou `None` (ausente, ilegível, não é objeto); nunca levanta."""
+    try:
+        marker = json.loads(marker_path(part, root).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return marker if isinstance(marker, dict) else None
+
+
+def write_marker(part: str, root: Path, status: str, extra: Mapping[str, object] | None = None) -> Path:
+    """Grava o marcador da parte (troca atômica do arquivo); devolve o caminho.
+
+    Registra a versão da parte e, na `.venv`, o Python base que a criou; `extra` acrescenta
+    campos informativos (o `upgraded` do `setup --upgrade`, por exemplo).
+    """
+    if status not in MARKER_STATUSES:
+        raise ValueError(f"status de marcador desconhecido: {status}")
+    from . import __version__  # tardio: este módulo só depende da stdlib e de `errors`
+
+    python = getattr(sys, "_base_executable", None) or sys.executable
+    marker = {
+        "schema": MARKER_SCHEMA_VERSION,
+        "part": part,
+        "sha": part_sha(part),
+        "status": status,
+        "python": python if part == "venv" else None,
+        "getbrolls": __version__,
+        **(extra or {}),
+    }
+    path = marker_path(part, root)
+    root.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(marker, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+    return path
+
+
+def venv_python(folder: Path) -> Path:
+    """O Python da própria `.venv` (`bin/python`, ou `Scripts/python.exe` no Windows)."""
+    return folder / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+
+
+def _venv_base_exists(venv: Path) -> bool:
+    """O Python base da `.venv` (`home` do `pyvenv.cfg`) ainda existe?"""
+    try:
+        lines = (venv / "pyvenv.cfg").read_text(encoding="utf-8").splitlines()
+    except (OSError, ValueError):
+        return False
+    for line in lines:
+        key, sep, value = line.partition("=")
+        if sep and key.strip().lower() == "home":
+            return bool(value.strip()) and Path(value.strip()).is_dir()
+    return False
+
+
+def _venv_intact(folder: Path, marker: Mapping) -> bool:
+    """A `.venv` ainda tem Python: o base que a criou (marcador e `pyvenv.cfg`) e o dela.
+
+    `Path.exists` segue links: `bin/python` → `python3.X` → um Python removido conta
+    como ausente, mesmo com a pasta `home` do `pyvenv.cfg` ainda lá (o `/usr/bin` do Debian).
+    """
+    base = marker.get("python")
+    if not isinstance(base, str) or not base or not Path(base).exists():
+        return False
+    return venv_python(folder).exists() and _venv_base_exists(folder)
+
+
+def part_ready(part: str, root: Path) -> bool:
+    """A parte em `root` está pronta: marcador `ready` da versão atual e pasta íntegra.
+
+    Só olha arquivos (barato, chamado a cada resolução); a sonda que roda o Python da
+    venv (`bootstrap.venv_health`) fica com `setup`, `setup --check` e `doctor`.
+    """
+    marker = read_marker(part, root)
+    sha = part_sha(part)
+    if marker is None or sha is None or marker.get("status") != "ready" or marker.get("sha") != sha:
+        return False
+    folder = root / RUNTIME_PARTS[part]
+    if part == "venv":
+        return _venv_intact(folder, marker)
+    return folder.is_dir()
+
+
+def runtime_conflict(part: str) -> str | None:
+    """Mensagem quando a pasta explícita já tem esta parte pronta de outra versão.
+
+    Duas versões dividindo uma pasta explícita se reinstalariam sem fim; quem instala
+    recusa em vez de apagar. Um marcador que não chegou a `ready` é build interrompido.
+    """
+    explicit = _explicit_root()
+    if explicit is None:
+        return None
+    root, source = explicit
+    marker = read_marker(part, root)
+    if marker is None or marker.get("status") != "ready" or marker.get("sha") == part_sha(part):
+        return None
+    return _RUNTIME_CONFLICT.format(
+        source=source if source == "GB_RUNTIME_DIR" else "O runtime_dir do perfil", part=part
+    )
+
+
+def _runtime_part(part: str) -> RuntimePart:
+    root, source = runtime_root(part)
+    shared = RuntimePart(root / RUNTIME_PARTS[part], source)
+    if source != "gb_home" or part_ready(part, root):
+        return shared
     inst = install()
-    if inst.origin == "checkout" and inst.checkout_root is not None and (inst.checkout_root / name).is_dir():
-        return RuntimePart(inst.checkout_root / name, "checkout")
-    return RuntimePart(shared, "gb_home")
+    local = inst.checkout_root / RUNTIME_PARTS[part] if inst.origin == "checkout" and inst.checkout_root else None
+    if local is not None and local.is_dir():
+        return RuntimePart(local, "checkout")
+    return shared
 
 
 def venv_dir() -> RuntimePart:
     """`.venv` do runtime (yt-dlp)."""
-    return _runtime_part(".venv")
+    return _runtime_part("venv")
 
 
 def tools_dir() -> RuntimePart:
     """`.tools` do runtime (Playwright)."""
-    return _runtime_part(".tools")
+    return _runtime_part("tools")
+
+
+def _part_info(part: str, found: RuntimePart) -> dict:
+    marker = read_marker(part, found.path.parent)
+    return {
+        "path": str(found.path),
+        "source": found.source,
+        "managed": found.source != "checkout" and part_ready(part, found.path.parent),
+        "marker": marker.get("status") if marker is not None else None,
+        "conflict": runtime_conflict(part),
+    }
 
 
 def runtime_info() -> dict:
     """Resumo do runtime para diagnóstico."""
-    venv, tools = venv_dir(), tools_dir()
     return {
-        "req_sha": requirements_sha(),
-        "venv": {"path": str(venv.path), "source": venv.source},
-        "tools": {"path": str(tools.path), "source": tools.source},
+        "shas": {part: part_sha(part) for part in RUNTIME_PARTS},
+        "venv": _part_info("venv", venv_dir()),
+        "tools": _part_info("tools", tools_dir()),
         "explicit": bool(os.environ.get("GB_RUNTIME_DIR")),
     }
 
@@ -344,7 +540,7 @@ def installer_hint() -> str:
     if inst.origin == "checkout" and inst.checkout_root is not None:
         scripts = inst.checkout_root / "scripts"
         return f'bash "{scripts / "install.sh"}" (ou "{scripts / "install.ps1"}" no Windows)'
-    return "rode `getbrolls setup --check` e siga os comandos que ele mostrar"
+    return "rode `getbrolls setup` (instala yt-dlp e Playwright em $GB_HOME/runtime)"
 
 
 def _alias_twins(environ: Mapping[str, str]) -> Iterator[tuple[str, str]]:
@@ -391,7 +587,8 @@ def build_info() -> dict:
     }
 
 
-def _env_report(env_flag: str | None) -> dict:
+def env_report(env_flag: str | None) -> dict:
+    """Qual `.env` vale (e o que foi procurado); erro de uso vira `{"error"}`, nunca levanta."""
     try:
         choice = env_file(env_flag)
     except UsageError as exc:
@@ -416,7 +613,7 @@ def install_report(env_flag: str | None = None) -> dict:
         "data_missing": missing,
         "cli": {"argv": cli_argv(), "command": cli_command()},
         "runtime": runtime_info(),
-        "env_file": _env_report(env_flag),
+        "env_file": env_report(env_flag),
         "gb_home": str(gb_home()),
         "env_aliases": aliased_env_names(),
     }

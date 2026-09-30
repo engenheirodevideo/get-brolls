@@ -1452,6 +1452,96 @@
         }
       ]
     },
+    "profile": {
+      "help": "Mostrar o perfil getbrolls.toml em vigor (valor e origem de cada campo) ou confiar/desconfiar dele",
+      "options": [
+        {
+          "action": "_HelpAction",
+          "choices": null,
+          "default": "==SUPPRESS==",
+          "dest": "help",
+          "help": "show this help message and exit",
+          "nargs": 0,
+          "option_strings": [
+            "--help",
+            "-h"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreTrueAction",
+          "choices": null,
+          "default": false,
+          "dest": "json",
+          "help": "Aceito; a saída já é JSON (reservado para o modo humano)",
+          "nargs": 0,
+          "option_strings": [
+            "--json"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "show",
+            "trust",
+            "untrust"
+          ],
+          "default": null,
+          "dest": "profile_action",
+          "help": "show: valor e origem de cada campo; trust: confiar (prévia, depois --yes --expect); untrust: desfazer",
+          "nargs": null,
+          "option_strings": [],
+          "required": null
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "path",
+          "help": "Caminho do getbrolls.toml (padrão: o descoberto)",
+          "nargs": "?",
+          "option_strings": [],
+          "required": null
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "project",
+          "help": "Pasta de onde a busca pelo getbrolls.toml começa (antes da pasta atual)",
+          "nargs": null,
+          "option_strings": [
+            "--project"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreTrueAction",
+          "choices": null,
+          "default": false,
+          "dest": "yes",
+          "help": "trust: confirma depois de mostrar a prévia à pessoa",
+          "nargs": 0,
+          "option_strings": [
+            "--yes"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "expect",
+          "help": "trust: sha256 mostrado na prévia; obrigatório junto com --yes",
+          "nargs": null,
+          "option_strings": [
+            "--expect"
+          ],
+          "required": false
+        }
+      ]
+    },
     "providers": {
       "help": "Listar fontes disponíveis, transporte e chaves configuradas",
       "options": [
@@ -2454,7 +2544,7 @@
       ]
     },
     "setup": {
-      "help": "Conferir (--check) o runtime da instalação: venv do yt-dlp, Playwright e FFmpeg, com os comandos que faltam",
+      "help": "Instalar o runtime da instalação (yt-dlp numa venv e Playwright via npm) em $GB_HOME/runtime; --check só confere; --where mostra as pastas; FFmpeg e Node só são verificados",
       "options": [
         {
           "action": "_HelpAction",
@@ -2490,6 +2580,36 @@
           "nargs": 0,
           "option_strings": [
             "--check"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "ytdlp"
+          ],
+          "default": null,
+          "dest": "upgrade",
+          "help": "Atualizar o yt-dlp do runtime gerenciado além da versão fixada",
+          "nargs": null,
+          "option_strings": [
+            "--upgrade"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "all",
+            "tools",
+            "venv"
+          ],
+          "default": null,
+          "dest": "where",
+          "help": "Mostrar onde fica cada parte do runtime (JSON), sem instalar; sem valor, todas",
+          "nargs": "?",
+          "option_strings": [
+            "--where"
           ],
           "required": false
         }
@@ -2665,6 +2785,18 @@
       "nargs": null,
       "option_strings": [
         "--env-file"
+      ],
+      "required": false
+    },
+    {
+      "action": "_StoreAction",
+      "choices": null,
+      "default": null,
+      "dest": "profile",
+      "help": "getbrolls.toml explícito, ou `off` para não usar perfil; sem ela: GB_PROFILE, depois getbrolls.toml a partir de --project e da pasta atual",
+      "nargs": null,
+      "option_strings": [
+        "--profile"
       ],
       "required": false
     },

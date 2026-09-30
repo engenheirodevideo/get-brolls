@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-26
+updated: 2026-09-30
 tags: [get-brolls]
 ---
 
@@ -28,7 +28,20 @@ Sem telemetria: a skill não envia dados a nenhum serviço próprio. Não há en
 
 ## `.env` e caminhos que viram execução
 
-O `.env` que vale é, nesta ordem: `--env-file`, `GB_ENV_FILE` (só no ambiente do processo, nunca dentro de um `.env`), o `.env` da pasta da instalação (checkout) e, por fim, `$GB_HOME/.env`. Só um é lido; os dois nunca se misturam. Quem escreve em qualquer um deles escolhe executáveis e pastas de runtime: `GB_VENV_PATH` e os `GB_*_PATH` apontam o yt-dlp/ffmpeg/ffprobe, e `GB_RUNTIME_DIR` aponta a pasta com `.venv/` e `.tools/` de onde saem o yt-dlp e o Playwright. `GB_RUNTIME_DIR` pode vir de `GB_ENV_FILE` ou do `.env` do checkout, o mesmo vetor de `GB_VENV_PATH`: trate esses arquivos (e a pasta da instalação) com a mesma confiança que os próprios executáveis. Sem `GB_RUNTIME_DIR`, o runtime do pacote instalado vive em `$GB_HOME/runtime/<versão das dependências>/`: a pasta tem a mesma confiança que um executável seu.
+O `.env` que vale é, nesta ordem: `--env-file`, `GB_ENV_FILE` (só no ambiente do processo, nunca dentro de um `.env`), o `.env` da pasta da instalação (checkout) e, por fim, `$GB_HOME/.env`. Só um é lido; os dois nunca se misturam. Quem escreve em qualquer um deles escolhe executáveis e pastas de runtime: `GB_VENV_PATH` e os `GB_*_PATH` apontam o yt-dlp/ffmpeg/ffprobe, e `GB_RUNTIME_DIR` aponta a pasta com `.venv/` e `.tools/` de onde saem o yt-dlp e o Playwright. `GB_RUNTIME_DIR` pode vir de `GB_ENV_FILE` ou do `.env` do checkout, o mesmo vetor de `GB_VENV_PATH`: trate esses arquivos (e a pasta da instalação) com a mesma confiança que os próprios executáveis. Sem `GB_RUNTIME_DIR`, o runtime (do pacote, do checkout e do plugin; os instaladores só chamam o `setup`) vive em `$GB_HOME/runtime/<versão das dependências>/`: a pasta tem a mesma confiança que um executável seu.
+
+O `setup` roda o pip (versões fixadas em `requirements.txt`, sem hashes nesta versão) e o `npm ci --ignore-scripts` com argumentos fixos, nunca por um shell. O ambiente desses processos filhos não leva variáveis terminadas em `_API_KEY`, `_TOKEN` ou `_SECRET`, nem `PYTHONPATH`/`PYTHONHOME`; a única exceção é o `NPM_TOKEN`, entregue só ao `npm ci` (o `.npmrc` de um registro privado o lê). A pasta `runtime/<versão>` que é link simbólico ou junção é recusada: o `setup` não instala no destino do link.
+
+## Perfil `getbrolls.toml`
+
+O perfil é configuração que vira execução: `tools.ffmpeg`, `tools.ffprobe`, `tools.ytdlp` e `tools.venv` passam a ser os executáveis (e a venv) que a CLI roda, e `runtime_dir` aponta a pasta de onde saem o yt-dlp e o Playwright. Por isso ele só vale com confiança:
+
+- **Quem confia.** `GB_PROFILE` no ambiente do processo (a mesma fronteira de `GB_VENV_PATH`), o `$GB_HOME/getbrolls.toml` exato, ou um `profile trust --yes --expect <sha256>` que grava o sha dos bytes em `trusted-profiles.json`. Mudou um byte, deixa de valer até nova confiança.
+- **Onde mora a confiança.** O `trusted-profiles.json` fica no `GB_HOME` de antes do perfil, nunca no `home` que o próprio perfil escolhe: senão ele se autoconfiaria.
+- **Filhos.** A CLI passa aos processos filhos o perfil já conferido em `GB_PROFILE` + `GB_PROFILE_SHA256`; o filho confia nele como veio do ambiente, mas recusa se o sha não bater mais com o arquivo (editado no meio do caminho). Sem perfil válido, o filho recebe `GB_PROFILE=off`, nunca a busca de novo.
+- **Recusas.** O `getbrolls.toml` nunca é link simbólico, é um arquivo comum e, no POSIX, é do usuário atual e não é gravável por grupo nem por outros.
+- **O `home` relativo.** Um `home` (ou `runtime_dir`, `cache_dir`) relativo pode cair dentro do repositório onde o toml mora. O sha do perfil cobre só o toml: quem grava no repositório poderia deixar depois um `.env` (que escolhe executáveis) ou um `plugins.json` (que habilita plugins) nessa pasta. Mitigação: a prévia do `profile trust` avisa em `warnings` quando uma dessas pastas fica dentro da pasta do toml (e quando `plugins` cita id não instalado), e, com o `GB_HOME` vindo do perfil, o `.env` e o `plugins.json` de lá passam pelas mesmas recusas do toml (link, outro dono, gravável por grupo ou outros). Prefira pastas fora do repositório.
+- **Sem confiança**, só os comandos que diagnosticam (`doctor`, `profile`, `capabilities`, `setup --check`/`--where`) rodam, relatando o problema; o resto para com código `2` antes de tocar em nada.
 
 ## Plugins
 

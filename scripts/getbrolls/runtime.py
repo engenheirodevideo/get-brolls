@@ -22,7 +22,7 @@ import traceback
 from pathlib import Path
 
 from . import _paths
-from .errors import PrerequisiteError, UsageError
+from .errors import LockedError, PrerequisiteError, UsageError
 from .models import now
 
 ACTIVE: contextvars.ContextVar[dict | None] = contextvars.ContextVar("getbrolls_operation", default=None)
@@ -294,7 +294,7 @@ def project_lock(project):
         try:
             _acquire_lock(lock)
         except BlockingIOError:
-            raise ValueError("Outro comando está usando este projeto. Aguarde terminar antes de repetir.") from None
+            raise LockedError("Outro comando está usando este projeto. Aguarde terminar antes de repetir.") from None
         try:
             yield
         finally:
@@ -306,9 +306,10 @@ def project_lock(project):
 # `doctor` aceita `--project` por uniformidade com o resto da CLI, mas diagnostica a
 # instalação: não pode criar `brolls/` numa pasta que talvez nem seja um projeto.
 # `capabilities` só descreve o parser e o manifesto dos plugins, sem projeto.
-# `setup` só confere o runtime da instalação e não recebe projeto.
+# `setup` nunca recebe nem toca projeto; instala só em `$GB_HOME/runtime` ou `GB_RUNTIME_DIR`.
 # `x` roda comando de plugin, que só lê o projeto por cópias (CommandContext).
-READ_ONLY_COMMANDS = ("status", "serve", "brief", "doctor", "setup", "x", "capabilities")
+# `profile` só grava `$GB_HOME/trusted-profiles.json` (trust/untrust), nunca um projeto.
+READ_ONLY_COMMANDS = ("status", "serve", "brief", "doctor", "setup", "x", "capabilities", "profile")
 # (comando, ação) somente leitura, além dos comandos inteiros acima: `queue --action status`
 # só consulta queue.json (mesmo contrato de `status`), nunca deve tomar a trava exclusiva.
 # `roteiro --action check|plan` e `assets` também só leem: plano de cena, sync simulado e
@@ -335,8 +336,10 @@ QUIET_ERROR_COMMANDS = ("plugins", "x", "export", "assets")
 
 # `error_code` → código de saída da CLI; qualquer outro código (INVALID_DATA,
 # IO_ERROR, ...) é erro de operação ou de dados: 1. A tabela completa, com o 0, fica
-# em `cli.EXIT_CODES`; este é o único lugar que decide a saída de um erro.
-ERROR_EXIT = {"USAGE_ERROR": 2, "INTERNAL_ERROR": 3, "PREREQUISITE_MISSING": 4, "INTERRUPTED": 130}
+# em `cli.EXIT_CODES`; este é o único lugar que decide a saída de um erro. `LOCKED`
+# (outro processo segura a trava do projeto ou do runtime) sai 1, como erro de operação,
+# mas com código próprio para quem automatiza saber que basta repetir depois.
+ERROR_EXIT = {"USAGE_ERROR": 2, "INTERNAL_ERROR": 3, "PREREQUISITE_MISSING": 4, "LOCKED": 1, "INTERRUPTED": 130}
 EXIT_FOR_OTHER_ERRORS = 1
 
 
@@ -355,6 +358,8 @@ def error_code_for(exc):
         return "USAGE_ERROR"
     if isinstance(exc, PrerequisiteError):
         return "PREREQUISITE_MISSING"
+    if isinstance(exc, LockedError):
+        return "LOCKED"
     return "IO_ERROR" if isinstance(exc, OSError) else "INVALID_DATA"
 
 

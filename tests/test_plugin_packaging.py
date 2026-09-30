@@ -51,8 +51,8 @@ class SetupCommandTests(unittest.TestCase):
         self.assertTrue(frontmatter_field(SETUP_COMMAND, "description"))
         body = SETUP_COMMAND.read_text(encoding="utf-8")
         for marker in (
-            '"${CLAUDE_PLUGIN_ROOT}/scripts/install.sh" --check',
-            '"${CLAUDE_PLUGIN_ROOT}/scripts/install.ps1"',
+            '"${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" setup --check',
+            '"${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" setup\n',
             '"${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" doctor',
             "summary",
         ):
@@ -64,6 +64,16 @@ class SetupCommandTests(unittest.TestCase):
         for marker in ("código 4", "faltam itens", "`summary`", "não pare", "$GB_HOME/.env"):
             self.assertIn(marker, body, f"setup sem a leitura do código 4: {marker}")
         self.assertNotIn("pare no primeiro que falhar", body)
+
+    def test_setup_command_uses_the_shared_runtime(self):
+        """O runtime vive em $GB_HOME/runtime: o `/plugin update` não pede reinstalação."""
+        body = SETUP_COMMAND.read_text(encoding="utf-8")
+        self.assertIn("$GB_HOME/runtime", body)
+        self.assertIn("sobrevive ao `/plugin update`", body)
+        self.assertIn("rode de novo só se o `doctor` apontar", body)
+        self.assertIn("$GB_HOME", frontmatter_field(SETUP_COMMAND, "description") or "")
+        for stale in ("dentro da pasta do plugin", "repita `/get-brolls-setup` após cada", "install.sh"):
+            self.assertNotIn(stale, body)
 
     def test_skill_environment_names_the_doctor_exit_code(self):
         for skill in (ROOT / "SKILL.md", ROOT / "skills" / "get-brolls" / "SKILL.md"):
