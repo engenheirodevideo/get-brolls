@@ -26,6 +26,17 @@ if not os.environ.get("GB_HOME"):
 # GB_HOME de mentira acima — mudando quais plugins um teste vê sem ele pedir isso.
 os.environ.pop("GB_PLUGINS", None)
 
+# Um `.env` ou alias herdado do shell de quem roda mudaria a resolução de configuração
+# por fora do GB_HOME de mentira. `GETBROLLS_CACHE_DIR` tem tratamento próprio, mais abaixo.
+os.environ.pop("GB_ENV_FILE", None)
+for _key in [k for k in os.environ if k.startswith("GETBROLLS_") and k != "GETBROLLS_CACHE_DIR"]:
+    del os.environ[_key]
+
+# No modo wheel o pacote instalado é o único getbrolls: um PYTHONPATH herdado poderia
+# devolver o checkout aos subprocessos.
+if os.environ.get("GB_TEST_CLI") == "wheel":
+    os.environ.pop("PYTHONPATH", None)
+
 GB_HOME = Path(os.environ["GB_HOME"])
 
 # O cache HTTP/drawtext cairia em `~/.cache/getbrolls` de verdade. Sem um

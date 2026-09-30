@@ -12,7 +12,7 @@ from unittest import mock
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 
 # efeito de import: insere scripts/ em sys.path
-from _paths import CLI, ROOT  # noqa: F401  # pylint: disable=unused-import
+from _paths import CLI, CLI_ARGV, ROOT  # noqa: F401  # pylint: disable=unused-import
 
 from getbrolls import __version__, media, social
 from getbrolls.cli import FORMAT_GATE_SUBCOMMANDS, SUMMARIES, build_parser
@@ -54,7 +54,7 @@ class HelpContractTests(unittest.TestCase):
 
     def test_version_flag_prints_package_version(self):
         done = subprocess.run(
-            [sys.executable, str(CLI), "--version"],
+            [*CLI_ARGV, "--version"],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -67,7 +67,7 @@ class HelpContractTests(unittest.TestCase):
 class DoctorVerdictTests(unittest.TestCase):
     def payload(self):
         done = subprocess.run(
-            [sys.executable, str(CLI), "doctor"],
+            [*CLI_ARGV, "doctor"],
             capture_output=True,
             text=True,
             encoding="utf-8",

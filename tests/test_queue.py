@@ -5,7 +5,6 @@ import os
 import random
 import stat
 import subprocess
-import sys
 import tempfile
 import unittest
 from datetime import UTC, datetime, timedelta
@@ -16,7 +15,7 @@ from unittest.mock import patch
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 
 # efeito de import: insere scripts/ em sys.path
-from _paths import CLI, ROOT  # noqa: F401  # pylint: disable=unused-import
+from _paths import CLI, CLI_ARGV, ROOT  # noqa: F401  # pylint: disable=unused-import
 
 from getbrolls import queue
 from getbrolls.cli import SUMMARIES, build_parser
@@ -235,7 +234,7 @@ class QueueStateTests(unittest.TestCase):
 class QueueCliTests(unittest.TestCase):
     def run_cli(self, *args, ok=True):
         done = subprocess.run(
-            [sys.executable, str(CLI), *map(str, args)],
+            [*CLI_ARGV, *map(str, args)],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -251,7 +250,7 @@ class QueueCliTests(unittest.TestCase):
         args = parser.parse_args(["queue", "--project", "p", "--action", "add", "--provider", "instagram", REEL])
         self.assertEqual([REEL], args.urls)
         help_run = subprocess.run(
-            [sys.executable, str(CLI), "queue", "--help"],
+            [*CLI_ARGV, "queue", "--help"],
             capture_output=True,
             text=True,
             encoding="utf-8",

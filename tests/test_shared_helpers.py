@@ -1,15 +1,19 @@
 """Teste próprio dos helpers `_paths`, `_cli` e `_media` (código novo, sem uso ainda)."""
 
+import ast
+import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+import _paths
 from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_audio, synth_image, synth_video
-from _paths import CLI, ROOT, SKILLS
+from _paths import CLI, CLI_ARGV, ROOT, SKILLS, WHEEL_MODE, cli, wheel_origin
 
 
 class PathsTests(unittest.TestCase):
@@ -112,3 +116,128 @@ class SynthMediaTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _import_paths_with(**env):
+    """Importa `_paths` num processo limpo com `env` por cima, para ver o modo escolhido."""
+    environment = {k: v for k, v in os.environ.items() if not k.startswith("GB_TEST_")}
+    environment.update(env)
+    environment["PYTHONPATH"] = str(ROOT / "tests")
+    return subprocess.run(
+        [sys.executable, "-c", "import _paths; print(_paths.MODE, _paths.CLI_ARGV)"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=environment,
+        check=False,
+    )
+
+
+_PROBE_ENV = (
+    "import _isolation, os, json; print(json.dumps(sorted(k for k in os.environ"
+    " if k in {'GB_ENV_FILE','PYTHONPATH','GETBROLLS_X','GETBROLLS_CACHE_DIR'})))"
+)
+
+
+class IsolationTests(unittest.TestCase):
+    def _isolated_env(self, **env):
+        environment = {**os.environ, "PYTHONPATH": str(ROOT / "tests"), **env}
+        done = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                _PROBE_ENV,
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=environment,
+            check=True,
+        )
+        return done.stdout.strip()
+
+    def test_shell_config_leaks_are_removed(self):
+        seen = self._isolated_env(GB_ENV_FILE="/x", GETBROLLS_X="1", GETBROLLS_CACHE_DIR="/c", GB_TEST_CLI="checkout")
+        self.assertEqual('["GETBROLLS_CACHE_DIR", "PYTHONPATH"]', seen)
+
+    def test_wheel_mode_drops_pythonpath(self):
+        seen = self._isolated_env(GB_TEST_CLI="wheel", GB_TEST_WHEEL_PYTHON="/x/python")
+        self.assertNotIn("PYTHONPATH", seen)
+
+
+class CliArgvTests(unittest.TestCase):
+    @unittest.skipIf(WHEEL_MODE, "modo wheel usa o pacote instalado")
+    def test_cli_argv_defaults_to_the_checkout_script(self):
+        self.assertEqual((sys.executable, str(CLI)), CLI_ARGV)
+
+    def test_cli_helper_prefixes_the_argv_and_stringifies_arguments(self):
+        self.assertEqual([*CLI_ARGV, "status", "3"], cli("status", 3))
+
+    def test_unknown_mode_is_refused(self):
+        done = _import_paths_with(GB_TEST_CLI="egg")
+        self.assertNotEqual(0, done.returncode)
+        self.assertIn("GB_TEST_CLI", done.stderr)
+
+    def test_wheel_mode_requires_the_wheel_python(self):
+        done = _import_paths_with(GB_TEST_CLI="wheel", GB_TEST_WHEEL_PYTHON="")
+        self.assertNotEqual(0, done.returncode)
+        self.assertIn("GB_TEST_WHEEL_PYTHON", done.stderr)
+
+    def test_wheel_mode_runs_the_installed_package_isolated_from_the_checkout(self):
+        done = _import_paths_with(GB_TEST_CLI="wheel", GB_TEST_WHEEL_PYTHON="/x/bin/python")
+        self.assertEqual(0, done.returncode, done.stderr)
+        self.assertIn("('/x/bin/python', '-P', '-m', 'getbrolls')", done.stdout)
+
+    def test_wheel_origin_reads_the_reported_data_origin(self):
+        self.assertEqual("wheel", wheel_origin("getbrolls 2.6.0 (dados: wheel)"))
+        self.assertEqual("checkout", wheel_origin("getbrolls 2.6.0 (dados: checkout)"))
+        self.assertIsNone(wheel_origin("getbrolls 2.6.0"))
+
+    def test_no_test_builds_the_cli_argv_by_hand(self):
+        this_file = Path(__file__).resolve()
+        allowed = {this_file, ROOT / "tests" / "_paths.py", ROOT / "tests" / "_cli.py"}
+        offenders = [
+            f"{path.name}:{node.lineno}"
+            for path in sorted((ROOT / "tests").glob("*.py"))
+            if path.resolve() not in allowed
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+            if isinstance(node, ast.List) and _starts_with_executable_and_cli(node)
+        ]
+        self.assertEqual([], offenders)
+
+
+_ARGV_HEAD = ("executable", "cli")
+
+
+def _starts_with_executable_and_cli(node):
+    if len(node.elts) < len(_ARGV_HEAD):
+        return False
+    first, second = node.elts[: len(_ARGV_HEAD)]
+    is_executable = ast.unparse(first) == "sys.executable"
+    return is_executable and any(isinstance(n, ast.Name) and n.id in {"CLI", "cli"} for n in ast.walk(second))
+
+
+@unittest.skipUnless(WHEEL_MODE, "só no modo wheel")
+class WheelModeTests(unittest.TestCase):
+    def setUp(self):
+        version = subprocess.run(
+            [*CLI_ARGV, "--version"], capture_output=True, text=True, encoding="utf-8", check=False
+        )
+        origin = wheel_origin(version.stdout + version.stderr)
+        if origin is None:
+            self.skipTest("a CLI instalada ainda não informa a origem dos dados em --version")
+        self.assertEqual("wheel", origin)
+
+    def test_the_installed_package_lives_outside_the_repository(self):
+        done = subprocess.run(
+            [CLI_ARGV[0], "-P", "-c", "import getbrolls,sys;print(getbrolls.__file__)"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+        self.assertFalse(Path(done.stdout.strip()).resolve().is_relative_to(ROOT))
+
+    def test_pythonpath_does_not_leak_into_the_suite(self):
+        self.assertNotIn("PYTHONPATH", os.environ)
+        self.assertTrue(_paths.WHEEL_MODE)

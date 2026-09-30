@@ -2,7 +2,6 @@
 
 import json
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,7 +11,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _cli import run_cli
 
 # efeito de import: insere scripts/ em sys.path
-from _paths import CLI, ROOT  # noqa: F401  # pylint: disable=unused-import
+from _paths import CLI, CLI_ARGV, ROOT  # noqa: F401  # pylint: disable=unused-import
 
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, now, set_segment, signature
@@ -311,7 +310,7 @@ class RejectManyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
             done = subprocess.run(
-                [sys.executable, str(CLI), "reject", "--project", tmp],
+                [*CLI_ARGV, "reject", "--project", tmp],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

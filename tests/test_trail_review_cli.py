@@ -12,7 +12,6 @@ produce them today, ahead of a refactor of `commands.py` `execute()`.
 import json
 import re
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,7 +21,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _cli import run_cli
 
 # efeito de import: insere scripts/ em sys.path
-from _paths import CLI, ROOT  # noqa: F401  # pylint: disable=unused-import
+from _paths import CLI, CLI_ARGV, ROOT  # noqa: F401  # pylint: disable=unused-import
 
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, set_segment
@@ -180,7 +179,7 @@ class ImportReviewRejectionTests(unittest.TestCase):
             path = save_review(ledger, exported(ledger))
             before = ledger.path.read_bytes()
             done = subprocess.run(
-                [sys.executable, str(CLI), "import-review", "--file", str(path), "--project", tmp],
+                [*CLI_ARGV, "import-review", "--file", str(path), "--project", tmp],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

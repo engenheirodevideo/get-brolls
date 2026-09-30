@@ -3,14 +3,13 @@
 import json
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
-from _paths import CLI
+from _paths import CLI_ARGV
 from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
@@ -123,8 +122,7 @@ class PluginsCommandTests(LoaderTestCase):
         # Fora da seleção, o nome vira erro de uso: sai do argparse, antes do projeto.
         done = subprocess.run(
             [
-                sys.executable,
-                str(CLI),
+                *CLI_ARGV,
                 "--env-file",
                 str(env_file),
                 "permit",

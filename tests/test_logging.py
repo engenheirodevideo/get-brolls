@@ -11,7 +11,6 @@ import logging as stdlib_logging  # pylint: disable=reimported
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,7 +21,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _cli import run_cli
 
 # efeito de import: insere scripts/ em sys.path
-from _paths import CLI, ROOT  # noqa: F401  # pylint: disable=unused-import
+from _paths import CLI, CLI_ARGV, ROOT  # noqa: F401  # pylint: disable=unused-import
 
 from getbrolls import logs
 from getbrolls.cli import _given_option_names, main, parse_args
@@ -38,7 +37,7 @@ def _raw_run(*args, project=None, env=None):
     if env:
         environment.update(env)
     return subprocess.run(
-        [sys.executable, str(CLI), *map(str, command_args)],
+        [*CLI_ARGV, *map(str, command_args)],
         capture_output=True,
         text=True,
         encoding="utf-8",

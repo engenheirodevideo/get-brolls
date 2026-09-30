@@ -7,13 +7,12 @@ import io
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
-from _paths import CLI
+from _paths import CLI_ARGV
 from test_sdk_loader import LoaderTestCase
 
 from getbrolls.presets import PERMIT_PRESETS
@@ -34,7 +33,7 @@ def argparse_choice_error(name, choices):
 
 def permit_stderr(folder, name, env=None):
     return subprocess.run(
-        [sys.executable, str(CLI), "permit", "--project", str(folder), "--candidate", "x", "--preset", name],
+        [*CLI_ARGV, "permit", "--project", str(folder), "--candidate", "x", "--preset", name],
         capture_output=True,
         text=True,
         encoding="utf-8",

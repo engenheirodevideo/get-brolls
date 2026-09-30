@@ -5,7 +5,6 @@ import os
 import re
 import stat
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,7 +13,7 @@ from unittest.mock import patch
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
-from _paths import CLI, ROOT
+from _paths import CLI_ARGV, ROOT
 
 from getbrolls import config, media, social
 from getbrolls.rules import load_rules
@@ -231,7 +230,7 @@ class DoctorReportTests(unittest.TestCase):
         empty = Path(directory) / "vazio.env"
         empty.write_text("", encoding="utf-8")
         done = subprocess.run(
-            [sys.executable, str(CLI), "--env-file", str(empty), "doctor"],
+            [*CLI_ARGV, "--env-file", str(empty), "doctor"],
             capture_output=True,
             text=True,
             encoding="utf-8",

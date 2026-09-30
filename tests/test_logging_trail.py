@@ -17,7 +17,6 @@ import re
 # (mesmo motivo do redefined-outer-name em tests/pylintrc).
 import re as _re  # pylint: disable=reimported
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -27,7 +26,7 @@ import _isolation  # noqa: F401  (import side effect: defines GB_HOME)  # pylint
 from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_video
 from _paths import (  # pylint: disable=unused-import
-    CLI,
+    CLI_ARGV,
     ROOT,  # noqa: F401  (import side effect: inserts scripts/ into sys.path)
 )
 
@@ -224,7 +223,7 @@ class StdoutStaysOneJsonDocumentTests(unittest.TestCase):
             environment = dict(os.environ)
             environment.update(DEBUG_ENV)
             done = subprocess.run(
-                [sys.executable, str(CLI), "resolve", "--file", str(src), *base],
+                [*CLI_ARGV, "resolve", "--file", str(src), *base],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
