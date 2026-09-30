@@ -1,4 +1,5 @@
-"""Sem plugin instalado, `providers` e `doctor` saem com os mesmos campos do 2.5.0.
+"""Sem plugin instalado, `providers` e `doctor` saem com os mesmos campos do 2.5.0
+(o `doctor` só ganha `ready` e `install`, do 2.6).
 
 As listas abaixo foram tiradas do código da tag 2.5.0 (`providers.capabilities()` e
 o ramo `doctor` de `commands.execute`): nenhuma chave de plugin (`plugin`, `route`,
@@ -45,6 +46,9 @@ V250_DOCTOR_FIELDS = {
     "social",
 }
 V250_DOCTOR_SUMMARY_FIELDS = {"ok", "missing", "optional"}
+# O 2.6 acrescenta o veredito (`ready`) e o retrato da instalação (`install`); nenhum
+# dos dois é de plugin.
+V260_DOCTOR_ADDED_FIELDS = {"ready", "install"}
 
 
 class NoPluginGoldenTests(unittest.TestCase):
@@ -64,7 +68,7 @@ class NoPluginGoldenTests(unittest.TestCase):
 
     def test_doctor_has_exactly_the_250_fields(self):
         doctor = run_cli("doctor", env=self.env)
-        self.assertEqual(V250_DOCTOR_FIELDS, set(doctor))
+        self.assertEqual(V250_DOCTOR_FIELDS | V260_DOCTOR_ADDED_FIELDS, set(doctor))
         self.assertEqual(V250_DOCTOR_SUMMARY_FIELDS, set(doctor["summary"]))
         self.assert_v250_providers(doctor["providers"])
 

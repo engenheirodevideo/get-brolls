@@ -58,6 +58,21 @@ class SetupCommandTests(unittest.TestCase):
         ):
             self.assertIn(marker, body, f"passo ausente no comando de setup: {marker}")
 
+    def test_setup_command_reads_the_whole_doctor_verdict(self):
+        """O doctor sai 4 com pendências e o JSON em stdout: o comando não para ali."""
+        body = SETUP_COMMAND.read_text(encoding="utf-8")
+        for marker in ("código 4", "faltam itens", "`summary`", "não pare", "$GB_HOME/.env"):
+            self.assertIn(marker, body, f"setup sem a leitura do código 4: {marker}")
+        self.assertNotIn("pare no primeiro que falhar", body)
+
+    def test_skill_environment_names_the_doctor_exit_code(self):
+        for skill in (ROOT / "SKILL.md", ROOT / "skills" / "get-brolls" / "SKILL.md"):
+            body = skill.read_text(encoding="utf-8")
+            section = body.split("## Ambiente", 1)[1].split("\n## ", 1)[0]
+            for marker in ("código 4", "`summary.missing`", "`ready`"):
+                self.assertIn(marker, section, f"{skill.name}: {marker}")
+            self.assertIn("getbrolls", body.split("## Passo 2", 1)[1].split("\n## ", 1)[0])
+
     def test_every_command_is_discoverable(self):
         """Todo comando do plugin traz name/description e roda pela raiz do plugin."""
         expected = {

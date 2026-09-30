@@ -114,6 +114,10 @@ Projeto da 2.5 segue exatamente igual: nada muda sem um `ROTEIRO.md` do get-brol
 - **`.env` recusado é `USAGE_ERROR`.** `--env-file`/`GB_ENV_FILE` que não existe e `GB_ENV_FILE`/`GB_HOME` onde não podem saem com `error_code: "USAGE_ERROR"` (antes `INVALID_DATA`); o código de saída continua `2`.
 - **`| head` sem traceback.** Quando quem lê a saída fecha o pipe antes do fim, o comando sai com `0`, sem "Exception ignored … BrokenPipeError" no stderr.
 <!-- W1:T8 -->
+- **`doctor` diz se está pronto.** `ready` vem logo depois de `summary`; o `doctor` sai com `4` quando `summary.missing` não está vazio, com o JSON em stdout do mesmo jeito. `install` mostra a origem (pacote ou checkout), versões, pasta de dados (arquivos que faltam viram item de `summary.missing` com o comando de reinstalar), runtime, qual `.env` foi lido (e os ignorados), aliases `GETBROLLS_*` e o comando da CLI. `--json` é aceito (a saída já é JSON).
+- **`setup --check`** mostra o que falta no runtime (yt-dlp, Playwright CLI, FFmpeg, ffprobe, Node) e os comandos para resolver, sem instalar nada; sai com `4` quando falta algo. `setup` sem `--check` ainda não instala: é erro de uso (`2`) que aponta para o `setup --check` e, no checkout, para `scripts/install.sh`/`install.ps1`.
+- **Instaladores repassam o `4`.** `scripts/install.sh` e `install.ps1` terminam com o código do `doctor`: com `4`, dizem "doctor encontrou pendências (código 4: faltam itens)" e listam cada item de `summary.missing` com o comando que resolve. Antes, o `doctor` sempre saía `0`, faltando algo ou não.
+- **`/get-brolls-setup`** lê o código 4 como pendência (lê `summary`, não para ali) e indica `$GB_HOME/.env` para as chaves opcionais.
 <!-- W1:T9 -->
 <!-- W1:T10 -->
 <!-- W1:T11 -->

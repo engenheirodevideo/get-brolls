@@ -108,7 +108,11 @@ def doctor_resolved(overrides):
     return resolved
 
 
-def doctor_summary(executables, pins=()):
+# Reinstalar é o único jeito de repor os arquivos de dados de um pacote instalado.
+REINSTALL = "uv tool install --reinstall getbrolls"
+
+
+def doctor_summary(executables, pins=(), data_missing=()):
     """Veredito humano do doctor: o que funciona, o que falta e o que é opcional."""
     ok = sorted(name for name, present in executables.items() if present)
     missing = [
@@ -117,6 +121,9 @@ def doctor_summary(executables, pins=()):
         if not executables.get(name)
     ]
     missing += list(pins)
+    if data_missing:
+        fix = _paths.installer_hint() if _paths.origin() == "checkout" else REINSTALL
+        missing.append({"item": "dados da instalação", "fix": fix, "note": "Faltam: " + ", ".join(data_missing)})
     optional = [
         {"item": name, "note": note} for name, note in sorted(OPTIONAL_EXECUTABLES.items()) if not executables.get(name)
     ]
@@ -2423,39 +2430,48 @@ def _doctor_plugin_inventory(result, summary):
         summary["plugins"] = problems
 
 
-def _doctor_report(config, providers_result, live):
-    """Monta o relatório completo de `doctor`: executáveis, engine social e plugins."""
+def _doctor_executables(overrides, social):
+    """Presença de cada executável sondado: pin, `PATH` ou o runtime da instalação."""
     from getbrolls.config import TOOL_PATH_KEYS
 
-    from .social import doctor as social_doctor
-
-    # Pin inválido vira item de `missing`, não morte do diagnóstico.
-    overrides, pin_problems = doctor_overrides()
-    resolved = doctor_resolved(overrides)
-    try:
-        social = social_doctor()
-    except ValueError as exc:
-        social = {"engine": "yt-dlp", "installed": False, "error": str(exc)}
     executables = {
         name: bool(overrides.get(TOOL_PATH_KEYS.get(name) or "") or shutil.which(name)) for name in PROBED_EXECUTABLES
     }
     executables["yt-dlp"] = social["installed"]
     executables["playwright-cli"] = bool(_local_playwright() or shutil.which("playwright-cli"))
-    summary = doctor_summary(executables, pin_problems)
+    return executables
+
+
+def _doctor_report(config, providers_result, live, env_flag=None):
+    """Monta o relatório completo de `doctor`: executáveis, engine social, plugins e instalação."""
+    from .social import doctor as social_doctor
+
+    # Pin inválido vira item de `missing`, não morte do diagnóstico.
+    overrides, pin_problems = doctor_overrides()
+    try:
+        social = social_doctor()
+    except ValueError as exc:
+        social = {"engine": "yt-dlp", "installed": False, "error": str(exc)}
+    executables = _doctor_executables(overrides, social)
+    install = _paths.install_report(env_flag)
+    summary = doctor_summary(executables, pin_problems, install.get("data_missing") or ())
     sheet = doctor_contact_sheet(executables.get("ffmpeg"))
     summary["optional"] += sheet["optional"]
     result = {
-        # Veredito primeiro: o JSON continua completo logo abaixo dele.
+        # Veredito primeiro: o JSON continua completo logo abaixo dele. `ready` decide a
+        # saída (4 quando falta algo obrigatório; ver `cli.result_exit`).
         "summary": summary,
+        "ready": not summary["missing"],
         "contact_sheet": sheet["status"],
         "get_brolls": __version__,
         "preview": config,
         "python": sys.version.split()[0],
         "tool_paths": overrides,
         "executables": executables,
-        "resolved": resolved,
+        "resolved": doctor_resolved(overrides),
         "providers": providers_result,
         "social": social,
+        "install": install,
     }
     _doctor_plugin_inventory(result, summary)
     if live:
@@ -2472,11 +2488,15 @@ def _execute_providers_or_doctor(args, config):
     result = providers.capabilities()
     if args.command != "doctor":
         return result
-    return _doctor_report(config, result, args.live)
+    return _doctor_report(config, result, args.live, getattr(args, "env_file", None))
 
 
 def _execute_toolchain(args):
-    """`plugins`/`x`: delegam inteiramente ao SDK, sem tocar em projeto nem regras."""
+    """`plugins`/`x` delegam inteiramente ao SDK e `setup` ao `bootstrap`, sem tocar em projeto nem regras."""
+    if args.command == "setup":
+        from getbrolls import bootstrap
+
+        return bootstrap.run(args)
     if args.command == "plugins":
         from getbrolls.sdk import cli as sdk_cli
 
@@ -3134,7 +3154,7 @@ def execute(args):
             brief_present=_brief_present(args),
             provider_keys=_provider_keys_set(),
         )
-    if args.command in ("plugins", "x"):
+    if args.command in ("plugins", "x", "setup"):
         return _execute_toolchain(args)
     if args.command in ("providers", "doctor"):
         return _execute_providers_or_doctor(args, config)

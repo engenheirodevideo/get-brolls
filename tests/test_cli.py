@@ -40,8 +40,9 @@ class CliTest(unittest.TestCase):
             env=environment,
             check=False,
         )
-        self.assertEqual(0, result.returncode, result.stderr)
         output = result.stdout.decode("utf-8")
+        # 0 pronto, 4 com `summary.missing`: nos dois casos o JSON sai em stdout.
+        self.assertEqual(0 if json.loads(output)["ready"] else 4, result.returncode, result.stderr)
         self.assertIn("→", output)
         self.assertNotIn("�", output)
         self.assertEqual("broll", json.loads(output)["preview"]["scope"])

@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _cli import ready_exit
 from _paths import CLI_ARGV
 from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
@@ -74,8 +75,11 @@ class PluginStdoutTests(LoaderTestCase):
             check=False,
             timeout=120,
         )
-        self.assertEqual(0, done.returncode, done.stderr)
-        return json.loads(done.stdout), done.stderr
+        out = json.loads(done.stdout)
+        # `doctor` sai 4 quando falta algo obrigatório nesta máquina, com o JSON em stdout.
+        expected = ready_exit(out) if args[0] == "doctor" else 0
+        self.assertEqual(expected, done.returncode, done.stderr)
+        return out, done.stderr
 
     def test_plugin_prints_go_to_stderr_and_json_stays_parseable(self):
         self.install(NOISY_MANIFEST, NOISY_PLUGIN)

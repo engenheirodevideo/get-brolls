@@ -64,7 +64,30 @@ Invoke-Native -Label 'Instalação Playwright CLI' -File 'npm' -Arguments @('--c
 $Playwright = Join-Path $Root '.tools\node_modules\.bin\playwright-cli.cmd'
 Invoke-Native -Label 'Verificação Playwright CLI' -File $Playwright -Arguments @('--version')
 $env:PATH = "$(Join-Path $Root '.venv\Scripts');$env:PATH"
-Invoke-Native -Label 'Doctor' -File $VenvPython -Arguments @((Join-Path $Root 'scripts\gb.py'), 'doctor')
+# doctor sai 4 quando summary.missing não está vazio (faltam itens), com o JSON em stdout.
+$Gb = Join-Path $Root 'scripts\gb.py'
+# A CLI escreve UTF-8; sem isto o Windows PowerShell 5.1 decodificaria na página OEM.
+$ConsoleEncoding = [Console]::OutputEncoding
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $DoctorOutput = & $VenvPython $Gb 'doctor'
+    $DoctorStatus = $LASTEXITCODE
+} finally {
+    [Console]::OutputEncoding = $ConsoleEncoding
+}
+$DoctorOutput | Write-Output
+if ($DoctorStatus -eq 4) {
+    Write-Host ''
+    Write-Host 'doctor encontrou pendências (código 4: faltam itens). O que falta e como resolver, de summary.missing:'
+    $Doctor = ($DoctorOutput | Out-String) | ConvertFrom-Json
+    foreach ($Item in $Doctor.summary.missing) {
+        Write-Host "- $($Item.item): $($Item.fix)"
+    }
+    exit 4
+}
+if ($DoctorStatus -ne 0) {
+    throw "Doctor falhou com código $DoctorStatus."
+}
 
 Write-Host "`nDependências instaladas em .venv\ e .tools\; não fazem parte do repositório."
 Write-Host 'Navegador existente: siga docs/GUIDE.md para reutilizar a sessão autorizada.'

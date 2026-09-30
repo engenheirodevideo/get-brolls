@@ -641,8 +641,9 @@ class DoctorAcceptsProjectTests(unittest.TestCase):
         self.assertEqual("/tmp/p", parsed.project)
         with tempfile.TemporaryDirectory() as tmp:
             done = run_cli(["doctor", "--project", tmp])
-            self.assertEqual(0, done.returncode, done.stdout + done.stderr)
-            self.assertIn("summary", json.loads(done.stdout))
+            payload = json.loads(done.stdout)
+            self.assertEqual(0 if payload["ready"] else 4, done.returncode, done.stdout + done.stderr)
+            self.assertIn("summary", payload)
             # Comando de diagnóstico não cria projeto nenhum.
             self.assertFalse((Path(tmp) / "brolls").exists())
 
