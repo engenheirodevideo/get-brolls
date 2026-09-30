@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Thin wrapper: confere o sistema e chama `gb.py setup`, que instala em $GB_HOME/runtime/<versão>/ (ou GB_RUNTIME_DIR).
 # Dependencies are installed from PyPI/npm on the recipient's computer, never vendored.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -27,30 +28,25 @@ if [ "${1:-}" = "--check" ]; then
   printf 'Pré-requisitos do instalador encontrados; check não instala nem testa rede/login.\n'
   exit 0
 fi
-python3 -m venv "$ROOT/.venv"
-python_version="$("$ROOT/.venv/bin/python" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])')"
-if ! "$ROOT/.venv/bin/python" -m pip install -r "$ROOT/requirements.txt"; then
-  printf 'Falha ao instalar as dependências Python: seu Python é %s; o conjunto fixado foi validado em Python 3.11–3.13.\n' "$python_version" >&2
-  printf 'Crie a venv com um interpretador dessa faixa ou atualize requirements.txt como um conjunto revisado.\n' >&2
-  exit 1
+# setup sai 4 quando falta item do sistema (FFmpeg, Node…): o runtime saiu do mesmo jeito.
+setup_status=0
+python3 "$ROOT/scripts/gb.py" setup || setup_status=$?
+if [ "$setup_status" -ne 0 ] && [ "$setup_status" -ne 4 ]; then
+  printf 'setup falhou (código %s); veja a mensagem acima.\n' "$setup_status" >&2
+  exit "$setup_status"
 fi
-"$ROOT/.venv/bin/python" -c 'import yt_dlp, yt_dlp_ejs; print("yt-dlp e EJS importados")'
-# Install the reviewed dependency tree locally, without global npm changes.
-mkdir -p "$ROOT/.tools"
-cp "$ROOT/package.json" "$ROOT/package-lock.json" "$ROOT/.tools/"
-npm --cache "$ROOT/.tools/npm-cache" ci --prefix "$ROOT/.tools" --ignore-scripts --no-audit --no-fund
-bash "$ROOT/scripts/playwright.sh" --version
+if [ "$setup_status" -eq 0 ]; then bash "$ROOT/scripts/playwright.sh" --version; fi
 # doctor sai 4 quando summary.missing não está vazio (faltam itens), com o JSON em stdout.
 status=0
-doctor_json="$(PATH="$ROOT/.venv/bin:$PATH" "$ROOT/.venv/bin/python" "$ROOT/scripts/gb.py" doctor)" || status=$?
+doctor_json="$(python3 "$ROOT/scripts/gb.py" doctor)" || status=$?
 printf '%s\n' "$doctor_json"
 if [ "$status" -eq 4 ]; then
   printf '\ndoctor encontrou pendências (código 4: faltam itens). O que falta e como resolver, de summary.missing:\n' >&2
   printf '%s' "$doctor_json" \
-    | "$ROOT/.venv/bin/python" -c 'import json, sys; [print("- %s: %s" % (m["item"], m["fix"])) for m in json.load(sys.stdin)["summary"]["missing"]]' >&2 || true
+    | python3 -c 'import json, sys; [print("- %s: %s" % (m["item"], m["fix"])) for m in json.load(sys.stdin)["summary"]["missing"]]' >&2 || true
 fi
 if [ "$status" -ne 0 ]; then
   exit "$status"
 fi
-printf '\nDependências instaladas em .venv/ e .tools/, não fazem parte dos arquivos de distribuição.\n'
+printf '\nDependências em $GB_HOME/runtime/ (ou GB_RUNTIME_DIR), compartilhadas entre instalações; fora do repositório.\n'
 printf 'Navegador existente: siga docs/GUIDE.md para reutilizar a sessão autorizada.\n'

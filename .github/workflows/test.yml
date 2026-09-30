@@ -47,6 +47,9 @@ jobs:
       - name: Install FFmpeg (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Point the runtime outside the checkout
+        shell: bash
+        run: echo "GB_RUNTIME_DIR=$RUNNER_TEMP/gb-runtime" >> "$GITHUB_ENV"
       - name: Check installer (macOS/Linux)
         if: runner.os != 'Windows'
         run: bash scripts/install.sh --check
@@ -150,6 +153,9 @@ jobs:
           PY="$RUNNER_TEMP/venv/bin/python"; [ -x "$PY" ] || PY="$RUNNER_TEMP/venv/Scripts/python.exe"
           python -m uv pip install --python "$PY" "$RUNNER_TEMP"/dist/getbrolls-*.whl
           echo "GB_TEST_WHEEL_PYTHON=$PY" >> "$GITHUB_ENV"
+      - name: Point the runtime outside the checkout
+        shell: bash
+        run: echo "GB_RUNTIME_DIR=$RUNNER_TEMP/gb-runtime" >> "$GITHUB_ENV"
       - name: Install runtime (macOS/Linux)
         if: runner.os != 'Windows'
         run: bash scripts/install.sh
@@ -166,6 +172,5 @@ jobs:
         shell: bash
         env:
           GB_TEST_CLI: wheel
-          GB_RUNTIME_DIR: ${{ github.workspace }}
           GB_REQUIRE_WHEEL_TESTS: '1'
         run: python -m unittest discover -s tests

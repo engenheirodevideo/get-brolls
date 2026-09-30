@@ -150,6 +150,21 @@ class StrictCommandTests(ProfileCliCase):
         self.assertEqual("untrusted", shown["profile"]["trust"])
         self.assertEqual([], shown["profile"]["applied"])
 
+    def test_setup_where_and_check_answer_under_an_untrusted_profile_but_install_stops(self):
+        # Os launchers perguntam `setup --where` de qualquer pasta: um perfil não
+        # confiável no caminho não pode derrubá-los. Instalar continua exigindo confiança.
+        write(self.toml, 'runtime_dir = "rt"\n')
+        where = self.json_out(self.run_cli("setup", "--where", "venv"))
+        self.assertEqual("venv", where["part"])
+        self.assertEqual("gb_home", where["source"])  # o runtime_dir não confiável não vale
+        self.assertIn("in_use", where)
+        self.assertIn(self.run_cli("setup", "--check").returncode, (0, 4))
+        done = self.run_cli("setup")
+        self.assertEqual(2, done.returncode, done.stderr)
+        self.assertIn("profile trust", json.loads(done.stderr)["error"])
+        self.assertFalse((self.ws / "rt").exists())
+        self.assertFalse((self.home / "runtime").exists())
+
 
 class DoctorTests(ProfileCliCase):
     def test_trusted_profile_reaches_doctor(self):
