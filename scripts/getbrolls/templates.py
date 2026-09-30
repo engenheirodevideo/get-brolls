@@ -674,7 +674,6 @@ def _client_match(client, spec, row):
     return matches[0]
 
 
-
 def _install(project, folder, doc, created):
     """Componentes da versão: os que o cliente já tem ficam lá; o resto é copiado sem licença.
 
