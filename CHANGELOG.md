@@ -84,6 +84,22 @@ Projeto da 2.5 segue exatamente igual: nada muda sem um `ROTEIRO.md` do get-brol
 - **Logs do roteiro e do export.** `brolls/getbrolls.log` ganha três eventos, com os mesmos campos-base dos existentes (nunca caminho desta máquina, nunca texto do roteiro): `roteiro_review` (`projeto_id`, sha256 revisado, canal), `roteiro_sync` (`projeto_id`, beats criados, alterados e aposentados) e `export_done` (`projeto_id`, exporter, plugin, número da pasta, contagem de arquivos e de mídia, bytes).
 - **Fim de linha LF no Windows.** No Windows, os arquivos que o get-brolls grava de uma vez (`manifest.json`, `ORIGEM.md`, `credits.md`, `ROTEIRO.md`, `BRIEF.md`, entre outros) e o `brolls/roteiro-reviews.jsonl` saem com fim de linha LF, como no macOS e no Linux. Antes saíam com CRLF, e o `ROTEIRO.md` revisado voltava com o CRLF que a revisão tinha tirado.
 
+### Instalação e CLI
+
+<!-- W1:T1 -->
+- **`GB_RUNTIME_DIR`.** Aponta a pasta com `.venv/` (yt-dlp) e `.tools/` (Playwright) que o getbrolls usa; sem ela, o runtime fica em `$GB_HOME/runtime/<versão das dependências>/`, e o checkout continua usando o `.venv`/`.tools` da própria pasta.
+<!-- W1:T2 -->
+<!-- W1:T3 -->
+<!-- W1:T4 -->
+<!-- W1:T5 -->
+<!-- W1:T6 -->
+<!-- W1:T7a -->
+<!-- W1:T7b -->
+<!-- W1:T8 -->
+<!-- W1:T9 -->
+<!-- W1:T10 -->
+<!-- W1:T11 -->
+
 ### Docs
 
 - `references/roteiro.md` (formato do roteiro, componentes, o que fazer quando o sync para e o export, com o comando do `transcribe` para as legendas) e `references/generos/reels.md` (regras de copy do reels) para o agente; o Passo 1 do SKILL.md aponta para o primeiro, e o GUIDE ganha a árvore de pastas do roteiro (com `exports/` e `renders/`) e a seção "Roteiro e componentes". `docs/SDK.md` descreve o plano de export e o que o `export` confere nos pedidos de mídia do exportador.
