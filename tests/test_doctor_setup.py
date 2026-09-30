@@ -114,20 +114,20 @@ class SetupCheckTests(unittest.TestCase):
         done = _run("setup", "--check", "--json")
         self.assertIn(done.returncode, (0, 4), done.stderr)
 
-    def test_setup_without_check_is_a_usage_error(self):
-        done = _run("setup")
+    def test_setup_check_and_upgrade_cannot_be_combined(self):
+        done = _run("setup", "--check", "--upgrade", "ytdlp")
         self.assertEqual(2, done.returncode, done.stderr)
         error = json.loads(done.stderr)
         self.assertEqual("USAGE_ERROR", error["error_code"])
         self.assertIn("--check", error["error"])
         self.assertEqual("", done.stdout)
 
-    def test_setup_check_in_a_checkout_points_at_the_installer(self):
+    def test_setup_check_in_a_checkout_points_at_setup(self):
         with patch.object(bootstrap, "_resolved", return_value={}):
             result = bootstrap.check()
         self.assertIs(False, result["ready"])
-        step = next(s for s in result["steps"] if s["id"] == "ytdlp")
-        self.assertEqual([_paths.installer_hint()], step["commands"])
+        for step in (s for s in result["steps"] if s["id"] in bootstrap.RUNTIME_STEPS):
+            self.assertEqual([_paths.cli_prefix_text() + " setup"], step["commands"], step)
         ffmpeg = next(s for s in result["steps"] if s["id"] == "ffmpeg")
         self.assertEqual([], ffmpeg["commands"])
         self.assertEqual(commands.SYSTEM_TOOLS, ffmpeg["note"])
@@ -148,14 +148,13 @@ class SetupCheckTests(unittest.TestCase):
                 patch.object(bootstrap, "_resolved", return_value={}),
                 patch.dict(os.environ, env, clear=True),
             ):
-                shared = _paths.gb_home() / "runtime" / str(_paths.requirements_sha())
+                shared = _paths.gb_home() / "runtime" / str(_paths.part_sha("venv"))
                 result = bootstrap.check()
+                prefix = _paths.cli_prefix_text()
             self.assertFalse(shared.exists())
-        ytdlp = next(s for s in result["steps"] if s["id"] == "ytdlp")
-        self.assertTrue(any(str(shared) in command for command in ytdlp["commands"]), ytdlp["commands"])
-        self.assertTrue(any("requirements.txt" in command for command in ytdlp["commands"]), ytdlp["commands"])
-        playwright = next(s for s in result["steps"] if s["id"] == "playwright")
-        self.assertTrue(any(c.startswith("npm ci --prefix ") for c in playwright["commands"]), playwright["commands"])
+        for step in (s for s in result["steps"] if s["id"] in bootstrap.RUNTIME_STEPS):
+            self.assertEqual([prefix + " setup"], step["commands"], step)
+            self.assertFalse(any("npm" in command for command in step["commands"]), step)
 
     def test_setup_check_names_every_required_executable_of_the_doctor(self):
         ids = {s["id"] for s in bootstrap.check()["steps"]}
@@ -181,7 +180,7 @@ class SetupCheckTests(unittest.TestCase):
         fake = _paths.Install("wheel", Path("pkg"), Path("pkg/_data"), None)
         with (
             patch.object(_paths, "install", return_value=fake),
-            patch.object(_paths, "requirements_sha", return_value=None),
+            patch.object(_paths, "part_sha", return_value=None),
             patch.object(bootstrap, "_resolved", return_value={}),
         ):
             result = bootstrap.check()

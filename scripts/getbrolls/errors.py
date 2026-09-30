@@ -11,3 +11,7 @@ class PrerequisiteError(ValueError):
 
 class DataRootError(PrerequisiteError):
     """Arquivos de dados do pacote ausentes."""
+
+
+class LockedError(ValueError):
+    """Outro processo segura a trava (projeto ou runtime); repita quando ele terminar (exit 1)."""

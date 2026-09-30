@@ -135,6 +135,8 @@ class ActionableErrorTests(unittest.TestCase):
         self.assertIn("install.sh", message)
         self.assertIn("install.ps1", message)
         self.assertIn("/plugin update", message)
+        self.assertIn("$GB_HOME/runtime", message)
+        self.assertNotIn("é preciso reinstalar", message)
 
     def test_absent_ffmpeg_is_distinguishable_from_bad_range(self):
 

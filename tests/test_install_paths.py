@@ -161,7 +161,7 @@ class HomeAndRuntimeTests(unittest.TestCase):
             self.assertEqual(paths.RuntimePart(Path(tmp) / ".tools", "GB_RUNTIME_DIR"), paths.tools_dir())
             self.assertTrue(paths.runtime_info()["explicit"])
 
-    def test_shared_runtime_is_keyed_by_requirements_sha(self):
+    def test_shared_runtime_is_keyed_by_the_part_sha(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             inst = _fake_wheel(base)
@@ -172,25 +172,39 @@ class HomeAndRuntimeTests(unittest.TestCase):
             ):
                 _touch(_dir(inst.data_root) / "requirements.txt", "yt-dlp==1\n")
                 _touch(_dir(inst.data_root) / "package-lock.json", "{}\n")
-                first = paths.requirements_sha()
-                expected = hashlib.sha256(b"yt-dlp==1\n" + b"\0" + b"{}\n").hexdigest()[:16]
-                self.assertEqual(expected, first)
-                _touch(_dir(inst.data_root) / "requirements.txt", "yt-dlp==2\n")
-                second = paths.requirements_sha()
+                first = paths.part_sha("venv")
+                self.assertEqual(hashlib.sha256(b"yt-dlp==1\n").hexdigest()[:16], first)
+                tools = paths.part_sha("tools")
+                expected = hashlib.sha256(b"package.json" + b"\0" + b"{}\n").hexdigest()[:16]
+                self.assertEqual(expected, tools)
+                assert tools is not None
+                _touch(_dir(inst.data_root) / "requirements.txt", "yt-dlp==22\n")
+                second = paths.part_sha("venv")
                 assert second is not None
                 self.assertNotEqual(first, second)
-                self.assertEqual(paths.RuntimePart(home / "runtime" / second / ".venv", "gb_home"), paths.venv_dir())
-                self.assertEqual(paths.RuntimePart(home / "runtime" / second / ".tools", "gb_home"), paths.tools_dir())
+                venv = home / "runtime" / second / ".venv"
+                (venv.parent / ".tools").mkdir(parents=True)
+                (venv / "pyvenv.cfg").parent.mkdir(parents=True)
+                (venv / "pyvenv.cfg").write_text(f"home = {Path(sys.executable).parent}\n", encoding="utf-8")
+                paths.venv_python(venv).parent.mkdir(parents=True)
+                paths.venv_python(venv).write_text("", encoding="utf-8")
+                paths.write_marker("venv", venv.parent, "ready")
+                self.assertEqual(paths.RuntimePart(venv, "gb_home"), paths.venv_dir())
+                self.assertEqual(paths.RuntimePart(home / "runtime" / tools / ".tools", "gb_home"), paths.tools_dir())
                 info = paths.runtime_info()
-                self.assertEqual(second, info["req_sha"])
-                self.assertEqual({"path": str(home / "runtime" / second / ".venv"), "source": "gb_home"}, info["venv"])
+                self.assertEqual({"venv": second, "tools": tools}, info["shas"])
+                self.assertEqual(str(venv), info["venv"]["path"])
+                self.assertEqual("gb_home", info["venv"]["source"])
+                self.assertTrue(info["venv"]["managed"])
+                self.assertFalse(info["tools"]["managed"])
                 self.assertFalse(info["explicit"])
 
-    def test_requirements_sha_is_none_without_data(self):
+    def test_part_sha_is_none_without_data(self):
         with tempfile.TemporaryDirectory() as tmp:
             inst = _fake_wheel(Path(tmp), ())
             with patch.object(paths, "install", return_value=inst):
-                self.assertIsNone(paths.requirements_sha())
+                self.assertIsNone(paths.part_sha("venv"))
+                self.assertIsNone(paths.part_sha("tools"))
 
     def test_checkout_venv_is_the_fallback_only_for_checkout(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -219,8 +233,13 @@ class HomeAndRuntimeTests(unittest.TestCase):
                 patch.object(paths, "install", return_value=checkout),
                 patch.dict(os.environ, _clean_env(GB_HOME=str(home)), clear=True),
             ):
-                shared = home / "runtime" / str(paths.requirements_sha()) / ".venv"
+                shared = home / "runtime" / str(paths.part_sha("venv")) / ".venv"
                 shared.mkdir(parents=True)
+                self.assertEqual("checkout", paths.venv_dir().source)
+                (shared / "pyvenv.cfg").write_text(f"home = {Path(sys.executable).parent}\n", encoding="utf-8")
+                paths.venv_python(shared).parent.mkdir(parents=True)
+                paths.venv_python(shared).write_text("", encoding="utf-8")
+                paths.write_marker("venv", shared.parent, "ready")
                 self.assertEqual(paths.RuntimePart(shared, "gb_home"), paths.venv_dir())
 
 
@@ -427,7 +446,7 @@ class QuotingTests(unittest.TestCase):
         self.assertIn("install.ps1", hint)
         self.assertIn("no Windows", hint)
         with tempfile.TemporaryDirectory() as tmp, patch.object(paths, "install", return_value=_fake_wheel(Path(tmp))):
-            self.assertIn("setup --check", paths.installer_hint())
+            self.assertIn("getbrolls setup", paths.installer_hint())
 
 
 class AliasTests(unittest.TestCase):
@@ -474,7 +493,7 @@ class BuildInfoTests(unittest.TestCase):
         self.assertEqual("unknown", report["origin"])
         self.assertIsNone(report["data_root"])
         self.assertEqual(list(paths.REQUIRED_DATA), report["data_missing"])
-        self.assertIsNone(report["runtime"]["req_sha"])
+        self.assertEqual({"venv": None, "tools": None}, report["runtime"]["shas"])
 
 
 # Único dono de "onde a instalação mora". Fora dele, cada ocorrência abaixo é uma linha

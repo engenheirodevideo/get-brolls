@@ -43,7 +43,17 @@ Instale a stack inteira antes de rodar o instalador: Python 3.11+, FFmpeg/ffprob
 
 ### Instalar como pacote
 
-Além do checkout e do plugin, o getbrolls instala como comando: `uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0` (ou `pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0`), seguido de `getbrolls doctor` e `getbrolls setup --check`. `python -m getbrolls` também funciona. No checkout e no plugin do Claude Code nada muda: `python3 scripts/gb.py …` continua sendo o comando, e todo exemplo deste guia com `python3 scripts/gb.py` vale como `getbrolls …` no pacote instalado. No pacote não existe `.env` de checkout: use `$GB_HOME/.env`. O runtime (yt-dlp e Playwright) fica em `$GB_RUNTIME_DIR` ou, sem ela, em `$GB_HOME/runtime/<versão das dependências>/`. No Windows, os comandos sugeridos pela ferramenta não prometem funcionar com caminho que contenha `$`, `%` ou `"` ao copiar e colar no PowerShell ou no cmd.
+Além do checkout e do plugin, o getbrolls instala como comando: `uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0` (ou `pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0`), seguido de `getbrolls setup` e `getbrolls doctor`. `python -m getbrolls` também funciona. No checkout e no plugin do Claude Code nada muda: `python3 scripts/gb.py …` continua sendo o comando, e todo exemplo deste guia com `python3 scripts/gb.py` vale como `getbrolls …` no pacote instalado. No pacote não existe `.env` de checkout: use `$GB_HOME/.env`. O runtime (yt-dlp e Playwright) fica em `$GB_RUNTIME_DIR` ou, sem ela, em `$GB_HOME/runtime/<versão das dependências>/`.
+
+`getbrolls setup` instala esse runtime, sem perguntar nada:
+
+- **yt-dlp:** uma venv criada com o Python que roda o getbrolls, com o `requirements.txt` fixado, em `.venv/`.
+- **Playwright CLI:** `npm ci --ignore-scripts` a partir do `package.json`/`package-lock.json` fixados, em `.tools/`; precisa de Node 22+ e npm no `PATH` (sem eles, essa parte fica de fora, com a dica de instalação).
+- **Onde:** cada parte numa pasta própria, `$GB_HOME/runtime/<versão>/`, com a versão calculada dos arquivos de dependência dela; com `GB_RUNTIME_DIR`, as duas vão para essa pasta. `getbrolls setup --where` mostra os caminhos e qual está em uso, sem instalar nada.
+- **Sistema:** FFmpeg, ffprobe, curl e Node só são conferidos, com o comando do sistema operacional (`brew install ffmpeg`, `sudo apt install ffmpeg`, `winget install Gyan.FFmpeg`).
+- **Idempotente:** rodar de novo não refaz o que está pronto; uma instalação interrompida é refeita na próxima. Nunca mexe no projeto nem na pasta da instalação.
+- **Depois de atualizar o getbrolls, rode `getbrolls setup` de novo:** só a parte cuja versão das dependências mudou é instalada. `getbrolls setup --upgrade ytdlp` atualiza o yt-dlp além da versão fixada.
+- **Saída:** progresso no stderr, JSON no stdout; código `0` pronto, `4` se ainda falta algo. `getbrolls setup --check` só confere. No Windows, os comandos sugeridos pela ferramenta não prometem funcionar com caminho que contenha `$`, `%` ou `"` ao copiar e colar no PowerShell ou no cmd.
 
 Git é opcional. API key YouTube não é necessária. Pexels/Pixabay usam apenas suas próprias chaves opcionais. `curl-cffi` é extra opcional do yt-dlp, não requisito universal.
 
@@ -62,11 +72,11 @@ bash scripts/install.sh --check
 bash scripts/install.sh
 ```
 
-O instalador cria `.venv` e instala `yt-dlp[default]`/EJS do PyPI via `requirements.txt`; instala também `@playwright/cli@0.1.21` do npm em `.tools`. Valida Python 3.11+, Node 22+, npm/npx e os executáveis base. Essas pastas de dependências ficam somente na máquina de quem instala e não fazem parte do repositório. Não instala executáveis do sistema nem altera a instalação do agente. A CLI procura primeiro o yt-dlp da `.venv`, depois o `PATH`. Ativar a venv é opcional:
+O instalador confere Python 3.11+, Node 22+, npm/npx e os executáveis base e delega ao `setup` (`python3 scripts/gb.py setup`, que também pode ser rodado direto): `yt-dlp[default]`/EJS do PyPI via `requirements.txt` e `@playwright/cli@0.1.21` do npm vão para `$GB_HOME/runtime/<versão>/` (ou `GB_RUNTIME_DIR`), compartilhados entre instalações e versões do plugin, fora do repositório. No fim ele roda o `doctor` e sai com o código dele (`4` = faltam itens, listados). Não instala executáveis do sistema nem altera a instalação do agente. Uma `.venv`/`.tools` antiga na pasta da skill continua valendo enquanto o runtime compartilhado não existe. A CLI procura o yt-dlp do runtime em uso, depois o `PATH`; `python3 scripts/gb.py setup --where` mostra qual é:
 
 ```sh
-source .venv/bin/activate
-python scripts/gb.py doctor
+python3 scripts/gb.py setup --where
+python3 scripts/gb.py doctor
 ```
 
 ### Windows
@@ -79,7 +89,7 @@ powershell -ExecutionPolicy Bypass -File scripts/install.ps1
 python scripts/gb.py doctor
 ```
 
-O instalador usa `.venv\Scripts\python.exe` e o launcher `.cmd` do Playwright; não exige Git Bash nem WSL. Se a política local já permite scripts, também é possível executar `& .\scripts\install.ps1`. Os helpers `.sh` de YouTube são opcionais; no Windows, use `search`, `preview`, `fetch` e `verify` pela CLI principal.
+O instalador delega ao `python scripts/gb.py setup`, com o runtime em `$GB_HOME\runtime` (layout `.venv\Scripts`), e o launcher `.cmd` do Playwright; não exige Git Bash nem WSL. Se a política local já permite scripts, também é possível executar `& .\scripts\install.ps1`. Os helpers `.sh` de YouTube são opcionais; no Windows, use `search`, `preview`, `fetch` e `verify` pela CLI principal.
 
 Linux continua compatível como plataforma secundária. Em Ubuntu/Debian, instale `python3`, `python3-venv`, `ffmpeg` e `curl`, além de Node 22+, e use `scripts/install.sh` como no macOS.
 
@@ -129,8 +139,8 @@ Quatro variáveis opcionais fixam onde cada ferramenta está, úteis quando há 
 
 | Variável | Fixa | Descoberta padrão quando ausente |
 |---|---|---|
-| `GB_YTDLP_PATH` | Executável do yt-dlp | `.venv/Scripts/yt-dlp.exe`, `.venv/Scripts/yt-dlp`, `.venv/bin/yt-dlp` e depois o `PATH` |
-| `GB_VENV_PATH` | Pasta `.venv` usada para localizar o yt-dlp | `.venv/` na raiz da skill |
+| `GB_YTDLP_PATH` | Executável do yt-dlp | `.venv/Scripts/yt-dlp.exe`, `.venv/Scripts/yt-dlp`, `.venv/bin/yt-dlp` da venv em uso e depois o `PATH` |
+| `GB_VENV_PATH` | Pasta `.venv` usada para localizar o yt-dlp | a do runtime (`setup --where venv`) |
 | `GB_FFMPEG_PATH` | Executável do FFmpeg | `ffmpeg` no `PATH` |
 | `GB_FFPROBE_PATH` | Executável do ffprobe | `ffprobe` no `PATH` |
 
@@ -147,6 +157,25 @@ GB_FFMPEG_PATH=/opt/homebrew/bin/ffmpeg python3 scripts/gb.py doctor
 `init-brief` escreve exatamente no arquivo que o `brief` vai ler, `GB_BRIEF_FILE` incluído, e **cria as pastas-mãe** que faltarem: `GB_BRIEF_FILE=~/clientes/acme/briefs/reel-01.md python3 scripts/gb.py init-brief --project .` funciona mesmo que `~/clientes/acme/briefs/` ainda não exista.
 
 `GB_RULES_FILE` é outra coisa: não é o RULES.md do projeto, é uma **camada intermediária** entre o RULES.md global (`~/.getbrolls/RULES.md`) e o do projeto, e vem de fora do projeto — por isso os campos de responsabilidade (quem assina, a declaração) são descartados dela, com aviso. Ela precisa existir: apontando para um arquivo inexistente, o comando falha nomeando a variável. `init-rules` sempre grava o `RULES.md` da pasta do projeto (criando as pastas-mãe que faltarem), nunca o arquivo de `GB_RULES_FILE` — para preparar essa camada, copie `docs/RULES.md` para lá à mão e edite o bloco ```json.
+
+### Perfil do workspace (`getbrolls.toml`)
+
+Em vez de um script que exporta `GB_HOME`, `GB_CACHE_DIR`, `GB_VENV_PATH`, `GB_YTDLP_PATH`, `GB_FFMPEG_PATH`, `GB_FFPROBE_PATH` e `GB_PLUGINS`, um `getbrolls.toml` na raiz do workspace fixa os mesmos valores para quem trabalha ali:
+
+```toml
+requires = "==2.6.0"
+home = ".getbrolls"
+cache_dir = ".cache/getbrolls"
+plugins = []
+
+[tools]
+venv = "/caminho/do/workspace/tools/beta/.venv"
+ytdlp = "/caminho/do/workspace/tools/beta/.venv/bin/yt-dlp"
+ffmpeg = "/usr/local/bin/ffmpeg"
+ffprobe = "/usr/local/bin/ffprobe"
+```
+
+Como migrar: escreva o arquivo, rode `getbrolls profile trust` (mostra o que ele fixaria e o sha256), confira e rode `getbrolls profile trust --yes --expect <sha256>`; depois compare `getbrolls profile show` com o `doctor` do script antigo. A precedência é flag > ambiente (e `.env`) > perfil > padrão, então um `GB_*` exportado ainda ganha do arquivo. O perfil não habilita plugin nem aceita caminho relativo em `[tools]`. Referência completa em [MANUAL.md](MANUAL.md#-perfil-do-workspace-getbrollstoml).
 
 ### Codex e Claude Code
 
@@ -168,11 +197,11 @@ Defina `GB_SKILL_DIR` e `GB_PROJECT` com os caminhos reais. A trava de projeto u
 
 ### Verificação e atualização
 
-Após instalar, confirme `yt-dlp` e `playwright-cli` em `doctor`. Para a CLI Playwright local, execute `bash scripts/playwright.sh --version` no macOS ou `& .\scripts\playwright.ps1 --version` no Windows. Um status positivo indica disponibilidade, não que todas as URLs serão acessíveis.
+Após instalar, confirme `yt-dlp` e `playwright-cli` em `doctor`. Para a CLI Playwright local, execute `bash scripts/playwright.sh --version` no macOS ou `& .\scripts\playwright.ps1 --version` no Windows; os dois (e os helpers de YouTube) acham o runtime por `setup --where tools` (ou `venv`). Um status positivo indica disponibilidade, não que todas as URLs serão acessíveis.
 
-O conjunto de referência é yt-dlp 2026.08.19, EJS 0.8.0 e Playwright CLI 0.1.21. A partir da 2.3.5, `requirements.txt` fixa também as dependências Python transitivas nas versões instaladas pela CI macOS/Windows da 2.3.4. `package.json` e `package-lock.json` registram o conjunto npm; o instalador copia esses manifestos para `.tools/` e executa `npm ci --ignore-scripts`. Nenhuma biblioteca é incluída no repositório. Os executáveis Python, Node, FFmpeg e curl continuam sendo instalados pelo usuário.
+O conjunto de referência é yt-dlp 2026.08.19, EJS 0.8.0 e Playwright CLI 0.1.21. A partir da 2.3.5, `requirements.txt` fixa também as dependências Python transitivas nas versões instaladas pela CI macOS/Windows da 2.3.4. `package.json` e `package-lock.json` registram o conjunto npm; o `setup` copia esses manifestos para a `.tools/` do runtime e executa `npm ci --ignore-scripts`. Nenhuma biblioteca é incluída no repositório. Os executáveis Python, Node, FFmpeg e curl continuam sendo instalados pelo usuário.
 
-Atualizações de dependências devem entrar por PR, com instalação completa e testes; o Dependabot está configurado para propor essas mudanças semanalmente. Preserve configurações privadas antes de atualizar a skill e repita um ensaio da rota utilizada se as dependências mudarem. Se você personalizou `.tools/node_modules`, `npm ci` substituirá essa árvore pela versão registrada no lockfile; mantenha ferramentas próprias fora da pasta gerenciada da skill.
+Atualizações de dependências devem entrar por PR, com instalação completa e testes; o Dependabot está configurado para propor essas mudanças semanalmente. Preserve configurações privadas antes de atualizar a skill e repita um ensaio da rota utilizada se as dependências mudarem. Se você personalizou a `.tools/node_modules` do runtime, `npm ci` substituirá essa árvore pela versão registrada no lockfile; mantenha ferramentas próprias fora da pasta gerenciada da skill.
 
 Se `--check` falhar, instale o executável/versão apontado. Se a extração falhar, confirme primeiro que a URL abre no navegador autorizado; confira instalação, sessão e disponibilidade do post. Não peça chave YouTube. Para URL CDN Instagram expirada, recapture os dois canais e siga o guia de recuperação. Os testes reais documentados estão em [Qualidade e evidências](QUALITY.md).
 
@@ -206,9 +235,9 @@ A partir da 2.3.6, o repositório também é um marketplace de plugin do Claude 
 /plugin install get-brolls@engenheirodevideo
 ```
 
-Na primeira sessão, execute `/get-brolls-setup`: o comando em `commands/get-brolls-setup.md` roda `scripts/install.sh --check`, o instalador completo do sistema e o `doctor` pela raiz do plugin, e devolve o veredito em uma linha. A skill é acionada pelo contexto do pedido; a forma explícita é `/get-brolls:get-brolls`.
+Na primeira sessão, execute `/get-brolls-setup`: o comando em `commands/get-brolls-setup.md` roda `setup --check`, `setup` e `doctor` pela raiz do plugin, e devolve o veredito em uma linha. A skill é acionada pelo contexto do pedido; a forma explícita é `/get-brolls:get-brolls`.
 
-A skill do plugin fica em `skills/get-brolls/SKILL.md` e referencia os arquivos por `${CLAUDE_PLUGIN_ROOT}`, a raiz do plugin instalado — um diretório de cache versionado (`~/.claude/plugins/cache/engenheirodevideo/get-brolls/<versão>/`). Execute o instalador e o `doctor` pelo caminho absoluto dessa pasta, de qualquer cwd. As dependências ficam em `.venv/` e `.tools/` dentro da pasta do plugin: repita o instalador após cada `/plugin update` ou reinstalação, e prefira variáveis de ambiente ou um `.env` fora da pasta gerenciada para as chaves opcionais, apontado na raiz do parser: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" --env-file CAMINHO <subcomando> …`. O fluxo clone-como-skill continua suportado sem mudanças para Codex e instalações manuais, com o SKILL.md da raiz como fonte canônica.
+A skill do plugin fica em `skills/get-brolls/SKILL.md` e referencia os arquivos por `${CLAUDE_PLUGIN_ROOT}`, a raiz do plugin instalado — um diretório de cache versionado (`~/.claude/plugins/cache/engenheirodevideo/get-brolls/<versão>/`). Execute o instalador e o `doctor` pelo caminho absoluto dessa pasta, de qualquer cwd. As dependências ficam em `$GB_HOME/runtime`, fora da pasta do plugin, e sobrevivem ao `/plugin update`: rode o `setup` de novo só se o `doctor` apontar yt-dlp ou Playwright ausentes (a versão das dependências mudou). Prefira variáveis de ambiente ou um `.env` fora da pasta gerenciada para as chaves opcionais, apontado na raiz do parser: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" --env-file CAMINHO <subcomando> …`. O fluxo clone-como-skill continua suportado sem mudanças para Codex e instalações manuais, com o SKILL.md da raiz como fonte canônica.
 
 #### Permissões (opcional)
 

@@ -72,8 +72,10 @@ SUMMARIES = {
     ),
     "template": ("Congelar um projeto num template imutável do cliente (freeze), sem fala, licença nem aprovação"),
     "x": "Rodar um comando de plugin habilitado (x --list mostra quais existem); só lê o projeto",
+    "profile": "Mostrar o perfil getbrolls.toml em vigor (valor e origem de cada campo) ou confiar/desconfiar dele",
     "setup": (
-        "Conferir (--check) o runtime da instalação: venv do yt-dlp, Playwright e FFmpeg, com os comandos que faltam"
+        "Instalar o runtime da instalação (yt-dlp numa venv e Playwright via npm) em $GB_HOME/runtime; "
+        "--check só confere; --where mostra as pastas; FFmpeg e Node só são verificados"
     ),
     "status": "Resumir onde o projeto está por etapa, sem alterar arquivos",
     "search": "Pesquisar candidatos numa fonte e registrá-los no projeto (--shot liga ao beat; --dry-run não grava)",
@@ -379,18 +381,32 @@ def _add_template_arguments(p):
 def _add_toolchain_subcommands(sub):
     """Acrescenta os subcomandos sem `--project` obrigatório.
 
-    São eles: providers, doctor, plugins, x, setup, capabilities, client e template."""
-    for name in ("providers", "doctor", "plugins", "x", "setup", "capabilities", "client", "template"):
+    São eles: providers, doctor, plugins, x, setup, capabilities, profile, client e template.
+    """
+    for name in ("providers", "doctor", "plugins", "x", "setup", "capabilities", "profile", "client", "template"):
         p = sub.add_parser(name, help=SUMMARIES[name], description=SUMMARIES[name])
         _SUBPARSERS[name] = p
-        if name in ("doctor", "setup", "capabilities"):
+        if name in ("doctor", "setup", "capabilities", "profile"):
             p.add_argument(
                 "--json",
                 action="store_true",
                 help="Aceito; a saída já é JSON (reservado para o modo humano)",
             )
         if name == "setup":
-            p.add_argument("--check", action="store_true", help="Só conferir, sem instalar nada")
+            mode = p.add_mutually_exclusive_group()
+            mode.add_argument("--check", action="store_true", help="Só conferir, sem instalar nada")
+            mode.add_argument(
+                "--upgrade",
+                choices=["ytdlp"],
+                help="Atualizar o yt-dlp do runtime gerenciado além da versão fixada",
+            )
+            mode.add_argument(
+                "--where",
+                nargs="?",
+                const="all",
+                choices=["all", "venv", "tools"],
+                help="Mostrar onde fica cada parte do runtime (JSON), sem instalar; sem valor, todas",
+            )
         if name == "doctor":
             # O SKILL.md diz que `--project` vai em todo comando, e a primeira chamada
             # do fluxo é o `doctor`: recusá-lo ali é contradizer a instrução logo na
@@ -438,6 +454,8 @@ def _add_toolchain_subcommands(sub):
                     "para confirmar que o conteúdo não mudou desde a prévia"
                 ),
             )
+        if name == "profile":
+            _add_profile_args(p)
         if name == "client":
             _add_client_arguments(p)
         if name == "template":
@@ -455,6 +473,20 @@ def _add_toolchain_subcommands(sub):
             )
 
 
+def _add_profile_args(p):
+    """Flags de `profile show|trust|untrust`."""
+    p.add_argument(
+        "profile_action",
+        choices=["show", "trust", "untrust"],
+        metavar="ação",
+        help="show: valor e origem de cada campo; trust: confiar (prévia, depois --yes --expect); untrust: desfazer",
+    )
+    p.add_argument("path", nargs="?", help="Caminho do getbrolls.toml (padrão: o descoberto)")
+    p.add_argument("--project", help="Pasta de onde a busca pelo getbrolls.toml começa (antes da pasta atual)")
+    p.add_argument("--yes", action="store_true", help="trust: confirma depois de mostrar a prévia à pessoa")
+    p.add_argument("--expect", help="trust: sha256 mostrado na prévia; obrigatório junto com --yes")
+
+
 def build_parser():
     """Monta o parser: opções globais e um subparser por subcomando, com as flags específicas de cada um."""
     parser = GbArgumentParser(
@@ -465,6 +497,13 @@ def build_parser():
     parser.add_argument(
         "--env-file",
         help="Arquivo .env explícito; sem ele: GB_ENV_FILE, depois o .env do checkout, depois $GB_HOME/.env",
+    )
+    parser.add_argument(
+        "--profile",
+        help=(
+            "getbrolls.toml explícito, ou `off` para não usar perfil; sem ela: GB_PROFILE, depois "
+            "getbrolls.toml a partir de --project e da pasta atual"
+        ),
     )
     parser.add_argument(
         "--version",
@@ -1174,20 +1213,26 @@ def _given_option_names(argv, args):
 
 
 def _load_env_early(args):
-    """Escolhe e carrega o `.env` antes de configurar o log (GB_LOG_LEVEL pode morar nele).
+    """Ativa o perfil e carrega o `.env` antes de configurar o log (GB_LOG_LEVEL pode morar nele).
 
     Erro de uso (`UsageError`: arquivo que falta, `GB_ENV_FILE` ou `GB_HOME` onde não
-    podem) vira `OperationError` aqui mesmo, sem tocar no projeto. Outro erro do `.env`
-    (chave desconhecida) fica para `execute()`, que o levanta dentro da auditoria; o
-    carregamento repetido lá é inofensivo (`setdefault`).
+    podem, `getbrolls.toml` inválido ou não confiável) vira `OperationError` aqui mesmo,
+    sem tocar no projeto; `requires` do perfil que não bate vira `PREREQUISITE_MISSING`.
+    Outro erro do `.env` (chave desconhecida) fica para `execute()`, que o levanta dentro
+    da auditoria; o carregamento repetido lá é inofensivo (`setdefault`, e a ativação do
+    perfil é reaproveitada).
     """
-    from .config import load_env_choice
+    from .config import load_environment
 
     try:
-        load_env_choice(_paths.env_file(args.env_file), warn=False)
+        load_environment(args, warn=False)
     except UsageError as exc:
         raise OperationError(
             {"operation": args.command, "status": "error", "error_code": "USAGE_ERROR", "message": str(exc)}
+        ) from None
+    except PrerequisiteError as exc:
+        raise OperationError(
+            {"operation": args.command, "status": "error", "error_code": "PREREQUISITE_MISSING", "message": str(exc)}
         ) from None
     except ValueError:
         pass  # `execute()` levanta de novo, dentro da auditoria
@@ -1262,11 +1307,15 @@ def main(argv=None):
 
 def result_exit(command, result, action=None):
     """Código de saída de um comando que deu certo: 4 para `doctor`/`setup` com
-    `"ready": false`, 1 para `analysis --action check` com `"ok": false` (nos dois, o
-    resultado sai em stdout do mesmo jeito, para portões por código de saída); 0 para o resto."""
+    `"ready": false`; 1 para `analysis --action check` com `"ok": false` e para
+    `setup --upgrade` cuja atualização falhou com a venv refeita na versão fixada
+    (`upgrade.status: "failed"`, `ready: true`) — o resultado sai em stdout do mesmo jeito,
+    para portões por código de saída; 0 para o resto."""
     if command in PREREQUISITE_COMMANDS and isinstance(result, dict) and result.get("ready") is False:
         return EXIT_PREREQUISITE
     if (command, action) == ("analysis", "check") and isinstance(result, dict) and result.get("ok") is False:
+        return EXIT_OPERATION_ERROR
+    if command == "setup" and isinstance(result, dict) and (result.get("upgrade") or {}).get("status") == "failed":
         return EXIT_OPERATION_ERROR
     return EXIT_OK
 

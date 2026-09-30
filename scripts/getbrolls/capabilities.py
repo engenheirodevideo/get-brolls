@@ -14,7 +14,15 @@ from . import __version__, _paths, cli, runtime
 from .sdk import loader
 
 SCHEMA_VERSION = 1
-ERROR_CODES = ("INVALID_DATA", "IO_ERROR", "USAGE_ERROR", "INTERNAL_ERROR", "PREREQUISITE_MISSING", "INTERRUPTED")
+ERROR_CODES = (
+    "INVALID_DATA",
+    "IO_ERROR",
+    "LOCKED",
+    "USAGE_ERROR",
+    "INTERNAL_ERROR",
+    "PREREQUISITE_MISSING",
+    "INTERRUPTED",
+)
 
 
 def _json_safe(value):

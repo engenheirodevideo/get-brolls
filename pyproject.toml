@@ -163,6 +163,9 @@ ignore = ["E501", "RUF001", "RUF002", "RUF003", "PLC0415"]
 "scripts/getbrolls/social.py" = ["S603"]
 "scripts/getbrolls/instagram_pairs.py" = ["S603", "S607", "T201"]
 "scripts/getbrolls/serve.py" = ["S603", "S607", "T201"]
+# `setup` monta a venv com `sys.executable -m venv`/pip (argv em lista, sem shell),
+# encerra a árvore do passo com `taskkill` no Windows e mostra o progresso em stderr.
+"scripts/getbrolls/bootstrap.py" = ["S603", "S607", "T201"]
 "scripts/bump_version.py" = ["S603", "T201"]
 # PTH105: a troca de pasta do `update` usa `os.replace` (não `Path.replace`) de
 # propósito, para o teste de rollback poder trocar só essa chamada via

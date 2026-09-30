@@ -10,6 +10,8 @@ import unittest
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT
 
+from getbrolls import bootstrap
+
 # Caminho local de máquina: Unix (/Users, /home, com usuário maiúsculo ou não) e
 # Windows (C:\Users\...), mais o marcador do worktree temporário do agente.
 LOCAL_PATH_PATTERN = re.compile(
@@ -203,7 +205,7 @@ class RepositoryDocumentationTests(unittest.TestCase):
         playwright = ROOT / "scripts/playwright.ps1"
         self.assertTrue(installer.is_file())
         self.assertTrue(playwright.is_file())
-        self.assertIn(".venv\\Scripts\\python.exe", installer.read_text(encoding="utf-8"))
+        self.assertIn("'setup'", installer.read_text(encoding="utf-8"))
         self.assertIn("playwright-cli.cmd", playwright.read_text(encoding="utf-8"))
         self.assertIn("Invoke-Native", installer.read_text(encoding="utf-8"))
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -338,13 +340,51 @@ class RepositoryDocumentationTests(unittest.TestCase):
                 if action_re.search(unit) and yes_re.search(unit):
                     self.assertIn("--expect", unit, f"{relative}: {unit!r}")
 
-    def test_installers_name_the_validated_python_range(self):
+    def test_the_validated_python_range_is_named_once(self):
+        # Os instaladores delegam ao `setup`: a faixa validada mora na falha do pip dele.
         shell = (ROOT / "scripts/install.sh").read_text(encoding="utf-8")
         powershell = (ROOT / "scripts/install.ps1").read_text(encoding="utf-8")
-        self.assertIn("validado em Python 3.11–3.13", shell)
-        self.assertIn("validado em Python 3.11-3.13", powershell)
-        self.assertIn("exit 1", shell)
+        self.assertIn("validado em Python 3.11–3.13", bootstrap.PIP_VERSION_FAILED)
+        for script in (shell, powershell):
+            self.assertNotIn("validado em Python", script)
+        self.assertIn("exit", shell)
         self.assertIn("throw", powershell)
+
+    def test_installers_delegate_to_setup(self):
+        shell = (ROOT / "scripts/install.sh").read_text(encoding="utf-8")
+        powershell = (ROOT / "scripts/install.ps1").read_text(encoding="utf-8")
+        self.assertIn('scripts/gb.py" setup', shell)
+        self.assertIn("setup_status=$?", shell)
+        self.assertIn("'setup'", powershell)
+        self.assertIn("$SetupStatus -ne 4", powershell)
+        for script in (shell, powershell):
+            self.assertNotIn("-m venv", script)
+            self.assertNotIn("'venv'", script)
+            self.assertNotIn("npm --cache", script)
+            self.assertNotIn("'--cache'", script)
+
+    def test_launchers_ask_setup_where(self):
+        runtime = (ROOT / "scripts/getbrolls/tools/youtube/_runtime.sh").read_text(encoding="utf-8")
+        self.assertIn("setup --where", runtime)
+        self.assertIn("gb_where_executable venv", runtime)
+        self.assertIn("in_use", runtime)
+        self.assertIn("set -o pipefail", runtime)
+        self.assertIn("--profile off", runtime)
+        shell = (ROOT / "scripts/playwright.sh").read_text(encoding="utf-8")
+        self.assertIn("gb_where_executable tools", shell)
+        powershell = (ROOT / "scripts/playwright.ps1").read_text(encoding="utf-8")
+        self.assertIn("'setup', '--where', 'tools'", powershell)
+        self.assertIn("'--profile', 'off'", powershell)
+        self.assertIn("in_use.executable", powershell)
+        for script in (runtime, shell, powershell):
+            self.assertNotIn(".tools/node_modules", script)
+            self.assertNotIn(".tools\\node_modules", script)
+            self.assertNotIn(".venv/bin/yt-dlp", script)
+
+    def test_ci_points_the_runtime_outside_the_checkout(self):
+        workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
+        self.assertEqual(2, workflow.count("GB_RUNTIME_DIR=$RUNNER_TEMP/gb-runtime"))
+        self.assertNotIn("GB_RUNTIME_DIR: ${{ github.workspace }}", workflow)
 
     def test_powershell_installer_python_snippets_have_no_double_quotes(self):
         # Windows PowerShell 5.1 strips inner double quotes when passing
@@ -355,7 +395,7 @@ class RepositoryDocumentationTests(unittest.TestCase):
         powershell = (ROOT / "scripts/install.ps1").read_text(encoding="utf-8")
         snippets = re.findall(r"'-c',\s*'((?:[^']|'')*)'", powershell)
         snippets += re.findall(r"-c\s+'((?:[^']|'')*)'", powershell)
-        self.assertGreaterEqual(len(snippets), 3, powershell)
+        self.assertGreaterEqual(len(snippets), 1, powershell)
         for snippet in snippets:
             self.assertNotIn('"', snippet, snippet)
 

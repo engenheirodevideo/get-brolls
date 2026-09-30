@@ -32,6 +32,12 @@ os.environ.pop("GB_ENV_FILE", None)
 for _key in [k for k in os.environ if k.startswith("GETBROLLS_") and k != "GETBROLLS_CACHE_DIR"]:
     del os.environ[_key]
 
+# Um getbrolls.toml do workspace de quem roda os testes seria descoberto a partir da
+# pasta atual e mudaria pastas, executáveis e plugins por fora do GB_HOME de mentira.
+# Os testes do perfil ligam a descoberta de volta removendo a variável.
+os.environ["GB_PROFILE"] = "off"
+os.environ.pop("GB_PROFILE_SHA256", None)
+
 # No modo wheel o pacote instalado é o único getbrolls: um PYTHONPATH herdado poderia
 # devolver o checkout aos subprocessos.
 if os.environ.get("GB_TEST_CLI") == "wheel":
