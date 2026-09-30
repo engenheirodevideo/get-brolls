@@ -21,6 +21,8 @@ python3 -m unittest discover -s tests -v
 python3 scripts/gb.py doctor
 ```
 
+No checkout, `python3 scripts/gb.py` é o comando; no pacote instalado (`uv tool install` ou `pipx install`) é `getbrolls`, com os mesmos subcomandos. Desenvolvedor trabalha no checkout.
+
 Para rodar um arquivo de teste só, use o mesmo `discover` com `-p`:
 `python3 -m unittest discover -s tests -p "test_x.py"`. A forma
 `python3 -m unittest tests.test_x` falha no import (`_isolation`), porque os

@@ -11,6 +11,10 @@ tags: [get-brolls, sdk, plugins]
 > **Experimental:** `sdk_api` 1 pode mudar em versão minor; plugins declaram
 > `requires_getbrolls`. Confira o CHANGELOG antes de atualizar o Get B-rolls.
 
+Nos exemplos deste documento, `python3 scripts/gb.py …` (checkout e plugin) é o
+mesmo comando que `getbrolls …` no pacote instalado. Um plugin que chama o
+getbrolls num subprocesso usa `api.cli_argv()`, nunca um caminho montado à mão.
+
 O Get B-rolls aceita extensões locais em Python: **plugins** instalados numa
 pasta pessoal, com opt-in explícito, que contribuem fontes de busca
 (`providers`), rotas que trazem o arquivo (`routes`), comandos próprios

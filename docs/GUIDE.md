@@ -41,6 +41,10 @@ Instale a stack inteira antes de rodar o instalador: Python 3.11+, FFmpeg/ffprob
 | Bash e awk | Somente os helpers opcionais em `scripts/getbrolls/tools/youtube/`; a CLI principal não depende deles |
 | FFmpeg com `drawtext` (libfreetype) + fonte DejaVu, Liberation ou Arial | Índice por célula e banner (título, ID, janela) no contact sheet da CLI e dos helpers Bash; use `GB_FONT_FILE` para indicar outra fonte TrueType. Sem `drawtext`, o sheet sai sem rótulos e o Storyboard imprime a legenda de tempos; `doctor` mostra o estado em `contact_sheet` |
 
+### Instalar como pacote
+
+Além do checkout e do plugin, o getbrolls instala como comando: `uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0` (ou `pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0`), seguido de `getbrolls doctor` e `getbrolls setup --check`. `python -m getbrolls` também funciona. No checkout e no plugin do Claude Code nada muda: `python3 scripts/gb.py …` continua sendo o comando, e todo exemplo deste guia com `python3 scripts/gb.py` vale como `getbrolls …` no pacote instalado. No pacote não existe `.env` de checkout: use `$GB_HOME/.env`. O runtime (yt-dlp e Playwright) fica em `$GB_RUNTIME_DIR` ou, sem ela, em `$GB_HOME/runtime/<versão das dependências>/`. No Windows, os comandos sugeridos pela ferramenta não prometem funcionar com caminho que contenha `$`, `%` ou `"` ao copiar e colar no PowerShell ou no cmd.
+
 Git é opcional. API key YouTube não é necessária. Pexels/Pixabay usam apenas suas próprias chaves opcionais. `curl-cffi` é extra opcional do yt-dlp, não requisito universal.
 
 ### macOS
@@ -117,7 +121,7 @@ Referências de instalação: [yt-dlp/EJS](https://github.com/yt-dlp/yt-dlp/wiki
 
 ### Configuração
 
-Copiar `.env.example` para `.env` é opcional (`cp .env.example .env` no macOS; `Copy-Item .env.example .env` no PowerShell). O mesmo arquivo existe comentado em português, `.env.example.pt-BR`: as variáveis e os valores são idênticos, só os comentários mudam de língua. O `.env` pertence à raiz da skill, independentemente da pasta atual. Ambiente do processo prevalece. Além das variáveis do core, o `.env` aceita as de `permissions.env` de cada plugin instalado que ficam no espaço de nomes dele — o id em maiúsculas seguido de `_` (ex.: `BANCO_HTTP_TOKEN` do `banco_http`); qualquer outro nome é recusado. Essas variáveis de plugin chegam só ao plugin, por `api.env`: nunca vão para o ambiente do processo nem para ffmpeg, yt-dlp, git ou qualquer outro subprocesso. `--env-file` é opção da raiz do parser e vem antes do subcomando: `python3 scripts/gb.py --env-file CAMINHO <subcomando> …`. Nunca distribua `.env`, cookies, configs CDN ou perfis do navegador.
+Copiar `.env.example` para `.env` é opcional (`cp .env.example .env` no macOS; `Copy-Item .env.example .env` no PowerShell). O mesmo arquivo existe comentado em português, `.env.example.pt-BR`: as variáveis e os valores são idênticos, só os comentários mudam de língua. O `.env` que vale é, do mais forte ao mais fraco: `--env-file`, `GB_ENV_FILE` (só no ambiente do processo), o `.env` da raiz da skill (checkout ou plugin, independentemente da pasta atual) e `$GB_HOME/.env`. Só um é lido: havendo dois, vale o de cima e todo comando avisa `ENV_FILE_SHADOWED`; o `doctor` mostra o escolhido em `install.env_file`. `GB_HOME` dentro de `$GB_HOME/.env` é recusado e, em outro `.env`, sai com o aviso `DEPRECATED` (a leitura some na 2.7). Toda `GB_*` também vale como `GETBROLLS_*` no ambiente, com `GB_*` vencendo. Ambiente do processo prevalece. Além das variáveis do core, o `.env` aceita as de `permissions.env` de cada plugin instalado que ficam no espaço de nomes dele — o id em maiúsculas seguido de `_` (ex.: `BANCO_HTTP_TOKEN` do `banco_http`); qualquer outro nome é recusado. Essas variáveis de plugin chegam só ao plugin, por `api.env`: nunca vão para o ambiente do processo nem para ffmpeg, yt-dlp, git ou qualquer outro subprocesso. `--env-file` é opção da raiz do parser e vem antes do subcomando: `python3 scripts/gb.py --env-file CAMINHO <subcomando> …`. Nunca distribua `.env`, cookies, configs CDN ou perfis do navegador.
 
 #### Caminhos explícitos de ferramentas
 
@@ -537,7 +541,7 @@ Não execute `close-all` nem feche abas de outros projetos. Encerre somente a se
 
 ## Instagram — navegador/Playwright, dois streams e MP4
 
-O fluxo Instagram usa o módulo `scripts/getbrolls/instagram_pairs.py`. A captura acontece na sessão do navegador autorizada pelo usuário; o módulo consome os pares de vídeo e áudio capturados. Consulte também [recuperação e auditoria](#instagram--recuperação-e-auditoria).
+O fluxo Instagram usa o módulo `scripts/getbrolls/instagram_pairs.py` (no pacote instalado: `python -m getbrolls.instagram_pairs`, com os mesmos argumentos). A captura acontece na sessão do navegador autorizada pelo usuário; o módulo consome os pares de vídeo e áudio capturados. Consulte também [recuperação e auditoria](#instagram--recuperação-e-auditoria).
 
 ### 1. Abrir o Reel e capturar as fontes
 
