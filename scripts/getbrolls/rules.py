@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from . import _paths, logs
+from . import _paths, logs, versioning, vocab
 from .brief import read_json_block
 from .errors import PrerequisiteError
 from .models import invalidate_approval
@@ -177,9 +177,20 @@ def _merge_layers(layers):
 
 
 def _validate_version(r):
-    """Exige `version: 1` em RULES.md."""
-    if type(r.get("version")) is not int or r["version"] != 1:
-        raise ValueError('Em RULES.md, "version" tem que ser o número 1. Ajuste essa linha.')
+    """Normaliza `version` do RULES.md para 1, aceitando o arquivo antigo e o sinônimo.
+
+    Ausente vale 1; `schema_version` vale como sinônimo, desde que não contradiga
+    `version`; versão mais nova sai com a frase padrão de `versioning`.
+    """
+    if "version" in r and "schema_version" in r and r["version"] != r["schema_version"]:
+        raise ValueError('Em RULES.md, "version" e "schema_version" dizem coisas diferentes; deixe só "version".')
+    value = r["version"] if "version" in r else r.get("schema_version", 1)
+    versioning.read_version(
+        {"schema_version": value},
+        "RULES.md",
+        invalid='Em RULES.md, "version" tem que ser o número 1. Ajuste essa linha.',
+    )
+    r["version"] = value
 
 
 def _validate_asset_types(r):
@@ -198,7 +209,7 @@ def _validate_asset_types(r):
 
 def _validate_video_format(r):
     """Exige `video_format` em um dos três valores aceitos."""
-    if r.get("video_format") not in ("native", "reels", "horizontal"):
+    if r.get("video_format") not in vocab.FORMATS:
         raise ValueError('Em RULES.md, "video_format" tem que ser "native", "reels" ou "horizontal".')
 
 

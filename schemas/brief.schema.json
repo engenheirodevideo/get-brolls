@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Get B-rolls Brief v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/main/schemas/brief.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/brief.schema.json",
   "description": "Documental: a validação real é manual, em scripts/getbrolls/brief.py.",
   "type": "object",
   "additionalProperties": false,

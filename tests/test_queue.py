@@ -324,5 +324,26 @@ class QueueCliTests(unittest.TestCase):
             self.assertIsNone(self.run_cli("status", "--project", empty)["queue"])
 
 
+class QueueProvidersComeFromTheRegistryTests(unittest.TestCase):
+    def test_every_queued_provider_is_a_builtin_that_resolves_urls(self):
+        from getbrolls.sdk import registry  # pylint: disable=import-outside-toplevel  # só aqui
+
+        builtins = registry._builtins_only()  # pylint: disable=protected-access
+        for name in queue.PROVIDERS:
+            provider = builtins.provider(name)
+            self.assertIsNotNone(provider, name)
+            assert provider is not None
+            self.assertTrue(provider.capabilities.resolve_url, name)
+
+    def test_queued_providers_are_the_pacing_table(self):
+        self.assertEqual(tuple(queue.DEFAULT_PACE), queue.PROVIDERS)
+
+    def test_brief_has_no_static_source_lists(self):
+        from getbrolls import brief  # pylint: disable=import-outside-toplevel  # só aqui
+
+        for name in ("SOURCES", "STOCK_SOURCES", "SEARCHABLE", "STILL_SOURCES"):
+            self.assertFalse(hasattr(brief, name), name)
+
+
 if __name__ == "__main__":
     unittest.main()

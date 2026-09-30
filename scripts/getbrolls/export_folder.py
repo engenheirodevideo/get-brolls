@@ -278,7 +278,14 @@ def _inside(staging, relative):
 
 def _marker_bytes(base, state, number, media):
     # A identidade do marcador vem depois da base: `marker_base` nunca a sobrescreve.
-    body = {**base, "marker": MARKER_ID, "state": state, "number": folder_name(number), "media": media}
+    body = {
+        **base,
+        "schema_version": 1,
+        "marker": MARKER_ID,
+        "state": state,
+        "number": folder_name(number),
+        "media": media,
+    }
     return _utf8(json.dumps(body, ensure_ascii=False, indent=2, sort_keys=True) + "\n", "O marcador do export")
 
 

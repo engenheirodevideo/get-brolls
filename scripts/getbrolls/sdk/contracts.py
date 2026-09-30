@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+from .. import vocab
 from ..http import ProviderError
 from . import names
 
@@ -20,8 +21,8 @@ RESERVED_IDS = (CORE, "cliente", "catalogo", "direcao", "template", "projeto")
 # O padrão mora no módulo folha `names` (o roteiro o lê sem passar por aqui); o
 # mesmo objeto continua acessível como `contracts.NAME_RE`.
 NAME_RE = names.NAME_RE
-MATCH_KINDS = ("literal", "illustrative")
-MEDIA_KINDS = ("video", "image")
+MATCH_KINDS = vocab.MATCH_KINDS
+MEDIA_KINDS = vocab.MEDIA_KINDS
 # "preview": a rota pode trazer mídia de trabalho para revisão. "fetch": trazer o
 # arquivo consome licença ou cota, então só roda no `fetch`, depois de aprovação e permit.
 ROUTE_STAGES = ("preview", "fetch")

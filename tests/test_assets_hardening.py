@@ -103,6 +103,55 @@ class AssetHardeningTests(unittest.TestCase):
         found = assets.resolve(self.project, "sfx", "d")
         self.assertEqual((found["license"]["licenca"], found["license_error"]), ("CC0", None))
 
+    def _sidecar(self, name, data):
+        self._put("assets/sfx", f"{name}.wav")
+        self._put("assets/sfx", f"{name}.licenca.json", json.dumps(data))
+        return assets.resolve(self.project, "sfx", name)
+
+    def test_english_only_sidecar_is_read_as_portuguese(self):
+        found = self._sidecar("en", {"source": "banco", "license_name": "CC0", "attribution": "Fulano"})
+        self.assertIsNone(found["license_error"])
+        self.assertEqual({"origem": "banco", "licenca": "CC0", "credito": "Fulano"}, found["license"])
+
+    def test_mixed_keys_that_agree_pass_and_extras_survive(self):
+        data = {"origem": "banco", "source": "banco", "license_name": "CC0", "credito": "X", "url": "https://x"}
+        found = self._sidecar("mix", data)
+        self.assertIsNone(found["license_error"])
+        self.assertEqual(
+            {"origem": "banco", "licenca": "CC0", "credito": "X", "url": "https://x"},
+            found["license"],
+        )
+
+    def test_conflicting_twins_are_a_row_error(self):
+        found = self._sidecar("conflito", {"origem": "banco", "source": "outro", "licenca": "CC0", "credito": "X"})
+        self.assertIsNone(found["license"])
+        self.assertEqual("conflito.licenca.json: origem e source dizem coisas diferentes", found["license_error"])
+
+    def test_missing_field_message_names_both_spellings(self):
+        found = self._sidecar("falta", {"origem": "banco", "credito": "X"})
+        self.assertIn("licenca (ou license_name)", found["license_error"])
+        self.assertIn("preenchidos", found["license_error"])
+
+    def test_schema_version_one_is_accepted_and_newer_is_refused(self):
+        base = {"origem": "banco", "licenca": "CC0", "credito": "X"}
+        found = self._sidecar("v1", {"schema_version": 1, **base})
+        self.assertEqual((base, None), (found["license"], found["license_error"]))
+        found = self._sidecar("v2", {"schema_version": 2, **base})
+        self.assertIsNone(found["license"])
+        self.assertIn("versão mais nova do get-brolls", found["license_error"])
+        found = self._sidecar("vtexto", {"schema_version": "1", **base})
+        self.assertIsNone(found["license"])
+        self.assertIn("incompatível", found["license_error"])
+
+    def test_export_credit_line_is_the_same_for_an_english_sidecar(self):
+        from getbrolls import export_plan  # pylint: disable=import-outside-toplevel  # só este teste
+
+        pt = self._sidecar("pt", {"origem": "banco", "licenca": "CC0", "credito": "Fulano"})
+        en = self._sidecar("en", {"source": "banco", "license_name": "CC0", "attribution": "Fulano"})
+        credit = export_plan._license_credit  # pylint: disable=protected-access
+        self.assertEqual(credit(pt["license"]), credit(en["license"]))
+        self.assertIsNotNone(credit(en["license"]))
+
 
 if __name__ == "__main__":
     unittest.main()

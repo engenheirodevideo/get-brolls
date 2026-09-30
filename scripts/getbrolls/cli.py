@@ -21,7 +21,7 @@ import traceback
 from gettext import gettext
 from typing import NoReturn
 
-from . import __version__, _paths, logs, presets
+from . import __version__, _paths, logs, presets, vocab
 from .errors import PrerequisiteError, UsageError
 from .runtime import READ_ONLY_ACTIONS, READ_ONLY_COMMANDS, OperationError, audited, error_code_for, exit_code_for
 from .sdk.scaffold import KINDS as SCAFFOLD_KINDS
@@ -804,7 +804,7 @@ def _add_init_rules_args(p, name):
     p.add_argument(
         "--format",
         dest="video_format",
-        choices=["native", "reels", "horizontal"],
+        choices=list(vocab.FORMATS),
         help="Formato-alvo gravado em video_format; regravar exige --force",
     )
     p.add_argument(
