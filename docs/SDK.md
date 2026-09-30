@@ -451,7 +451,7 @@ if not token:
 Eventos do log estruturado relacionados a plugins:
 `plugin_loaded` (plugin, versão, providers, presets e a quantidade de rotas e
 comandos registrados), `plugin_skipped`, `plugin_failed`, `plugin_enabled`,
-`plugin_disabled`, `plugin_installed`, `plugin_updated`,
+`plugin_disabled`, `plugin_installed`, `plugin_updated`, `plugin_removed`,
 `plugin_request_refused`, `plugin_path_refused`, `plugin_call_failed`,
 `plugin_candidate_sanitized`, `plugin_route` (plugin, rota, estágio, bytes, ms)
 e `plugin_command` (plugin, comando, quantidade de argumentos, ms). Nenhum
@@ -829,21 +829,59 @@ python3 scripts/gb.py plugins --action install --source <pasta-ou-url-git>
 python3 scripts/gb.py plugins --action install --source <pasta-ou-url-git> --yes --expect <sha256>
 python3 scripts/gb.py plugins --action update --id <id>
 python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
+python3 scripts/gb.py plugins --action install --source <url-git> --ref <branch-ou-tag> --subdir <pasta>
+python3 scripts/gb.py plugins --action install --source <url-git> --commit <sha> --yes --expect <sha256>
+python3 scripts/gb.py plugins --action update --id <id> --commit <sha-anterior>
 ```
 
+- `--commit <sha>` fixa o commit (o sha completo, 40 caracteres hexadecimais
+  minúsculos; abreviado ou maiúsculo é recusado). Sem ele, `--ref` (branch, tag
+  ou `refs/...`; padrão `HEAD`) é resolvida na origem e a prévia mostra o commit
+  que ela aponta agora. Um nome que é branch e tag ao mesmo tempo é ambíguo:
+  use `refs/heads/<nome>` ou `refs/tags/<nome>`. `--commit`, `--ref` e
+  `--subdir` só valem com `--source` (senão, erro de uso, saída 2).
+- A origem gravada em `plugins.json` (`sources.<id>`) guarda `source`,
+  `commit`, `ref` e `subdir`. `update --id` busca de novo a mesma ref e
+  subpasta; `update --id <id> --commit <sha>` fixa outro commit (inclusive um
+  anterior, para voltar atrás), sempre com a mesma prévia e `--expect`. O `diff`
+  da prévia traz `permissions_added` (o que é novo em `network`, `env`,
+  `paths` e `project_write` — uma pasta mais larga em `paths` conta como nova) e
+  `permissions_increased` (`true` quando alguma permissão foi acrescentada).
+
 - `--source` aceita uma pasta local (copiada sem `.git`/`__pycache__`), uma
-  pasta que é repositório git ou uma URL git (`https://…` sem usuário/senha, ou
-  `git@host:caminho`). Um repositório nunca é `checkout`ado: o clone usa
-  `--no-checkout` e o conteúdo é materializado por nós, um blob por vez, direto
-  de `git ls-tree`/`git cat-file blob` — comandos que nunca aplicam filtro
+  pasta que é repositório git (com `.git` ou *bare*) ou uma URL git (`https://…`
+  sem usuário/senha, ou `git@host:caminho`). Repositório é sempre fixado por
+  commit: sem `--commit`, a ref (`HEAD` por padrão) é resolvida na origem com
+  `git ls-remote`, e só aquele commit é buscado (`git init` + `git fetch --depth 1
+  <sha>`; servidor que não entrega commit por sha recebe `fetch --depth 1 <ref>`,
+  e a ponta tem que ser o mesmo sha, senão o install recusa). Um repositório
+  nunca é `checkout`ado: o conteúdo é materializado por nós, um blob por vez,
+  direto de `git ls-tree`/`git cat-file blob` — comandos que nunca aplicam filtro
   `clean`/`smudge` nem hook, ao contrário de um `checkout` de verdade — com
-  `GIT_TERMINAL_PROMPT=0`; só o que está commitado entra. O clone fica numa
-  pasta de staging própria e a árvore é escrita em outra, que nunca tem `.git`.
+  `GIT_TERMINAL_PROMPT=0`; só o que está commitado entra (numa pasta local que é
+  repositório, a prévia avisa que o que não foi commitado fica de fora). O clone
+  fica numa pasta de staging própria e a árvore é escrita em outra, que nunca tem
+  `.git`. O git roda só com os transportes `https` e `ssh` (e `file` apenas para
+  a pasta local indicada), `transfer.fsckObjects=true`, sem template de `init` e
+  sem hooks.
   É recusado: link simbólico, submódulo (gitlink), qualquer caminho com um
   componente de controle de versão (`.git`, `.hg`, `.svn`, também com ponto ou
   espaço sobrando e os nomes curtos `GIT~1`/`HG~1`/`SVN~1`), `:` ou `\` em
   qualquer componente, colisão de maiúsculas/minúsculas entre dois caminhos,
   mais de 2000 arquivos e mais de 200 MB (no total ou num arquivo só).
+- `--subdir <caminho>` instala só a pasta `<caminho>` de dentro do repositório
+  (um monorepo com vários plugins, por exemplo): ela tem que ser uma pasta
+  (`tree`) naquele commit, e o caminho só aceita letras, dígitos e `. _ -`
+  separados por `/`, sem `.`/`..` e sem passar por `.git`/`.hg`/`.svn` em
+  qualquer grafia (`.GIT` também). Numa pasta comum, `--subdir` é recusado:
+  aponte `--source` direto para a pasta do plugin. O sha256 é o mesmo de uma
+  cópia comum daquela pasta.
+- Também são recusados, vindo de git ou de pasta: ponteiro do Git LFS (o
+  install nunca roda o LFS, então chegaria o ponteiro, não o arquivo) e nome de
+  arquivo fora da forma Unicode NFC ou que não é UTF-8 (o mesmo nome viraria
+  bytes diferentes em outro sistema, e o sha256 mudaria). O conteúdo é o blob
+  cru do commit: `core.autocrlf`, `eol` e filtros do `.gitattributes` não mudam
+  nada, então o sha256 é o mesmo em macOS, Linux e Windows.
 - Uma pasta local só é tratada como repositório git quando `.git` é uma pasta
   de verdade (um arquivo `.git` de worktree/submódulo ou um link apontariam
   para outro repositório). Pasta local comum é copiada sem `.git`/`.hg`/`.svn`
@@ -871,6 +909,23 @@ python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
   diferença de versão, de permissões e de arquivos (adicionados, removidos,
   alterados) contra a origem gravada. Nenhum código do plugin roda durante
   install/update — só o manifesto é lido.
+
+## Remover
+
+```sh
+python3 scripts/gb.py plugins --action remove --id <id>
+python3 scripts/gb.py plugins --action remove --id <id> --yes
+```
+
+- Sem `--yes`, só mostra o que sai: a pasta `plugins/<id>` (id, versão,
+  status) e o que o `plugins.json` guarda do plugin (`enabled`, `last_pins`,
+  `sources`). Com `--yes`, apaga a pasta e essas três entradas. Não há
+  `--expect` (remover não aprova conteúdo); passá-lo é erro de uso.
+- `plugin-data/<id>` (estado e cache do plugin) fica; a resposta mostra onde
+  (`kept.plugin_data`), para apagar à mão se quiser.
+- Se `plugins/<id>` é um link simbólico (ou junction), só o link sai; o alvo
+  não é tocado. Um id que só sobrou no `plugins.json`, sem pasta, também pode
+  ser removido. `plugins.json` corrompido recusa antes de mexer em qualquer coisa.
 
 ## Opt-in e confiança
 

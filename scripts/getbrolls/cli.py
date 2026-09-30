@@ -61,7 +61,8 @@ SUMMARIES = {
     "providers": "Listar fontes disponíveis, transporte e chaves configuradas",
     "doctor": "Diagnosticar dependências, caminhos fixados e fontes utilizáveis",
     "plugins": (
-        "Listar, instalar, atualizar, criar, habilitar, desabilitar ou validar plugins do SDK (~/.getbrolls/plugins)"
+        "Listar, instalar, atualizar, remover, criar, habilitar, desabilitar ou validar plugins do SDK "
+        "(~/.getbrolls/plugins)"
     ),
     "capabilities": (
         "Descrever em JSON os comandos, flags, códigos de saída e comandos de plugin desta instalação (para agentes)"
@@ -424,14 +425,27 @@ def _add_toolchain_subcommands(sub):
             p.add_argument(
                 "--action",
                 required=True,
-                choices=["list", "enable", "disable", "check", "install", "update", "new"],
+                choices=["list", "enable", "disable", "check", "install", "update", "remove", "new"],
                 help=(
                     "list: inventário sem executar código; enable/disable: liga/desliga por id; check: valida uma "
-                    "pasta; install/update: traz de pasta ou git, em dois passos; new: gera um plugin mínimo"
+                    "pasta; install/update: traz de pasta ou git, em dois passos; remove: tira a pasta e o estado, "
+                    "em dois passos; new: gera um plugin mínimo"
                 ),
             )
-            p.add_argument("--id", help="Id do plugin (enable/disable/update/new)")
+            p.add_argument("--id", help="Id do plugin (enable/disable/update/remove/new)")
             p.add_argument("--source", help="Pasta local ou URL git (https:// ou git@) do plugin a instalar (install)")
+            p.add_argument(
+                "--commit",
+                help=(
+                    "install/update: sha completo (40 hex) do commit a instalar; sem ele, a ref é resolvida na "
+                    "origem (update com --commit volta a um commit anterior)"
+                ),
+            )
+            p.add_argument(
+                "--ref",
+                help="install: branch, tag ou refs/... a resolver na origem (padrão HEAD); o update resolve a mesma",
+            )
+            p.add_argument("--subdir", help="install: pasta do plugin dentro do repositório git (ex.: plugins/demo)")
             p.add_argument(
                 "--path",
                 help="check: pasta do plugin a validar (executa o register()); new: pasta onde criar o plugin",
@@ -444,7 +458,10 @@ def _add_toolchain_subcommands(sub):
             p.add_argument(
                 "--yes",
                 action="store_true",
-                help="Confirma enable/install/update depois de mostrar manifesto, permissões e origem à pessoa",
+                help=(
+                    "Confirma enable/install/update/remove depois de mostrar manifesto, permissões e origem (ou o "
+                    "que sai) à pessoa"
+                ),
             )
             p.add_argument(
                 "--expect",

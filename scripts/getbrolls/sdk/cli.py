@@ -2,7 +2,11 @@
 
 from pathlib import Path
 
+from ..errors import UsageError
 from . import loader
+
+# Flags que só valem em `install` (as três) e em `update` (só `--commit`).
+_PIN_FLAGS = ("commit", "ref", "subdir")
 
 
 def kind_list():
@@ -49,18 +53,39 @@ def _check(args):
     return testing.check_plugin(folder)
 
 
+def _pin_flags(args):
+    return {name: getattr(args, name, None) for name in _PIN_FLAGS}
+
+
 def _install(args):
     from . import install
 
+    flags = _pin_flags(args)
     if not args.source:
+        if any(value is not None for value in flags.values()):
+            raise UsageError("--commit, --ref e --subdir precisam de --source em plugins --action install.")
         raise ValueError("--source é obrigatório em plugins --action install (pasta local ou URL git).")
-    return install.install(args.source, confirm=bool(args.yes), expect=args.expect)
+    return install.install(args.source, confirm=bool(args.yes), expect=args.expect, **flags)
 
 
 def _update(args):
     from . import install
 
-    return install.update(_require_id(args), confirm=bool(args.yes), expect=args.expect)
+    flags = _pin_flags(args)
+    if flags["ref"] is not None or flags["subdir"] is not None:
+        raise UsageError(
+            "--ref e --subdir só valem em plugins --action install (com --source); o update usa os gravados "
+            "na instalação. Para fixar outro commit, use --commit."
+        )
+    return install.update(_require_id(args), confirm=bool(args.yes), expect=args.expect, commit=flags["commit"])
+
+
+def _remove(args):
+    from . import remove
+
+    if args.expect:
+        raise UsageError("plugins --action remove não usa --expect: remover não aprova conteúdo; use só --yes.")
+    return remove.remove(_require_id(args), confirm=bool(args.yes))
 
 
 def _new(args):
@@ -78,10 +103,13 @@ ACTIONS = {
     "check": _check,
     "install": _install,
     "update": _update,
+    "remove": _remove,
     "new": _new,
 }
 
 
 def run(args):
     """Roda a ação de `plugins --action ...` e devolve o resultado."""
+    if args.action not in ("install", "update") and any(value is not None for value in _pin_flags(args).values()):
+        raise UsageError(f"--commit, --ref e --subdir não valem em plugins --action {args.action}.")
     return ACTIONS[args.action](args)

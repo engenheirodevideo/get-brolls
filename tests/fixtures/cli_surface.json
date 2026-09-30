@@ -1511,7 +1511,7 @@
       ]
     },
     "plugins": {
-      "help": "Listar, instalar, atualizar, criar, habilitar, desabilitar ou validar plugins do SDK (~/.getbrolls/plugins)",
+      "help": "Listar, instalar, atualizar, remover, criar, habilitar, desabilitar ou validar plugins do SDK (~/.getbrolls/plugins)",
       "options": [
         {
           "action": "_HelpAction",
@@ -1535,11 +1535,12 @@
             "install",
             "list",
             "new",
+            "remove",
             "update"
           ],
           "default": null,
           "dest": "action",
-          "help": "list: inventário sem executar código; enable/disable: liga/desliga por id; check: valida uma pasta; install/update: traz de pasta ou git, em dois passos; new: gera um plugin mínimo",
+          "help": "list: inventário sem executar código; enable/disable: liga/desliga por id; check: valida uma pasta; install/update: traz de pasta ou git, em dois passos; remove: tira a pasta e o estado, em dois passos; new: gera um plugin mínimo",
           "nargs": null,
           "option_strings": [
             "--action"
@@ -1551,7 +1552,7 @@
           "choices": null,
           "default": null,
           "dest": "id",
-          "help": "Id do plugin (enable/disable/update/new)",
+          "help": "Id do plugin (enable/disable/update/remove/new)",
           "nargs": null,
           "option_strings": [
             "--id"
@@ -1567,6 +1568,42 @@
           "nargs": null,
           "option_strings": [
             "--source"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "commit",
+          "help": "install/update: sha completo (40 hex) do commit a instalar; sem ele, a ref é resolvida na origem (update com --commit volta a um commit anterior)",
+          "nargs": null,
+          "option_strings": [
+            "--commit"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "ref",
+          "help": "install: branch, tag ou refs/... a resolver na origem (padrão HEAD); o update resolve a mesma",
+          "nargs": null,
+          "option_strings": [
+            "--ref"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "subdir",
+          "help": "install: pasta do plugin dentro do repositório git (ex.: plugins/demo)",
+          "nargs": null,
+          "option_strings": [
+            "--subdir"
           ],
           "required": false
         },
@@ -1604,7 +1641,7 @@
           "choices": null,
           "default": false,
           "dest": "yes",
-          "help": "Confirma enable/install/update depois de mostrar manifesto, permissões e origem à pessoa",
+          "help": "Confirma enable/install/update/remove depois de mostrar manifesto, permissões e origem (ou o que sai) à pessoa",
           "nargs": 0,
           "option_strings": [
             "--yes"

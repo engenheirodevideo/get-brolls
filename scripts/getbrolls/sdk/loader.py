@@ -23,7 +23,7 @@ from .api import PluginApi
 from .files import TOP_LEVEL_VCS, counted_files, resolved_roots
 from .files import is_link as _is_link  # `export_folder`/`export_plan` leem `loader._is_link`
 from .guard import without_prefix
-from .manifest import ManifestError, compatibility_problem, read_manifest
+from .manifest import PERMISSION_KEYS, ManifestError, compatibility_problem, read_manifest
 
 _log = logs.get("sdk")
 
@@ -223,6 +223,16 @@ def permissions_diff(before, after):
     return {"from": before, "to": after}
 
 
+def permissions_added(before, after):
+    """`{chave de permissions: itens de `after` que não estavam em `before`}`, para
+    TODAS as chaves (`network`, `env`, `paths`, `project_write`). Uma pasta nova em
+    `paths` conta mesmo quando só alarga uma que já existia (`~/Midia` no lugar de
+    `~/Midia/sfx`): o que o plugin passa a alcançar mudou. `before` `None`
+    (desconhecido) conta tudo de `after` como novo."""
+    before = before or {}
+    return {key: [item for item in after.get(key, []) if item not in before.get(key, [])] for key in PERMISSION_KEYS}
+
+
 ROOTS_FIELD = "roots_resolved"
 
 
@@ -311,11 +321,17 @@ def _valid_pin(entry):
     return isinstance(entry, dict) and isinstance(entry.get("sha256"), str) and isinstance(entry.get("version"), str)
 
 
+# Chaves opcionais da origem gravada em `sources.<id>`, todas `str` ou `null`: a
+# ref e a subpasta de um repositório git e, para quem instala de um marketplace, o
+# nome dele, o tier da entrada e o commit do índice usado.
+ORIGIN_OPTIONAL_KEYS = ("ref", "subdir", "marketplace", "tier", "index_commit")
+
+
 def _valid_origin(entry):
     return (
         isinstance(entry, dict)
         and isinstance(entry.get("source"), str)
-        and (entry.get("commit") is None or isinstance(entry.get("commit"), str))
+        and all(entry.get(key) is None or isinstance(entry.get(key), str) for key in ("commit", *ORIGIN_OPTIONAL_KEYS))
     )
 
 
@@ -349,9 +365,14 @@ def read_state():
     raise ValueError(f"plugins.json inválido em {path}. Corrija ou apague o arquivo para recomeçar sem plugins.")
 
 
-def _write_state(data):
+def write_state(data):
+    """Grava `plugins.json` (troca atômica), criando `$GB_HOME` se preciso."""
     home_dir().mkdir(parents=True, exist_ok=True)
     atomic_write(state_path(), json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+
+
+def _write_state(data):
+    write_state(data)
 
 
 def env_selection():

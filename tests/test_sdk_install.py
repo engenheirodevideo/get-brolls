@@ -25,7 +25,7 @@ Cobre também o endurecimento de segurança:
   parecer velha), e nenhum erro de sistema de arquivos na varredura aborta
   quem chamou `install`/`update`; mais `GIT_SSL_CAINFO`/`GIT_SSL_CAPATH`/
   `GIT_SSH_VARIANT` preservados depois da limpeza de `GIT_*`, e
-  `_has_core_ssh_command` usa `--includes`.
+  `git_source.has_core_ssh_command` usa `--includes`.
 """
 
 import atexit
@@ -45,8 +45,8 @@ from _cli import run_cli
 from test_sdk_loader import MANIFEST, PLUGIN_CODE, LoaderTestCase
 
 from getbrolls import runtime
+from getbrolls.sdk import git_source, loader
 from getbrolls.sdk import install as install_mod
-from getbrolls.sdk import loader
 
 HAS_GIT = shutil.which("git") is not None
 
@@ -63,7 +63,7 @@ def write_plugin(folder, manifest=MANIFEST, code=PLUGIN_CODE):  # pylint: disabl
 # quem roda a suíte: `commit.gpgsign=true` pediria senha/agente e um hook global
 # poderia falhar ou travar o commit. Config global vazio, sem config de sistema,
 # sem hooks e sem assinatura. O git do PRODUTO tem o próprio isolamento
-# (`install._git_env`), que estes testes exercitam à parte.
+# (`git_source.git_env`), que estes testes exercitam à parte.
 _EMPTY_GITCONFIG_FD, _EMPTY_GITCONFIG = tempfile.mkstemp(prefix="gb-test-gitconfig-")
 os.close(_EMPTY_GITCONFIG_FD)
 atexit.register(lambda: Path(_EMPTY_GITCONFIG).unlink(missing_ok=True))
@@ -348,7 +348,7 @@ class FolderInstallTests(InstallTestCase):
             "GIT_CONFIG_VALUE_0": "/tmp/hooks",
         }
         with patch.dict(os.environ, poison, clear=False):
-            env = install_mod._git_env(ssh=False)
+            env = git_source.git_env(ssh=False)
         for key in poison:
             self.assertNotIn(key, env)
         self.assertEqual("0", env["GIT_TERMINAL_PROMPT"])
@@ -358,36 +358,36 @@ class FolderInstallTests(InstallTestCase):
     def test_ssh_batch_mode_only_applies_without_any_override(self):
         # Sem GIT_SSH_COMMAND/GIT_SSH e sem core.sshCommand configurado: usa o
         # BatchMode de reserva (isolado de `~/.gitconfig` de verdade via o patch
-        # de `_has_core_ssh_command`, não do ambiente real de quem roda o teste).
+        # de `git_source.has_core_ssh_command`, não do ambiente real de quem roda o teste).
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("GIT_SSH_COMMAND", None)
             os.environ.pop("GIT_SSH", None)
-            with patch.object(install_mod, "_has_core_ssh_command", return_value=False):
-                env = install_mod._git_env(ssh=True)
+            with patch.object(git_source, "has_core_ssh_command", return_value=False):
+                env = git_source.git_env(ssh=True)
             self.assertEqual("ssh -o BatchMode=yes", env["GIT_SSH_COMMAND"])
 
             # core.sshCommand já configurado: não empurra BatchMode por cima.
-            with patch.object(install_mod, "_has_core_ssh_command", return_value=True):
-                env2 = install_mod._git_env(ssh=True)
+            with patch.object(git_source, "has_core_ssh_command", return_value=True):
+                env2 = git_source.git_env(ssh=True)
             self.assertNotIn("GIT_SSH_COMMAND", env2)
 
         # GIT_SSH_COMMAND da pessoa é preservado (não vira o BatchMode nosso).
         with patch.dict(os.environ, {"GIT_SSH_COMMAND": "custom-ssh"}, clear=False):
             os.environ.pop("GIT_SSH", None)
-            with patch.object(install_mod, "_has_core_ssh_command", return_value=False):
-                env3 = install_mod._git_env(ssh=True)
+            with patch.object(git_source, "has_core_ssh_command", return_value=False):
+                env3 = git_source.git_env(ssh=True)
             self.assertEqual("custom-ssh", env3["GIT_SSH_COMMAND"])
 
         # GIT_SSH (variável legada) da pessoa também é preservado.
         with patch.dict(os.environ, {"GIT_SSH": "legado-ssh"}, clear=False):
             os.environ.pop("GIT_SSH_COMMAND", None)
-            with patch.object(install_mod, "_has_core_ssh_command", return_value=False):
-                env4 = install_mod._git_env(ssh=True)
+            with patch.object(git_source, "has_core_ssh_command", return_value=False):
+                env4 = git_source.git_env(ssh=True)
             self.assertEqual("legado-ssh", env4["GIT_SSH"])
             self.assertNotIn("GIT_SSH_COMMAND", env4)
 
         # Fonte não é SSH (pasta local ou https://): nunca mexe em SSH.
-        env5 = install_mod._git_env(ssh=False)
+        env5 = git_source.git_env(ssh=False)
         self.assertNotIn("GIT_SSH_COMMAND", env5)
         self.assertNotIn("GIT_SSH", env5)
 
@@ -397,7 +397,7 @@ class FolderInstallTests(InstallTestCase):
         # interno exige; removê-las sem repor quebraria um clone HTTPS legítimo.
         safe = {"GIT_SSL_CAINFO": "/etc/ssl/corp-ca.pem", "GIT_SSL_CAPATH": "/etc/ssl/corp-certs"}
         with patch.dict(os.environ, safe, clear=False):
-            env = install_mod._git_env(ssh=False)
+            env = git_source.git_env(ssh=False)
         self.assertEqual("/etc/ssl/corp-ca.pem", env["GIT_SSL_CAINFO"])
         self.assertEqual("/etc/ssl/corp-certs", env["GIT_SSL_CAPATH"])
 
@@ -405,7 +405,7 @@ class FolderInstallTests(InstallTestCase):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("GIT_SSL_CAINFO", None)
             os.environ.pop("GIT_SSL_CAPATH", None)
-            env2 = install_mod._git_env(ssh=False)
+            env2 = git_source.git_env(ssh=False)
         self.assertNotIn("GIT_SSL_CAINFO", env2)
         self.assertNotIn("GIT_SSL_CAPATH", env2)
 
@@ -415,16 +415,16 @@ class FolderInstallTests(InstallTestCase):
         # sozinho — mesmo que a pessoa tenha definido só ele por engano.
         with patch.dict(os.environ, {"GIT_SSH": "plink.exe", "GIT_SSH_VARIANT": "putty"}, clear=False):
             os.environ.pop("GIT_SSH_COMMAND", None)
-            with patch.object(install_mod, "_has_core_ssh_command", return_value=False):
-                env = install_mod._git_env(ssh=True)
+            with patch.object(git_source, "has_core_ssh_command", return_value=False):
+                env = git_source.git_env(ssh=True)
         self.assertEqual("plink.exe", env["GIT_SSH"])
         self.assertEqual("putty", env["GIT_SSH_VARIANT"])
 
         with patch.dict(os.environ, {"GIT_SSH_VARIANT": "putty"}, clear=False):
             os.environ.pop("GIT_SSH", None)
             os.environ.pop("GIT_SSH_COMMAND", None)
-            with patch.object(install_mod, "_has_core_ssh_command", return_value=False):
-                env2 = install_mod._git_env(ssh=True)
+            with patch.object(git_source, "has_core_ssh_command", return_value=False):
+                env2 = git_source.git_env(ssh=True)
         self.assertNotIn("GIT_SSH_VARIANT", env2)
         self.assertEqual("ssh -o BatchMode=yes", env2["GIT_SSH_COMMAND"])
 
@@ -438,8 +438,8 @@ class FolderInstallTests(InstallTestCase):
             # de quem chama subprocess.run sem check de propósito.
             return real_run(args, **kwargs)  # pylint: disable=subprocess-run-check
 
-        with patch.object(install_mod.subprocess, "run", side_effect=spy):
-            install_mod._has_core_ssh_command(dict(os.environ))
+        with patch.object(git_source.subprocess, "run", side_effect=spy):
+            git_source.has_core_ssh_command(dict(os.environ))
         self.assertIn("--global", recorded["args"])
         self.assertIn("--includes", recorded["args"])
         self.assertIn("core.sshCommand", recorded["args"])
@@ -569,7 +569,10 @@ class GitInstallTests(InstallTestCase):
         self.assertEqual(head(repo), done["plugin"]["commit"])
         self.assertFalse((installed / ".git").exists())
         self.assertFalse((installed / "rascunho.py").exists())
-        self.assertEqual({"source": str(repo.resolve()), "commit": head(repo)}, self.state()["sources"]["demo"])
+        self.assertEqual(
+            {"source": str(repo.resolve()), "commit": head(repo), "ref": None, "subdir": None},
+            self.state()["sources"]["demo"],
+        )
 
     def test_update_shows_the_diff_first_then_replaces_and_repins(self):
         repo = self.repo()
@@ -630,7 +633,7 @@ class GitInstallTests(InstallTestCase):
         git(repo, "add", ".gitattributes")
         git(repo, "commit", "--quiet", "-m", "gitattributes")
 
-        # `_git_env` remove TODA variável `GIT_*` — inclusive
+        # `git_source.git_env` remove TODA variável `GIT_*` — inclusive
         # `GIT_CONFIG_GLOBAL` — do que chega ao subprocesso git. Por isso o config
         # malicioso não pode ser injetado por essa variável (o próprio código a
         # apaga de propósito); em vez disso vai pelo `HOME`, que não é `GIT_*` e é
