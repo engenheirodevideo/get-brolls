@@ -45,6 +45,7 @@ ASSET_KINDS = {
     "lettering": AssetKind("lettering", "assets/lettering", (".json", ".html"), licensed=False, personal=True),
     "sfx": AssetKind("sfx", "assets/sfx", AUDIO, licensed=True, personal=True),
     "musica": AssetKind("musica", "assets/musica", AUDIO, licensed=True, personal=True),
+    "imagem": AssetKind("imagem", "assets/imagem", IMAGE, licensed=True, personal=True),
     "composicao": AssetKind("composicao", "assets/composicoes", (".html", ".json"), licensed=False, personal=True),
 }
 

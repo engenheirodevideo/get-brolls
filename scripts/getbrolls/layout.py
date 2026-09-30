@@ -25,6 +25,9 @@ from .roteiro_frontmatter import SLUG_MAX, SLUG_RE
 from .sdk import files, schemas
 from .sdk.jsonschema import errors
 
+# Pastas de `assets/`, congeladas em português: cada uma é a pasta de um tipo de
+# componente (`assets.ASSET_KINDS`), menos `outros`, que é só pasta e nunca é resolvida.
+ASSET_FOLDERS = ("marca", "lettering", "sfx", "musica", "imagem", "composicoes", "outros")
 PROJECT_FILE = "project.json"
 PROJECT_FAMILY = "project"
 PROJECT_SCHEMA = versioning.schema_name(PROJECT_FAMILY, 1)

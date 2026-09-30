@@ -130,7 +130,7 @@
       ]
     },
     "assets": {
-      "help": "Listar componentes do projeto (marca, lettering, sfx, música, composições, A-ROLL) e resolver nomes",
+      "help": "Listar componentes do projeto (marca, lettering, sfx, música, imagem, composições, A-ROLL) e resolver nomes",
       "options": [
         {
           "action": "_HelpAction",
@@ -177,6 +177,7 @@
           "choices": [
             "aroll",
             "composicao",
+            "imagem",
             "lettering",
             "marca",
             "musica",

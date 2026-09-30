@@ -497,7 +497,7 @@ python3 scripts/gb.py roteiro --action plan --project /caminho/meu-video
 python3 scripts/gb.py roteiro --action sync --project /caminho/meu-video
 
 # ── assets --action list / where ────────────────────────────
-# O QUE FAZ: mostra os componentes (marca, lettering, sfx, musica, composicoes)
+# O QUE FAZ: mostra os componentes (marca, lettering, sfx, musica, imagem, composicoes)
 #            e onde cada nome resolve: projeto ou biblioteca pessoal. Só lê.
 python3 scripts/gb.py assets --action list --project /caminho/meu-video
 python3 scripts/gb.py assets --action where --kind sfx --name whoosh --project /caminho/meu-video

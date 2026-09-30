@@ -86,7 +86,9 @@ SUMMARIES = {
     "serve": "Servir brolls/review.html em 127.0.0.1 para abrir o Storyboard no navegador",
     "deliver": "Organizar os trechos coletados em entrega/, uma pasta por beat",
     "roteiro": "Criar, validar, revisar e sincronizar o ROTEIRO.md com os beats do BRIEF.md",
-    "assets": "Listar componentes do projeto (marca, lettering, sfx, música, composições, A-ROLL) e resolver nomes",
+    "assets": (
+        "Listar componentes do projeto (marca, lettering, sfx, música, imagem, composições, A-ROLL) e resolver nomes"
+    ),
     "export": "Transformar o roteiro revisado num projeto de edição (--to hyperframes) numa pasta nova em exports/",
 }
 
