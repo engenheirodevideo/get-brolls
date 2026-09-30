@@ -20,7 +20,7 @@ import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from . import logs
+from . import logs, versioning
 
 log = logs.get("queue")
 
@@ -147,14 +147,8 @@ def load(path):
         raise ValueError(f"queue.json inválido em {path}; preserve o arquivo e restaure uma cópia válida.") from None
     if not isinstance(data, dict):
         raise ValueError(f"queue.json incompatível em {path}.")
-    version = data.get("schema_version")
-    if version != SCHEMA_VERSION:
-        if isinstance(version, int) and version > SCHEMA_VERSION:
-            raise ValueError(
-                f"queue.json em {path} foi gravado por uma versão mais nova do get-brolls "
-                f"(schema {version}, esperado {SCHEMA_VERSION}); atualize antes de continuar."
-            )
-        raise ValueError(f"queue.json incompatível em {path} (schema_version esperado {SCHEMA_VERSION}).")
+    invalid = f"queue.json incompatível em {path} (schema_version esperado {SCHEMA_VERSION})."
+    versioning.read_version(data, f"queue.json em {path}", SCHEMA_VERSION, invalid=invalid)
     if not isinstance(data.get("items"), list) or not isinstance(data.get("providers"), dict):
         raise ValueError(f"queue.json incompatível em {path}.")
     _check(data, path)
@@ -168,7 +162,7 @@ def save(path, data):
     handle, temp = tempfile.mkstemp(prefix=".queue-", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            stream.write(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+            stream.write(json.dumps(versioning.stamp(data, SCHEMA_VERSION), ensure_ascii=False, indent=2) + "\n")
             stream.flush()
             os.fsync(stream.fileno())
         Path(temp).chmod(0o600)

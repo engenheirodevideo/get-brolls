@@ -2662,8 +2662,9 @@ def _execute_read_only_project_command(cmd, args, config, rules, ledger):
 
         return plan(ledger, args.url, rules)
     if cmd == "references":
-        path = ledger.root / "references.json"
-        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"items": []}
+        from getbrolls.memory import load_references
+
+        return load_references(ledger.root)
     if cmd == "inspect":
         return inspect_source(ledger, args, config)
     return None

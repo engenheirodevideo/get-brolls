@@ -5,7 +5,26 @@
 
 import json
 
+from . import versioning
 from .models import now, signature
+
+REFERENCES_FILE = "references.json"
+
+
+def load_references(root):
+    """`references.json` de `root` (a pasta `brolls/`); ausente = `{"items": []}`. Só lê.
+
+    Arquivo anterior ao `schema_version` carrega como versão 1; o de versão mais nova
+    é recusado, e o arquivo fica como está.
+    """
+    path = root / REFERENCES_FILE
+    if not path.exists():
+        return {"items": []}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"{REFERENCES_FILE} é incompatível: esperado um objeto JSON.")
+    versioning.read_version(data, REFERENCES_FILE)
+    return data
 
 
 def remember(ledger, c, decision, reason, by):
@@ -15,8 +34,8 @@ def remember(ledger, c, decision, reason, by):
         c["approval"]["status"] != "approved" or c["approval"].get("signature") != signature(c)
     ):
         raise ValueError("Aprove este insert antes de guardá-lo como referência positiva.")
-    path = ledger.root / "references.json"
-    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"items": []}
+    path = ledger.root / REFERENCES_FILE
+    data = versioning.stamp(load_references(ledger.root))
     entry = {
         "id": c["id"],
         "signature": signature(c),

@@ -18,7 +18,8 @@ import time
 import unicodedata
 import uuid
 
-from . import logs
+from . import logs, versioning
+from .memory import load_references
 from .models import now
 from .rules import home_dir
 
@@ -70,11 +71,13 @@ def load_index():
             f"{path} está com JSON inválido. Preserve o arquivo e conserte-o, ou "
             "apague-o para começar uma biblioteca nova; nenhum projeto depende dele."
         ) from None
-    if not isinstance(data, dict) or data.get("schema_version") != SCHEMA_VERSION:
-        raise ValueError(
-            f"{path} não é uma biblioteca da versão {SCHEMA_VERSION}. Preserve o "
-            "arquivo e conserte-o, ou apague-o para começar uma biblioteca nova."
-        )
+    invalid = (
+        f"{path} não é uma biblioteca da versão {SCHEMA_VERSION}. Preserve o "
+        "arquivo e conserte-o, ou apague-o para começar uma biblioteca nova."
+    )
+    if not isinstance(data, dict):
+        raise ValueError(invalid)
+    versioning.read_version(data, str(path), SCHEMA_VERSION, invalid=invalid)
     for key, value in EMPTY.items():
         data.setdefault(key, json.loads(json.dumps(value)))
     return data
@@ -104,7 +107,7 @@ def _write_private(path, text):
 
 
 def save_index(data):
-    _write_private(index_path(), json.dumps(data, ensure_ascii=False, indent=2))
+    _write_private(index_path(), json.dumps(versioning.stamp(data, SCHEMA_VERSION), ensure_ascii=False, indent=2))
 
 
 # Trava de diretório: um arquivo criado com O_EXCL, que funciona igual no Windows.
@@ -292,8 +295,7 @@ def learn_from_candidate(project, ident, shot=None):
 
     ledger = Ledger(project)
     c = ledger.get(ident)
-    path = ledger.root / "references.json"
-    items = json.loads(path.read_text(encoding="utf-8")).get("items", []) if path.exists() else []
+    items = load_references(ledger.root).get("items", [])
     references = [r for r in items if r.get("id") == ident]
     if not references:
         raise ValueError(
