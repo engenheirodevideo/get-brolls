@@ -13,3 +13,4 @@ requirements.txt
 schemas/brief.schema.json
 schemas/candidate.schema.json
 schemas/export_plan.schema.json
+schemas/project.schema.json

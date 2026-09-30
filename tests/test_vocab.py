@@ -87,6 +87,13 @@ class CoreUsesVocab(unittest.TestCase):
         fmt = next(a for a in init_rules._actions if a.dest == "video_format")  # pylint: disable=protected-access
         self.assertEqual(list(vocab.FORMATS), list(fmt.choices))
 
+    def test_media_roles_keep_the_editing_contract_names(self):
+        # Mesmos nomes do contrato de edição (OTIO) que consome a análise: renomear quebra quem lê.
+        self.assertEqual(
+            ("aroll", "broll", "footage", "music", "sfx", "narration", "title", "animation", "unknown"),
+            vocab.MEDIA_ROLES,
+        )
+
     def test_vocab_is_a_leaf(self):
         code = (
             "import sys; sys.path.insert(0, sys.argv[1]); import getbrolls.vocab; "

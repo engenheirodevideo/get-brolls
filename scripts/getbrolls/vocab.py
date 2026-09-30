@@ -1,7 +1,7 @@
 """Vocabulário compartilhado do get-brolls, num módulo folha.
 
 Formatos, tipos de casamento e de mídia, estados do candidato, da aprovação e dos
-direitos, métodos de entrega, estados de análise e cores de marcador moram aqui uma
+direitos, métodos de entrega, estados e papéis de análise e cores de marcador moram aqui uma
 vez só. Brief, RULES, CLI, SDK e os schemas publicados repetem estes valores, e
 `tests/test_vocab.py` confere cada repetição contra as tuplas abaixo. O módulo não
 importa nada do get-brolls, para que qualquer outro (inclusive os módulos folha do
@@ -41,6 +41,9 @@ ANALYSIS_STATUSES = (
 )
 # Estados de análise que exigem `reason` preenchido.
 ANALYSIS_STATUSES_WITH_REASON = ("unavailable", "failed", "blocked", "not_run_by_this_script")
+# Papel de uma mídia do projeto na edição (`role` da análise), com os mesmos nomes do
+# contrato de edição em OTIO que consome a análise.
+MEDIA_ROLES = ("aroll", "broll", "footage", "music", "sfx", "narration", "title", "animation", "unknown")
 # Cores de marcador: o enum `MarkerColor` do OpenTimelineIO, mesmos nomes.
 MARKER_COLORS = (
     "PINK",
