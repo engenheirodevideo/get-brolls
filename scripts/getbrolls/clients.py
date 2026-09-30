@@ -19,8 +19,9 @@ import re
 import unicodedata
 from pathlib import Path
 
-from . import _paths, runtime
+from . import _paths, runtime, versioning
 from .errors import UsageError
+from .layout import ASSET_FOLDERS
 from .ledger import atomic_write
 from .models import now
 from .roteiro_frontmatter import SLUG_MAX, SLUG_RE
@@ -32,7 +33,7 @@ CLIENT_FILE = "client.json"
 COMPONENTS = "components"
 TEMPLATES = "templates"
 # As pastas de `assets/` de um projeto, na mesma grafia: `components/<tipo>/`.
-COMPONENT_FOLDERS = ("marca", "lettering", "sfx", "musica", "imagem", "composicoes", "outros")
+COMPONENT_FOLDERS = ASSET_FOLDERS
 CLIENT_SCHEMA = "client"
 REGISTRY_SCHEMA = "clients"
 SUPPORTED = 1
@@ -47,7 +48,7 @@ _SCHEMA_RE = re.compile(r"getbrolls\.([a-z][a-z0-9_]*)/([1-9][0-9]{0,8})")
 
 
 def _schema_tag(name, version=SUPPORTED):
-    return f"getbrolls.{name}/{version}"
+    return versioning.schema_name(name, version)
 
 
 def _schema_version(data, name, label):

@@ -42,7 +42,7 @@ import re
 import stat
 from pathlib import Path, PurePosixPath
 
-from . import vocab
+from . import versioning, vocab
 from .sdk import jsonschema, schemas
 
 COMPONENTS = ("media", "transcript", "scenes", "silence", "speakers", "visual")
@@ -59,7 +59,7 @@ SECRET_KEYS = ("password", "secret", "token", "credential", "api_key", "authoriz
 
 # Espelho local de `vocab.MEDIA_ROLES`, que a integração passa a importar de lá: mesmos
 # nomes do contrato de papéis do otio-edit.
-_MEDIA_ROLES = ("aroll", "broll", "footage", "music", "sfx", "narration", "title", "animation", "unknown")
+_MEDIA_ROLES = vocab.MEDIA_ROLES
 
 _SCHEMA_RE = re.compile(r"([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)/([1-9][0-9]{0,5})")
 # Texto com cara de caminho absoluto: POSIX (`/x`, não uma barra solta), `//host`, UNC
@@ -85,8 +85,8 @@ class Invalid(ValueError):  # noqa: N818
 
 
 def _schema_string(name: str, version: int) -> str:
-    """`getbrolls.<nome>/<N>`. Espelho local do ajudante de versão compartilhado."""
-    return f"{NAMESPACE}.{name}/{version}"
+    """`getbrolls.<nome>/<N>`, pelo ajudante de versão compartilhado."""
+    return versioning.schema_name(name, version)
 
 
 # -- leitor -------------------------------------------------------------------
