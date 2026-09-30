@@ -658,14 +658,14 @@ def _deliver_materialize_item(ctx, group, c, names, sheet):
             # de origem no mesmo caminho quando a pessoa muda o intervalo.
             link_or_copy(sheet, ctx.root / sheet_rel_out)
     except ValueError as exc:
+        from .layout import ClipConflictError
+
         conflict = str(exc)
-        logs.event(
-            log,
-            logging.WARNING,
-            "deliver_conflict",
-            beat=group["beat"] or "no_beat",
-            kind="foreign_file" if "parece edição sua" in conflict else "io_error",
-        )
+        if isinstance(exc, ClipConflictError):
+            kind = "clip_conflict"
+        else:
+            kind = "foreign_file" if "parece edição sua" in conflict else "io_error"
+        logs.event(log, logging.WARNING, "deliver_conflict", beat=group["beat"] or "no_beat", kind=kind)
         return method, conflict
     return method, None
 
@@ -722,6 +722,8 @@ def _deliver_process_item(ctx, group, index, c, acc):
         if conflict:
             acc["conflicts"].append(conflict)
             acc["conflicted"].append(media_rel)
+            # O que já estava entregue deste item fica, mesmo que o nome planejado mude.
+            acc["expected"].update(_delivered_files(ctx.root, c))
     origin_rel = f"{group['dir']}/{names['origin']}"
     acc["expected"].add(origin_rel)
     if not ctx.dry_run and not conflict:
@@ -755,6 +757,49 @@ def _deliver_process_item(ctx, group, index, c, acc):
             "method": method,
         }
     )
+
+
+def _delivered_files(root, c):
+    """Caminhos (relativos a `entrega/`) do que já foi entregue deste item: mídia, ORIGEM e contact sheet."""
+    recorded = (c.get("delivery") or {}).get("path") or ""
+    if not recorded.startswith(DELIVERY_DIR + "/"):
+        return set()
+    media = recorded[len(DELIVERY_DIR) + 1 :]
+    folder, _, name = media.rpartition("/")
+    stem = Path(name).stem
+    tail = stem[len(folder) :] if folder and stem.startswith(folder) else ""
+    found = {media, f"{folder}/ORIGEM{tail}.md"}
+    if (root / folder).is_dir() and not (root / folder).is_symlink():
+        found.update(f"{folder}/{p.name}" for p in (root / folder).glob(f"{SHEET}{tail}.*"))
+    return found
+
+
+def _unresolved_conflicts(ctx, skipped, acc):
+    """Itens pulados como não verificados cujo clipe está em conflito de pasta: viram conflito, não pulo.
+
+    O `verify` derruba `verified` quando as duas cópias divergem; sem isto o `deliver`
+    seguinte pularia o item e a varredura apagaria o link já entregue, calado.
+    """
+    from .layout import ClipConflictError
+
+    by_id = {c["id"]: c for c in ctx.ledger.data["items"]}
+    kept = []
+    for entry in skipped:
+        c = by_id.get(entry["id"])
+        if c is None or not (c.get("output") or {}).get("path"):
+            kept.append(entry)
+            continue
+        try:
+            _clip_source(ctx, c)
+        except ClipConflictError as exc:
+            acc["conflicts"].append(f"{c['id']}: {exc}")
+            acc["expected"].update(_delivered_files(ctx.root, c))
+            logs.event(log, logging.WARNING, "deliver_conflict", beat=c.get("shot") or "no_beat", kind="clip_conflict")
+            continue
+        except ValueError:
+            pass
+        kept.append(entry)
+    return kept
 
 
 def _deliver_write_index(root, for_human, rows, conflicted, listed):
@@ -846,6 +891,7 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
     ctx = _DeliverCtx(ledger, root, dry_run)
     acc = {"expected": set(), "listed": [], "rows": [], "changed": [], "conflicts": [], "conflicted": []}
     _deliver_process_groups(ctx, groups, acc)
+    skipped = _unresolved_conflicts(ctx, skipped, acc)
     acc["expected"].add(INDEX)
     if not dry_run:
         root.mkdir(parents=True, exist_ok=True)
@@ -857,7 +903,7 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
         _deliver_forget_retired(items, retired, acc["changed"])
     if acc["changed"]:
         ledger.save_many("deliver", acc["changed"])
-    if acc["conflicts"]:
+    if acc["conflicts"] and not dry_run:
         raise ValueError(" ".join(acc["conflicts"]))
     return {
         "delivery": str(root),
@@ -870,4 +916,6 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):
         "skipped": skipped,
         # Só aparece com beat aposentado no brief: sem ele, o relatório é o de sempre.
         **({"retired": retired} if retired else {}),
+        # Só no dry-run: fora dele, um conflito faz o comando falhar nomeando cada um.
+        **({"conflicts": acc["conflicts"]} if acc["conflicts"] else {}),
     }

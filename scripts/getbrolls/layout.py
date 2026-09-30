@@ -331,6 +331,23 @@ def _label(project, path):
         return str(path)
 
 
+def _warn_leftovers(project, rel, chosen, leftovers):
+    """Aviso `CLIP_LEFTOVER_COPY` (uma vez por comando) nomeando a cópia divergente que sobrou."""
+    if not leftovers:
+        return
+    from . import runtime
+
+    names = " e ".join(f"`{_label(project, path)}`" for path in leftovers)
+    message = (
+        f"O clipe {rel} usa `{_label(project, chosen)}`, a cópia que bate com o sha256 registrado; {names} tem o "
+        "mesmo nome e outro conteúdo e sobrou: tire-a da pasta de clipes (ela não é entregue nem exportada)."
+    )
+    current = runtime.ACTIVE.get()
+    if current is not None and any(w.get("message") == message for w in current["warnings"]):
+        return
+    runtime.record_warning("CLIP_LEFTOVER_COPY", message)
+
+
 def clip_file(project, rel, *, for_write=False, sha256=None):
     """Arquivo do clipe lógico `rel` (`clips/<arquivo>`).
 
@@ -352,6 +369,7 @@ def clip_file(project, rel, *, for_write=False, sha256=None):
         matching = [path for path in found if path.is_file() and _digest(path) == sha256]
         if matching:
             # Mais de uma cópia com o mesmo conteúdo: são o mesmo clipe, qualquer uma serve.
+            _warn_leftovers(project, rel, matching[0], [path for path in found if path not in matching])
             return matching[0]
     places = " e ".join(f"{_label(project, path.parent)}/" for path in found)
     raise ClipConflictError(
