@@ -40,7 +40,11 @@ if __package__:
     from . import logs
     from .runtime import redact, stderr_tail
 else:  # Executado diretamente como `python3 scripts/getbrolls/instagram_pairs.py`, per docs/GUIDE.md.
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    # Rodado como arquivo, a pasta deste módulo entra em `sys.path`, e o `queue.py`/`http.py`
+    # do pacote encobririam os da stdlib (`logging.handlers` importa `queue`).
+    _package_dir = Path(__file__).resolve().parent
+    sys.path[:] = [entry for entry in sys.path if Path(entry or ".").resolve() != _package_dir]
+    sys.path.insert(0, str(_package_dir.parent))
     from getbrolls import logs
     from getbrolls.runtime import redact, stderr_tail
 

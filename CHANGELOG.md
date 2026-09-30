@@ -89,6 +89,7 @@ Projeto da 2.5 segue exatamente igual: nada muda sem um `ROTEIRO.md` do get-brol
 <!-- W1:T1 -->
 - **`GB_RUNTIME_DIR`.** Aponta a pasta com `.venv/` (yt-dlp) e `.tools/` (Playwright) que o getbrolls usa; sem ela, o runtime fica em `$GB_HOME/runtime/<versão das dependências>/`, e o checkout continua usando o `.venv`/`.tools` da própria pasta.
 <!-- W1:T2 -->
+- **Instalável como pacote.** `uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0` (ou `pipx install …`) instala o comando `getbrolls`; `python -m getbrolls` também funciona. `python3 scripts/gb.py` e o plugin do Claude Code continuam iguais.
 <!-- W1:T3 -->
 <!-- W1:T4 -->
 <!-- W1:T5 -->
