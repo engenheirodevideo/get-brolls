@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -363,10 +364,10 @@ class WindowsConsoleScriptTests(unittest.TestCase):
     def setUp(self):
         paths.install.cache_clear()
         self.addCleanup(paths.install.cache_clear)
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.bin = Path(tmp.name) / "bin"
-        self.wheel = _fake_wheel(Path(tmp.name))
+        tmp = Path(tempfile.mkdtemp(prefix="gb-nt-script-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        self.bin = tmp / "bin"
+        self.wheel = _fake_wheel(tmp)
 
     def command(self, which, argv0, os_name="nt"):
         with (

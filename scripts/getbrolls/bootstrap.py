@@ -76,7 +76,7 @@ def _runtime_commands():
 
 
 def _data_step():
-    missing = commands.data_missing()
+    missing = commands.missing_data_files()
     if not missing:
         return {"id": "data", "ok": True, "found": str(_paths.data_root()), "commands": []}
     return {

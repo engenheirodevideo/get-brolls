@@ -116,7 +116,7 @@ def data_fix():
     return _paths.installer_hint() if _paths.origin() == "checkout" else _paths.REINSTALL_COMMAND
 
 
-def data_missing():
+def missing_data_files():
     """Arquivos de dados que faltam (todos, quando nem a pasta de dados existe)."""
     try:
         return _paths.verify_data()
