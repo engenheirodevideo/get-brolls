@@ -34,7 +34,7 @@ import sys
 from pathlib import Path
 
 from . import analysis_contract as contract
-from . import assets, ledger, media, runtime, versioning, vocab
+from . import ledger, media, runtime, versioning, vocab
 from .errors import PrerequisiteError
 from .models import now
 from .sdk import files
@@ -61,7 +61,18 @@ ROLE_BY_FOLDER = (
 )
 # Extensões que o `register` aceita como mídia; um `.txt` ou `.json` é recusado antes do hash.
 MEDIA_EXTENSIONS = frozenset(
-    (*assets.VIDEO, *assets.AUDIO, *assets.IMAGE, ".mkv", ".webm", ".avi", ".mxf", ".mts", ".flac", ".gif")
+    (
+        *vocab.VIDEO_EXTENSIONS,
+        *vocab.AUDIO_EXTENSIONS,
+        *vocab.IMAGE_EXTENSIONS,
+        ".mkv",
+        ".webm",
+        ".avi",
+        ".mxf",
+        ".mts",
+        ".flac",
+        ".gif",
+    )
 )
 # Campos do cabeçalho que o core sempre define ao gravar um componente.
 _FORCED = ("schema", "media_id", "producer", "created", "time_unit")

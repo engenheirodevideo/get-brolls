@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,7 +11,7 @@ from unittest import mock
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
+from _paths import CLI_ARGV
 
 from getbrolls import analysis, capabilities, ledger, runtime
 from getbrolls import analysis_contract as ac
@@ -446,10 +447,6 @@ class CommandTests(StoreTestCase):
         self.assertFalse((self.project / "analysis").exists())
 
     def test_check_with_problems_exits_1_and_still_prints_the_report(self):
-        import subprocess
-
-        from _paths import CLI_ARGV
-
         analysis.ensure_media(self.project, "aroll/c01.mp4", probe=False)
         (self.project / "analysis" / "markers.json").write_text("{", encoding="utf-8")
         done = subprocess.run(
