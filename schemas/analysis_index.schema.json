@@ -32,7 +32,7 @@
           "media_id": {
             "type": "string",
             "pattern": "^[0-9a-f]{16}$",
-            "description": "Primeiros 16 hex do sha256 dos bytes da mídia (o asset_id do Nômade tem a mesma derivação)."
+            "description": "Primeiros 16 hex do sha256 dos bytes da mídia (o asset_id do contrato de ingest externo tem a mesma derivação)."
           },
           "path": {
             "type": "string",
@@ -52,7 +52,7 @@
               "animation",
               "unknown"
             ],
-            "description": "Papel da mídia no projeto; mesmos nomes do contrato do otio-edit."
+            "description": "Papel da mídia no projeto; mesmos nomes do contrato de edição que consome a análise."
           },
           "quick_key": {
             "type": "object",

@@ -42,7 +42,7 @@ ANALYSIS_STATUSES = (
 # Estados de análise que exigem `reason` preenchido.
 ANALYSIS_STATUSES_WITH_REASON = ("unavailable", "failed", "blocked", "not_run_by_this_script")
 # Papel de uma mídia do projeto na edição (`role` da análise), com os mesmos nomes do
-# contrato de edição em OTIO que consome a análise.
+# contrato de edição que consome a análise.
 MEDIA_ROLES = ("aroll", "broll", "footage", "music", "sfx", "narration", "title", "animation", "unknown")
 # Cores de marcador: o enum `MarkerColor` do OpenTimelineIO, mesmos nomes.
 MARKER_COLORS = (

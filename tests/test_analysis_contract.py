@@ -73,9 +73,9 @@ class PublishedSchemaTests(unittest.TestCase):
         self.assertEqual(list(ac.FAILURE_STATUSES), list(vocab.ANALYSIS_STATUSES_WITH_REASON))
 
     def test_role_enum_matches_the_media_roles(self):
-        self.assertEqual(list(ac._MEDIA_ROLES), published("media")["properties"]["role"]["enum"])
+        self.assertEqual(list(vocab.MEDIA_ROLES), published("media")["properties"]["role"]["enum"])
         entry = published("analysis_index")["properties"]["media"]["items"]["properties"]
-        self.assertEqual(list(ac._MEDIA_ROLES), entry["role"]["enum"])
+        self.assertEqual(list(vocab.MEDIA_ROLES), entry["role"]["enum"])
 
     def test_minimal_components_carry_no_producer(self):
         for name in ("scenes", "silence", "speakers", "visual"):
@@ -96,7 +96,7 @@ class SchemaNameTests(unittest.TestCase):
         self.assertEqual("NEWER_SCHEMA", caught.exception.code)
 
     def test_unknown_namespace_and_malformed_values(self):
-        for value in ("nomade.media/1", "getbrolls.outro/1", "getbrolls.media/0", "getbrolls.media", 1, None):
+        for value in ("outro.media/1", "getbrolls.outro/1", "getbrolls.media/0", "getbrolls.media", 1, None):
             with self.subTest(value=value), self.assertRaises(ac.Invalid) as caught:
                 ac.schema_name({"schema": value})
             self.assertEqual("UNKNOWN_SCHEMA", caught.exception.code)

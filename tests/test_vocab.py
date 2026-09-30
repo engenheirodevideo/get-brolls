@@ -88,7 +88,7 @@ class CoreUsesVocab(unittest.TestCase):
         self.assertEqual(list(vocab.FORMATS), list(fmt.choices))
 
     def test_media_roles_keep_the_editing_contract_names(self):
-        # Mesmos nomes do contrato de edição (OTIO) que consome a análise: renomear quebra quem lê.
+        # Mesmos nomes do contrato de edição que consome a análise: renomear quebra quem lê.
         self.assertEqual(
             ("aroll", "broll", "footage", "music", "sfx", "narration", "title", "animation", "unknown"),
             vocab.MEDIA_ROLES,
