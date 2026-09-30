@@ -14,8 +14,9 @@ import tempfile
 import time
 from pathlib import Path
 
-from . import logs
+from . import _paths, logs
 from .config import CAP_EPSILON, cache_root, tool_path
+from .errors import PrerequisiteError
 from .runtime import record_warning, stderr_tail
 
 _logger = logs.get("media")
@@ -53,9 +54,9 @@ def run(args, *, op=None):
             exit=None,
         )
         # Executável ausente é outro problema que arquivo ou intervalo inválido.
-        raise ValueError(
+        raise PrerequisiteError(
             f"{name} não encontrado: instale FFmpeg/ffprobe ou aponte GB_FFMPEG_PATH/GB_FFPROBE_PATH; "
-            "verifique python3 scripts/gb.py doctor."
+            f"verifique {_paths.cli_hint('doctor')}."
         ) from e
     except subprocess.TimeoutExpired as e:
         logs.event(
@@ -82,7 +83,7 @@ def run(args, *, op=None):
         )
         tail = stderr_tail(e.stderr)
         raise ValueError(
-            f"{name} falhou (exit {e.returncode}); verifique python3 scripts/gb.py doctor."
+            f"{name} falhou (exit {e.returncode}); verifique {_paths.cli_hint('doctor')}."
             + (f" stderr: {tail}" if tail else "")
         ) from e
     except (subprocess.SubprocessError, OSError) as e:
@@ -96,7 +97,7 @@ def run(args, *, op=None):
             status="error",
             exit=None,
         )
-        raise ValueError("Falha de mídia: confirme arquivo e intervalo; verifique python3 scripts/gb.py doctor.") from e
+        raise ValueError(f"Falha de mídia: confirme arquivo e intervalo; verifique {_paths.cli_hint('doctor')}.") from e
 
 
 _DRAWTEXT = {}

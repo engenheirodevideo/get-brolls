@@ -11,12 +11,11 @@ import logging
 import re
 from pathlib import Path
 
-from . import logs
+from . import _paths, logs
 from .models import approve, empty_output, now, pending_approval, signature
 
 _log = logs.get(__name__.rsplit(".", 1)[-1])
 
-ASSETS = Path(__file__).resolve().parents[2] / "assets"
 
 # Versão do esquema do JSON de decisões que o Storyboard exporta e que `import_review` aceita.
 REVIEW_TEMPLATE_VERSION = 2
@@ -77,8 +76,8 @@ def enhance(page, ledger, records):
         .replace(">", "\\u003e")
         .replace("&", "\\u0026")
     )
-    css = (ASSETS / "review.css").read_text(encoding="utf-8")
-    js = (ASSETS / "review.js").read_text(encoding="utf-8")
+    css = _paths.data_path("assets", "review.css").read_text(encoding="utf-8")
+    js = _paths.data_path("assets", "review.js").read_text(encoding="utf-8")
     return page.replace("</style>", css + "</style>").replace(
         "</body>",
         "<script>window.GETBROLLS_REVIEW=" + payload + ";</script><script>" + js + "</script></body>",

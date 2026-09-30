@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-from . import __version__, assets, delivery
+from . import __version__, _paths, assets, delivery
 from .export_voice import ProbeMissingError, probe_voice, timed_words
 from .roteiro import END_ANCHOR, fold
 from .roteiro_plan import PLAN_VERSION
@@ -41,7 +41,7 @@ _EXPECTED_VIDEO = "(" + "|".join(ext.lstrip(".") for ext in assets.VIDEO) + ")"
 _ID_HASH_CHARS = 12
 NO_FFPROBE = (
     "ffprobe não encontrado: instale FFmpeg/ffprobe ou aponte GB_FFMPEG_PATH/GB_FFPROBE_PATH; "
-    "verifique python3 scripts/gb.py doctor; as durações ficaram estimadas"
+    f"verifique {_paths.cli_hint('doctor')}; as durações ficaram estimadas"
 )
 # Caminho absoluto em texto de plugin (POSIX, `~/`, `C:\`, `\\servidor`, `file:`): vira `<caminho>`.
 _ABS_PATH_RE = re.compile(r"file:/+[^\s\"'<>|]*|(?<![\w.~:/\\-])(?:~?/|[A-Za-z]:[\\/]|\\\\)[^\s\"'<>|]+")

@@ -92,6 +92,7 @@ Projeto da 2.5 segue exatamente igual: nada muda sem um `ROTEIRO.md` do get-brol
 - **Instalável como pacote.** `uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0` (ou `pipx install …`) instala o comando `getbrolls`; `python -m getbrolls` também funciona. `python3 scripts/gb.py` e o plugin do Claude Code continuam iguais.
 <!-- W1:T3 -->
 <!-- W1:T4 -->
+- **Instalado como pacote, acha os próprios arquivos.** `rules`, `init-rules`, `init-brief`, `review` e `plugins --action check` (exemplo `hyperframes`) funcionam fora do checkout; arquivo de dados ausente vira erro de pré-requisito com o comando de reinstalar, nunca um caminho errado.
 <!-- W1:T5 -->
 <!-- W1:T6 -->
 <!-- W1:T7a -->

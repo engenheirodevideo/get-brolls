@@ -14,7 +14,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, logs
+from . import __version__, _paths, logs
 from .acquisition import candidate_arg
 from .config import CAP_EPSILON
 from .guidance import blocked_beats_question, next_action
@@ -41,8 +41,7 @@ from .runtime import record_warning
 _log = logs.get("commands")
 
 # Raiz real da skill/plugin: o comando sugerido não pode depender da pasta atual.
-SKILL_ROOT = Path(__file__).resolve().parents[2]
-INSTALLER = f'bash "{SKILL_ROOT / "scripts" / "install.sh"}" (ou "{SKILL_ROOT / "scripts" / "install.ps1"}" no Windows)'
+INSTALLER = _paths.installer_hint()
 SYSTEM_TOOLS = "instale pelo gerenciador do sistema; veja docs/GUIDE.md#instalação"
 
 # Executável obrigatório → (comando que resolve, impacto real da ausência).
@@ -1750,11 +1749,13 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
 
 def _local_playwright(root=None):
     """Playwright CLI instalado em `.tools`, ou None quando não há um."""
-    root = Path(root) if root is not None else SKILL_ROOT
-    root = root / ".tools/node_modules/.bin"
+    if root is not None:
+        bin_dir = Path(root) / ".tools/node_modules/.bin"
+    else:
+        bin_dir = _paths.tools_dir().path / "node_modules/.bin"
     for name in ("playwright-cli.cmd", "playwright-cli"):
-        if (root / name).is_file():
-            return root / name
+        if (bin_dir / name).is_file():
+            return bin_dir / name
     return None
 
 
@@ -2510,7 +2511,7 @@ def _execute_init_rules(args):
         )
     if args.force and not has_flags:
         raise ValueError("--force só regrava o bloco JSON: informe --mode, --responsible, --declaration ou --format.")
-    template = SKILL_ROOT / "docs" / "RULES.md"
+    template = _paths.data_path("docs", "RULES.md")
     if has_flags:
         # Regravar preserva o que o usuário já escolheu: a base é o arquivo dele.
         source = dest if dest.exists() else template
@@ -2567,7 +2568,7 @@ def _execute_init_brief(args):
             f"{dest} já existe; edite o plano deste vídeo sem sobrescrever o que "
             "você já respondeu. Rode `brief --validate --project ...` para conferi-lo."
         )
-    shutil.copyfile(SKILL_ROOT / "docs" / "BRIEF.md", dest)
+    shutil.copyfile(_paths.data_path("docs", "BRIEF.md"), dest)
     return {"brief": str(dest)}
 
 

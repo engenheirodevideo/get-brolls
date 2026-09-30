@@ -11,6 +11,7 @@ from pathlib import Path
 
 from . import roteiro, roteiro_ids, roteiro_sync
 from .brief import brief_path, load_brief
+from .errors import PrerequisiteError
 from .roteiro_plan import aspect_problems, scene_plan
 from .roteiro_review import review_state
 from .rules import load_rules
@@ -43,6 +44,8 @@ def _in_sync(project, plugins):
         return False
     try:
         report = roteiro_sync.run(project, write=False, plugins=plugins)
+    except PrerequisiteError:
+        raise
     except ValueError as exc:
         raise ValueError(SYNC_CHECK_FAILED.format(str(exc).rstrip())) from exc
     if report["refusal"] or report["order_changed"]:

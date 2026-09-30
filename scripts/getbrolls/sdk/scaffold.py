@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from .. import __version__
+from .. import __version__, _paths
 from .contracts import CORE, NAME_RE, RESERVED_IDS, SDK_API
 from .manifest import MANIFEST_NAME, reserved_id_message
 
@@ -101,14 +101,14 @@ def register(api):
     api.command("resumo", resumo, "Conta os candidatos do projeto (somente leitura)")
 '''
 
-TEST = '''"""Contrato do plugin __ID__: roda com PYTHONPATH=<pasta da skill>/scripts."""
+TEST = '''"""Contrato do plugin __ID__: roda com o Python do getbrolls (checkout: PYTHONPATH=<skill>/scripts)."""
 
 import unittest
 from pathlib import Path
 
 from getbrolls.sdk import testing
 
-FOLDER = Path(__file__).resolve().parents[1]
+FOLDER = Path(__file__).resolve().parent.parent
 
 
 class ContractTests(unittest.TestCase):
@@ -132,8 +132,8 @@ Plugin gerado por `plugins --action new --kind __KIND__`. Antes de usar:
    (de outra pasta, use `-s <esta pasta>/tests`; sem o `PYTHONDONTWRITEBYTECODE`, o `__pycache__`
    criado pelo teste muda o hash do plugin). No PowerShell:
    `$env:PYTHONDONTWRITEBYTECODE = "1"; $env:PYTHONPATH = "<pasta da skill>\\scripts"; python -m unittest discover -s tests`
-3. Confira: `python3 scripts/gb.py plugins --action check --path <esta pasta>`.
-4. Instale em dois passos: `python3 scripts/gb.py plugins --action install --source <esta pasta>` mostra a
+3. Confira: `__CLI__ plugins --action check --path <esta pasta>`.
+4. Instale em dois passos: `__CLI__ plugins --action install --source <esta pasta>` mostra a
    prévia com o `sha256`; com o ok, repita com `--yes --expect <sha256 da prévia>`.
 """
 
@@ -183,7 +183,10 @@ def new(plugin_id, kind, parent=None):
     )
     (folder / "plugin.py").write_text(code.replace("__ID__", plugin_id).replace("__ENV__", env), encoding="utf-8")
     (folder / "tests" / "test_plugin.py").write_text(TEST.replace("__ID__", plugin_id), encoding="utf-8")
-    (folder / "README.md").write_text(README.replace("__ID__", plugin_id).replace("__KIND__", kind), encoding="utf-8")
+    (folder / "README.md").write_text(
+        README.replace("__ID__", plugin_id).replace("__KIND__", kind).replace("__CLI__", _paths.cli_hint()),
+        encoding="utf-8",
+    )
     return {
         "created": str(folder),
         "id": plugin_id,
