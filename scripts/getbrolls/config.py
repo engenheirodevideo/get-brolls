@@ -71,8 +71,10 @@ KEYS = {
     "GB_LOG_STDERR",
 }
 
-# Só do ambiente do processo; nunca num .env.
-PROCESS_ONLY_KEYS = frozenset({"GB_ENV_FILE"})
+# Só do ambiente do processo; nunca num .env. `GB_PROFILE` (caminho do getbrolls.toml ou
+# `off`) e `GB_PROFILE_SHA256` (o sha que o processo pai conferiu) passam o perfil já
+# ativado aos filhos: vindos de um .env, forjariam a confiança no perfil.
+PROCESS_ONLY_KEYS = frozenset({"GB_ENV_FILE", "GB_PROFILE", "GB_PROFILE_SHA256"})
 
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
 

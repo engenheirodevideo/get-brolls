@@ -16,6 +16,7 @@ from _cli import run_cli
 from _paths import CLI_ARGV, ROOT, WHEEL_MODE
 
 from getbrolls import config, media, social
+from getbrolls.errors import UsageError
 from getbrolls.rules import load_rules
 
 PATH_KEYS = config.PATH_KEYS
@@ -340,6 +341,15 @@ class DeclaredKeys(unittest.TestCase):
         for name in (".env.example", ".env.example.pt-BR"):
             with self.subTest(example=name), patch.dict(os.environ, {}, clear=False):
                 config.load_env(ROOT / name)
+
+    def test_gb_profile_in_a_dot_env_is_refused(self):
+        for key in ("GB_PROFILE", "GB_PROFILE_SHA256"):
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as tmp:
+                env_file = Path(tmp) / ".env"
+                env_file.write_text(f"{key}=off\n", encoding="utf-8")
+                with patch.dict(os.environ, {}, clear=False), self.assertRaises(UsageError) as caught:
+                    config.load_env(env_file)
+                self.assertIn("só vale no ambiente do processo", str(caught.exception))
 
     def test_gb_brief_file_in_a_dot_env_does_not_break_every_command(self):
         with tempfile.TemporaryDirectory() as tmp:
