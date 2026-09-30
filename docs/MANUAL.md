@@ -174,6 +174,17 @@ python3 scripts/gb.py status --project /caminho/meu-video
 # OPCIONAL: projetos sem init continuam funcionando como sempre.
 python3 scripts/gb.py init --client acme --canvas 1080x1920 --fps 30 --project /caminho/meu-video
 
+# ── migrate --action plan|apply [--client …] ────────────────
+# O QUE FAZ: adota o layout 1 num projeto antigo (com brolls/manifest.json) só
+#            acrescentando o project.json. Não move, renomeia nem apaga nada.
+#            O id é o project_id do manifesto, quando válido; o cliente vem do
+#            ROTEIRO.md (ou de --client).
+# plan:  só lê; mostra o project.json que seria gravado e avisa de cliente não registrado.
+# apply: grava. Recusa se já existe project.json (válido ou quebrado) ou gravação interrompida.
+# status mostra o resultado em layout {version, source, problem}.
+python3 scripts/gb.py migrate --action plan --project /caminho/meu-video
+python3 scripts/gb.py migrate --action apply --project /caminho/meu-video
+
 # ── init-rules ──────────────────────────────────────────────
 # O QUE FAZ: cria o arquivo RULES.md na pasta do projeto.
 # DENTRO DELE: formato do vídeo, fontes preferidas e sites bloqueados.

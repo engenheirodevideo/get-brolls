@@ -78,6 +78,10 @@ SUMMARIES = {
     "review": "Gerar o Storyboard local em brolls/review.html",
     "import-review": "Importar o JSON de decisões exportado pelo Storyboard",
     "init": "Criar um projeto novo de layout 1: project.json, aroll/, assets/, broll/ e analysis/",
+    "migrate": (
+        "Adotar o layout 1 num projeto antigo: só acrescenta o project.json, sem mover nada "
+        "(--action plan mostra antes; apply grava)"
+    ),
     "init-rules": "Criar um RULES.md editável no projeto (--format muda o formato-alvo)",
     "rules": "Mostrar as regras editoriais em vigor no projeto",
     "init-brief": "Criar um BRIEF.md editável com o plano deste vídeo",
@@ -409,6 +413,7 @@ def build_parser():
         "review",
         "import-review",
         "init",
+        "migrate",
         "init-rules",
         "rules",
         "init-brief",
@@ -440,7 +445,7 @@ def build_parser():
 def _add_confirm_format_change_arg(p, name):
     """`--confirm-format-change`, visível só nos comandos que chegam a `sync_formats`."""
     # `roteiro`, `assets` e `export` nascem sem a flag: eles nunca chegam a `sync_formats`.
-    if name in ("status", "init", "roteiro", "assets", "export"):
+    if name in ("status", "init", "migrate", "roteiro", "assets", "export"):
         return
     # Mudar o formato-alvo derruba aprovações humanas; qualquer comando que
     # sincronize formato precisa deste sim explícito antes de apagá-las. Mas
@@ -854,6 +859,23 @@ def _add_init_args(p, name):
     p.add_argument("--fps", type=_checked(_parse_fps), help="Quadros por segundo: inteiro (30) ou fração (30000/1001)")
 
 
+def _add_migrate_args(p, name):
+    """Flags de `migrate`."""
+    if name != "migrate":
+        return
+    p.add_argument(
+        "--action",
+        required=True,
+        choices=["plan", "apply"],
+        help="plan: mostra o project.json que seria gravado, sem gravar; apply: grava",
+    )
+    p.add_argument(
+        "--client",
+        type=_checked(_client_slug),
+        help="Slug do cliente (padrão: o cliente do frontmatter do ROTEIRO.md, se houver)",
+    )
+
+
 def _add_init_rules_args(p, name):
     """Flags de `init-rules`."""
     if name != "init-rules":
@@ -1006,6 +1028,7 @@ _PROJECT_SUBCOMMAND_ARG_ADDERS = (
     _add_learn_args,
     _add_library_args,
     _add_init_args,
+    _add_migrate_args,
     _add_init_rules_args,
     _add_brief_args,
     _add_browser_plan_args,

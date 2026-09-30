@@ -1744,6 +1744,14 @@ def _status_items(ctx):
     ]
 
 
+def _status_layout(project):
+    """`{version, source, problem}` do layout do projeto; somente leitura."""
+    from getbrolls import layout
+
+    found = layout.info(project)
+    return {"version": found.version, "source": found.source, "problem": found.problem}
+
+
 def status_report(ledger, rules=None, rules_error=None, queue=None):
     """Onde o projeto está, por etapa. Somente leitura: não grava nada."""
     items = ledger.data["items"]
@@ -1767,6 +1775,7 @@ def status_report(ledger, rules=None, rules_error=None, queue=None):
         "format_pending": format_pending,
         # Somente leitura: lê o PID file e pergunta ao sistema se o processo vive.
         "serve": serve_state(ledger.root.parent),
+        "layout": _status_layout(ledger.root.parent),
         "rules_error": rules_error,
         "references": remembered,
         "references_error": references_error,
@@ -2560,6 +2569,13 @@ def _execute_init(args):
     return project_init.run(args)
 
 
+def _execute_migrate(args):
+    """`migrate`: adota o layout 1 sem mover arquivos (`plan` só mostra, `apply` grava `project.json`)."""
+    from getbrolls import migrate
+
+    return migrate.run(args)
+
+
 def _execute_init_rules(args):
     """`init-rules`: cria RULES.md a partir do template, ou regrava só o bloco JSON com --force."""
     dest = Path(args.project) / "RULES.md"
@@ -2654,6 +2670,7 @@ def _execute_export(args):
 # biblioteca pessoal, que vive fora do projeto e não depende das regras dele.
 _ADMIN_COMMAND_HANDLERS = {
     "init": _execute_init,
+    "migrate": _execute_migrate,
     "init-rules": _execute_init_rules,
     "init-brief": _execute_init_brief,
     # Somente leitura, como status: orienta a coleta sem criar nada no projeto.
