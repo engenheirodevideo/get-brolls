@@ -148,6 +148,25 @@ GB_FFMPEG_PATH=/opt/homebrew/bin/ffmpeg python3 scripts/gb.py doctor
 
 `GB_RULES_FILE` é outra coisa: não é o RULES.md do projeto, é uma **camada intermediária** entre o RULES.md global (`~/.getbrolls/RULES.md`) e o do projeto, e vem de fora do projeto — por isso os campos de responsabilidade (quem assina, a declaração) são descartados dela, com aviso. Ela precisa existir: apontando para um arquivo inexistente, o comando falha nomeando a variável. `init-rules` sempre grava o `RULES.md` da pasta do projeto (criando as pastas-mãe que faltarem), nunca o arquivo de `GB_RULES_FILE` — para preparar essa camada, copie `docs/RULES.md` para lá à mão e edite o bloco ```json.
 
+### Perfil do workspace (`getbrolls.toml`)
+
+Em vez de um script que exporta `GB_HOME`, `GB_CACHE_DIR`, `GB_VENV_PATH`, `GB_YTDLP_PATH`, `GB_FFMPEG_PATH`, `GB_FFPROBE_PATH` e `GB_PLUGINS`, um `getbrolls.toml` na raiz do workspace fixa os mesmos valores para quem trabalha ali:
+
+```toml
+requires = "==2.6.0"
+home = ".getbrolls"
+cache_dir = ".cache/getbrolls"
+plugins = []
+
+[tools]
+venv = "/caminho/do/workspace/tools/beta/.venv"
+ytdlp = "/caminho/do/workspace/tools/beta/.venv/bin/yt-dlp"
+ffmpeg = "/usr/local/bin/ffmpeg"
+ffprobe = "/usr/local/bin/ffprobe"
+```
+
+Como migrar: escreva o arquivo, rode `getbrolls profile trust` (mostra o que ele fixaria e o sha256), confira e rode `getbrolls profile trust --yes --expect <sha256>`; depois compare `getbrolls profile show` com o `doctor` do script antigo. A precedência é flag > ambiente (e `.env`) > perfil > padrão, então um `GB_*` exportado ainda ganha do arquivo. O perfil não habilita plugin nem aceita caminho relativo em `[tools]`. Referência completa em [MANUAL.md](MANUAL.md#-perfil-do-workspace-getbrollstoml).
+
 ### Codex e Claude Code
 
 Use o repositório oficial [engenheirodevideo/get-brolls](https://github.com/engenheirodevideo/get-brolls): `git clone https://github.com/engenheirodevideo/get-brolls.git`. Clone ou copie a pasta completa da skill para **um** dos destinos abaixo. Escolha instalação pessoal ou por projeto para evitar duplicatas com o mesmo nome. Exclua `.venv/`, `.tools/`, `__pycache__/`, projetos e arquivos privados ao copiar uma árvore de desenvolvimento. Execute o instalador no destino final; não mova uma venv entre pastas:

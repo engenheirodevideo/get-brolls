@@ -81,6 +81,42 @@ ffprobe = "/usr/local/bin/ffprobe"
 - `getbrolls profile show` lista cada campo com o valor e a origem (`env`, `env_file`, `profile` ou `default`).
 - O perfil não escolhe qual instalação roda: use `requires` para exigir a versão certa.
 
+**Do script de variáveis para o perfil.** Um workspace que hoje usa um script assim:
+
+```bash
+export GB_HOME="$WS/.getbrolls"
+export GB_CACHE_DIR="$WS/.cache/getbrolls"
+export GB_VENV_PATH="$WS/tools/beta/.venv"
+export GB_YTDLP_PATH="$WS/tools/beta/.venv/bin/yt-dlp"
+export GB_FFMPEG_PATH="/usr/local/bin/ffmpeg"
+export GB_FFPROBE_PATH="/usr/local/bin/ffprobe"
+export GB_PLUGINS="off"
+mkdir -p "$GB_HOME" "$GB_CACHE_DIR"
+```
+
+vira este `getbrolls.toml` na raiz do workspace (troque `/caminho/do/workspace` pelo caminho real):
+
+```toml
+requires = "==2.6.0"        # o clone fixado; outra versão sai com código 4
+home = ".getbrolls"
+cache_dir = ".cache/getbrolls"
+plugins = []                # equivale a GB_PLUGINS=off
+
+[tools]
+venv = "/caminho/do/workspace/tools/beta/.venv"
+ytdlp = "/caminho/do/workspace/tools/beta/.venv/bin/yt-dlp"
+ffmpeg = "/usr/local/bin/ffmpeg"
+ffprobe = "/usr/local/bin/ffprobe"
+```
+
+Depois de `getbrolls profile trust` e `getbrolls profile trust --yes --expect <sha256>`, `getbrolls doctor` dentro do workspace relata as mesmas pastas e os mesmos executáveis que o script. Não precisa mais do `mkdir`: as pastas são criadas quando o primeiro comando grava nelas.
+
+**O que o perfil não faz:**
+
+- Não habilita plugin: `plugins` só estreita o que o ambiente já permite (`[]` ou `"off"` desliga; uma lista limita). Quem quer habilitar um plugin continua usando `GB_PLUGINS` ou `plugins --action enable`.
+- Não aceita caminho relativo em `[tools]`: ferramentas são caminhos absolutos. Só `home`, `cache_dir` e `runtime_dir` são relativos, ao lado do próprio `getbrolls.toml`.
+- Não vale sem a confiança de dois passos, nem depois de o arquivo mudar; um `getbrolls.toml` que seja link simbólico é recusado.
+
 ## 🧭 O caminho inteiro em 8 passos
 
 ```text
