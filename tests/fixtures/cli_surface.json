@@ -1235,6 +1235,63 @@
         }
       ]
     },
+    "migrate": {
+      "help": "Adotar o layout 1 num projeto antigo: só acrescenta o project.json, sem mover nada (--action plan mostra antes; apply grava)",
+      "options": [
+        {
+          "action": "_HelpAction",
+          "choices": null,
+          "default": "==SUPPRESS==",
+          "dest": "help",
+          "help": "show this help message and exit",
+          "nargs": 0,
+          "option_strings": [
+            "--help",
+            "-h"
+          ],
+          "required": false
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "project",
+          "help": "Pasta do projeto que guarda brolls/, fora da instalação da skill",
+          "nargs": null,
+          "option_strings": [
+            "--project"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": [
+            "apply",
+            "plan"
+          ],
+          "default": null,
+          "dest": "action",
+          "help": "plan: mostra o project.json que seria gravado, sem gravar; apply: grava",
+          "nargs": null,
+          "option_strings": [
+            "--action"
+          ],
+          "required": true
+        },
+        {
+          "action": "_StoreAction",
+          "choices": null,
+          "default": null,
+          "dest": "client",
+          "help": "Slug do cliente (padrão: o cliente do frontmatter do ROTEIRO.md, se houver)",
+          "nargs": null,
+          "option_strings": [
+            "--client"
+          ],
+          "required": false
+        }
+      ]
+    },
     "permit": {
       "help": "Registrar as condições reais de uso do trecho antes da coleta",
       "options": [
