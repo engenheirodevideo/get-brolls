@@ -10,7 +10,7 @@ e `runtime.ERROR_EXIT`. Os comandos de plugin saem do manifesto, sem rodar códi
 # módulo dentro de `_execute_toolchain`, que só roda depois de tudo carregado.
 import argparse
 
-from . import __version__, cli, runtime
+from . import __version__, _paths, cli, runtime
 from .sdk import loader
 
 SCHEMA_VERSION = 1
@@ -77,31 +77,55 @@ def _command(name, parser):
     }
 
 
-def _plugin_commands():
-    """`(linhas, erro)`: só plugins habilitados e compatíveis, lidos do manifesto."""
+# Estados de plugin que não são problema: habilitado ou desligado de propósito.
+_PLUGIN_OK_STATUSES = ("enabled", "disabled")
+
+
+def _plugin_rows():
+    """`(comandos, problemas, erro)`, lidos do manifesto, sem rodar código de plugin.
+
+    Comandos: só de plugins habilitados. Problemas: todo plugin que não está habilitado nem
+    desligado (inválido, com falha, suspenso…), com o motivo — o agente vê por que um comando
+    esperado não apareceu.
+    """
     try:
         inventory = loader.inventory()
     except ValueError as exc:
-        return [], str(exc)
-    rows = [
+        return [], [], str(exc)
+    commands = [
         {"plugin": row["id"], "command": command, "status": row["status"], "argv": ["x", row["id"], command]}
         for row in inventory
         if row["status"] == "enabled"
         for command in row.get("contributes", {}).get("commands", [])
     ]
-    return sorted(rows, key=lambda row: (row["plugin"], row["command"])), None
+    problems = [
+        {"plugin": row["id"], "status": row["status"], "reason": runtime.scrub_home(str(row.get("reason") or ""))}
+        for row in inventory
+        if row["status"] not in _PLUGIN_OK_STATUSES
+    ]
+    return (
+        sorted(commands, key=lambda row: (row["plugin"], row["command"])),
+        sorted(problems, key=lambda row: (row["plugin"], row["status"])),
+        None,
+    )
+
+
+def _invocation():
+    """Como chamar a CLI desta instalação, sem caminho da máquina; `module` só fora do checkout."""
+    module = None if _paths.origin() == "checkout" else " ".join(_paths.module_invocation())
+    return {"argv": _paths.portable_cli_argv(), "module": module}
 
 
 def describe(parser):
     """O manifesto de capacidades desta instalação, em ordem estável."""
     subparsers = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction)).choices  # pylint: disable=protected-access
-    plugin_commands, plugins_error = _plugin_commands()
+    plugin_commands, plugins_problems, plugins_error = _plugin_rows()
     manifest = {
         "schema_version": SCHEMA_VERSION,
         "name": "getbrolls",
         "version": __version__,
         "prog": parser.prog,
-        "invocation": {"argv": ["getbrolls"], "module": "python -m getbrolls"},
+        "invocation": _invocation(),
         "output": {"stdout": "JSON do resultado", "stderr": "JSON do erro, com error_code"},
         "global_options": [_option(a) for a in _described_actions(parser) if a.option_strings],
         "commands": [_command(name, subparsers[name]) for name in sorted(subparsers)],
@@ -110,6 +134,7 @@ def describe(parser):
             ({"code": code, "exit": runtime.exit_code_for(code)} for code in ERROR_CODES), key=lambda row: row["code"]
         ),
         "plugin_commands": plugin_commands,
+        "plugins_problems": plugins_problems,
     }
     if plugins_error:
         manifest["plugins_error"] = plugins_error

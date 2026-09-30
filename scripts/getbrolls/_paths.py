@@ -263,6 +263,24 @@ def cli_command(os_name: str | None = None) -> list[str]:
     return [sys.executable, "-P", "-m", "getbrolls"]
 
 
+def module_invocation(os_name: str | None = None) -> list[str]:
+    """`python -P -m getbrolls` sem caminho da máquina (o `-P` isola o pacote da pasta atual)."""
+    return [_interpreter(os_name), "-P", "-m", "getbrolls"]
+
+
+def portable_cli_argv(os_name: str | None = None) -> list[str]:
+    """argv da CLI para um manifesto ou documento: roda, mas não cita caminho desta máquina.
+
+    No checkout, relativo à raiz do repositório; no pacote, o `getbrolls` do PATH só quando
+    ele é o deste interpretador, senão o módulo isolado.
+    """
+    if origin() == "checkout":
+        return [_interpreter(os_name), "scripts/gb.py"]
+    if _console_script_is_ours():
+        return ["getbrolls"]
+    return module_invocation(os_name)
+
+
 def cli_prefix_text(os_name: str | None = None) -> str:
     """Prefixo dos comandos sugeridos; no checkout POSIX, idêntico ao da 2.5."""
     script = _gb_script(install())
