@@ -19,6 +19,7 @@ NAMES = (
     "client",
     "clients",
     "project",
+    "template",
 )
 
 

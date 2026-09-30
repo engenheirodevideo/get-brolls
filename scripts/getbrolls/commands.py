@@ -2523,6 +2523,10 @@ def _execute_toolchain(args):
         from getbrolls import clients
 
         return clients.run(args)
+    if args.command == "template":
+        from getbrolls import templates
+
+        return templates.run(args)
     if args.command == "capabilities":
         from getbrolls import capabilities
         from getbrolls.cli import build_parser
@@ -3198,7 +3202,7 @@ def execute(args):
             brief_present=_brief_present(args),
             provider_keys=_provider_keys_set(),
         )
-    if args.command in ("plugins", "x", "setup", "capabilities", "client"):
+    if args.command in ("plugins", "x", "setup", "capabilities", "client", "template"):
         return _execute_toolchain(args)
     if args.command in ("providers", "doctor"):
         return _execute_providers_or_doctor(args, config)

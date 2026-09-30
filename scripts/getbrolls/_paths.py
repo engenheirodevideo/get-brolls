@@ -46,6 +46,7 @@ REQUIRED_DATA: tuple[str, ...] = (
     "schemas/scenes.schema.json",
     "schemas/silence.schema.json",
     "schemas/speakers.schema.json",
+    "schemas/template.schema.json",
     "schemas/transcript.schema.json",
     "schemas/visual.schema.json",
 )

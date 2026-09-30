@@ -61,6 +61,7 @@ SUMMARIES = {
         "Registrar, listar, mostrar ou desregistrar pastas de cliente (componentes e templates) no "
         "$GB_HOME/clients.json"
     ),
+    "template": ("Congelar um projeto num template imutável do cliente (freeze), sem fala, licença nem aprovação"),
     "x": "Rodar um comando de plugin habilitado (x --list mostra quais existem); só lê o projeto",
     "setup": (
         "Conferir (--check) o runtime da instalação: venv do yt-dlp, Playwright e FFmpeg, com os comandos que faltam"
@@ -300,11 +301,49 @@ def _add_client_arguments(p):
     p.add_argument("--root", help="Pasta existente, em caminho absoluto, onde nasce <root>/<slug>/ (add)")
 
 
+def _template_slug(text):
+    from .templates import check_slug
+
+    return check_slug(text)
+
+
+def _engine_ref(text):
+    from .templates import engine_ref
+
+    return engine_ref(text)
+
+
+def _add_template_arguments(p):
+    """Flags de `template`: versões imutáveis em <pasta do cliente>/templates/<slug>/<N>/."""
+    p.add_argument(
+        "--action",
+        required=True,
+        choices=["freeze"],
+        help="freeze: congela o ROTEIRO.md e os componentes do projeto --from na próxima versão do template",
+    )
+    p.add_argument("--from", dest="source", help="Pasta do projeto a congelar (freeze)")
+    p.add_argument("--slug", type=_checked(_template_slug), help="Slug do template: minúsculas, números e - (freeze)")
+    p.add_argument(
+        "--client",
+        type=_checked(_client_slug),
+        help="Slug do cliente registrado dono do template; sem ele, o client do project.json (freeze)",
+    )
+    p.add_argument("--title", help="Título de exibição do template (freeze)")
+    p.add_argument(
+        "--engine-ref",
+        action="append",
+        type=_checked(_engine_ref),
+        metavar="REF",
+        help="Ref cat:<motor>/<tipo>/<id>@<versão> de uma receita de motor que o template acompanha; repetível",
+    )
+    p.add_argument("--by", help="Quem congelou, para a proveniência (freeze)")
+
+
 def _add_toolchain_subcommands(sub):
     """Acrescenta os subcomandos sem `--project` obrigatório.
 
-    São eles: providers, doctor, plugins, x, setup, capabilities e client."""
-    for name in ("providers", "doctor", "plugins", "x", "setup", "capabilities", "client"):
+    São eles: providers, doctor, plugins, x, setup, capabilities, client e template."""
+    for name in ("providers", "doctor", "plugins", "x", "setup", "capabilities", "client", "template"):
         p = sub.add_parser(name, help=SUMMARIES[name], description=SUMMARIES[name])
         _SUBPARSERS[name] = p
         if name in ("doctor", "setup", "capabilities"):
@@ -364,6 +403,8 @@ def _add_toolchain_subcommands(sub):
             )
         if name == "client":
             _add_client_arguments(p)
+        if name == "template":
+            _add_template_arguments(p)
         if name == "x":
             p.add_argument("plugin_id", nargs="?", metavar="plugin", help="Id do plugin dono do comando")
             p.add_argument("plugin_command", nargs="?", metavar="comando", help="Nome do comando do plugin")

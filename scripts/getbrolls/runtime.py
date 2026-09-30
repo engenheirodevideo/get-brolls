@@ -354,7 +354,7 @@ PLUGIN_ERROR_HINT = "Veja plugins --action list / doctor e docs/SDK.md."
 
 # Comandos cujo erro sai sem a dica de recovery (nenhum erro mostra traceback nem
 # repr à pessoa; esses ficam só em diagnostics.jsonl).
-QUIET_ERROR_COMMANDS = ("plugins", "x", "export", "assets", "client")
+QUIET_ERROR_COMMANDS = ("plugins", "x", "export", "assets", "client", "template")
 
 # `error_code` → código de saída da CLI; qualquer outro código (INVALID_DATA,
 # IO_ERROR, ...) é erro de operação ou de dados: 1. A tabela completa, com o 0, fica
