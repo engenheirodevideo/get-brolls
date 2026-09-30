@@ -58,6 +58,29 @@ getbrolls setup --check
 - `getbrolls setup --check` mostra o que falta (yt-dlp, Playwright CLI, FFmpeg, ffprobe, curl, Node, npx e os arquivos de dados, os mesmos itens obrigatórios do `doctor`) e os comandos para resolver, sem instalar nada. `getbrolls doctor` diz se está pronto (`ready`) e sai com código `4` quando falta algo; o `ready` dos dois bate.
 - **Windows:** os comandos sugeridos pela ferramenta (`summary.do.command`) usam `python` e aspas duplas e rodam colados no PowerShell, no cmd e no Git Bash quando nenhum caminho tem `$`, `%` ou `"`; com esses caracteres, ajuste as aspas à mão.
 
+## 🗂️ Perfil do workspace (`getbrolls.toml`)
+
+Um `getbrolls.toml` na pasta do workspace fixa pastas, executáveis e plugins para quem trabalha ali, sem script de variáveis de ambiente:
+
+```toml
+requires = ">=2.6,<3"       # versão do getbrolls que este workspace aceita
+home = ".getbrolls"         # GB_HOME (relativo ao próprio getbrolls.toml)
+cache_dir = ".cache/getbrolls"
+runtime_dir = "tools/runtime"
+plugins = []                # teto: só estes plugins podem valer ([] = nenhum)
+
+[tools]                     # só caminhos absolutos
+ffmpeg = "/usr/local/bin/ffmpeg"
+ffprobe = "/usr/local/bin/ffprobe"
+```
+
+- **Onde é achado:** `--profile <arquivo>`, depois `GB_PROFILE`, depois subindo a partir do `--project` e, por fim, da pasta atual. `--profile off` (ou `GB_PROFILE=off`) desliga.
+- **Precedência:** flag > ambiente (incluindo o `.env`) > perfil > padrão. O `home` do perfil é aplicado antes, então decide qual `$GB_HOME/.env` é lido. `plugins` só estreita o `GB_PLUGINS`, nunca acrescenta.
+- **Confiança em dois passos:** o perfil pode apontar executáveis, então só vale depois de `getbrolls profile trust` (mostra o que ele fixaria e o sha256) e `getbrolls profile trust --yes --expect <sha256>`. Editou o arquivo, precisa confiar de novo; `getbrolls profile untrust` desfaz. O único dispensado é `$GB_HOME/getbrolls.toml`.
+- **Sem confiança:** comandos de projeto param com código `2` antes de tocar em nada; o `doctor` mostra o problema em `summary.missing`. `requires` que não bate sai com `4`.
+- `getbrolls profile show` lista cada campo com o valor e a origem (`env`, `env_file`, `profile` ou `default`).
+- O perfil não escolhe qual instalação roda: use `requires` para exigir a versão certa.
+
 ## 🧭 O caminho inteiro em 8 passos
 
 ```text
@@ -564,6 +587,9 @@ python3 scripts/gb.py --help
 
 # Mostra a versão, o Python e de onde vêm os dados: getbrolls 2.6.0 (Python 3.12.4; dados: checkout)
 python3 scripts/gb.py --version
+
+# Mostra o getbrolls.toml em vigor: cada campo com o valor e a origem
+python3 scripts/gb.py profile show
 
 # Mostra tudo o que um comando aceita (troque "search" por qualquer um)
 python3 scripts/gb.py search --help
