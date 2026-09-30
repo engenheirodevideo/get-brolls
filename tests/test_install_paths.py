@@ -116,6 +116,19 @@ class DetectTests(unittest.TestCase):
                 self.assertEqual(["docs/BRIEF.md"], paths.verify_data())
                 self.assertEqual(_dir(inst.data_root) / "docs" / "RULES.md", paths.data_path("docs", "RULES.md"))
 
+    def test_one_missing_data_file_is_a_prerequisite_error_without_the_path(self):
+        # Um arquivo só apagado do `_data` instalado: erro de pré-requisito (exit 4) que
+        # nomeia a entrada e manda reinstalar, nunca `FileNotFoundError` com o caminho.
+        with tempfile.TemporaryDirectory() as tmp:
+            present = [entry for entry in paths.REQUIRED_DATA if entry != "docs/RULES.md"]
+            inst = _fake_wheel(Path(tmp), present)
+            with patch.object(paths, "install", return_value=inst), self.assertRaises(DataRootError) as caught:
+                paths.data_path("docs", "RULES.md")
+        message = str(caught.exception)
+        self.assertIn("docs/RULES.md", message)
+        self.assertIn("Reinstale", message)
+        self.assertNotIn(tmp, message)
+
 
 class HomeAndRuntimeTests(unittest.TestCase):
     def test_gb_home_wins_then_alias_then_default(self):
@@ -426,6 +439,67 @@ class BuildInfoTests(unittest.TestCase):
         self.assertIsNone(report["data_root"])
         self.assertEqual(list(paths.REQUIRED_DATA), report["data_missing"])
         self.assertIsNone(report["runtime"]["req_sha"])
+
+
+# Único dono de "onde a instalação mora". Fora dele, cada ocorrência abaixo é uma linha
+# exata, com o motivo; uma linha nova que ache dados ou a CLI por conta própria quebra
+# o wheel (o pacote instalado não tem `scripts/gb.py` nem pastas acima dele).
+LOCATOR_OWNER = "_paths.py"
+LOCATOR_PATTERNS = ("parents[", "gb.py", "__file__")
+LOCATOR_ALLOWLIST = {
+    (
+        "instagram_pairs.py",
+        "_package_dir = Path(__file__).resolve().parent",
+    ): "fallback do modo script (`python3 scripts/getbrolls/instagram_pairs.py`): tira a pasta "
+    "do pacote de sys.path e importa o próprio pacote; não localiza dados",
+    (
+        "social.py",
+        '"após /plugin update é preciso reinstalar. Confira com python3 scripts/gb.py doctor."',
+    ): "texto só do checkout: o ramo `_from_checkout()`; o pacote usa `_paths.cli_hint`",
+    (
+        "sdk/api.py",
+        '`[python, caminho/gb.py]` num checkout ou `[python, "-P", "-m", "getbrolls"]` no pacote',
+    ): "docstring de `PluginApi.cli_argv`, que delega a `_paths.cli_argv`",
+    (
+        "sdk/scaffold.py",
+        "FOLDER = Path(__file__).resolve().parent.parent",
+    ): "texto do teste gerado para o plugin novo: aponta para a pasta do plugin, não do getbrolls",
+    (
+        "sdk/loader.py",
+        "# lado do `__file__`) não pode custar a memória/tempo dele a cada comando: passou do",
+    ): "comentário sobre o plugin carregado",
+    (
+        "sdk/loader.py",
+        "module.__file__ = str(entry_path)",
+    ): "define o `__file__` do módulo do plugin, não lê o do getbrolls",
+}
+
+
+class LocatorGuardTests(unittest.TestCase):
+    """Guarda estática: `parents[`, `gb.py` e `__file__` só em `_paths.py` ou na allowlist."""
+
+    def test_only_paths_locates_the_install(self):
+        package = ROOT / "scripts" / "getbrolls"
+        seen, problems = set(), []
+        for path in sorted(package.rglob("*.py")):
+            rel = path.relative_to(package).as_posix()
+            if rel == LOCATOR_OWNER:
+                continue
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if not any(pattern in line for pattern in LOCATOR_PATTERNS):
+                    continue
+                key = (rel, line.strip())
+                if key in LOCATOR_ALLOWLIST:
+                    seen.add(key)
+                else:
+                    problems.append(f"{rel}:{number}: {line.strip()}")
+        self.assertEqual([], problems, "use getbrolls._paths (ou justifique na LOCATOR_ALLOWLIST)")
+        self.assertEqual(set(LOCATOR_ALLOWLIST), seen, "entrada da allowlist que não existe mais: tire-a")
+
+    def test_guard_catches_a_new_parents_lookup(self):
+        line = 'ROOT = Path(__file__).resolve().parents[2] / "docs"'
+        self.assertTrue(any(pattern in line for pattern in LOCATOR_PATTERNS))
+        self.assertNotIn(("commands.py", line), LOCATOR_ALLOWLIST)
 
 
 if __name__ == "__main__":
