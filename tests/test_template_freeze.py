@@ -229,6 +229,16 @@ class FreezeTests(TemplateCase):
         self.assertIn("link", refused["error"])
         self.assertEqual([], list(outside.iterdir()))
 
+    @unittest.skipIf(os.name == "nt", "symlink exige privilégio no Windows")
+    def test_linked_templates_lock_is_never_followed(self):
+        (self.client / "templates").mkdir(exist_ok=True)
+        target = self.tmp / "fora.lock"
+        (self.client / "templates" / ".lock").symlink_to(target)
+        refused = self.freeze(expect=1)
+        self.assertIn("link", refused["error"])
+        self.assertFalse(os.path.lexists(target))
+        self.assertFalse(self.slug_dir().exists() and any(self.slug_dir().iterdir()))
+
     def test_help_and_capabilities_list_freeze(self):
         described = run_cli("capabilities")
         command = next(row for row in described["commands"] if row["name"] == "template")
@@ -253,6 +263,8 @@ class ShowAndListTests(TemplateCase):
         doc = json.loads(path.read_text(encoding="utf-8"))
         change(doc)
         path.write_text(json.dumps(doc), encoding="utf-8")
+        if reseal:
+            reseal_template(self.slug_dir() / "1")
 
     def test_list_is_sorted_by_client_slug_and_version(self):
         (self.tmp / "Outros").mkdir()
@@ -263,8 +275,6 @@ class ShowAndListTests(TemplateCase):
         self.freeze(slug="alfa")
         self.freeze("--client", "beta", expect=1)  # o project.json é do acme
         (self.project / "project.json").unlink()
-        if reseal:
-            reseal_template(self.slug_dir() / "1")
         self.freeze("--client", "beta")
         listed = run_cli("template", "--action", "list")["templates"]
         self.assertEqual(
@@ -290,16 +300,6 @@ class ShowAndListTests(TemplateCase):
         raw = (self.slug_dir() / "1" / "template.json").read_bytes()
         self.assertEqual(hashlib.sha256(raw).hexdigest(), shown["template_sha256"])
 
-    def test_tampered_component_is_named(self):
-        self.freeze()
-        self.writable(self.slug_dir() / "1" / "components" / "sfx" / "whoosh.wav").write_bytes(b"trocado")
-        shown = self.show()
-        self.assertFalse(shown["intact"])
-        self.assertIn("components/sfx/whoosh.wav", " ".join(shown["problems"]))
-
-    def test_missing_and_extra_files_are_problems(self):
-        self.freeze()
-        target = self.slug_dir() / "1" / "components" / "marca" / "logo.svg"
     def test_template_json_is_sealed_outside_itself_and_read_only(self):
         self.freeze()
         folder = self.slug_dir() / "1"
@@ -349,6 +349,16 @@ class ShowAndListTests(TemplateCase):
         self.assertEqual(("components", "sfx", "x.wav"), templates.safe_relative("components/sfx/x.wav", kind="sfx"))
         del folder
 
+    def test_tampered_component_is_named(self):
+        self.freeze()
+        self.writable(self.slug_dir() / "1" / "components" / "sfx" / "whoosh.wav").write_bytes(b"trocado")
+        shown = self.show()
+        self.assertFalse(shown["intact"])
+        self.assertIn("components/sfx/whoosh.wav", " ".join(shown["problems"]))
+
+    def test_missing_and_extra_files_are_problems(self):
+        self.freeze()
+        target = self.slug_dir() / "1" / "components" / "marca" / "logo.svg"
         self.writable(target)
         target.unlink()
         (self.slug_dir() / "1" / "components" / "sfx" / "extra.wav").write_bytes(b"x")

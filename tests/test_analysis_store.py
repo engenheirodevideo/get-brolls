@@ -376,6 +376,19 @@ class CommandTests(StoreTestCase):
         self.assertNotIn(str(self.tmp), json.dumps([registered, listed, checked], ensure_ascii=False))
 
     def test_register_needs_a_path_and_takes_no_project_lock(self):
+    def test_lock_file_that_is_a_link_is_never_followed(self):
+        if not _can_symlink(self.tmp):
+            self.skipTest("sem permissão para criar link simbólico")
+        target = self.tmp / "fora.lock"
+        lock = self.project / "analysis" / ".lock"
+        lock.unlink(missing_ok=True)
+        lock.symlink_to(target)
+        with self.assertRaisesRegex(ValueError, "link"), runtime.exclusive_lock(lock, "ocupado"):
+            pass
+        with self.assertRaisesRegex(ValueError, "link"):
+            analysis.write_component(self.project, self.media_id, "transcript", transcript(), producer=PRODUCER)
+        self.assertFalse(os.path.lexists(target))
+
         refused = run_cli("analysis", "--action", "register", project=self.project, expect=1)
         self.assertIn("--path", refused["error"])
         (self.project / "brolls").mkdir(exist_ok=True)

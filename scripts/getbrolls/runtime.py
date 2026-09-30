@@ -10,6 +10,7 @@
 
 import contextlib
 import contextvars
+import errno
 import json
 import logging
 import os
@@ -286,13 +287,31 @@ def stderr_tail(stderr, limit=6):
 _LOCK_POLL_S = 0.05
 
 
+_LOCK_FLAGS = os.O_RDWR | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
+
+
+def _open_lock_file(path):
+    refusal = ValueError(f"{path.name} em {scrub_home(str(path.parent))} é um link; apague o link e repita o comando.")
+    if not getattr(os, "O_NOFOLLOW", 0) and path.is_symlink():
+        raise refusal
+    try:
+        fd = os.open(path, _LOCK_FLAGS, 0o644)
+    except OSError as exc:
+        if exc.errno in (errno.ELOOP, errno.EMLINK):
+            raise refusal from None
+        raise
+    return os.fdopen(fd, "a+", encoding="utf-8")
+
+
 @contextlib.contextmanager
 def exclusive_lock(path, busy_message, wait_s=0.0):
     """Trava exclusiva no arquivo `path` (criado se faltar); a pasta tem que existir.
 
+    O arquivo é aberto sem seguir link (`O_NOFOLLOW`; onde não existe, um `lstat` antes):
+    uma trava trocada por link nunca cria nem trava um arquivo fora do lugar.
     Tenta de novo por até `wait_s` segundos; depois, `ValueError(busy_message)`.
     """
-    with Path(path).open("a+", encoding="utf-8") as lock:
+    with _open_lock_file(Path(path)) as lock:
         deadline = time.monotonic() + wait_s
         while True:
             try:
@@ -306,6 +325,9 @@ def exclusive_lock(path, busy_message, wait_s=0.0):
             yield
         finally:
             _release_lock(lock)
+
+
+COMMAND_LOCK = ".command.lock"
 
 
 @contextlib.contextmanager
@@ -327,9 +349,6 @@ def project_lock(project):
 # instalação: não pode criar `brolls/` numa pasta que talvez nem seja um projeto.
 # `capabilities` só descreve o parser e o manifesto dos plugins, sem projeto.
 # `setup` só confere o runtime da instalação e não recebe projeto.
-COMMAND_LOCK = ".command.lock"
-
-
 # `x` roda comando de plugin, que só lê o projeto por cópias (CommandContext).
 READ_ONLY_COMMANDS = ("status", "serve", "brief", "doctor", "setup", "x", "capabilities")
 # (comando, ação) somente leitura, além dos comandos inteiros acima: `queue --action status`
@@ -360,6 +379,12 @@ READ_ONLY_ACTIONS = {
 # troca dos arquivos de `analysis/` fica dentro de `analysis/.lock`.
 OWN_LOCK_ACTIONS = {("analysis", "register")}
 
+# Comandos que criam o projeto e só tomam a trava dele depois de validar tudo: um `init`
+# recusado (cliente desconhecido, template adulterado, flag errada) não pode deixar para
+# trás a pasta do projeto, `brolls/.command.lock` nem um log. O log de auditoria só é
+# gravado quando `brolls/` já existe (ou seja, depois que o próprio comando a criou).
+SELF_LOCKED_COMMANDS = ("init",)
+
 
 # Erro que veio de um plugin: "Plugin <id>: …" (todo erro do core sobre código de
 # plugin usa esse prefixo) ou "Fonte X é do plugin Y, …" (fonte de plugin fora do
@@ -378,12 +403,6 @@ QUIET_ERROR_COMMANDS = ("plugins", "x", "export", "assets", "client", "analysis"
 ERROR_EXIT = {"USAGE_ERROR": 2, "INTERNAL_ERROR": 3, "PREREQUISITE_MISSING": 4, "INTERRUPTED": 130}
 EXIT_FOR_OTHER_ERRORS = 1
 
-
-# Comandos que criam o projeto e só tomam a trava dele depois de validar tudo: um `init`
-# recusado (cliente desconhecido, template adulterado, flag errada) não pode deixar para
-# trás a pasta do projeto, `brolls/.command.lock` nem um log. O log de auditoria só é
-# gravado quando `brolls/` já existe (ou seja, depois que o próprio comando a criou).
-SELF_LOCKED_COMMANDS = ("init",)
 
 def exit_code_for(error_code):
     """Código de saída de um `error_code` do JSON de erro."""
@@ -567,6 +586,7 @@ def audited(args, execute):
         in READ_ONLY_ACTIONS
     )
     own_lock = (args.command, getattr(args, "action", None)) in OWN_LOCK_ACTIONS
+    self_locked = args.command in SELF_LOCKED_COMMANDS
     log = diagnostics_path(project)
     app_log_path = Path(project).resolve() / "brolls" / "getbrolls.log" if project else None
     result = None
@@ -586,7 +606,6 @@ def audited(args, execute):
         AttributeError,
         OverflowError,
     ) as exc:
-    self_locked = args.command in SELF_LOCKED_COMMANDS
         _classify_audited_error(event, exc, log if project else None)
         failure = _audited_error_failure(args, event, log, app_log_path)
         raise failure from None
