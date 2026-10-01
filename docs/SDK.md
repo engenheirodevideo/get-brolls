@@ -937,8 +937,15 @@ python3 scripts/gb.py plugins --action install --id <id>@<marketplace> --yes --e
   repositório do próprio marketplace), materializado sem `checkout`. `--source`,
   `--commit`, `--ref` e `--subdir` junto com `<id>@<marketplace>` são erro de uso.
 - Sem `--yes` a resposta é **sempre** a prévia, mesmo com `--expect`: ela traz
-  `marketplace` (nome, commit do índice, tier), `expect` (o sha256 a confirmar)
-  e `next` (o comando de confirmação). `--yes` sem `--expect` é recusado.
+  `marketplace` (nome, commit do índice, `tier`, `tier_verified`, `tier_note`),
+  `permissions_added`, `expect` (o valor a confirmar) e `next` (o comando de
+  confirmação). `--yes` sem `--expect` é erro de uso (exit 2).
+- Plugin que pede qualquer permissão: o `expect` **não** é o `content_sha256` do
+  índice, e sim o mesmo valor derivado do update que acrescenta permissão
+  (sha256 do conteúdo amarrado às permissões); confirmar com o sha do índice é
+  recusado. Plugin sem permissão confirma com o sha do índice.
+- Commit fixado com `ref` (na entrada ou no `--source`) que não é a ponta dela
+  na origem vira aviso: confira se o commit vem do repositório certo.
 - Antes de buscar qualquer coisa: o perfil de workspace tem que permitir o
   marketplace; entrada retirada (`yanked`) é recusada; `sdk_api`,
   `requires_getbrolls` e `platforms` da entrada têm que servir nesta instalação.
@@ -951,8 +958,21 @@ python3 scripts/gb.py plugins --action install --id <id>@<marketplace> --yes --e
   `description` vira aviso.
 - A origem gravada em `plugins.json` ganha `marketplace`, `tier` e
   `index_commit` (o commit do índice usado).
-- O `tier` (`official`, `verified`, `community`) é informação: aparece na
-  prévia e na origem, e nunca afrouxa nenhuma das conferências acima.
+- O `tier` (`official`, `verified`, `community`) é o que o índice declara:
+  aparece na prévia, no `search`, no `update --all` e na origem, sempre com
+  `tier_verified` (verdadeiro só no índice oficial: nome `getbrolls-plugins` e
+  origem fixada num dos repositórios de `marketplace.OFFICIAL_INDEX_REPOS`) e
+  `tier_note` ("declarado pelo marketplace, não verificado" fora dele). Nunca
+  afrouxa nenhuma das conferências acima. `marketplace-add` de outra origem
+  avisa, e cada marketplace traz `official` em `marketplace-list`,
+  `capabilities` e `doctor`.
+- `marketplace-update` lista em `diff.changed` as entradas cujo commit ou
+  `content_sha256` mudou (de/para), mesmo sem versão nova. Um commit do índice
+  que não descende do fixado (volta atrás ou história reescrita) é erro de uso
+  sem `--allow-rollback`; com ele, a linha sai com `rollback: true`. Sem
+  `--marketplace`, o erro de um marketplace não para os outros: sai em `error`
+  na linha dele e o nome em `failed`. No `search`, um cache que não confere fica
+  de fora com o motivo em `problems`.
 - `update --id <id>` de um plugin instalado por marketplace usa a entrada do
   índice **fixado** (rode `marketplace-update` antes para ver novidade); a única
   rede é a materialização. Mesmo commit e subpasta da origem gravada: responde
@@ -964,23 +984,26 @@ python3 scripts/gb.py plugins --action install --id <id>@<marketplace> --yes --e
   continua desabilitado.
 - O `diff` da prévia traz `permissions_added` e `permissions_increased`. Quando
   alguma permissão aumenta, o `expect` da prévia **não** é o sha256 do índice:
-  é um valor que amarra o sha256 do conteúdo às permissões acrescentadas e só
-  sai da prévia. Confirmar com o sha256 do índice é recusado, então permissão
-  nova nunca entra sem uma prévia que mostre o diff.
+  é um valor derivado que amarra o sha256 do conteúdo às permissões
+  acrescentadas e que o índice não traz. Confirmar com o sha256 do índice é
+  recusado. O valor não é segredo (um agente consegue calculá-lo): atrapalha
+  quem copia o sha do índice, mas não garante leitura humana.
 - `update --all` só mostra a prévia (sem rede, sem mudar nada): para cada
   plugin instalado por marketplace com entrada nova, versão de/para, tier,
   `permissions_added`, `auto_update_eligible` e o comando da prévia por id; mais
   `up_to_date`, `skipped` (com o motivo, ex.: `yanked`) e `outside_marketplace`.
   `auto_update_eligible` é só a política exibida: tier `official` ou `verified`
-  e nenhuma permissão nova; `community` nunca é elegível. `--all` com `--yes`,
+  verificado (só no índice oficial) e nenhuma permissão nova; `community` e tier
+  só declarado nunca são elegíveis. `--all` com `--yes`,
   `--expect` ou `--id` é erro de uso; aplicar em lote fica para uma versão futura.
 - `plugins --action list` e cada linha de `plugins[]` do `doctor` trazem
   `origin` (`source`, `commit`, `ref`, `subdir`, `marketplace`, `tier`,
-  `index_commit`; `null` para plugin copiado à mão) e `marketplace_notice`, o
+  `index_commit`, `tier_verified`, `tier_note`; `null` para plugin copiado à mão) e `marketplace_notice`, o
   que o índice fixado diz hoje do plugin instalado: retirado (`yanked`),
   obsoleto, renomeado, fora do índice ou marketplace removido (`null` quando não
-  há nada a dizer), sem rede. O `doctor` ganha `marketplaces` (nome, commit,
-  plugins, `allowed`, `problem`) quando há algum; `capabilities` sempre traz a
+  há nada a dizer), sem rede e sem caminho da máquina. O `doctor` ganha
+  `marketplaces` (nome, commit, plugins, `allowed`, `official`, `problem`) quando
+  há algum; `capabilities` sempre traz a
   mesma lista.
 - **Teto do perfil.** Por padrão vale `profile.marketplace_ceiling()`, lido a
   cada checagem: `None` não restringe; um conjunto (mesmo vazio) é o teto.
@@ -992,10 +1015,15 @@ python3 scripts/gb.py plugins --action install --id <id>@<marketplace> --yes --e
   e no `update`, e aparece com `allowed: false` em `marketplace-list`,
   `capabilities` e `doctor`. O perfil só estreita; ele nunca acrescenta um
   marketplace.
-- **Limite conhecido:** o `expect` vem pré-preenchido do índice, então um agente
-  que copia esse sha256 confirma sem que ninguém leia a prévia. Por isso o
-  `install` sem `--yes` sempre para na prévia, e a skill orienta o agente a
-  mostrá-la à pessoa antes de rodar o `next`.
+- **Limite conhecido:** para plugin sem permissão, o `expect` vem pré-preenchido
+  do índice, e o valor derivado dos plugins com permissão também pode ser
+  calculado por um agente: nenhum dos dois garante que alguém leu a prévia. Por
+  isso o `install` sem `--yes` sempre para na prévia, e a skill orienta o agente
+  a mostrá-la à pessoa antes de rodar o `next`.
+- Toda ação de `plugins` que grava (`enable`, `disable`, `install`, `update`,
+  `remove`, `marketplace-add|-remove|-update`) segura `$GB_HOME/.plugins.lock`;
+  outro processo no meio sai com `LOCKED` (exit 1). Flag faltando ou com formato
+  errado é `USAGE_ERROR` (exit 2); conteúdo ruim é exit 1.
 
 ## Remover
 
@@ -1013,6 +1041,9 @@ python3 scripts/gb.py plugins --action remove --id <id> --yes
 - Se `plugins/<id>` é um link simbólico (ou junction), só o link sai; o alvo
   não é tocado. Um id que só sobrou no `plugins.json`, sem pasta, também pode
   ser removido. `plugins.json` corrompido recusa antes de mexer em qualquer coisa.
+- Se a pasta não sai do lugar, nada muda (nem o `plugins.json`). Se ela sai mas
+  não é apagada inteira, o plugin é removido do `plugins.json` e a resposta traz
+  `leftover` (o `.removed-*` que sobrou), que a próxima varredura do install apaga.
 
 ## Opt-in e confiança
 

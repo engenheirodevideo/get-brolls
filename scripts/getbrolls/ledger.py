@@ -21,13 +21,15 @@ def digest(path):
     return h.hexdigest()
 
 
-def atomic_write(path, text):
+def atomic_write(path, text, *, unique=False):
     """Grava `text` inteiro de uma vez (temporário + troca), em UTF-8 e com o `\\n` como está.
 
     Sem `newline="\\n"`, o Windows trocaria cada `\\n` por `\\r\\n`: o arquivo sairia diferente do
-    macOS e do Linux, e o ROTEIRO.md revisado voltaria com o CRLF que a revisão tirou."""
+    macOS e do Linux, e o ROTEIRO.md revisado voltaria com o CRLF que a revisão tirou.
+    `unique=True` dá ao temporário um nome só deste processo (`<nome>.<uuid>.tmp`): dois
+    gravadores ao mesmo tempo nunca escrevem no mesmo temporário."""
     path = Path(path)
-    temp = path.with_name(path.name + ".tmp")
+    temp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp" if unique else path.name + ".tmp")
     try:
         with temp.open("w", encoding="utf-8", newline="\n") as f:
             f.write(text)

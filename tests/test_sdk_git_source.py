@@ -1,5 +1,6 @@
 """`GitSource`/`FolderSource`: forma de `--source`, `--commit` e `--ref`, sem rodar git."""
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -108,11 +109,32 @@ class ParseSourceTests(unittest.TestCase):
         self.assertIsInstance(parse_source(str(bare), ref="main"), GitSource)
         self.assertFalse(git_source.is_remote(str(bare)))
 
-    def test_gitfile_does_not_make_a_repository(self):
+    def test_unconfirmed_gitfile_is_refused_not_copied_as_a_folder(self):
         folder = self.work / "linked"
         folder.mkdir()
         (folder / ".git").write_text("gitdir: /elsewhere\n", encoding="utf-8")
-        self.assertIsInstance(parse_source(str(folder)), FolderSource)
+        with self.assertRaises(ValueError) as ctx:
+            parse_source(str(folder))
+        self.assertIn(".git", str(ctx.exception))
+
+    def test_ssh_host_starting_with_dash_is_refused_like_the_index(self):
+        for bad in ("git@-oProxyCommand=x:repo.git", "git@-x:org/repo.git", "https:///sem-host.git"):
+            with self.subTest(source=bad), self.assertRaises(ValueError):
+                git_source.validate_url(bad)
+            with self.subTest(source=bad), self.assertRaises(ValueError):
+                parse_source(bad)
+
+    @unittest.skipIf(os.name == "nt", "':' não vale em nome de pasta no Windows")
+    def test_a_local_folder_named_like_a_url_never_shadows_the_url(self):
+        url = "https://example.com/demo.git"
+        shadow = self.work / "https:" / "example.com" / "demo.git"
+        shadow.mkdir(parents=True)
+        (shadow / ".git").mkdir()
+        previous = Path.cwd()
+        os.chdir(self.work)
+        self.addCleanup(os.chdir, previous)
+        self.assertTrue(Path(url).is_dir(), "a pasta existe com o mesmo texto da URL")
+        self.assertEqual(GitSource(url), parse_source(url))
 
 
 if __name__ == "__main__":

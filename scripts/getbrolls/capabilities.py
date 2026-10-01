@@ -151,6 +151,5 @@ def describe(parser):
     except ValueError as exc:
         manifest["marketplaces"] = []
         # Sem caminho da máquina: o estado é sempre `$GB_HOME/marketplaces.json`.
-        text = str(exc).replace(str(marketplace.state_path()), f"$GB_HOME/{marketplace.STATE_NAME}")
-        manifest["marketplaces_error"] = runtime.scrub_home(text)
+        manifest["marketplaces_error"] = marketplace.portable_text(exc)
     return manifest

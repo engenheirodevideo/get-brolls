@@ -54,7 +54,7 @@ class PluginsCommandTests(LoaderTestCase):
         self.assertIn("boom", err["error"])
 
     def test_missing_id_is_a_clear_error(self):
-        err = run_cli("plugins", "--action", "enable", expect=1, env=self.env())
+        err = run_cli("plugins", "--action", "enable", expect=2, env=self.env())
         self.assertIn("--id", json.dumps(err, ensure_ascii=False))
 
     def test_doctor_without_plugins_keeps_its_shape(self):

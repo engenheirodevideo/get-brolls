@@ -37,6 +37,11 @@ class MarketInstallCase(MarketplaceTestCase):
         self.repo = repo  # pylint: disable=attribute-defined-outside-init
         return entry
 
+    def confirm_install(self, ref=REF):
+        """Prévia e confirmação com o `--expect` que a prévia mostra (derivado: o plugin pede permissões)."""
+        preview = mki.install(ref, confirm=False, expect=None)
+        return mki.install(ref, confirm=True, expect=preview["expect"])
+
     def plugin_dirs(self):
         root = loader.plugins_root()
         return sorted(child.name for child in root.iterdir()) if root.is_dir() else []
@@ -49,10 +54,13 @@ class InstallTests(MarketInstallCase):
         self.assertFalse(preview["installed"])
         self.assertEqual([], self.plugin_dirs())
         pin, _ = marketplace.load_index("exemplo")
-        self.assertEqual({"name": "exemplo", "commit": pin.commit, "tier": "community"}, preview["marketplace"])
-        self.assertEqual(entry["content_sha256"], preview["expect"])
+        self.assertEqual(
+            {"name": "exemplo", "commit": pin.commit, "tier": "community", "tier_verified": False},
+            {key: preview["marketplace"][key] for key in ("name", "commit", "tier", "tier_verified")},
+        )
+        self.assertNotEqual(entry["content_sha256"], preview["expect"], "o plugin pede permissões")
         self.assertEqual(entry["content_sha256"], preview["plugin"]["sha256"])
-        self.assertIn(f"--id {REF} --yes --expect {entry['content_sha256']}", preview["next"])
+        self.assertIn(f"--id {REF} --yes --expect {preview['expect']}", preview["next"])
         self.assertIn("pessoa", preview["note"])
 
     def test_yes_without_expect_refused(self):
@@ -64,7 +72,7 @@ class InstallTests(MarketInstallCase):
 
     def test_yes_with_expect_installs_and_records_marketplace_origin(self):
         entry = self.market()
-        done = mki.install(REF, confirm=True, expect=entry["content_sha256"])
+        done = self.confirm_install()
         self.assertTrue(done["installed"])
         origin = loader.read_state()["sources"]["demo"]
         pin, _ = marketplace.load_index("exemplo")
@@ -77,10 +85,11 @@ class InstallTests(MarketInstallCase):
         self.assertIn("demo", loader.read_state()["enabled"])
 
     def test_index_sha_mismatch_refused(self):
-        self.market(lambda e: {**e, "content_sha256": "0" * 64})
+        entry = self.market(lambda e: {**e, "content_sha256": "0" * 64})
+        derived = mki._confirmation({**entry, "content_sha256": "0" * 64}, None)[0]  # pylint: disable=protected-access
         for confirm in (False, True):
             with self.assertRaises(ValueError) as ctx:
-                mki.install(REF, confirm=confirm, expect="0" * 64)
+                mki.install(REF, confirm=confirm, expect=derived)
             self.assertIn("content_sha256", str(ctx.exception))
         self.assertEqual([], self.plugin_dirs(), "nada fica, nem staging")
 
@@ -159,8 +168,8 @@ class InstallTests(MarketInstallCase):
                 mki.install(ref, confirm=False, expect=None)
 
     def test_already_installed_refused(self):
-        entry = self.market()
-        mki.install(REF, confirm=True, expect=entry["content_sha256"])
+        self.market()
+        self.confirm_install()
         with self.assertRaises(ValueError) as ctx:
             mki.install(REF, confirm=False, expect=None)
         self.assertIn("update", str(ctx.exception))
@@ -178,16 +187,17 @@ class InstallCliTests(MarketInstallCase):
         entry = self.market()
         preview = run_cli("plugins", "--action", "install", "--id", REF, env=self.env())
         self.assertFalse(preview["installed"])
-        self.assertEqual(entry["content_sha256"], preview["expect"])
+        self.assertEqual(entry["content_sha256"], preview["plugin"]["sha256"])
         done = run_cli(
             "plugins", "--action", "install", "--id", REF, "--yes", "--expect", preview["expect"], env=self.env()
         )
         self.assertTrue(done["installed"])
         self.assertEqual("exemplo", loader.read_state()["sources"]["demo"]["marketplace"])
 
-    def test_plain_id_without_source_keeps_the_old_message(self):
-        err = run_cli("plugins", "--action", "install", "--id", "demo", expect=1, env=self.env())
+    def test_plain_id_without_source_is_a_usage_error_naming_both_forms(self):
+        err = run_cli("plugins", "--action", "install", "--id", "demo", expect=2, env=self.env())
         self.assertIn("--source", err["error"])
+        self.assertIn("<id>@<marketplace>", err["error"])
 
     def test_second_plugin_in_the_same_index(self):
         repo = self.index_repo()
@@ -205,7 +215,7 @@ class InstallCliTests(MarketInstallCase):
 class MarketUpdateCase(MarketInstallCase):
     def installed(self, tier="community"):
         entry = self.market(tier=tier)
-        mki.install(REF, confirm=True, expect=entry["content_sha256"])
+        self.confirm_install()
         return entry
 
     def publish(self, manifest=None, tier="community", mutate=None, refresh=True, renames=None):
@@ -391,6 +401,8 @@ class OriginRowsTests(MarketUpdateCase):
                 "marketplace": "exemplo",
                 "tier": "verified",
                 "index_commit": pin.commit,
+                "tier_verified": False,
+                "tier_note": "declarado pelo marketplace, não verificado",
                 "marketplace_notice": None,
             },
             demo,

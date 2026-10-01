@@ -15,6 +15,7 @@ cat-file blob` (que nunca aplicam filtro), recusando qualquer entrada que não
 seja arquivo regular (link simbólico, submódulo).
 """
 
+import contextlib
 import json
 import logging
 import os
@@ -401,7 +402,13 @@ def _materialize(spec, dest, compat=True):
         _copy_folder(Path(spec.path), dest, compat)
         return {"source": spec.path, "commit": None}, []
     commit = _from_git(spec, dest, compat)
-    warnings = [] if git_source.is_remote(spec.repo) else [local_repository_warning(commit, spec.ref)]
+    # Só para a pasta local sem --commit: quem fixou o commit (ou o índice) já sabe o que entra.
+    plain_local = not git_source.is_remote(spec.repo) and spec.commit is None
+    warnings = [local_repository_warning(commit, spec.ref)] if plain_local else []
+    # Commit fixado E ref dada: o commit tem que ser a ponta dela, senão pode vir de um fork.
+    tip = git_source.tip_warning(spec, commit) if spec.commit is not None else None
+    if tip:
+        warnings.append(tip)
     return {"source": spec.repo, "commit": commit, "ref": spec.ref, "subdir": spec.subdir}, warnings
 
 
@@ -419,6 +426,35 @@ _OLD_STAGING_RE = re.compile(r"^\.old-(\d+)-(.+)-[0-9a-f]{32}$")
 # reusa o prefixo `.old-*`: esse a varredura devolve ao lugar quando o plugin sumiu,
 # e um plugin removido de propósito voltaria sozinho. Resto `.removed-*` é sempre apagado.
 _REMOVED_STAGING_RE = re.compile(r"^\.removed-(\d+)-[0-9a-f]{32}$")
+
+
+# Só `.install-*`: o `.old-*` de uma troca que falhou no meio é citado de propósito
+# (é onde o conteúdo anterior ficou).
+_STAGING_NAME_RE = re.compile(r"\.install-\d+-[0-9a-f]{32}")
+
+
+def hide_staging_names(text):
+    """`text` sem o nome de uma pasta de staging (`.install-<epoch>-<hash>`…): "Plugin
+    .install-…: x" vira "Plugin da origem: x"; o nome é detalhe interno, não algo que a
+    pessoa encontre ou possa corrigir."""
+    text = re.sub(r"Plugin " + _STAGING_NAME_RE.pattern + ":", "Plugin da origem:", str(text))
+    return _STAGING_NAME_RE.sub("(pasta temporária)", text)
+
+
+@contextlib.contextmanager
+def _staging_names_hidden():
+    """Reescreve o `ValueError` que sair do bloco sem o nome da pasta de staging."""
+    try:
+        yield
+    except ValueError as exc:
+        clean = hide_staging_names(exc)
+        if clean == str(exc):
+            raise
+        try:
+            replacement = type(exc)(clean)
+        except TypeError:
+            replacement = ValueError(clean)
+        raise replacement from exc
 
 
 def _new_install_staging_name():
@@ -647,6 +683,12 @@ def install_from(spec, confirm, expect=None, *, verify=None, origin_extra=None):
     `verify(manifest, sha256)` roda depois de materializar e antes da prévia; um
     `ValueError` dele recusa o install e o staging é apagado. `origin_extra`
     acrescenta `marketplace`/`tier`/`index_commit` à origem gravada."""
+    with _staging_names_hidden():
+        return _install_from(spec, confirm, expect, (verify, origin_extra))
+
+
+def _install_from(spec, confirm, expect, hooks):
+    verify, origin_extra = hooks
     loader.read_state()  # plugins.json corrompido recusa antes de qualquer mutação.
     _sweep_stale_staging()
     staging = _staging()
@@ -767,6 +809,11 @@ def update_from(  # noqa: PLR0913 - keyword-only hooks, as in install_from
 
     `verify` e `origin_extra` como em `install_from`. O plugin tem que ter sido
     instalado por `install` (origem gravada)."""
+    with _staging_names_hidden():
+        return _update_from(plugin_id, spec, confirm, expect, (verify, origin_extra))
+
+
+def _update_from(plugin_id, spec, confirm, expect, hooks):
     state = loader.read_state()  # plugins.json corrompido recusa antes de qualquer mutação.
     _recorded_origin(plugin_id, state)
     was_enabled = plugin_id in state.get("enabled", {})
@@ -774,7 +821,7 @@ def update_from(  # noqa: PLR0913 - keyword-only hooks, as in install_from
     _, folder, current = loader.find(plugin_id)
     staging = _staging()
     try:
-        staged = _stage_update(plugin_id, spec, staging, (folder, current), (verify, origin_extra))
+        staged = _stage_update(plugin_id, spec, staging, (folder, current), hooks)
         if not confirm:
             return {"updated": False, "plugin": staged.preview, "diff": staged.diff, "note": loader.EXPECT_NOTE}
         _check_expect(expect, staged.content.sha)

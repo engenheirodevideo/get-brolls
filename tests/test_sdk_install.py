@@ -194,9 +194,9 @@ class FolderInstallTests(InstallTestCase):
             "git@example.com:org/repo.git?x=1",
         ):
             with self.subTest(source=source):
-                err = run_cli("plugins", "--action", "install", "--source", source, expect=1, env=self.env())
+                err = run_cli("plugins", "--action", "install", "--source", source, expect=2, env=self.env())
                 self.assertNotIn("segredo", json.dumps(err, ensure_ascii=False))
-        run_cli("plugins", "--action", "install", expect=1, env=self.env())
+        run_cli("plugins", "--action", "install", expect=2, env=self.env())
 
     def test_update_needs_a_recorded_origin(self):
         self.install()
@@ -221,7 +221,7 @@ class FolderInstallTests(InstallTestCase):
         preview = run_cli("plugins", "--action", "install", "--source", source, env=self.env())
         sha = preview["plugin"]["sha256"]
 
-        missing = run_cli("plugins", "--action", "install", "--source", source, "--yes", expect=1, env=self.env())
+        missing = run_cli("plugins", "--action", "install", "--source", source, "--yes", expect=2, env=self.env())
         self.assertIn("--expect", missing["error"])
 
         wrong = run_cli(
@@ -778,7 +778,7 @@ class GitInstallTests(InstallTestCase):
     def test_git_url_with_query_or_fragment_is_refused(self):
         for source in ("https://example.com/demo.git?token=segredo", "git@example.com:demo.git#ref"):
             with self.subTest(source=source):
-                err = run_cli("plugins", "--action", "install", "--source", source, expect=1, env=self.env())
+                err = run_cli("plugins", "--action", "install", "--source", source, expect=2, env=self.env())
                 self.assertIn("query", err["error"])
 
 

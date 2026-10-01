@@ -1649,6 +1649,18 @@
           "required": false
         },
         {
+          "action": "_StoreTrueAction",
+          "choices": null,
+          "default": false,
+          "dest": "allow_rollback",
+          "help": "marketplace-update: aceita fixar um commit do índice que não descende do fixado hoje (volta atrás ou história reescrita)",
+          "nargs": 0,
+          "option_strings": [
+            "--allow-rollback"
+          ],
+          "required": false
+        },
+        {
           "action": "_StoreAction",
           "choices": null,
           "default": null,

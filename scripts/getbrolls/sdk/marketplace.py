@@ -24,6 +24,7 @@ teto não pode ser adicionado nem atualizado por nome, some de `pinned_indexes` 
 import hashlib
 import json
 import os
+import uuid
 from collections.abc import Collection
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,7 +33,7 @@ from typing import NamedTuple
 from .. import _paths, versioning
 from ..errors import UsageError
 from ..rules import home_dir
-from ..runtime import force_rmtree
+from ..runtime import force_rmtree, scrub_home
 from . import git_source, install, loader
 from .files import is_link
 from .marketplace_index import (
@@ -54,6 +55,21 @@ RECORD_KEYS = ("source", "ref", "commit", "index_sha256", "added_at", "updated_a
 REMOVE_NOTE = (
     "Os plugins já instalados deste marketplace continuam instalados e habilitados; "
     "para tirar um, use plugins --action remove --id <id>."
+)
+
+
+# O índice oficial: o nome sozinho não basta (qualquer repositório pode se chamar assim);
+# a origem fixada tem que ser um destes repositórios. Só ele tem `tier_verified: true`.
+OFFICIAL_INDEX_NAME = "getbrolls-plugins"
+OFFICIAL_INDEX_REPOS = tuple(
+    f"https://github.com/engenheirodevideo/{repo}{suffix}"
+    for repo in ("getbrolls-plugins", "get-brolls-plugins")
+    for suffix in ("", ".git")
+)
+TIER_NOT_VERIFIED = "declarado pelo marketplace, não verificado"
+NOT_OFFICIAL_WARNING = (
+    "Este marketplace não é o índice oficial ({name} de {repo}): o tier de cada plugin é declarado por "
+    "ele, não verificado, e nunca muda as regras de instalação."
 )
 
 
@@ -98,8 +114,23 @@ def allowed(name: str) -> bool:
     return ceiling is None or name in ceiling  # type: ignore[operator]  # conjunto de nomes
 
 
-def _not_allowed(name):
-    return ValueError(f"O perfil de workspace não permite o marketplace {name}; veja profile --action show.")
+def _profile_hint():
+    return f"veja `{_paths.cli_hint('profile', 'show')}`"
+
+
+def not_allowed(name: str) -> ValueError:
+    """Recusa de um marketplace fora do teto do perfil, com o comando que mostra o perfil."""
+    return ValueError(f"O perfil de workspace não permite o marketplace {name}; {_profile_hint()}.")
+
+
+def portable_text(text: object) -> str:
+    """`text` sem caminho da máquina, para `capabilities` e `doctor`: `$GB_HOME` no lugar
+    da pasta da instalação e `~` no lugar da pasta pessoal."""
+    value = str(text)
+    home = home_dir()
+    for prefix in dict.fromkeys((str(home), str(home.resolve()))):
+        value = value.replace(prefix, "$GB_HOME")
+    return scrub_home(value)
 
 
 def state_path() -> Path:
@@ -174,8 +205,9 @@ def _write_state(data):
 
 
 def _atomic_write_bytes(path, data):
-    """Grava `data` como está (temporário + troca), sem nenhuma tradução de fim de linha."""
-    temp = path.with_name(path.name + ".tmp")
+    """Grava `data` como está (temporário + troca), sem nenhuma tradução de fim de linha.
+    O temporário tem nome único (`<nome>.<uuid>.tmp`): dois gravadores nunca dividem um."""
+    temp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
     try:
         with temp.open("wb") as handle:
             handle.write(data)
@@ -194,7 +226,8 @@ def _pin(name, record):
     return Pin(name, record["source"], record["ref"], record["commit"], record["index_sha256"])
 
 
-def _spec_for_add(source, ref, commit):
+def spec_for_add(source, ref, commit):
+    """`--source`/`--ref`/`--commit` do `marketplace-add` como `GitSource`; pasta comum é recusada."""
     spec = git_source.parse_source(source, commit=commit, ref=ref)
     if not isinstance(spec, git_source.GitSource):
         raise ValueError(
@@ -231,16 +264,48 @@ def _write_cache(name, data):
     _atomic_write_bytes(cache_path(name), data)
 
 
+def is_official(name: str, source: str | None) -> bool:
+    """O marketplace `name`, fixado na origem `source`, é o índice oficial?"""
+    return name == OFFICIAL_INDEX_NAME and source in OFFICIAL_INDEX_REPOS
+
+
+def official_marketplace(name: str | None) -> bool:
+    """`name` é um marketplace gravado aqui que é o índice oficial? Estado ilegível vale `False`."""
+    if not name:
+        return False
+    try:
+        record = read_state()["marketplaces"].get(name)
+    except ValueError:
+        return False
+    return record is not None and is_official(name, record["source"])
+
+
+def tier_view(tier: str | None, official: bool) -> dict:
+    """`tier` como o índice declara, `tier_verified` (só no índice oficial) e, fora dele, o rótulo."""
+    verified = bool(official and tier is not None)
+    return {
+        "tier": tier,
+        "tier_verified": verified,
+        "tier_note": None if verified or tier is None else TIER_NOT_VERIFIED,
+    }
+
+
 def _summary(name, record, plugins=None):
-    return {"name": name, **record, "allowed": allowed(name), "plugins": plugins}
+    return {
+        "name": name,
+        **record,
+        "allowed": allowed(name),
+        "official": is_official(name, record["source"]),
+        "plugins": plugins,
+    }
 
 
 def add(source: str, ref: str | None = None, commit: str | None = None) -> dict:
     """Adiciona o marketplace de `source` fixado no commit (o de `commit` ou o da `ref`)."""
     state = read_state()  # marketplaces.json corrompido recusa antes de qualquer rede ou mutação.
-    spec = _spec_for_add(source, ref, commit)
+    spec = spec_for_add(source, ref, commit)
     if _ceiling() == frozenset():
-        raise ValueError("O perfil de workspace não permite nenhum marketplace; veja profile --action show.")
+        raise ValueError(f"O perfil de workspace não permite nenhum marketplace; {_profile_hint()}.")
     pinned, data, index = _fetch_index(spec)
     name = index["name"]
     if name in state["marketplaces"]:
@@ -249,7 +314,7 @@ def add(source: str, ref: str | None = None, commit: str | None = None) -> dict:
             "(ou remova o antigo antes)."
         )
     if not allowed(name):
-        raise _not_allowed(name)
+        raise not_allowed(name)
     now = _now()
     record = {
         "source": spec.repo,
@@ -263,7 +328,12 @@ def add(source: str, ref: str | None = None, commit: str | None = None) -> dict:
     state["marketplaces"][name] = record
     _write_state(state)
     count = len(index["plugins"])
-    return {"added": True, "marketplace": _summary(name, record, count), "plugins": count}
+    warnings = (
+        []
+        if is_official(name, record["source"])
+        else [NOT_OFFICIAL_WARNING.format(name=OFFICIAL_INDEX_NAME, repo=OFFICIAL_INDEX_REPOS[0])]
+    )
+    return {"added": True, "marketplace": _summary(name, record, count), "plugins": count, "warnings": warnings}
 
 
 def _record(state, name):
@@ -307,6 +377,22 @@ def pinned_indexes() -> list[tuple[Pin, dict]]:
     ]
 
 
+def readable_indexes() -> tuple[list[tuple[Pin, dict]], list[dict]]:
+    """Como `pinned_indexes`, mas um cache que não confere não derruba os outros: vira
+    `{marketplace, problem}` na segunda lista (como `problem` no `marketplace-list`)."""
+    state = read_state()
+    indexes, problems = [], []
+    for name, record in sorted(state["marketplaces"].items()):
+        pin = _pin(name, record)
+        if not allowed(name):
+            continue
+        try:
+            indexes.append((pin, _read_cache(pin)))
+        except ValueError as exc:
+            problems.append({"marketplace": name, "problem": str(exc)})
+    return indexes, problems
+
+
 def listing() -> dict:
     """Marketplaces gravados, em ordem de nome, sem rede: cada um com `allowed`,
     `plugins` (quantos no índice) e `problem` (cache que não confere, ou `None`)."""
@@ -323,10 +409,11 @@ def listing() -> dict:
 def summary() -> list[dict]:
     """`[{name, commit, plugins, allowed, problem}]` em ordem de nome, sem rede e sem caminho
     da máquina (para `capabilities` e `doctor`). Só levanta `ValueError` (estado ilegível)."""
-    return [
-        {key: row[key] for key in ("name", "commit", "plugins", "allowed", "problem")}
+    rows = [
+        {key: row[key] for key in ("name", "commit", "plugins", "allowed", "official", "problem")}
         for row in listing()["marketplaces"]
     ]
+    return [{**row, "problem": None if row["problem"] is None else portable_text(row["problem"])} for row in rows]
 
 
 def _installed_from(name):
@@ -354,6 +441,11 @@ def remove(name: str) -> dict:
     }
 
 
+def _source_view(entry):
+    """Commit e sha256 de uma entrada: o que muda quando o conteúdo muda sem mudar a versão."""
+    return {"commit": entry["source"]["commit"], "content_sha256": entry["content_sha256"]}
+
+
 def _diff(old, new):
     before = {entry["id"]: entry for entry in (old or {}).get("plugins", [])}
     after = {entry["id"]: entry for entry in new["plugins"]}
@@ -363,10 +455,20 @@ def _diff(old, new):
         if (before[plugin_id]["version"], before[plugin_id]["content_sha256"])
         != (after[plugin_id]["version"], after[plugin_id]["content_sha256"])
     ]
+    changed = [
+        {
+            "id": plugin_id,
+            "from": _source_view(before[plugin_id]),
+            "to": _source_view(after[plugin_id]),
+        }
+        for plugin_id in sorted(set(before) & set(after))
+        if _source_view(before[plugin_id]) != _source_view(after[plugin_id])
+    ]
     return {
         "added": sorted(set(after) - set(before)),
         "removed": sorted(set(before) - set(after)),
         "updated": updated,
+        "changed": changed,
         "yanked": sorted(
             plugin_id
             for plugin_id, entry in after.items()
@@ -390,18 +492,26 @@ def _installed_updates(name, index):
     return found
 
 
-def _refresh_one(state, name, commit):
+def _refresh_one(state, name, commit, allow_rollback=False):
     record = _record(state, name)
     pin = _pin(name, record)
     try:
         old = _read_cache(pin)
     except ValueError:
         old = None  # cache adulterado ou ausente: o update o repõe; o diff parte do vazio.
-    pinned, data, index = _fetch_index(_recorded_spec(pin, commit))
+    spec = _recorded_spec(pin, commit)
+    pinned, data, index = _fetch_index(spec)
     if index["name"] != name:
         raise ValueError(
             f"O índice do marketplace {name} passou a se chamar {index['name']} no commit {pinned[:12]}; "
             "recusado. Remova e adicione de novo se a troca de nome for esperada."
+        )
+    rollback = not git_source.descends_from(spec, record["commit"], pinned)
+    if rollback and not allow_rollback:
+        raise UsageError(
+            f"O commit {pinned[:12]} do índice do marketplace {name} não descende do fixado hoje "
+            f"({record['commit'][:12]}): é uma volta atrás ou a história foi reescrita. Se for isso mesmo, "
+            "rode de novo com --allow-rollback."
         )
     sha = hashlib.sha256(data).hexdigest()
     changed = (pinned, sha) != (record["commit"], record["index_sha256"]) or old is None
@@ -415,34 +525,46 @@ def _refresh_one(state, name, commit):
         "from": record["commit"],
         "to": pinned,
         "changed": changed,
+        "rollback": rollback,
         "diff": _diff(old, index),
         "installed_updates": _installed_updates(name, index),
     }
 
 
-def refresh(name: str | None = None, commit: str | None = None) -> dict:
+def refresh(name: str | None = None, commit: str | None = None, allow_rollback: bool = False) -> dict:
     """Busca de novo a ref gravada (ou `commit`) de um marketplace ou de todos e move o pin.
 
-    Devolve, por marketplace, `from`/`to` (commits), `changed`, o `diff` do índice
-    (`added`, `removed`, `updated` [{id, from, to}], `yanked`) e `installed_updates`
-    (plugins instalados dele que têm conteúdo novo). Sem `name`, os que o teto não
-    permite ficam de fora (`skipped: true`)."""
+    Devolve, por marketplace, `from`/`to` (commits), `changed`, `rollback`, o `diff` do
+    índice (`added`, `removed`, `updated` [{id, from, to}], `changed` [{id, from, to} com
+    commit e sha256 de cada entrada cuja origem mudou], `yanked`) e `installed_updates`
+    (plugins instalados dele que têm conteúdo novo). Um commit que não descende do fixado
+    (volta atrás, história reescrita) só passa com `allow_rollback`. Sem `name`, os que o
+    teto não permite ficam de fora (`skipped: true`) e o erro de um marketplace não para os
+    outros: ele sai em `error` na linha dele e o nome em `failed`."""
     if commit is not None and name is None:
         raise UsageError("--commit em marketplace-update precisa de --marketplace <nome>.")
     if commit is not None:
-        git_source.validate_commit(commit)
+        try:
+            git_source.validate_commit(commit)
+        except ValueError as exc:
+            raise UsageError(str(exc)) from None
     state = read_state()
-    names = [name] if name is not None else sorted(state["marketplaces"])
-    results = []
-    for current in names:
-        _record(state, current)
+    if name is not None:
+        _record(state, name)
+        if not allowed(name):
+            raise not_allowed(name)
+        return {"marketplaces": [_refresh_one(state, name, commit, allow_rollback)], "failed": []}
+    results, failed = [], []
+    for current in sorted(state["marketplaces"]):
         if not allowed(current):
-            if name is not None:
-                raise _not_allowed(current)
             results.append({"name": current, "allowed": False, "skipped": True})
             continue
-        results.append(_refresh_one(state, current, commit))
-    return {"marketplaces": results}
+        try:
+            results.append(_refresh_one(state, current, None, allow_rollback))
+        except ValueError as exc:
+            failed.append(current)
+            results.append({"name": current, "allowed": True, "changed": False, "error": str(exc)})
+    return {"marketplaces": results, "failed": failed}
 
 
 def resolve_repo(entry_repo: str, pin: Pin) -> str:
@@ -479,7 +601,7 @@ def _row(pin, entry, installed):
         "marketplace": pin.name,
         "version": entry["version"],
         "description": entry["description"],
-        "tier": entry["tier"],
+        **tier_view(entry["tier"], is_official(pin.name, pin.source)),
         "contributes": entry["contributes"],
         "yanked": entry["yanked"],
         "deprecated": entry["deprecated"],
@@ -495,7 +617,7 @@ def _renamed_row(pin, old, new, installed):
         "marketplace": pin.name,
         "version": None,
         "description": None,
-        "tier": None,
+        **tier_view(None, False),
         "contributes": [],
         "yanked": False,
         "deprecated": None,
@@ -512,17 +634,19 @@ def search(query: str, marketplace: str | None = None) -> dict:
     Só marketplaces permitidos pelo teto; `marketplace` restringe a um. Resultados em
     ordem de `(id, marketplace)`, com `installed`, `tier`, `yanked`, `deprecated`, o
     comando de `install` (nenhum para entrada retirada) e, para um id antigo de
-    `renames`, `renamed_to` com o id atual."""
+    `renames`, `renamed_to` com o id atual. Sem `marketplace`, um cache que não confere
+    fica de fora com o motivo em `problems`; os outros continuam."""
     needle = query.strip().casefold() if isinstance(query, str) else ""
     if not needle:
         raise UsageError("--query é obrigatório em plugins --action search (um trecho do id ou da descrição).")
+    problems = []
     if marketplace is not None:
         pin, index = load_index(marketplace)
         if not allowed(pin.name):
-            raise _not_allowed(pin.name)
+            raise not_allowed(pin.name)
         indexes = [(pin, index)]
     else:
-        indexes = pinned_indexes()
+        indexes, problems = readable_indexes()
     installed = _installed()
     results = []
     for pin, index in indexes:
@@ -533,4 +657,9 @@ def search(query: str, marketplace: str | None = None) -> dict:
             if needle in old.casefold()
         ]
     results.sort(key=lambda row: (row["id"], row["marketplace"]))
-    return {"query": query, "marketplaces": [pin.name for pin, _ in indexes], "results": results}
+    return {
+        "query": query,
+        "marketplaces": [pin.name for pin, _ in indexes],
+        "results": results,
+        "problems": problems,
+    }

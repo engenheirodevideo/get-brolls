@@ -18,12 +18,16 @@ passos do `install`:
 - `sdk_api`, `requires_getbrolls` e `platforms` da entrada são conferidos antes
   de buscar qualquer coisa; o teto de marketplaces do perfil vale antes de tudo.
 
-O `tier` da entrada é só informação gravada na origem e mostrada na prévia:
-nunca afrouxa nenhuma dessas regras.
+O `tier` da entrada é o que o índice DECLARA: só o índice oficial (nome e origem
+fixada, `marketplace.is_official`) sai com `tier_verified: true`; nos outros a saída
+diz "declarado pelo marketplace, não verificado". Nunca afrouxa nenhuma regra.
 
-Limite conhecido: o `--expect` pré-preenchido vem do índice, então um agente que
-copia esse sha256 pula a leitura humana. Por isso o `install` sem `--yes` sempre
-para na prévia, e a skill orienta mostrá-la à pessoa antes de confirmar.
+Um plugin que pede qualquer permissão só é confirmado com um valor derivado (o sha256
+do conteúdo amarrado às permissões), que o índice não traz e só a prévia mostra — o
+mesmo do update que acrescenta permissão. Limite conhecido: esse valor é derivado,
+não secreto; um agente pode calculá-lo. Ele atrapalha quem copia o sha do índice,
+mas não garante leitura humana: a prévia em chamada separada e a skill orientam
+mostrá-la à pessoa antes de confirmar. Plugin sem permissão confirma com o sha do índice.
 """
 
 import hashlib
@@ -34,17 +38,19 @@ from ..errors import UsageError
 from . import git_source, loader, marketplace
 from . import install as plugin_install
 from .manifest import compatibility_problem
+from .marketplace import not_allowed
 from .marketplace_index import BATCH_TIERS, manifest_mismatches, manifest_warnings, parse_plugin_ref, resolve_rename
 
+INSTALL_PERMISSIONS_NOTE = (
+    "O plugin pede permissões (veja permissions_added): mostre-as à pessoa com a origem, o commit e os "
+    "arquivos. O --expect desta prévia é um valor derivado que o índice não traz: atrapalha quem copia o sha "
+    "do índice, mas não garante leitura humana. Com o ok dela, rode o comando de next. " + loader.NOT_SANDBOX
+)
 PREVIEW_NOTE = (
     "Mostre esta prévia à pessoa (permissões, origem, commit e arquivos) antes de confirmar: o --expect "
     "vem pré-preenchido do índice, e copiá-lo sem mostrar a prévia pula a revisão humana. Com o ok dela, "
     "rode o comando de next. " + loader.NOT_SANDBOX
 )
-
-
-def _not_allowed(name):
-    return ValueError(f"O perfil de workspace não permite o marketplace {name}; veja profile --action show.")
 
 
 def _search_hint(plugin_id):
@@ -144,7 +150,7 @@ def resolve(ref):
     """`(plugin_id, Pin, entrada)` de `<id>@<marketplace>`, com teto, índice e entrada conferidos."""
     plugin_id, name = parse_plugin_ref(ref)
     if not marketplace.allowed(name):
-        raise _not_allowed(name)
+        raise not_allowed(name)
     pin, index = marketplace.load_index(name)
     entry = find_entry(index, plugin_id, name)
     if entry["yanked"]:
@@ -154,8 +160,13 @@ def resolve(ref):
 
 
 def market_block(entry, pin):
-    """O bloco `marketplace` da resposta: nome, commit do índice e tier da entrada."""
-    return {"name": pin.name, "commit": pin.commit, "tier": entry["tier"]}
+    """O bloco `marketplace` da resposta: nome, commit do índice e tier da entrada (declarado,
+    com `tier_verified` só no índice oficial)."""
+    return {"name": pin.name, "commit": pin.commit, **marketplace.tier_view(entry["tier"], _official(pin))}
+
+
+def _official(pin):
+    return marketplace.is_official(pin.name, pin.source)
 
 
 def with_warnings(plugin, warnings):
@@ -166,22 +177,28 @@ def with_warnings(plugin, warnings):
 
 
 def install(ref: str, confirm: bool, expect: str | None) -> dict:
-    """Prévia (sem `confirm`, mesmo com `expect`) ou instalação de `<id>@<marketplace>`."""
+    """Prévia (sem `confirm`, mesmo com `expect`) ou instalação de `<id>@<marketplace>`.
+
+    Plugin que pede permissão: o `expect` exigido é o derivado de `_confirmation(entry, None)`
+    (o sha do índice sozinho é recusado); sem permissão, o sha do índice."""
     _plugin_id, pin, entry = resolve(ref)
+    required, added, increased = _confirmation(entry, None)
+    if confirm:
+        _check_update_expect(expect, required, entry, increased, installing=True)
     warnings = entry_warnings(entry)
     result = plugin_install.install_from(
         entry_spec(entry, pin),
         confirm,
-        expect,
+        entry["content_sha256"] if confirm else None,
         verify=verifier(entry, warnings),
         origin_extra=origin_extra(entry, pin),
     )
     result = {**result, "plugin": with_warnings(result["plugin"], warnings), "marketplace": market_block(entry, pin)}
     if not confirm:
-        sha = result["plugin"]["sha256"]
-        result["expect"] = sha
-        result["next"] = _paths.cli_hint("plugins", "--action", "install", "--id", ref, "--yes", "--expect", sha)
-        result["note"] = PREVIEW_NOTE
+        result["expect"] = required
+        result["permissions_added"] = added
+        result["next"] = _paths.cli_hint("plugins", "--action", "install", "--id", ref, "--yes", "--expect", required)
+        result["note"] = INSTALL_PERMISSIONS_NOTE if increased else PREVIEW_NOTE
     return result
 
 
@@ -200,8 +217,8 @@ def reject_source_with_ref(args_source, pin_flags):
 
 PERMISSIONS_NOTE = (
     "As permissões aumentam nesta atualização (veja diff.permissions_added): mostre o diff à pessoa. O "
-    "--expect desta prévia não é o sha256 do índice — ele só sai daqui, para que nenhuma permissão nova "
-    "seja aceita sem esta prévia. Com o ok dela, rode o comando de next. " + loader.NOT_SANDBOX
+    "--expect desta prévia é um valor derivado que o índice não traz: atrapalha quem copia o sha do índice, "
+    "mas não garante leitura humana. Com o ok dela, rode o comando de next. " + loader.NOT_SANDBOX
 )
 UPDATE_ALL_NOTE = (
     "Só prévia: nada foi atualizado. Rode o comando de cada plugin (a prévia dele mostra o diff), mostre-a à "
@@ -220,7 +237,7 @@ def _update_target(plugin_id, origin):
     """`(Pin, entrada, spec)` da atualização de `plugin_id` pelo marketplace da origem gravada."""
     name = origin["marketplace"]
     if not marketplace.allowed(name):
-        raise _not_allowed(name)
+        raise not_allowed(name)
     if name not in marketplace.read_state()["marketplaces"]:
         raise ValueError(
             f"O plugin {plugin_id} veio do marketplace {name}, que foi removido (marketplace removido): adicione-o "
@@ -263,19 +280,22 @@ def _permissions_token(sha, added):
 
 
 def _confirmation(entry, current):
-    """`(expect exigido, permissions_added, aumentou?)`: com permissão nova, o `expect` é um
-    valor que só a prévia mostra (amarra o sha256 do conteúdo às permissões acrescentadas)."""
+    """`(expect exigido, permissions_added, aumentou?)`: com permissão nova (no install, `current`
+    é `None` e toda permissão declarada conta), o `expect` é um valor derivado que o índice não
+    traz e a prévia mostra (amarra o sha256 do conteúdo às permissões acrescentadas). É
+    derivado, não secreto: quem tem o índice consegue calculá-lo."""
     added = loader.permissions_added(current["permissions"] if current else None, entry["permissions"])
     increased = any(added.values())
     sha = entry["content_sha256"]
     return (_permissions_token(sha, added) if increased else sha), added, increased
 
 
-def _check_update_expect(expect, required, entry, increased):
+def _check_update_expect(expect, required, entry, increased, installing=False):
     if expect and increased and expect == entry["content_sha256"]:
+        what = "Este plugin pede permissões" if installing else "Esta atualização acrescenta permissões"
         raise ValueError(
-            "Esta atualização acrescenta permissões: o sha256 do índice não basta para confirmá-la. Rode a prévia "
-            "(sem --yes), mostre o diff de permissões à pessoa e confirme com o --expect que ela mostrar."
+            f"{what}: o sha256 do índice não basta para confirmar. Rode a prévia (sem --yes), mostre as "
+            "permissões à pessoa e confirme com o --expect que ela mostrar."
         )
     loader.check_expect(expect, required)
 
@@ -329,10 +349,10 @@ def _plan_row(plugin_id, origin):
         "marketplace": pin.name,
         "from": current["version"] if current else None,
         "to": entry["version"],
-        "tier": entry["tier"],
+        **marketplace.tier_view(entry["tier"], _official(pin)),
         "permissions_added": added,
         "permissions_increased": increased,
-        "auto_update_eligible": entry["tier"] in BATCH_TIERS and not increased,
+        "auto_update_eligible": entry["tier"] in BATCH_TIERS and _official(pin) and not increased,
         "warnings": entry_warnings(entry),
         "command": _paths.cli_hint("plugins", "--action", "update", "--id", plugin_id),
     }
@@ -343,8 +363,9 @@ def update_all(confirm: bool, expect: str | None) -> dict:
 
     Nesta versão só lista: cada linha traz versão de/para, tier, permissões
     acrescentadas e o comando da prévia por id. `auto_update_eligible` é a política
-    exibida (tier `official`/`verified` e nenhuma permissão nova); a comunidade nunca
-    é elegível. Confirmar em lote (`--yes`/`--expect`) é erro de uso."""
+    exibida (tier `official`/`verified` verificado — só no índice oficial — e nenhuma
+    permissão nova); a comunidade e o tier só declarado nunca são elegíveis. Confirmar
+    em lote (`--yes`/`--expect`) é erro de uso."""
     if confirm or expect:
         raise UsageError(
             "plugins --action update --all só mostra a prévia nesta versão; confirme cada plugin com "
@@ -388,7 +409,7 @@ def _marketplace_notice(plugin_id, name):
             return f"O marketplace {name} foi removido; o plugin continua instalado, sem atualização por ele."
         _pin, index = marketplace.load_index(name)
     except ValueError as exc:
-        return str(exc)
+        return marketplace.portable_text(exc)
     entry = next((item for item in index["plugins"] if item["id"] == plugin_id), None)
     if entry is None:
         current = resolve_rename(index, plugin_id)
@@ -410,6 +431,7 @@ def plugin_origins() -> dict:
     for plugin_id, origin in sources.items():
         view = {key: origin.get(key) for key in ORIGIN_VIEW_KEYS}
         name = view["marketplace"]
+        view.update(marketplace.tier_view(view["tier"], marketplace.official_marketplace(name)))
         view["marketplace_notice"] = _marketplace_notice(plugin_id, name) if name else None
         views[plugin_id] = view
     return views

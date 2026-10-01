@@ -2505,7 +2505,7 @@ def _doctor_marketplaces(result):
     try:
         rows = marketplace.summary()
     except ValueError as exc:
-        result["marketplaces_error"] = str(exc)
+        result["marketplaces_error"] = marketplace.portable_text(exc)
         return
     if rows:
         result["marketplaces"] = rows

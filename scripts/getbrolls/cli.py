@@ -488,6 +488,14 @@ def _add_toolchain_subcommands(sub):
             )
             p.add_argument("--subdir", help="install: pasta do plugin dentro do repositório git (ex.: plugins/demo)")
             p.add_argument(
+                "--allow-rollback",
+                action="store_true",
+                help=(
+                    "marketplace-update: aceita fixar um commit do índice que não descende do fixado hoje "
+                    "(volta atrás ou história reescrita)"
+                ),
+            )
+            p.add_argument(
                 "--path",
                 help="check: pasta do plugin a validar (executa o register()); new: pasta onde criar o plugin",
             )

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from .. import _paths, logs
+from ..errors import UsageError
 from ..ledger import atomic_write
 from ..rules import home_dir
 from . import guard, registry_state
@@ -309,7 +310,7 @@ def check_expect(expect, sha):
     já materializado, não de um manifesto solto) tem que ser reapresentado, ou
     a pessoa pode estar confirmando um conteúdo diferente do que viu."""
     if not expect:
-        raise ValueError("--yes precisa de --expect <sha256>; rode a prévia (sem --yes) de novo e confira o valor.")
+        raise UsageError("--yes precisa de --expect <sha256>; rode a prévia (sem --yes) de novo e confira o valor.")
     if expect != sha:
         raise ValueError(
             "O sha256 de --expect não bate com o conteúdo agora: o valor foi copiado errado, ou a origem "
@@ -368,7 +369,7 @@ def read_state():
 def write_state(data):
     """Grava `plugins.json` (troca atômica), criando `$GB_HOME` se preciso."""
     home_dir().mkdir(parents=True, exist_ok=True)
-    atomic_write(state_path(), json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+    atomic_write(state_path(), json.dumps(data, ensure_ascii=False, indent=2) + "\n", unique=True)
 
 
 def _write_state(data):

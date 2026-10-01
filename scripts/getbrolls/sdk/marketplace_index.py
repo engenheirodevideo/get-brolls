@@ -17,13 +17,12 @@ Só lê dado; nada aqui fala com a rede ou roda git.
 import json
 import re
 from typing import NoReturn
-from urllib.parse import urlsplit
 
 from .. import versioning
 from ..errors import UsageError
 from . import kinds
 from .contracts import CORE, NAME_RE, RESERVED_IDS
-from .git_source import COMMIT_RE, GIT_URL_RE, validate_ref, validate_repo_path
+from .git_source import COMMIT_RE, validate_ref, validate_repo_path, validate_url
 from .manifest import (
     DESCRIPTION_MAX_CHARS,
     VERSION_RE,
@@ -199,13 +198,14 @@ def validate_repo(raw: object, where: str) -> str:
 
 
 def _repo_url_ok(raw: str) -> bool:
-    if len(raw) > REPO_MAX_CHARS or GIT_URL_RE.fullmatch(raw) is None or "?" in raw or "#" in raw:
+    """Mesma regra do `--source` da CLI (`git_source.validate_url`), mais o teto de tamanho."""
+    if len(raw) > REPO_MAX_CHARS:
         return False
-    if raw.startswith("https://"):
-        parts = urlsplit(raw)
-        return bool(parts.hostname) and "@" not in parts.netloc
-    # `git@host:caminho`: host começando por `-` viraria opção do ssh.
-    return not raw[len("git@") :].startswith("-")
+    try:
+        validate_url(raw)
+    except ValueError:
+        return False
+    return True
 
 
 def _source(raw, where):

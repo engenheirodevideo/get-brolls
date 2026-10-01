@@ -47,12 +47,18 @@ def _unlink(folder):
 
 
 def _delete_folder(folder):
+    """Tira `folder` de `plugins/`; devolve o nome do resto `.removed-*` que não saiu, ou `None`.
+
+    Só a troca de lugar pode falhar com `OSError` (aí nada mudou); depois dela a pasta já
+    não está em `plugins/<id>`, e o que `force_rmtree` não conseguir apagar fica para a
+    varredura do install."""
     if is_link(folder):
         _unlink(folder)
-        return
+        return None
     retired = folder.with_name(new_removed_staging_name())
     folder.replace(retired)
-    force_rmtree(retired)
+    force_rmtree(retired)  # nunca levanta: o que sobrar é relatado abaixo
+    return retired.name if os.path.lexists(retired) else None
 
 
 def remove(plugin_id, confirm):
@@ -73,16 +79,32 @@ def remove(plugin_id, confirm):
     kept = {"plugin_data": str(data_dir) if os.path.lexists(data_dir) else None}
     if not confirm:
         return {"removed": False, "plugin": plugin, "state": in_state, "kept": kept, "note": REMOVE_NOTE}
+    leftover = None
     if plugin is not None:
         try:
-            _delete_folder(folder)
+            leftover = _delete_folder(folder)
         except OSError as exc:
             raise ValueError(
-                f"Não consegui tirar {folder} ({type(exc).__name__}); nada foi mudado no plugins.json."
+                f"Não consegui tirar {folder} ({type(exc).__name__}); a pasta continua no lugar e nada foi "
+                "mudado no plugins.json."
             ) from exc
     for key in ("enabled", "last_pins", "sources"):
         state.get(key, {}).pop(plugin_id, None)
     loader.write_state(state)
     registry_state.forget()
     logs.event(_log, logging.INFO, "plugin_removed", plugin=plugin_id)
-    return {"removed": True, "plugin": plugin, "state": in_state, "kept": kept, "note": "Pronto."}
+    note = "Pronto."
+    if leftover is not None:
+        note = (
+            f"Plugin removido: a pasta saiu de plugins/{plugin_id} e o plugins.json não guarda mais nada dele, mas "
+            f"sobrou {loader.plugins_root() / leftover} que não consegui apagar inteira; a próxima varredura do "
+            "install apaga, ou apague à mão."
+        )
+    return {
+        "removed": True,
+        "plugin": plugin,
+        "state": in_state,
+        "kept": kept,
+        "leftover": leftover,
+        "note": note,
+    }
