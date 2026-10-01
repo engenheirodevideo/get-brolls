@@ -108,13 +108,24 @@ tem que ser: o conteúdo é materializado como num `--source` e recusado se o
 sha256 não for o `content_sha256` da entrada ou se o manifesto divergir dela
 (permissões, contribuições, compatibilidade, licença). Entrada retirada
 (`yanked`) é recusada, e o perfil de workspace pode limitar os marketplaces
-aceitos. O `tier` da entrada é só informação, nunca libera uma conferência. O
-índice pré-preenche o `--expect` da confirmação: um agente que copia esse valor
-pula a leitura humana, e por isso o `install` sem `--yes` sempre para na prévia
-e a skill orienta mostrá-la à pessoa. No `update` pelo marketplace, uma permissão
-acrescentada muda o `--expect`: ele passa a ser um valor que só a prévia mostra,
-e o sha256 do índice deixa de confirmar. `update --all` só lista; nada é
-atualizado em lote. Quem mantém o marketplace escolhe o que
+aceitos. O `tier` da entrada é o que o índice **declara**: qualquer marketplace
+pode escrever `official`. Só o índice oficial (nome `getbrolls-plugins` e origem
+fixada num dos repositórios oficiais) sai com `tier_verified: true`; nos outros a
+saída diz "declarado pelo marketplace, não verificado", e `marketplace-add` de
+outra origem avisa. O tier nunca libera uma conferência. Para um plugin sem
+permissão, o índice pré-preenche o `--expect`: um agente que copia esse valor
+pula a leitura humana. Instalar um plugin que pede qualquer permissão, ou um
+`update` que acrescenta permissão, exige outro `--expect`: um valor derivado do
+sha256 do conteúdo e das permissões, que o índice não traz. Ele não é segredo —
+um agente consegue calculá-lo —; atrapalha quem copia o sha do índice, mas não
+garante leitura humana. O que orienta mostrar a prévia à pessoa é a prévia em
+chamada separada (o `install` sem `--yes` sempre para nela) e a skill.
+`update --all` só lista; nada é atualizado em lote. `marketplace-update` só
+aceita um commit do índice que não descende do fixado (volta atrás, história
+reescrita) com `--allow-rollback`. Um commit fixado com `ref` que não é a ponta
+dela vira aviso na prévia: na rede de forks do GitHub, um commit de um fork
+também é servido pelo sha no repositório original, então o sha sozinho não prova
+de que repositório o código veio. Quem mantém o marketplace escolhe o que
 entra no índice; ele não revisa nem assina o código — continue lendo o código
 de quem você habilita.
 

@@ -712,7 +712,7 @@ python3 scripts/gb.py search --help
 python3 scripts/gb.py capabilities --json
 ```
 
-O `capabilities` serve a agentes e scripts que precisam descobrir o que esta instalação sabe fazer sem ler o `--help` de cada comando: cada comando traz `summary`, `options`, `requires_project` e `read_only` (`true`, `false` ou `"by_action"`); a resposta também traz `invocation` (como chamar esta instalação, sem caminho da máquina), `exit_codes`, `error_codes`, `plugin_commands` (só plugins habilitados, lidos do manifesto) `plugins_problems` (plugins inválidos, com falha ou suspensos, com o motivo) e `marketplaces` (marketplaces de plugins fixados: nome, commit do índice, quantos plugins, `allowed` e `problem`, sem caminho da máquina).
+O `capabilities` serve a agentes e scripts que precisam descobrir o que esta instalação sabe fazer sem ler o `--help` de cada comando: cada comando traz `summary`, `options`, `requires_project` e `read_only` (`true`, `false` ou `"by_action"`); a resposta também traz `invocation` (como chamar esta instalação, sem caminho da máquina), `exit_codes`, `error_codes`, `plugin_commands` (só plugins habilitados, lidos do manifesto) `plugins_problems` (plugins inválidos, com falha ou suspensos, com o motivo) e `marketplaces` (marketplaces de plugins fixados: nome, commit do índice, quantos plugins, `allowed`, `official` — se é o índice oficial — e `problem`, sem caminho da máquina).
 
 ---
 
