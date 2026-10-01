@@ -128,7 +128,7 @@ def portable_text(text: object) -> str:
     da pasta da instalação e `~` no lugar da pasta pessoal."""
     value = str(text)
     home = home_dir()
-    for prefix in {str(home), str(home.resolve())}:
+    for prefix in dict.fromkeys((str(home), str(home.resolve()))):
         value = value.replace(prefix, "$GB_HOME")
     return scrub_home(value)
 
@@ -227,6 +227,7 @@ def _pin(name, record):
 
 
 def spec_for_add(source, ref, commit):
+    """`--source`/`--ref`/`--commit` do `marketplace-add` como `GitSource`; pasta comum é recusada."""
     spec = git_source.parse_source(source, commit=commit, ref=ref)
     if not isinstance(spec, git_source.GitSource):
         raise ValueError(

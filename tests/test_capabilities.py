@@ -205,7 +205,7 @@ class MarketplaceRowsTests(MarketplaceTestCase):
         with self.no_network():
             rows = capabilities.describe(build_parser())["marketplaces"]
         self.assertEqual(["alfa", "zeta"], [row["name"] for row in rows])
-        self.assertEqual({"name", "commit", "plugins", "allowed", "problem"}, set(rows[0]))
+        self.assertEqual({"name", "commit", "plugins", "allowed", "official", "problem"}, set(rows[0]))
         self.assertEqual([True, False], [row["allowed"] for row in rows])
         self.assertEqual([1, 1], [row["plugins"] for row in rows])
         text = json.dumps(rows)

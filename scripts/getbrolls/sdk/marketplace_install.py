@@ -364,7 +364,8 @@ def update_all(confirm: bool, expect: str | None) -> dict:
     Nesta versão só lista: cada linha traz versão de/para, tier, permissões
     acrescentadas e o comando da prévia por id. `auto_update_eligible` é a política
     exibida (tier `official`/`verified` verificado — só no índice oficial — e nenhuma
-    permissão nova); a comunidade e o tier só declarado nunca são elegíveis. Confirmar em lote (`--yes`/`--expect`) é erro de uso."""
+    permissão nova); a comunidade e o tier só declarado nunca são elegíveis. Confirmar
+    em lote (`--yes`/`--expect`) é erro de uso."""
     if confirm or expect:
         raise UsageError(
             "plugins --action update --all só mostra a prévia nesta versão; confirme cada plugin com "

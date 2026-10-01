@@ -44,11 +44,12 @@ class LockTests(MarketplaceTestCase):
     def hold_lock(self):
         lock = self.home / ".plugins.lock"
         self.home.mkdir(parents=True, exist_ok=True)
-        holder = subprocess.Popen(
+        holder = subprocess.Popen(  # pylint: disable=consider-using-with  # vive até o fim do teste
             [sys.executable, "-c", HOLD_LOCK, str(ROOT / "scripts"), str(lock)], stdout=subprocess.PIPE, text=True
         )
         self.addCleanup(holder.wait)
         self.addCleanup(holder.kill)
+        assert holder.stdout is not None
         self.assertEqual("ok", holder.stdout.readline().strip())
         return holder
 

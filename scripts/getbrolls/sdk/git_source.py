@@ -565,7 +565,10 @@ def tip_warning(spec, commit):
     try:
         _name, tip = resolve_ref(spec)
     except ValueError as exc:
-        return f"Não consegui conferir a ponta de {spec.ref} na origem ({exc}); confira se o commit vem do repositório certo."
+        return (
+            f"Não consegui conferir a ponta de {spec.ref} na origem ({exc}); confira se o commit vem do "
+            "repositório certo."
+        )
     if tip == commit:
         return None
     return (
