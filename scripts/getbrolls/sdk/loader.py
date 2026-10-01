@@ -369,7 +369,7 @@ def read_state():
 def write_state(data):
     """Grava `plugins.json` (troca atômica), criando `$GB_HOME` se preciso."""
     home_dir().mkdir(parents=True, exist_ok=True)
-    atomic_write(state_path(), json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+    atomic_write(state_path(), json.dumps(data, ensure_ascii=False, indent=2) + "\n", unique=True)
 
 
 def _write_state(data):

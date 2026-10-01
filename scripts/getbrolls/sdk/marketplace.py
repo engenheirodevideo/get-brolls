@@ -24,6 +24,7 @@ teto não pode ser adicionado nem atualizado por nome, some de `pinned_indexes` 
 import hashlib
 import json
 import os
+import uuid
 from collections.abc import Collection
 from datetime import UTC, datetime
 from pathlib import Path
@@ -189,8 +190,9 @@ def _write_state(data):
 
 
 def _atomic_write_bytes(path, data):
-    """Grava `data` como está (temporário + troca), sem nenhuma tradução de fim de linha."""
-    temp = path.with_name(path.name + ".tmp")
+    """Grava `data` como está (temporário + troca), sem nenhuma tradução de fim de linha.
+    O temporário tem nome único (`<nome>.<uuid>.tmp`): dois gravadores nunca dividem um."""
+    temp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
     try:
         with temp.open("wb") as handle:
             handle.write(data)
@@ -322,6 +324,22 @@ def pinned_indexes() -> list[tuple[Pin, dict]]:
     ]
 
 
+def readable_indexes() -> tuple[list[tuple[Pin, dict]], list[dict]]:
+    """Como `pinned_indexes`, mas um cache que não confere não derruba os outros: vira
+    `{marketplace, problem}` na segunda lista (como `problem` no `marketplace-list`)."""
+    state = read_state()
+    indexes, problems = [], []
+    for name, record in sorted(state["marketplaces"].items()):
+        pin = _pin(name, record)
+        if not allowed(name):
+            continue
+        try:
+            indexes.append((pin, _read_cache(pin)))
+        except ValueError as exc:
+            problems.append({"marketplace": name, "problem": str(exc)})
+    return indexes, problems
+
+
 def listing() -> dict:
     """Marketplaces gravados, em ordem de nome, sem rede: cada um com `allowed`,
     `plugins` (quantos no índice) e `problem` (cache que não confere, ou `None`)."""
@@ -370,6 +388,11 @@ def remove(name: str) -> dict:
     }
 
 
+def _source_view(entry):
+    """Commit e sha256 de uma entrada: o que muda quando o conteúdo muda sem mudar a versão."""
+    return {"commit": entry["source"]["commit"], "content_sha256": entry["content_sha256"]}
+
+
 def _diff(old, new):
     before = {entry["id"]: entry for entry in (old or {}).get("plugins", [])}
     after = {entry["id"]: entry for entry in new["plugins"]}
@@ -379,10 +402,20 @@ def _diff(old, new):
         if (before[plugin_id]["version"], before[plugin_id]["content_sha256"])
         != (after[plugin_id]["version"], after[plugin_id]["content_sha256"])
     ]
+    changed = [
+        {
+            "id": plugin_id,
+            "from": _source_view(before[plugin_id]),
+            "to": _source_view(after[plugin_id]),
+        }
+        for plugin_id in sorted(set(before) & set(after))
+        if _source_view(before[plugin_id]) != _source_view(after[plugin_id])
+    ]
     return {
         "added": sorted(set(after) - set(before)),
         "removed": sorted(set(before) - set(after)),
         "updated": updated,
+        "changed": changed,
         "yanked": sorted(
             plugin_id
             for plugin_id, entry in after.items()
@@ -406,18 +439,26 @@ def _installed_updates(name, index):
     return found
 
 
-def _refresh_one(state, name, commit):
+def _refresh_one(state, name, commit, allow_rollback=False):
     record = _record(state, name)
     pin = _pin(name, record)
     try:
         old = _read_cache(pin)
     except ValueError:
         old = None  # cache adulterado ou ausente: o update o repõe; o diff parte do vazio.
-    pinned, data, index = _fetch_index(_recorded_spec(pin, commit))
+    spec = _recorded_spec(pin, commit)
+    pinned, data, index = _fetch_index(spec)
     if index["name"] != name:
         raise ValueError(
             f"O índice do marketplace {name} passou a se chamar {index['name']} no commit {pinned[:12]}; "
             "recusado. Remova e adicione de novo se a troca de nome for esperada."
+        )
+    rollback = not git_source.descends_from(spec, record["commit"], pinned)
+    if rollback and not allow_rollback:
+        raise UsageError(
+            f"O commit {pinned[:12]} do índice do marketplace {name} não descende do fixado hoje "
+            f"({record['commit'][:12]}): é uma volta atrás ou a história foi reescrita. Se for isso mesmo, "
+            "rode de novo com --allow-rollback."
         )
     sha = hashlib.sha256(data).hexdigest()
     changed = (pinned, sha) != (record["commit"], record["index_sha256"]) or old is None
@@ -431,34 +472,46 @@ def _refresh_one(state, name, commit):
         "from": record["commit"],
         "to": pinned,
         "changed": changed,
+        "rollback": rollback,
         "diff": _diff(old, index),
         "installed_updates": _installed_updates(name, index),
     }
 
 
-def refresh(name: str | None = None, commit: str | None = None) -> dict:
+def refresh(name: str | None = None, commit: str | None = None, allow_rollback: bool = False) -> dict:
     """Busca de novo a ref gravada (ou `commit`) de um marketplace ou de todos e move o pin.
 
-    Devolve, por marketplace, `from`/`to` (commits), `changed`, o `diff` do índice
-    (`added`, `removed`, `updated` [{id, from, to}], `yanked`) e `installed_updates`
-    (plugins instalados dele que têm conteúdo novo). Sem `name`, os que o teto não
-    permite ficam de fora (`skipped: true`)."""
+    Devolve, por marketplace, `from`/`to` (commits), `changed`, `rollback`, o `diff` do
+    índice (`added`, `removed`, `updated` [{id, from, to}], `changed` [{id, from, to} com
+    commit e sha256 de cada entrada cuja origem mudou], `yanked`) e `installed_updates`
+    (plugins instalados dele que têm conteúdo novo). Um commit que não descende do fixado
+    (volta atrás, história reescrita) só passa com `allow_rollback`. Sem `name`, os que o
+    teto não permite ficam de fora (`skipped: true`) e o erro de um marketplace não para os
+    outros: ele sai em `error` na linha dele e o nome em `failed`."""
     if commit is not None and name is None:
         raise UsageError("--commit em marketplace-update precisa de --marketplace <nome>.")
     if commit is not None:
-        git_source.validate_commit(commit)
+        try:
+            git_source.validate_commit(commit)
+        except ValueError as exc:
+            raise UsageError(str(exc)) from None
     state = read_state()
-    names = [name] if name is not None else sorted(state["marketplaces"])
-    results = []
-    for current in names:
-        _record(state, current)
+    if name is not None:
+        _record(state, name)
+        if not allowed(name):
+            raise not_allowed(name)
+        return {"marketplaces": [_refresh_one(state, name, commit, allow_rollback)], "failed": []}
+    results, failed = [], []
+    for current in sorted(state["marketplaces"]):
         if not allowed(current):
-            if name is not None:
-                raise not_allowed(current)
             results.append({"name": current, "allowed": False, "skipped": True})
             continue
-        results.append(_refresh_one(state, current, commit))
-    return {"marketplaces": results}
+        try:
+            results.append(_refresh_one(state, current, None, allow_rollback))
+        except ValueError as exc:
+            failed.append(current)
+            results.append({"name": current, "allowed": True, "changed": False, "error": str(exc)})
+    return {"marketplaces": results, "failed": failed}
 
 
 def resolve_repo(entry_repo: str, pin: Pin) -> str:
@@ -528,17 +581,19 @@ def search(query: str, marketplace: str | None = None) -> dict:
     Só marketplaces permitidos pelo teto; `marketplace` restringe a um. Resultados em
     ordem de `(id, marketplace)`, com `installed`, `tier`, `yanked`, `deprecated`, o
     comando de `install` (nenhum para entrada retirada) e, para um id antigo de
-    `renames`, `renamed_to` com o id atual."""
+    `renames`, `renamed_to` com o id atual. Sem `marketplace`, um cache que não confere
+    fica de fora com o motivo em `problems`; os outros continuam."""
     needle = query.strip().casefold() if isinstance(query, str) else ""
     if not needle:
         raise UsageError("--query é obrigatório em plugins --action search (um trecho do id ou da descrição).")
+    problems = []
     if marketplace is not None:
         pin, index = load_index(marketplace)
         if not allowed(pin.name):
             raise not_allowed(pin.name)
         indexes = [(pin, index)]
     else:
-        indexes = pinned_indexes()
+        indexes, problems = readable_indexes()
     installed = _installed()
     results = []
     for pin, index in indexes:
@@ -549,4 +604,9 @@ def search(query: str, marketplace: str | None = None) -> dict:
             if needle in old.casefold()
         ]
     results.sort(key=lambda row: (row["id"], row["marketplace"]))
-    return {"query": query, "marketplaces": [pin.name for pin, _ in indexes], "results": results}
+    return {
+        "query": query,
+        "marketplaces": [pin.name for pin, _ in indexes],
+        "results": results,
+        "problems": problems,
+    }

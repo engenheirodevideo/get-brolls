@@ -2,7 +2,9 @@
 
 from pathlib import Path
 
+from .. import runtime
 from ..errors import UsageError
+from ..rules import home_dir
 from . import git_source, loader
 from .contracts import NAME_RE
 
@@ -15,6 +17,18 @@ _PIN_FLAG_ACTIONS = {
     "marketplace-add": ("commit", "ref"),
     "marketplace-update": ("commit",),
 }
+# Ações em que `--allow-rollback` vale.
+_ROLLBACK_FLAG_ACTIONS = ("marketplace-update",)
+# Ações que gravam em `$GB_HOME` (plugins/, plugins.json, marketplaces): uma por vez,
+# sob `$GB_HOME/.plugins.lock`. A prévia também entra: ela monta o staging em plugins/.
+WRITING_ACTIONS = frozenset(
+    {"enable", "disable", "install", "update", "remove", "marketplace-add", "marketplace-remove", "marketplace-update"}
+)
+PLUGINS_LOCK = ".plugins.lock"
+_BUSY = (
+    "Outro comando plugins está mudando os plugins ou marketplaces desta instalação agora; "
+    "espere ele terminar e rode de novo."
+)
 # Ações em que `--marketplace <nome>` vale.
 _MARKETPLACE_FLAG_ACTIONS = ("marketplace-remove", "marketplace-update", "search")
 
@@ -203,7 +217,11 @@ def _marketplace_remove(args):
 def _marketplace_update(args):
     from . import marketplace
 
-    return marketplace.refresh(getattr(args, "marketplace", None), commit=args.commit)
+    return marketplace.refresh(
+        getattr(args, "marketplace", None),
+        commit=args.commit,
+        allow_rollback=bool(getattr(args, "allow_rollback", False)),
+    )
 
 
 def _search(args):
@@ -243,5 +261,12 @@ def run(args):
         raise UsageError(f"--all só vale em plugins --action update, não em {args.action}.")
     if getattr(args, "query", None) is not None and args.action != "search":
         raise UsageError(f"--query só vale em plugins --action search, não em {args.action}.")
+    if getattr(args, "allow_rollback", False) and args.action not in _ROLLBACK_FLAG_ACTIONS:
+        raise UsageError(f"--allow-rollback só vale em plugins --action marketplace-update, não em {args.action}.")
     _check_pin_flags(args)
-    return ACTIONS[args.action](args)
+    if args.action not in WRITING_ACTIONS:
+        return ACTIONS[args.action](args)
+    home = home_dir()
+    home.mkdir(parents=True, exist_ok=True)
+    with runtime.exclusive_lock(home / PLUGINS_LOCK, _BUSY):
+        return ACTIONS[args.action](args)

@@ -14,11 +14,12 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import urlsplit
 
-from ..runtime import stderr_tail
+from ..runtime import force_rmtree, stderr_tail
 from .files import is_link
 from .loader import VCS_DIRNAMES
 
@@ -525,3 +526,49 @@ def fetch(spec, clone):
     if _peeled_commit(clone, sha) != sha:
         raise ValueError(f"Commit {sha[:12]} não encontrado na origem; confira o --commit.")
     return sha
+
+
+def descends_from(spec, old, new):
+    """`new` descende de `old` (ou é ele) na história da origem de `spec`?
+
+    Clona só o grafo de commits (`--bare --filter=tree:0`, sem checkout nem blob) numa
+    pasta temporária e pergunta `merge-base --is-ancestor`. `old` que a origem não tem
+    mais (história reescrita) conta como "não descende"."""
+    if old == new:
+        return True
+    uri, ssh, local = _transport(spec)
+    tmp = Path(tempfile.mkdtemp(prefix="gb-history-"))
+    try:
+        clone = tmp / "history.git"
+        git_text(
+            ["clone", "--quiet", "--bare", "--no-tags", "--filter=tree:0", "--", uri, str(clone)],
+            ssh=ssh,
+            local=local,
+        )
+        if _peeled_commit(clone, new) is None:
+            _fetch_one(spec, clone, new)
+        try:
+            git_text(["merge-base", "--is-ancestor", old, new], cwd=clone)
+        except ValueError:
+            return False
+        return True
+    finally:
+        force_rmtree(tmp)
+
+
+def tip_warning(spec, commit):
+    """Aviso da prévia quando `spec.ref` foi dada e `commit` não é a ponta dela na origem
+    (ou a ref não existe mais): um commit de fork, servido pela rede de forks do GitHub,
+    também chega pelo sha. `None` sem ref ou com o commit na ponta."""
+    if not spec.ref:
+        return None
+    try:
+        _name, tip = resolve_ref(spec)
+    except ValueError as exc:
+        return f"Não consegui conferir a ponta de {spec.ref} na origem ({exc}); confira se o commit vem do repositório certo."
+    if tip == commit:
+        return None
+    return (
+        f"O commit {commit[:12]} não é a ponta de {spec.ref} (a ponta é {tip[:12]}): confira se vem do "
+        "repositório certo."
+    )
