@@ -374,3 +374,42 @@ def update_all(confirm: bool, expect: str | None) -> dict:
         "outside_marketplace": outside,
         "note": UPDATE_ALL_NOTE,
     }
+
+
+# --- origem gravada (list e doctor) ---------------------------------------------
+
+ORIGIN_VIEW_KEYS = ("source", "commit", "ref", "subdir", "marketplace", "tier", "index_commit")
+
+
+def _marketplace_notice(plugin_id, name):
+    """O que o índice fixado diz hoje do plugin instalado: retirado, obsoleto, renomeado, sumido."""
+    try:
+        if name not in marketplace.read_state()["marketplaces"]:
+            return f"O marketplace {name} foi removido; o plugin continua instalado, sem atualização por ele."
+        _pin, index = marketplace.load_index(name)
+    except ValueError as exc:
+        return str(exc)
+    entry = next((item for item in index["plugins"] if item["id"] == plugin_id), None)
+    if entry is None:
+        current = resolve_rename(index, plugin_id)
+        if current is not None:
+            return f"Renomeado para {current} no marketplace {name}; o update não troca o id."
+        return f"O marketplace {name} não traz mais este plugin."
+    if entry["yanked"]:
+        return f"Retirado (yanked) do marketplace {name}; considere plugins --action remove --id {plugin_id}."
+    warnings = entry_warnings(entry)
+    return warnings[0] if warnings else None
+
+
+def plugin_origins() -> dict:
+    """`{id: origem}` dos plugins instalados por `install`: as chaves de `ORIGIN_VIEW_KEYS`
+    (`None` quando não há) e `marketplace_notice` (o aviso do índice fixado, sem rede).
+    Lê só `plugins.json` e o cache dos índices; nunca roda código de plugin."""
+    sources = loader.read_state().get("sources") or {}
+    views = {}
+    for plugin_id, origin in sources.items():
+        view = {key: origin.get(key) for key in ORIGIN_VIEW_KEYS}
+        name = view["marketplace"]
+        view["marketplace_notice"] = _marketplace_notice(plugin_id, name) if name else None
+        views[plugin_id] = view
+    return views

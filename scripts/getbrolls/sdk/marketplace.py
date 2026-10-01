@@ -320,6 +320,15 @@ def listing() -> dict:
     return {"state": str(state_path()), "marketplaces": rows}
 
 
+def summary() -> list[dict]:
+    """`[{name, commit, plugins, allowed, problem}]` em ordem de nome, sem rede e sem caminho
+    da máquina (para `capabilities` e `doctor`). Só levanta `ValueError` (estado ilegível)."""
+    return [
+        {key: row[key] for key in ("name", "commit", "plugins", "allowed", "problem")}
+        for row in listing()["marketplaces"]
+    ]
+
+
 def _installed_from(name):
     """Ids instalados que vieram do marketplace `name` (pela origem gravada no plugins.json)."""
     sources = loader.read_state().get("sources", {})

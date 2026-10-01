@@ -61,8 +61,8 @@ SUMMARIES = {
     "providers": "Listar fontes disponíveis, transporte e chaves configuradas",
     "doctor": "Diagnosticar dependências, caminhos fixados e fontes utilizáveis",
     "plugins": (
-        "Listar, instalar, atualizar, remover, criar, habilitar, desabilitar ou validar plugins do SDK "
-        "(~/.getbrolls/plugins) e gerenciar marketplaces de plugins"
+        "Listar, instalar (de pasta, git ou marketplace), atualizar, remover, criar, habilitar, desabilitar ou "
+        "validar plugins do SDK (~/.getbrolls/plugins), procurar nos marketplaces e gerenciá-los"
     ),
     "capabilities": (
         "Descrever em JSON os comandos, flags, códigos de saída e comandos de plugin desta instalação (para agentes)"

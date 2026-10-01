@@ -469,7 +469,7 @@ api.command("recentes", recentes, "Lista os vídeos mais recentes da pasta")
 
 - `gb x --list` lista os comandos dos plugins habilitados, lendo só o
   manifesto (nenhum código roda).
-- `getbrolls capabilities --json` (no checkout, `python3 scripts/gb.py capabilities --json`) descreve, em JSON, os comandos do get-brolls, os `plugin_commands` habilitados e os `plugins_problems` (plugin inválido, com falha ou suspenso, com o motivo), lendo só o manifesto: plugins e agentes descobrem o que existe sem ler `--help`.
+- `getbrolls capabilities --json` (no checkout, `python3 scripts/gb.py capabilities --json`) descreve, em JSON, os comandos do get-brolls, os `plugin_commands` habilitados os `plugins_problems` (plugin inválido, com falha ou suspenso, com o motivo) e os `marketplaces` fixados (nome, commit, plugins, `allowed`, `problem`; ilegível vira `marketplaces_error`), lendo só o manifesto e o cache dos índices: plugins e agentes descobrem o que existe sem ler `--help`.
 - `gb x <plugin> <comando> [--project P] [--arg chave=valor]...` carrega os
   plugins, chama `handler(args, ctx)` e imprime `{"plugin", "command",
   "result"}`. `args` é um dicionário de texto; chave repetida é erro.
@@ -974,6 +974,24 @@ python3 scripts/gb.py plugins --action install --id <id>@<marketplace> --yes --e
   `auto_update_eligible` é só a política exibida: tier `official` ou `verified`
   e nenhuma permissão nova; `community` nunca é elegível. `--all` com `--yes`,
   `--expect` ou `--id` é erro de uso; aplicar em lote fica para uma versão futura.
+- `plugins --action list` e cada linha de `plugins[]` do `doctor` trazem
+  `origin` (`source`, `commit`, `ref`, `subdir`, `marketplace`, `tier`,
+  `index_commit`; `null` para plugin copiado à mão) e `marketplace_notice`, o
+  que o índice fixado diz hoje do plugin instalado: retirado (`yanked`),
+  obsoleto, renomeado, fora do índice ou marketplace removido (`null` quando não
+  há nada a dizer), sem rede. O `doctor` ganha `marketplaces` (nome, commit,
+  plugins, `allowed`, `problem`) quando há algum; `capabilities` sempre traz a
+  mesma lista.
+- **Teto do perfil.** Por padrão vale `profile.marketplace_ceiling()`, lido a
+  cada checagem: `None` não restringe; um conjunto (mesmo vazio) é o teto.
+  `getbrolls.sdk.marketplace.set_policy(allowed)` troca esse teto por um
+  `frozenset` de nomes ou por `None` (sem restrição) até
+  `set_policy(marketplace.PROFILE_POLICY)` devolver a decisão ao perfil; texto
+  solto no lugar do conjunto é `TypeError`. Fora do teto, o marketplace não é
+  adicionado nem atualizado por nome, some de `search`, é recusado no `install`
+  e no `update`, e aparece com `allowed: false` em `marketplace-list`,
+  `capabilities` e `doctor`. O perfil só estreita; ele nunca acrescenta um
+  marketplace.
 - **Limite conhecido:** o `expect` vem pré-preenchido do índice, então um agente
   que copia esse sha256 confirma sem que ninguém leia a prévia. Por isso o
   `install` sem `--yes` sempre para na prévia, e a skill orienta o agente a

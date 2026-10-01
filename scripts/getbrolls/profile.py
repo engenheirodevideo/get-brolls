@@ -733,9 +733,9 @@ def plugin_ceiling(profile: Profile | _Current | None = CURRENT) -> frozenset[st
 def marketplace_ceiling(profile: Profile | _Current | None = CURRENT) -> frozenset[str] | None:
     """Marketplaces que o perfil permite; `None` quando ele não restringe marketplaces.
 
-    Contrato com o módulo de marketplaces (ainda não existe no core): quando ele chegar,
-    chama `marketplace_ceiling()` sem argumento depois de `config.load_environment` —
-    isto é, com o perfil já ativado — e trata o resultado como teto: `None` não
+    Contrato com `getbrolls.sdk.marketplace`: por padrão, ele chama
+    `marketplace_ceiling()` sem argumento a cada checagem — isto é, com o perfil já
+    ativado por `config.load_environment` — e trata o resultado como teto: `None` não
     restringe; um conjunto (mesmo vazio) limita os marketplaces aceitos a ele. O perfil
     só estreita, nunca acrescenta um marketplace que a pessoa não configurou.
     """

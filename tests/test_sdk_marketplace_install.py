@@ -374,5 +374,47 @@ class UpdateCliTests(MarketUpdateCase):
         run_cli("plugins", "--action", "list", "--all", expect=2, env=self.env())
 
 
+class OriginRowsTests(MarketUpdateCase):
+    def test_list_shows_origin_for_installed_plugins(self):
+        entry = self.installed(tier="verified")
+        folder = write_plugin(self.work / "solto", {**MANIFEST, "id": "solto"})
+        install_mod.install(str(folder), confirm=True, expect=install_mod.content_digest(str(folder))[0])
+        rows = {row["id"]: row for row in run_cli("plugins", "--action", "list", env=self.env())["plugins"]}
+        pin, _ = marketplace.load_index("exemplo")
+        demo = rows["demo"]["origin"]
+        self.assertEqual(
+            {
+                "source": pin.source,
+                "commit": entry["source"]["commit"],
+                "ref": None,
+                "subdir": "plugins/demo",
+                "marketplace": "exemplo",
+                "tier": "verified",
+                "index_commit": pin.commit,
+                "marketplace_notice": None,
+            },
+            demo,
+        )
+        self.assertIsNone(rows["solto"]["origin"]["marketplace"])
+        self.assertIsNone(rows["solto"]["origin"]["commit"])
+
+    def test_list_and_doctor_warn_about_a_yanked_installed_plugin(self):
+        self.installed()
+        self.publish(mutate=lambda e: {**e, "yanked": True})
+        listed = run_cli("plugins", "--action", "list", env=self.env())["plugins"][0]
+        self.assertIn("yanked", listed["origin"]["marketplace_notice"])
+        doctor = run_cli("doctor", env=self.env())
+        self.assertIn("yanked", doctor["plugins"][0]["origin"]["marketplace_notice"])
+        self.assertEqual(["exemplo"], [row["name"] for row in doctor["marketplaces"]])
+        self.assertEqual("exemplo", doctor["plugins"][0]["origin"]["marketplace"])
+
+    def test_list_flags_a_removed_marketplace(self):
+        self.installed()
+        marketplace.remove("exemplo")
+        listed = run_cli("plugins", "--action", "list", env=self.env())["plugins"][0]
+        self.assertIn("removido", listed["origin"]["marketplace_notice"])
+        self.assertNotIn("marketplaces", run_cli("doctor", env=self.env()))
+
+
 if __name__ == "__main__":
     unittest.main()

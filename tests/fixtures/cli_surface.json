@@ -1511,7 +1511,7 @@
       ]
     },
     "plugins": {
-      "help": "Listar, instalar, atualizar, remover, criar, habilitar, desabilitar ou validar plugins do SDK (~/.getbrolls/plugins) e gerenciar marketplaces de plugins",
+      "help": "Listar, instalar (de pasta, git ou marketplace), atualizar, remover, criar, habilitar, desabilitar ou validar plugins do SDK (~/.getbrolls/plugins), procurar nos marketplaces e gerenciá-los",
       "options": [
         {
           "action": "_HelpAction",

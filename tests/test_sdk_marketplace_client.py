@@ -303,6 +303,18 @@ class PolicyTests(MarketplaceTestCase):
         marketplace.set_policy(None)
         self.assertEqual(["alfa", "beta"], [pin.name for pin, _ in marketplace.pinned_indexes()])
 
+    def test_set_policy_none_restores_all(self):
+        marketplace.add(str(self.index_repo(name="alfa", folder="a")))
+        marketplace.add(str(self.index_repo(name="beta", folder="b")))
+        marketplace.set_policy(frozenset())
+        self.assertEqual([], marketplace.pinned_indexes())
+        self.assertEqual([False, False], [row["allowed"] for row in marketplace.summary()])
+        marketplace.set_policy(None)
+        self.assertEqual(["alfa", "beta"], [pin.name for pin, _ in marketplace.pinned_indexes()])
+        self.assertEqual([True, True], [row["allowed"] for row in marketplace.summary()])
+        with self.assertRaises(TypeError):
+            marketplace.set_policy("alfa")
+
     def test_default_policy_reads_the_profile_ceiling(self):
         marketplace.add(str(self.index_repo()))
         with patch("getbrolls.profile.marketplace_ceiling", return_value=frozenset({"outro"})):

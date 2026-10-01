@@ -26,10 +26,13 @@ def kind_list():
 
 
 def _list(_args):  # mesma assinatura das outras ações
+    from .marketplace_install import plugin_origins
+
+    origins = plugin_origins()
     return {
         "plugins_dir": str(loader.plugins_root()),
         "selection": "GB_PLUGINS" if loader.env_selection() is not None else "plugins.json",
-        "plugins": loader.inventory(),
+        "plugins": [{**row, "origin": origins.get(row["id"])} for row in loader.inventory()],
         "note": (
             "Status pré-carga (manifesto + pin de hash), sem executar código de plugin; "
             "rode `doctor` para o resultado real do carregamento (register() executado)."
