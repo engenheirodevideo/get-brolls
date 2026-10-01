@@ -101,7 +101,8 @@ Erro do argparse (subcomando, flag ou `choices` errado, opção obrigatória fal
 sai com código `2` no stderr, em um de dois formatos, decidido só pelo stderr:
 
 - **stderr fora de um terminal** (agente, script, `2>` para arquivo): uma linha JSON
-  com exatamente estas chaves:
+  com exatamente estas chaves (exemplo de `getbrolls status --projct x`; sem nenhuma
+  flag parecida digitada, `suggestion` é `null`):
 
   ```json
   {"error": "faltam argumentos obrigatórios: --project", "error_en": "the following arguments are required: --project", "error_code": "USAGE_ERROR", "usage": "usage: getbrolls status [-h] --project PROJECT", "suggestion": "--project", "prog": "getbrolls status"}
