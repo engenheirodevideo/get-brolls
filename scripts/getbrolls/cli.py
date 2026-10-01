@@ -464,6 +464,14 @@ def _add_toolchain_subcommands(sub):
             )
             p.add_argument("--query", help="search: trecho do id, da descrição ou do tipo de extensão a procurar")
             p.add_argument(
+                "--all",
+                action="store_true",
+                help=(
+                    "update: prévia das atualizações de todos os plugins instalados por marketplace, com o comando "
+                    "de cada um (só prévia; confirme por id)"
+                ),
+            )
+            p.add_argument(
                 "--commit",
                 help=(
                     "install/update: sha completo (40 hex) do commit a instalar; sem ele, a ref é resolvida na "

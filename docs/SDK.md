@@ -949,6 +949,27 @@ python3 scripts/gb.py plugins --action install --id <id>@<marketplace> --yes --e
   `index_commit` (o commit do índice usado).
 - O `tier` (`official`, `verified`, `community`) é informação: aparece na
   prévia e na origem, e nunca afrouxa nenhuma das conferências acima.
+- `update --id <id>` de um plugin instalado por marketplace usa a entrada do
+  índice **fixado** (rode `marketplace-update` antes para ver novidade); a única
+  rede é a materialização. Mesmo commit e subpasta da origem gravada: responde
+  `up_to_date: true`. As mesmas recusas do install valem aqui (marketplace fora
+  do teto ou removido, entrada `yanked`, incompatível, sha256 ou manifesto que
+  não batem). Um id renomeado nunca é trocado sozinho: a resposta diz como
+  remover o antigo e instalar o novo. `--commit` é erro de uso (o commit vem do
+  índice; para voltar atrás, `marketplace-update --commit`). Plugin desabilitado
+  continua desabilitado.
+- O `diff` da prévia traz `permissions_added` e `permissions_increased`. Quando
+  alguma permissão aumenta, o `expect` da prévia **não** é o sha256 do índice:
+  é um valor que amarra o sha256 do conteúdo às permissões acrescentadas e só
+  sai da prévia. Confirmar com o sha256 do índice é recusado, então permissão
+  nova nunca entra sem uma prévia que mostre o diff.
+- `update --all` só mostra a prévia (sem rede, sem mudar nada): para cada
+  plugin instalado por marketplace com entrada nova, versão de/para, tier,
+  `permissions_added`, `auto_update_eligible` e o comando da prévia por id; mais
+  `up_to_date`, `skipped` (com o motivo, ex.: `yanked`) e `outside_marketplace`.
+  `auto_update_eligible` é só a política exibida: tier `official` ou `verified`
+  e nenhuma permissão nova; `community` nunca é elegível. `--all` com `--yes`,
+  `--expect` ou `--id` é erro de uso; aplicar em lote fica para uma versão futura.
 - **Limite conhecido:** o `expect` vem pré-preenchido do índice, então um agente
   que copia esse sha256 confirma sem que ninguém leia a prévia. Por isso o
   `install` sem `--yes` sempre para na prévia, e a skill orienta o agente a

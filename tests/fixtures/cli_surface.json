@@ -1601,6 +1601,18 @@
           "required": false
         },
         {
+          "action": "_StoreTrueAction",
+          "choices": null,
+          "default": false,
+          "dest": "all",
+          "help": "update: prévia das atualizações de todos os plugins instalados por marketplace, com o comando de cada um (só prévia; confirme por id)",
+          "nargs": 0,
+          "option_strings": [
+            "--all"
+          ],
+          "required": false
+        },
+        {
           "action": "_StoreAction",
           "choices": null,
           "default": null,

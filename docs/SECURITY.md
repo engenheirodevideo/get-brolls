@@ -111,7 +111,10 @@ sha256 não for o `content_sha256` da entrada ou se o manifesto divergir dela
 aceitos. O `tier` da entrada é só informação, nunca libera uma conferência. O
 índice pré-preenche o `--expect` da confirmação: um agente que copia esse valor
 pula a leitura humana, e por isso o `install` sem `--yes` sempre para na prévia
-e a skill orienta mostrá-la à pessoa. Quem mantém o marketplace escolhe o que
+e a skill orienta mostrá-la à pessoa. No `update` pelo marketplace, uma permissão
+acrescentada muda o `--expect`: ele passa a ser um valor que só a prévia mostra,
+e o sha256 do índice deixa de confirmar. `update --all` só lista; nada é
+atualizado em lote. Quem mantém o marketplace escolhe o que
 entra no índice; ele não revisa nem assina o código — continue lendo o código
 de quem você habilita.
 

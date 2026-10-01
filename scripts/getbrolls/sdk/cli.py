@@ -83,7 +83,7 @@ def _install(args):
 
 
 def _update(args):
-    from . import install
+    from . import install, marketplace_install
 
     flags = _pin_flags(args)
     if flags["ref"] is not None or flags["subdir"] is not None:
@@ -91,7 +91,19 @@ def _update(args):
             "--ref e --subdir só valem em plugins --action install (com --source); o update usa os gravados "
             "na instalação. Para fixar outro commit, use --commit."
         )
-    return install.update(_require_id(args), confirm=bool(args.yes), expect=args.expect, commit=flags["commit"])
+    if getattr(args, "all", False):
+        if args.id or flags["commit"] is not None:
+            raise UsageError("--all não vale junto com --id nem --commit em plugins --action update.")
+        return marketplace_install.update_all(confirm=bool(args.yes), expect=args.expect)
+    plugin_id = _require_id(args)
+    if marketplace_install.marketplace_of(plugin_id) is not None:
+        if flags["commit"] is not None:
+            raise UsageError(
+                "--commit não vale no update de um plugin instalado por marketplace: o commit vem do índice "
+                "fixado. Para voltar o índice, use plugins --action marketplace-update --marketplace <nome> --commit."
+            )
+        return marketplace_install.update(plugin_id, confirm=bool(args.yes), expect=args.expect)
+    return install.update(plugin_id, confirm=bool(args.yes), expect=args.expect, commit=flags["commit"])
 
 
 def _remove(args):
@@ -177,6 +189,8 @@ def run(args):
         raise UsageError(f"{', '.join(misused)} não vale(m) em plugins --action {args.action}.")
     if getattr(args, "marketplace", None) is not None and args.action not in _MARKETPLACE_FLAG_ACTIONS:
         raise UsageError(f"--marketplace não vale em plugins --action {args.action}.")
+    if getattr(args, "all", False) and args.action != "update":
+        raise UsageError(f"--all só vale em plugins --action update, não em {args.action}.")
     if getattr(args, "query", None) is not None and args.action != "search":
         raise UsageError(f"--query só vale em plugins --action search, não em {args.action}.")
     return ACTIONS[args.action](args)
