@@ -34,6 +34,7 @@ from ..errors import UsageError
 from . import git_source, loader, marketplace
 from . import install as plugin_install
 from .manifest import compatibility_problem
+from .marketplace import not_allowed
 from .marketplace_index import BATCH_TIERS, manifest_mismatches, manifest_warnings, parse_plugin_ref, resolve_rename
 
 PREVIEW_NOTE = (
@@ -41,10 +42,6 @@ PREVIEW_NOTE = (
     "vem pré-preenchido do índice, e copiá-lo sem mostrar a prévia pula a revisão humana. Com o ok dela, "
     "rode o comando de next. " + loader.NOT_SANDBOX
 )
-
-
-def _not_allowed(name):
-    return ValueError(f"O perfil de workspace não permite o marketplace {name}; veja profile --action show.")
 
 
 def _search_hint(plugin_id):
@@ -144,7 +141,7 @@ def resolve(ref):
     """`(plugin_id, Pin, entrada)` de `<id>@<marketplace>`, com teto, índice e entrada conferidos."""
     plugin_id, name = parse_plugin_ref(ref)
     if not marketplace.allowed(name):
-        raise _not_allowed(name)
+        raise not_allowed(name)
     pin, index = marketplace.load_index(name)
     entry = find_entry(index, plugin_id, name)
     if entry["yanked"]:
@@ -220,7 +217,7 @@ def _update_target(plugin_id, origin):
     """`(Pin, entrada, spec)` da atualização de `plugin_id` pelo marketplace da origem gravada."""
     name = origin["marketplace"]
     if not marketplace.allowed(name):
-        raise _not_allowed(name)
+        raise not_allowed(name)
     if name not in marketplace.read_state()["marketplaces"]:
         raise ValueError(
             f"O plugin {plugin_id} veio do marketplace {name}, que foi removido (marketplace removido): adicione-o "
@@ -388,7 +385,7 @@ def _marketplace_notice(plugin_id, name):
             return f"O marketplace {name} foi removido; o plugin continua instalado, sem atualização por ele."
         _pin, index = marketplace.load_index(name)
     except ValueError as exc:
-        return str(exc)
+        return marketplace.portable_text(exc)
     entry = next((item for item in index["plugins"] if item["id"] == plugin_id), None)
     if entry is None:
         current = resolve_rename(index, plugin_id)

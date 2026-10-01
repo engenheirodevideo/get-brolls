@@ -185,9 +185,10 @@ class InstallCliTests(MarketInstallCase):
         self.assertTrue(done["installed"])
         self.assertEqual("exemplo", loader.read_state()["sources"]["demo"]["marketplace"])
 
-    def test_plain_id_without_source_keeps_the_old_message(self):
-        err = run_cli("plugins", "--action", "install", "--id", "demo", expect=1, env=self.env())
+    def test_plain_id_without_source_is_a_usage_error_naming_both_forms(self):
+        err = run_cli("plugins", "--action", "install", "--id", "demo", expect=2, env=self.env())
         self.assertIn("--source", err["error"])
+        self.assertIn("<id>@<marketplace>", err["error"])
 
     def test_second_plugin_in_the_same_index(self):
         repo = self.index_repo()

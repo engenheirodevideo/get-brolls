@@ -96,7 +96,7 @@ class RemoveTests(InstallTestCase):
         self.assertEqual([], loader.inventory())
         listed = run_cli("plugins", "--action", "list", env=self.env())
         self.assertEqual([], listed["plugins"])
-        err = run_cli("plugins", "--action", "remove", env=self.env(), expect=1)
+        err = run_cli("plugins", "--action", "remove", env=self.env(), expect=2)
         self.assertIn("--id", err["error"])
         err = run_cli("plugins", "--action", "remove", "--id", "demo", "--expect", "x", env=self.env(), expect=2)
         self.assertEqual("USAGE_ERROR", err["error_code"])

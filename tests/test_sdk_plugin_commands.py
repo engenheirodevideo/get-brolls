@@ -109,8 +109,8 @@ class PluginCommandCliTests(LoaderTestCase):
     def test_bad_args_are_refused(self):
         for bad in (("--arg", "sem_igual"), ("--arg", "Chave=1"), ("--arg", "a=1", "--arg", "a=2")):
             with self.subTest(bad=bad):
-                run_cli("x", "demo", "contar", *bad, expect=1, env=self.env())
-        run_cli("x", expect=1, env=self.env())
+                run_cli("x", "demo", "contar", *bad, expect=2, env=self.env())
+        run_cli("x", expect=2, env=self.env())
 
 
 class PluginCommandLoggingTests(LoaderTestCase):

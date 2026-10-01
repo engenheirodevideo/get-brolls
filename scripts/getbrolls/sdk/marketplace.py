@@ -32,7 +32,7 @@ from typing import NamedTuple
 from .. import _paths, versioning
 from ..errors import UsageError
 from ..rules import home_dir
-from ..runtime import force_rmtree
+from ..runtime import force_rmtree, scrub_home
 from . import git_source, install, loader
 from .files import is_link
 from .marketplace_index import (
@@ -98,8 +98,23 @@ def allowed(name: str) -> bool:
     return ceiling is None or name in ceiling  # type: ignore[operator]  # conjunto de nomes
 
 
-def _not_allowed(name):
-    return ValueError(f"O perfil de workspace não permite o marketplace {name}; veja profile --action show.")
+def _profile_hint():
+    return f"veja `{_paths.cli_hint('profile', 'show')}`"
+
+
+def not_allowed(name: str) -> ValueError:
+    """Recusa de um marketplace fora do teto do perfil, com o comando que mostra o perfil."""
+    return ValueError(f"O perfil de workspace não permite o marketplace {name}; {_profile_hint()}.")
+
+
+def portable_text(text: object) -> str:
+    """`text` sem caminho da máquina, para `capabilities` e `doctor`: `$GB_HOME` no lugar
+    da pasta da instalação e `~` no lugar da pasta pessoal."""
+    value = str(text)
+    home = home_dir()
+    for prefix in {str(home), str(home.resolve())}:
+        value = value.replace(prefix, "$GB_HOME")
+    return scrub_home(value)
 
 
 def state_path() -> Path:
@@ -194,7 +209,7 @@ def _pin(name, record):
     return Pin(name, record["source"], record["ref"], record["commit"], record["index_sha256"])
 
 
-def _spec_for_add(source, ref, commit):
+def spec_for_add(source, ref, commit):
     spec = git_source.parse_source(source, commit=commit, ref=ref)
     if not isinstance(spec, git_source.GitSource):
         raise ValueError(
@@ -238,9 +253,9 @@ def _summary(name, record, plugins=None):
 def add(source: str, ref: str | None = None, commit: str | None = None) -> dict:
     """Adiciona o marketplace de `source` fixado no commit (o de `commit` ou o da `ref`)."""
     state = read_state()  # marketplaces.json corrompido recusa antes de qualquer rede ou mutação.
-    spec = _spec_for_add(source, ref, commit)
+    spec = spec_for_add(source, ref, commit)
     if _ceiling() == frozenset():
-        raise ValueError("O perfil de workspace não permite nenhum marketplace; veja profile --action show.")
+        raise ValueError(f"O perfil de workspace não permite nenhum marketplace; {_profile_hint()}.")
     pinned, data, index = _fetch_index(spec)
     name = index["name"]
     if name in state["marketplaces"]:
@@ -249,7 +264,7 @@ def add(source: str, ref: str | None = None, commit: str | None = None) -> dict:
             "(ou remova o antigo antes)."
         )
     if not allowed(name):
-        raise _not_allowed(name)
+        raise not_allowed(name)
     now = _now()
     record = {
         "source": spec.repo,
@@ -323,10 +338,11 @@ def listing() -> dict:
 def summary() -> list[dict]:
     """`[{name, commit, plugins, allowed, problem}]` em ordem de nome, sem rede e sem caminho
     da máquina (para `capabilities` e `doctor`). Só levanta `ValueError` (estado ilegível)."""
-    return [
+    rows = [
         {key: row[key] for key in ("name", "commit", "plugins", "allowed", "problem")}
         for row in listing()["marketplaces"]
     ]
+    return [{**row, "problem": None if row["problem"] is None else portable_text(row["problem"])} for row in rows]
 
 
 def _installed_from(name):
@@ -438,7 +454,7 @@ def refresh(name: str | None = None, commit: str | None = None) -> dict:
         _record(state, current)
         if not allowed(current):
             if name is not None:
-                raise _not_allowed(current)
+                raise not_allowed(current)
             results.append({"name": current, "allowed": False, "skipped": True})
             continue
         results.append(_refresh_one(state, current, commit))
@@ -519,7 +535,7 @@ def search(query: str, marketplace: str | None = None) -> dict:
     if marketplace is not None:
         pin, index = load_index(marketplace)
         if not allowed(pin.name):
-            raise _not_allowed(pin.name)
+            raise not_allowed(pin.name)
         indexes = [(pin, index)]
     else:
         indexes = pinned_indexes()

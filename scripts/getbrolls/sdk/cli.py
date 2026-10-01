@@ -3,7 +3,8 @@
 from pathlib import Path
 
 from ..errors import UsageError
-from . import loader
+from . import git_source, loader
+from .contracts import NAME_RE
 
 # Flags de pin (`--commit`, `--ref`, `--subdir`) e as ações em que cada uma vale. O
 # `update` aceita as três aqui e recusa `--ref`/`--subdir` com a própria mensagem.
@@ -40,10 +41,31 @@ def _list(_args):  # mesma assinatura das outras ações
     }
 
 
+def as_usage(check, *args, **kwargs):
+    """`check(*args, **kwargs)`, com o `ValueError` dele virando `UsageError`: formato de flag
+    errado é erro de uso (exit 2), não de conteúdo."""
+    try:
+        return check(*args, **kwargs)
+    except UsageError:
+        raise
+    except ValueError as exc:
+        raise UsageError(str(exc)) from None
+
+
 def _require_id(args):
     if not args.id:
-        raise ValueError(f"--id é obrigatório em plugins --action {args.action}.")
+        raise UsageError(f"--id é obrigatório em plugins --action {args.action}.")
+    if not NAME_RE.fullmatch(args.id):
+        raise UsageError(
+            f"--id inválido em plugins --action {args.action}: 2–32 caracteres a-z, 0-9 e _, começando por letra."
+        )
     return args.id
+
+
+def _require_expect(args):
+    """`--yes` sem `--expect` em install/update é erro de uso antes de buscar qualquer coisa."""
+    if args.yes and not args.expect:
+        as_usage(loader.check_expect, None, None)
 
 
 def _enable(args):
@@ -56,10 +78,10 @@ def _disable(args):
 
 def _check(args):
     if not args.path:
-        raise ValueError("--path é obrigatório em plugins --action check.")
+        raise UsageError("--path é obrigatório em plugins --action check.")
     folder = Path(args.path).expanduser().resolve()
     if not folder.is_dir():
-        raise ValueError("--path tem que ser a pasta do plugin.")
+        raise UsageError("--path tem que ser a pasta do plugin.")
     from . import testing
 
     return testing.check_plugin(folder)
@@ -67,6 +89,19 @@ def _check(args):
 
 def _pin_flags(args):
     return {name: getattr(args, name, None) for name in _PIN_FLAGS}
+
+
+_PIN_FLAG_CHECKS = {
+    "commit": git_source.validate_commit,
+    "ref": git_source.validate_ref,
+    "subdir": git_source.validate_repo_path,
+}
+
+
+def _check_pin_flags(args):
+    for name, value in _pin_flags(args).items():
+        if value is not None:
+            as_usage(_PIN_FLAG_CHECKS[name], value)
 
 
 def _install(args):
@@ -77,12 +112,22 @@ def _install(args):
         from . import marketplace_install
 
         marketplace_install.reject_source_with_ref(args.source, flags)
+        _require_expect(args)
         return marketplace_install.install(args.id, confirm=bool(args.yes), expect=args.expect)
     if not args.source:
         if any(value is not None for value in flags.values()):
             raise UsageError("--commit, --ref e --subdir precisam de --source em plugins --action install.")
-        raise ValueError("--source é obrigatório em plugins --action install (pasta local ou URL git).")
-    return install.install(args.source, confirm=bool(args.yes), expect=args.expect, **flags)
+        if args.id:
+            raise UsageError(
+                f"plugins --action install --id {args.id}: use <id>@<marketplace> (ou --source para uma pasta/URL)."
+            )
+        raise UsageError(
+            "--source é obrigatório em plugins --action install (pasta local ou URL git); "
+            "para instalar de um marketplace, use --id <id>@<marketplace>."
+        )
+    spec = as_usage(git_source.parse_source, args.source, **flags)
+    _require_expect(args)
+    return install.install_from(spec, confirm=bool(args.yes), expect=args.expect)
 
 
 def _update(args):
@@ -99,6 +144,7 @@ def _update(args):
             raise UsageError("--all não vale junto com --id nem --commit em plugins --action update.")
         return marketplace_install.update_all(confirm=bool(args.yes), expect=args.expect)
     plugin_id = _require_id(args)
+    _require_expect(args)
     if marketplace_install.marketplace_of(plugin_id) is not None:
         if flags["commit"] is not None:
             raise UsageError(
@@ -121,7 +167,7 @@ def _new(args):
     from . import scaffold
 
     if not args.kind:
-        raise ValueError(f"plugins --action new precisa de --kind ({kind_list()}).")
+        raise UsageError(f"plugins --action new precisa de --kind ({kind_list()}).")
     return scaffold.new(_require_id(args), args.kind, args.path)
 
 
@@ -138,6 +184,7 @@ def _marketplace_add(args):
         raise UsageError(
             "--source é obrigatório em plugins --action marketplace-add (URL git ou pasta local que é repositório)."
         )
+    as_usage(marketplace.spec_for_add, args.source, args.ref, args.commit)
     return marketplace.add(args.source, ref=args.ref, commit=args.commit)
 
 
@@ -196,4 +243,5 @@ def run(args):
         raise UsageError(f"--all só vale em plugins --action update, não em {args.action}.")
     if getattr(args, "query", None) is not None and args.action != "search":
         raise UsageError(f"--query só vale em plugins --action search, não em {args.action}.")
+    _check_pin_flags(args)
     return ACTIONS[args.action](args)
