@@ -85,7 +85,7 @@ Ubuntu/Debian:
 sudo apt install python3 python3-venv ffmpeg nodejs npm curl git
 ```
 
-After step 2, `python3 scripts/gb.py doctor` is the gate: empty `summary.missing` and `contact_sheet.labels: true`. If `drawtext` shows up under `summary.optional`, your FFmpeg was built without libfreetype: reinstall it with the command above (on macOS, `brew reinstall ffmpeg`).
+After step 2, `python3 scripts/gb.py doctor` is the gate: `ready: true` (exit `0`), which depends only on an empty `summary.missing`; anything missing exits `4`. With the whole stack it also shows `contact_sheet.labels: true` — that part is optional and does not change `ready`: if `drawtext` (or `font`) shows up under `summary.optional`, your FFmpeg was built without libfreetype (or no TrueType font was found) and the contact sheet comes out without the number and timecode in each cell; reinstall it with the command above (on macOS, `brew reinstall ffmpeg`) or set `GB_FONT_FILE`.
 
 ### 1. Add the skill to your agent
 
@@ -376,7 +376,7 @@ Run one command per project at a time. Preserve originals, cache, and event hist
 | [docs/MANUAL.md](docs/MANUAL.md) | Manual + tutorial in Portuguese: every command explained, output format, BRIEF/RULES/.env, and automation. |
 | [docs/GUIDE.md](docs/GUIDE.md) · [SKILL.md](SKILL.md) | Complete operating guide and agent execution instructions. |
 | [docs/CLI_CONTRACT.md](docs/CLI_CONTRACT.md) · [docs/SCHEMAS.md](docs/SCHEMAS.md) | CLI contract for scripts and agents (output, exit and error codes, deprecation) and the format of every file the tool writes (in Portuguese). |
-| [docs/PLUGIN_DEV_QUICKSTART.md](docs/PLUGIN_DEV_QUICKSTART.md) · [docs/SDK.md](docs/SDK.md) | SDK plugins (experimental, in Portuguese): quickstart, security checklist, examples, your own sources, routes, commands and exporters in `~/.getbrolls/plugins`. Not to be confused with the Claude Code plugin. |
+| [docs/PLUGIN_DEV_QUICKSTART.md](docs/PLUGIN_DEV_QUICKSTART.md) · [docs/SDK.md](docs/SDK.md) | SDK plugins (experimental, in Portuguese): quickstart, security checklist, examples, your own sources, routes, commands and exporters in `$GB_HOME/plugins` (default `~/.getbrolls/plugins`). Not to be confused with the Claude Code plugin. |
 | [docs/QUALITY.md](docs/QUALITY.md) | Tests, real-world evidence, and known limitations. |
 | [docs/RULES.md](docs/RULES.md) · [.env.example](.env.example) | Editorial rules and configuration options. |
 | [docs/SECURITY.md](docs/SECURITY.md) | Handling of private data and vulnerability reporting. |
