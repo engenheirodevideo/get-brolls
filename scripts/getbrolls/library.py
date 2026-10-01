@@ -19,6 +19,7 @@ import unicodedata
 import uuid
 
 from . import logs, versioning
+from .errors import LockedError
 from .memory import load_references
 from .models import now
 from .rules import home_dir
@@ -145,7 +146,7 @@ def _locked():
                     waited_ms=round((time.monotonic() - started) * 1000),
                     timeout=True,
                 )
-                raise ValueError(
+                raise LockedError(
                     f"{path} está travado há tempo demais por outro get-brolls. "
                     "Espere a outra execução terminar ou apague esse arquivo."
                 ) from None

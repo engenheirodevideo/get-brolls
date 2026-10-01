@@ -309,6 +309,28 @@ class RedactExtendedScrubbingTests(unittest.TestCase):
         self.assertNotIn("pexels-secret-key", result)
         self.assertNotIn("example.org", result)
 
+    def test_static_url_placeholders_in_our_own_messages_survive(self):
+        # Our help text cites the URL shape ("https://…", "URL https://, git@…"), not a URL:
+        # there is no host to hide, and "[URL omitida]" there makes the hint unreadable.
+        for text in (
+            "--source tem que ser uma pasta local ou uma URL git (https://… ou git@host:caminho).",
+            "um repositório git (URL https://, git@host:caminho ou pasta local com .git)",
+            "use https://<host>/<caminho>.git",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(text, runtime.redact(text))
+
+    def test_urls_from_data_are_still_hidden(self):
+        for text in (
+            "git falhou: https://user:tok@example.org/idx.git",
+            "fetch https://example.org/repo.git falhou",
+            "https://cdn.example/secret?oh=1",
+        ):
+            with self.subTest(text=text):
+                result = runtime.redact(text)
+                self.assertIn("[URL omitida]", result)
+                self.assertNotIn("example", result)
+
     def test_idempotent(self):
         text = "Authorization: Bearer abc, https://example.org/x?token=def, key=ghi solto"
         once = runtime.redact(text)

@@ -47,6 +47,8 @@ INTERNAL_REVIEW_ID_PATTERN = re.compile(
     r"\b(?:RT|BUG|B|M|I|D3|H4|C1|T2)-\d{1,2}\b(?![-\d])"
     r"|\bC [HML]-\d+\b|\bA [IM]\d\b|\bMinor \d+\b|\b[Ff]ix round \d\b"
     r"|\bred[-]team\b|\bFinding \d+\b|\bG\d{1,2}:(?!\d)"
+    # Onda de trabalho (W e um dígito), frente paralela (lane e uma letra) e rótulo de rodada.
+    r"|\bW\d\b|\blane-[abc]\b|\bblind[-]test\b"
     # Forma sem hífen (letra + 1 ou 2 dígitos): só logo depois de "(", aspas, "#", espaço ou
     # início da linha, e só antes de ":" ou ")" — "C3" em prosa, "H264", "M4A" e
     # "I/O" não casam; o "Checkpoint C3:" do SKILL.md também não.
@@ -113,6 +115,8 @@ HUB_TARGETS = (
     "commands/get-brolls-setup.md",
     "GEMINI.md",
     "docs/GUIDE.md",
+    "docs/CLI_CONTRACT.md",
+    "docs/SCHEMAS.md",
     "docs/QUALITY.md",
     "CONTRIBUTING.md",
     "docs/SECURITY.md",

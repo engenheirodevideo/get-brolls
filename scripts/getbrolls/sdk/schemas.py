@@ -21,6 +21,7 @@ NAMES = (
     "project",
     "template",
     "template_lock",
+    "marketplace_index",
 )
 
 

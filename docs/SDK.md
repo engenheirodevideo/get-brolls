@@ -6,16 +6,16 @@ updated: 2026-09-30
 tags: [get-brolls, sdk, plugins]
 ---
 
-# SDK de extensões — Get B-rolls
+# SDK de extensões — getbrolls
 
 > **Experimental:** `sdk_api` 1 pode mudar em versão minor; plugins declaram
-> `requires_getbrolls`. Confira o CHANGELOG antes de atualizar o Get B-rolls.
+> `requires_getbrolls`. Confira o CHANGELOG antes de atualizar o getbrolls.
 
 Nos exemplos deste documento, `python3 scripts/gb.py …` (checkout e plugin) é o
 mesmo comando que `getbrolls …` no pacote instalado. Um plugin que chama o
 getbrolls num subprocesso usa `api.cli_argv()`, nunca um caminho montado à mão.
 
-O Get B-rolls aceita extensões locais em Python: **plugins** instalados numa
+O getbrolls aceita extensões locais em Python: **plugins** instalados numa
 pasta pessoal, com opt-in explícito, que contribuem fontes de busca
 (`providers`), rotas que trazem o arquivo (`routes`), comandos próprios
 (`commands`) e presets de licença. Este documento é a referência do SDK; para
@@ -28,6 +28,11 @@ e funcionais, veja
 (API autenticada, rota de `fetch`); para os contratos experimentais de export,
 [`examples/plugins/hyperframes`](../examples/plugins/hyperframes/README.md)
 (exportador de roteiro para um projeto HyperFrames e resolvedor do acervo `media-use`).
+
+O contrato da CLI que um comando de plugin herda (stdout, stderr, códigos de saída e
+de erro, avisos) está em [CLI_CONTRACT.md](CLI_CONTRACT.md); os formatos de arquivo
+que um plugin lê ou grava, com as versões e os nomes reservados, em
+[SCHEMAS.md](SCHEMAS.md).
 
 O princípio: **o plugin traz o arquivo; o core decide o resto.** Aprovação,
 permit, hash, corte, ledger e entrega continuam só do core.
@@ -71,7 +76,7 @@ Campos de `getbrolls-plugin.json`:
 | `name` | string | sim | Nome de exibição, até 80 caracteres. |
 | `description` | string | não | Até 500 caracteres. |
 | `version` | string | sim | `X.Y.Z` do próprio plugin. |
-| `sdk_api` | inteiro | sim | Versão do contrato do SDK que o plugin fala; hoje `1`. Diferente da versão instalada do Get B-rolls, o plugin é recusado. |
+| `sdk_api` | inteiro | sim | Versão do contrato do SDK que o plugin fala; hoje `1`. Diferente da versão instalada do getbrolls, o plugin é recusado. |
 | `requires_getbrolls` | string | sim | Faixa de compatibilidade, ex.: `">=2.5,<3"`. |
 | `entry` | string | sim | Nome do arquivo de entrada na raiz da pasta do plugin: `[A-Za-z0-9_]{1,64}\.py` (sem subpasta, hífen ou ponto extra). |
 | `contributes` | objeto | não (padrão `{}`) | Listas por tipo de contribuição — veja abaixo. Chave ausente vale lista vazia. |
@@ -80,7 +85,7 @@ Campos de `getbrolls-plugin.json`:
 | `license` | string | não | Licença do código do plugin, como identificador ou expressão SPDX curta (`MIT`, `MIT OR Apache-2.0`), até 128 caracteres. |
 | `author` | string | não | Quem mantém o plugin, até 120 caracteres. |
 | `keywords` | lista | não | Até 10 palavras-chave únicas, `a-z0-9` e hífen (ex.: `["acervo", "stock-video"]`). |
-| `platforms` | lista | não | Sistemas em que o plugin roda: subconjunto não vazio de `darwin`, `linux` e `windows`. Ausente vale todos. Fora da lista, o plugin fica `incompatible` e o `install` o recusa. |
+| `platforms` | lista | não | Sistemas em que o plugin roda: subconjunto não vazio de `darwin` (macOS), `linux` e `windows` — não `macos`. Ausente vale todos. Fora da lista, o plugin fica `incompatible` e o `install` o recusa. |
 | `requires` | objeto | não | O que o plugin precisa fora dele — veja [Dependências (`requires`)](#dependências-requires). |
 | `metadata` | objeto | não | Objeto JSON livre para ferramentas de terceiros (catálogo, hub). O core confere que é um objeto e não lê o conteúdo. |
 
@@ -140,7 +145,7 @@ escrito para uma versão mais nova nunca é carregado pela metade numa mais velh
 
 ### Dependências (`requires`)
 
-`requires` diz o que o plugin precisa e o get-brolls não traz. Chave desconhecida
+`requires` diz o que o plugin precisa e o getbrolls não traz. Chave desconhecida
 recusa o manifesto; toda chave é opcional:
 
 ```json
@@ -159,22 +164,22 @@ recusa o manifesto; toda chave é opcional:
 - **`binaries`** (até 20): nomes de executável procurados no `PATH`, nunca um
   caminho (`node`, não `/usr/bin/node`).
 - **`runtimes`** (até 20): `{nome: faixa de versão}`. `python` é conferido contra
-  o interpretador que roda o get-brolls; os outros ficam como declarados.
+  o interpretador que roda o getbrolls; os outros ficam como declarados.
 - **`services`** (até 10): nomes informativos de serviços externos (`postgres`).
 
-Faltar um requisito nunca impede o plugin de carregar: o get-brolls não instala
+Faltar um requisito nunca impede o plugin de carregar: o getbrolls não instala
 nada nem executa os binários do plugin para conferir. `plugins --action check` traz
 o bloco `requires` com o que foi conferido (`python[].installed`, `binaries[].found`,
 `runtimes[].ok`, que fica `null` quando não é verificado) e, em `hint`, o comando
 para instalar os pacotes Python que faltam: no pacote,
 `uv tool install getbrolls --with "<requisito>"` (ou `pipx inject getbrolls
 "<requisito>"`); no checkout, `<python> -m pip install "<requisito>"` com o mesmo
-interpretador que roda o get-brolls. O `doctor` mostra o mesmo bloco em cada linha
+interpretador que roda o getbrolls. O `doctor` mostra o mesmo bloco em cada linha
 de `plugins[]` e, quando algo falta, uma linha `plugins_requires` no `summary`; o
 `ready` não muda. A conferência usa o nome da distribuição, que pode diferir do
 nome do `import` (`psycopg[binary]` instala o módulo `psycopg`; `Pillow`, o `PIL`).
 Ids reservados: além de `core`, os ids `cliente`, `catalogo`, `direcao`,
-`template` e `projeto` são do get-brolls. O manifesto com um deles é recusado, e
+`template` e `projeto` são do getbrolls. O manifesto com um deles é recusado, e
 por isso `install`, `enable` e `new` também recusam: um plugin chamado
 `direcao` seria dono da diretiva `[direcao:x]` no roteiro.
 
@@ -451,7 +456,7 @@ if not token:
 Eventos do log estruturado relacionados a plugins:
 `plugin_loaded` (plugin, versão, providers, presets e a quantidade de rotas e
 comandos registrados), `plugin_skipped`, `plugin_failed`, `plugin_enabled`,
-`plugin_disabled`, `plugin_installed`, `plugin_updated`,
+`plugin_disabled`, `plugin_installed`, `plugin_updated`, `plugin_removed`,
 `plugin_request_refused`, `plugin_path_refused`, `plugin_call_failed`,
 `plugin_candidate_sanitized`, `plugin_route` (plugin, rota, estágio, bytes, ms)
 e `plugin_command` (plugin, comando, quantidade de argumentos, ms). Nenhum
@@ -469,13 +474,13 @@ api.command("recentes", recentes, "Lista os vídeos mais recentes da pasta")
 
 - `gb x --list` lista os comandos dos plugins habilitados, lendo só o
   manifesto (nenhum código roda).
-- `getbrolls capabilities --json` (no checkout, `python3 scripts/gb.py capabilities --json`) descreve, em JSON, os comandos do get-brolls, os `plugin_commands` habilitados e os `plugins_problems` (plugin inválido, com falha ou suspenso, com o motivo), lendo só o manifesto: plugins e agentes descobrem o que existe sem ler `--help`.
+- `getbrolls capabilities --json` (no checkout, `python3 scripts/gb.py capabilities --json`) descreve, em JSON, os comandos do getbrolls, os `plugin_commands` habilitados os `plugins_problems` (plugin inválido, com falha ou suspenso, com o motivo) e os `marketplaces` fixados (nome, commit, plugins, `allowed`, `problem`; ilegível vira `marketplaces_error`), lendo só o manifesto e o cache dos índices: plugins e agentes descobrem o que existe sem ler `--help`.
 - `gb x <plugin> <comando> [--project P] [--arg chave=valor]...` carrega os
   plugins, chama `handler(args, ctx)` e imprime `{"plugin", "command",
   "result"}`. `args` é um dicionário de texto; chave repetida é erro.
 - `ctx.plugin_id`, `ctx.project` (ou `None`), `ctx.candidates()` (cópias dos
   candidatos do projeto) e `ctx.brief()` (cópia do JSON do BRIEF.md, ou
-  `None`). Com `ROTEIRO.md` do get-brolls (`type: roteiro`), beat aposentado
+  `None`). Com `ROTEIRO.md` do getbrolls (`type: roteiro`), beat aposentado
   pelo roteiro (`"retired": true`) sai de `beats`: o plugin vê os mesmos beats
   que o `status`. `ctx.retired_beat_ids()` devolve exatamente os ids que saíram,
   na ordem do BRIEF.md; beat marcado `retired` com id fora do formato continua
@@ -492,7 +497,8 @@ api.command("recentes", recentes, "Lista os vídeos mais recentes da pasta")
 
 Um comando de plugin pode ler e gravar os arquivos de análise de mídia do projeto
 (`analysis/`, formatos em `schemas/`: `transcript`, `scenes`, `silence`,
-`speakers`, `visual` e `markers`) por `ctx.analysis`:
+`speakers`, `visual` e `markers`; mapa, `media_id` e tempo em
+[SCHEMAS.md](SCHEMAS.md#análise-de-mídia-analysis)) por `ctx.analysis`:
 
 ```python
 def transcrever(args: dict, ctx: CommandContext) -> dict:
@@ -525,7 +531,7 @@ Sem ela, ou sem `--project`, `write` e `write_markers` levantam `ApiError`
 e usa só a trava `analysis/.lock`; o `x` continua sem tomar a trava do projeto.
 
 `project_write` é uma declaração auditável, não um sandbox: o plugin roda no mesmo
-processo do get-brolls, e a permissão diz o que ele se propõe a gravar pela API do
+processo do getbrolls, e a permissão diz o que ele se propõe a gravar pela API do
 core, conferido no enable e no diff do update. Ela não impede um plugin mal
 intencionado de escrever por conta própria; o que protege é o opt-in por id e o
 pin do conteúdo.
@@ -725,7 +731,7 @@ nada é gravado.
 
 ### Evolução do plano de export
 
-O plano muda de versão em versão do Get B-rolls. Estas regras dizem o que um
+O plano muda de versão em versão do getbrolls. Estas regras dizem o que um
 exportador pode esperar:
 
 - **Chave nova não quebra.** O exportador ignora chave desconhecida em qualquer
@@ -829,24 +835,66 @@ python3 scripts/gb.py plugins --action install --source <pasta-ou-url-git>
 python3 scripts/gb.py plugins --action install --source <pasta-ou-url-git> --yes --expect <sha256>
 python3 scripts/gb.py plugins --action update --id <id>
 python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
+python3 scripts/gb.py plugins --action install --source <url-git> --ref <branch-ou-tag> --subdir <pasta>
+python3 scripts/gb.py plugins --action install --source <url-git> --commit <sha> --yes --expect <sha256>
+python3 scripts/gb.py plugins --action update --id <id> --commit <sha-anterior>
 ```
 
+- `--commit <sha>` fixa o commit (o sha completo, 40 caracteres hexadecimais
+  minúsculos; abreviado ou maiúsculo é recusado). Sem ele, `--ref` (branch, tag
+  ou `refs/...`; padrão `HEAD`) é resolvida na origem e a prévia mostra o commit
+  que ela aponta agora. Um nome que é branch e tag ao mesmo tempo é ambíguo:
+  use `refs/heads/<nome>` ou `refs/tags/<nome>`. `--commit`, `--ref` e
+  `--subdir` só valem com `--source` (senão, erro de uso, saída 2).
+- A origem gravada em `plugins.json` (`sources.<id>`) guarda `source`,
+  `commit`, `ref` e `subdir`. `update --id` busca de novo a mesma ref e
+  subpasta; `update --id <id> --commit <sha>` fixa outro commit (inclusive um
+  anterior, para voltar atrás), sempre com a mesma prévia e `--expect`. O `diff`
+  da prévia traz `permissions_added` (o que é novo em `network`, `env`,
+  `paths` e `project_write` — uma pasta mais larga em `paths` conta como nova) e
+  `permissions_increased` (`true` quando alguma permissão foi acrescentada).
+
 - `--source` aceita uma pasta local (copiada sem `.git`/`__pycache__`), uma
-  pasta que é repositório git ou uma URL git (`https://…` sem usuário/senha, ou
-  `git@host:caminho`). Um repositório nunca é `checkout`ado: o clone usa
-  `--no-checkout` e o conteúdo é materializado por nós, um blob por vez, direto
-  de `git ls-tree`/`git cat-file blob` — comandos que nunca aplicam filtro
+  pasta que é repositório git (com `.git` ou *bare*) ou uma URL git (`https://…`
+  sem usuário/senha, ou `git@host:caminho`). Repositório é sempre fixado por
+  commit: sem `--commit`, a ref (`HEAD` por padrão) é resolvida na origem com
+  `git ls-remote`, e só aquele commit é buscado (`git init` + `git fetch --depth 1
+  <sha>`; servidor que não entrega commit por sha recebe `fetch --depth 1 <ref>`,
+  e a ponta tem que ser o mesmo sha, senão o install recusa). Um repositório
+  nunca é `checkout`ado: o conteúdo é materializado por nós, um blob por vez,
+  direto de `git ls-tree`/`git cat-file blob` — comandos que nunca aplicam filtro
   `clean`/`smudge` nem hook, ao contrário de um `checkout` de verdade — com
-  `GIT_TERMINAL_PROMPT=0`; só o que está commitado entra. O clone fica numa
-  pasta de staging própria e a árvore é escrita em outra, que nunca tem `.git`.
+  `GIT_TERMINAL_PROMPT=0`; só o que está commitado entra (numa pasta local que é
+  repositório, a prévia avisa que o que não foi commitado fica de fora). O clone
+  fica numa pasta de staging própria e a árvore é escrita em outra, que nunca tem
+  `.git`. O git roda só com os transportes `https` e `ssh` (e `file` apenas para
+  a pasta local indicada), `transfer.fsckObjects=true`, sem template de `init` e
+  sem hooks.
   É recusado: link simbólico, submódulo (gitlink), qualquer caminho com um
   componente de controle de versão (`.git`, `.hg`, `.svn`, também com ponto ou
   espaço sobrando e os nomes curtos `GIT~1`/`HG~1`/`SVN~1`), `:` ou `\` em
   qualquer componente, colisão de maiúsculas/minúsculas entre dois caminhos,
   mais de 2000 arquivos e mais de 200 MB (no total ou num arquivo só).
-- Uma pasta local só é tratada como repositório git quando `.git` é uma pasta
-  de verdade (um arquivo `.git` de worktree/submódulo ou um link apontariam
-  para outro repositório). Pasta local comum é copiada sem `.git`/`.hg`/`.svn`
+- `--subdir <caminho>` instala só a pasta `<caminho>` de dentro do repositório
+  (um monorepo com vários plugins, por exemplo): ela tem que ser uma pasta
+  (`tree`) naquele commit, e o caminho só aceita letras, dígitos e `. _ -`
+  separados por `/`, sem `.`/`..` e sem passar por `.git`/`.hg`/`.svn` em
+  qualquer grafia (`.GIT` também). Numa pasta comum, `--subdir` é recusado:
+  aponte `--source` direto para a pasta do plugin. O sha256 é o mesmo de uma
+  cópia comum daquela pasta.
+- Também são recusados, vindo de git ou de pasta: ponteiro do Git LFS (o
+  install nunca roda o LFS, então chegaria o ponteiro, não o arquivo) e nome de
+  arquivo fora da forma Unicode NFC ou que não é UTF-8 (o mesmo nome viraria
+  bytes diferentes em outro sistema, e o sha256 mudaria). O conteúdo é o blob
+  cru do commit: `core.autocrlf`, `eol` e filtros do `.gitattributes` não mudam
+  nada, então o sha256 é o mesmo em macOS, Linux e Windows.
+- Uma pasta local é tratada como repositório git quando `.git` é uma pasta de
+  verdade ou quando é o arquivo `gitdir: …` de uma worktree (ou submódulo) que o
+  próprio git confirma: o gitdir existe, a raiz da worktree é a própria pasta e,
+  numa worktree, o gitdir aponta de volta para ela — então `install --source` e
+  `marketplace-add --source` aceitam uma worktree (vale o commit dela). Um link
+  no lugar do `.git` ou um gitfile quebrado ou copiado de outra pasta não contam:
+  a pasta é copiada como pasta comum. Pasta local comum é copiada sem `.git`/`.hg`/`.svn`
   de topo, `__pycache__`/`.pyc` e lixo de SO; uma pasta de controle de versão
   aninhada é recusada.
 - No Windows, `https://` usa a configuração de TLS do Git para Windows que está
@@ -871,6 +919,137 @@ python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
   diferença de versão, de permissões e de arquivos (adicionados, removidos,
   alterados) contra a origem gravada. Nenhum código do plugin roda durante
   install/update — só o manifesto é lido.
+
+## Marketplaces
+
+Um marketplace é um repositório git com `getbrolls-marketplace.json` na raiz
+(formato em `schemas/marketplace_index.schema.json`). O core lê o índice só no
+commit fixado e guarda uma cópia conferida por sha256; nenhum comando de
+marketplace roda código de plugin.
+
+```sh
+python3 scripts/gb.py plugins --action marketplace-add --source <url-git-ou-repo-local>
+python3 scripts/gb.py plugins --action search --query <texto>
+python3 scripts/gb.py plugins --action install --id <id>@<marketplace>
+python3 scripts/gb.py plugins --action install --id <id>@<marketplace> --yes --expect <sha256>
+```
+
+- `marketplace-add` fixa o índice num commit (o de `--commit`, ou o que
+  `--ref`, padrão `HEAD`, aponta agora). `marketplace-list` e `search` só leem o
+  cache, sem rede; `marketplace-update` busca a ref de novo e mostra o que mudou;
+  `marketplace-remove` tira o marketplace (os plugins instalados dele ficam).
+- `install --id <id>@<marketplace>` acha a entrada no índice fixado e instala
+  pelo mesmo caminho do `--source`: repositório e commit da entrada (`"."` é o
+  repositório do próprio marketplace), materializado sem `checkout`. `--source`,
+  `--commit`, `--ref` e `--subdir` junto com `<id>@<marketplace>` são erro de uso.
+- Sem `--yes` a resposta é **sempre** a prévia, mesmo com `--expect`: ela traz
+  `marketplace` (nome, commit do índice, `tier`, `tier_verified`, `tier_note`),
+  `permissions_added`, `expect` (o valor a confirmar) e `next` (o comando de
+  confirmação). `--yes` sem `--expect` é erro de uso (exit 2).
+- Plugin que pede qualquer permissão: o `expect` **não** é o `content_sha256` do
+  índice, e sim o mesmo valor derivado do update que acrescenta permissão
+  (sha256 do conteúdo amarrado às permissões); confirmar com o sha do índice é
+  recusado. Plugin sem permissão confirma com o sha do índice.
+- Commit fixado com `ref` (na entrada ou no `--source`) que não é a ponta dela
+  na origem vira aviso: confira se o commit vem do repositório certo.
+- Antes de buscar qualquer coisa: o perfil de workspace tem que permitir o
+  marketplace; entrada retirada (`yanked`) é recusada; `sdk_api`,
+  `requires_getbrolls` e `platforms` da entrada têm que servir nesta instalação.
+  Um id antigo de `renames` é recusado com o comando do id atual; `deprecated`
+  vira aviso na prévia.
+- Depois de materializar: sha256 do conteúdo diferente do `content_sha256` da
+  entrada é recusa dura, sem prévia nova; manifesto que diverge da entrada em
+  `id`, `version`, `sdk_api`, `requires_getbrolls`, `permissions`,
+  `contributes`, `requires`, `platforms` ou `license` também. Divergência só na
+  `description` vira aviso.
+- A origem gravada em `plugins.json` ganha `marketplace`, `tier` e
+  `index_commit` (o commit do índice usado).
+- O `tier` (`official`, `verified`, `community`) é o que o índice declara:
+  aparece na prévia, no `search`, no `update --all` e na origem, sempre com
+  `tier_verified` (verdadeiro só no índice oficial: nome `getbrolls-plugins` e
+  origem fixada num dos repositórios de `marketplace.OFFICIAL_INDEX_REPOS`) e
+  `tier_note` ("declarado pelo marketplace, não verificado" fora dele). Nunca
+  afrouxa nenhuma das conferências acima. `marketplace-add` de outra origem
+  avisa, e cada marketplace traz `official` em `marketplace-list`,
+  `capabilities` e `doctor`.
+- `marketplace-update` lista em `diff.changed` as entradas cujo commit ou
+  `content_sha256` mudou (de/para), mesmo sem versão nova. Um commit do índice
+  que não descende do fixado (volta atrás ou história reescrita) é erro de uso
+  sem `--allow-rollback`; com ele, a linha sai com `rollback: true`. Sem
+  `--marketplace`, o erro de um marketplace não para os outros: sai em `error`
+  na linha dele e o nome em `failed`. No `search`, um cache que não confere fica
+  de fora com o motivo em `problems`.
+- `update --id <id>` de um plugin instalado por marketplace usa a entrada do
+  índice **fixado** (rode `marketplace-update` antes para ver novidade); a única
+  rede é a materialização. Mesmo commit e subpasta da origem gravada: responde
+  `up_to_date: true`. As mesmas recusas do install valem aqui (marketplace fora
+  do teto ou removido, entrada `yanked`, incompatível, sha256 ou manifesto que
+  não batem). Um id renomeado nunca é trocado sozinho: a resposta diz como
+  remover o antigo e instalar o novo. `--commit` é erro de uso (o commit vem do
+  índice; para voltar atrás, `marketplace-update --commit`). Plugin desabilitado
+  continua desabilitado.
+- O `diff` da prévia traz `permissions_added` e `permissions_increased`. Quando
+  alguma permissão aumenta, o `expect` da prévia **não** é o sha256 do índice:
+  é um valor derivado que amarra o sha256 do conteúdo às permissões
+  acrescentadas e que o índice não traz. Confirmar com o sha256 do índice é
+  recusado. O valor não é segredo (um agente consegue calculá-lo): atrapalha
+  quem copia o sha do índice, mas não garante leitura humana.
+- `update --all` só mostra a prévia (sem rede, sem mudar nada): para cada
+  plugin instalado por marketplace com entrada nova, versão de/para, tier,
+  `permissions_added`, `auto_update_eligible` e o comando da prévia por id; mais
+  `up_to_date`, `skipped` (com o motivo, ex.: `yanked`) e `outside_marketplace`.
+  `auto_update_eligible` é só a política exibida: tier `official` ou `verified`
+  verificado (só no índice oficial) e nenhuma permissão nova; `community` e tier
+  só declarado nunca são elegíveis. `--all` com `--yes`,
+  `--expect` ou `--id` é erro de uso; aplicar em lote fica para uma versão futura.
+- `plugins --action list` e cada linha de `plugins[]` do `doctor` trazem
+  `origin` (`source`, `commit`, `ref`, `subdir`, `marketplace`, `tier`,
+  `index_commit`, `tier_verified`, `tier_note`; `null` para plugin copiado à mão) e `marketplace_notice`, o
+  que o índice fixado diz hoje do plugin instalado: retirado (`yanked`),
+  obsoleto, renomeado, fora do índice ou marketplace removido (`null` quando não
+  há nada a dizer), sem rede e sem caminho da máquina. O `doctor` ganha
+  `marketplaces` (nome, commit, plugins, `allowed`, `official`, `problem`) quando
+  há algum; `capabilities` sempre traz a
+  mesma lista.
+- **Teto do perfil.** Por padrão vale `profile.marketplace_ceiling()`, lido a
+  cada checagem: `None` não restringe; um conjunto (mesmo vazio) é o teto.
+  `getbrolls.sdk.marketplace.set_policy(allowed)` troca esse teto por um
+  `frozenset` de nomes ou por `None` (sem restrição) até
+  `set_policy(marketplace.PROFILE_POLICY)` devolver a decisão ao perfil; texto
+  solto no lugar do conjunto é `TypeError`. Fora do teto, o marketplace não é
+  adicionado nem atualizado por nome, some de `search`, é recusado no `install`
+  e no `update`, e aparece com `allowed: false` em `marketplace-list`,
+  `capabilities` e `doctor`. O perfil só estreita; ele nunca acrescenta um
+  marketplace.
+- **Limite conhecido:** para plugin sem permissão, o `expect` vem pré-preenchido
+  do índice, e o valor derivado dos plugins com permissão também pode ser
+  calculado por um agente: nenhum dos dois garante que alguém leu a prévia. Por
+  isso o `install` sem `--yes` sempre para na prévia, e a skill orienta o agente
+  a mostrá-la à pessoa antes de rodar o `next`.
+- Toda ação de `plugins` que grava (`enable`, `disable`, `install`, `update`,
+  `remove`, `marketplace-add|-remove|-update`) segura `$GB_HOME/.plugins.lock`;
+  outro processo no meio sai com `LOCKED` (exit 1). Flag faltando ou com formato
+  errado é `USAGE_ERROR` (exit 2); conteúdo ruim é exit 1.
+
+## Remover
+
+```sh
+python3 scripts/gb.py plugins --action remove --id <id>
+python3 scripts/gb.py plugins --action remove --id <id> --yes
+```
+
+- Sem `--yes`, só mostra o que sai: a pasta `plugins/<id>` (id, versão,
+  status) e o que o `plugins.json` guarda do plugin (`enabled`, `last_pins`,
+  `sources`). Com `--yes`, apaga a pasta e essas três entradas. Não há
+  `--expect` (remover não aprova conteúdo); passá-lo é erro de uso.
+- `plugin-data/<id>` (estado e cache do plugin) fica; a resposta mostra onde
+  (`kept.plugin_data`), para apagar à mão se quiser.
+- Se `plugins/<id>` é um link simbólico (ou junction), só o link sai; o alvo
+  não é tocado. Um id que só sobrou no `plugins.json`, sem pasta, também pode
+  ser removido. `plugins.json` corrompido recusa antes de mexer em qualquer coisa.
+- Se a pasta não sai do lugar, nada muda (nem o `plugins.json`). Se ela sai mas
+  não é apagada inteira, o plugin é removido do `plugins.json` e a resposta traz
+  `leftover` (o `.removed-*` que sobrou), que a próxima varredura do install apaga.
 
 ## Opt-in e confiança
 
@@ -931,7 +1110,12 @@ python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
   variável no ambiente, `plugins --action list` traz `"selection":
   "GB_PLUGINS"` e cada plugin fora dela sai `disabled` com o motivo
   "desligado por GB_PLUGINS"; a busca por uma fonte dele manda ajustar
-  `GB_PLUGINS`, porque `enable` não muda essa seleção.
+  `GB_PLUGINS`, porque `enable` não muda essa seleção. Quando quem pôs a
+  seleção foi o `plugins` de um `getbrolls.toml` confiável, o `list` traz
+  `"selection": "profile"` e o motivo é "desligado pelo perfil do workspace
+  (getbrolls.toml `plugins`)"; a dica manda acrescentar o id ao perfil. O
+  `install` que termina com o plugin fora da seleção avisa
+  `PLUGIN_SELECTION_BLOCKS`.
 - `doctor` mostra o resultado real do carregamento em `plugins[]` e, quando
   algum plugin está `failed`/`suspended`/`invalid`/`incompatible`, uma linha
   `plugins` no `summary`. `doctor --live` também busca (limite 1) em cada
@@ -942,7 +1126,7 @@ python3 scripts/gb.py plugins --action update --id <id> --yes --expect <sha256>
   PASTA_LOCAL_DIR…") aparece saneado no `detail`.
 - Um plugin que falha ao carregar (manifesto inválido, exceção em
   `register()`, hash divergente) fica marcado como `failed`/`suspended` e o
-  resto do Get B-rolls — built-ins inclusive — continua funcionando normalmente.
+  resto do getbrolls — built-ins inclusive — continua funcionando normalmente.
 - Toda chamada ao código do plugin (`register`, `search`/`resolve`/`refresh`,
   `Route.prepare`, handler de comando, o `plugins check`) passa pelo mesmo
   isolamento: qualquer exceção — inclusive `SystemExit`, `GeneratorExit`,

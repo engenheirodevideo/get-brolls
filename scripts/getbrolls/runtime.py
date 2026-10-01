@@ -251,6 +251,20 @@ def scrub_home(text):
     return value
 
 
+_URL_PATTERN = re.compile(r'https?://[^\s"<>]*')
+_HOST_CHAR = re.compile(r"[A-Za-z0-9]")
+
+
+def _omit_url(match):
+    """A URL de verdade vira "[URL omitida]"; a forma citada num texto nosso fica.
+
+    "https://…", "https://," ou "https://<host>" não têm host nenhum (sem letra nem
+    dígito antes da primeira `/`): é exemplo de ajuda, não dado de quem chamou."""
+    url = match.group(0)
+    host = url.split("://", 1)[1].split("/", 1)[0]
+    return url if _HOST_CHAR.search(host) is None else "[URL omitida]"
+
+
 def redact(text):
     """Strip provider keys, secret-shaped headers/query values and URLs.
 
@@ -264,7 +278,7 @@ def redact(text):
         if secret:
             value = value.replace(secret, "[REDACTED]")
     value = _HEADER_PATTERN.sub(lambda m: f"{m.group(1)}: [REDACTED]", value)
-    value = re.sub(r'https?://[^\s"<>]+', "[URL omitida]", value)
+    value = _URL_PATTERN.sub(_omit_url, value)
     value = _QUERY_SECRET_PATTERN.sub(lambda m: f"{m.group(1)}=[REDACTED]", value)
     value = _BEARER_PATTERN.sub("Bearer [REDACTED]", value)
     return value[:1200]
@@ -373,6 +387,8 @@ READ_ONLY_ACTIONS = {
     ("roteiro", "plan"),
     ("assets", "list"),
     ("assets", "where"),
+    ("plugins", "marketplace-list"),
+    ("plugins", "search"),
 }
 
 # (comando, ação) que grava só sob a própria trava, nunca sob a do projeto: `analysis

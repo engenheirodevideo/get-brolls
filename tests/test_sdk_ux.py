@@ -123,7 +123,7 @@ class ReenableSuspendedTests(LoaderTestCase):
         self._suspend()
         env = {"GB_HOME": str(self.home)}
         preview = run_cli("plugins", "--action", "enable", "--id", "demo", env=env)
-        err = run_cli("plugins", "--action", "enable", "--id", "demo", "--yes", expect=1, env=env)
+        err = run_cli("plugins", "--action", "enable", "--id", "demo", "--yes", expect=2, env=env)
         self.assertIn("--expect", err["error"])
         sha = preview["plugin"]["sha256"]
         done = run_cli("plugins", "--action", "enable", "--id", "demo", "--yes", "--expect", sha, env=env)
@@ -632,9 +632,9 @@ class PluginsEnvelopeTests(LoaderTestCase):
 
     def test_plugins_and_x_user_errors_have_no_traceback_or_recovery_hint(self):
         env = {"GB_HOME": str(self.home)}
-        for args in (("plugins", "--action", "enable"), ("x", "nao_existe", "cmd")):
+        for args, code in ((("plugins", "--action", "enable"), 2), (("x", "nao_existe", "cmd"), 1)):
             with self.subTest(args=args):
-                err = run_cli(*args, expect=1, env=env)
+                err = run_cli(*args, expect=code, env=env)
                 self.assertNotIn("traceback", err)
                 self.assertNotIn("hint", err)
                 self.assertTrue(err["error"])

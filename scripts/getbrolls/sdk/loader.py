@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from .. import _paths, logs
+from ..errors import UsageError
 from ..ledger import atomic_write
 from ..rules import home_dir
 from . import guard, registry_state
@@ -23,7 +24,7 @@ from .api import PluginApi
 from .files import TOP_LEVEL_VCS, counted_files, resolved_roots
 from .files import is_link as _is_link  # `export_folder`/`export_plan` leem `loader._is_link`
 from .guard import without_prefix
-from .manifest import ManifestError, compatibility_problem, read_manifest
+from .manifest import PERMISSION_KEYS, ManifestError, compatibility_problem, read_manifest
 
 _log = logs.get("sdk")
 
@@ -40,6 +41,12 @@ EXPECT_NOTE = (
 # Respostas de sucesso: nada para rodar de novo.
 DONE_NOTE = "Pronto. " + NOT_SANDBOX
 GB_PLUGINS_REASON = "desligado por GB_PLUGINS (a variável escolhe os plugins desta sessão, sem mexer no plugins.json)"
+# O mesmo filtro, quando quem o pôs foi o teto `plugins` de um getbrolls.toml confiável.
+PROFILE_PLUGINS_REASON = (
+    "desligado pelo perfil do workspace (getbrolls.toml `plugins`), que escolhe os plugins desta sessão "
+    "sem mexer no plugins.json"
+)
+SELECTION_REASONS = (GB_PLUGINS_REASON, PROFILE_PLUGINS_REASON)
 # `GB_PLUGINS` só FILTRA: escolhe, entre os plugins habilitados com pin válido,
 # os desta sessão. Nunca carrega um plugin sem pin, nunca habilitado ou adulterado.
 GB_PLUGINS_UNPINNED_REASON = (
@@ -223,6 +230,16 @@ def permissions_diff(before, after):
     return {"from": before, "to": after}
 
 
+def permissions_added(before, after):
+    """`{chave de permissions: itens de `after` que não estavam em `before`}`, para
+    TODAS as chaves (`network`, `env`, `paths`, `project_write`). Uma pasta nova em
+    `paths` conta mesmo quando só alarga uma que já existia (`~/Midia` no lugar de
+    `~/Midia/sfx`): o que o plugin passa a alcançar mudou. `before` `None`
+    (desconhecido) conta tudo de `after` como novo."""
+    before = before or {}
+    return {key: [item for item in after.get(key, []) if item not in before.get(key, [])] for key in PERMISSION_KEYS}
+
+
 ROOTS_FIELD = "roots_resolved"
 
 
@@ -299,7 +316,7 @@ def check_expect(expect, sha):
     já materializado, não de um manifesto solto) tem que ser reapresentado, ou
     a pessoa pode estar confirmando um conteúdo diferente do que viu."""
     if not expect:
-        raise ValueError("--yes precisa de --expect <sha256>; rode a prévia (sem --yes) de novo e confira o valor.")
+        raise UsageError("--yes precisa de --expect <sha256>; rode a prévia (sem --yes) de novo e confira o valor.")
     if expect != sha:
         raise ValueError(
             "O sha256 de --expect não bate com o conteúdo agora: o valor foi copiado errado, ou a origem "
@@ -311,11 +328,17 @@ def _valid_pin(entry):
     return isinstance(entry, dict) and isinstance(entry.get("sha256"), str) and isinstance(entry.get("version"), str)
 
 
+# Chaves opcionais da origem gravada em `sources.<id>`, todas `str` ou `null`: a
+# ref e a subpasta de um repositório git e, para quem instala de um marketplace, o
+# nome dele, o tier da entrada e o commit do índice usado.
+ORIGIN_OPTIONAL_KEYS = ("ref", "subdir", "marketplace", "tier", "index_commit")
+
+
 def _valid_origin(entry):
     return (
         isinstance(entry, dict)
         and isinstance(entry.get("source"), str)
-        and (entry.get("commit") is None or isinstance(entry.get("commit"), str))
+        and all(entry.get(key) is None or isinstance(entry.get(key), str) for key in ("commit", *ORIGIN_OPTIONAL_KEYS))
     )
 
 
@@ -349,9 +372,14 @@ def read_state():
     raise ValueError(f"plugins.json inválido em {path}. Corrija ou apague o arquivo para recomeçar sem plugins.")
 
 
-def _write_state(data):
+def write_state(data):
+    """Grava `plugins.json` (troca atômica), criando `$GB_HOME` se preciso."""
     home_dir().mkdir(parents=True, exist_ok=True)
-    atomic_write(state_path(), json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+    atomic_write(state_path(), json.dumps(data, ensure_ascii=False, indent=2) + "\n", unique=True)
+
+
+def _write_state(data):
+    write_state(data)
 
 
 def env_selection():
@@ -375,8 +403,37 @@ def _status(manifest, folder, selection, state):
     if pinned.get("sha256") != folder_digest(folder):
         return "suspended", "O conteúdo do plugin mudou desde o enable; revise e habilite de novo."
     if selection is not None and manifest["id"] not in selection:
-        return "disabled", GB_PLUGINS_REASON
+        return "disabled", selection_reason()
     return "enabled", None
+
+
+def selection_source():
+    """Quem escolhe os plugins da sessão: `profile` (teto do getbrolls.toml), `GB_PLUGINS` ou `plugins.json`."""
+    if env_selection() is None:
+        return "plugins.json"
+    return "profile" if _paths.from_profile("GB_PLUGINS") else "GB_PLUGINS"
+
+
+def selection_reason():
+    """Motivo de `disabled` para quem ficou fora da seleção da sessão, com a origem certa."""
+    return PROFILE_PLUGINS_REASON if selection_source() == "profile" else GB_PLUGINS_REASON
+
+
+def selection_blocks(plugin_id):
+    """Aviso quando a seleção da sessão (perfil ou GB_PLUGINS) vai deixar `plugin_id` desligado; senão None."""
+    selection = env_selection()
+    if selection is None or plugin_id in selection:
+        return None
+    if selection_source() == "profile":
+        return (
+            f"O plugin {plugin_id} foi instalado e habilitado, mas o perfil do workspace (getbrolls.toml `plugins`) "
+            "não o inclui: ele fica desligado nesta sessão até você acrescentá-lo lá (e confiar de novo com "
+            "profile trust)."
+        )
+    return (
+        f"O plugin {plugin_id} foi instalado e habilitado, mas GB_PLUGINS não o inclui: ele fica desligado "
+        "nesta sessão até você acrescentá-lo à variável (ou tirá-la do ambiente)."
+    )
 
 
 def _invalid_row(ident, reason):
@@ -641,8 +698,8 @@ def status_hint(row, default):
     """O que fazer com um plugin indisponível: fora de `GB_PLUGINS`, a saída é a
     variável — `enable` não resolve; quando o teto veio do `plugins` do getbrolls.toml,
     a saída é o perfil; nos outros casos, `default`."""
-    if row.get("status") == "disabled" and row.get("reason") == GB_PLUGINS_REASON:
-        if _paths.from_profile("GB_PLUGINS"):
+    if row.get("status") == "disabled" and row.get("reason") in SELECTION_REASONS:
+        if row.get("reason") == PROFILE_PLUGINS_REASON or _paths.from_profile("GB_PLUGINS"):
             return (
                 f"O perfil getbrolls.toml deste workspace não inclui {row['id']} em `plugins`; acrescente-o lá "
                 "(e confie de novo com profile trust) para usá-lo nesta sessão; habilitar de novo não muda "

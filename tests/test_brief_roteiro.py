@@ -508,10 +508,12 @@ class ZeroBeatsWithRoteiroTests(unittest.TestCase):
         (self.project / "BRIEF.md").write_text(body, encoding="utf-8")
         (self.project / "ROTEIRO.md").write_text(ROTEIRO_HEAD, encoding="utf-8")
 
-    def test_status_points_to_sync(self):
+    def test_status_points_to_check_then_sync(self):
+        # Roteiro sem revisão: o sync recusaria, então o degrau é o check (que mostra o hash).
         status = run_cli(self, "status", "--project", self.project)
-        self.assertEqual(status["summary"]["do"]["step"], "roteiro-sync")
-        self.assertIn("roteiro --action sync", status["summary"]["do"]["command"])
+        self.assertEqual(status["summary"]["do"]["step"], "roteiro-check")
+        self.assertIn("roteiro --action check", status["summary"]["do"]["command"])
+        self.assertIn("roteiro --action review", status["summary"]["next"])
         self.assertIn("roteiro --action sync", status["summary"]["next"])
 
     def test_plain_brief_points_to_sync(self):

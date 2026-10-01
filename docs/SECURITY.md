@@ -24,7 +24,7 @@ A revisão não autentica quem clicou: importação exige atribuição humana co
 
 Sem telemetria: a skill não envia dados a nenhum serviço próprio. Não há endpoint do autor, coleta de uso ou relatório automático de erro; todo tráfego sai para a fonte que você escolheu ou para os registros oficiais de dependências.
 
-**Export HyperFrames.** O `EXPORT.md` e o `package.json` do export mandam rodar `npx hyperframes@0.8.73`. O `npx` baixa e executa a CLI e as dependências dela (inclusive scripts de instalação); rode num ambiente em que você confia. A CLI HyperFrames, que não é do get-brolls, envia telemetria de uso (PostHog) por padrão: `HYPERFRAMES_NO_TELEMETRY=1` desliga (no PowerShell, `$env:HYPERFRAMES_NO_TELEMETRY = "1"`). O `EXPORT.md` já traz essa linha antes dos comandos; os scripts do `package.json` não trazem, porque `VAR=1 comando` não funciona no `cmd` do Windows. O projeto gerado busca o GSAP no jsdelivr com Subresource Integrity (`integrity="sha384-…"` e `crossorigin="anonymous"` na tag `<script>`, travado por teste): o navegador recusa o arquivo se ele não bater com o hash pinado. A fonte Inter (Google Fonts) não tem esse mecanismo, e o `transcribe` pode baixar o modelo do whisper.
+**Export HyperFrames.** O `EXPORT.md` e o `package.json` do export mandam rodar `npx hyperframes@0.8.73`. O `npx` baixa e executa a CLI e as dependências dela (inclusive scripts de instalação); rode num ambiente em que você confia. A CLI HyperFrames, que não é do getbrolls, envia telemetria de uso (PostHog) por padrão: `HYPERFRAMES_NO_TELEMETRY=1` desliga (no PowerShell, `$env:HYPERFRAMES_NO_TELEMETRY = "1"`). O `EXPORT.md` já traz essa linha antes dos comandos; os scripts do `package.json` não trazem, porque `VAR=1 comando` não funciona no `cmd` do Windows. O projeto gerado busca o GSAP no jsdelivr com Subresource Integrity (`integrity="sha384-…"` e `crossorigin="anonymous"` na tag `<script>`, travado por teste): o navegador recusa o arquivo se ele não bater com o hash pinado. A fonte Inter (Google Fonts) não tem esse mecanismo, e o `transcribe` pode baixar o modelo do whisper.
 
 ## `.env` e caminhos que viram execução
 
@@ -80,11 +80,54 @@ não exige administrador. `api.local_file` aceita hardlink e o registra no log;
 os resolvedores o recusam. `permissions.paths` e `permissions.network` aparecem
 no preview do `enable` e do `install`. A resposta de `api.get_json` de um plugin
 nunca vai para o cache em disco. Comandos de plugin (`gb x`) só leem o projeto,
-por cópias. `install`/`update` clonam com `GIT_TERMINAL_PROMPT=0`, recusam URL
-com credencial, link simbólico e pasta de controle de versão fora do topo, e não
-executam código do plugin. `GB_PLUGINS=off` desliga tudo; `GB_PLUGINS=id1,id2`
+por cópias. `install`/`update` fixam todo repositório git por commit (sha
+completo de 40 caracteres, buscado sozinho com `fetch --depth 1`), nunca fazem
+`checkout` e escrevem cada arquivo a partir do blob cru, sem filtro, hook nem
+`autocrlf`. O git roda com `GIT_TERMINAL_PROMPT=0`, sem nenhuma variável `GIT_*`
+herdada, só com os transportes `https` e `ssh` (e `file` apenas quando a origem
+é uma pasta local indicada pela pessoa; `ext::` é recusado), com
+`transfer.fsckObjects=true`, sem template de `init` e sem hooks. `--commit`,
+`--ref` e `--subdir` são validados antes de qualquer git rodar (nada que comece
+com `-`, sem `..`, sem pasta de VCS). São recusados: URL com credencial, query
+ou fragmento; link simbólico e submódulo; pasta de controle de versão fora do
+topo; ponteiro do Git LFS (o LFS nunca roda); e nome de arquivo fora de NFC. Nenhum
+código do plugin roda no install. Limites do sha256 do pin: os bits de modo
+(executável ou não) não entram na conta, e lixo de SO (`.DS_Store`,
+`Thumbs.db`, `desktop.ini`) commitado no repositório é materializado mas não
+entra no hash — o código do plugin não deve ler esses nomes. `plugins --action remove`
+apaga a pasta do plugin e o estado dele em `plugins.json`; quando `plugins/<id>`
+é um link, só o link sai, e o alvo não é tocado. `GB_PLUGINS=off` desliga tudo; `GB_PLUGINS=id1,id2`
 só escolhe entre os plugins já habilitados com pin válido — nunca carrega um
 plugin não habilitado nem um com conteúdo mudado desde o `enable`.
+
+Marketplaces de plugins são índices fixados por commit: o índice é lido só no
+commit gravado e o cache em `$GB_HOME/marketplaces/` é conferido por sha256 a
+cada leitura. Instalar pelo marketplace (`install --id <id>@<marketplace>`)
+não confia no índice para nada além de dizer de onde vem o plugin e o que ele
+tem que ser: o conteúdo é materializado como num `--source` e recusado se o
+sha256 não for o `content_sha256` da entrada ou se o manifesto divergir dela
+(permissões, contribuições, compatibilidade, licença). Entrada retirada
+(`yanked`) é recusada, e o perfil de workspace pode limitar os marketplaces
+aceitos. O `tier` da entrada é o que o índice **declara**: qualquer marketplace
+pode escrever `official`. Só o índice oficial (nome `getbrolls-plugins` e origem
+fixada num dos repositórios oficiais) sai com `tier_verified: true`; nos outros a
+saída diz "declarado pelo marketplace, não verificado", e `marketplace-add` de
+outra origem avisa. O tier nunca libera uma conferência. Para um plugin sem
+permissão, o índice pré-preenche o `--expect`: um agente que copia esse valor
+pula a leitura humana. Instalar um plugin que pede qualquer permissão, ou um
+`update` que acrescenta permissão, exige outro `--expect`: um valor derivado do
+sha256 do conteúdo e das permissões, que o índice não traz. Ele não é segredo —
+um agente consegue calculá-lo —; atrapalha quem copia o sha do índice, mas não
+garante leitura humana. O que orienta mostrar a prévia à pessoa é a prévia em
+chamada separada (o `install` sem `--yes` sempre para nela) e a skill.
+`update --all` só lista; nada é atualizado em lote. `marketplace-update` só
+aceita um commit do índice que não descende do fixado (volta atrás, história
+reescrita) com `--allow-rollback`. Um commit fixado com `ref` que não é a ponta
+dela vira aviso na prévia: na rede de forks do GitHub, um commit de um fork
+também é servido pelo sha no repositório original, então o sha sozinho não prova
+de que repositório o código veio. Quem mantém o marketplace escolhe o que
+entra no índice; ele não revisa nem assina o código — continue lendo o código
+de quem você habilita.
 
 Exceção levantada por código de plugin aparece só pelo tipo — o texto dela
 (que pode carregar um token) não chega à mensagem, ao `diagnostics.jsonl` nem

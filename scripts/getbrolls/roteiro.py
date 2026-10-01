@@ -352,6 +352,30 @@ def _arg_text(text, quoted):
     return f'"{escaped}"' if quoted else escaped
 
 
+def skeleton_scenes(doc):
+    """Cenas com alvo (layout) ou fala ainda no texto de esqueleto do `roteiro new`: `[(rótulo, trecho)]`."""
+    found = []
+    for scene in doc.scenes:
+        texts = (*scene.layout.args, scene.speech_clean)
+        left = sorted(f for f in roteiro_frontmatter.SKELETON_FRAGMENTS if any(f in text for text in texts))
+        if left:
+            found.append((scene.scene_id or f"linha {scene.line}", " e ".join(left)))
+    return found
+
+
+def skeleton_refusal(doc):
+    """Mensagem pt-BR para `review`/`sync` recusarem texto de esqueleto; None quando o roteiro está limpo."""
+    found = skeleton_scenes(doc)
+    if not found:
+        return None
+    listed = "; ".join(f"{label} ({text})" for label, text in found)
+    return (
+        f"O roteiro ainda tem texto de esqueleto do `roteiro new`: {listed}. O review e o sync só seguem "
+        "depois que você trocar o texto entre chaves pelo conteúdo real (alvo do b-roll e fala de cada cena) "
+        "no ROTEIRO.md; confira com `roteiro --action check`."
+    )
+
+
 def directive_text(directive):
     """A diretiva de layout, camada ou plugin como texto `[TIPO: a | b]`, na grafia canônica.
 

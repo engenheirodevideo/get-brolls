@@ -8,7 +8,7 @@ tags: [get-brolls, code-style, python, review]
 
 # Guia de código
 
-A base é o [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) (CC BY 3.0), com as adaptações abaixo para o stack do get-brolls. Quem escreve código segue este guia, e quem revisa confere contra ele. Uma regra daqui vence a do guia do Google, e o código vizinho vence as duas quando o assunto não está coberto: **seja consistente**.
+A base é o [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) (CC BY 3.0), com as adaptações abaixo para o stack do getbrolls. Quem escreve código segue este guia, e quem revisa confere contra ele. Uma regra daqui vence a do guia do Google, e o código vizinho vence as duas quando o assunto não está coberto: **seja consistente**.
 
 ## Stack
 

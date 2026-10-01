@@ -42,6 +42,7 @@ REQUIRED_DATA: tuple[str, ...] = (
     "schemas/clients.schema.json",
     "schemas/export_plan.schema.json",
     "schemas/markers.schema.json",
+    "schemas/marketplace_index.schema.json",
     "schemas/media.schema.json",
     "schemas/project.schema.json",
     "schemas/scenes.schema.json",

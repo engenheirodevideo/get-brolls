@@ -59,7 +59,10 @@ class InstantiateTests(InstantiateCase):
         self.assertEqual((REF, "acme"), (lock["ref"], lock["client"]))
         shown = templates.show(REF, "acme")
         self.assertEqual(shown["template_sha256"], lock["template_sha256"])
-        run_cli("init-rules", "--format", "reels", project=self.new)
+        # Sem RULES.md, o projeto nasce com o formato do roteiro e o `summary.do` (o check) dá certo.
+        self.assertIn('"video_format": "reels"', (self.new / "RULES.md").read_text(encoding="utf-8"))
+        self.assertEqual("roteiro-check", out["summary"]["do"]["step"])
+        self.assertIn("roteiro --action check", out["summary"]["do"]["command"])
         check = run_cli("roteiro", "--action", "check", project=self.new)
         self.assertEqual(2, len(check["scenes"]))
 

@@ -29,7 +29,7 @@ Para rodar um arquivo de teste só, use o mesmo `discover` com `-p`:
 módulos de `tests/` se importam pelo nome, com `tests/` no `sys.path` — o que
 o `discover -s tests` faz.
 
-Mudanças na revisão visual exigem conferir aprovação/ajuste/sugestão, exportação/importação, impressão e largura móvel conforme o impacto. Revisões apenas documentais precisam validar frontmatter, links e exemplos de CLI, sem refazer downloads desnecessariamente.
+Mudanças na revisão visual exigem conferir aprovação/ajuste/sugestão, exportação/importação, impressão e largura móvel conforme o impacto. Revisões apenas documentais precisam validar frontmatter, links e exemplos de CLI, sem refazer downloads desnecessariamente. Mudança no contrato da CLI (código de saída, `error_code`, aviso) ou num formato de arquivo atualiza [`docs/CLI_CONTRACT.md`](docs/CLI_CONTRACT.md) ou [`docs/SCHEMAS.md`](docs/SCHEMAS.md) no mesmo commit; `tests/test_cli_contract_doc.py` e `tests/test_schemas_doc.py` falham quando o código e o documento divergem.
 
 ## Lint e type check
 

@@ -17,8 +17,8 @@ from test_repository import _logical_units
 from test_sdk_install import HAS_GIT, InstallTestCase, git, head, write_plugin
 from test_sdk_loader import MANIFEST, PLUGIN_CODE
 
+from getbrolls.sdk import git_source, loader, scaffold
 from getbrolls.sdk import install as install_mod
-from getbrolls.sdk import loader, scaffold
 from getbrolls.sdk.files import counted_files
 from getbrolls.sdk.registry import get_registry, reset_registry
 
@@ -70,12 +70,13 @@ class FolderInstallHardeningTests(InstallTestCase):
         self.assertEqual(["LEIAME.md", "getbrolls-plugin.json", "plugin.py"], files["names"])
         self.assertFalse(files["truncated"])
 
-    def test_gitfile_is_not_treated_as_a_repository(self):
+    def test_unconfirmed_gitfile_is_refused(self):
         source = write_plugin(self.work / "demo_src")
         (source / ".git").write_text("gitdir: /em/outro/lugar\n", encoding="utf-8")
-        preview = install_mod.install(str(source), confirm=False)
-        self.assertIsNone(preview["plugin"]["commit"])
-        self.assertEqual(str(source.resolve()), preview["plugin"]["source"])
+        with self.assertRaises(ValueError) as ctx:
+            install_mod.install(str(source), confirm=False)
+        self.assertIn(".git", str(ctx.exception))
+        self.assertEqual([], self.leftover_staging())
 
 
 class CountedFilesOrderTests(InstallTestCase):
@@ -315,6 +316,83 @@ class GitHardeningTests(InstallTestCase):
         self.assertIs(False, seen["git_in_dest"])
         self.assertIsInstance(preview["plugin"]["commit"], str)
         self.assertEqual([], self.leftover_staging())
+
+
+@unittest.skipUnless(HAS_GIT, "git required")
+class WorktreeSourceTests(InstallTestCase):
+    """Uma worktree do git (`.git` é um arquivo `gitdir: …`) é repositório, conferida pelo
+    próprio git; link no lugar do `.git` e gitfile quebrado continuam fora."""
+
+    def worktree(self):
+        repo = write_plugin(self.work / "principal")
+        git(repo, "init", "--quiet")
+        git(repo, "add", ".")
+        git(repo, "commit", "--quiet", "-m", "plugin")
+        tree = self.work / "ramo"
+        git(repo, "worktree", "add", "--quiet", "-b", "ramo", str(tree))
+        write_plugin(tree, {**MANIFEST, "version": "0.2.0"})
+        git(tree, "commit", "--quiet", "-am", "ramo")
+        return repo, tree
+
+    def test_worktree_folder_installs_by_commit(self):
+        repo, tree = self.worktree()
+        self.assertTrue((tree / ".git").is_file())
+        self.assertIsInstance(git_source.parse_source(str(tree)), git_source.GitSource)
+        preview = install_mod.install(str(tree), confirm=False)
+        self.assertEqual(head(tree), preview["plugin"]["commit"])
+        self.assertNotEqual(head(repo), preview["plugin"]["commit"])
+        self.assertEqual("0.2.0", preview["plugin"]["version"])
+        self.assertEqual(str(tree.resolve()), preview["plugin"]["source"])
+        done = install_mod.install(str(tree), confirm=True, expect=preview["plugin"]["sha256"])
+        self.assertTrue(done["installed"])
+        self.assertFalse((loader.plugins_root() / "demo" / ".git").exists())
+
+    def test_subfolder_of_a_worktree_with_a_copied_gitfile_is_refused(self):
+        _repo, tree = self.worktree()
+        inner = write_plugin(tree / "dentro")
+        (inner / ".git").write_text((tree / ".git").read_text(encoding="utf-8"), encoding="utf-8")
+        with self.assertRaises(ValueError):
+            git_source.parse_source(str(inner))
+
+    def test_symlinked_git_file_is_refused(self):
+        _repo, tree = self.worktree()
+        linked = write_plugin(self.work / "ligado")
+        try:
+            (linked / ".git").symlink_to(tree / ".git")
+        except (OSError, NotImplementedError):
+            self.skipTest("sem link simbólico neste sistema")
+        with self.assertRaises(ValueError):
+            git_source.parse_source(str(linked))
+
+    def test_worktree_with_a_relative_back_link_is_a_repository(self):
+        _repo, tree = self.worktree()
+        git_dir = Path((tree / ".git").read_text(encoding="utf-8").split(":", 1)[1].strip())
+        back = git_dir / "gitdir"
+        relative = os.path.relpath(tree.resolve() / ".git", git_dir.resolve())
+        self.assertFalse(Path(relative).is_absolute())
+        back.write_text(relative + "\n", encoding="utf-8")
+        self.assertIsInstance(git_source.parse_source(str(tree)), git_source.GitSource)
+
+    def test_gitfile_without_back_link_counts_only_for_a_submodule(self):
+        _repo, tree = self.worktree()
+        git_dir = Path((tree / ".git").read_text(encoding="utf-8").split(":", 1)[1].strip())
+        (git_dir / "gitdir").unlink()
+        with self.assertRaises(ValueError):
+            git_source.parse_source(str(tree))
+
+    def test_submodule_folder_is_a_repository(self):
+        sub = write_plugin(self.work / "sub_origem")
+        git(sub, "init", "--quiet")
+        git(sub, "add", ".")
+        git(sub, "commit", "--quiet", "-m", "sub")
+        sup = self.work / "super"
+        sup.mkdir()
+        git(sup, "init", "--quiet")
+        git(sup, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", str(sub), "plug")
+        git(sup, "commit", "--quiet", "-m", "sub")
+        folder = sup / "plug"
+        self.assertTrue((folder / ".git").is_file())
+        self.assertIsInstance(git_source.parse_source(str(folder)), git_source.GitSource)
 
 
 if __name__ == "__main__":

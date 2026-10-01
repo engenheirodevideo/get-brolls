@@ -61,7 +61,9 @@ SUMMARIES = {
     "providers": "Listar fontes disponíveis, transporte e chaves configuradas",
     "doctor": "Diagnosticar dependências, caminhos fixados e fontes utilizáveis",
     "plugins": (
-        "Listar, instalar, atualizar, criar, habilitar, desabilitar ou validar plugins do SDK (~/.getbrolls/plugins)"
+        "Listar, instalar (de pasta, git ou marketplace), atualizar, remover, criar, habilitar, desabilitar ou "
+        "validar plugins do SDK ($GB_HOME/plugins, padrão ~/.getbrolls/plugins), procurar nos marketplaces e "
+        "gerenciá-los"
     ),
     "capabilities": (
         "Descrever em JSON os comandos, flags, códigos de saída e comandos de plugin desta instalação (para agentes)"
@@ -203,12 +205,48 @@ def _suggest_missing_required(parser, args):
     return found
 
 
+# Mensagens comuns do argparse em pt-BR. O original (inglês) continua em `error_en`.
+# Padrões das versões 3.11–3.14; mensagem que nenhum casa sai como veio.
+_PT_BR_USAGE = (
+    (re.compile(r"^the following arguments are required: (?P<a>.+)$"), "faltam argumentos obrigatórios: {a}"),
+    (re.compile(r"^one of the arguments (?P<a>.+) is required$"), "um destes argumentos é obrigatório: {a}"),
+    (re.compile(r"^unrecognized arguments: (?P<a>.+)$"), "argumentos não reconhecidos: {a}"),
+    (
+        re.compile(r"^argument (?P<a>.+?): invalid choice: (?P<v>.+?) \(choose from (?P<c>.+)\)$"),
+        "argumento {a}: opção inválida: {v} (escolha entre {c})",
+    ),
+    (re.compile(r"^argument (?P<a>.+?): expected one argument$"), "argumento {a}: falta o valor (esperava um)"),
+    (
+        re.compile(r"^argument (?P<a>.+?): expected at least one argument$"),
+        "argumento {a}: esperava pelo menos um valor",
+    ),
+    (
+        re.compile(r"^argument (?P<a>.+?): not allowed with argument (?P<b>.+)$"),
+        "argumento {a}: não vale junto com {b}",
+    ),
+    (
+        re.compile(r"^argument (?P<a>.+?): invalid (?P<t>\S+) value: (?P<v>.+)$"),
+        "argumento {a}: valor {t} inválido: {v}",
+    ),
+    (re.compile(r"^ambiguous option: (?P<a>\S+) could match (?P<m>.+)$"), "opção ambígua: {a} pode ser {m}"),
+)
+
+
+def usage_pt_br(message):
+    """A mensagem de uso do argparse em pt-BR (nomes, valores e escolhas ficam como vieram)."""
+    for pattern, template in _PT_BR_USAGE:
+        found = pattern.match(message)
+        if found:
+            return template.format(**found.groupdict())
+    return message
+
+
 class GbArgumentParser(argparse.ArgumentParser):
     """ArgumentParser cujo erro de uso sai em JSON fora do terminal e sugere o nome parecido.
 
-    A mensagem (`error`) é a do argparse, byte a byte; o código de saída é 2.
-    Num terminal, sai o texto de sempre (`usage` + `prog: error: …`) e, quando há
-    nome parecido, uma linha "Você quis dizer: …?".
+    A mensagem (`error`) sai em pt-BR (`usage_pt_br`); a do argparse, byte a byte, fica em
+    `error_en` para ferramentas. O código de saída é 2. Num terminal, sai o `usage` e
+    `prog: erro: …` em pt-BR e, quando há nome parecido, uma linha "Você quis dizer: …?".
     """
 
     _bad_choice: tuple[str, tuple[str, ...]] | None = None
@@ -242,14 +280,16 @@ class GbArgumentParser(argparse.ArgumentParser):
         if suggestion is None and message.startswith(gettext("the following arguments are required: %s") % ""):
             suggestion = _suggest_missing_required(self, self._args)
         self._bad_choice = None
+        translated = usage_pt_br(message)
         if _stderr_is_tty():
             self.print_usage(sys.stderr)
-            sys.stderr.write(gettext("%(prog)s: error: %(message)s\n") % {"prog": self.prog, "message": message})
+            sys.stderr.write(f"{self.prog}: erro: {translated}\n")
             if suggestion:
                 sys.stderr.write(f"Você quis dizer: {suggestion}?\n")
         else:
             payload = {
-                "error": message,
+                "error": translated,
+                "error_en": message,
                 "error_code": "USAGE_ERROR",
                 "usage": _ANSI.sub("", self.format_usage()).strip(),
                 "suggestion": suggestion,
@@ -424,14 +464,76 @@ def _add_toolchain_subcommands(sub):
             p.add_argument(
                 "--action",
                 required=True,
-                choices=["list", "enable", "disable", "check", "install", "update", "new"],
+                choices=[
+                    "list",
+                    "enable",
+                    "disable",
+                    "check",
+                    "install",
+                    "update",
+                    "remove",
+                    "new",
+                    "marketplace-add",
+                    "marketplace-list",
+                    "marketplace-remove",
+                    "marketplace-update",
+                    "search",
+                ],
                 help=(
                     "list: inventário sem executar código; enable/disable: liga/desliga por id; check: valida uma "
-                    "pasta; install/update: traz de pasta ou git, em dois passos; new: gera um plugin mínimo"
+                    "pasta; install/update: traz de pasta ou git, em dois passos; remove: tira a pasta e o estado, "
+                    "em dois passos; new: gera um plugin mínimo; marketplace-add/-list/-remove/-update: índices de "
+                    "plugins fixados por commit; search: procura nos índices em cache, sem rede"
                 ),
             )
-            p.add_argument("--id", help="Id do plugin (enable/disable/update/new)")
-            p.add_argument("--source", help="Pasta local ou URL git (https:// ou git@) do plugin a instalar (install)")
+            p.add_argument(
+                "--id",
+                help="Id do plugin (enable/disable/update/remove/new); install: <id>@<marketplace> instala pelo índice",
+            )
+            p.add_argument(
+                "--source",
+                help=(
+                    "Pasta local ou URL git (https:// ou git@) do plugin a instalar (install) ou do repositório do "
+                    "marketplace (marketplace-add)"
+                ),
+            )
+            p.add_argument(
+                "--marketplace",
+                help=("Nome do marketplace (marketplace-remove; marketplace-update e search, que sem ele usam todos)"),
+            )
+            p.add_argument("--query", help="search: trecho do id, da descrição ou do tipo de extensão a procurar")
+            p.add_argument(
+                "--all",
+                action="store_true",
+                help=(
+                    "update: prévia das atualizações de todos os plugins instalados por marketplace, com o comando "
+                    "de cada um (só prévia; confirme por id)"
+                ),
+            )
+            p.add_argument(
+                "--commit",
+                help=(
+                    "install/update: sha completo (40 hex) do commit a instalar; sem ele, a ref é resolvida na "
+                    "origem (update com --commit volta a um commit anterior); marketplace-add/-update: commit do "
+                    "índice"
+                ),
+            )
+            p.add_argument(
+                "--ref",
+                help=(
+                    "install/marketplace-add: branch, tag ou refs/... a resolver na origem (padrão HEAD); o update "
+                    "resolve a mesma"
+                ),
+            )
+            p.add_argument("--subdir", help="install: pasta do plugin dentro do repositório git (ex.: plugins/demo)")
+            p.add_argument(
+                "--allow-rollback",
+                action="store_true",
+                help=(
+                    "marketplace-update: aceita fixar um commit do índice que não descende do fixado hoje "
+                    "(volta atrás ou história reescrita)"
+                ),
+            )
             p.add_argument(
                 "--path",
                 help="check: pasta do plugin a validar (executa o register()); new: pasta onde criar o plugin",
@@ -444,7 +546,10 @@ def _add_toolchain_subcommands(sub):
             p.add_argument(
                 "--yes",
                 action="store_true",
-                help="Confirma enable/install/update depois de mostrar manifesto, permissões e origem à pessoa",
+                help=(
+                    "Confirma enable/install/update/remove depois de mostrar manifesto, permissões e origem (ou o "
+                    "que sai) à pessoa"
+                ),
             )
             p.add_argument(
                 "--expect",

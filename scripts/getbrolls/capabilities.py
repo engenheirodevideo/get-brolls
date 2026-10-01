@@ -11,7 +11,7 @@ e `runtime.ERROR_EXIT`. Os comandos de plugin saem do manifesto, sem rodar códi
 import argparse
 
 from . import __version__, _paths, cli, runtime
-from .sdk import loader
+from .sdk import loader, marketplace
 
 SCHEMA_VERSION = 1
 ERROR_CODES = (
@@ -99,7 +99,7 @@ def _plugin_rows():
     try:
         inventory = loader.inventory()
     except ValueError as exc:
-        return [], [], str(exc)
+        return [], [], marketplace.portable_text(exc)
     commands = [
         {"plugin": row["id"], "command": command, "status": row["status"], "argv": ["x", row["id"], command]}
         for row in inventory
@@ -146,4 +146,10 @@ def describe(parser):
     }
     if plugins_error:
         manifest["plugins_error"] = plugins_error
+    try:
+        manifest["marketplaces"] = marketplace.summary()
+    except ValueError as exc:
+        manifest["marketplaces"] = []
+        # Sem caminho da máquina: o estado é sempre `$GB_HOME/marketplaces.json`.
+        manifest["marketplaces_error"] = marketplace.portable_text(exc)
     return manifest

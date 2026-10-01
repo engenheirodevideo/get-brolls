@@ -15,9 +15,11 @@ from _cli import run_cli
 from _paths import ROOT
 from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
+from test_sdk_marketplace_client import MarketplaceTestCase
 
 from getbrolls import __version__, _paths, capabilities, cli
 from getbrolls.cli import build_parser
+from getbrolls.sdk import marketplace
 
 WHEEL = _paths.Install("wheel", Path("site") / "getbrolls", Path("site") / "getbrolls" / "_data", None)
 BROKEN_CODE = "raise SystemExit('não devia rodar')\n"
@@ -45,7 +47,7 @@ class ManifestShapeTests(unittest.TestCase):
         self.assertEqual("getbrolls", self.manifest["prog"])
         self.assertEqual(
             {"schema_version", "name", "version", "prog", "invocation", "output", "global_options", "commands"}
-            | {"exit_codes", "error_codes", "plugin_commands", "plugins_problems"},
+            | {"exit_codes", "error_codes", "plugin_commands", "plugins_problems", "marketplaces"},
             set(self.manifest),
         )
 
@@ -192,6 +194,30 @@ class PluginCommandTests(LoaderTestCase):
         pin_plugins("demo", home=self.home)
         os.environ["GB_PLUGINS"] = "off"
         self.assertEqual([], capabilities.describe(build_parser())["plugin_commands"])
+
+
+class MarketplaceRowsTests(MarketplaceTestCase):
+    def test_capabilities_lists_marketplaces_offline_and_sorted(self):
+        self.assertEqual([], capabilities.describe(build_parser())["marketplaces"])
+        marketplace.add(str(self.index_repo(name="zeta", folder="z")))
+        marketplace.add(str(self.index_repo(name="alfa", folder="a")))
+        marketplace.set_policy(frozenset({"alfa"}))
+        with self.no_network():
+            rows = capabilities.describe(build_parser())["marketplaces"]
+        self.assertEqual(["alfa", "zeta"], [row["name"] for row in rows])
+        self.assertEqual({"name", "commit", "plugins", "allowed", "official", "problem"}, set(rows[0]))
+        self.assertEqual([True, False], [row["allowed"] for row in rows])
+        self.assertEqual([1, 1], [row["plugins"] for row in rows])
+        text = json.dumps(rows)
+        self.assertNotIn(str(self.work), text)
+        self.assertNotIn(str(self.home), text)
+
+    def test_corrupt_marketplaces_json_becomes_marketplaces_error(self):
+        marketplace.state_path().write_bytes(b"{")
+        manifest = capabilities.describe(build_parser())
+        self.assertEqual([], manifest["marketplaces"])
+        self.assertIn("marketplaces.json", manifest["marketplaces_error"])
+        self.assertNotIn(str(self.home), manifest["marketplaces_error"])
 
 
 class CapabilitiesCliTests(unittest.TestCase):

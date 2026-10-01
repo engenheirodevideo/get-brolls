@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 from .. import logs
+from ..errors import UsageError
 from . import guard, loader
 from .contracts import NAME_RE, CommandContext
 from .registry import get_registry
@@ -57,13 +58,13 @@ def parse_pairs(pairs):
     for pair in pairs or []:
         key, sep, value = pair.partition("=")
         if not sep:
-            raise ValueError("--arg espera chave=valor; faltou '=' no --arg.")
+            raise UsageError("--arg espera chave=valor; faltou '=' no --arg.")
         if not key:
-            raise ValueError("--arg espera chave=valor; chave vazia no --arg.")
+            raise UsageError("--arg espera chave=valor; chave vazia no --arg.")
         if not ARG_KEY_RE.fullmatch(key):
-            raise ValueError("--arg espera chave em minúsculas (a-z, 0-9, _) no --arg.")
+            raise UsageError("--arg espera chave em minúsculas (a-z, 0-9, _) no --arg.")
         if key in values:
-            raise ValueError(f"--arg {key} repetido; passe cada chave uma vez.")
+            raise UsageError(f"--arg {key} repetido; passe cada chave uma vez.")
         values[key] = value
     return values
 
@@ -183,19 +184,19 @@ def run(args):
     """`x --list` ou `x <plugin> <comando>`: roda o comando do plugin isolado e devolve o resultado."""
     if args.list:
         if args.plugin_id or args.plugin_command:
-            raise ValueError("Use x --list sozinho, ou x <plugin> <comando>.")
+            raise UsageError("Use x --list sozinho, ou x <plugin> <comando>.")
         return {"commands": listing()}
     if not args.plugin_id or not args.plugin_command:
-        raise ValueError("Informe o plugin e o comando: x <plugin> <comando> [--project P] [--arg chave=valor].")
+        raise UsageError("Informe o plugin e o comando: x <plugin> <comando> [--project P] [--arg chave=valor].")
     plugin_id, name = args.plugin_id, args.plugin_command
     # Valida a forma de id/nome ANTES de tocar no registro — `get_registry()` monta
     # o registro de plugins habilitados na primeira consulta do processo (roda
     # `register()` de verdade). Um id/nome fora do charset (ex.: "../../etc") nunca
     # deveria sequer chegar a essa etapa; a mensagem nunca ecoa o valor bruto do argv.
     if not NAME_RE.fullmatch(plugin_id):
-        raise ValueError("Plugin id inválido; rode `x --list` para ver os comandos disponíveis.")
+        raise UsageError("Plugin id inválido; rode `x --list` para ver os comandos disponíveis.")
     if not NAME_RE.fullmatch(name):
-        raise ValueError("Nome de comando inválido; rode `x --list` para ver os comandos disponíveis.")
+        raise UsageError("Nome de comando inválido; rode `x --list` para ver os comandos disponíveis.")
     values = parse_pairs(args.arg)
     registry = get_registry()
     spec = registry.command(plugin_id, name)

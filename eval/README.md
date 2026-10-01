@@ -6,7 +6,7 @@ updated: 2026-09-17
 tags: [get-brolls, eval, blind-tests, quality]
 ---
 
-# Testes cegos — medição editorial do Get B-rolls
+# Testes cegos — medição editorial do getbrolls
 
 Esta pasta guarda o processo de **teste cego**: o jeito de medir se a skill entrega o que promete a um criador de conteúdo real. É medição **editorial**, não de código. A suíte `python3 -m unittest discover -s tests` responde se o programa funciona; o teste cego responde outra pergunta: *dado um roteiro que o agente nunca viu, ele acha a fonte literal certa, mostra a prévia certa e para na hora certa?*
 

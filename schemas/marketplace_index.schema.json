@@ -1,0 +1,306 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Get B-rolls marketplace index v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/marketplace_index.schema.json",
+  "description": "O getbrolls-marketplace.json na raiz do repositório de um marketplace de plugins, lido no commit fixado pelo plugins --action marketplace-add. Formato estrito: chave desconhecida é erro, no topo e em cada entrada. A versão mora em schema (getbrolls.marketplace_index/<n>): um número maior que o suportado é recusado. O validador do core (scripts/getbrolls/sdk/marketplace_index.py) é a autoridade e confere também o que este schema não expressa: ids únicos, contributes em ordem, renames sem ciclo e com alvo em plugins, e as regras de permissions, requires e requires_getbrolls do manifesto.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "name",
+    "plugins",
+    "renames"
+  ],
+  "properties": {
+    "schema": {
+      "const": "getbrolls.marketplace_index/1"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$",
+      "description": "Nome do marketplace, usado em install --id <id>@<nome>; engenheirodevideo é reservado."
+    },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 500
+    },
+    "plugins": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "version",
+          "description",
+          "tier",
+          "source",
+          "content_sha256",
+          "sdk_api",
+          "requires_getbrolls",
+          "permissions",
+          "contributes",
+          "requires",
+          "platforms",
+          "license",
+          "maintainers",
+          "attestation",
+          "yanked",
+          "deprecated"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{1,31}$",
+            "description": "Id do plugin, igual ao do manifesto; core e os ids reservados são recusados."
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          },
+          "tier": {
+            "enum": [
+              "official",
+              "verified",
+              "community"
+            ],
+            "description": "official e verified podem entrar numa atualização em lote; community é sempre confirmado por id."
+          },
+          "source": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "repo",
+              "ref",
+              "commit",
+              "subdir"
+            ],
+            "properties": {
+              "type": {
+                "const": "git"
+              },
+              "repo": {
+                "type": "string",
+                "maxLength": 2048,
+                "pattern": "^(https://[^\\s?#@/]+(/[^\\s?#]*)?|git@[A-Za-z0-9.][A-Za-z0-9.-]*:[^\\s?#]+|\\.)$",
+                "description": "https:// sem credencial, query nem fragmento; git@host:caminho; ou \".\" para o próprio repositório do marketplace. Caminho local e file:// são recusados."
+              },
+              "ref": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 200,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+-]*$",
+                "description": "Branch, tag ou refs/... de onde o commit veio; informativo."
+              },
+              "commit": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$",
+                "description": "Sha completo do commit; é ele que fixa o conteúdo."
+              },
+              "subdir": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$",
+                "description": "Pasta do plugin dentro do repositório; sem '.', '..' nem pasta de VCS."
+              }
+            }
+          },
+          "content_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "sha256 do conteúdo materializado, o mesmo da prévia do plugins --action install."
+          },
+          "sdk_api": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "requires_getbrolls": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "permissions": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "network": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              },
+              "env": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              },
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              },
+              "project_write": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "analysis"
+                  ]
+                },
+                "uniqueItems": true
+              }
+            }
+          },
+          "contributes": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "command",
+                "exporter",
+                "preset",
+                "provider",
+                "resolver",
+                "route"
+              ]
+            },
+            "description": "Tipos no singular, em ordem alfabética."
+          },
+          "requires": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "python": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              },
+              "binaries": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              },
+              "runtimes": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "services": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              }
+            }
+          },
+          "platforms": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "darwin",
+                "linux",
+                "windows"
+              ]
+            },
+            "description": "null vale todos os sistemas."
+          },
+          "license": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9.+\\-() ]{1,128}$"
+          },
+          "maintainers": {
+            "type": "array",
+            "maxItems": 20,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          },
+          "attestation": {
+            "type": "null",
+            "description": "Reservado para assinatura; null nesta versão."
+          },
+          "yanked": {
+            "type": "boolean",
+            "description": "true: o install pelo marketplace recusa esta entrada."
+          },
+          "deprecated": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "required": [
+              "reason",
+              "replacement"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "replacement": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^[a-z][a-z0-9_]{1,31}$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "renames": {
+      "type": "object",
+      "description": "{id antigo: id novo}; o id novo está em plugins ou é outro id antigo.",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]{1,31}$"
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Livre; o core não lê o conteúdo."
+    }
+  }
+}

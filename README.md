@@ -19,7 +19,7 @@
   </p>
 </div>
 
-Get B-rolls é uma skill para coletar os vídeos e imagens que apoiam uma fala, ilustram uma ideia ou mostram exatamente a pessoa, o produto e o acontecimento citados no roteiro. Você descreve o que precisa; o agente pesquisa, prepara as prévias e reúne as escolhas em um storyboard para sua revisão.
+O getbrolls é uma skill para coletar os vídeos e imagens que apoiam uma fala, ilustram uma ideia ou mostram exatamente a pessoa, o produto e o acontecimento citados no roteiro. Você descreve o que precisa; o agente pesquisa, prepara as prévias e reúne as escolhas em um storyboard para sua revisão.
 
 - **Escolha com contexto.** Cada trecho pode reunir fala, motivo da escolha, intervalo, autor e fonte original.
 - **Veja antes de decidir.** GIFs e sequências de quadros ajudam a avaliar ação, enquadramento e textos sobrepostos.
@@ -85,7 +85,7 @@ Ubuntu/Debian:
 sudo apt install python3 python3-venv ffmpeg nodejs npm curl git
 ```
 
-Depois do passo 2, `python3 scripts/gb.py doctor` é o gate: `summary.missing` vazio e `contact_sheet.labels: true`. Se aparecer `drawtext` em `summary.optional`, seu FFmpeg veio sem libfreetype: reinstale pelo comando acima (no macOS, `brew reinstall ffmpeg`).
+Depois do passo 2, `python3 scripts/gb.py doctor` é o gate: `ready: true` (sai `0`), que só depende de `summary.missing` vazio; faltando algo, sai `4`. Com a stack inteira, ele também mostra `contact_sheet.labels: true` — isso é opcional e não muda o `ready`: se aparecer `drawtext` (ou `font`) em `summary.optional`, seu FFmpeg veio sem libfreetype (ou falta uma fonte TrueType) e o contact sheet sai sem número e timecode nas células; reinstale pelo comando acima (no macOS, `brew reinstall ffmpeg`) ou defina `GB_FONT_FILE`.
 
 ### 1. Coloque a skill no seu agente
 
@@ -356,7 +356,8 @@ Execute um comando por projeto de cada vez. Preserve originais, cache e históri
 | [AGENTS.md](AGENTS.md) | Índice para agentes e mantenedores: mapa do repositório, instalação por agente e regras de manutenção. |
 | [docs/MANUAL.md](docs/MANUAL.md) | Manual + tutorial: cada comando explicado, formato da resposta, BRIEF/RULES/.env e automação. Comece por aqui se está chegando agora. |
 | [docs/GUIDE.md](docs/GUIDE.md) · [SKILL.md](SKILL.md) | Manual completo e instruções de execução para o agente. |
-| [docs/PLUGIN_DEV_QUICKSTART.md](docs/PLUGIN_DEV_QUICKSTART.md) · [docs/SDK.md](docs/SDK.md) | Criar plugins do SDK (experimental): caminho curto, exemplos, segurança, fontes, rotas, comandos e exportadores em `~/.getbrolls/plugins`. Não confunda com o plugin do Claude Code. |
+| [docs/CLI_CONTRACT.md](docs/CLI_CONTRACT.md) · [docs/SCHEMAS.md](docs/SCHEMAS.md) | Contrato da CLI para scripts e agentes (saída, códigos de saída e de erro, deprecação) e formatos de todos os arquivos que a ferramenta grava. |
+| [docs/PLUGIN_DEV_QUICKSTART.md](docs/PLUGIN_DEV_QUICKSTART.md) · [docs/SDK.md](docs/SDK.md) | Criar plugins do SDK (experimental): caminho curto, exemplos, segurança, fontes, rotas, comandos e exportadores em `$GB_HOME/plugins` (padrão `~/.getbrolls/plugins`). Não confunda com o plugin do Claude Code. |
 | [docs/QUALITY.md](docs/QUALITY.md) | Testes, evidências reais e limites conhecidos. |
 | [docs/RULES.md](docs/RULES.md) · [.env.example.pt-BR](.env.example.pt-BR) | Regras editoriais e opções de configuração. |
 | [docs/SECURITY.md](docs/SECURITY.md) | Tratamento de dados privados e relato de vulnerabilidades. |

@@ -222,9 +222,9 @@ class ScaffoldTests(LoaderTestCase):
         self.assertEqual({"plugin": "meu_cmd", "candidatos": 0, "args": {}}, result["result"])
 
     def test_bad_input_and_existing_folder_are_refused(self):
-        run_cli("plugins", "--action", "new", "--id", "Ruim", "--kind", "provider", expect=1, env=self.env())
+        run_cli("plugins", "--action", "new", "--id", "Ruim", "--kind", "provider", expect=2, env=self.env())
         run_cli("plugins", "--action", "new", "--id", "core", "--kind", "provider", expect=1, env=self.env())
-        run_cli("plugins", "--action", "new", "--id", "sem_tipo", expect=1, env=self.env())
+        run_cli("plugins", "--action", "new", "--id", "sem_tipo", expect=2, env=self.env())
         run_cli("plugins", "--action", "new", "--id", "dup", "--kind", "command", "--path", self.parent, env=self.env())
         err = run_cli(
             "plugins",

@@ -39,7 +39,7 @@ Escreva o `BRIEF.md` com `python3 "scripts/gb.py" init-brief --project <projeto>
 
 ## Passo 3 — Busque fonte literal
 
-`python3 "scripts/gb.py" brief --beat <ID> --project <projeto>` devolve o comando pronto do beat. Todo material entra com `--shot <beat.id>`. Consulte `library --search "termo"` antes: lembra o que rendeu, sem aprovar nem permitir. Fontes, presets, lotes e biblioteca: [`references/providers.md`](references/providers.md). Plugin (experimental): `plugins --action install|update` e `enable` de plugin suspenso exigem `--yes --expect <sha256>` da prévia. **Reel do Instagram: leia [`references/instagram.md`](references/instagram.md) antes de tocar no navegador** — é a rota que quebra primeiro.
+`python3 "scripts/gb.py" brief --beat <ID> --project <projeto>` devolve o comando pronto do beat. Todo material entra com `--shot <beat.id>`. Consulte `library --search "termo"` antes: lembra o que rendeu, sem aprovar nem permitir. Fontes, presets, lotes e biblioteca: [`references/providers.md`](references/providers.md). Plugins: `install|update`, inclusive `x@marketplace`, e `enable` de plugin suspenso: `--yes --expect <sha256>` da prévia mostrada à pessoa. **Reel do Instagram: leia [`references/instagram.md`](references/instagram.md) antes de tocar no navegador** — é a rota que quebra primeiro.
 
 **Checkpoint C2.** Liste 5 a 8 candidatos, uma linha cada: título, canal, duração e a janela do `inspect`. Feche com "sigo com estes?".
 
@@ -49,7 +49,7 @@ Escreva o `BRIEF.md` com `python3 "scripts/gb.py" init-brief --project <projeto>
 
 Depois, `python3 "scripts/gb.py" preview --candidate <ID> --start <INICIO> --end <FIM> --project <projeto>` gera poster, contact sheet e GIF: até 10 s por prévia (`GB_PREVIEW_MAX_SECONDS`) e **um `preview` por chamada**. A resposta traz `files.contact_sheet` (`status`/manifesto, `preview.contact_sheet_path`, relativo a `brolls/`) e `preview.frame_times_s`. **Abra e olhe antes de seguir.** Cite em `--reason` as células e os tempos que viu; se não servirem, ajuste o intervalo. Nunca descreva quadro que não conferiu.
 
-Sem pista, `preview --scan` varre o vídeo inteiro: exploratório, depois do `inspect`, ignora o intervalo escolhido. Foto não tem trecho: `preview` sem `--start/--end`, e sem `inspect`.
+Sem pista, `preview --scan` varre o vídeo inteiro: exploratório, depois do `inspect`, ignora o intervalo escolhido. Foto não tem trecho: `preview` sem `--start/--end` nem `inspect`.
 
 ## Passo 5 — Revisão humana
 
@@ -73,11 +73,11 @@ Registre as condições com `permit` (`--evidence`, `--preset` ou `--declared-by
 
 ## Quando não há fonte
 
-Diga o que tentou e por quê. Pergunte se a pessoa tem material próprio ou um link. Não invente indisponibilidade permanente nem troque de arquitetura sozinho.
+Diga o que tentou e por quê. Pergunte por material próprio ou um link. Não invente indisponibilidade permanente nem troque de arquitetura.
 
 ## Ambiente
 
-`python3 "scripts/gb.py" doctor` confere a instalação. No Windows, use `python` no lugar de `python3`. Em código 4 (`ready` falso), leia `summary.missing` e peça `/get-brolls-setup` (runtime em `$GB_HOME/runtime`). Versão diferente: [CHANGELOG](CHANGELOG.md).
+`python3 "scripts/gb.py" doctor` confere a instalação. No Windows, use `python` no lugar de `python3`. Em código 4 (`ready` falso), leia `summary.missing` e peça `/get-brolls-setup`. Códigos de saída: [`docs/CLI_CONTRACT.md`](docs/CLI_CONTRACT.md); versão diferente: [CHANGELOG](CHANGELOG.md).
 
 ## Índice de references
 
@@ -88,4 +88,4 @@ Diga o que tentou e por quê. Pergunte se a pessoa tem material próprio ou um l
 - [`references/templates-de-resposta.md`](references/templates-de-resposta.md) — copy pronta.
 - [`references/glossario.md`](references/glossario.md) — termos.
 - [`references/roteiro.md`](references/roteiro.md) e [`references/generos/reels.md`](references/generos/reels.md) — roteiro (componentes, export) e regras de copy do reels.
-- [`docs/GUIDE.md`](docs/GUIDE.md) — detalhe técnico.
+- [`docs/GUIDE.md`](docs/GUIDE.md) — detalhe técnico; [`docs/SCHEMAS.md`](docs/SCHEMAS.md), formatos.

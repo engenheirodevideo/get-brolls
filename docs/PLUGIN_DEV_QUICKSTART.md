@@ -6,7 +6,7 @@ updated: 2026-09-30
 tags: [get-brolls, sdk, plugins, quickstart]
 ---
 
-# Quickstart — criar plugins do Get B-rolls
+# Quickstart — criar plugins do getbrolls
 
 Este guia é o caminho curto para uma pessoa externa criar um plugin com segurança. A referência completa continua em [`SDK.md`](SDK.md); os exemplos funcionais ficam em [`../examples/plugins/`](../examples/plugins/).
 
@@ -38,7 +38,7 @@ Para um plugin de motion/editor, comece por **exporter**. O exporter recebe o pl
 
 ## Crie um plugin mínimo
 
-Crie o scaffold em uma pasta de trabalho **fora da instalação do Get B-rolls**, para não misturar rascunho com a release:
+Crie o scaffold em uma pasta de trabalho **fora da instalação do getbrolls**, para não misturar rascunho com a release:
 
 ```sh
 mkdir -p "$HOME/getbrolls-plugin-lab"
@@ -85,7 +85,7 @@ O `getbrolls-plugin.json` gerado já traz o obrigatório. Os campos opcionais qu
 ```
 
 - `platforms` ausente vale todos os sistemas; fora da lista, o plugin fica `incompatible`.
-- `requires` só informa: o get-brolls não instala nada nem executa binários do plugin para conferir.
+- `requires` só informa: o getbrolls não instala nada nem executa binários do plugin para conferir.
 - `permissions.project_write` aceita só `"analysis"` nesta versão; deixe `[]` se o plugin não grava no projeto.
 - `metadata` é livre para ferramentas de terceiros e o core o ignora.
 - `engines` no topo foi aposentado: a faixa de versão de um motor vai em `requires.runtimes`.
