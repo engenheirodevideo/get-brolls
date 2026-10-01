@@ -357,6 +357,35 @@ class OperationExitTests(unittest.TestCase):
         self.assertNotIn("BrokenPipeError", stderr)
 
 
+class Utf8StdioTests(unittest.TestCase):
+    """Saída em UTF-8 mesmo quando o pipe do sistema não é (cp1252 no Windows)."""
+
+    @staticmethod
+    def _help_bytes(entry):
+        """`entry(["--help"])` com stdout/stderr num pipe cp1252, como no Windows."""
+        out = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict")
+        err = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict")
+        with mock.patch("sys.stdout", out), mock.patch("sys.stderr", err), contextlib.suppress(SystemExit):
+            entry(["--help"])
+        out.flush()
+        return out.buffer.getvalue()  # pyright: ignore[reportAttributeAccessIssue]
+
+    def test_instagram_pairs_help_is_utf8(self):
+        from getbrolls import instagram_pairs  # pylint: disable=import-outside-toplevel
+
+        text = self._help_bytes(instagram_pairs.main).decode("utf-8")
+        self.assertIn("usage:", text)
+        self.assertFalse(text.isascii(), "a ajuda tem acento: o teste precisa dele")
+
+    def test_cli_help_is_utf8(self):
+        def entry(argv):
+            with mock.patch("sys.argv", ["getbrolls", *argv]):
+                return cli.entrypoint()
+
+        text = self._help_bytes(entry).decode("utf-8")
+        self.assertIn("usage:", text)
+
+
 class ErrorHintTests(unittest.TestCase):
     """A dica do erro só aparece quando há o que retomar ou regenerar."""
 

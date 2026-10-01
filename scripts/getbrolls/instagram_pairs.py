@@ -17,6 +17,7 @@ CDN já está recusando.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import ipaddress
 import json
@@ -911,6 +912,11 @@ def _main(argv: list[str] | None = None) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     """Run the batch and release the log file when it ends, however it ends."""
+    for stream in (sys.stdout, sys.stderr):
+        # UTF-8 like `getbrolls` itself: a Windows pipe defaults to cp1252, and the
+        # help and the errors are in Portuguese. TextIO does not declare `reconfigure`.
+        with contextlib.suppress(AttributeError, OSError):
+            stream.reconfigure(encoding="utf-8")  # pyright: ignore[reportAttributeAccessIssue]
     try:
         return _main(argv)
     finally:
