@@ -22,7 +22,7 @@ GB = ROOT / "scripts" / "gb.py"
 
 def _touch(path, text=""):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    path.write_text(text, encoding="utf-8", newline="")  # bytes exatos, também no Windows
     return path
 
 
@@ -160,6 +160,20 @@ class HomeAndRuntimeTests(unittest.TestCase):
             self.assertEqual(paths.RuntimePart(Path(tmp) / ".venv", "GB_RUNTIME_DIR"), paths.venv_dir())
             self.assertEqual(paths.RuntimePart(Path(tmp) / ".tools", "GB_RUNTIME_DIR"), paths.tools_dir())
             self.assertTrue(paths.runtime_info()["explicit"])
+
+    def test_part_sha_ignores_crlf_line_endings(self):
+        # Um checkout do Windows (`text=auto`) traz requirements.txt com CRLF: a mesma
+        # versão do runtime tem que dar a mesma chave em qualquer sistema.
+        with tempfile.TemporaryDirectory() as tmp:
+            inst = _fake_wheel(Path(tmp))
+            with patch.object(paths, "install", return_value=inst):
+                requirements = _dir(inst.data_root) / "requirements.txt"
+                requirements.write_bytes(b"yt-dlp==1\n")
+                lf = paths.part_sha("venv")
+                requirements.write_bytes(b"yt-dlp==1\r\n")
+                os.utime(requirements, ns=(1, 1))  # cache por mtime/tamanho: força a releitura
+                self.assertEqual(lf, paths.part_sha("venv"))
+                self.assertEqual(hashlib.sha256(b"yt-dlp==1\n").hexdigest()[:16], lf)
 
     def test_shared_runtime_is_keyed_by_the_part_sha(self):
         with tempfile.TemporaryDirectory() as tmp:

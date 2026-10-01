@@ -219,7 +219,9 @@ def from_profile(key: str) -> bool:
 def part_sha(part: str) -> str | None:
     """Versão de uma parte do runtime pelos arquivos que a definem; `None` sem eles.
 
-    Guardada por mtime e tamanho dos arquivos: só relê quando um deles muda.
+    Guardada por mtime e tamanho dos arquivos: só relê quando um deles muda. O fim de
+    linha não conta: o checkout do Windows (`text=auto`) traz esses arquivos com CRLF, e
+    a mesma versão do runtime precisa da mesma chave em qualquer sistema.
     """
     try:
         files = [data_root() / name for name in _PART_FILES[part]]
@@ -227,7 +229,7 @@ def part_sha(part: str) -> str | None:
         cached = _SHA_CACHE.get(part)
         if cached is not None and cached[0] == signature:
             return cached[1]
-        blob = b"\0".join(path.read_bytes() for path in files)
+        blob = b"\0".join(path.read_bytes().replace(b"\r\n", b"\n") for path in files)
     except (DataRootError, OSError):
         return None
     sha = hashlib.sha256(blob).hexdigest()[:16]
