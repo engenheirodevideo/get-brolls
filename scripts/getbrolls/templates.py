@@ -776,8 +776,14 @@ def instantiate(project, ref, client, tema, *, canvas=None, fps=None) -> dict:  
     return write_instance(plan_instance(project, ref, client, tema, canvas=canvas, fps=fps))
 
 
+def _format(doc):
+    return roteiro.ASPECT_TO_FORMAT[doc["aspecto"]]
+
+
 def write_instance(plan) -> dict:
     """Grava o plano de `plan_instance`; desfaz o que gravou quando algo falha no meio."""
+    from . import guidance, rules  # tardio: o rules puxa brief/queue
+
     project, shown, project_doc = plan["project"], plan["shown"], plan["project_doc"]
     doc, client = shown["template"], shown["client"]
     created = [] if project.exists() else [project]
@@ -786,6 +792,9 @@ def write_instance(plan) -> dict:
         folders = _make_folders(project, created)
         _write_file(project / "ROTEIRO.md", plan["roteiro"])
         created.append(project / "ROTEIRO.md")
+        seeded = rules.seed_project_rules(project, _format(doc))
+        if seeded:
+            created.append(seeded)
         installed, warnings = _install(project, plan["folder"], doc, created)
         lock = validate_lock(
             versioning.stamp_schema(
@@ -820,8 +829,11 @@ def write_instance(plan) -> dict:
                 f"Projeto criado do template {shown['ref']} do cliente {client}: ROTEIRO.md com "
                 f"{len(doc['slots'])} cena(s) para preencher, template.lock.json e project.json. Licenças e aprovações "
                 "não vêm do template. Próximo passo: preencher o ROTEIRO.md e rodar roteiro --action check."
-            )
+                + (f' RULES.md criado em "{_format(doc)}", o formato do roteiro.' if seeded else "")
+            ),
+            "do": guidance.roteiro_check_step(project),
         },
+        "rules": str(seeded) if seeded else None,
     }
 
 

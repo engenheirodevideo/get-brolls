@@ -242,6 +242,8 @@ def _prepare(project, write, plugins):
     doc = roteiro.parse(text, plugins)
     review = review_state(project, doc)
     reviewed = review["reviewed"]
+    if write and roteiro.skeleton_refusal(doc):
+        raise ValueError(roteiro.skeleton_refusal(doc))
     if write and not reviewed:
         raise ValueError(REVIEW_MISSING)
     rules = load_rules(project)

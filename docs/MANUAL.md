@@ -53,6 +53,7 @@ getbrolls setup
 getbrolls doctor
 ```
 
+- **`getbrolls: command not found` depois de instalar?** A pasta de comandos do `uv` (ou do `pipx`) ainda não está no `PATH`: rode `uv tool update-shell` (ou `pipx ensurepath`), abra um terminal novo e confira com `getbrolls --version`.
 - Em todo este manual, `getbrolls …` e `python3 scripts/gb.py …` são o mesmo comando: use o primeiro no pacote instalado e o segundo dentro de um checkout.
 - **Usa o plugin do Claude Code? Nada muda.** No checkout e no plugin, `python3 scripts/gb.py` continua igual.
 - **`getbrolls setup` instala o runtime** e nunca pergunta nada:
@@ -80,23 +81,27 @@ getbrolls doctor
 Um `getbrolls.toml` na pasta do workspace fixa pastas, executáveis e plugins para quem trabalha ali, sem script de variáveis de ambiente:
 
 ```toml
-requires = ">=2.6,<3"       # versão do getbrolls que este workspace aceita
-home = ".getbrolls"         # GB_HOME (relativo ao próprio getbrolls.toml)
+requires = ">=2.6,<3"                          # versão do getbrolls que este workspace aceita
+home = "/caminho/fora-do-repositorio/.getbrolls" # GB_HOME: absoluto ou relativo ao getbrolls.toml (sem ~)
 cache_dir = ".cache/getbrolls"
-runtime_dir = "tools/runtime"
-plugins = []                # teto: só estes plugins podem valer ([] = nenhum)
+runtime_dir = "/caminho/fora-do-repositorio/runtime"
+plugins = []                                   # teto: só estes plugins podem valer ([] = nenhum)
 
-[tools]                     # só caminhos absolutos
+[tools]                                        # só caminhos absolutos
 ffmpeg = "/usr/local/bin/ffmpeg"
 ffprobe = "/usr/local/bin/ffprobe"
 ```
+
+- **`home` fora do repositório.** Num workspace que é repositório compartilhado, ponha o `home` (e o `runtime_dir`) numa pasta fora dele: o `.env`, o `plugins.json` e o `marketplaces/` desse `GB_HOME` não entram no sha do perfil, e quem pode gravar no repositório poderia deixar ali um `.env` ou um plugin habilitado. Com o `home` dentro da pasta do `getbrolls.toml` (como `home = ".getbrolls"`), a prévia do `profile trust` avisa disso em `warnings`; o aviso não impede a confiança, só diz o risco.
+- **`runtime_dir` é a raiz do runtime:** o `setup` grava as duas partes direto nela — `<runtime_dir>/.venv/` (yt-dlp) e `<runtime_dir>/.tools/` (Playwright CLI) —, sem a subpasta `<versão>` do padrão `$GB_HOME/runtime/<versão>/`. Para reaproveitar um runtime já montado, aponte para a pasta que contém `.venv/` e `.tools/`, não para a de cima. Uma pasta por versão do getbrolls: pasta montada por outra versão é recusada, nunca trocada sozinha.
 
 - **Onde é achado:** `--profile <arquivo>`, depois `GB_PROFILE`, depois subindo a partir do `--project` e, por fim, da pasta atual. `--profile off` (ou `GB_PROFILE=off`) desliga.
 - **Precedência:** flag > ambiente (incluindo o `.env`) > perfil > padrão. O `home` do perfil é aplicado antes, então decide qual `$GB_HOME/.env` é lido. `plugins` só estreita o `GB_PLUGINS`, nunca acrescenta.
 - **Confiança em dois passos:** o perfil pode apontar executáveis, então só vale depois de `getbrolls profile trust` (mostra o que ele fixaria e o sha256) e `getbrolls profile trust --yes --expect <sha256>`. Editou o arquivo, precisa confiar de novo; `getbrolls profile untrust` desfaz. O único dispensado é `$GB_HOME/getbrolls.toml`.
 - **Sem confiança:** só `doctor`, `profile`, `capabilities` e `setup --where`/`setup --check` rodam, relatando o problema (o `doctor` em `summary.missing`). Todo o resto para com código `2` e a dica do `profile trust` antes de tocar em nada, inclusive comandos que não usam projeto, como `providers` e `plugins --action list`, e o `setup` que instala. `requires` que não bate sai com `4`.
 - **A prévia avisa:** `profile trust` lista em `warnings` o `home`, `runtime_dir` ou `cache_dir` que caem dentro da pasta do `getbrolls.toml` (num repositório compartilhado, quem grava ali poderia deixar um `.env` ou um `plugins.json` que o sha do perfil não cobre) e ids de `plugins` que não estão instalados (sem efeito até serem instalados).
-- **`home` do perfil:** com o `GB_HOME` vindo do perfil, o `.env` e o `plugins.json` dessa pasta só valem se forem arquivos comuns, seus e não graváveis por grupo ou outros (as mesmas recusas do próprio `getbrolls.toml`); senão, qualquer comando para com código `2`.
+- **`home` do perfil:** com o `GB_HOME` vindo do perfil, o `.env`, o `plugins.json` e a pasta `marketplaces/` dali só valem se não forem links e forem seus, sem gravação por grupo ou outros (as mesmas recusas do próprio `getbrolls.toml`); senão, qualquer comando para com código `2`. Um `GB_HOME` num `.env` fora dessa pasta (o do checkout, `GB_ENV_FILE` ou `--env-file`) é ignorado, com o aviso `ENV_GB_HOME_IGNORED`: para a pasta pessoal, o `home` do perfil confiável vence o `.env` (é ele que decide qual `.env` é lido); um `GB_HOME` exportado no ambiente continua vencendo o perfil.
+- **`doctor`** mostra em `install.profile` o perfil em vigor (`path`, `source`, `trust`, `applied` com as variáveis que ele pôs e `values` com valor e origem de cada campo) e em `install.gb_home` a pasta pessoal que valeu, com a origem em `install.gb_home_source` (`env`, `env_file`, `profile` ou `default`).
 - `getbrolls profile show` lista cada campo com o valor e a origem (`env`, `env_file`, `profile` ou `default`).
 - O perfil não escolhe qual instalação roda: use `requires` para exigir a versão certa.
 
@@ -245,6 +250,17 @@ python3 scripts/gb.py status --project /caminho/meu-video
 > Pensa como a **pré-produção**: RULES é o padrão do canal, BRIEF é o plano do vídeo (o que cada trecho precisa mostrar).
 > 💬 **No chat:** `/get-brolls-brief` faz uma entrevista de até 7 perguntas e escreve o BRIEF por você.
 
+**Primeira vez? Esta ordem dá certo sem editar JSON** (cada comando mostra o próximo em `summary.do`):
+
+1. `init --project /caminho/meu-video` cria o projeto.
+2. `roteiro --action new --genero reels --tema "Seu tema"` cria o `ROTEIRO.md` e, se o projeto ainda não tem `RULES.md`, um no formato do roteiro (`reels`, 9:16).
+3. Escreva a fala de cada cena e rode `roteiro --action check`: ele mostra o plano e o `review.sha256`. Texto de esqueleto (o que está entre chaves, como `{a dor, em uma frase}`) vira o aviso `ROTEIRO_ESQUELETO`; enquanto sobrar algum, `review` e `sync` recusam e dizem as cenas a editar.
+4. `init-brief` cria o `BRIEF.md` já no formato do roteiro e com `"beats": []` (os beats nascem do roteiro); preencha título, objetivo e direitos.
+5. Mostre o roteiro à pessoa e registre com `roteiro --action review … --expect <sha256>`; depois `roteiro --action sync` grava os beats.
+6. `status` diz o próximo passo (buscar o primeiro beat).
+
+Sem roteiro, o caminho é `init` → `init-rules` → `init-brief` (o modelo vem com um beat de exemplo para trocar) → `brief`.
+
 ```bash
 # ── init [--client … --canvas … --fps …] ────────────────────
 # O QUE FAZ: cria um projeto novo de layout 1: project.json (id, cliente,
@@ -280,6 +296,7 @@ python3 scripts/gb.py rules --project /caminho/meu-video
 
 # ── init-brief ──────────────────────────────────────────────
 # O QUE FAZ: cria o BRIEF.md, o plano do vídeo dividido em beats.
+# COM ROTEIRO.md: o formato vem do roteiro e "beats" fica [] (o sync preenche).
 # DEPOIS: abra e preencha (veja "📐 Os arquivos que você edita" lá embaixo).
 python3 scripts/gb.py init-brief --project /caminho/meu-video
 
@@ -577,11 +594,14 @@ python3 scripts/gb.py queue --action status --project /caminho/meu-video
 ```bash
 # ── roteiro --action new ────────────────────────────────────
 # O QUE FAZ: cria o ROTEIRO.md com o esqueleto do gênero e as pastas aroll/ e assets/.
+#            Sem RULES.md no projeto, cria um no formato do roteiro (reels); um RULES.md
+#            que já existe nunca é tocado (se o formato dele divergir, o check avisa).
 # --force recomeça do esqueleto e guarda o anterior em ROTEIRO.md.bak.
 python3 scripts/gb.py roteiro --action new --genero reels --tema "Seu tema" --project /caminho/meu-video
 
 # ── roteiro --action check ──────────────────────────────────
 # O QUE FAZ: valida o roteiro e mostra o plano de cena (componentes, duração). Só lê.
+#            Sem RULES.md no projeto (ninguém escolheu formato), vale o aspecto do roteiro.
 python3 scripts/gb.py roteiro --action check --project /caminho/meu-video
 
 # ── roteiro --action review ─────────────────────────────────
@@ -633,7 +653,8 @@ python3 scripts/gb.py client --action add --slug acme --root /caminho/Clientes
 # ── template --action freeze ────────────────────────────────
 # O QUE FAZ: congela o ROTEIRO.md (sem a fala) e os componentes citados na próxima
 #            versão imutável: cat:getbrolls/template/reels-acme@1, @2…
-python3 scripts/gb.py template --action freeze --from /caminho/meu-video --slug reels-acme
+# --client: o cliente dono do template; sem ele, vale o "client" do project.json do projeto.
+python3 scripts/gb.py template --action freeze --from /caminho/meu-video --slug reels-acme --client acme
 
 # ── template --action list / show ───────────────────────────
 # O QUE FAZ: list mostra as versões; show confere o sha256 de cada arquivo (intact). Só leem.
@@ -650,7 +671,7 @@ python3 scripts/gb.py init --template cat:getbrolls/template/reels-acme@1 --clie
 
 ## 🧩 Plugins do SDK (experimental)
 
-> Plugins acrescentam fontes, rotas de download e comandos próprios, instalados em `~/.getbrolls/plugins`. Não é o plugin do Claude Code. Experimental: o contrato (`sdk_api` 1) pode mudar em versão minor. Detalhes em [SDK.md](SDK.md).
+> Plugins acrescentam fontes, rotas de download e comandos próprios, instalados em `$GB_HOME/plugins` (padrão `~/.getbrolls/plugins`). Não é o plugin do Claude Code. Experimental: o contrato (`sdk_api` 1) pode mudar em versão minor. Detalhes em [SDK.md](SDK.md).
 
 ```bash
 # ── plugins --action list ───────────────────────────────────
@@ -666,10 +687,43 @@ python3 scripts/gb.py plugins --action list
 python3 scripts/gb.py plugins --action install --source "<pasta-ou-url-git>"
 python3 scripts/gb.py plugins --action install --source "<pasta-ou-url-git>" --yes --expect "<sha256>"
 
+# ── plugins --action marketplace-add / -list / -update / -remove ──
+# O QUE FAZ: um marketplace é um repositório git com o índice getbrolls-marketplace.json.
+#   marketplace-add fixa o índice num commit (--ref escolhe branch/tag; --commit, um sha);
+#   marketplace-list mostra os fixados (só lê); marketplace-update busca o índice de novo,
+#   move o pin e devolve o diff (sem --marketplace, todos; --commit fixa outro; voltar
+#   atrás pede --allow-rollback). Nenhum plugin é atualizado por ele: use update;
+#   marketplace-remove tira o índice e o cache. Plugins já instalados ficam.
+python3 scripts/gb.py plugins --action marketplace-add --source "<url-git-do-marketplace>"
+python3 scripts/gb.py plugins --action marketplace-list
+python3 scripts/gb.py plugins --action marketplace-update --marketplace "<nome>"
+python3 scripts/gb.py plugins --action marketplace-remove --marketplace "<nome>"
+
+# ── plugins --action search ─────────────────────────────────
+# O QUE FAZ: procura nos índices em cache, sem rede (--marketplace limita a um).
+python3 scripts/gb.py plugins --action search --query "banco"
+
+# ── plugins --action install --id <id>@<marketplace> ────────
+# O QUE FAZ: instala pelo índice fixado: a origem e o commit vêm dele.
+# EM DOIS PASSOS: sem --yes é a prévia (manifesto, permissões e o "expect");
+#                 com o ok da pessoa, rode o comando de "next" (--yes --expect <valor>).
+# TIER: "tier" é o que o índice DECLARA (official, verified, community). Só o índice
+#       oficial do getbrolls sai com tier_verified: true; nos outros, tier_label diz
+#       "official (declarado, não verificado)" — o tier nunca muda as regras de instalação.
+python3 scripts/gb.py plugins --action install --id "<id>@<marketplace>"
+python3 scripts/gb.py plugins --action install --id "<id>@<marketplace>" --yes --expect "<expect da prévia>"
+
 # ── plugins --action update ─────────────────────────────────
-# O QUE FAZ: compara com a origem gravada no install e traz a versão nova.
+# O QUE FAZ: compara com a origem gravada no install e traz a versão nova
+#            (instalado por marketplace: pela entrada do índice fixado; --all só mostra a prévia de todos).
 # CONFIRMA IGUAL AO INSTALL: --yes --expect <sha256 da prévia>.
 python3 scripts/gb.py plugins --action update --id "<id>"
+
+# ── plugins --action remove ─────────────────────────────────
+# O QUE FAZ: tira a pasta do plugin e o estado dele no plugins.json, em dois passos:
+#            sem --yes mostra o que sai; com --yes remove (os dados em plugin-data/ ficam).
+python3 scripts/gb.py plugins --action remove --id "<id>"
+python3 scripts/gb.py plugins --action remove --id "<id>" --yes
 
 # ── plugins --action enable / disable ───────────────────────
 # O QUE FAZ: liga ou desliga um plugin que já está na pasta.

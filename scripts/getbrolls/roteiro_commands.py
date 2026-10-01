@@ -12,8 +12,9 @@ from pathlib import Path
 from . import assets, layout, roteiro, roteiro_plan, roteiro_review, roteiro_sync
 from .brief import brief_path, load_brief
 from .export import _OS_REASONS_COMMON as _OS_REASONS
+from .guidance import roteiro_check_step
 from .ledger import atomic_write
-from .rules import load_rules
+from .rules import load_rules, seed_project_rules, video_format_unchosen
 
 NEW_FOLDERS = ("aroll", *(f"assets/{name}" for name in layout.ASSET_FOLDERS))
 BACKUP_SUFFIX = ".bak"
@@ -69,14 +70,19 @@ def _new(args):
     root = Path(args.project).expanduser().resolve()
     for folder in NEW_FOLDERS:
         (root / folder).mkdir(parents=True, exist_ok=True)
+    video_format = roteiro.ASPECT_TO_FORMAT[roteiro.GENRES[args.genero]["aspecto"]]
+    rules = seed_project_rules(root, video_format)
     line = "ROTEIRO.md criado: escreva a fala de cada cena e rode roteiro --action check."
+    if rules:
+        line += f' RULES.md criado em "{video_format}", o formato do roteiro.'
     if backup:
         line += f" O anterior ficou em {backup.name}."
     return {
         "roteiro": str(path),
         "backup": str(backup) if backup else None,
+        "rules": str(rules) if rules else None,
         "folders": list(NEW_FOLDERS),
-        "summary": {"line": line},
+        "summary": {"line": line, "do": roteiro_check_step(args.project)},
     }
 
 
@@ -98,17 +104,29 @@ def _check(args):
     doc = roteiro.parse(roteiro.load_text(args.project))
     plan = roteiro_plan.scene_plan(args.project, doc)
     brief_data, brief_warning = _brief_for_check(args.project)
-    problems = plan["problems"] + roteiro_plan.aspect_problems(doc.meta, load_rules(args.project), brief_data)
+    rules = load_rules(args.project)
+    if video_format_unchosen(args.project, rules):
+        # Ninguém escolheu formato (sem RULES.md no projeto): vale o aspecto do roteiro.
+        rules = {**rules, "video_format": roteiro.ASPECT_TO_FORMAT[doc.meta["aspecto"]]}
+    problems = plan["problems"] + roteiro_plan.aspect_problems(doc.meta, rules, brief_data)
     if problems:
         raise ValueError("ROTEIRO.md com problema:\n" + "\n".join(problems))
     warnings = plan["warnings"] + ([brief_warning] if brief_warning else [])
+    left = roteiro.skeleton_scenes(doc)
+    if left:
+        # Aviso, não erro: a pessoa pode salvar rascunho; review e sync é que recusam.
+        warnings.append(f"{SKELETON_CODE}: {roteiro.skeleton_refusal(doc)}")
     review = roteiro_review.review_state(args.project, doc)
     line = f"{len(plan['scenes'])} cenas, ~{plan['total_s']} s, {len(warnings)} aviso(s); " + (
         "revisão válida." if review["reviewed"] else "falta a revisão da pessoa."
     )
-    return {"meta": doc.meta, **plan, "warnings": warnings, "review": review, "summary": {"line": line}}
+    return {
+        "meta": doc.meta, **plan, "warnings": warnings, "skeleton_scenes": [label for label, _ in left],
+        "review": review, "summary": {"line": line},
+    }  # fmt: skip
 
 
+SKELETON_CODE = "ROTEIRO_ESQUELETO"
 REVIEW_CHANGED = "O roteiro mudou desde a versão revisada; mostre de novo e revise."
 EXPECT_MISSING = (
     "roteiro --action review exige --expect <sha256>: o review.sha256 que check e plan mostram, "
@@ -124,6 +142,9 @@ def _review(args):
     # `load_text` tira BOM e CRLF: `set_status` e o hash da revisão trabalham sobre o mesmo texto.
     text = roteiro.load_text(args.project)
     doc = roteiro.parse(text)
+    refusal = roteiro.skeleton_refusal(doc)
+    if refusal:
+        raise ValueError(refusal)
     roteiro_review.check_review_args(args.by, args.channel, args.statement)
     if roteiro_review.review_hash(doc, args.project) != expect:
         raise ValueError(REVIEW_CHANGED)

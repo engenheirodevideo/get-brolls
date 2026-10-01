@@ -62,7 +62,8 @@ SUMMARIES = {
     "doctor": "Diagnosticar dependências, caminhos fixados e fontes utilizáveis",
     "plugins": (
         "Listar, instalar (de pasta, git ou marketplace), atualizar, remover, criar, habilitar, desabilitar ou "
-        "validar plugins do SDK (~/.getbrolls/plugins), procurar nos marketplaces e gerenciá-los"
+        "validar plugins do SDK ($GB_HOME/plugins, padrão ~/.getbrolls/plugins), procurar nos marketplaces e "
+        "gerenciá-los"
     ),
     "capabilities": (
         "Descrever em JSON os comandos, flags, códigos de saída e comandos de plugin desta instalação (para agentes)"
@@ -204,12 +205,48 @@ def _suggest_missing_required(parser, args):
     return found
 
 
+# Mensagens comuns do argparse em pt-BR. O original (inglês) continua em `error_en`.
+# Padrões das versões 3.11–3.14; mensagem que nenhum casa sai como veio.
+_PT_BR_USAGE = (
+    (re.compile(r"^the following arguments are required: (?P<a>.+)$"), "faltam argumentos obrigatórios: {a}"),
+    (re.compile(r"^one of the arguments (?P<a>.+) is required$"), "um destes argumentos é obrigatório: {a}"),
+    (re.compile(r"^unrecognized arguments: (?P<a>.+)$"), "argumentos não reconhecidos: {a}"),
+    (
+        re.compile(r"^argument (?P<a>.+?): invalid choice: (?P<v>.+?) \(choose from (?P<c>.+)\)$"),
+        "argumento {a}: opção inválida: {v} (escolha entre {c})",
+    ),
+    (re.compile(r"^argument (?P<a>.+?): expected one argument$"), "argumento {a}: falta o valor (esperava um)"),
+    (
+        re.compile(r"^argument (?P<a>.+?): expected at least one argument$"),
+        "argumento {a}: esperava pelo menos um valor",
+    ),
+    (
+        re.compile(r"^argument (?P<a>.+?): not allowed with argument (?P<b>.+)$"),
+        "argumento {a}: não vale junto com {b}",
+    ),
+    (
+        re.compile(r"^argument (?P<a>.+?): invalid (?P<t>\S+) value: (?P<v>.+)$"),
+        "argumento {a}: valor {t} inválido: {v}",
+    ),
+    (re.compile(r"^ambiguous option: (?P<a>\S+) could match (?P<m>.+)$"), "opção ambígua: {a} pode ser {m}"),
+)
+
+
+def usage_pt_br(message):
+    """A mensagem de uso do argparse em pt-BR (nomes, valores e escolhas ficam como vieram)."""
+    for pattern, template in _PT_BR_USAGE:
+        found = pattern.match(message)
+        if found:
+            return template.format(**found.groupdict())
+    return message
+
+
 class GbArgumentParser(argparse.ArgumentParser):
     """ArgumentParser cujo erro de uso sai em JSON fora do terminal e sugere o nome parecido.
 
-    A mensagem (`error`) é a do argparse, byte a byte; o código de saída é 2.
-    Num terminal, sai o texto de sempre (`usage` + `prog: error: …`) e, quando há
-    nome parecido, uma linha "Você quis dizer: …?".
+    A mensagem (`error`) sai em pt-BR (`usage_pt_br`); a do argparse, byte a byte, fica em
+    `error_en` para ferramentas. O código de saída é 2. Num terminal, sai o `usage` e
+    `prog: erro: …` em pt-BR e, quando há nome parecido, uma linha "Você quis dizer: …?".
     """
 
     _bad_choice: tuple[str, tuple[str, ...]] | None = None
@@ -243,14 +280,16 @@ class GbArgumentParser(argparse.ArgumentParser):
         if suggestion is None and message.startswith(gettext("the following arguments are required: %s") % ""):
             suggestion = _suggest_missing_required(self, self._args)
         self._bad_choice = None
+        translated = usage_pt_br(message)
         if _stderr_is_tty():
             self.print_usage(sys.stderr)
-            sys.stderr.write(gettext("%(prog)s: error: %(message)s\n") % {"prog": self.prog, "message": message})
+            sys.stderr.write(f"{self.prog}: erro: {translated}\n")
             if suggestion:
                 sys.stderr.write(f"Você quis dizer: {suggestion}?\n")
         else:
             payload = {
-                "error": message,
+                "error": translated,
+                "error_en": message,
                 "error_code": "USAGE_ERROR",
                 "usage": _ANSI.sub("", self.format_usage()).strip(),
                 "suggestion": suggestion,

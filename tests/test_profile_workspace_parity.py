@@ -119,7 +119,9 @@ class WorkspaceParityCase(unittest.TestCase):
     @staticmethod
     def normalized(done):
         doctor = json.loads(done.stdout)
+        # Origem é o que muda de propósito (ambiente × perfil); o valor tem que ser o mesmo.
         del doctor["install"]["profile"]
+        del doctor["install"]["gb_home_source"]
         return doctor
 
     def doctor_a(self):

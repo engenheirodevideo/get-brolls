@@ -1353,7 +1353,7 @@ def brief_state(project, rules, items, data=None):
         "beat_queries": {b["id"]: b["resolved"].get("narration") or b["resolved"]["target"] for b in beats},
         # Só com ROTEIRO.md do get-brolls: fora de sincronia, a escada manda para o sync;
         # em dia e sem beat ativo, o `status` diz que o roteiro não pede b-roll e segue.
-        **_roteiro_flags(roteiro_sync_needed(project, beats), beats),
+        **_roteiro_flags(roteiro_sync_needed(project, beats), beats, project),
     }
 
 
@@ -1366,9 +1366,34 @@ def roteiro_sync_needed(project, beats):
     return roteiro_sync.out_of_sync(project, [b["id"] for b in beats])
 
 
-def _roteiro_flags(sync_needed, beats):
+def _roteiro_reviewed(project):
+    """O roteiro atual tem revisão válida? Só lê; roteiro que não abre conta como sem revisão."""
+    from getbrolls import roteiro, roteiro_review
+
+    try:
+        return roteiro_review.review_state(project, roteiro.parse(roteiro.load_text(project)))["reviewed"]
+    except (ValueError, OSError):
+        return False
+
+
+def _roteiro_skeleton(project):
+    """Rótulos das cenas com texto de esqueleto do `roteiro new`; só lê, roteiro que não abre dá lista vazia."""
+    from getbrolls import roteiro
+
+    try:
+        return [label for label, _ in roteiro.skeleton_scenes(roteiro.parse(roteiro.load_text(project)))]
+    except (ValueError, OSError):
+        return []
+
+
+def _roteiro_flags(sync_needed, beats, project):
     if sync_needed:
-        return {"roteiro_sync": True}
+        skeleton = _roteiro_skeleton(project)
+        if skeleton:
+            # Review e sync recusam texto de esqueleto: o degrau é editar o roteiro.
+            return {"roteiro_sync": True, "roteiro_skeleton": skeleton}
+        # Sem revisão, o sync recusa: o degrau é o `check`, que mostra o hash para o `review`.
+        return {"roteiro_sync": True, **({} if _roteiro_reviewed(project) else {"roteiro_unreviewed": True})}
     if sync_needed is False and not beats:
         return {"roteiro_no_broll": True}
     return {}
@@ -1641,6 +1666,11 @@ ROTEIRO_SYNC_NEXT = (
     "Revise o ROTEIRO.md com a pessoa e rode `roteiro --action sync --project ...`: os beats "
     "nascem dele. Depois, `brief --project ...` mostra o comando pronto de cada beat."
 )
+# Mesmo degrau, antes da revisão: o sync recusaria, então o passo é conferir e mostrar.
+ROTEIRO_CHECK_NEXT = (
+    "Rode `roteiro --action check --project ...`, mostre o roteiro à pessoa e registre a revisão "
+    "com `roteiro --action review ... --expect <review.sha256>`; depois, `roteiro --action sync`."
+)
 ROTEIRO_DRIFT_PROBLEM = (
     "O ROTEIRO.md mudou desde o último sync: os beats do BRIEF.md não batem com as cenas. Revise o "
     "roteiro com a pessoa e rode `roteiro --action sync --project <projeto>`."
@@ -1710,6 +1740,8 @@ def _status_summary(ctx, queue, review_page, brief):
             if _reference_only_step(do)
             else ROTEIRO_SYNC_NEXT
             if do.get("step") == "roteiro-sync"
+            else ROTEIRO_CHECK_NEXT
+            if do.get("step") == "roteiro-check"
             else status_next(
                 counts,
                 format_pending,
@@ -2472,7 +2504,9 @@ def _doctor_plugin_inventory(result, summary):
             for row, _folder, manifest in sdk_loader.entries()
         ]
     except ValueError as exc:
-        result["plugins_error"] = str(exc)
+        from getbrolls.sdk.marketplace import portable_text
+
+        result["plugins_error"] = portable_text(exc)
         return
     installed = [{**row, "origin": origins.get(row["id"])} for row in installed]
     if not installed:
@@ -2530,6 +2564,8 @@ def _doctor_report(config, providers_result, live, env_flag=None):
     overrides, pin_problems, social, executables = readiness_probe()
     install = _paths.install_report(env_flag)
     install["profile"] = profile.report()
+    # A pasta pessoal que valeu e de onde veio (`env`, `env_file`, `profile` ou `default`).
+    install["gb_home_source"] = install["profile"]["values"]["home"]["source"]
     summary = doctor_summary(executables, pin_problems, install.get("data_missing") or ())
     if social.get("problem"):
         for entry in summary["missing"]:
@@ -2695,8 +2731,32 @@ def _execute_init_brief(args):
             f"{dest} já existe; edite o plano deste vídeo sem sobrescrever o que "
             "você já respondeu. Rode `brief --validate --project ...` para conferi-lo."
         )
-    shutil.copyfile(_paths.data_path("docs", "BRIEF.md"), dest)
-    return {"brief": str(dest)}
+    template = _paths.data_path("docs", "BRIEF.md")
+    from getbrolls.roteiro_frontmatter import is_roteiro, roteiro_format
+
+    if not is_roteiro(args.project):
+        shutil.copyfile(template, dest)
+        return {"brief": str(dest), "summary": {"line": "BRIEF.md criado do modelo: preencha o plano e os beats."}}
+    # Com ROTEIRO.md do get-brolls, os beats nascem do sync e o formato é o do roteiro:
+    # nada de beat de exemplo, nem "native" contra um roteiro em 9:16.
+    text = template.read_text(encoding="utf-8")
+    block = re.findall(r"```json\s*\n(.*?)\n```", text, re.DOTALL)[0]
+    data = json.loads(block)
+    video_format = roteiro_format(args.project)
+    if video_format:
+        data["video"]["delivery"]["format"] = video_format
+    data["beats"] = []
+    dest.write_text(text.replace(block, json.dumps(data, ensure_ascii=False, indent=2), 1), encoding="utf-8")
+    shown = f'"{video_format}"' if video_format else "o do modelo"
+    return {
+        "brief": str(dest),
+        "summary": {
+            "line": (
+                f"BRIEF.md criado com o formato {shown} do ROTEIRO.md e sem beats: eles nascem do "
+                "roteiro --action sync, depois da revisão."
+            )
+        },
+    }
 
 
 def _execute_roteiro_or_assets(args):

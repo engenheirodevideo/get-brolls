@@ -41,9 +41,14 @@ passo a passo de cada comando está no [MANUAL.md](MANUAL.md).
 - **Ordem determinística.** Listas do resultado saem numa ordem estável (por id,
   nome ou caminho), para que duas execuções sobre o mesmo estado deem a mesma saída.
 - **Sem caminho da máquina onde não precisa.** `capabilities`, `analysis`, `client
-  list|show` e as mensagens de erro trocam a pasta pessoal por `~` ou
-  `$GB_HOME/…`; caminhos de projeto aparecem só onde o comando os devolve como
-  resultado (`log`, `local_path`…).
+  add|list|show` (`root`, `registry` e as mensagens) e `plugins --action list|install`
+  (`plugins_dir` como `$GB_HOME/plugins`; `source` local sob a pasta pessoal como
+  `~/…`, URL como veio) trocam a pasta pessoal por `~` ou `$GB_HOME/…`. Ficam
+  absolutos, porque são dados que a máquina usa (abrir, passar de volta como
+  argumento): `log`/`app_log` do erro, `project`, `roteiro`, `brief`, `rules` e
+  `backup` dos comandos que os criam, o `path` de cada componente no `roteiro
+  check|plan` e no `assets`, `local_path` e `install.*` do `doctor`. O
+  `plugins.json` continua guardando a origem com o caminho de verdade.
 
 ### `serve` em primeiro plano
 
@@ -81,7 +86,7 @@ versão minor.
 |---|---|---|
 | `INVALID_DATA` | `1` | Qualquer erro de dados ou de operação (`ValueError` depois do parse), inclusive de comando de plugin e de exportador. É o padrão para o que não é dos outros códigos. |
 | `IO_ERROR` | `1` | Erro do sistema de arquivos ou de rede (`OSError`): permissão, disco, arquivo que sumiu. |
-| `LOCKED` | `1` | Outro processo segura a trava do projeto (`brolls/.command.lock`), de `analysis/` ou do runtime. Repetir depois resolve. |
+| `LOCKED` | `1` | Outro processo segura uma trava: a do projeto (`brolls/.command.lock`), a de `analysis/`, a do runtime (`setup`, `.getbrolls-setup.lock`), a dos plugins (`$GB_HOME/.plugins.lock`), a dos clientes (`$GB_HOME/.clients.lock`), a dos templates de um cliente (`templates/.lock`), a dos perfis confiáveis (`$GB_HOME/trusted-profiles.json.lock`) ou a do índice da biblioteca pessoal (`$GB_HOME/library/index.lock`). Repetir depois resolve. |
 | `USAGE_ERROR` | `2` | Erro do argparse ou `UsageError` explícito (`.env` recusado, perfil não confiável, combinação de flags inválida). |
 | `INTERNAL_ERROR` | `3` | `KeyError`, `TypeError` e `AttributeError` dentro de um comando, ou qualquer exceção fora dele: assinatura de bug. |
 | `PREREQUISITE_MISSING` | `4` | `PrerequisiteError`: ferramenta, arquivo de dados ou requisito do perfil ausente. |
@@ -99,15 +104,20 @@ sai com código `2` no stderr, em um de dois formatos, decidido só pelo stderr:
   com exatamente estas chaves:
 
   ```json
-  {"error": "the following arguments are required: --project", "error_code": "USAGE_ERROR", "usage": "usage: getbrolls status [-h] --project PROJECT", "suggestion": "--project", "prog": "getbrolls status"}
+  {"error": "faltam argumentos obrigatórios: --project", "error_en": "the following arguments are required: --project", "error_code": "USAGE_ERROR", "usage": "usage: getbrolls status [-h] --project PROJECT", "suggestion": "--project", "prog": "getbrolls status"}
   ```
 
-  `error` é a mensagem do argparse, byte a byte; `usage` é a linha de uso sem cores;
+  `error` é a mensagem em pt-BR: as mensagens comuns do argparse (argumentos
+  obrigatórios, um de vários obrigatório, escolha inválida, argumentos não
+  reconhecidos, valor que falta, valor inválido, flags que não valem juntas, opção
+  ambígua) são traduzidas, com nomes, valores e escolhas como vieram; uma mensagem
+  que nenhum padrão reconhece sai como veio. `error_en` é a mensagem original do
+  argparse, byte a byte, para ferramentas; `usage` é a linha de uso sem cores;
   `prog` é o comando (`getbrolls` ou `getbrolls <subcomando>`); `suggestion` é o nome
   parecido com o que foi digitado (`serch` → `search`, `--limt` → `--limit`,
   `--projct` → `--project`) ou `null`.
-- **stderr num terminal**: o texto de sempre do argparse (`usage: …` e
-  `getbrolls: error: …`) e, quando há nome parecido, uma linha a mais
+- **stderr num terminal**: a linha de uso do argparse (`usage: …`) e
+  `getbrolls: erro: <a mensagem de error>` e, quando há nome parecido, uma linha a mais
   `Você quis dizer: <nome>?`.
 
 A ajuda e os erros chamam a CLI de `getbrolls`, também no checkout.
@@ -163,6 +173,7 @@ que a pessoa ou o agente deveria saber. O `getbrolls.log` registra só o código
 | `DEPRECATED` | Algo que ainda funciona, mas sai numa versão futura (veja [Deprecação](#deprecação)). |
 | `EMPTY_STORYBOARD` | `review` gerou um Storyboard sem itens. |
 | `ENV_FILE_SHADOWED` | Há dois `.env`; só o primeiro da ordem foi lido. |
+| `ENV_GB_HOME_IGNORED` | O `.env` lido define `GB_HOME`, mas o `home` do perfil confiável já decidiu a pasta pessoal; a linha do `.env` foi ignorada. |
 | `FFMPEG_PROBE_FAILED` | Os filtros do ffmpeg não puderam ser sondados; `drawtext` tratado como indisponível. |
 | `LIBRARY_INDEX_UNREADABLE` | A biblioteca de aprendizados não pôde ser lida; as pistas dela ficaram de fora. |
 | `LIBRARY_WRITE_FAILED` | Um aprendizado não pôde ser gravado na biblioteca. |
@@ -172,6 +183,7 @@ que a pessoa ou o agente deveria saber. O `getbrolls.log` registra só o código
 | `MIGRATE_BROLL_EXISTS` | `migrate`: já existe uma `broll/` com arquivos, que vira a pasta dos clipes finais. |
 | `PLUGIN_ENV_TOOLCHAIN` | Uma variável de plugin no `.env` tem nome que ferramentas do sistema leem; ela chega só ao plugin. |
 | `PLUGIN_PATH_CHANGED` | Uma pasta de `permissions.paths` não confere com a gravada no pin e fica ignorada. |
+| `PLUGIN_SELECTION_BLOCKS` | `plugins --action install` instalou e habilitou o plugin, mas a seleção da sessão (o `plugins` do perfil ou o `GB_PLUGINS`) o deixa desligado. |
 | `PLUGIN_PIN_OUTDATED` | O pin de um plugin é de uma versão antiga; rode `plugins --action enable` de novo. |
 | `PREVIEW_LIMITATION` | A prévia foi gerada com uma limitação (só referência, por exemplo). |
 | `PROVIDER_ERROR` | Uma fonte falhou e o comando terminou em erro. |
@@ -202,7 +214,7 @@ no projeto:
 | `brief` | Lê `BRIEF.md`, `RULES.md` e o manifesto existente. |
 | `doctor` | Diagnostica a instalação; `--project` não cria nada. |
 | `setup` | Grava só no runtime (`$GB_HOME/runtime` ou `GB_RUNTIME_DIR`), nunca num projeto. |
-| `x` | Comando de plugin, que lê o projeto por cópias. |
+| `x` | Comando de plugin, que lê o projeto por cópias. A única gravação no projeto é a do próprio plugin em `analysis/` (componentes de análise e marcadores, pela API do SDK), sob a trava de `analysis/` — nunca a trava do projeto, nunca `brolls/`. |
 | `capabilities` | Descreve o parser e os manifestos de plugin. |
 | `profile` | `trust`/`untrust` gravam só `$GB_HOME/trusted-profiles.json`. |
 
@@ -324,7 +336,14 @@ Qual valor vence, campo a campo:
 5. o padrão.
 
 O `home` do perfil é aplicado antes da escolha do `.env` (ele decide qual
-`$GB_HOME/.env` é lido). `plugins` do perfil é um teto: só estreita o `GB_PLUGINS`.
+`$GB_HOME/.env` é lido). Por isso, só para `GB_HOME`, o `home` de um perfil confiável
+vence o `.env`: um `GB_HOME` num `.env` fora de `$GB_HOME` (checkout, `GB_ENV_FILE`,
+`--env-file`) fica ignorado e o comando avisa `ENV_GB_HOME_IGNORED`; o ambiente do
+processo continua vencendo o perfil. `doctor` mostra a pasta que valeu em
+`install.gb_home` e a origem em `install.gb_home_source` (`env`, `env_file`, `profile`
+ou `default`). `plugins` do perfil é um teto: só estreita o `GB_PLUGINS`; quem fica de
+fora aparece `disabled` com o motivo "desligado pelo perfil do workspace (getbrolls.toml
+`plugins`)" e `plugins --action list` diz `"selection": "profile"`.
 `profile --action show` mostra cada valor com a origem (`env`, `env_file`, `profile`,
 `default`).
 

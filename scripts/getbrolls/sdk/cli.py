@@ -41,18 +41,29 @@ def kind_list():
 
 
 def _list(_args):  # mesma assinatura das outras ações
+    from .marketplace import portable_text
     from .marketplace_install import plugin_origins
 
     origins = plugin_origins()
     return {
-        "plugins_dir": str(loader.plugins_root()),
-        "selection": "GB_PLUGINS" if loader.env_selection() is not None else "plugins.json",
-        "plugins": [{**row, "origin": origins.get(row["id"])} for row in loader.inventory()],
+        # Sem caminho da máquina: `$GB_HOME/plugins` e `~/…` (o `source` local gravado no plugins.json não muda).
+        "plugins_dir": portable_text(loader.plugins_root()),
+        "selection": loader.selection_source(),
+        "plugins": [{**row, "origin": _portable_origin(origins.get(row["id"]))} for row in loader.inventory()],
         "note": (
             "Status pré-carga (manifesto + pin de hash), sem executar código de plugin; "
             "rode `doctor` para o resultado real do carregamento (register() executado)."
         ),
     }
+
+
+def _portable_origin(origin):
+    """A origem para mostrar: `source` local sob a pasta pessoal vira `~/…`; URL fica como veio."""
+    if not origin or not isinstance(origin.get("source"), str):
+        return origin
+    from .marketplace import portable_text
+
+    return {**origin, "source": portable_text(origin["source"])}
 
 
 def as_usage(check, *args, **kwargs):
@@ -119,6 +130,19 @@ def _check_pin_flags(args):
 
 
 def _install(args):
+    result = _install_result(args)
+    if isinstance(result.get("plugin"), dict):
+        result = {**result, "plugin": _portable_origin(result["plugin"])}
+    plugin_id = (result.get("plugin") or {}).get("id") if result.get("installed") else None
+    warning = loader.selection_blocks(plugin_id) if plugin_id else None
+    if warning:
+        from ..runtime import record_warning
+
+        record_warning("PLUGIN_SELECTION_BLOCKS", warning)
+    return result
+
+
+def _install_result(args):
     from . import install
 
     flags = _pin_flags(args)

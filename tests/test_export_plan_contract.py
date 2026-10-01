@@ -291,9 +291,9 @@ class EvolutionDocTests(unittest.TestCase):
     def test_the_second_doc_example_registers_under_the_manifest_id(self):
         """O segundo exemplo ('Com mídia') roda como está — dentro de `def register(api):`, sem
         `NameError` — e registra um nome igual ao `id` do plugin do tutorial (`meu_exporter`) ou
-        começando por `meu_exporter_`, como a regra do manifesto exige (blind-test W7: o exemplo
-        antigo chamava `api.exporter(...)` solto, fora de `register`, e com um nome que violava
-        essa regra)."""
+        começando por `meu_exporter_`, como a regra do manifesto exige (teste cego do exemplo do
+        manifesto: o exemplo antigo chamava `api.exporter(...)` solto, fora de `register`, e com
+        um nome que violava essa regra)."""
         namespace = self.doc_exporter(1)
         self.assertIn("register", namespace, "o segundo exemplo tem que definir register(api)")
 

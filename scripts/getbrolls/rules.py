@@ -6,6 +6,7 @@
 # (getbrolls.queue <-> getbrolls.rules) já existia antes da 2.6.0: quem quebra
 # o ciclo em tempo de execução é o import tardio em `queue.report`.
 
+import json
 import logging
 import os
 import re
@@ -346,6 +347,50 @@ def load_rules(project):
         for message in warnings:
             record_warning("RULES_LAYER_IGNORED", message)
     return r
+
+
+def _template_path():
+    return _paths.data_path("docs", "RULES.md")
+
+
+def video_format_unchosen(project, rules):
+    """True quando ninguém escolheu o formato: sem RULES.md no projeto e `video_format` do modelo da skill.
+
+    Aí o `aspecto` do ROTEIRO.md é a única escolha que a pessoa fez; o `check` não trava nele.
+    """
+    project_file = Path(project) / "RULES.md"
+    if project_file.exists() or project_file.is_symlink():
+        return False
+    return (rules or {}).get("sources", {}).get("video_format") == str(_template_path())
+
+
+def seed_project_rules(project, video_format):
+    """Cria o RULES.md do projeto a partir do modelo, com `video_format` do roteiro; None quando não precisa.
+
+    Nunca sobrescreve: com RULES.md no projeto (até link quebrado), não faz nada. Também
+    não cria quando as camadas em vigor (global, GB_RULES_FILE) já dão esse formato.
+    É o mesmo arquivo que `init-rules --format <formato>` gravaria.
+    """
+    dest = Path(project) / "RULES.md"
+    if dest.exists() or dest.is_symlink():
+        return None
+    try:
+        if load_rules(project).get("video_format") == video_format:
+            return None
+    except (ValueError, OSError):
+        return None  # camada externa quebrada: o `check` mostra o erro, aqui não se cria nada
+    template = _template_path().read_text(encoding="utf-8")
+    blocks = re.findall(r"```json\s*\n(.*?)\n```", template, re.DOTALL)
+    data = json.loads(blocks[0])
+    data["video_format"] = video_format
+    text = template.replace(blocks[0], json.dumps(data, ensure_ascii=False, indent=2), 1)
+    try:
+        with dest.open("x", encoding="utf-8") as handle:
+            handle.write(text)
+    except FileExistsError:
+        return None
+    logs.event(log, logging.INFO, "rules_seeded", video_format=video_format)
+    return dest
 
 
 def domain_matches(url, domains):

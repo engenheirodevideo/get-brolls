@@ -9,11 +9,13 @@ pelas mesmas recusas do próprio toml (link, outro dono, gravável por grupo/out
 import json
 import os
 import unittest
+import unittest.mock
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from test_profile_cli import ProfileCliCase, write
 
 from getbrolls import profile
+from getbrolls.sdk import marketplace
 
 POSIX = os.name != "nt"
 
@@ -74,6 +76,24 @@ class ProfileHomeGuardTests(ProfileCliCase):
         done = self.run_cli("plugins", "--action", "list", env=env)
         self.assertEqual(2, done.returncode, done.stdout + done.stderr)
         self.assertIn("plugins.json", done.stderr)
+
+    def test_symlinked_marketplaces_in_the_profile_home_is_refused(self):
+        home, env = self.trusted_home()
+        (self.tmp / "fora").mkdir()
+        home.mkdir(parents=True, exist_ok=True)
+        (home / "marketplaces").symlink_to(self.tmp / "fora", target_is_directory=True)
+        done = self.run_cli("plugins", "--action", "marketplace-list", env=env)
+        self.assertEqual(2, done.returncode, done.stdout + done.stderr)
+        self.assertIn("marketplaces", done.stderr)
+        self.assertIn("link", done.stderr)
+
+    def test_marketplace_remove_refuses_a_linked_cache_folder(self):
+        (self.tmp / "fora" / "exemplo").mkdir(parents=True)
+        (self.home / "marketplaces").symlink_to(self.tmp / "fora", target_is_directory=True)
+        with unittest.mock.patch.dict(os.environ, {"GB_HOME": str(self.home)}), self.assertRaises(ValueError) as raised:
+            marketplace.remove("exemplo")
+        self.assertIn("link", str(raised.exception))
+        self.assertTrue((self.tmp / "fora" / "exemplo").is_dir(), "nada fora de $GB_HOME é apagado")
 
     def test_a_private_env_in_the_profile_home_still_works(self):
         home, env = self.trusted_home()

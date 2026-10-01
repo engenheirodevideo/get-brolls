@@ -13,7 +13,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 import _paths  # noqa: F401  (efeito de import: põe scripts/ no sys.path)  # pylint: disable=unused-import
 
 from getbrolls import config, profile
-from getbrolls.errors import PrerequisiteError, UsageError
+from getbrolls.errors import LockedError, PrerequisiteError, UsageError
 
 POSIX = os.name != "nt"
 
@@ -394,7 +394,7 @@ class TrustTests(ProfileCase):
         with (
             patch.object(profile, "LOCK_TIMEOUT_S", 0.05),
             patch("getbrolls.runtime._acquire_lock", side_effect=BlockingIOError),
-            self.assertRaises(UsageError) as caught,
+            self.assertRaises(LockedError) as caught,
         ):
             profile.trust(path, located=self._located(path), yes=True, expect=sha)
         self.assertIn("trusted-profiles.json", str(caught.exception))

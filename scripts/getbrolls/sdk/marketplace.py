@@ -67,6 +67,7 @@ OFFICIAL_INDEX_REPOS = tuple(
     for suffix in ("", ".git")
 )
 TIER_NOT_VERIFIED = "declarado pelo marketplace, não verificado"
+TIER_LABEL_SUFFIX = "declarado, não verificado"
 NOT_OFFICIAL_WARNING = (
     "Este marketplace não é o índice oficial ({name} de {repo}): o tier de cada plugin é declarado por "
     "ele, não verificado, e nunca muda as regras de instalação."
@@ -281,12 +282,17 @@ def official_marketplace(name: str | None) -> bool:
 
 
 def tier_view(tier: str | None, official: bool) -> dict:
-    """`tier` como o índice declara, `tier_verified` (só no índice oficial) e, fora dele, o rótulo."""
+    """`tier` como o índice declara, `tier_verified` (só no índice oficial) e, fora dele, o rótulo.
+
+    `tier_label` é o que um resumo humano mostra: o tier sozinho só quando verificado;
+    senão, com a ressalva ("official (declarado, não verificado)"). `tier` não muda.
+    """
     verified = bool(official and tier is not None)
     return {
         "tier": tier,
         "tier_verified": verified,
         "tier_note": None if verified or tier is None else TIER_NOT_VERIFIED,
+        "tier_label": None if tier is None else tier if verified else f"{tier} ({TIER_LABEL_SUFFIX})",
     }
 
 
@@ -424,9 +430,15 @@ def _installed_from(name):
 
 def remove(name: str) -> dict:
     """Tira o marketplace `name` do estado e apaga o cache; plugins instalados ficam."""
+    folder = cache_path(name).parent
+    if is_link(folder.parent):
+        # Apagar através de um link sairia de $GB_HOME: recusa antes de mexer em qualquer coisa.
+        raise ValueError(
+            f"$GB_HOME/{CACHE_DIRNAME} é um link; o get-brolls não apaga nada através de links. "
+            "Troque o link pela pasta de verdade e repita."
+        )
     state = read_state()
     record = _record(state, name)
-    folder = cache_path(name).parent
     if is_link(folder):
         folder.unlink()
     elif folder.exists():

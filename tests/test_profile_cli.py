@@ -230,6 +230,30 @@ class LayerOrderTests(ProfileCliCase):
         self.assertEqual(str(self.ws / "h" / ".env"), doctor["install"]["env_file"]["path"])
         self.assertEqual(333, doctor["preview"]["width"])
         self.assertEqual(str(self.ws / "h"), doctor["install"]["gb_home"])
+        self.assertEqual("profile", doctor["install"]["gb_home_source"])
+        block = doctor["install"]["profile"]
+        self.assertEqual((str(self.toml), "trusted"), (block["path"], block["trust"]))
+        self.assertIn("GB_HOME", block["applied"])
+        self.assertEqual("env", json.loads(self.run_cli("doctor").stdout)["install"]["gb_home_source"])
+
+    def test_profile_home_beats_gb_home_from_an_env_file_and_warns(self):
+        user = self.tmp / "user"
+        write(self.toml, 'home = "h"\n')
+        env_file = write(self.tmp / "outro.env", f"GB_HOME={self.tmp / 'do-env'}\n")
+        env = self.env(GB_HOME=None, HOME=str(user), USERPROFILE=str(user))
+        self.trust(env=env)
+        doctor = json.loads(self.run_cli("--env-file", env_file, "doctor", env=env).stdout)
+        self.assertEqual(
+            (str(self.ws / "h"), "profile"), (doctor["install"]["gb_home"], doctor["install"]["gb_home_source"])
+        )
+        codes = [w["code"] for w in doctor.get("warnings", [])]
+        self.assertIn("ENV_GB_HOME_IGNORED", codes)
+        # Sem o `home` no perfil, o GB_HOME do .env vale como antes (e só avisa a descontinuação).
+        write(self.toml, 'cache_dir = "c"\n')
+        self.trust(env=env)
+        doctor = json.loads(self.run_cli("--env-file", env_file, "doctor", env=env).stdout)
+        self.assertEqual(str(self.tmp / "do-env"), doctor["install"]["gb_home"])
+        self.assertNotIn("ENV_GB_HOME_IGNORED", [w["code"] for w in doctor.get("warnings", [])])
 
     def test_env_file_beats_profile(self):
         write(self.home / ".env", f"GB_CACHE_DIR={self.tmp / 'from-env'}\n")
@@ -271,10 +295,40 @@ class PluginCeilingTests(ProfileCliCase):
         write(self.toml, "plugins = []\n")
         self.trust()
         listed = self.json_out(self.run_cli("plugins", "--action", "list"))
-        self.assertEqual("GB_PLUGINS", listed["selection"])
+        # O teto é do perfil, não de um GB_PLUGINS que a pessoa pôs: o motivo diz isso.
+        self.assertEqual("profile", listed["selection"])
         self.assertTrue(listed["plugins"])
         for row in listed["plugins"]:
-            self.assertEqual(("disabled", loader.GB_PLUGINS_REASON), (row["status"], row["reason"]), row)
+            self.assertEqual(("disabled", loader.PROFILE_PLUGINS_REASON), (row["status"], row["reason"]), row)
+            self.assertIn("desligado pelo perfil do workspace (getbrolls.toml `plugins`)", row["reason"])
+            self.assertNotIn("GB_PLUGINS", row["reason"])
+        doctor = json.loads(self.run_cli("doctor").stdout)
+        rows = [row for row in doctor["plugins"] if row.get("id") == MANIFEST["id"]]
+        self.assertTrue(rows, doctor["plugins"])
+        self.assertNotIn("GB_PLUGINS", json.dumps(rows, ensure_ascii=False))
+        self.assertIn("perfil", json.dumps(rows, ensure_ascii=False))
+        # Com GB_PLUGINS do próprio ambiente (sem perfil), o motivo continua o da variável.
+        env = self.env(GB_PLUGINS="off", GB_PROFILE="off")
+        listed = self.json_out(self.run_cli("plugins", "--action", "list", env=env))
+        self.assertEqual("GB_PLUGINS", listed["selection"])
+        self.assertEqual(loader.GB_PLUGINS_REASON, listed["plugins"][0]["reason"])
+
+    def test_install_warns_when_the_profile_ceiling_blocks_the_plugin(self):
+        source = self.tmp / "src" / MANIFEST["id"]
+        write(source / "getbrolls-plugin.json", json.dumps(MANIFEST))
+        write(source / "plugin.py", PLUGIN_CODE)
+        write(self.toml, "plugins = []\n")
+        self.trust()
+        preview = self.json_out(self.run_cli("plugins", "--action", "install", "--source", source))
+        self.assertNotIn("PLUGIN_SELECTION_BLOCKS", [w["code"] for w in preview.get("warnings", [])])
+        done = self.json_out(
+            self.run_cli(
+                "plugins", "--action", "install", "--source", source, "--yes", "--expect", preview["plugin"]["sha256"]
+            )
+        )
+        self.assertTrue(done["installed"])
+        warning = next(w for w in done["warnings"] if w["code"] == "PLUGIN_SELECTION_BLOCKS")
+        self.assertIn("perfil do workspace", warning["message"])
 
     def test_loader_hint_names_the_profile_when_the_ceiling_is_its(self):
         row = {"id": "demo", "status": "disabled", "reason": loader.GB_PLUGINS_REASON}

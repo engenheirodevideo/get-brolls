@@ -27,6 +27,14 @@ GENRES = {
         ),
     },
 }
+# Fonte única do texto de esqueleto: cada `{...}` que `roteiro new` grava (alvo de BROLL/SPLIT e fala).
+# `roteiro_commands.skeleton` escreve estas linhas; `check`, `review` e `sync` reconhecem o mesmo texto.
+SKELETON_FRAGMENTS = frozenset(
+    fragment
+    for spec in GENRES.values()
+    for _title, directive, speech in spec["cenas"]
+    for fragment in re.findall(r"\{[^{}\n]{1,200}\}", f"{directive}\n{speech}")
+)
 KEYS = ("type", "genero", "aspecto", "duracao_alvo_s", "tema", "legenda", "status", "cliente", "direcao")
 REQUIRED = ("type", "genero", "tema")
 # Chaves que só dão nome: o valor passa adiante (plano de export) e nenhum recurso o usa ainda.
@@ -72,6 +80,21 @@ def is_roteiro(project):
         if frontmatter_key(line) == "type":
             return _unquote(line.partition(":")[2].strip())[0] == "roteiro"
     return False
+
+
+def roteiro_format(project):
+    """`reels`/`horizontal` do `aspecto` de um ROTEIRO.md do get-brolls; None sem roteiro ou com erro.
+
+    Só lê e nunca levanta, como `is_roteiro`: quem precisa do erro roda o `check`.
+    """
+    if not is_roteiro(project):
+        return None
+    try:
+        lines = roteiro_path(project).read_text(encoding="utf-8-sig").replace("\r\n", "\n").split("\n")
+    except (OSError, UnicodeDecodeError):
+        return None
+    meta, _, _ = parse_frontmatter(lines)
+    return ASPECT_TO_FORMAT.get(meta.get("aspecto") or "")
 
 
 def _unquote(value):
