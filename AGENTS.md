@@ -6,7 +6,7 @@ updated: 2026-09-17
 tags: [get-brolls, documentation]
 ---
 
-# Instruções para agentes — Get B-rolls
+# Instruções para agentes — getbrolls
 
 ## Mapa do repositório
 

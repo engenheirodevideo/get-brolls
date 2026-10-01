@@ -8,7 +8,7 @@ tags: [get-brolls, checklist, quality, process]
 
 # Checklist de mudança
 
-Siga este checklist na ordem, a cada mudança no get-brolls: correção, recurso, doc ou dependência. Marque cada item. Um item que não vale para a mudança fica marcado com "n/a" e o motivo. Quando o checklist deixar passar um erro, acrescente aqui o item que teria pego esse erro.
+Siga este checklist na ordem, a cada mudança no getbrolls: correção, recurso, doc ou dependência. Marque cada item. Um item que não vale para a mudança fica marcado com "n/a" e o motivo. Quando o checklist deixar passar um erro, acrescente aqui o item que teria pego esse erro.
 
 Referências: [CODE_STYLE](CODE_STYLE.md) (estilo e revisão), [CONTRIBUTING](../CONTRIBUTING.md) (ferramentas, dependências e release), [QUALITY](QUALITY.md) (o que conta como evidência) e [SECURITY](SECURITY.md).
 

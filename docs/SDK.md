@@ -6,16 +6,16 @@ updated: 2026-09-30
 tags: [get-brolls, sdk, plugins]
 ---
 
-# SDK de extensões — Get B-rolls
+# SDK de extensões — getbrolls
 
 > **Experimental:** `sdk_api` 1 pode mudar em versão minor; plugins declaram
-> `requires_getbrolls`. Confira o CHANGELOG antes de atualizar o Get B-rolls.
+> `requires_getbrolls`. Confira o CHANGELOG antes de atualizar o getbrolls.
 
 Nos exemplos deste documento, `python3 scripts/gb.py …` (checkout e plugin) é o
 mesmo comando que `getbrolls …` no pacote instalado. Um plugin que chama o
 getbrolls num subprocesso usa `api.cli_argv()`, nunca um caminho montado à mão.
 
-O Get B-rolls aceita extensões locais em Python: **plugins** instalados numa
+O getbrolls aceita extensões locais em Python: **plugins** instalados numa
 pasta pessoal, com opt-in explícito, que contribuem fontes de busca
 (`providers`), rotas que trazem o arquivo (`routes`), comandos próprios
 (`commands`) e presets de licença. Este documento é a referência do SDK; para
@@ -76,7 +76,7 @@ Campos de `getbrolls-plugin.json`:
 | `name` | string | sim | Nome de exibição, até 80 caracteres. |
 | `description` | string | não | Até 500 caracteres. |
 | `version` | string | sim | `X.Y.Z` do próprio plugin. |
-| `sdk_api` | inteiro | sim | Versão do contrato do SDK que o plugin fala; hoje `1`. Diferente da versão instalada do Get B-rolls, o plugin é recusado. |
+| `sdk_api` | inteiro | sim | Versão do contrato do SDK que o plugin fala; hoje `1`. Diferente da versão instalada do getbrolls, o plugin é recusado. |
 | `requires_getbrolls` | string | sim | Faixa de compatibilidade, ex.: `">=2.5,<3"`. |
 | `entry` | string | sim | Nome do arquivo de entrada na raiz da pasta do plugin: `[A-Za-z0-9_]{1,64}\.py` (sem subpasta, hífen ou ponto extra). |
 | `contributes` | objeto | não (padrão `{}`) | Listas por tipo de contribuição — veja abaixo. Chave ausente vale lista vazia. |
@@ -145,7 +145,7 @@ escrito para uma versão mais nova nunca é carregado pela metade numa mais velh
 
 ### Dependências (`requires`)
 
-`requires` diz o que o plugin precisa e o get-brolls não traz. Chave desconhecida
+`requires` diz o que o plugin precisa e o getbrolls não traz. Chave desconhecida
 recusa o manifesto; toda chave é opcional:
 
 ```json
@@ -164,22 +164,22 @@ recusa o manifesto; toda chave é opcional:
 - **`binaries`** (até 20): nomes de executável procurados no `PATH`, nunca um
   caminho (`node`, não `/usr/bin/node`).
 - **`runtimes`** (até 20): `{nome: faixa de versão}`. `python` é conferido contra
-  o interpretador que roda o get-brolls; os outros ficam como declarados.
+  o interpretador que roda o getbrolls; os outros ficam como declarados.
 - **`services`** (até 10): nomes informativos de serviços externos (`postgres`).
 
-Faltar um requisito nunca impede o plugin de carregar: o get-brolls não instala
+Faltar um requisito nunca impede o plugin de carregar: o getbrolls não instala
 nada nem executa os binários do plugin para conferir. `plugins --action check` traz
 o bloco `requires` com o que foi conferido (`python[].installed`, `binaries[].found`,
 `runtimes[].ok`, que fica `null` quando não é verificado) e, em `hint`, o comando
 para instalar os pacotes Python que faltam: no pacote,
 `uv tool install getbrolls --with "<requisito>"` (ou `pipx inject getbrolls
 "<requisito>"`); no checkout, `<python> -m pip install "<requisito>"` com o mesmo
-interpretador que roda o get-brolls. O `doctor` mostra o mesmo bloco em cada linha
+interpretador que roda o getbrolls. O `doctor` mostra o mesmo bloco em cada linha
 de `plugins[]` e, quando algo falta, uma linha `plugins_requires` no `summary`; o
 `ready` não muda. A conferência usa o nome da distribuição, que pode diferir do
 nome do `import` (`psycopg[binary]` instala o módulo `psycopg`; `Pillow`, o `PIL`).
 Ids reservados: além de `core`, os ids `cliente`, `catalogo`, `direcao`,
-`template` e `projeto` são do get-brolls. O manifesto com um deles é recusado, e
+`template` e `projeto` são do getbrolls. O manifesto com um deles é recusado, e
 por isso `install`, `enable` e `new` também recusam: um plugin chamado
 `direcao` seria dono da diretiva `[direcao:x]` no roteiro.
 
@@ -474,13 +474,13 @@ api.command("recentes", recentes, "Lista os vídeos mais recentes da pasta")
 
 - `gb x --list` lista os comandos dos plugins habilitados, lendo só o
   manifesto (nenhum código roda).
-- `getbrolls capabilities --json` (no checkout, `python3 scripts/gb.py capabilities --json`) descreve, em JSON, os comandos do get-brolls, os `plugin_commands` habilitados os `plugins_problems` (plugin inválido, com falha ou suspenso, com o motivo) e os `marketplaces` fixados (nome, commit, plugins, `allowed`, `problem`; ilegível vira `marketplaces_error`), lendo só o manifesto e o cache dos índices: plugins e agentes descobrem o que existe sem ler `--help`.
+- `getbrolls capabilities --json` (no checkout, `python3 scripts/gb.py capabilities --json`) descreve, em JSON, os comandos do getbrolls, os `plugin_commands` habilitados os `plugins_problems` (plugin inválido, com falha ou suspenso, com o motivo) e os `marketplaces` fixados (nome, commit, plugins, `allowed`, `problem`; ilegível vira `marketplaces_error`), lendo só o manifesto e o cache dos índices: plugins e agentes descobrem o que existe sem ler `--help`.
 - `gb x <plugin> <comando> [--project P] [--arg chave=valor]...` carrega os
   plugins, chama `handler(args, ctx)` e imprime `{"plugin", "command",
   "result"}`. `args` é um dicionário de texto; chave repetida é erro.
 - `ctx.plugin_id`, `ctx.project` (ou `None`), `ctx.candidates()` (cópias dos
   candidatos do projeto) e `ctx.brief()` (cópia do JSON do BRIEF.md, ou
-  `None`). Com `ROTEIRO.md` do get-brolls (`type: roteiro`), beat aposentado
+  `None`). Com `ROTEIRO.md` do getbrolls (`type: roteiro`), beat aposentado
   pelo roteiro (`"retired": true`) sai de `beats`: o plugin vê os mesmos beats
   que o `status`. `ctx.retired_beat_ids()` devolve exatamente os ids que saíram,
   na ordem do BRIEF.md; beat marcado `retired` com id fora do formato continua
@@ -531,7 +531,7 @@ Sem ela, ou sem `--project`, `write` e `write_markers` levantam `ApiError`
 e usa só a trava `analysis/.lock`; o `x` continua sem tomar a trava do projeto.
 
 `project_write` é uma declaração auditável, não um sandbox: o plugin roda no mesmo
-processo do get-brolls, e a permissão diz o que ele se propõe a gravar pela API do
+processo do getbrolls, e a permissão diz o que ele se propõe a gravar pela API do
 core, conferido no enable e no diff do update. Ela não impede um plugin mal
 intencionado de escrever por conta própria; o que protege é o opt-in por id e o
 pin do conteúdo.
@@ -731,7 +731,7 @@ nada é gravado.
 
 ### Evolução do plano de export
 
-O plano muda de versão em versão do Get B-rolls. Estas regras dizem o que um
+O plano muda de versão em versão do getbrolls. Estas regras dizem o que um
 exportador pode esperar:
 
 - **Chave nova não quebra.** O exportador ignora chave desconhecida em qualquer
@@ -1090,7 +1090,7 @@ python3 scripts/gb.py plugins --action remove --id <id> --yes
   PASTA_LOCAL_DIR…") aparece saneado no `detail`.
 - Um plugin que falha ao carregar (manifesto inválido, exceção em
   `register()`, hash divergente) fica marcado como `failed`/`suspended` e o
-  resto do Get B-rolls — built-ins inclusive — continua funcionando normalmente.
+  resto do getbrolls — built-ins inclusive — continua funcionando normalmente.
 - Toda chamada ao código do plugin (`register`, `search`/`resolve`/`refresh`,
   `Route.prepare`, handler de comando, o `plugins check`) passa pelo mesmo
   isolamento: qualquer exceção — inclusive `SystemExit`, `GeneratorExit`,

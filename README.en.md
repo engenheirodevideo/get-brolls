@@ -19,7 +19,7 @@
   </p>
 </div>
 
-Get B-rolls is a skill for collecting the videos and images that support a line, illustrate an idea, or show the exact person, product, or event mentioned in a script. You describe what you need; the agent researches, prepares previews, and gathers the options into a storyboard for your review.
+getbrolls is a skill for collecting the videos and images that support a line, illustrate an idea, or show the exact person, product, or event mentioned in a script. You describe what you need; the agent researches, prepares previews, and gathers the options into a storyboard for your review.
 
 - **Choose with context.** Each shot can include the supplied narration, selection rationale, time range, creator, and original source.
 - **See it before deciding.** GIFs and contact sheets help you evaluate action, framing, and on-screen text.

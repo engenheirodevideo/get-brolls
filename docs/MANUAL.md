@@ -6,7 +6,7 @@ updated: 2026-09-30
 tags: [get-brolls, manual, tutorial, commands]
 ---
 
-# 🎬 Get B-rolls: manual + tutorial
+# 🎬 getbrolls: manual + tutorial
 
 Versão 2.6.0. Feito pra **videomaker que está começando a mexer com código**.
 

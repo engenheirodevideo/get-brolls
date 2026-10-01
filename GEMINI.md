@@ -15,7 +15,7 @@ O Gemini CLI carrega arquivos `GEMINI.md` de forma hierárquica a partir do dire
 Acrescente ao seu `~/.gemini/GEMINI.md` (crie o arquivo se ele não existir), trocando o caminho pelo local real do clone:
 
 ```md
-## Get B-rolls
+## getbrolls
 Use para coletar B-roll, cutaways, inserts ou imagens de apoio para um vídeo ou Reel — pesquisa em YouTube, Instagram, TikTok e bancos, prévias em Storyboard para revisão humana e entrega com origem e licença registradas.
 @/caminho/absoluto/para/get-brolls/SKILL.md
 ```

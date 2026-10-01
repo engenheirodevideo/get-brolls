@@ -6,7 +6,7 @@ updated: 2026-09-26
 tags: [get-brolls, guide, installation, providers, storyboard]
 ---
 
-# Guia completo — Get B-rolls
+# Guia completo — getbrolls
 
 Este é o manual operacional único do **GET B-ROLLS — ENGENHEIRO DE VÍDEO**: instalação, compatibilidade, fluxo editorial, provedores, navegador, Instagram, tipos de asset e Storyboard.
 
@@ -397,7 +397,7 @@ Também pode obter o original pela página oficial e usar resolve --file --sourc
 > **Experimental:** `sdk_api` 1 pode mudar em versão minor; plugins declaram
 > `requires_getbrolls`.
 
-Além dos provedores nativos, o Get B-rolls aceita fontes, rotas de download,
+Além dos provedores nativos, o getbrolls aceita fontes, rotas de download,
 comandos e presets de licença via plugins locais, instalados em
 `$GB_HOME/plugins/<id>/` (por padrão, `~/.getbrolls/plugins/`) com opt-in
 explícito. O comando `plugins` gerencia esse ciclo:
@@ -483,7 +483,7 @@ video-01/
     └── review.html
 ```
 
-`brolls/` é a pasta de estado do get-brolls no projeto: manifesto, eventos, logs e o estado do roteiro moram nela, inclusive quando o projeto não coleta b-roll nenhum. `aroll/` e `assets/` só nascem com `roteiro --action new`: projeto sem roteiro não ganha pasta nova, e `assets --action list|where` não cria nada. `exports/` nasce no primeiro `export` (o `--dry-run` não cria nada), e `renders/` com o `mkdir -p renders` do `EXPORT.md`.
+`brolls/` é a pasta de estado do getbrolls no projeto: manifesto, eventos, logs e o estado do roteiro moram nela, inclusive quando o projeto não coleta b-roll nenhum. `aroll/` e `assets/` só nascem com `roteiro --action new`: projeto sem roteiro não ganha pasta nova, e `assets --action list|where` não cria nada. `exports/` nasce no primeiro `export` (o `--dry-run` não cria nada), e `renders/` com o `mkdir -p renders` do `EXPORT.md`.
 
 Num projeto de layout 1 (com `project.json`, criado por `init` ou adotado por `migrate --action apply`), os clipes finais ficam em `broll/`, na raiz, e a análise de mídia em `analysis/`; `brolls/` continua com o manifesto, as prévias e os logs. As árvores dos dois layouts, o papel de cada log e o formato de cada arquivo estão em [SCHEMAS.md](SCHEMAS.md#layouts-de-projeto).
 
@@ -495,7 +495,7 @@ O fluxo: `roteiro --action new --genero reels --tema "..."` cria o esqueleto; co
 
 Só mudar o alvo de um beat já aprovado pede `--confirm-target-change` (as aprovações voltam a pendente); mudar a fala é aviso. Ids de cena nunca são reaproveitados. Cena removida deixa o beat aposentado (`"retired": true`): ele continua no `BRIEF.md`, fica fora de `brief`, `status` e `deliver` (que o lista em `retired`), e candidatos e clipes ficam intactos. Antes de gravar, o sync copia `ROTEIRO.md` e `BRIEF.md` para `*.sync.bak`; `new --force` guarda o roteiro anterior em `ROTEIRO.md.bak`.
 
-Componentes resolvem pelo nome, primeiro em `assets/<tipo>/` do projeto, depois (num projeto com `project.json` de cliente registrado) em `<pasta do cliente>/components/<tipo>/`, e por fim na biblioteca pessoal `~/.getbrolls/assets/<tipo>/`; `assets --action list|where` mostra onde cada um está. Música, SFX e marca registram a licença em `<nome>.licenca.json` (`origem`, `licenca`, `credito`) ao lado do arquivo. Quem monta o vídeo aponta para a pasta dos clipes finais — `broll/` num projeto de layout 1 (com `project.json`), `brolls/clips/` no layout 0 —, não para `entrega/`, que é renumerada quando a ordem muda. Projeto de layout 1 exige get-brolls 2.6 ou mais novo, e o Storyboard dele só mostra os clipes finais aberto com `serve`. Guia do agente, com o formato completo: [`references/roteiro.md`](../references/roteiro.md).
+Componentes resolvem pelo nome, primeiro em `assets/<tipo>/` do projeto, depois (num projeto com `project.json` de cliente registrado) em `<pasta do cliente>/components/<tipo>/`, e por fim na biblioteca pessoal `~/.getbrolls/assets/<tipo>/`; `assets --action list|where` mostra onde cada um está. Música, SFX e marca registram a licença em `<nome>.licenca.json` (`origem`, `licenca`, `credito`) ao lado do arquivo. Quem monta o vídeo aponta para a pasta dos clipes finais — `broll/` num projeto de layout 1 (com `project.json`), `brolls/clips/` no layout 0 —, não para `entrega/`, que é renumerada quando a ordem muda. Projeto de layout 1 exige getbrolls 2.6 ou mais novo, e o Storyboard dele só mostra os clipes finais aberto com `serve`. Guia do agente, com o formato completo: [`references/roteiro.md`](../references/roteiro.md).
 
 Roteiro revisado e sincronizado vira projeto de edição com `export --to hyperframes --project <projeto>` (experimental; o exporter vem de um plugin habilitado). Cada export é uma pasta nova, `exports/hyperframes/001/`, `002/`…, com `LATEST` guardando o número da mais nova, e o core nunca apaga, sobrescreve nem mescla uma pasta de export: o que você edita lá dentro é seu. `--dry-run` mostra o que seria gravado. Clipe já congelado pelo `deliver` entra por hardlink (não edite no lugar); ainda gravável, por clone ou cópia, como A-ROLL e componentes. A duração de cada cena vem do A-ROLL gravado; a legenda palavra a palavra, de `aroll/<nome do vídeo>.transcript.json`, gerado pelo `transcribe` do HyperFrames numa pasta temporária, nunca dentro do export. O render vai para `renders/` do projeto, fora do export; o primeiro `check` ou `render` baixa o GSAP e a fonte Inter. Passo a passo, portões e o comando do `transcribe`: [`references/roteiro.md`](../references/roteiro.md#export-do-roteiro-ao-projeto-de-edição).
 
@@ -756,7 +756,7 @@ Em 15/09/2026, a sessão Chrome indicada pelo usuário abriu o Reel `DcMXl1IPNtB
 
 ## Instagram — recuperação e auditoria
 
-Baixar e organizar Reels no fluxo Get B-rolls: capturar URLs diretas de CDN como pares `*_video.conf` + `*_audio.conf`, baixar as partes separadas, mesclar com `ffmpeg` e validar que o MP4 final tem vídeo e áudio corretos.
+Baixar e organizar Reels no fluxo getbrolls: capturar URLs diretas de CDN como pares `*_video.conf` + `*_audio.conf`, baixar as partes separadas, mesclar com `ffmpeg` e validar que o MP4 final tem vídeo e áudio corretos.
 
 ### Quando usar
 
