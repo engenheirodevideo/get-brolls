@@ -59,6 +59,8 @@ TEMPLATES = {
     "deliver": "deliver --project {project}",
     # Fora de STEPS: só aparece com ROTEIRO.md do get-brolls fora de sincronia com o BRIEF.md.
     "roteiro-sync": "roteiro --action sync --project {project}",
+    # Roteiro sem revisão válida: o check mostra o review.sha256 que o `review` pede.
+    "roteiro-check": "roteiro --action check --project {project}",
 }
 
 
@@ -79,6 +81,18 @@ def command_for(step, project, candidate=None):
             candidate=_paths.quote_arg(candidate) if candidate else "ID",
         )
     )
+
+
+def roteiro_check_step(project):
+    """`summary.do` de quem acabou de criar o roteiro (`roteiro new`, `init --template`): o `check`."""
+    return {
+        "step": "roteiro-check",
+        "why": "O roteiro acabou de nascer: o check confere as cenas e mostra o hash da revisão.",
+        "command": command_for("roteiro-check", project),
+        "url": None,
+        "for_human": "Escreva a fala de cada cena no ROTEIRO.md; depois eu confiro o roteiro e te mostro.",
+        "blocking_human": False,
+    }
 
 
 def _counts(state):
@@ -522,6 +536,17 @@ def _pending_or_blocked_action(state, counts, brief):
     # formato passa na frente, porque ele invalida a própria decisão que seria tomada.
     if counts["pending"] > 0:
         return _approve_action(state, counts["pending"])
+    if brief.get("roteiro_sync") and brief.get("roteiro_unreviewed"):
+        # O sync recusa roteiro sem revisão: primeiro o check (que mostra o hash) e o review.
+        return _action(
+            "roteiro-check",
+            "O BRIEF.md ainda não reflete o ROTEIRO.md e o roteiro atual ainda não tem revisão da pessoa: "
+            "o sync recusaria.",
+            "Antes de buscar, vou conferir o ROTEIRO.md e te mostrar o texto: com a sua aprovação eu "
+            "registro a revisão e rodo o sync que cria os beats.",
+            state,
+            blocking_human=True,
+        )
     if brief.get("roteiro_sync"):
         # Com ROTEIRO.md, quem cria os beats é o sync: buscar beat velho (ou nenhum) não tem alvo.
         return _action(

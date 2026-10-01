@@ -12,8 +12,9 @@ from pathlib import Path
 from . import assets, layout, roteiro, roteiro_plan, roteiro_review, roteiro_sync
 from .brief import brief_path, load_brief
 from .export import _OS_REASONS_COMMON as _OS_REASONS
+from .guidance import roteiro_check_step
 from .ledger import atomic_write
-from .rules import load_rules
+from .rules import load_rules, seed_project_rules, video_format_unchosen
 
 NEW_FOLDERS = ("aroll", *(f"assets/{name}" for name in layout.ASSET_FOLDERS))
 BACKUP_SUFFIX = ".bak"
@@ -69,14 +70,19 @@ def _new(args):
     root = Path(args.project).expanduser().resolve()
     for folder in NEW_FOLDERS:
         (root / folder).mkdir(parents=True, exist_ok=True)
+    video_format = roteiro.ASPECT_TO_FORMAT[roteiro.GENRES[args.genero]["aspecto"]]
+    rules = seed_project_rules(root, video_format)
     line = "ROTEIRO.md criado: escreva a fala de cada cena e rode roteiro --action check."
+    if rules:
+        line += f' RULES.md criado em "{video_format}", o formato do roteiro.'
     if backup:
         line += f" O anterior ficou em {backup.name}."
     return {
         "roteiro": str(path),
         "backup": str(backup) if backup else None,
+        "rules": str(rules) if rules else None,
         "folders": list(NEW_FOLDERS),
-        "summary": {"line": line},
+        "summary": {"line": line, "do": roteiro_check_step(args.project)},
     }
 
 
@@ -98,7 +104,11 @@ def _check(args):
     doc = roteiro.parse(roteiro.load_text(args.project))
     plan = roteiro_plan.scene_plan(args.project, doc)
     brief_data, brief_warning = _brief_for_check(args.project)
-    problems = plan["problems"] + roteiro_plan.aspect_problems(doc.meta, load_rules(args.project), brief_data)
+    rules = load_rules(args.project)
+    if video_format_unchosen(args.project, rules):
+        # Ninguém escolheu formato (sem RULES.md no projeto): vale o aspecto do roteiro.
+        rules = {**rules, "video_format": roteiro.ASPECT_TO_FORMAT[doc.meta["aspecto"]]}
+    problems = plan["problems"] + roteiro_plan.aspect_problems(doc.meta, rules, brief_data)
     if problems:
         raise ValueError("ROTEIRO.md com problema:\n" + "\n".join(problems))
     warnings = plan["warnings"] + ([brief_warning] if brief_warning else [])

@@ -128,9 +128,8 @@ class RoteiroCliTests(CliCase):
         forced = self.cli("roteiro", "--action", "new", "--genero", "reels", "--tema", "IA", "--force")
         self.assertTrue(Path(forced["backup"]).read_text(encoding="utf-8").endswith("\n\n"))
 
-        native = self.cli("roteiro", "--action", "check", expect=1)
-        self.assertIn("init-rules --format reels", native["error"])
-        self.cli("init-rules", "--format", "reels")
+        # Sem RULES.md, o `new` cria um no formato do roteiro: o check não trava em "native".
+        self.assertIn('"video_format": "reels"', (self.project / "RULES.md").read_text(encoding="utf-8"))
         skeleton = self.cli("roteiro", "--action", "check")
         self.assertIn("parece texto do esqueleto", " ".join(skeleton["warnings"]))
         self.fill_skeleton()

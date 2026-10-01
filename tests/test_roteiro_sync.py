@@ -694,13 +694,17 @@ class StatusDriftTests(SyncCase):
     def test_roteiro_without_broll_leaves_the_sync_step_after_the_sync(self):
         self.write_brief({**BRIEF, "beats": []})
         self.write(self.AROLL_ONLY)
-        self.assertEqual(self.status()["do"]["step"], "roteiro-sync")
+        # Sem revisão o sync recusaria: o degrau é o check (que mostra o hash do review).
+        self.assertEqual(self.status()["do"]["step"], "roteiro-check")
         self.review()
+        self.assertEqual(self.status()["do"]["step"], "roteiro-sync")
         self.sync()
         summary = self.status()
         self.assertNotEqual(summary["do"]["step"], "roteiro-sync")
         self.assertIn("o roteiro não pede b-roll", self.brief_line()["line"])
         self.write(self.text("ROTEIRO.md") + "\n## Prova\n[BROLL: mapa]\nProva.\n")
+        self.assertEqual(self.status()["do"]["step"], "roteiro-check")
+        self.review()
         self.assertEqual(self.status()["do"]["step"], "roteiro-sync")
 
     def test_status_is_read_only_while_checking_drift(self):
@@ -718,6 +722,8 @@ class StatusDriftTests(SyncCase):
         self.sync()
         self.assertNotEqual(self.status()["do"]["step"], "roteiro-sync")
         self.write(self.text("ROTEIRO.md") + "\n## Nova\n[BROLL: praia]\nFala.\n")
+        self.assertEqual(self.status()["do"]["step"], "roteiro-check")
+        self.review()
         self.assertEqual(self.status()["do"]["step"], "roteiro-sync")
         self.assertIn("mudou desde o último sync", " ".join(self.brief_line()["problems"]))
 

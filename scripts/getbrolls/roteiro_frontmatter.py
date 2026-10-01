@@ -74,6 +74,21 @@ def is_roteiro(project):
     return False
 
 
+def roteiro_format(project):
+    """`reels`/`horizontal` do `aspecto` de um ROTEIRO.md do get-brolls; None sem roteiro ou com erro.
+
+    Só lê e nunca levanta, como `is_roteiro`: quem precisa do erro roda o `check`.
+    """
+    if not is_roteiro(project):
+        return None
+    try:
+        lines = roteiro_path(project).read_text(encoding="utf-8-sig").replace("\r\n", "\n").split("\n")
+    except (OSError, UnicodeDecodeError):
+        return None
+    meta, _, _ = parse_frontmatter(lines)
+    return ASPECT_TO_FORMAT.get(meta.get("aspecto") or "")
+
+
 def _unquote(value):
     """Tira aspas duplas ou simples que envolvem o valor inteiro; `\\"` vira aspa literal."""
     if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":  # noqa: PLR2004 - opening + closing quote
