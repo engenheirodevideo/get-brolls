@@ -1,7 +1,6 @@
 """O próximo passo acompanha o fluxo real, mesmo sem BRIEF.md, e nunca anda em círculo."""
 
 import json
-import shlex
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,6 +11,7 @@ from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_video
 from _paths import suggested_argv
 
+from getbrolls._paths import quote_arg
 from getbrolls.cli import build_parser
 from getbrolls.commands import status_next
 from getbrolls.guidance import next_action
@@ -216,7 +216,7 @@ class FollowingDoFinishesTheFlow(unittest.TestCase):
                 self.assertIn(action["step"], LADDER_ORDER, seen)
                 command = action["command"]
                 for placeholder, value in HUMAN_FILLS.items():
-                    command = command.replace(placeholder, shlex.quote(value))
+                    command = command.replace(placeholder, quote_arg(value))  # aspas do SO, como a pessoa
                 argv = suggested_argv(command)
                 parser.parse_args(argv)
                 run_cli(*argv)

@@ -21,7 +21,9 @@ POSIX = os.name != "nt"
 def write_profile(folder, text, name=profile.PROFILE_NAME):
     path = Path(folder) / name
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    # `newline=""`: os bytes são os do texto, sem o `\n` → `\r\n` do modo texto do Windows
+    # (que transformaria um `\r\n` do teste em `\r\r\n`, TOML inválido).
+    path.write_text(text, encoding="utf-8", newline="")
     if POSIX:
         path.chmod(0o644)
     return path

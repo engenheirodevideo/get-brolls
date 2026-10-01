@@ -3,7 +3,6 @@
 import copy
 import hashlib
 import json
-import shlex
 import subprocess
 import tempfile
 import unittest
@@ -13,7 +12,7 @@ from unittest import mock
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
-from _paths import CLI_ARGV, ROOT
+from _paths import CLI_ARGV, ROOT, split_command
 from test_brief import VALID, write_brief
 
 from getbrolls import serve
@@ -212,10 +211,8 @@ class StatusCommandTests(unittest.TestCase):
             payload = self.call("status", "--project", tmp)
             # `project` do relatório é a pasta brolls/; o comando aponta para a raiz
             # dela, sem resolver links simbólicos por conta própria.
-            self.assertIn(
-                shlex.quote(str(Path(payload["project"]).parent)),
-                payload["summary"]["do"]["command"],
-            )
+            argv = split_command(payload["summary"]["do"]["command"])
+            self.assertEqual(str(Path(payload["project"]).parent), argv[argv.index("--project") + 1])
 
     def test_status_next_step_follows_the_flow(self):
         base = dict.fromkeys(

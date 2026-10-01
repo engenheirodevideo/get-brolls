@@ -345,7 +345,9 @@ class CliInvocationTests(unittest.TestCase):
     def test_checkout_argv_runs_the_script(self):
         argv = paths.cli_argv()
         self.assertEqual([sys.executable, str(GB)], argv)
-        done = subprocess.run([*argv, "--version"], capture_output=True, text=True, timeout=60, check=False)
+        done = subprocess.run(
+            [*argv, "--version"], capture_output=True, text=True, encoding="utf-8", timeout=60, check=False
+        )
         self.assertEqual(0, done.returncode, done.stderr)
 
     def test_wheel_argv_is_isolated_module_mode(self):

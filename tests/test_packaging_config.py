@@ -52,7 +52,14 @@ def _sdist_allowlist() -> list[str]:
 
 def _run(args, cwd, **env):
     return subprocess.run(
-        args, cwd=cwd, env={**os.environ, **env}, capture_output=True, text=True, timeout=60, check=False
+        args,
+        cwd=cwd,
+        env={**os.environ, **env},
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
+        check=False,
     )
 
 

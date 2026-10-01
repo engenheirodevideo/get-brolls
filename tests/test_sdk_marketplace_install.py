@@ -6,7 +6,9 @@ manifesto tem que bater com ela. Repositórios git locais num temporário; nenhu
 teste fala com a rede.
 """
 
+import os
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
@@ -389,12 +391,20 @@ class OriginRowsTests(MarketUpdateCase):
         entry = self.installed(tier="verified")
         folder = write_plugin(self.work / "solto", {**MANIFEST, "id": "solto"})
         install_mod.install(str(folder), confirm=True, expect=install_mod.content_digest(str(folder))[0])
-        rows = {row["id"]: row for row in run_cli("plugins", "--action", "list", env=self.env())["plugins"]}
         pin, _ = marketplace.load_index("exemplo")
+        # A lista mostra a origem local sob a pasta pessoal como `~/…`. No Windows o
+        # temporário já fica sob a pasta pessoal; aqui ela passa a conter a origem também
+        # no POSIX (o Windows lê USERPROFILE, não HOME), e o esperado sai do mesmo jeito.
+        home = {"HOME": str(Path(pin.source).parent.parent)}
+        rows = {row["id"]: row for row in run_cli("plugins", "--action", "list", env={**self.env(), **home})["plugins"]}
+        with patch.dict(os.environ, home):
+            shown = marketplace.portable_text(pin.source)
+        if os.name != "nt":
+            self.assertTrue(shown.startswith("~"), shown)
         demo = rows["demo"]["origin"]
         self.assertEqual(
             {
-                "source": pin.source,
+                "source": shown,
                 "commit": entry["source"]["commit"],
                 "ref": None,
                 "subdir": "plugins/demo",

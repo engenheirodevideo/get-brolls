@@ -123,6 +123,9 @@ def _import_paths_with(**env):
     environment = {k: v for k, v in os.environ.items() if not k.startswith("GB_TEST_")}
     environment.update(env)
     environment["PYTHONPATH"] = str(ROOT / "tests")
+    # O erro do `_paths` tem acento e sai pelo stderr padrão do Python, que num pipe do
+    # Windows é cp1252: o filho escreve em UTF-8 para o `encoding="utf-8"` daqui.
+    environment["PYTHONIOENCODING"] = "utf-8"
     return subprocess.run(
         [sys.executable, "-c", "import _paths; print(_paths.MODE, _paths.CLI_ARGV)"],
         capture_output=True,

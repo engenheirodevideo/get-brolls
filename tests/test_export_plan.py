@@ -14,7 +14,7 @@ from _media import skip_unless_ffmpeg, synth_video
 from _paths import ROOT
 from _schemas import strict
 
-from getbrolls import analysis, assets, delivery, export_plan, export_voice, layout, roteiro, roteiro_plan
+from getbrolls import analysis, assets, delivery, export_plan, export_voice, layout, roteiro, roteiro_plan, runtime
 from getbrolls.sdk.exporters import find_local_paths
 from getbrolls.sdk.jsonschema import errors
 
@@ -218,7 +218,9 @@ def stable(plan):
 class ExportPlanTestCase(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="gb-export-plan-"))
-        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        # O clipe fica congelado (somente leitura, como o `deliver` deixa), e o Windows não
+        # apaga arquivo somente leitura: `force_rmtree` devolve a escrita antes.
+        self.addCleanup(runtime.force_rmtree, self.root)
 
     def full(self, calls=None):
         plan, sources = build(self.root, full_project, resolve_media=fake_resolver([] if calls is None else calls))
@@ -437,7 +439,7 @@ class LayoutOneClipTests(ExportPlanTestCase):
     def test_clip_in_broll_is_exported_with_the_same_plan_row(self):
         plan0, items0 = min_project(self.root)
         before, _ = self.build_plan(plan0, items0)
-        shutil.rmtree(self.root)
+        runtime.force_rmtree(self.root)
         self.root.mkdir()
         plan, items = self.layout_one()
         result, sources = self.build_plan(plan, items)
@@ -457,7 +459,7 @@ class LayoutOneClipTests(ExportPlanTestCase):
     def test_linked_broll_folder_is_not_followed(self):
         plan, items = self.layout_one()
         outside = Path(tempfile.mkdtemp(prefix="gb-export-outside-"))
-        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
+        self.addCleanup(runtime.force_rmtree, outside)
         target = outside / "broll"
         shutil.move(self.root / "broll", target)
         try:
@@ -622,7 +624,7 @@ class LinkedFolderTests(ExportPlanTestCase):
 
     def link_out(self, relative):
         outside = Path(tempfile.mkdtemp(prefix="gb-export-outside-"))
-        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
+        self.addCleanup(runtime.force_rmtree, outside)
         folder = self.root / relative
         target = outside / folder.name
         shutil.move(folder, target)

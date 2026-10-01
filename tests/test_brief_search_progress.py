@@ -15,11 +15,12 @@ from unittest.mock import patch
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import (  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
     ROOT,
+    split_command,
     suggested_argv,
 )
 from test_brief import VALID, write_brief
 
-from getbrolls import cli, providers
+from getbrolls import _paths, cli, providers
 from getbrolls.cli import build_parser
 from getbrolls.ledger import Ledger
 from getbrolls.models import approve, candidate, set_segment
@@ -33,6 +34,12 @@ def one_beat_brief(project, sources, **beat):
     write_brief(project, data)
     # `status` lê um projeto existente; a árvore `brolls/` nasce no primeiro comando.
     Ledger(project)
+
+
+def has_option(command, flag, value):
+    """`flag value` está no comando, lido como o terminal do sistema o leria."""
+    argv = split_command(command)
+    return any(argv[i : i + 2] == [flag, value] for i in range(len(argv) - 1))
 
 
 def status_do(project):
@@ -150,15 +157,19 @@ class NewQueriesAreTried(unittest.TestCase):
             return status_do(tmp)
 
     def test_a_query_appended_at_the_end_is_searched(self):
-        action = self._after_exhausting(["eclipse registro", "sombra da lua"])
-        self.assertEqual("brief-search", action["step"])
-        self.assertIn("--query 'sombra da lua'", action["command"])
-        self.assertIn("--provider commons", action["command"])
+        for os_name in ("posix", "nt"):  # as aspas do comando seguem o terminal do sistema
+            with self.subTest(os_name=os_name), patch.object(_paths, "_os_name", return_value=os_name):
+                action = self._after_exhausting(["eclipse registro", "sombra da lua"])
+                self.assertEqual("brief-search", action["step"])
+                self.assertTrue(has_option(action["command"], "--query", "sombra da lua"), action["command"])
+                self.assertTrue(has_option(action["command"], "--provider", "commons"), action["command"])
 
     def test_a_query_prepended_at_the_start_is_searched(self):
-        action = self._after_exhausting(["sombra da lua", "eclipse registro"])
-        self.assertEqual("brief-search", action["step"])
-        self.assertIn("--query 'sombra da lua'", action["command"])
+        for os_name in ("posix", "nt"):
+            with self.subTest(os_name=os_name), patch.object(_paths, "_os_name", return_value=os_name):
+                action = self._after_exhausting(["sombra da lua", "eclipse registro"])
+                self.assertEqual("brief-search", action["step"])
+                self.assertTrue(has_option(action["command"], "--query", "sombra da lua"), action["command"])
 
 
 class SourcesWithoutKeyAreSkipped(unittest.TestCase):

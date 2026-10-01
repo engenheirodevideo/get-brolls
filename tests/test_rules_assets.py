@@ -235,6 +235,7 @@ class FormatChangeGateTests(unittest.TestCase):
                 [*CLI_ARGV, "status", "--project", folder],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 check=False,
             )
             self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
@@ -256,6 +257,7 @@ class FormatChangeGateTests(unittest.TestCase):
                         [*CLI_ARGV, *command, "--project", folder],
                         capture_output=True,
                         text=True,
+                        encoding="utf-8",
                     )
                     self.assertNotIn("--confirm-format-change", proc.stdout + proc.stderr)
             # A aprovação segue de pé: a consulta não sincroniza formato nenhum.

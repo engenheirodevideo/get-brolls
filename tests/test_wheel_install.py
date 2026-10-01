@@ -276,6 +276,9 @@ class WheelInstallTests(unittest.TestCase):
         if argv[0] == "getbrolls":
             found = shutil.which("getbrolls", path=str(self.venv_bin))
             self.assertIsNotNone(found)
+            # O terminal acha `getbrolls` pelo PATH dele; o CreateProcess do Windows procura
+            # pelo PATH deste processo, não pelo `env` passado. Resolve como o terminal faria.
+            argv[0] = str(found)
         else:
             self.assertEqual(Path(argv[0]), self.venv_python)
         done = self.run_argv(argv, env=env)
