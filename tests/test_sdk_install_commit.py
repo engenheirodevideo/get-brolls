@@ -123,6 +123,11 @@ class CommitPinTests(InstallTestCase):
         installed = (self.home / "plugins" / "demo" / "plugin.py").read_text(encoding="utf-8")
         self.assertNotIn("não commitado", installed)
 
+    def test_pinned_commit_has_no_working_tree_warning(self):
+        repo = self.repo()
+        preview = install_mod.install(str(repo), confirm=False, commit=self.first)
+        self.assertFalse(any("árvore de trabalho" in w for w in preview["plugin"].get("warnings", [])))
+
     def test_bare_repository_folder_is_a_git_origin(self):
         repo = self.repo()
         bare = self.work / "demo_bare.git"

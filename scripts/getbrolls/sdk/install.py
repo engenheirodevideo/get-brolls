@@ -402,7 +402,9 @@ def _materialize(spec, dest, compat=True):
         _copy_folder(Path(spec.path), dest, compat)
         return {"source": spec.path, "commit": None}, []
     commit = _from_git(spec, dest, compat)
-    warnings = [] if git_source.is_remote(spec.repo) else [local_repository_warning(commit, spec.ref)]
+    # Só para a pasta local sem --commit: quem fixou o commit (ou o índice) já sabe o que entra.
+    plain_local = not git_source.is_remote(spec.repo) and spec.commit is None
+    warnings = [local_repository_warning(commit, spec.ref)] if plain_local else []
     return {"source": spec.repo, "commit": commit, "ref": spec.ref, "subdir": spec.subdir}, warnings
 
 

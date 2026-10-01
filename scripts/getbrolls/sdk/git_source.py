@@ -132,14 +132,21 @@ def _refuse_query_or_fragment(raw):
 
 
 def validate_url(raw):
-    """`raw` como veio, se for uma URL git aceita: `https://` sem credencial ou `git@host:caminho`."""
-    if not GIT_URL_RE.fullmatch(raw):
+    """`raw` como veio, se for uma URL git aceita: `https://host/…` sem credencial ou
+    `git@host:caminho` com host que não começa por `-`. A mesma regra vale para o
+    `source.repo` de um índice de marketplace (`marketplace_index.validate_repo`)."""
+    if not isinstance(raw, str) or not GIT_URL_RE.fullmatch(raw):
         raise ValueError("--source tem que ser uma pasta local ou uma URL git (https://… ou git@host:caminho).")
     _refuse_query_or_fragment(raw)
     if raw.startswith("https://"):
         parts = urlsplit(raw)
-        if parts.username or parts.password:
+        if parts.username or parts.password or "@" in parts.netloc:
             raise ValueError("URL git com usuário/senha não é aceita; use uma URL sem credencial.")
+        if not parts.hostname:
+            raise ValueError("URL git sem host; use https://<host>/<caminho>.")
+    elif raw[len("git@") :].startswith("-"):
+        # `git@-oProxyCommand=…:x` viraria opção do ssh.
+        raise ValueError("O host de uma URL git@host:caminho não pode começar por '-'.")
     return raw
 
 
@@ -156,15 +163,32 @@ def _rev_parse_worktree(folder):
     return Path(top), Path(git_dir)
 
 
+def _is_submodule_dir(git_dir, folder):
+    """O gitdir é o de um submódulo (`<super>/.git/modules/…`) e `folder` fica dentro de `<super>`?"""
+    resolved = git_dir.resolve()
+    for ancestor in resolved.parents:
+        if ancestor.name == "modules" and ancestor.parent.name == ".git":
+            superproject = ancestor.parent.parent
+            target = folder.resolve()
+            return target != superproject and target.is_relative_to(superproject)
+    return False
+
+
 def _points_back(git_dir, folder):
-    """Numa worktree, o gitdir guarda o caminho do `.git` dela (`<gitdir>/gitdir`): ele tem
-    que ser o `.git` de `folder`. Sem esse arquivo (submódulo), a raiz conferida basta."""
+    """Numa worktree, o gitdir guarda o caminho do `.git` dela (`<gitdir>/gitdir`, absoluto
+    ou relativo ao próprio gitdir): ele tem que ser o `.git` de `folder`. Sem esse arquivo,
+    só um submódulo conta (gitdir em `<super>/.git/modules/`, `folder` dentro de `<super>`)."""
     back = git_dir / "gitdir"
-    if not back.is_file():
-        return True
     if is_link(back):
         return False
-    return Path(back.read_text(encoding="utf-8").strip()).resolve() == (folder / ".git").resolve()
+    if not os.path.lexists(back):
+        return _is_submodule_dir(git_dir, folder)
+    if not back.is_file():
+        return False
+    target = Path(back.read_text(encoding="utf-8").strip())
+    if not target.is_absolute():
+        target = git_dir / target
+    return target.resolve() == (folder / ".git").resolve()
 
 
 def _is_worktree_root(folder):
@@ -212,11 +236,24 @@ def is_repository(folder):
     )
 
 
+def _refuse_unconfirmed_gitfile(folder):
+    """Um `.git` que não é pasta (gitfile, link) e que o git não confirma como desta pasta
+    é recusado: copiar a pasta como comum instalaria a árvore de trabalho de outro
+    repositório (ou de nenhum) como se fosse o plugin."""
+    if os.path.lexists(folder / ".git") and not is_repository(folder):
+        raise ValueError(
+            "A pasta tem um .git que não é a pasta de um repositório nem o gitfile de uma worktree ou "
+            "submódulo desta pasta (link, gitfile copiado ou quebrado); recusado. Aponte --source para a "
+            "raiz do repositório, ou tire o .git para instalar a pasta como pasta comum."
+        )
+
+
 def parse_source(raw, *, commit=None, ref=None, subdir=None):
     """`--source` (e `--commit`/`--ref`/`--subdir`) como `GitSource` ou `FolderSource`.
 
-    Nada roda aqui: só confere a forma. Pasta comum não aceita `--commit`/`--ref`/
-    `--subdir` — eles só fazem sentido num repositório."""
+    Nada roda aqui: só confere a forma. Uma URL (`https://`, `git@`) é decidida antes de
+    olhar o disco: uma pasta com o mesmo texto nunca toma o lugar dela. Pasta comum não
+    aceita `--commit`/`--ref`/`--subdir` — eles só fazem sentido num repositório."""
     raw = str(raw).strip()
     if commit is not None:
         validate_commit(commit)
@@ -224,11 +261,14 @@ def parse_source(raw, *, commit=None, ref=None, subdir=None):
         validate_ref(ref)
     if subdir is not None:
         validate_repo_path(subdir)
+    if is_remote(raw):
+        return GitSource(validate_url(raw), commit, ref, subdir)
     folder = Path(raw).expanduser()
     if raw and not raw.startswith("-") and folder.is_dir():
         folder = folder.resolve()
         if is_repository(folder):
             return GitSource(str(folder), commit, ref, subdir)
+        _refuse_unconfirmed_gitfile(folder)
         if commit is not None or ref is not None or subdir is not None:
             raise ValueError(
                 "--commit, --ref e --subdir só valem para repositório git; para uma pasta comum, aponte "
