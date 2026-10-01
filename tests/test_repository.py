@@ -130,8 +130,9 @@ HUB_INVOCATIONS = (
     "$get-brolls",
     "/get-brolls",
     "/plugin marketplace add engenheirodevideo/get-brolls",
-    "/get-brolls:get-brolls",
-    "/get-brolls-setup",
+    "/plugin install getbrolls@engenheirodevideo",
+    "/getbrolls:get-brolls",
+    "/getbrolls:get-brolls-setup",
 )
 
 

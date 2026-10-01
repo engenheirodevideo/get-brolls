@@ -50,7 +50,7 @@ O executor **nunca** abre `## Gabarito`. É isso que torna o teste cego: se ele 
 ## Fluxo de uma rodada
 
 1. Escolha os casos (rodada completa = os 16 de [corpus/](corpus/); smoke = 3).
-2. Para cada caso, dispare o executor com `/get-brolls-eval` ([commands/get-brolls-eval.md](../commands/get-brolls-eval.md)) passando só o id ou o texto do roteiro.
+2. Para cada caso, dispare o executor com `/getbrolls:get-brolls-eval` ([commands/get-brolls-eval.md](../commands/get-brolls-eval.md)) passando só o id ou o texto do roteiro.
 3. O executor cria um projeto isolado, executa `search` → `preview` → `review`, para no Storyboard e coleta `python3 scripts/gb.py status --project <projeto>`.
 4. O executor preenche um relatório a partir de [runs/TEMPLATE.md](runs/TEMPLATE.md).
 5. O juiz abre o gabarito, pontua cada beat pela rubrica e escreve as métricas da rodada no mesmo relatório.

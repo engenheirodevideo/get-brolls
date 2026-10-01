@@ -17,7 +17,7 @@ Este arquivo é o índice central para agentes e mantenedores: tudo que um agent
 | Operar a skill (coletar, prever, revisar, entregar) | [SKILL.md](SKILL.md) — contrato de operação e fonte canônica; no plugin do Claude Code a skill descoberta é o espelho [skills/get-brolls/SKILL.md](skills/get-brolls/SKILL.md). |
 | Instalar no Codex | Clone o repositório, apresente-o pelo [agents/openai.yaml](agents/openai.yaml) e acione com `$get-brolls`. |
 | Instalar no Claude Code como skill | Clone o repositório na pasta de skills do agente e acione com `/get-brolls`. |
-| Instalar no Claude Code como plugin | `/plugin marketplace add engenheirodevideo/get-brolls`, acione com `/get-brolls:get-brolls` e prepare o ambiente com [`/get-brolls-setup`](commands/get-brolls-setup.md). |
+| Instalar no Claude Code como plugin | `/plugin marketplace add engenheirodevideo/get-brolls` e `/plugin install getbrolls@engenheirodevideo`, acione com `/getbrolls:get-brolls` e prepare o ambiente com [`/getbrolls:get-brolls-setup`](commands/get-brolls-setup.md). |
 | Instalar no Gemini CLI | [GEMINI.md](GEMINI.md) — o snippet de importação `@` que o usuário acrescenta ao próprio `GEMINI.md`. |
 | Guia operacional (instalação, provedores, navegador, Storyboard, `status`) | [GUIDE.md](docs/GUIDE.md) |
 | Manual + tutorial para quem está chegando (comandos explicados, JSON de saída, automação) | [MANUAL.md](docs/MANUAL.md) |
@@ -25,7 +25,7 @@ Este arquivo é o índice central para agentes e mantenedores: tudo que um agent
 | Formatos de arquivo (schemas, versões, layouts de projeto, logs, nomes reservados) | [SCHEMAS.md](docs/SCHEMAS.md) |
 | Criar plugins (fontes, rotas, comandos, presets) com o SDK | [PLUGIN_DEV_QUICKSTART.md](docs/PLUGIN_DEV_QUICKSTART.md) para o caminho curto · [SDK.md](docs/SDK.md) para a referência completa |
 | Qualidade, evidências reais e limites conhecidos | [QUALITY.md](docs/QUALITY.md) |
-| Medir qualidade editorial (blind tests) | [eval/README.md](eval/README.md) — processo, rubrica, corpus e rodadas; execute um caso com [`/get-brolls-eval`](commands/get-brolls-eval.md). |
+| Medir qualidade editorial (blind tests) | [eval/README.md](eval/README.md) — processo, rubrica, corpus e rodadas; execute um caso com [`/getbrolls:get-brolls-eval`](commands/get-brolls-eval.md). |
 | Contribuir (fluxo de mudança, revisão, PR) | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | Segurança, egress e dados privados | [SECURITY.md](docs/SECURITY.md) |
 | O que mudou em cada versão | [CHANGELOG.md](CHANGELOG.md) |

@@ -21,4 +21,4 @@ No Windows, use `python` no lugar de `python3`.
 
 4. Responda ao usuário em poucas linhas e **repasse `summary.do.for_human` sem parafrasear**: essa frase já foi escrita na língua da pessoa e já diz o que fazer. Reescrever é como o passo se perde. Se `do.command` existir, você pode executá-lo; se `do.blocking_human` for `true`, **pare e espere a pessoa** — é revisão humana, condição de uso por item ou conflito de formato, e nenhum deles se resolve sozinho.
 
-5. Não invente estado: cite apenas o que o `status` devolveu. Se ele apontar que falta `BRIEF.md`, chame `/get-brolls-brief`. Se apontar ferramenta faltando, chame `/get-brolls-setup`.
+5. Não invente estado: cite apenas o que o `status` devolveu. Se ele apontar que falta `BRIEF.md`, chame `/getbrolls:get-brolls-brief`. Se apontar ferramenta faltando, chame `/getbrolls:get-brolls-setup`.

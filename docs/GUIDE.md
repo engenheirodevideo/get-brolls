@@ -232,12 +232,12 @@ A partir da 2.3.6, o repositório também é um marketplace de plugin do Claude 
 
 ```text
 /plugin marketplace add engenheirodevideo/get-brolls
-/plugin install get-brolls@engenheirodevideo
+/plugin install getbrolls@engenheirodevideo
 ```
 
-Na primeira sessão, execute `/get-brolls-setup`: o comando em `commands/get-brolls-setup.md` roda `setup --check`, `setup` e `doctor` pela raiz do plugin, e devolve o veredito em uma linha. A skill é acionada pelo contexto do pedido; a forma explícita é `/get-brolls:get-brolls`.
+Na primeira sessão, execute `/getbrolls:get-brolls-setup`: o comando em `commands/get-brolls-setup.md` roda `setup --check`, `setup` e `doctor` pela raiz do plugin, e devolve o veredito em uma linha. A skill é acionada pelo contexto do pedido; a forma explícita é `/getbrolls:get-brolls`.
 
-A skill do plugin fica em `skills/get-brolls/SKILL.md` e referencia os arquivos por `${CLAUDE_PLUGIN_ROOT}`, a raiz do plugin instalado — um diretório de cache versionado (`~/.claude/plugins/cache/engenheirodevideo/get-brolls/<versão>/`). Execute o instalador e o `doctor` pelo caminho absoluto dessa pasta, de qualquer cwd. As dependências ficam em `$GB_HOME/runtime`, fora da pasta do plugin, e sobrevivem ao `/plugin update`: rode o `setup` de novo só se o `doctor` apontar yt-dlp ou Playwright ausentes (a versão das dependências mudou). Prefira variáveis de ambiente ou um `.env` fora da pasta gerenciada para as chaves opcionais, apontado na raiz do parser: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" --env-file CAMINHO <subcomando> …`. O fluxo clone-como-skill continua suportado sem mudanças para Codex e instalações manuais, com o SKILL.md da raiz como fonte canônica.
+A skill do plugin fica em `skills/get-brolls/SKILL.md` e referencia os arquivos por `${CLAUDE_PLUGIN_ROOT}`, a raiz do plugin instalado — um diretório de cache versionado (`~/.claude/plugins/cache/engenheirodevideo/getbrolls/<versão>/`). Execute o instalador e o `doctor` pelo caminho absoluto dessa pasta, de qualquer cwd. As dependências ficam em `$GB_HOME/runtime`, fora da pasta do plugin, e sobrevivem ao `/plugin update`: rode o `setup` de novo só se o `doctor` apontar yt-dlp ou Playwright ausentes (a versão das dependências mudou). Prefira variáveis de ambiente ou um `.env` fora da pasta gerenciada para as chaves opcionais, apontado na raiz do parser: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" --env-file CAMINHO <subcomando> …`. O fluxo clone-como-skill continua suportado sem mudanças para Codex e instalações manuais, com o SKILL.md da raiz como fonte canônica.
 
 #### Permissões (opcional)
 
@@ -294,7 +294,7 @@ Motor: `yt-dlp` + FFmpeg pela CLI (`scripts/gb.py`). Capturas de página usam a 
 
 ### Medição editorial deste fluxo
 
-Se a pergunta é "esse fluxo está achando fonte literal de verdade?", a resposta não vem da suíte de testes: vem dos **testes cegos** em [eval/README.md](../eval/README.md). Um agente executor recebe só o roteiro, roda `search` → `preview` → `review` e para na revisão humana; outro agente (ou o humano) pontua cada beat pela rubrica — alcance literal, literalidade do asset, qualidade da prévia e disciplina (nada de stock sem pedido, nada aprovado sozinho). Os relatórios ficam em `eval/runs/`, e o comando `/get-brolls-eval` roda um caso do corpus de ponta a ponta.
+Se a pergunta é "esse fluxo está achando fonte literal de verdade?", a resposta não vem da suíte de testes: vem dos **testes cegos** em [eval/README.md](../eval/README.md). Um agente executor recebe só o roteiro, roda `search` → `preview` → `review` e para na revisão humana; outro agente (ou o humano) pontua cada beat pela rubrica — alcance literal, literalidade do asset, qualidade da prévia e disciplina (nada de stock sem pedido, nada aprovado sozinho). Os relatórios ficam em `eval/runs/`, e o comando `/getbrolls:get-brolls-eval` roda um caso do corpus de ponta a ponta.
 
 ## Estado do projeto e progresso
 

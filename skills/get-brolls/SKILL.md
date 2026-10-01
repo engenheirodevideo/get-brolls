@@ -27,7 +27,7 @@ Você planeja fontes literais, mostra o trecho à pessoa, recebe a decisão dela
 
 ## Passo 1 — Entreviste antes de buscar
 
-Pediram para escrever o conteúdo (cenas e fala), não só b-roll? Siga [`${CLAUDE_PLUGIN_ROOT}/references/roteiro.md`](${CLAUDE_PLUGIN_ROOT}/references/roteiro.md) (roteiro, `review --expect`, `export`). Roteiro pronto da pessoa segue a entrevista. Sem `BRIEF.md` no projeto, conduza a entrevista de `/get-brolls-brief` ([`${CLAUDE_PLUGIN_ROOT}/references/interview.md`](${CLAUDE_PLUGIN_ROOT}/references/interview.md)): uma pergunta por mensagem, teto de sete; pare quando 1, 3 e 7 estiverem respondidas. Dois "tanto faz" viram defaults, visíveis na resposta. Nunca invente narração, alvo, link ou responsável.
+Pediram para escrever o conteúdo (cenas e fala), não só b-roll? Siga [`${CLAUDE_PLUGIN_ROOT}/references/roteiro.md`](${CLAUDE_PLUGIN_ROOT}/references/roteiro.md) (roteiro, `review --expect`, `export`). Roteiro pronto da pessoa segue a entrevista. Sem `BRIEF.md` no projeto, conduza a entrevista de `/getbrolls:get-brolls-brief` ([`${CLAUDE_PLUGIN_ROOT}/references/interview.md`](${CLAUDE_PLUGIN_ROOT}/references/interview.md)): uma pergunta por mensagem, teto de sete; pare quando 1, 3 e 7 estiverem respondidas. Dois "tanto faz" viram defaults, visíveis na resposta. Nunca invente narração, alvo, link ou responsável.
 
 ## Passo 2 — Confirme o brief
 
@@ -77,7 +77,7 @@ Diga o que tentou e por quê. Pergunte por material próprio ou um link. Não in
 
 ## Ambiente
 
-`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" doctor` confere a instalação. No Windows, use `python` no lugar de `python3`. Em código 4 (`ready` falso), leia `summary.missing` e peça `/get-brolls-setup`. Códigos de saída: [`${CLAUDE_PLUGIN_ROOT}/docs/CLI_CONTRACT.md`](${CLAUDE_PLUGIN_ROOT}/docs/CLI_CONTRACT.md); versão diferente: [CHANGELOG](${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md).
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" doctor` confere a instalação. No Windows, use `python` no lugar de `python3`. Em código 4 (`ready` falso), leia `summary.missing` e peça `/getbrolls:get-brolls-setup`. Códigos de saída: [`${CLAUDE_PLUGIN_ROOT}/docs/CLI_CONTRACT.md`](${CLAUDE_PLUGIN_ROOT}/docs/CLI_CONTRACT.md); versão diferente: [CHANGELOG](${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md).
 
 ## Índice de references
 

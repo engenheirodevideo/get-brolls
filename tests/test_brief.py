@@ -673,7 +673,7 @@ class BriefDocumentationTests(unittest.TestCase):
         for path in SKILLS:
             body = path.read_text(encoding="utf-8")
             self.assertIn("BRIEF.md", body)
-            self.assertIn("/get-brolls-brief", body)
+            self.assertIn("/getbrolls:get-brolls-brief", body)
 
     def test_the_lazy_interview_case_is_in_the_eval_corpus(self):
         case = ROOT / "eval/corpus/brief-entrevista-preguicosa.md"

@@ -16,7 +16,7 @@ Você pede o B-roll, vê a prévia, aprova, e **só o trecho aprovado** é baixa
 
 - 💬 **No Claude Code, é só pedir:** `/get-brolls` + o que você precisa + a pasta do vídeo. O agente roda os comandos por você.
 - 🔒 **Nada é baixado sem duas coisas:** você **aprovar** o trecho e **registrar os direitos** de uso.
-- 🧭 **Se perdeu?** Peça `/get-brolls-status` (ou rode o `status`). Ele diz o próximo passo.
+- 🧭 **Se perdeu?** Peça `/getbrolls:get-brolls-status` (ou rode o `status`). Ele diz o próximo passo.
 
 ## 📖 Dicionário rápido
 
@@ -205,7 +205,7 @@ Consulte quando precisar. Cada bloco é um passo do caminho.
 
 ## 1 🩺 Conferir
 
-> 💬 **No chat:** `/get-brolls-setup` instala e confere · `/get-brolls-status` diz onde você parou.
+> 💬 **No chat:** `/getbrolls:get-brolls-setup` instala e confere · `/getbrolls:get-brolls-status` diz onde você parou.
 
 ```bash
 # ── providers ───────────────────────────────────────────────
@@ -248,7 +248,7 @@ python3 scripts/gb.py status --project /caminho/meu-video
 ## 2 📝 Planejar (opcional, mas recomendado)
 
 > Pensa como a **pré-produção**: RULES é o padrão do canal, BRIEF é o plano do vídeo (o que cada trecho precisa mostrar).
-> 💬 **No chat:** `/get-brolls-brief` faz uma entrevista de até 7 perguntas e escreve o BRIEF por você.
+> 💬 **No chat:** `/getbrolls:get-brolls-brief` faz uma entrevista de até 7 perguntas e escreve o BRIEF por você.
 
 **Primeira vez? Esta ordem dá certo sem editar JSON** (cada comando mostra o próximo em `summary.do`):
 
@@ -373,7 +373,7 @@ python3 scripts/gb.py browser-plan --url "URL_DA_PAGINA" --project /caminho/meu-
 ## 4 👀 Prévia e Storyboard
 
 > É o **offline**: você vê o trecho em movimento, leve, antes de baixar em alta.
-> 💬 **No chat:** `/get-brolls-review` monta, manda o link e importa suas decisões.
+> 💬 **No chat:** `/getbrolls:get-brolls-review` monta, manda o link e importa suas decisões.
 
 ```bash
 # ── preview ─────────────────────────────────────────────────
@@ -818,7 +818,7 @@ Dois arquivos na pasta do projeto guardam as suas escolhas. Os dois são Markdow
 
 ## BRIEF.md: o plano de B-rolls deste vídeo
 
-Criado pelo `init-brief` ou pela entrevista do `/get-brolls-brief`.
+Criado pelo `init-brief` ou pela entrevista do `/getbrolls:get-brolls-brief`.
 
 ```json
 {

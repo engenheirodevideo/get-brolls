@@ -95,7 +95,7 @@ No Claude Code, você também pode instalar a skill como plugin, sem clonar manu
 
 ```text
 /plugin marketplace add engenheirodevideo/get-brolls
-/plugin install get-brolls@engenheirodevideo
+/plugin install getbrolls@engenheirodevideo
 ```
 #### Instalação como comando
 
@@ -173,15 +173,15 @@ No fim, `verify` responde `"count": 1` e o clipe aprovado está em `/caminho/meu
 
 Se você nunca abriu um terminal, esta é a lista inteira. Todos os passos são conversa com o agente; nada aqui pede comando.
 
-1. **Instale uma vez.** Peça `/get-brolls-setup`. Ele instala tudo em `$GB_HOME/runtime` e responde em uma linha se está pronto. O runtime sobrevive ao `/plugin update`.
+1. **Instale uma vez.** Peça `/getbrolls:get-brolls-setup`. Ele instala tudo em `$GB_HOME/runtime` e responde em uma linha se está pronto. O runtime sobrevive ao `/plugin update`.
 2. **Diga o que você precisa.** `/get-brolls preciso de vídeos de apoio pro meu Reel sobre X` — e diga também em que pasta o projeto vai ficar.
-3. **Responda à entrevista.** O agente faz no máximo sete perguntas, uma por vez. "Tanto faz" é resposta válida: ele assume um padrão e mostra o que assumiu. Se preferir chamar direto, use `/get-brolls-brief`.
+3. **Responda à entrevista.** O agente faz no máximo sete perguntas, uma por vez. "Tanto faz" é resposta válida: ele assume um padrão e mostra o que assumiu. Se preferir chamar direto, use `/getbrolls:get-brolls-brief`.
 4. **Confira o brief.** Ele devolve em cinco linhas o que entendeu e pergunta "fecho assim?". Corrija ali mesmo.
 5. **Olhe a shortlist.** Antes de baixar qualquer coisa, ele lista de 5 a 8 candidatos com título, autor e o trecho exato. Diga quais servem.
-6. **Aprove as prévias.** Ou pelo chat ("aprovei todos", ou nomeando quais), ou pelo Storyboard: peça `/get-brolls-review`, ele te manda um link, você clica em Aprovar / Pedir ajuste / Reprovar e em **Salvar decisões**, e volta para dizer que salvou. Sem essa etapa, nada é baixado.
+6. **Aprove as prévias.** Ou pelo chat ("aprovei todos", ou nomeando quais), ou pelo Storyboard: peça `/getbrolls:get-brolls-review`, ele te manda um link, você clica em Aprovar / Pedir ajuste / Reprovar e em **Salvar decisões**, e volta para dizer que salvou. Sem essa etapa, nada é baixado.
 7. **Diga de quem é o material.** O agente registra as condições de uso com o que você informar. Quem responde pelas condições é você; ele só registra o que foi dito e de onde veio cada arquivo.
 8. **Receba.** Os cortes saem em `entrega/`, uma pasta por trecho, com um `ORIGEM.md` dizendo de onde veio cada um.
-9. **Perdeu o fio?** Peça `/get-brolls-status`: ele diz em que pé está e qual é o próximo passo.
+9. **Perdeu o fio?** Peça `/getbrolls:get-brolls-status`: ele diz em que pé está e qual é o próximo passo.
 
 ### Comandos
 
@@ -190,7 +190,7 @@ Na ordem de uso, do primeiro contato à entrega:
 **1. Instale o ambiente** (uma vez, na pasta do plugin ou do clone):
 
 ```text
-/get-brolls-setup   # instala as dependências e roda o doctor
+/getbrolls:get-brolls-setup   # instala as dependências e roda o doctor
 ```
 
 **2. Chame a skill** com o que você precisa:
@@ -198,9 +198,9 @@ Na ordem de uso, do primeiro contato à entrega:
 ```text
 /get-brolls <seu pedido>   # Claude Code — descreva os inserts e a pasta do projeto
 $get-brolls <seu pedido>   # Codex — mesma coisa
-/get-brolls-brief          # entrevista e escreve o BRIEF.md do vídeo
-/get-brolls-review         # monta o Storyboard, te manda o link e importa as decisões
-/get-brolls-status         # diz em que pé está a coleta e qual é o próximo passo
+/getbrolls:get-brolls-brief          # entrevista e escreve o BRIEF.md do vídeo
+/getbrolls:get-brolls-review         # monta o Storyboard, te manda o link e importa as decisões
+/getbrolls:get-brolls-status         # diz em que pé está a coleta e qual é o próximo passo
 ```
 
 **3. Confira o ambiente** quando algo não funcionar:
@@ -253,7 +253,7 @@ Cada subcomando aceita `help`; a sintaxe completa está em [Usar pelo terminal](
 - **Registro de origem.** Cada trecho entregue carrega fonte, autor, intervalo e condições de uso — a aprovação editorial é sempre sua.
 - **Rede protegida.** O coletor aceita somente URLs públicas HTTPS sem credenciais, rejeita resolução para redes locais e não segue redirecionamentos.
 - **Nativo em macOS e Windows.** Instaladores próprios para os dois sistemas; os helpers Bash de YouTube são opcionais.
-- **Instalável como plugin do Claude Code.** O próprio repositório é seu marketplace de plugin, com `/get-brolls-setup` configurando a pasta do plugin e uma skill espelhada que resolve caminhos via `${CLAUDE_PLUGIN_ROOT}`. O fluxo clone-como-skill continua idêntico para Codex.
+- **Instalável como plugin do Claude Code.** O próprio repositório é seu marketplace de plugin, com `/getbrolls:get-brolls-setup` configurando a pasta do plugin e uma skill espelhada que resolve caminhos via `${CLAUDE_PLUGIN_ROOT}`. O fluxo clone-como-skill continua idêntico para Codex.
 
 ## Storyboard
 

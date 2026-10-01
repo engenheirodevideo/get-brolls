@@ -33,7 +33,7 @@ MAX_WORDS = 900
 MAX_WORDS_PER_PARAGRAPH = 80
 
 # Comandos de instalação não têm lugar no SKILL.md: quem instala é
-# `/get-brolls-setup`, e o arquivo mais lido não gasta linha com isso.
+# `/getbrolls:get-brolls-setup`, e o arquivo mais lido não gasta linha com isso.
 INSTALL_MARKERS = (
     "install.sh",
     "install.ps1",
@@ -203,7 +203,7 @@ class SkillBudgetTests(unittest.TestCase):
                 self.assertNotIn(
                     marker,
                     text,
-                    f"{path.name} traz comando de instalação ({marker}); isso é do /get-brolls-setup",
+                    f"{path.name} traz comando de instalação ({marker}); isso é do /getbrolls:get-brolls-setup",
                 )
 
     def test_the_three_guards_are_present(self):

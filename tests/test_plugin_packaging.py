@@ -13,6 +13,10 @@ MARKETPLACE_JSON = ROOT / ".claude-plugin" / "marketplace.json"
 COMMANDS = ROOT / "commands"
 SETUP_COMMAND = COMMANDS / "get-brolls-setup.md"
 REFERENCES = ROOT / "references"
+MIRROR_SKILL = ROOT / "skills" / "get-brolls" / "SKILL.md"
+PLUGIN_NAME = "getbrolls"
+LEGACY_PLUGIN_NAME = "get-brolls"
+SKILL_NAME = "get-brolls"
 
 
 def frontmatter_field(path, field):
@@ -29,7 +33,7 @@ def frontmatter_field(path, field):
 class PluginManifestTests(unittest.TestCase):
     def test_plugin_manifest_valid(self):
         data = json.loads(PLUGIN_JSON.read_text(encoding="utf-8"))
-        self.assertEqual(data["name"], "get-brolls")
+        self.assertEqual(data["name"], PLUGIN_NAME)
         self.assertEqual(data["version"], __version__)
         for key in ("description", "author", "repository", "license"):
             self.assertIn(key, data)
@@ -38,10 +42,39 @@ class PluginManifestTests(unittest.TestCase):
         data = json.loads(MARKETPLACE_JSON.read_text(encoding="utf-8"))
         self.assertEqual(data["name"], "engenheirodevideo")
         self.assertIn("name", data["owner"])
-        entries = [p for p in data["plugins"] if p["name"] == "get-brolls"]
+        entries = [p for p in data["plugins"] if p["name"] == PLUGIN_NAME]
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]["source"], "./")
         self.assertEqual(entries[0].get("version"), __version__)
+
+    def test_plugin_rename_keeps_the_skill_name(self):
+        """O plugin virou `getbrolls`; quem instalou `get-brolls` migra pelo `renames`; a skill não muda."""
+        plugin = json.loads(PLUGIN_JSON.read_text(encoding="utf-8"))
+        marketplace = json.loads(MARKETPLACE_JSON.read_text(encoding="utf-8"))
+        self.assertEqual([PLUGIN_NAME], [p["name"] for p in marketplace["plugins"]])
+        self.assertEqual(plugin["name"], marketplace["plugins"][0]["name"])
+        self.assertEqual({LEGACY_PLUGIN_NAME: PLUGIN_NAME}, marketplace.get("renames"))
+        self.assertTrue(re.fullmatch(r"[A-Za-z0-9._-]+", PLUGIN_NAME))
+        for skill in (ROOT / "SKILL.md", MIRROR_SKILL):
+            self.assertEqual(SKILL_NAME, frontmatter_field(skill, "name"), skill)
+        self.assertTrue(MIRROR_SKILL.is_file())
+
+    def test_docs_use_the_new_plugin_namespace(self):
+        """Instalação e acionamento citam `getbrolls`; o nome antigo só sobrevive no histórico."""
+        historical = {"CHANGELOG.md"}
+        documents = [
+            path
+            for pattern in ("*.md", "docs/*.md", "commands/*.md", "references/*.md", "skills/**/*.md", "eval/README.md")
+            for path in ROOT.glob(pattern)
+            if path.name not in historical
+        ]
+        stale = re.compile(r"get-brolls@engenheirodevideo|/get-brolls:|cache/engenheirodevideo/get-brolls/")
+        offenders = [
+            str(path.relative_to(ROOT)) for path in documents if stale.search(path.read_text(encoding="utf-8"))
+        ]
+        self.assertEqual([], offenders, "nome antigo do plugin em: " + ", ".join(offenders))
+        for name in ("README.md", "README.en.md", "docs/GUIDE.md"):
+            self.assertIn(f"/plugin install {PLUGIN_NAME}@engenheirodevideo", (ROOT / name).read_text(encoding="utf-8"))
 
 
 class SetupCommandTests(unittest.TestCase):
