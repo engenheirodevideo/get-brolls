@@ -86,7 +86,7 @@ versão minor.
 |---|---|---|
 | `INVALID_DATA` | `1` | Qualquer erro de dados ou de operação (`ValueError` depois do parse), inclusive de comando de plugin e de exportador. É o padrão para o que não é dos outros códigos. |
 | `IO_ERROR` | `1` | Erro do sistema de arquivos ou de rede (`OSError`): permissão, disco, arquivo que sumiu. |
-| `LOCKED` | `1` | Outro processo segura a trava do projeto (`brolls/.command.lock`), de `analysis/` ou do runtime. Repetir depois resolve. |
+| `LOCKED` | `1` | Outro processo segura uma trava: a do projeto (`brolls/.command.lock`), a de `analysis/`, a do runtime (`setup`, `.getbrolls-setup.lock`), a dos plugins (`$GB_HOME/.plugins.lock`), a dos clientes (`$GB_HOME/.clients.lock`), a dos templates de um cliente (`templates/.lock`), a dos perfis confiáveis (`$GB_HOME/trusted-profiles.json.lock`) ou a do índice da biblioteca pessoal (`$GB_HOME/library/index.lock`). Repetir depois resolve. |
 | `USAGE_ERROR` | `2` | Erro do argparse ou `UsageError` explícito (`.env` recusado, perfil não confiável, combinação de flags inválida). |
 | `INTERNAL_ERROR` | `3` | `KeyError`, `TypeError` e `AttributeError` dentro de um comando, ou qualquer exceção fora dele: assinatura de bug. |
 | `PREREQUISITE_MISSING` | `4` | `PrerequisiteError`: ferramenta, arquivo de dados ou requisito do perfil ausente. |
@@ -214,7 +214,7 @@ no projeto:
 | `brief` | Lê `BRIEF.md`, `RULES.md` e o manifesto existente. |
 | `doctor` | Diagnostica a instalação; `--project` não cria nada. |
 | `setup` | Grava só no runtime (`$GB_HOME/runtime` ou `GB_RUNTIME_DIR`), nunca num projeto. |
-| `x` | Comando de plugin, que lê o projeto por cópias. |
+| `x` | Comando de plugin, que lê o projeto por cópias. A única gravação no projeto é a do próprio plugin em `analysis/` (componentes de análise e marcadores, pela API do SDK), sob a trava de `analysis/` — nunca a trava do projeto, nunca `brolls/`. |
 | `capabilities` | Descreve o parser e os manifestos de plugin. |
 | `profile` | `trust`/`untrust` gravam só `$GB_HOME/trusted-profiles.json`. |
 

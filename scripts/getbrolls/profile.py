@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from . import __version__, _paths
-from .errors import PrerequisiteError, UsageError
+from .errors import LockedError, PrerequisiteError, UsageError
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -97,7 +97,8 @@ _UNKNOWN_PLUGINS = (
     "instalados e habilitados."
 )
 # Arquivos do `GB_HOME` que, com o `home` do perfil, passam pelas recusas do próprio toml.
-HOME_FILES = (".env", "plugins.json")
+# `marketplaces/` (cache dos índices) passa pelas mesmas recusas: um link ali levaria a leitura e o `remove` para fora.
+HOME_FILES = (".env", "plugins.json", "marketplaces")
 
 
 @dataclass(frozen=True)
@@ -223,7 +224,7 @@ def _guard_file(path: Path, label: str) -> None:
 
 
 def check_home_files(home: Path | None = None) -> None:
-    """Com o `GB_HOME` vindo do perfil: `.env` e `plugins.json` de lá passam pelas recusas do toml.
+    """Com o `GB_HOME` vindo do perfil: `.env`, `plugins.json` e `marketplaces/` passam pelas recusas do toml.
 
     Sem o `home` do perfil não faz nada: o `GB_HOME` do ambiente ou o padrão é da pessoa.
     """
@@ -545,7 +546,7 @@ def _update_store(home: Path, change) -> bool:
                 break
             except BlockingIOError:
                 if time.monotonic() >= deadline:
-                    raise UsageError(f"Outro processo está gravando {TRUST_FILE}; tente de novo.") from None
+                    raise LockedError(f"Outro processo está gravando {TRUST_FILE}; tente de novo.") from None
                 time.sleep(0.05)
         try:
             data = read_store(home)

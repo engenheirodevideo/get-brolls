@@ -430,9 +430,15 @@ def _installed_from(name):
 
 def remove(name: str) -> dict:
     """Tira o marketplace `name` do estado e apaga o cache; plugins instalados ficam."""
+    folder = cache_path(name).parent
+    if is_link(folder.parent):
+        # Apagar através de um link sairia de $GB_HOME: recusa antes de mexer em qualquer coisa.
+        raise ValueError(
+            f"$GB_HOME/{CACHE_DIRNAME} é um link; o get-brolls não apaga nada através de links. "
+            "Troque o link pela pasta de verdade e repita."
+        )
     state = read_state()
     record = _record(state, name)
-    folder = cache_path(name).parent
     if is_link(folder):
         folder.unlink()
     elif folder.exists():
