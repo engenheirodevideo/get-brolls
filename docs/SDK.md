@@ -80,7 +80,7 @@ Campos de `getbrolls-plugin.json`:
 | `license` | string | não | Licença do código do plugin, como identificador ou expressão SPDX curta (`MIT`, `MIT OR Apache-2.0`), até 128 caracteres. |
 | `author` | string | não | Quem mantém o plugin, até 120 caracteres. |
 | `keywords` | lista | não | Até 10 palavras-chave únicas, `a-z0-9` e hífen (ex.: `["acervo", "stock-video"]`). |
-| `platforms` | lista | não | Sistemas em que o plugin roda: subconjunto não vazio de `darwin`, `linux` e `windows`. Ausente vale todos. Fora da lista, o plugin fica `incompatible` e o `install` o recusa. |
+| `platforms` | lista | não | Sistemas em que o plugin roda: subconjunto não vazio de `darwin` (macOS), `linux` e `windows` — não `macos`. Ausente vale todos. Fora da lista, o plugin fica `incompatible` e o `install` o recusa. |
 | `requires` | objeto | não | O que o plugin precisa fora dele — veja [Dependências (`requires`)](#dependências-requires). |
 | `metadata` | objeto | não | Objeto JSON livre para ferramentas de terceiros (catálogo, hub). O core confere que é um objeto e não lê o conteúdo. |
 
@@ -882,9 +882,13 @@ python3 scripts/gb.py plugins --action update --id <id> --commit <sha-anterior>
   bytes diferentes em outro sistema, e o sha256 mudaria). O conteúdo é o blob
   cru do commit: `core.autocrlf`, `eol` e filtros do `.gitattributes` não mudam
   nada, então o sha256 é o mesmo em macOS, Linux e Windows.
-- Uma pasta local só é tratada como repositório git quando `.git` é uma pasta
-  de verdade (um arquivo `.git` de worktree/submódulo ou um link apontariam
-  para outro repositório). Pasta local comum é copiada sem `.git`/`.hg`/`.svn`
+- Uma pasta local é tratada como repositório git quando `.git` é uma pasta de
+  verdade ou quando é o arquivo `gitdir: …` de uma worktree (ou submódulo) que o
+  próprio git confirma: o gitdir existe, a raiz da worktree é a própria pasta e,
+  numa worktree, o gitdir aponta de volta para ela — então `install --source` e
+  `marketplace-add --source` aceitam uma worktree (vale o commit dela). Um link
+  no lugar do `.git` ou um gitfile quebrado ou copiado de outra pasta não contam:
+  a pasta é copiada como pasta comum. Pasta local comum é copiada sem `.git`/`.hg`/`.svn`
   de topo, `__pycache__`/`.pyc` e lixo de SO; uma pasta de controle de versão
   aninhada é recusada.
 - No Windows, `https://` usa a configuração de TLS do Git para Windows que está

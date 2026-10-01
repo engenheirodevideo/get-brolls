@@ -16,7 +16,7 @@ from test_sdk_loader import MANIFEST
 
 from getbrolls import runtime
 from getbrolls.errors import UsageError
-from getbrolls.sdk import git_source, loader, marketplace
+from getbrolls.sdk import git_source, loader, marketplace, marketplace_install
 from getbrolls.sdk import install as install_mod
 from getbrolls.sdk import marketplace_index as mi
 
@@ -134,6 +134,18 @@ class AddListRemoveTests(MarketplaceTestCase):
         with self.assertRaises(mi.MarketplaceIndexError):
             marketplace.add(str(repo))
         self.assertFalse(marketplace.state_path().exists())
+
+    def test_add_and_install_from_a_git_worktree(self):
+        repo = self.index_repo()
+        tree = self.work / "indice_ramo"
+        git(repo, "worktree", "add", "--quiet", "-b", "ramo", str(tree))
+        done = marketplace.add(str(tree))
+        self.assertTrue(done["added"])
+        pin, index = marketplace.load_index("exemplo")
+        self.assertEqual(str(tree.resolve()), pin.source)
+        entry = index["plugins"][0]
+        preview = marketplace_install.install("demo@exemplo", confirm=False, expect=None)
+        self.assertEqual(entry["content_sha256"], preview["expect"])
 
     def test_url_with_credentials_refused(self):
         for source in (
