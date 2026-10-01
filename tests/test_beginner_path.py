@@ -108,6 +108,18 @@ class BeginnerPathTests(CliCase):
         after = self.cli("status")["summary"]["do"]
         self.assertNotIn(after["step"], ("roteiro-check", "roteiro-sync"))
 
+    def test_status_do_points_to_editing_while_the_skeleton_is_untouched(self):
+        self.cli("init")
+        self.cli("roteiro", "--action", "new", "--genero", "reels", "--tema", "x")
+        self.cli("init-brief")
+        do = self.cli("status")["summary"]["do"]
+        self.assertEqual("roteiro-check", do["step"])
+        self.assertIn("Edite o ROTEIRO.md", do["for_human"])
+        self.assertIn("esqueleto", do["why"])
+        self.fill_skeleton()
+        do = self.cli("status")["summary"]["do"]
+        self.assertNotIn("esqueleto", do["why"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -513,6 +513,45 @@ class RoteiroLoggingTests(CliCase):
         self.assertNotIn("Você não precisa editar 4 horas", text)  # nem a fala do roteiro
 
 
+class SkeletonGateTests(CliCase):
+    def setUp(self):
+        super().setUp()
+        self.cli("init-rules", "--format", "reels")
+        self.cli("roteiro", "--action", "new", "--genero", "reels", "--tema", "IA")
+        self.write_brief()
+
+    def test_check_warns_with_a_distinct_code_and_lists_the_scenes(self):
+        checked = self.cli("roteiro", "--action", "check")
+        coded = [w for w in checked["warnings"] if w.startswith("ROTEIRO_ESQUELETO")]
+        self.assertEqual(1, len(coded))
+        self.assertEqual(4, len(checked["skeleton_scenes"]))
+        self.fill_skeleton()
+        clean = self.cli("roteiro", "--action", "check")
+        self.assertEqual([], clean["skeleton_scenes"])
+        self.assertFalse([w for w in clean["warnings"] if w.startswith("ROTEIRO_ESQUELETO")])
+
+    def test_review_and_sync_refuse_the_skeleton_and_name_the_scenes(self):
+        sha = self.cli("roteiro", "--action", "check")["review"]["sha256"]
+        before = (self.project / "ROTEIRO.md").read_bytes()
+        refused = self.cli("roteiro", "--action", "review", *REVIEW, "--expect", sha, expect=1)
+        self.assertIn("esqueleto", refused["error"])
+        self.assertIn("linha ", refused["error"])
+        self.assertIn("o que a pessoa vê enquanto você fala", refused["error"])
+        self.assertIn("conteúdo real", refused["error"])
+        synced = self.cli("roteiro", "--action", "sync", expect=1)
+        self.assertIn("esqueleto", synced["error"])
+        self.assertEqual(before, (self.project / "ROTEIRO.md").read_bytes())
+        self.assertFalse((self.project / "brolls" / "roteiro-reviews.jsonl").exists())
+
+    def test_one_leftover_placeholder_still_blocks(self):
+        self.fill_skeleton()
+        self.edit("timeline cheia", "{o que a pessoa vê enquanto você fala}")
+        self.assertIn("esqueleto", self.cli("roteiro", "--action", "sync", expect=1)["error"])
+        self.edit("{o que a pessoa vê enquanto você fala}", "timeline cheia")
+        self.review()
+        self.assertEqual([], self.cli("roteiro", "--action", "sync")["problems"])
+
+
 class ParserTests(unittest.TestCase):
     def test_read_only_actions_are_registered(self):
         for pair in (("roteiro", "check"), ("roteiro", "plan"), ("assets", "list"), ("assets", "where")):

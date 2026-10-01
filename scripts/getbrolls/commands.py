@@ -1376,8 +1376,22 @@ def _roteiro_reviewed(project):
         return False
 
 
+def _roteiro_skeleton(project):
+    """Rótulos das cenas com texto de esqueleto do `roteiro new`; só lê, roteiro que não abre dá lista vazia."""
+    from getbrolls import roteiro
+
+    try:
+        return [label for label, _ in roteiro.skeleton_scenes(roteiro.parse(roteiro.load_text(project)))]
+    except (ValueError, OSError):
+        return []
+
+
 def _roteiro_flags(sync_needed, beats, project):
     if sync_needed:
+        skeleton = _roteiro_skeleton(project)
+        if skeleton:
+            # Review e sync recusam texto de esqueleto: o degrau é editar o roteiro.
+            return {"roteiro_sync": True, "roteiro_skeleton": skeleton}
         # Sem revisão, o sync recusa: o degrau é o `check`, que mostra o hash para o `review`.
         return {"roteiro_sync": True, **({} if _roteiro_reviewed(project) else {"roteiro_unreviewed": True})}
     if sync_needed is False and not beats:

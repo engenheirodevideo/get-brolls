@@ -254,7 +254,7 @@ python3 scripts/gb.py status --project /caminho/meu-video
 
 1. `init --project /caminho/meu-video` cria o projeto.
 2. `roteiro --action new --genero reels --tema "Seu tema"` cria o `ROTEIRO.md` e, se o projeto ainda não tem `RULES.md`, um no formato do roteiro (`reels`, 9:16).
-3. Escreva a fala de cada cena e rode `roteiro --action check`: ele mostra o plano e o `review.sha256`.
+3. Escreva a fala de cada cena e rode `roteiro --action check`: ele mostra o plano e o `review.sha256`. Texto de esqueleto (o que está entre chaves, como `{a dor, em uma frase}`) vira o aviso `ROTEIRO_ESQUELETO`; enquanto sobrar algum, `review` e `sync` recusam e dizem as cenas a editar.
 4. `init-brief` cria o `BRIEF.md` já no formato do roteiro e com `"beats": []` (os beats nascem do roteiro); preencha título, objetivo e direitos.
 5. Mostre o roteiro à pessoa e registre com `roteiro --action review … --expect <sha256>`; depois `roteiro --action sync` grava os beats.
 6. `status` diz o próximo passo (buscar o primeiro beat).

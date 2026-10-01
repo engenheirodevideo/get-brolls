@@ -27,6 +27,14 @@ GENRES = {
         ),
     },
 }
+# Fonte única do texto de esqueleto: cada `{...}` que `roteiro new` grava (alvo de BROLL/SPLIT e fala).
+# `roteiro_commands.skeleton` escreve estas linhas; `check`, `review` e `sync` reconhecem o mesmo texto.
+SKELETON_FRAGMENTS = frozenset(
+    fragment
+    for spec in GENRES.values()
+    for _title, directive, speech in spec["cenas"]
+    for fragment in re.findall(r"\{[^{}\n]{1,200}\}", f"{directive}\n{speech}")
+)
 KEYS = ("type", "genero", "aspecto", "duracao_alvo_s", "tema", "legenda", "status", "cliente", "direcao")
 REQUIRED = ("type", "genero", "tema")
 # Chaves que só dão nome: o valor passa adiante (plano de export) e nenhum recurso o usa ainda.

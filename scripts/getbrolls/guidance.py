@@ -536,6 +536,17 @@ def _pending_or_blocked_action(state, counts, brief):
     # formato passa na frente, porque ele invalida a própria decisão que seria tomada.
     if counts["pending"] > 0:
         return _approve_action(state, counts["pending"])
+    if brief.get("roteiro_sync") and brief.get("roteiro_skeleton"):
+        # O roteiro ainda tem o texto do `roteiro new`: review e sync recusam, e buscar com ele não tem alvo.
+        scenes = ", ".join(brief["roteiro_skeleton"])
+        return _action(
+            "roteiro-check",
+            f"O ROTEIRO.md ainda tem texto de esqueleto do `roteiro new` nas cenas {scenes}: "
+            "review e sync recusam até ele ser trocado.",
+            "Edite o ROTEIRO.md: troque o texto entre chaves pelo alvo do b-roll e pela fala reais de cada cena, "
+            "depois rode `roteiro --action check`.",
+            state,
+        )
     if brief.get("roteiro_sync") and brief.get("roteiro_unreviewed"):
         # O sync recusa roteiro sem revisão: primeiro o check (que mostra o hash) e o review.
         return _action(

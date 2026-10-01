@@ -112,13 +112,21 @@ def _check(args):
     if problems:
         raise ValueError("ROTEIRO.md com problema:\n" + "\n".join(problems))
     warnings = plan["warnings"] + ([brief_warning] if brief_warning else [])
+    left = roteiro.skeleton_scenes(doc)
+    if left:
+        # Aviso, não erro: a pessoa pode salvar rascunho; review e sync é que recusam.
+        warnings.append(f"{SKELETON_CODE}: {roteiro.skeleton_refusal(doc)}")
     review = roteiro_review.review_state(args.project, doc)
     line = f"{len(plan['scenes'])} cenas, ~{plan['total_s']} s, {len(warnings)} aviso(s); " + (
         "revisão válida." if review["reviewed"] else "falta a revisão da pessoa."
     )
-    return {"meta": doc.meta, **plan, "warnings": warnings, "review": review, "summary": {"line": line}}
+    return {
+        "meta": doc.meta, **plan, "warnings": warnings, "skeleton_scenes": [label for label, _ in left],
+        "review": review, "summary": {"line": line},
+    }  # fmt: skip
 
 
+SKELETON_CODE = "ROTEIRO_ESQUELETO"
 REVIEW_CHANGED = "O roteiro mudou desde a versão revisada; mostre de novo e revise."
 EXPECT_MISSING = (
     "roteiro --action review exige --expect <sha256>: o review.sha256 que check e plan mostram, "
@@ -134,6 +142,9 @@ def _review(args):
     # `load_text` tira BOM e CRLF: `set_status` e o hash da revisão trabalham sobre o mesmo texto.
     text = roteiro.load_text(args.project)
     doc = roteiro.parse(text)
+    refusal = roteiro.skeleton_refusal(doc)
+    if refusal:
+        raise ValueError(refusal)
     roteiro_review.check_review_args(args.by, args.channel, args.statement)
     if roteiro_review.review_hash(doc, args.project) != expect:
         raise ValueError(REVIEW_CHANGED)
