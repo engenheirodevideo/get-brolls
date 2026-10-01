@@ -2490,7 +2490,9 @@ def _doctor_plugin_inventory(result, summary):
             for row, _folder, manifest in sdk_loader.entries()
         ]
     except ValueError as exc:
-        result["plugins_error"] = str(exc)
+        from getbrolls.sdk.marketplace import portable_text
+
+        result["plugins_error"] = portable_text(exc)
         return
     installed = [{**row, "origin": origins.get(row["id"])} for row in installed]
     if not installed:

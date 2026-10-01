@@ -41,9 +41,14 @@ passo a passo de cada comando está no [MANUAL.md](MANUAL.md).
 - **Ordem determinística.** Listas do resultado saem numa ordem estável (por id,
   nome ou caminho), para que duas execuções sobre o mesmo estado deem a mesma saída.
 - **Sem caminho da máquina onde não precisa.** `capabilities`, `analysis`, `client
-  list|show` e as mensagens de erro trocam a pasta pessoal por `~` ou
-  `$GB_HOME/…`; caminhos de projeto aparecem só onde o comando os devolve como
-  resultado (`log`, `local_path`…).
+  add|list|show` (`root`, `registry` e as mensagens) e `plugins --action list|install`
+  (`plugins_dir` como `$GB_HOME/plugins`; `source` local sob a pasta pessoal como
+  `~/…`, URL como veio) trocam a pasta pessoal por `~` ou `$GB_HOME/…`. Ficam
+  absolutos, porque são dados que a máquina usa (abrir, passar de volta como
+  argumento): `log`/`app_log` do erro, `project`, `roteiro`, `brief`, `rules` e
+  `backup` dos comandos que os criam, o `path` de cada componente no `roteiro
+  check|plan` e no `assets`, `local_path` e `install.*` do `doctor`. O
+  `plugins.json` continua guardando a origem com o caminho de verdade.
 
 ### `serve` em primeiro plano
 

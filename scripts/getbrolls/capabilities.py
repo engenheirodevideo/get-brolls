@@ -99,7 +99,7 @@ def _plugin_rows():
     try:
         inventory = loader.inventory()
     except ValueError as exc:
-        return [], [], str(exc)
+        return [], [], marketplace.portable_text(exc)
     commands = [
         {"plugin": row["id"], "command": command, "status": row["status"], "argv": ["x", row["id"], command]}
         for row in inventory
