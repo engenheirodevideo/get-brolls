@@ -1557,7 +1557,7 @@
           "choices": null,
           "default": null,
           "dest": "id",
-          "help": "Id do plugin (enable/disable/update/remove/new)",
+          "help": "Id do plugin (enable/disable/update/remove/new); install: <id>@<marketplace> instala pelo índice",
           "nargs": null,
           "option_strings": [
             "--id"

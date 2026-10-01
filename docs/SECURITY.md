@@ -100,6 +100,21 @@ apaga a pasta do plugin e o estado dele em `plugins.json`; quando `plugins/<id>`
 só escolhe entre os plugins já habilitados com pin válido — nunca carrega um
 plugin não habilitado nem um com conteúdo mudado desde o `enable`.
 
+Marketplaces de plugins são índices fixados por commit: o índice é lido só no
+commit gravado e o cache em `$GB_HOME/marketplaces/` é conferido por sha256 a
+cada leitura. Instalar pelo marketplace (`install --id <id>@<marketplace>`)
+não confia no índice para nada além de dizer de onde vem o plugin e o que ele
+tem que ser: o conteúdo é materializado como num `--source` e recusado se o
+sha256 não for o `content_sha256` da entrada ou se o manifesto divergir dela
+(permissões, contribuições, compatibilidade, licença). Entrada retirada
+(`yanked`) é recusada, e o perfil de workspace pode limitar os marketplaces
+aceitos. O `tier` da entrada é só informação, nunca libera uma conferência. O
+índice pré-preenche o `--expect` da confirmação: um agente que copia esse valor
+pula a leitura humana, e por isso o `install` sem `--yes` sempre para na prévia
+e a skill orienta mostrá-la à pessoa. Quem mantém o marketplace escolhe o que
+entra no índice; ele não revisa nem assina o código — continue lendo o código
+de quem você habilita.
+
 Exceção levantada por código de plugin aparece só pelo tipo — o texto dela
 (que pode carregar um token) não chega à mensagem, ao `diagnostics.jsonl` nem
 ao log; só `PluginError`, saneado e com os valores de `permissions.env`

@@ -447,7 +447,10 @@ def _add_toolchain_subcommands(sub):
                     "plugins fixados por commit; search: procura nos índices em cache, sem rede"
                 ),
             )
-            p.add_argument("--id", help="Id do plugin (enable/disable/update/remove/new)")
+            p.add_argument(
+                "--id",
+                help="Id do plugin (enable/disable/update/remove/new); install: <id>@<marketplace> instala pelo índice",
+            )
             p.add_argument(
                 "--source",
                 help=(

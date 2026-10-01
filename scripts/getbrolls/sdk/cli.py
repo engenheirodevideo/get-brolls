@@ -70,6 +70,11 @@ def _install(args):
     from . import install
 
     flags = _pin_flags(args)
+    if args.id and "@" in args.id:
+        from . import marketplace_install
+
+        marketplace_install.reject_source_with_ref(args.source, flags)
+        return marketplace_install.install(args.id, confirm=bool(args.yes), expect=args.expect)
     if not args.source:
         if any(value is not None for value in flags.values()):
             raise UsageError("--commit, --ref e --subdir precisam de --source em plugins --action install.")

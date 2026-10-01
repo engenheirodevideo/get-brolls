@@ -910,6 +910,50 @@ python3 scripts/gb.py plugins --action update --id <id> --commit <sha-anterior>
   alterados) contra a origem gravada. Nenhum código do plugin roda durante
   install/update — só o manifesto é lido.
 
+## Marketplaces
+
+Um marketplace é um repositório git com `getbrolls-marketplace.json` na raiz
+(formato em `schemas/marketplace_index.schema.json`). O core lê o índice só no
+commit fixado e guarda uma cópia conferida por sha256; nenhum comando de
+marketplace roda código de plugin.
+
+```sh
+python3 scripts/gb.py plugins --action marketplace-add --source <url-git-ou-repo-local>
+python3 scripts/gb.py plugins --action search --query <texto>
+python3 scripts/gb.py plugins --action install --id <id>@<marketplace>
+python3 scripts/gb.py plugins --action install --id <id>@<marketplace> --yes --expect <sha256>
+```
+
+- `marketplace-add` fixa o índice num commit (o de `--commit`, ou o que
+  `--ref`, padrão `HEAD`, aponta agora). `marketplace-list` e `search` só leem o
+  cache, sem rede; `marketplace-update` busca a ref de novo e mostra o que mudou;
+  `marketplace-remove` tira o marketplace (os plugins instalados dele ficam).
+- `install --id <id>@<marketplace>` acha a entrada no índice fixado e instala
+  pelo mesmo caminho do `--source`: repositório e commit da entrada (`"."` é o
+  repositório do próprio marketplace), materializado sem `checkout`. `--source`,
+  `--commit`, `--ref` e `--subdir` junto com `<id>@<marketplace>` são erro de uso.
+- Sem `--yes` a resposta é **sempre** a prévia, mesmo com `--expect`: ela traz
+  `marketplace` (nome, commit do índice, tier), `expect` (o sha256 a confirmar)
+  e `next` (o comando de confirmação). `--yes` sem `--expect` é recusado.
+- Antes de buscar qualquer coisa: o perfil de workspace tem que permitir o
+  marketplace; entrada retirada (`yanked`) é recusada; `sdk_api`,
+  `requires_getbrolls` e `platforms` da entrada têm que servir nesta instalação.
+  Um id antigo de `renames` é recusado com o comando do id atual; `deprecated`
+  vira aviso na prévia.
+- Depois de materializar: sha256 do conteúdo diferente do `content_sha256` da
+  entrada é recusa dura, sem prévia nova; manifesto que diverge da entrada em
+  `id`, `version`, `sdk_api`, `requires_getbrolls`, `permissions`,
+  `contributes`, `requires`, `platforms` ou `license` também. Divergência só na
+  `description` vira aviso.
+- A origem gravada em `plugins.json` ganha `marketplace`, `tier` e
+  `index_commit` (o commit do índice usado).
+- O `tier` (`official`, `verified`, `community`) é informação: aparece na
+  prévia e na origem, e nunca afrouxa nenhuma das conferências acima.
+- **Limite conhecido:** o `expect` vem pré-preenchido do índice, então um agente
+  que copia esse sha256 confirma sem que ninguém leia a prévia. Por isso o
+  `install` sem `--yes` sempre para na prévia, e a skill orienta o agente a
+  mostrá-la à pessoa antes de rodar o `next`.
+
 ## Remover
 
 ```sh
