@@ -113,6 +113,8 @@ HUB_TARGETS = (
     "commands/get-brolls-setup.md",
     "GEMINI.md",
     "docs/GUIDE.md",
+    "docs/CLI_CONTRACT.md",
+    "docs/SCHEMAS.md",
     "docs/QUALITY.md",
     "CONTRIBUTING.md",
     "docs/SECURITY.md",

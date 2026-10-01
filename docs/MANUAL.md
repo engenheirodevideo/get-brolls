@@ -754,6 +754,8 @@ Todo comando responde em **JSON**. Pensa como o **relatório de render**: um tex
 
 > Até a 2.5, erro de operação ou de dados também saía com `2`. Script que testava `$? -eq 2` para esses erros agora testa `1`.
 
+O contrato completo — o que vai para stdout e stderr, todos os `error_code`, os avisos (`warnings`), o que só lê, `--yes`/`--expect` e a política de deprecação — está em [CLI_CONTRACT.md](CLI_CONTRACT.md). Os formatos dos arquivos que a ferramenta grava (manifesto, `project.json`, `analysis/`, templates) estão em [SCHEMAS.md](SCHEMAS.md).
+
 ---
 
 # 📐 Os arquivos que você edita
@@ -967,4 +969,4 @@ echo "Entrega pronta"
 
 ---
 
-Referência completa: [GUIDE.md](GUIDE.md) · Formato do brief: [BRIEF.md](BRIEF.md) · Regras: [RULES.md](RULES.md) · Código da CLI: [`scripts/getbrolls/cli.py`](../scripts/getbrolls/cli.py)
+Referência completa: [GUIDE.md](GUIDE.md) · Formato do brief: [BRIEF.md](BRIEF.md) · Regras: [RULES.md](RULES.md) · Contrato da CLI: [CLI_CONTRACT.md](CLI_CONTRACT.md) · Formatos de arquivo: [SCHEMAS.md](SCHEMAS.md) · Código da CLI: [`scripts/getbrolls/cli.py`](../scripts/getbrolls/cli.py)

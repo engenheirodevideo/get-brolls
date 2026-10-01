@@ -29,6 +29,11 @@ e funcionais, veja
 [`examples/plugins/hyperframes`](../examples/plugins/hyperframes/README.md)
 (exportador de roteiro para um projeto HyperFrames e resolvedor do acervo `media-use`).
 
+O contrato da CLI que um comando de plugin herda (stdout, stderr, códigos de saída e
+de erro, avisos) está em [CLI_CONTRACT.md](CLI_CONTRACT.md); os formatos de arquivo
+que um plugin lê ou grava, com as versões e os nomes reservados, em
+[SCHEMAS.md](SCHEMAS.md).
+
 O princípio: **o plugin traz o arquivo; o core decide o resto.** Aprovação,
 permit, hash, corte, ledger e entrega continuam só do core.
 
@@ -492,7 +497,8 @@ api.command("recentes", recentes, "Lista os vídeos mais recentes da pasta")
 
 Um comando de plugin pode ler e gravar os arquivos de análise de mídia do projeto
 (`analysis/`, formatos em `schemas/`: `transcript`, `scenes`, `silence`,
-`speakers`, `visual` e `markers`) por `ctx.analysis`:
+`speakers`, `visual` e `markers`; mapa, `media_id` e tempo em
+[SCHEMAS.md](SCHEMAS.md#análise-de-mídia-analysis)) por `ctx.analysis`:
 
 ```python
 def transcrever(args: dict, ctx: CommandContext) -> dict:
