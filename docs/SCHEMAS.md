@@ -135,7 +135,7 @@ cara de segredo, caminho absoluto e arquivo acima de 16 MiB.
 | Arquivo | Versão | Grava | Lê | Formato |
 |---|---|---|---|---|
 | `getbrolls.toml` | `schema_version` | a pessoa | todo comando (perfil de workspace) | validado em código; veja o [MANUAL.md](MANUAL.md) |
-| `$GB_HOME/trusted-profiles.json` | `schema_version` | `profile --action trust|untrust` | todo comando | validado em código |
+| `$GB_HOME/trusted-profiles.json` | `schema_version` | `profile trust|untrust` | todo comando | validado em código |
 | `$GB_HOME/library/index.json` | `schema_version` | `learn` e `search` (aprendizado automático de busca vazia) | `search`, `library` | validado em código |
 | `$GB_HOME/clients.json` | `schema` | `client --action add|remove` | `client`, `assets`, `init`, `migrate`, `template` | [`clients.schema.json`](../schemas/clients.schema.json) |
 | `<pasta do cliente>/client.json` | `schema` | `client --action add` | `client`, `assets`, `template` | [`client.schema.json`](../schemas/client.schema.json) |

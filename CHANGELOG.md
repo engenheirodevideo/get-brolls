@@ -16,7 +16,7 @@ O getbrolls vira um comando instalável (`getbrolls`), com runtime gerenciado, p
 
 - **Instale como comando.** `uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0` (ou `pipx install …`) instala o `getbrolls`; o checkout (`python3 scripts/gb.py`) e o plugin do Claude Code continuam iguais.
 - **`getbrolls setup`** instala o runtime (venv do yt-dlp e Playwright CLI) em `$GB_HOME/runtime`, compartilhado entre instalações; `doctor` e `setup --check` dizem se está tudo pronto (`ready`) e saem com `4` quando falta algo.
-- **Perfil de workspace.** Um `getbrolls.toml` confiável fixa pastas, executáveis e plugins por workspace (`profile --action show|trust|untrust`).
+- **Perfil de workspace.** Um `getbrolls.toml` confiável fixa pastas, executáveis e plugins por workspace (`profile show|trust|untrust`).
 - **Projeto de layout 1, clientes e templates.** `init` cria um projeto com `project.json`, `migrate` adota um projeto antigo sem mover nada, `client` registra pastas de cliente com componentes reutilizáveis e `template` congela um roteiro com os componentes numa versão imutável, de onde `init --template` cria projetos novos.
 - **Análise de mídia em `analysis/`.** `analysis --action register|list|check` registra cada mídia do projeto com um `media_id` por conteúdo; plugins podem gravar transcrição, cenas, silêncio, falantes, visual e marcadores, em formatos publicados.
 - **Plugins do SDK e marketplace (experimental).** Plugins locais com opt-in por id e pin sha256, instaláveis de pasta, de git fixado por commit ou de um marketplace (`plugins --action marketplace-add|search|install --id <id>@<marketplace>`).

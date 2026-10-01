@@ -251,7 +251,7 @@ passos:
 
 Vale para `plugins --action install|update` (sempre `--yes --expect`),
 `plugins --action enable` (`--yes`; mais `--expect` quando o conteúdo mudou desde o
-pin), `plugins --action remove` (`--yes`), `profile --action trust`
+pin), `plugins --action remove` (`--yes`), `profile trust`
 (`--yes --expect`) e `roteiro --action review` (`--expect` com o `review.sha256` que
 `check` e `plan` devolvem). `migrate --action plan` e `--dry-run` (em `export`,
 `search` e outros) seguem a mesma ideia: mostram sem gravar.
@@ -326,7 +326,7 @@ Com dois `.env` presentes, o primeiro da ordem vale e todo comando avisa
 Qual perfil `getbrolls.toml` vale: `--profile <arquivo>`, depois `GB_PROFILE`, depois
 o primeiro `getbrolls.toml` subindo a partir do `--project` e, por fim, da pasta atual;
 `off` desliga. O perfil só vale quando é confiável (veio de `GB_PROFILE`, é o
-`$GB_HOME/getbrolls.toml` ou foi confiado com `profile --action trust`).
+`$GB_HOME/getbrolls.toml` ou foi confiado com `profile trust`).
 
 Qual valor vence, campo a campo:
 
@@ -345,7 +345,7 @@ processo continua vencendo o perfil. `doctor` mostra a pasta que valeu em
 ou `default`). `plugins` do perfil é um teto: só estreita o `GB_PLUGINS`; quem fica de
 fora aparece `disabled` com o motivo "desligado pelo perfil do workspace (getbrolls.toml
 `plugins`)" e `plugins --action list` diz `"selection": "profile"`.
-`profile --action show` mostra cada valor com a origem (`env`, `env_file`, `profile`,
+`profile show` mostra cada valor com a origem (`env`, `env_file`, `profile`,
 `default`).
 
 ## Deprecação
