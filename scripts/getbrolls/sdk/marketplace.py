@@ -58,6 +58,21 @@ REMOVE_NOTE = (
 )
 
 
+# O índice oficial: o nome sozinho não basta (qualquer repositório pode se chamar assim);
+# a origem fixada tem que ser um destes repositórios. Só ele tem `tier_verified: true`.
+OFFICIAL_INDEX_NAME = "getbrolls-plugins"
+OFFICIAL_INDEX_REPOS = tuple(
+    f"https://github.com/engenheirodevideo/{repo}{suffix}"
+    for repo in ("getbrolls-plugins", "get-brolls-plugins")
+    for suffix in ("", ".git")
+)
+TIER_NOT_VERIFIED = "declarado pelo marketplace, não verificado"
+NOT_OFFICIAL_WARNING = (
+    "Este marketplace não é o índice oficial ({name} de {repo}): o tier de cada plugin é declarado por "
+    "ele, não verificado, e nunca muda as regras de instalação."
+)
+
+
 class Pin(NamedTuple):
     """Um marketplace gravado: origem, ref pedida, commit fixado e sha256 do índice."""
 
@@ -248,8 +263,40 @@ def _write_cache(name, data):
     _atomic_write_bytes(cache_path(name), data)
 
 
+def is_official(name: str, source: str | None) -> bool:
+    """O marketplace `name`, fixado na origem `source`, é o índice oficial?"""
+    return name == OFFICIAL_INDEX_NAME and source in OFFICIAL_INDEX_REPOS
+
+
+def official_marketplace(name: str | None) -> bool:
+    """`name` é um marketplace gravado aqui que é o índice oficial? Estado ilegível vale `False`."""
+    if not name:
+        return False
+    try:
+        record = read_state()["marketplaces"].get(name)
+    except ValueError:
+        return False
+    return record is not None and is_official(name, record["source"])
+
+
+def tier_view(tier: str | None, official: bool) -> dict:
+    """`tier` como o índice declara, `tier_verified` (só no índice oficial) e, fora dele, o rótulo."""
+    verified = bool(official and tier is not None)
+    return {
+        "tier": tier,
+        "tier_verified": verified,
+        "tier_note": None if verified or tier is None else TIER_NOT_VERIFIED,
+    }
+
+
 def _summary(name, record, plugins=None):
-    return {"name": name, **record, "allowed": allowed(name), "plugins": plugins}
+    return {
+        "name": name,
+        **record,
+        "allowed": allowed(name),
+        "official": is_official(name, record["source"]),
+        "plugins": plugins,
+    }
 
 
 def add(source: str, ref: str | None = None, commit: str | None = None) -> dict:
@@ -280,7 +327,12 @@ def add(source: str, ref: str | None = None, commit: str | None = None) -> dict:
     state["marketplaces"][name] = record
     _write_state(state)
     count = len(index["plugins"])
-    return {"added": True, "marketplace": _summary(name, record, count), "plugins": count}
+    warnings = (
+        []
+        if is_official(name, record["source"])
+        else [NOT_OFFICIAL_WARNING.format(name=OFFICIAL_INDEX_NAME, repo=OFFICIAL_INDEX_REPOS[0])]
+    )
+    return {"added": True, "marketplace": _summary(name, record, count), "plugins": count, "warnings": warnings}
 
 
 def _record(state, name):
@@ -357,7 +409,7 @@ def summary() -> list[dict]:
     """`[{name, commit, plugins, allowed, problem}]` em ordem de nome, sem rede e sem caminho
     da máquina (para `capabilities` e `doctor`). Só levanta `ValueError` (estado ilegível)."""
     rows = [
-        {key: row[key] for key in ("name", "commit", "plugins", "allowed", "problem")}
+        {key: row[key] for key in ("name", "commit", "plugins", "allowed", "official", "problem")}
         for row in listing()["marketplaces"]
     ]
     return [{**row, "problem": None if row["problem"] is None else portable_text(row["problem"])} for row in rows]
@@ -548,7 +600,7 @@ def _row(pin, entry, installed):
         "marketplace": pin.name,
         "version": entry["version"],
         "description": entry["description"],
-        "tier": entry["tier"],
+        **tier_view(entry["tier"], is_official(pin.name, pin.source)),
         "contributes": entry["contributes"],
         "yanked": entry["yanked"],
         "deprecated": entry["deprecated"],
@@ -564,7 +616,7 @@ def _renamed_row(pin, old, new, installed):
         "marketplace": pin.name,
         "version": None,
         "description": None,
-        "tier": None,
+        **tier_view(None, False),
         "contributes": [],
         "yanked": False,
         "deprecated": None,

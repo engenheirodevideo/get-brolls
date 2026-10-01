@@ -405,6 +405,10 @@ def _materialize(spec, dest, compat=True):
     # Só para a pasta local sem --commit: quem fixou o commit (ou o índice) já sabe o que entra.
     plain_local = not git_source.is_remote(spec.repo) and spec.commit is None
     warnings = [local_repository_warning(commit, spec.ref)] if plain_local else []
+    # Commit fixado E ref dada: o commit tem que ser a ponta dela, senão pode vir de um fork.
+    tip = git_source.tip_warning(spec, commit) if spec.commit is not None else None
+    if tip:
+        warnings.append(tip)
     return {"source": spec.repo, "commit": commit, "ref": spec.ref, "subdir": spec.subdir}, warnings
 
 

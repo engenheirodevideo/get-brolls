@@ -145,7 +145,7 @@ class AddListRemoveTests(MarketplaceTestCase):
         self.assertEqual(str(tree.resolve()), pin.source)
         entry = index["plugins"][0]
         preview = marketplace_install.install("demo@exemplo", confirm=False, expect=None)
-        self.assertEqual(entry["content_sha256"], preview["expect"])
+        self.assertEqual(entry["content_sha256"], preview["plugin"]["sha256"])
 
     def test_url_with_credentials_refused(self):
         for source in (
@@ -260,7 +260,8 @@ class RefreshTests(MarketplaceTestCase):
         self.commit_index(repo, "exemplo", [])
         marketplace.refresh("exemplo")
         self.assertEqual([], marketplace.load_index("exemplo")[1]["plugins"])
-        done = marketplace.refresh("exemplo", commit=first)
+        done = marketplace.refresh("exemplo", commit=first, allow_rollback=True)
+        self.assertTrue(done["marketplaces"][0]["rollback"])
         self.assertEqual(first, done["marketplaces"][0]["to"])
         self.assertEqual(["demo"], done["marketplaces"][0]["diff"]["added"])
         self.assertEqual(first, marketplace.read_state()["marketplaces"]["exemplo"]["commit"])
