@@ -61,8 +61,8 @@ SUMMARIES = {
     "providers": "Listar fontes disponíveis, transporte e chaves configuradas",
     "doctor": "Diagnosticar dependências, caminhos fixados e fontes utilizáveis",
     "plugins": (
-        "Listar, instalar, atualizar, remover, criar, habilitar, desabilitar ou validar plugins do SDK "
-        "(~/.getbrolls/plugins)"
+        "Listar, instalar (de pasta, git ou marketplace), atualizar, remover, criar, habilitar, desabilitar ou "
+        "validar plugins do SDK (~/.getbrolls/plugins), procurar nos marketplaces e gerenciá-los"
     ),
     "capabilities": (
         "Descrever em JSON os comandos, flags, códigos de saída e comandos de plugin desta instalação (para agentes)"
@@ -425,25 +425,66 @@ def _add_toolchain_subcommands(sub):
             p.add_argument(
                 "--action",
                 required=True,
-                choices=["list", "enable", "disable", "check", "install", "update", "remove", "new"],
+                choices=[
+                    "list",
+                    "enable",
+                    "disable",
+                    "check",
+                    "install",
+                    "update",
+                    "remove",
+                    "new",
+                    "marketplace-add",
+                    "marketplace-list",
+                    "marketplace-remove",
+                    "marketplace-update",
+                    "search",
+                ],
                 help=(
                     "list: inventário sem executar código; enable/disable: liga/desliga por id; check: valida uma "
                     "pasta; install/update: traz de pasta ou git, em dois passos; remove: tira a pasta e o estado, "
-                    "em dois passos; new: gera um plugin mínimo"
+                    "em dois passos; new: gera um plugin mínimo; marketplace-add/-list/-remove/-update: índices de "
+                    "plugins fixados por commit; search: procura nos índices em cache, sem rede"
                 ),
             )
-            p.add_argument("--id", help="Id do plugin (enable/disable/update/remove/new)")
-            p.add_argument("--source", help="Pasta local ou URL git (https:// ou git@) do plugin a instalar (install)")
+            p.add_argument(
+                "--id",
+                help="Id do plugin (enable/disable/update/remove/new); install: <id>@<marketplace> instala pelo índice",
+            )
+            p.add_argument(
+                "--source",
+                help=(
+                    "Pasta local ou URL git (https:// ou git@) do plugin a instalar (install) ou do repositório do "
+                    "marketplace (marketplace-add)"
+                ),
+            )
+            p.add_argument(
+                "--marketplace",
+                help=("Nome do marketplace (marketplace-remove; marketplace-update e search, que sem ele usam todos)"),
+            )
+            p.add_argument("--query", help="search: trecho do id, da descrição ou do tipo de extensão a procurar")
+            p.add_argument(
+                "--all",
+                action="store_true",
+                help=(
+                    "update: prévia das atualizações de todos os plugins instalados por marketplace, com o comando "
+                    "de cada um (só prévia; confirme por id)"
+                ),
+            )
             p.add_argument(
                 "--commit",
                 help=(
                     "install/update: sha completo (40 hex) do commit a instalar; sem ele, a ref é resolvida na "
-                    "origem (update com --commit volta a um commit anterior)"
+                    "origem (update com --commit volta a um commit anterior); marketplace-add/-update: commit do "
+                    "índice"
                 ),
             )
             p.add_argument(
                 "--ref",
-                help="install: branch, tag ou refs/... a resolver na origem (padrão HEAD); o update resolve a mesma",
+                help=(
+                    "install/marketplace-add: branch, tag ou refs/... a resolver na origem (padrão HEAD); o update "
+                    "resolve a mesma"
+                ),
             )
             p.add_argument("--subdir", help="install: pasta do plugin dentro do repositório git (ex.: plugins/demo)")
             p.add_argument(

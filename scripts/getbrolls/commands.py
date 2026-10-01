@@ -2462,9 +2462,11 @@ def _doctor_plugin_inventory(result, summary):
     """Sobrepõe status/reason reais do registro no inventário de plugins do `doctor`."""
     from getbrolls.sdk import loader as sdk_loader
     from getbrolls.sdk import requirements
+    from getbrolls.sdk.marketplace_install import plugin_origins
     from getbrolls.sdk.registry import get_registry
 
     try:
+        origins = plugin_origins()
         installed = [
             {**row, "requires": requirements.report(manifest)} if manifest is not None else row
             for row, _folder, manifest in sdk_loader.entries()
@@ -2472,6 +2474,7 @@ def _doctor_plugin_inventory(result, summary):
     except ValueError as exc:
         result["plugins_error"] = str(exc)
         return
+    installed = [{**row, "origin": origins.get(row["id"])} for row in installed]
     if not installed:
         return
     # `loader.inventory()` só lê manifesto e pin (pré-carga: nunca roda
@@ -2493,6 +2496,19 @@ def _doctor_plugin_inventory(result, summary):
     lacking = requirements.missing_summary(result["plugins"])
     if lacking:
         summary["plugins_requires"] = lacking
+
+
+def _doctor_marketplaces(result):
+    """Marketplaces fixados (nome, commit, plugins, permitido), só quando há algum; sem rede."""
+    from getbrolls.sdk import marketplace
+
+    try:
+        rows = marketplace.summary()
+    except ValueError as exc:
+        result["marketplaces_error"] = str(exc)
+        return
+    if rows:
+        result["marketplaces"] = rows
 
 
 def _doctor_executables(overrides, social):
@@ -2539,6 +2555,7 @@ def _doctor_report(config, providers_result, live, env_flag=None):
         "install": install,
     }
     _doctor_plugin_inventory(result, summary)
+    _doctor_marketplaces(result)
     if live:
         from getbrolls.health import live_checks
 

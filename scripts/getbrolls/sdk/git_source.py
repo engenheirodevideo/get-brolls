@@ -143,14 +143,67 @@ def validate_url(raw):
     return raw
 
 
-def is_repository(folder):
-    """A pasta é um repositório git? Uma PASTA `.git` de verdade — um arquivo `.git`
-    (gitfile de worktree/submódulo) ou um link apontariam para outro repositório,
-    não para a pasta que a pessoa está vendo — ou um repositório *bare* (`HEAD`,
-    `objects/` e `refs/` no topo)."""
-    git_dir = folder / ".git"
-    if git_dir.is_dir() and not is_link(git_dir):
+def _rev_parse_worktree(folder):
+    """`(raiz, gitdir)` que o git vê em `folder`, ou `None` (gitfile quebrado, git ausente)."""
+    try:
+        top, _, git_dir = git_text(
+            ["-c", "core.fsmonitor=false", "rev-parse", "--show-toplevel", "--absolute-git-dir"], cwd=folder
+        ).partition("\n")
+    except (ValueError, OSError):
+        return None
+    if not top or not git_dir or "\n" in git_dir:
+        return None
+    return Path(top), Path(git_dir)
+
+
+def _points_back(git_dir, folder):
+    """Numa worktree, o gitdir guarda o caminho do `.git` dela (`<gitdir>/gitdir`): ele tem
+    que ser o `.git` de `folder`. Sem esse arquivo (submódulo), a raiz conferida basta."""
+    back = git_dir / "gitdir"
+    if not back.is_file():
         return True
+    if is_link(back):
+        return False
+    return Path(back.read_text(encoding="utf-8").strip()).resolve() == (folder / ".git").resolve()
+
+
+def _is_worktree_root(folder):
+    """`folder` é a raiz de uma worktree (ou submódulo) cujo `.git` é um arquivo `gitdir: …`?
+
+    Quem decide é o próprio git (`rev-parse`, com o mesmo endurecimento e sem
+    `core.fsmonitor`): o gitfile tem que apontar para um gitdir válido, que é uma
+    pasta de verdade, a raiz da worktree tem que ser a própria `folder` e, numa
+    worktree, o gitdir tem que apontar de volta para o `.git` dela — um gitfile
+    copiado para outra pasta não conta. Gitfile quebrado ou git ausente: não é
+    repositório."""
+    found = _rev_parse_worktree(folder)
+    if found is None:
+        return False
+    top, git_dir = found
+    try:
+        return (
+            git_dir.is_dir()
+            and not is_link(git_dir)
+            and top.resolve() == folder.resolve()
+            and _points_back(git_dir, folder)
+        )
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
+def is_repository(folder):
+    """A pasta é um repositório git? Uma PASTA `.git` de verdade, um arquivo `.git`
+    (gitfile de worktree ou submódulo) que o git confirma como a raiz desta pasta
+    (`_is_worktree_root`), ou um repositório *bare* (`HEAD`, `objects/` e `refs/`
+    no topo). Um link no lugar do `.git` apontaria para outro repositório, não para
+    a pasta que a pessoa está vendo: não conta."""
+    git_dir = folder / ".git"
+    if is_link(git_dir):
+        return False
+    if git_dir.is_dir():
+        return True
+    if git_dir.is_file():
+        return _is_worktree_root(folder)
     return (
         (folder / "HEAD").is_file()
         and (folder / "objects").is_dir()
