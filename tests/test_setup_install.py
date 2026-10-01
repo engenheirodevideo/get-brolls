@@ -210,7 +210,11 @@ class InstallTests(_Setup):
         bootstrap._assert_batch_safe(argv)  # pylint: disable=protected-access
 
     def test_tools_key_is_the_sha_of_both_package_files(self):
-        blob = (self.data / "package.json").read_bytes() + b"\0" + (self.data / "package-lock.json").read_bytes()
+        # The key ignores line endings (a Windows checkout may turn LF into CRLF).
+        parts = [
+            (self.data / name).read_bytes().replace(b"\r\n", b"\n") for name in ("package.json", "package-lock.json")
+        ]
+        blob = b"\0".join(parts)
         self.assertEqual(hashlib.sha256(blob).hexdigest()[:16], self.tools_root().name)
 
     def test_missing_npm_skips_playwright_with_a_hint_and_exits_4(self):
