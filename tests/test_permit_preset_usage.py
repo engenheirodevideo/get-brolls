@@ -2,7 +2,7 @@
 projeto é aberto, travado ou registrado, e nenhum `brolls/` é criado.
 
 Fora de um terminal (como aqui, com stdout capturado) o erro de uso sai em JSON
-em stderr; `error` guarda a mensagem do argparse byte a byte."""
+em stderr; `error_en` guarda a mensagem do argparse byte a byte e `error`, a mesma em pt-BR."""
 
 import argparse
 import contextlib
@@ -56,7 +56,8 @@ class UnknownPresetTests(unittest.TestCase):
         payload = json.loads(done.stderr)
         self.assertEqual("USAGE_ERROR", payload["error_code"])
         self.assertIn("usage: getbrolls permit", payload["usage"])
-        self.assertIn("invalid choice: 'naoexiste'", payload["error"])
+        self.assertIn("invalid choice: 'naoexiste'", payload["error_en"])
+        self.assertIn("opção inválida: 'naoexiste'", payload["error"])
         self.assertEqual("", done.stdout)
         self.assertEqual([], sorted(p.name for p in folder.iterdir()))
 
@@ -64,7 +65,7 @@ class UnknownPresetTests(unittest.TestCase):
         folder = Path(tempfile.mkdtemp(prefix="gb-preset-"))
         self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
         payload = json.loads(permit_stderr(folder, "naoexiste").stderr)
-        self.assertEqual(argparse_choice_error("naoexiste", sorted(PERMIT_PRESETS)), payload["error"])
+        self.assertEqual(argparse_choice_error("naoexiste", sorted(PERMIT_PRESETS)), payload["error_en"])
 
 
 class UnknownPresetWithPluginTests(LoaderTestCase):
@@ -76,7 +77,7 @@ class UnknownPresetWithPluginTests(LoaderTestCase):
         done = permit_stderr(folder, "naoexiste", env={"GB_HOME": str(self.home)})
         self.assertEqual(2, done.returncode)
         expected = argparse_choice_error("naoexiste", sorted({*PERMIT_PRESETS, "demo"}))
-        self.assertEqual(expected, json.loads(done.stderr)["error"])
+        self.assertEqual(expected, json.loads(done.stderr)["error_en"])
         self.assertIn("demo", expected)
 
 

@@ -112,16 +112,18 @@ class UsageErrorJsonTests(unittest.TestCase):
 
     def test_unknown_command_is_json_usage_error_with_suggestion(self):
         payload = self.usage_error("serch", "--project", self.project)
-        self.assertEqual(["error", "error_code", "usage", "suggestion", "prog"], list(payload))
+        self.assertEqual(["error", "error_en", "error_code", "usage", "suggestion", "prog"], list(payload))
         self.assertEqual("USAGE_ERROR", payload["error_code"])
         self.assertEqual("search", payload["suggestion"])
         self.assertEqual("getbrolls", payload["prog"])
         self.assertTrue(payload["usage"].startswith("usage: getbrolls"), payload["usage"])
-        self.assertIn("invalid choice: 'serch'", payload["error"])
+        self.assertIn("invalid choice: 'serch'", payload["error_en"])
+        self.assertIn("opção inválida: 'serch' (escolha entre ", payload["error"])
 
     def test_unknown_flag_suggests_the_close_option(self):
         payload = self.usage_error("search", "--project", self.project, "--query", "x", "--limt", "3")
-        self.assertEqual("unrecognized arguments: --limt 3", payload["error"])
+        self.assertEqual("unrecognized arguments: --limt 3", payload["error_en"])
+        self.assertEqual("argumentos não reconhecidos: --limt 3", payload["error"])
         self.assertEqual("--limit", payload["suggestion"])
 
     def test_subcommand_choice_error_names_the_subcommand(self):
@@ -136,13 +138,24 @@ class UsageErrorJsonTests(unittest.TestCase):
 
     def test_misspelled_required_flag_suggests_the_flag(self):
         payload = self.usage_error("status", "--projct", self.project)
-        self.assertEqual("the following arguments are required: --project", payload["error"])
+        self.assertEqual("the following arguments are required: --project", payload["error_en"])
+        self.assertEqual("faltam argumentos obrigatórios: --project", payload["error"])
         self.assertEqual("--project", payload["suggestion"])
 
     def test_flag_of_another_command_suggests_the_missing_required_one(self):
         payload = self.usage_error("library", "--query", "x")
         self.assertIn("--search", payload["error"])
         self.assertEqual("--search", payload["suggestion"])
+
+    def test_common_argparse_messages_are_pt_br(self):
+        payload = self.usage_error("search", "--project", self.project, "--query")
+        self.assertEqual("argumento --query: falta o valor (esperava um)", payload["error"])
+        self.assertEqual("argument --query: expected one argument", payload["error_en"])
+        payload = self.usage_error("inspect", "--project", self.project)
+        self.assertTrue(payload["error"].startswith("um destes argumentos é obrigatório: "), payload)
+        payload = self.usage_error("inspect", "--project", self.project, "--candidate", "a", "--url", "b")
+        self.assertIn("não vale junto com", payload["error"])
+        self.assertEqual("mensagem nova do argparse", cli.usage_pt_br("mensagem nova do argparse"))
 
     def test_missing_required_option_is_a_usage_error(self):
         payload = self.usage_error("search", "--project", self.project)
@@ -155,7 +168,7 @@ class UsageErrorTerminalTests(unittest.TestCase):
         code, stderr = parse_in_process(["serch"], tty=True)
         self.assertEqual(2, code)
         self.assertIn("usage: getbrolls", stderr)
-        self.assertIn("getbrolls: error: ", stderr)
+        self.assertIn("getbrolls: erro: argumento command: opção inválida: 'serch'", stderr)
         self.assertTrue(stderr.endswith("Você quis dizer: search?\n"), stderr)
         with self.assertRaises(json.JSONDecodeError):
             json.loads(stderr)
@@ -163,13 +176,13 @@ class UsageErrorTerminalTests(unittest.TestCase):
     def test_unknown_flag_on_a_tty_suggests_the_option(self):
         code, stderr = parse_in_process(["search", "--project", "p", "--query", "x", "--limt", "3"], tty=True)
         self.assertEqual(2, code)
-        self.assertIn("unrecognized arguments: --limt 3", stderr)
+        self.assertIn("argumentos não reconhecidos: --limt 3", stderr)
         self.assertIn("Você quis dizer: --limit?", stderr)
 
     def test_misspelled_required_flag_on_a_tty_suggests_the_flag(self):
         code, stderr = parse_in_process(["status", "--projct", "x"], tty=True)
         self.assertEqual(2, code)
-        self.assertIn("the following arguments are required: --project", stderr)
+        self.assertIn("faltam argumentos obrigatórios: --project", stderr)
         self.assertTrue(stderr.endswith("Você quis dizer: --project?\n"), stderr)
 
     def test_tty_without_a_close_name_prints_no_suggestion(self):

@@ -99,15 +99,20 @@ sai com código `2` no stderr, em um de dois formatos, decidido só pelo stderr:
   com exatamente estas chaves:
 
   ```json
-  {"error": "the following arguments are required: --project", "error_code": "USAGE_ERROR", "usage": "usage: getbrolls status [-h] --project PROJECT", "suggestion": "--project", "prog": "getbrolls status"}
+  {"error": "faltam argumentos obrigatórios: --project", "error_en": "the following arguments are required: --project", "error_code": "USAGE_ERROR", "usage": "usage: getbrolls status [-h] --project PROJECT", "suggestion": "--project", "prog": "getbrolls status"}
   ```
 
-  `error` é a mensagem do argparse, byte a byte; `usage` é a linha de uso sem cores;
+  `error` é a mensagem em pt-BR: as mensagens comuns do argparse (argumentos
+  obrigatórios, um de vários obrigatório, escolha inválida, argumentos não
+  reconhecidos, valor que falta, valor inválido, flags que não valem juntas, opção
+  ambígua) são traduzidas, com nomes, valores e escolhas como vieram; uma mensagem
+  que nenhum padrão reconhece sai como veio. `error_en` é a mensagem original do
+  argparse, byte a byte, para ferramentas; `usage` é a linha de uso sem cores;
   `prog` é o comando (`getbrolls` ou `getbrolls <subcomando>`); `suggestion` é o nome
   parecido com o que foi digitado (`serch` → `search`, `--limt` → `--limit`,
   `--projct` → `--project`) ou `null`.
-- **stderr num terminal**: o texto de sempre do argparse (`usage: …` e
-  `getbrolls: error: …`) e, quando há nome parecido, uma linha a mais
+- **stderr num terminal**: a linha de uso do argparse (`usage: …`) e
+  `getbrolls: erro: <a mensagem de error>` e, quando há nome parecido, uma linha a mais
   `Você quis dizer: <nome>?`.
 
 A ajuda e os erros chamam a CLI de `getbrolls`, também no checkout.
