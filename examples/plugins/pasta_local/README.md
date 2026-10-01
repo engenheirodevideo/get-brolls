@@ -1,6 +1,6 @@
 # Pasta local de B-rolls
 
-Plugin de exemplo do SDK do Get B-rolls: um `Provider` que busca vídeos pelo
+Plugin de exemplo do SDK do getbrolls: um `Provider` que busca vídeos pelo
 nome do arquivo numa pasta do seu computador, sem chamar nenhuma API externa.
 Serve como ponto de partida para escrever sua própria fonte — o código inteiro
 está em `plugin.py` e usa só o que o [SDK.md](../../../docs/SDK.md) documenta.
@@ -29,7 +29,7 @@ python3 scripts/gb.py x pasta_local recentes --arg limite=5 --project <projeto>
 
 ## Instalação
 
-Copie a pasta para dentro da sua instalação pessoal do Get B-rolls — a pasta
+Copie a pasta para dentro da sua instalação pessoal do getbrolls — a pasta
 `plugins/` fica em `$GB_HOME` (por padrão, `~/.getbrolls`) e pode ainda não
 existir, por isso o `mkdir -p` antes: com `plugins/` existindo, o `cp` copia a
 pasta `pasta_local` para dentro dela (em vez de espalhar os arquivos soltos), e

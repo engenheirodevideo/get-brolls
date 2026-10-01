@@ -19,7 +19,7 @@
   </p>
 </div>
 
-Get B-rolls is a skill for collecting the videos and images that support a line, illustrate an idea, or show the exact person, product, or event mentioned in a script. You describe what you need; the agent researches, prepares previews, and gathers the options into a storyboard for your review.
+getbrolls is a skill for collecting the videos and images that support a line, illustrate an idea, or show the exact person, product, or event mentioned in a script. You describe what you need; the agent researches, prepares previews, and gathers the options into a storyboard for your review.
 
 - **Choose with context.** Each shot can include the supplied narration, selection rationale, time range, creator, and original source.
 - **See it before deciding.** GIFs and contact sheets help you evaluate action, framing, and on-screen text.
@@ -375,6 +375,7 @@ Run one command per project at a time. Preserve originals, cache, and event hist
 | [AGENTS.md](AGENTS.md) | Index for agents and maintainers: repository map, per-agent installation, and maintenance rules. |
 | [docs/MANUAL.md](docs/MANUAL.md) | Manual + tutorial in Portuguese: every command explained, output format, BRIEF/RULES/.env, and automation. |
 | [docs/GUIDE.md](docs/GUIDE.md) · [SKILL.md](SKILL.md) | Complete operating guide and agent execution instructions. |
+| [docs/CLI_CONTRACT.md](docs/CLI_CONTRACT.md) · [docs/SCHEMAS.md](docs/SCHEMAS.md) | CLI contract for scripts and agents (output, exit and error codes, deprecation) and the format of every file the tool writes (in Portuguese). |
 | [docs/PLUGIN_DEV_QUICKSTART.md](docs/PLUGIN_DEV_QUICKSTART.md) · [docs/SDK.md](docs/SDK.md) | SDK plugins (experimental, in Portuguese): quickstart, security checklist, examples, your own sources, routes, commands and exporters in `~/.getbrolls/plugins`. Not to be confused with the Claude Code plugin. |
 | [docs/QUALITY.md](docs/QUALITY.md) | Tests, real-world evidence, and known limitations. |
 | [docs/RULES.md](docs/RULES.md) · [.env.example](.env.example) | Editorial rules and configuration options. |

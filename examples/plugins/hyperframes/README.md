@@ -1,6 +1,6 @@
 # HyperFrames
 
-Plugin de exemplo do SDK do Get B-rolls com os dois contratos experimentais de
+Plugin de exemplo do SDK do getbrolls com os dois contratos experimentais de
 export:
 
 - o **exporter** `hyperframes`, que transforma o roteiro revisado e
@@ -25,7 +25,7 @@ grava a pasta e põe a mídia em `assets/` é o core.
 
 ## Instalação
 
-Rode pelo caminho absoluto da instalação do Get B-rolls (como em
+Rode pelo caminho absoluto da instalação do getbrolls (como em
 [`references/roteiro.md`](../../../references/roteiro.md)), de qualquer pasta:
 
 ```sh

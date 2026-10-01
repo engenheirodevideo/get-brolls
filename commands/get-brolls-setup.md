@@ -3,7 +3,7 @@ name: get-brolls-setup
 description: Instala o runtime do getbrolls em $GB_HOME (compartilhado entre versões do plugin) e reporta o veredito do doctor.
 ---
 
-# Configurar o Get B-rolls
+# Configurar o getbrolls
 
 Prepare a instalação do plugin nesta máquina e devolva um veredito curto ao usuário. Execute os comandos na ordem abaixo, um de cada vez, mostrando a saída real. No Windows, use `python` no lugar de `python3` em todos eles. Código de saída 4 não é falha: é o getbrolls dizendo que faltam itens, com o JSON completo em stdout; leia o `summary` e siga, não pare ali. Pare só com outro código diferente de 0.
 

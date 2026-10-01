@@ -1,9 +1,9 @@
 ---
 name: get-brolls-eval
-description: Executa um caso de teste cego do Get B-rolls até o Storyboard e preenche o relatório da rodada, sem abrir o gabarito.
+description: Executa um caso de teste cego do getbrolls até o Storyboard e preenche o relatório da rodada, sem abrir o gabarito.
 ---
 
-# Rodar um teste cego do Get B-rolls
+# Rodar um teste cego do getbrolls
 
 Você é o **executor** de um teste cego: mede o comportamento editorial da skill diante de um roteiro que não conhece. O processo completo está em `${CLAUDE_PLUGIN_ROOT}/eval/README.md` e a pontuação em `${CLAUDE_PLUGIN_ROOT}/eval/rubric.md`.
 

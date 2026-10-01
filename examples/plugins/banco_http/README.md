@@ -1,6 +1,6 @@
 # Banco HTTP (exemplo)
 
-Plugin de exemplo do SDK do Get B-rolls: um banco de vídeos com API
+Plugin de exemplo do SDK do getbrolls: um banco de vídeos com API
 autenticada. Mostra o caminho completo de um arquivo que **consome licença**:
 a busca devolve metadados, e o original só é baixado no `fetch`, depois da
 aprovação humana e do `permit`, pela rota `banco_http` (`stage="fetch"`).

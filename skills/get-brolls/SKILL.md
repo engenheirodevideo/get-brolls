@@ -73,11 +73,11 @@ Registre as condições com `permit` (`--evidence`, `--preset` ou `--declared-by
 
 ## Quando não há fonte
 
-Diga o que tentou e por quê. Pergunte se a pessoa tem material próprio ou um link. Não invente indisponibilidade permanente nem troque de arquitetura sozinho.
+Diga o que tentou e por quê. Pergunte por material próprio ou um link. Não invente indisponibilidade permanente nem troque de arquitetura.
 
 ## Ambiente
 
-`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" doctor` confere a instalação. No Windows, use `python` no lugar de `python3`. Em código 4 (`ready` falso), leia `summary.missing` e peça `/get-brolls-setup` (runtime em `$GB_HOME/runtime`). Versão diferente: [CHANGELOG](${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md).
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" doctor` confere a instalação. No Windows, use `python` no lugar de `python3`. Em código 4 (`ready` falso), leia `summary.missing` e peça `/get-brolls-setup`. Códigos de saída: [`${CLAUDE_PLUGIN_ROOT}/docs/CLI_CONTRACT.md`](${CLAUDE_PLUGIN_ROOT}/docs/CLI_CONTRACT.md); versão diferente: [CHANGELOG](${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md).
 
 ## Índice de references
 
@@ -88,4 +88,4 @@ Diga o que tentou e por quê. Pergunte se a pessoa tem material próprio ou um l
 - [`${CLAUDE_PLUGIN_ROOT}/references/templates-de-resposta.md`](${CLAUDE_PLUGIN_ROOT}/references/templates-de-resposta.md) — copy pronta.
 - [`${CLAUDE_PLUGIN_ROOT}/references/glossario.md`](${CLAUDE_PLUGIN_ROOT}/references/glossario.md) — termos.
 - [`${CLAUDE_PLUGIN_ROOT}/references/roteiro.md`](${CLAUDE_PLUGIN_ROOT}/references/roteiro.md) e [`${CLAUDE_PLUGIN_ROOT}/references/generos/reels.md`](${CLAUDE_PLUGIN_ROOT}/references/generos/reels.md) — roteiro (componentes, export) e regras de copy do reels.
-- [`${CLAUDE_PLUGIN_ROOT}/docs/GUIDE.md`](${CLAUDE_PLUGIN_ROOT}/docs/GUIDE.md) — detalhe técnico.
+- [`${CLAUDE_PLUGIN_ROOT}/docs/GUIDE.md`](${CLAUDE_PLUGIN_ROOT}/docs/GUIDE.md) — detalhe técnico; [`${CLAUDE_PLUGIN_ROOT}/docs/SCHEMAS.md`](${CLAUDE_PLUGIN_ROOT}/docs/SCHEMAS.md), formatos.

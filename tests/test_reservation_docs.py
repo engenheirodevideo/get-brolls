@@ -15,7 +15,7 @@ ROTEIRO = (ROOT / "references" / "roteiro.md").read_text(encoding="utf-8")
 
 class ReservationDocsTests(unittest.TestCase):
     def test_guide_names_brolls_as_the_state_folder(self):
-        self.assertIn("`brolls/` é a pasta de estado do get-brolls no projeto", GUIDE)
+        self.assertIn("`brolls/` é a pasta de estado do getbrolls no projeto", GUIDE)
 
     def test_roteiro_reference_covers_frontmatter_and_reserved_directives(self):
         for fragment in ("`cliente`", "`direcao`", "slug", "`tags`", "ignorada", "reservad"):

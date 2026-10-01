@@ -73,11 +73,11 @@ Registre as condições com `permit` (`--evidence`, `--preset` ou `--declared-by
 
 ## Quando não há fonte
 
-Diga o que tentou e por quê. Pergunte se a pessoa tem material próprio ou um link. Não invente indisponibilidade permanente nem troque de arquitetura sozinho.
+Diga o que tentou e por quê. Pergunte por material próprio ou um link. Não invente indisponibilidade permanente nem troque de arquitetura.
 
 ## Ambiente
 
-`python3 "scripts/gb.py" doctor` confere a instalação. No Windows, use `python` no lugar de `python3`. Em código 4 (`ready` falso), leia `summary.missing` e peça `/get-brolls-setup` (runtime em `$GB_HOME/runtime`). Versão diferente: [CHANGELOG](CHANGELOG.md).
+`python3 "scripts/gb.py" doctor` confere a instalação. No Windows, use `python` no lugar de `python3`. Em código 4 (`ready` falso), leia `summary.missing` e peça `/get-brolls-setup`. Códigos de saída: [`docs/CLI_CONTRACT.md`](docs/CLI_CONTRACT.md); versão diferente: [CHANGELOG](CHANGELOG.md).
 
 ## Índice de references
 
@@ -88,4 +88,4 @@ Diga o que tentou e por quê. Pergunte se a pessoa tem material próprio ou um l
 - [`references/templates-de-resposta.md`](references/templates-de-resposta.md) — copy pronta.
 - [`references/glossario.md`](references/glossario.md) — termos.
 - [`references/roteiro.md`](references/roteiro.md) e [`references/generos/reels.md`](references/generos/reels.md) — roteiro (componentes, export) e regras de copy do reels.
-- [`docs/GUIDE.md`](docs/GUIDE.md) — detalhe técnico.
+- [`docs/GUIDE.md`](docs/GUIDE.md) — detalhe técnico; [`docs/SCHEMAS.md`](docs/SCHEMAS.md), formatos.

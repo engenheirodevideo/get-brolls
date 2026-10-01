@@ -6,7 +6,7 @@ updated: 2026-09-17
 tags: [get-brolls, documentation]
 ---
 
-# Instruções para agentes — Get B-rolls
+# Instruções para agentes — getbrolls
 
 ## Mapa do repositório
 
@@ -21,6 +21,8 @@ Este arquivo é o índice central para agentes e mantenedores: tudo que um agent
 | Instalar no Gemini CLI | [GEMINI.md](GEMINI.md) — o snippet de importação `@` que o usuário acrescenta ao próprio `GEMINI.md`. |
 | Guia operacional (instalação, provedores, navegador, Storyboard, `status`) | [GUIDE.md](docs/GUIDE.md) |
 | Manual + tutorial para quem está chegando (comandos explicados, JSON de saída, automação) | [MANUAL.md](docs/MANUAL.md) |
+| Contrato da CLI para scripts e agentes (stdout/stderr, códigos de saída e de erro, avisos, deprecação) | [CLI_CONTRACT.md](docs/CLI_CONTRACT.md) |
+| Formatos de arquivo (schemas, versões, layouts de projeto, logs, nomes reservados) | [SCHEMAS.md](docs/SCHEMAS.md) |
 | Criar plugins (fontes, rotas, comandos, presets) com o SDK | [PLUGIN_DEV_QUICKSTART.md](docs/PLUGIN_DEV_QUICKSTART.md) para o caminho curto · [SDK.md](docs/SDK.md) para a referência completa |
 | Qualidade, evidências reais e limites conhecidos | [QUALITY.md](docs/QUALITY.md) |
 | Medir qualidade editorial (blind tests) | [eval/README.md](eval/README.md) — processo, rubrica, corpus e rodadas; execute um caso com [`/get-brolls-eval`](commands/get-brolls-eval.md). |
@@ -68,6 +70,7 @@ Execute comandos do mesmo projeto serialmente. Preserve originais, eventos e jou
 - `status` é o único comando somente leitura: abre o ledger com `recover=False`, não cria a árvore `brolls/` e não pega a trava exclusiva do projeto. Ao mexer nele, preserve esse contrato — nada de recuperar pendência, sincronizar formatos ou escrever para relatar. Comandos de escrita continuam serializados pela trava.
 - Um pin `GB_*_PATH` é promessa, não sugestão: resolva para caminho absoluto e falhe nomeando variável e caminho em vez de voltar à descoberta. A exceção é o `doctor`, que transforma o pin inválido em item de `summary.missing` para continuar diagnosticando.
 - Use mídia sintética e mocks em testes automatizados. Ensaios de rede ficam fora da fonte e registram URL pública, versão utilizada, resultado, dimensão/duração e limites.
+- Código de saída, `error_code` ou aviso novo entra junto com a linha dele em [`docs/CLI_CONTRACT.md`](docs/CLI_CONTRACT.md); arquivo ou schema novo, em [`docs/SCHEMAS.md`](docs/SCHEMAS.md). Os testes conferem os dois contra o código.
 - Valide comandos documentados com `--help` e links relativos. Documentos operacionais que usam frontmatter mantêm `type`, `status`, `created`, `updated` e `tags`; no SKILL esses campos ficam em `metadata`.
 - Não execute publicação, push ou instalação pessoal da skill como parte automática de uma revisão. Faça essas ações somente quando incluídas no pedido do usuário. A árvore do repositório é a fonte oficial da entrega.
 
