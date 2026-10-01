@@ -1,6 +1,7 @@
 """Audited diagnostics, the CLI JSON error envelope and command-level error surfacing."""
 
 import argparse
+import errno
 import io
 import json
 import os
@@ -105,6 +106,51 @@ class CliEntrypointErrorEnvelopeTests(unittest.TestCase):
             code = cli.entrypoint()
         self.assertNotEqual(code, cli.EXIT_INTERNAL_ERROR)
         self.assertNotIn("INTERNAL_ERROR", buf.getvalue())
+
+    def _closed_pipe_run(self, error):
+        """`entrypoint()` com stdout cujo write levanta `error`, como um pipe já fechado."""
+
+        class ClosedPipe(io.StringIO):
+            def write(self, s):
+                raise error
+
+        def ran(argv=None):
+            cli._RESULT_EXIT.set(cli.EXIT_PREREQUISITE)  # pylint: disable=protected-access
+            return {"ready": False}
+
+        buf = io.StringIO()
+        with patch.object(cli, "main", side_effect=ran), patch("sys.stdout", ClosedPipe()), patch("sys.stderr", buf):
+            code = cli.entrypoint()
+        return code, buf.getvalue()
+
+    def test_windows_closed_pipe_einval_keeps_the_pending_exit(self):
+        # No Windows o pipe fechado chega como `OSError: [Errno 22] Invalid argument`
+        # (ERROR_NO_DATA), não como BrokenPipeError: é o mesmo `| head`, não um bug.
+        code, stderr = self._closed_pipe_run(OSError(errno.EINVAL, "Invalid argument"))
+        self.assertEqual(cli.EXIT_PREREQUISITE, code)
+        self.assertNotIn("INTERNAL_ERROR", stderr)
+
+    def test_epipe_oserror_on_write_keeps_the_pending_exit(self):
+        code, stderr = self._closed_pipe_run(OSError(errno.EPIPE, "Broken pipe"))
+        self.assertEqual(cli.EXIT_PREREQUISITE, code)
+        self.assertNotIn("INTERNAL_ERROR", stderr)
+
+    def test_other_oserror_on_write_is_still_internal_error(self):
+        code, stderr = self._closed_pipe_run(OSError(errno.ENOSPC, "No space left on device"))
+        self.assertEqual(cli.EXIT_INTERNAL_ERROR, code)
+        self.assertIn("INTERNAL_ERROR", stderr)
+
+    def test_einval_from_the_command_itself_is_still_internal_error(self):
+        # Só a escrita do resultado em stdout é tratada como pipe fechado.
+        buf = io.StringIO()
+        with (
+            patch.object(cli, "main", side_effect=OSError(errno.EINVAL, "Invalid argument")),
+            patch("sys.stdout", io.StringIO()),
+            patch("sys.stderr", buf),
+        ):
+            code = cli.entrypoint()
+        self.assertEqual(cli.EXIT_INTERNAL_ERROR, code)
+        self.assertIn("INTERNAL_ERROR", buf.getvalue())
 
     def test_generic_fallback_keeps_the_traceback_out_of_stderr(self):
         with tempfile.TemporaryDirectory() as home:

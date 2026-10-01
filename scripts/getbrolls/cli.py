@@ -10,6 +10,7 @@ import argparse
 import contextlib
 import contextvars
 import difflib
+import errno
 import json
 import logging
 import os
@@ -1431,6 +1432,16 @@ def _print_error(payload):
     print(json.dumps(clean, ensure_ascii=False), file=sys.stderr)
 
 
+def _closed_pipe(exc):
+    """O leitor do pipe fechou antes do fim da escrita em stdout (`| head`)?
+
+    No POSIX isso é `BrokenPipeError` (EPIPE). No Windows a escrita num pipe sem leitor
+    falha com ERROR_NO_DATA, que o CRT entrega como `OSError` EINVAL — só vale para a
+    escrita do resultado, nunca para um EINVAL vindo do próprio comando.
+    """
+    return isinstance(exc, BrokenPipeError) or exc.errno in (errno.EPIPE, errno.EINVAL)
+
+
 def _silence_stdout():
     """Depois de um `BrokenPipeError`, aponta stdout para o devnull: o flush da saída do
     interpretador não levanta de novo (nem imprime "Exception ignored ...")."""
@@ -1456,10 +1467,16 @@ def entrypoint():
             stream.reconfigure(encoding="utf-8")  # pyright: ignore[reportAttributeAccessIssue]
     _RESULT_EXIT.set(EXIT_OK)
     try:
-        print(json.dumps(main(), ensure_ascii=False, indent=2))
-        # Flush aqui, dentro do `try`: com `| head` o erro de pipe chega agora, e não no
-        # encerramento do interpretador, onde viraria traceback em stderr.
-        sys.stdout.flush()
+        result = main()
+        try:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            # Flush aqui, dentro do `try`: com `| head` o erro de pipe chega agora, e não no
+            # encerramento do interpretador, onde viraria traceback em stderr.
+            sys.stdout.flush()
+        except OSError as exc:
+            if not _closed_pipe(exc):
+                raise
+            _silence_stdout()
         return _RESULT_EXIT.get()
     except OperationError as exc:
         _print_error({"error": str(exc), **exc.payload})
