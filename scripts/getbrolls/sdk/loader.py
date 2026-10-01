@@ -41,6 +41,12 @@ EXPECT_NOTE = (
 # Respostas de sucesso: nada para rodar de novo.
 DONE_NOTE = "Pronto. " + NOT_SANDBOX
 GB_PLUGINS_REASON = "desligado por GB_PLUGINS (a variável escolhe os plugins desta sessão, sem mexer no plugins.json)"
+# O mesmo filtro, quando quem o pôs foi o teto `plugins` de um getbrolls.toml confiável.
+PROFILE_PLUGINS_REASON = (
+    "desligado pelo perfil do workspace (getbrolls.toml `plugins`), que escolhe os plugins desta sessão "
+    "sem mexer no plugins.json"
+)
+SELECTION_REASONS = (GB_PLUGINS_REASON, PROFILE_PLUGINS_REASON)
 # `GB_PLUGINS` só FILTRA: escolhe, entre os plugins habilitados com pin válido,
 # os desta sessão. Nunca carrega um plugin sem pin, nunca habilitado ou adulterado.
 GB_PLUGINS_UNPINNED_REASON = (
@@ -397,8 +403,37 @@ def _status(manifest, folder, selection, state):
     if pinned.get("sha256") != folder_digest(folder):
         return "suspended", "O conteúdo do plugin mudou desde o enable; revise e habilite de novo."
     if selection is not None and manifest["id"] not in selection:
-        return "disabled", GB_PLUGINS_REASON
+        return "disabled", selection_reason()
     return "enabled", None
+
+
+def selection_source():
+    """Quem escolhe os plugins da sessão: `profile` (teto do getbrolls.toml), `GB_PLUGINS` ou `plugins.json`."""
+    if env_selection() is None:
+        return "plugins.json"
+    return "profile" if _paths.from_profile("GB_PLUGINS") else "GB_PLUGINS"
+
+
+def selection_reason():
+    """Motivo de `disabled` para quem ficou fora da seleção da sessão, com a origem certa."""
+    return PROFILE_PLUGINS_REASON if selection_source() == "profile" else GB_PLUGINS_REASON
+
+
+def selection_blocks(plugin_id):
+    """Aviso quando a seleção da sessão (perfil ou GB_PLUGINS) vai deixar `plugin_id` desligado; senão None."""
+    selection = env_selection()
+    if selection is None or plugin_id in selection:
+        return None
+    if selection_source() == "profile":
+        return (
+            f"O plugin {plugin_id} foi instalado e habilitado, mas o perfil do workspace (getbrolls.toml `plugins`) "
+            "não o inclui: ele fica desligado nesta sessão até você acrescentá-lo lá (e confiar de novo com "
+            "profile trust)."
+        )
+    return (
+        f"O plugin {plugin_id} foi instalado e habilitado, mas GB_PLUGINS não o inclui: ele fica desligado "
+        "nesta sessão até você acrescentá-lo à variável (ou tirá-la do ambiente)."
+    )
 
 
 def _invalid_row(ident, reason):
@@ -663,8 +698,8 @@ def status_hint(row, default):
     """O que fazer com um plugin indisponível: fora de `GB_PLUGINS`, a saída é a
     variável — `enable` não resolve; quando o teto veio do `plugins` do getbrolls.toml,
     a saída é o perfil; nos outros casos, `default`."""
-    if row.get("status") == "disabled" and row.get("reason") == GB_PLUGINS_REASON:
-        if _paths.from_profile("GB_PLUGINS"):
+    if row.get("status") == "disabled" and row.get("reason") in SELECTION_REASONS:
+        if row.get("reason") == PROFILE_PLUGINS_REASON or _paths.from_profile("GB_PLUGINS"):
             return (
                 f"O perfil getbrolls.toml deste workspace não inclui {row['id']} em `plugins`; acrescente-o lá "
                 "(e confie de novo com profile trust) para usá-lo nesta sessão; habilitar de novo não muda "

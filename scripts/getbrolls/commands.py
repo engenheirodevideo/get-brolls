@@ -2548,6 +2548,8 @@ def _doctor_report(config, providers_result, live, env_flag=None):
     overrides, pin_problems, social, executables = readiness_probe()
     install = _paths.install_report(env_flag)
     install["profile"] = profile.report()
+    # A pasta pessoal que valeu e de onde veio (`env`, `env_file`, `profile` ou `default`).
+    install["gb_home_source"] = install["profile"]["values"]["home"]["source"]
     summary = doctor_summary(executables, pin_problems, install.get("data_missing") or ())
     if social.get("problem"):
         for entry in summary["missing"]:

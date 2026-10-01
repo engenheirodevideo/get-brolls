@@ -163,6 +163,7 @@ que a pessoa ou o agente deveria saber. O `getbrolls.log` registra só o código
 | `DEPRECATED` | Algo que ainda funciona, mas sai numa versão futura (veja [Deprecação](#deprecação)). |
 | `EMPTY_STORYBOARD` | `review` gerou um Storyboard sem itens. |
 | `ENV_FILE_SHADOWED` | Há dois `.env`; só o primeiro da ordem foi lido. |
+| `ENV_GB_HOME_IGNORED` | O `.env` lido define `GB_HOME`, mas o `home` do perfil confiável já decidiu a pasta pessoal; a linha do `.env` foi ignorada. |
 | `FFMPEG_PROBE_FAILED` | Os filtros do ffmpeg não puderam ser sondados; `drawtext` tratado como indisponível. |
 | `LIBRARY_INDEX_UNREADABLE` | A biblioteca de aprendizados não pôde ser lida; as pistas dela ficaram de fora. |
 | `LIBRARY_WRITE_FAILED` | Um aprendizado não pôde ser gravado na biblioteca. |
@@ -172,6 +173,7 @@ que a pessoa ou o agente deveria saber. O `getbrolls.log` registra só o código
 | `MIGRATE_BROLL_EXISTS` | `migrate`: já existe uma `broll/` com arquivos, que vira a pasta dos clipes finais. |
 | `PLUGIN_ENV_TOOLCHAIN` | Uma variável de plugin no `.env` tem nome que ferramentas do sistema leem; ela chega só ao plugin. |
 | `PLUGIN_PATH_CHANGED` | Uma pasta de `permissions.paths` não confere com a gravada no pin e fica ignorada. |
+| `PLUGIN_SELECTION_BLOCKS` | `plugins --action install` instalou e habilitou o plugin, mas a seleção da sessão (o `plugins` do perfil ou o `GB_PLUGINS`) o deixa desligado. |
 | `PLUGIN_PIN_OUTDATED` | O pin de um plugin é de uma versão antiga; rode `plugins --action enable` de novo. |
 | `PREVIEW_LIMITATION` | A prévia foi gerada com uma limitação (só referência, por exemplo). |
 | `PROVIDER_ERROR` | Uma fonte falhou e o comando terminou em erro. |
@@ -324,7 +326,14 @@ Qual valor vence, campo a campo:
 5. o padrão.
 
 O `home` do perfil é aplicado antes da escolha do `.env` (ele decide qual
-`$GB_HOME/.env` é lido). `plugins` do perfil é um teto: só estreita o `GB_PLUGINS`.
+`$GB_HOME/.env` é lido). Por isso, só para `GB_HOME`, o `home` de um perfil confiável
+vence o `.env`: um `GB_HOME` num `.env` fora de `$GB_HOME` (checkout, `GB_ENV_FILE`,
+`--env-file`) fica ignorado e o comando avisa `ENV_GB_HOME_IGNORED`; o ambiente do
+processo continua vencendo o perfil. `doctor` mostra a pasta que valeu em
+`install.gb_home` e a origem em `install.gb_home_source` (`env`, `env_file`, `profile`
+ou `default`). `plugins` do perfil é um teto: só estreita o `GB_PLUGINS`; quem fica de
+fora aparece `disabled` com o motivo "desligado pelo perfil do workspace (getbrolls.toml
+`plugins`)" e `plugins --action list` diz `"selection": "profile"`.
 `profile --action show` mostra cada valor com a origem (`env`, `env_file`, `profile`,
 `default`).
 

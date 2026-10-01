@@ -290,6 +290,28 @@ _GB_HOME_IN_ENV_DEPRECATED = (
 )
 
 
+# `.env` cuja linha GB_HOME perdeu para o `home` do perfil (aviso `ENV_GB_HOME_IGNORED`).
+_HOME_IGNORED: list[str] = []
+_GB_HOME_IGNORED = (
+    "GB_HOME do .env ({path}) foi ignorado: o `home` do perfil getbrolls.toml confiável vale para a pasta "
+    "pessoal, porque é ele que decide qual .env é lido. Tire a linha do .env ou o `home` do perfil."
+)
+
+
+def _home_from_profile(value):
+    """O `GB_HOME` em vigor veio do `home` do perfil e o `.env` pede outro?"""
+    from . import _paths  # tardio: o `_paths` importa este módulo dentro de funções
+
+    return _paths.from_profile("GB_HOME") and os.environ.get("GB_HOME") != value
+
+
+def _note_home_ignored(entries, path):
+    """Guarda o `.env` cuja linha `GB_HOME` vai perder para o `home` do perfil (antes de exportar nada)."""
+    _HOME_IGNORED.clear()
+    if any(key == "GB_HOME" and _home_from_profile(value) for _number, key, value in entries):
+        _HOME_IGNORED.append(str(path))
+
+
 def _is_home_env(path, gb_home_value):
     """O arquivo é o `.env` da pasta pessoal: a atual ou a que a própria linha `GB_HOME` apontaria.
 
@@ -330,6 +352,7 @@ def load_env(path, *, source=None):
     entries = list(_parse_env(path))
     _refuse_env_entries(entries, source, path)
     applied = set()
+    _note_home_ignored(entries, path)
     for _number, key, value in entries:
         if key not in KEYS:
             continue
@@ -380,6 +403,8 @@ def load_env_choice(choice, *, warn):
         record_warning("ENV_FILE_SHADOWED", _ENV_SHADOWED)
     if "GB_HOME" in core_keys:
         record_warning("DEPRECATED", _GB_HOME_IN_ENV_DEPRECATED)
+    for ignored in _HOME_IGNORED:
+        record_warning("ENV_GB_HOME_IGNORED", _GB_HOME_IGNORED.format(path=ignored))
 
 
 def load_environment(args, *, warn):

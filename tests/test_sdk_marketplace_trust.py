@@ -54,6 +54,9 @@ class TierTests(MarketInstallCase):
         preview = mki.install(f"demo@{marketplace.OFFICIAL_INDEX_NAME}", confirm=False, expect=None)
         block = preview["marketplace"]
         self.assertEqual(("official", False, NOT_VERIFIED), (block["tier"], block["tier_verified"], block["tier_note"]))
+        # O campo que um resumo humano mostra nunca diz "official" sem a ressalva.
+        self.assertEqual("official (declarado, não verificado)", row["tier_label"])
+        self.assertEqual("official (declarado, não verificado)", block["tier_label"])
         self.assertFalse(marketplace.summary()[0]["official"])
 
     def test_the_official_index_is_verified(self):
@@ -64,6 +67,7 @@ class TierTests(MarketInstallCase):
             self.assertTrue(added["marketplace"]["official"])
             row = marketplace.search("demo")["results"][0]
             self.assertEqual((True, None), (row["tier_verified"], row["tier_note"]))
+            self.assertEqual(row["tier"], row["tier_label"])
             preview = mki.install(f"demo@{marketplace.OFFICIAL_INDEX_NAME}", confirm=False, expect=None)
             self.assertTrue(preview["marketplace"]["tier_verified"])
             mki.install(f"demo@{marketplace.OFFICIAL_INDEX_NAME}", confirm=True, expect=preview["expect"])
@@ -89,6 +93,7 @@ class TierTests(MarketInstallCase):
             self.assertEqual(
                 ("verified", False, NOT_VERIFIED), (origin["tier"], origin["tier_verified"], origin["tier_note"])
             )
+            self.assertEqual("verified (declarado, não verificado)", origin["tier_label"])
         capabilities = run_cli("capabilities", env=self.env())
         self.assertFalse(capabilities["marketplaces"][0]["official"])
 

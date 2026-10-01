@@ -403,6 +403,7 @@ class OriginRowsTests(MarketUpdateCase):
                 "index_commit": pin.commit,
                 "tier_verified": False,
                 "tier_note": "declarado pelo marketplace, não verificado",
+                "tier_label": "verified (declarado, não verificado)",
                 "marketplace_notice": None,
             },
             demo,

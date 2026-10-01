@@ -1110,7 +1110,12 @@ python3 scripts/gb.py plugins --action remove --id <id> --yes
   variável no ambiente, `plugins --action list` traz `"selection":
   "GB_PLUGINS"` e cada plugin fora dela sai `disabled` com o motivo
   "desligado por GB_PLUGINS"; a busca por uma fonte dele manda ajustar
-  `GB_PLUGINS`, porque `enable` não muda essa seleção.
+  `GB_PLUGINS`, porque `enable` não muda essa seleção. Quando quem pôs a
+  seleção foi o `plugins` de um `getbrolls.toml` confiável, o `list` traz
+  `"selection": "profile"` e o motivo é "desligado pelo perfil do workspace
+  (getbrolls.toml `plugins`)"; a dica manda acrescentar o id ao perfil. O
+  `install` que termina com o plugin fora da seleção avisa
+  `PLUGIN_SELECTION_BLOCKS`.
 - `doctor` mostra o resultado real do carregamento em `plugins[]` e, quando
   algum plugin está `failed`/`suspended`/`invalid`/`incompatible`, uma linha
   `plugins` no `summary`. `doctor --live` também busca (limite 1) em cada
