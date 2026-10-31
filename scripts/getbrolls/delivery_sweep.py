@@ -28,6 +28,8 @@ BEAT_DIR_RE = re.compile(r"^\d{2}-[a-z0-9-]*$")
 # Sobra de uma cópia por `<destino>.part` que um kill à força (ou uma queda de energia)
 # não deixou terminar: nunca é obra da pessoa e nunca é o arquivo inteiro.
 PART_SUFFIX = ".part"
+# Só no Windows o próprio link tem atributo somente-leitura que barra o `unlink`; no POSIX o modo de um link não conta.
+LINK_ATTRIBUTES = os.name == "nt"
 
 
 def thaw_unlink(path):
@@ -47,11 +49,25 @@ def thaw_unlink(path):
             first.skip(fallback="eacces")
     with effects.op("fs.unlink", path):
         # `chmod` segue o link: num link, devolveria a escrita ao clipe de `brolls/` e ninguém a tiraria
-        # de novo. O atributo somente-leitura é do arquivo; o do link não impede apagá-lo.
+        # de novo. O link é degelado nele mesmo (`_thaw_link`), sem chegar ao clipe.
         # lenient: link test of the path being thawed; a stat failure falls to the chmod/unlink below
         if not path.is_symlink():
             path.chmod(stat.S_IWRITE | stat.S_IREAD)
+        elif LINK_ATTRIBUTES:
+            _thaw_link(path)
         path.unlink()
+
+
+def _thaw_link(path):
+    """Tira o somente-leitura do próprio link no Windows, sem seguir até o clipe de `brolls/`.
+
+    No Windows antes da 3.13 o `chmod` age no próprio link (é assim que `_freeze` o deixou somente-leitura,
+    e o atributo barra o `unlink`); da 3.13 em diante ele segue o link, e `follow_symlinks=False` o mantém no link.
+    """
+    if os.chmod in os.supports_follow_symlinks:
+        path.chmod(stat.S_IWRITE | stat.S_IREAD, follow_symlinks=False)
+    else:
+        path.chmod(stat.S_IWRITE | stat.S_IREAD)
 
 
 def unlink_keeping_mode(dest, src):

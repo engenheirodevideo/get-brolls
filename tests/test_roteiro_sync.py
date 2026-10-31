@@ -69,10 +69,11 @@ class SyncCase(unittest.TestCase):
 
     def write_brief(self, data):
         text = PROSE.replace("{}", json.dumps(data, ensure_ascii=False, indent=2))
-        (self.project / "BRIEF.md").write_text(text, encoding="utf-8")
+        # `newline="\n"`: no Windows o modo texto gravaria CRLF, e o review/sync preservam o CRLF da pessoa.
+        (self.project / "BRIEF.md").write_text(text, encoding="utf-8", newline="\n")
 
     def write(self, text):
-        (self.project / "ROTEIRO.md").write_text(text, encoding="utf-8")
+        (self.project / "ROTEIRO.md").write_text(text, encoding="utf-8", newline="\n")
 
     def text(self, name):
         return (self.project / name).read_text(encoding="utf-8")

@@ -124,9 +124,14 @@ class ProfileTomlRoundTrip(_HomeCase):
 
     def test_the_declared_version_loads_and_the_document_validates(self):
         version = schemas.version("profile_toml")
-        loaded = profile.load(self.write(f'schema_version = {version}\ncache_dir = "c"\n[tools]\nffmpeg = "/x"\n'))
+        # `tools.*` precisa ser absoluto no sistema que roda: `/x` no POSIX, `D:\\x` no Windows (lá `/x` não é).
+        ffmpeg = str(Path(os.sep + "x").resolve())
+        loaded = profile.load(
+            self.write(f"schema_version = {version}\ncache_dir = \"c\"\n[tools]\nffmpeg = '{ffmpeg}'\n")
+        )
         self.assertIn("GB_CACHE_DIR", loaded.values)
-        self.assert_valid({"schema_version": version, "cache_dir": "c", "tools": {"ffmpeg": "/x"}}, "profile_toml")
+        self.assertEqual(ffmpeg, loaded.values["GB_FFMPEG_PATH"])
+        self.assert_valid({"schema_version": version, "cache_dir": "c", "tools": {"ffmpeg": ffmpeg}}, "profile_toml")
 
     def test_a_profile_without_a_version_still_loads(self):
         self.assertIn("GB_CACHE_DIR", profile.load(self.write('cache_dir = "c"\n')).values)

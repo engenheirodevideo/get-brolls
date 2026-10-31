@@ -5,6 +5,7 @@ import json
 # Reimport com apelido só pra isolar o setup do teste que precisa dele
 # (mesmo motivo do redefined-outer-name em tests/pylintrc).
 import json as _json  # pylint: disable=reimported
+import socket
 import subprocess
 
 # Reimport com apelido só pra isolar o setup do teste que precisa dele
@@ -188,6 +189,41 @@ class SaveEndpointTests(unittest.TestCase):
                     with self.assertRaises(urllib.error.HTTPError) as ctx:
                         self._post(port, {"items": []}, token)
                     self.assertEqual(403, ctx.exception.code)
+            self.assertFalse((root / "brolls" / "reviews").exists())
+
+    def _raw_post(self, port, token, body, path=serve.SAVE_PATH):
+        """POST cru: devolve `(resposta inteira, erro do socket ou None)` lendo até o servidor fechar."""
+        head = (
+            f"POST {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\n"
+            f"{serve.TOKEN_HEADER}: {token}\r\nContent-Length: {len(body)}\r\n\r\n"
+        ).encode("ascii")
+        received, failure = b"", None
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as conn:
+            conn.sendall(head + body)
+            # O cliente espera a resposta antes de fechar: um servidor que fechou sem ler o corpo já mandou o RST.
+            time.sleep(0.2)
+            try:
+                while chunk := conn.recv(65536):
+                    received += chunk
+            except OSError as exc:
+                failure = exc
+        return received, failure
+
+    def test_a_refused_post_reads_the_body_so_the_client_gets_the_status_not_a_reset(self):
+        """Fechar com o corpo sem ler faz o sistema mandar RST: no Windows o cliente leva `ConnectionAbortedError`
+        (WinError 10053) no lugar do 403/404 que explica a recusa. Toda recusa do POST lê o corpo antes."""
+        body = b'{"items": [' + b'{"id": "local:a"}, ' * 4000 + b'{"id": "local:b"}]}'
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._project(Path(tmp))
+            with self._serving(root) as (server, port):
+                for token, path, status in (
+                    ("outro-token", serve.SAVE_PATH, b" 403 "),
+                    (server.save_token, "/outro", b" 404 "),
+                ):
+                    with self.subTest(path=path, token=token):
+                        received, failure = self._raw_post(port, token, body, path)
+                        self.assertIsNone(failure, received[:200])
+                        self.assertIn(status, received.split(b"\r\n", 1)[0])
             self.assertFalse((root / "brolls" / "reviews").exists())
 
     def test_an_uninitialised_token_refuses_instead_of_matching_the_empty_string(self):

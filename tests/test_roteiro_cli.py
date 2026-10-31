@@ -62,7 +62,8 @@ class CliCase(unittest.TestCase):
             ("{o que a pessoa faz agora}", "Comenta BROLL."),
         ):
             text = text.replace(old, new)
-        path.write_text(text, encoding="utf-8")
+        # `newline="\n"`: no Windows o modo texto gravaria CRLF, e o review/sync preservam o CRLF da pessoa.
+        path.write_text(text, encoding="utf-8", newline="\n")
 
     def review(self, expect=0):
         """`review` com o `--expect` do hash que o `check` mostra, como a skill faz depois de mostrar o roteiro."""
@@ -71,7 +72,7 @@ class CliCase(unittest.TestCase):
 
     def write_brief(self):
         (self.project / "BRIEF.md").write_text(
-            "# Brief\n\n```json\n" + json.dumps(BRIEF, indent=2) + "\n```\n", encoding="utf-8"
+            "# Brief\n\n```json\n" + json.dumps(BRIEF, indent=2) + "\n```\n", encoding="utf-8", newline="\n"
         )
 
     def reviewed(self):
@@ -91,7 +92,7 @@ class CliCase(unittest.TestCase):
         path = self.project / "ROTEIRO.md"
         text = path.read_text(encoding="utf-8")
         self.assertIn(old, text)
-        path.write_text(text.replace(old, new), encoding="utf-8")
+        path.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
 
     def approved(self, shot, source_id="abc"):
         ledger = Ledger(self.project)

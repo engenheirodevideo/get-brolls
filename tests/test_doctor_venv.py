@@ -225,8 +225,12 @@ class DoctorVenvTests(unittest.TestCase):
             self.assertEqual("stale", payload["venv"]["status"])
             [entry] = [e for e in payload["summary"]["missing"] if e["item"] == "venv"]
             self.assertIn("certifi 2026.7.22 (fixado 2026.10.23)", entry["note"])
-            self.assertIn(str(ROOT / "scripts" / "install.sh"), entry["fix"])
-            self.assertIn(str(ROOT / "scripts" / "install.sh"), payload["summary"]["do"])
+            # O conserto é o instalador desta instalação: o `install.sh` no checkout, o `setup` no pacote.
+            installer = "getbrolls setup" if WHEEL_MODE else str(ROOT / "scripts" / "install.sh")
+            self.assertIn(installer, entry["fix"])
+            self.assertIn(installer, payload["summary"]["do"])
+            if WHEEL_MODE:
+                self.assertNotIn("install.sh", entry["fix"], "o pacote instalado não tem os scripts do checkout")
 
     @unittest.skipIf(os.name == "nt", "stub de shell no PATH")
     def test_resolved_ytdlp_is_the_one_the_runtime_uses(self):

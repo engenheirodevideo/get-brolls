@@ -6,6 +6,7 @@ import stat
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
@@ -159,6 +160,39 @@ class ThawUnlinkNeverFollowsALinkTests(TempCase):
             delivery_sweep.thaw_unlink(link)
         self.assertEqual(0o444, stat.S_IMODE(clip.stat().st_mode))
         self.assertTrue(link.is_symlink())
+
+
+@needs_symlink
+@unittest.skipUnless(os.chmod in os.supports_follow_symlinks, "precisa mudar o modo do próprio link (lchmod)")
+class ThawUnlinkOfAReadOnlyLinkTests(TempCase):
+    """No Windows o link tem atributo somente-leitura próprio (o `chmod` antes da 3.13 o põe nele) e ele barra o
+    `unlink`. Simulado com o modo do próprio link (`lstat`) e um `unlink` que recusa enquanto ele não tem escrita."""
+
+    def test_a_read_only_link_is_thawed_on_itself_and_removed_and_the_clip_stays_frozen(self):
+        clip = Path(self.tmp) / "clip.mp4"
+        clip.write_bytes(b"clipe")
+        clip.chmod(0o444)
+        self.addCleanup(clip.chmod, 0o644)
+        link = Path(self.tmp) / "link.mp4"
+        link.symlink_to(clip)
+        link.chmod(0o444, follow_symlinks=False)
+        real_unlink = Path.unlink
+        refused = []
+
+        def windows_unlink(path, *args, **kwargs):
+            if not os.lstat(path).st_mode & stat.S_IWRITE:
+                refused.append(path.name)
+                raise PermissionError(13, "Access is denied", str(path))
+            return real_unlink(path, *args, **kwargs)
+
+        with (
+            patch.object(delivery_sweep, "LINK_ATTRIBUTES", True),
+            patch.object(Path, "unlink", autospec=True, side_effect=windows_unlink),
+        ):
+            delivery_sweep.thaw_unlink(link)
+        self.assertEqual(["link.mp4"], refused)
+        self.assertFalse(os.path.lexists(link))
+        self.assertEqual(0o444, stat.S_IMODE(clip.stat().st_mode))
 
 
 if __name__ == "__main__":

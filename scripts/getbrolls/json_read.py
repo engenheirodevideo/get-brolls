@@ -27,7 +27,8 @@ MAX_DEPTH = 64
 
 REASONS = ("too_large", "encoding", "syntax", "non_finite", "too_deep", "not_regular")
 # `O_NONBLOCK` deixa o `open` de um FIFO voltar na hora (sem escritor ele travaria); num arquivo comum não muda nada.
-# O Windows não tem a flag, e lá abrir uma pasta já é `PermissionError`; `O_BINARY` só existe lá.
+# O Windows não tem a flag, e lá abrir uma pasta é `PermissionError` (o `_open` a devolve como `not_regular`);
+# `O_BINARY` só existe lá.
 # `O_NOCTTY`: abrir um terminal no caminho do estado não o torna o terminal de controle antes da recusa.
 _OPEN_FLAGS = (
     os.O_RDONLY
@@ -140,15 +141,38 @@ def loads(
     return value
 
 
+def _is_dir(path: Path) -> bool:
+    """`path` é uma pasta agora (seguindo link, como o `open`); erro de `stat` conta como não."""
+    try:
+        return stat.S_ISDIR(path.stat().st_mode)
+    # lenient: only reclassifies an EACCES already raised; a path that does not stat keeps that PermissionError
+    except OSError:
+        return False
+
+
+def _open(path: Path) -> int:
+    """O descritor de `path`; uma pasta que o sistema recusa abrir (`EACCES` no Windows) é `not_regular`.
+
+    Sem isso a mesma pasta seria "não é um arquivo comum" no POSIX e "sem permissão" no Windows. Um
+    arquivo comum sem acesso continua `PermissionError`: o `stat` só reclassifica o que é pasta."""
+    try:
+        return os.open(path, _OPEN_FLAGS)
+    except PermissionError:
+        if _is_dir(path):
+            raise JsonReadError("not_regular") from None
+        raise
+
+
 def read(
     path: Path, *, max_bytes: int | None = None, max_depth: int = MAX_DEPTH, allow_lone_surrogates: bool = False
 ) -> object:
     """Lê no máximo o teto + 1 byte de `path` e decodifica com `loads`; `OSError` passa para quem chamou.
 
     Só arquivo comum é lido: FIFO, pasta ou dispositivo é `not_regular`. O tipo vem do `fstat` do descritor já
-    aberto (sem janela entre checar e ler), e a abertura não bloqueia num FIFO sem escritor."""
+    aberto (sem janela entre checar e ler), e a abertura não bloqueia num FIFO sem escritor. Uma pasta que o
+    sistema nem deixa abrir (o Windows) também é `not_regular`, com a mesma mensagem em todo sistema."""
     limit = MAX_BYTES if max_bytes is None else max_bytes
-    fd = os.open(Path(path), _OPEN_FLAGS)
+    fd = _open(Path(path))
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             raise JsonReadError("not_regular")

@@ -273,19 +273,35 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         origin = self.headers.get("Origin")
         return not (origin and origin != f"http://{host}")
 
+    def _refuse_unread(self, code, message):
+        """`_refuse` depois de ler e descartar o corpo declarado (com teto).
+
+        Fechar a conexão com o corpo ainda não lido faz o sistema mandar RST: o cliente levaria um
+        cano quebrado (`ConnectionAbortedError` no Windows) no lugar do status que explica a recusa."""
+        try:
+            left = min(max(int(self.headers.get("Content-Length") or 0), 0), MAX_SAVE_BYTES * 4)
+        except ValueError:  # sem tamanho legível não há o que drenar
+            left = 0
+        while left > 0:
+            chunk = self.rfile.read(min(65536, left))
+            if not chunk:
+                break
+            left -= len(chunk)
+        self._refuse(code, message)
+
     def do_POST(self):  # noqa: PLR0911 - existing size; one early return per refusal/response
         if not self._local_request():
-            self._refuse(403, "Pedido de outra origem; este servidor só atende esta máquina.")
+            self._refuse_unread(403, "Pedido de outra origem; este servidor só atende esta máquina.")
             return
         if self.path.split("?")[0] != SAVE_PATH:
-            self._refuse(404, "Endereço desconhecido.")
+            self._refuse_unread(404, "Endereço desconhecido.")
             return
         token = self.headers.get(TOKEN_HEADER) or ""
         expected = cast("_ExclusiveServer", self.server).save_token
         # `compare_digest` de texto explode com caracteres fora de ASCII: um
         # cabeçalho qualquer não pode virar 500, é só mais um token errado.
         if not expected or not token.isascii() or not hmac.compare_digest(token, expected):
-            self._refuse(403, "Token da sessão ausente ou inválido.")
+            self._refuse_unread(403, "Token da sessão ausente ou inválido.")
             return
         try:
             length = int(self.headers.get("Content-Length") or 0)
@@ -293,15 +309,7 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
             self._refuse(400, "Tamanho do corpo inválido.")
             return
         if length <= 0 or length > MAX_SAVE_BYTES:
-            # Drena o excesso (com teto) antes de responder: sem isso o cliente
-            # levaria um cano quebrado no lugar do 413 que explica o problema.
-            left = min(length, MAX_SAVE_BYTES * 4)
-            while left > 0:
-                chunk = self.rfile.read(min(65536, left))
-                if not chunk:
-                    break
-                left -= len(chunk)
-            self._refuse(413, "Corpo grande demais para um arquivo de decisões.")
+            self._refuse_unread(413, "Corpo grande demais para um arquivo de decisões.")
             return
         raw = self.rfile.read(length)
         try:

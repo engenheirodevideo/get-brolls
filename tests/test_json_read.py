@@ -6,6 +6,7 @@ nunca para `INTERNAL_ERROR` (exit 3) e nunca aceitando o documento.
 """
 
 import contextlib
+import errno
 import json
 import os
 import shutil
@@ -166,13 +167,45 @@ class NonRegularFileTests(unittest.TestCase):
         with contextlib.suppress(OSError):
             os.close(os.open(path, os.O_WRONLY | os.O_NONBLOCK))
 
-    @unittest.skipIf(os.name == "nt", "no Windows abrir uma pasta já é `PermissionError`")
     def test_a_directory_is_the_same_refusal(self):
         path = self.tmp / "queue.json"
         path.mkdir()
         with self.assertRaises(json_read.JsonReadError) as caught:
             json_read.read(path)
         self.assertEqual("not_regular", caught.exception.reason)
+
+    @staticmethod
+    def windows_open(denied):
+        """O `os.open` do Windows: abrir `denied` (uma pasta ou um arquivo sem acesso) é `EACCES`."""
+        real_open = os.open
+
+        def fake_open(path, flags, *args, **kwargs):
+            if Path(path) == denied:
+                raise PermissionError(errno.EACCES, "Permission denied", str(path))
+            return real_open(path, flags, *args, **kwargs)
+
+        return patch.object(json_read.os, "open", side_effect=fake_open)
+
+    def test_a_directory_refused_as_eacces_like_windows_is_still_not_regular(self):
+        path = self.tmp / "queue.json"
+        path.mkdir()
+        with self.windows_open(path), self.assertRaises(json_read.JsonReadError) as caught:
+            json_read.read(path)
+        self.assertEqual("not_regular", caught.exception.reason)
+        # A recusa não arrasta o `EACCES` para o traceback: quem lê vê só o `not_regular`.
+        self.assertTrue(caught.exception.__suppress_context__)
+
+    def test_a_regular_file_refused_as_eacces_stays_a_permission_error(self):
+        path = self.tmp / "a.json"
+        path.write_bytes(b'{"a": 1}')
+        with self.windows_open(path), self.assertRaises(PermissionError) as caught:
+            json_read.read(path)
+        self.assertEqual(errno.EACCES, caught.exception.errno)
+
+    def test_a_missing_path_refused_as_eacces_stays_a_permission_error(self):
+        path = self.tmp / "gone.json"
+        with self.windows_open(path), self.assertRaises(PermissionError):
+            json_read.read(path)
 
     def test_a_regular_file_still_reads(self):
         path = self.tmp / "a.json"
