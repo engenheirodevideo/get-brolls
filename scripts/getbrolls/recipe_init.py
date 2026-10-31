@@ -43,7 +43,6 @@ LOCK_FILE = "recipe.lock.json"
 LOCK_FAMILY = "recipe_lock"
 # O lock da versão de testes da 2.6: não é lido; o `migrate --project` converte.
 OLD_LOCK_FILE = "template.lock.json"
-SUPPORTED = 1
 LOCK_MAX = 4 * 1024 * 1024
 # Níveis que o `init` grava hoje; nível desconhecido no lock é enum aberto (`ENUM_UNKNOWN`).
 TIERS = ("project", "client")
@@ -169,7 +168,7 @@ def validate_lock(doc, label=LOCK_FILE):
         raise ValueError(  # noqa: TRY004 - contrato da CLI: dado inválido é ValueError (INVALID_DATA)
             f"{label} tem que ser um objeto JSON."
         )
-    versioning.read_schema(doc, LOCK_FAMILY, SUPPORTED, label=label)
+    versioning.read_schema(doc, LOCK_FAMILY, schemas.version(LOCK_FAMILY), label=label)
     problems = errors(doc, schemas.load(LOCK_FAMILY))
     if problems:
         raise ValueError(f"{label} fora do schema: " + "; ".join(problems[:5]))
@@ -241,7 +240,11 @@ def _write_lock(project, shown, installed):
         "items": installed,
         "style": None,
     }
-    text = json.dumps(validate_lock(versioning.stamp_schema(lock, LOCK_FAMILY)), ensure_ascii=False, indent=2)
+    text = json.dumps(
+        validate_lock(versioning.stamp_schema(lock, LOCK_FAMILY, schemas.version(LOCK_FAMILY))),
+        ensure_ascii=False,
+        indent=2,
+    )
     recipes.write_new(project / LOCK_FILE, text + "\n")
     return project / LOCK_FILE
 

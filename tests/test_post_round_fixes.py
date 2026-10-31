@@ -379,7 +379,7 @@ class SearchCarriesDuration(unittest.TestCase):
 
 
 class ReleaseNotesCoverTheWave(unittest.TestCase):
-    """Cada item desta onda aparece no CHANGELOG e no QUALITY; a rodada fica registrada."""
+    """Cada item das correções após a rodada aparece no CHANGELOG e no QUALITY; a rodada fica registrada."""
 
     def changelog(self):
         return (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
@@ -411,7 +411,7 @@ class ReleaseNotesCoverTheWave(unittest.TestCase):
     def test_quality_records_the_same_wave(self):
         text = (ROOT / "docs/QUALITY.md").read_text(encoding="utf-8")
         self.assertIn("16 casos", text)
-        self.assertIn("Rodada cega completa e onda pós-rodada", text)
+        self.assertIn("Rodada cega completa e correções após a rodada", text)
         # As três guardas continuam declaradas como intocadas.
         for guard in ("require_fetch", "signature", "validate_manifest"):
             self.assertIn(guard, text)

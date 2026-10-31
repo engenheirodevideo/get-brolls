@@ -43,6 +43,16 @@ class FrontmatterTests(unittest.TestCase):
         _, _, errors = roteiro.parse_frontmatter(head)
         self.assertEqual(errors, [])
 
+    def test_a_huge_duration_is_a_field_error_not_an_exception(self):
+        for digits in ("9" * 5000, "9" * 12):
+            head = [line for line in VALID_HEAD if not line.startswith("duracao")]
+            head.insert(4, "duracao_alvo_s: " + digits)
+            with self.subTest(digits=len(digits)):
+                _, _, errors = roteiro.parse_frontmatter(head)
+                self.assertEqual(1, len(errors))
+                self.assertIn("duracao_alvo_s", errors[0][1])
+                self.assertIn("5 a 600", errors[0][1])
+
     def test_errors_carry_line_numbers(self):
         cases = {
             "genero: vsl": "genero",

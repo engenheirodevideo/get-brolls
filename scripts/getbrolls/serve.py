@@ -18,6 +18,7 @@ from __future__ import annotations
 import atexit
 import contextlib
 import hmac
+import io
 import json
 import logging
 import os
@@ -43,6 +44,8 @@ TOKEN_HEADER = "X-GetBrolls-Token"  # noqa: S105 - header name, not a secret val
 SAVE_PATH = "/__save"
 # Identidade do servidor: quem pergunta descobre se o PID do arquivo ainda é nosso.
 PING_PATH = "/__ping"
+# Maior porta TCP: o ping recusa qualquer outra coisa antes de montar a URL.
+MAX_PORT = 65535
 # Mesmo teto do `import-review`: um board legítimo não passa disso.
 MAX_SAVE_BYTES = 2000000
 PID_FILE = ".serve.pid"
@@ -157,25 +160,28 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
     projeto em vez de mandar a pessoa caçar o arquivo na pasta de Downloads.
     """
 
-    def _refuse(self, code, message):
-        body = json.dumps({"error": message}, ensure_ascii=False).encode("utf-8")
+    def _send_headers(self, code, content_type, body):
+        """Envia status, `Content-Type` e `Content-Length` da resposta, sem o corpo."""
         self.send_response(code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
+
+    def _head_file(self, code, content_type, body):
+        """Cabeçalhos já enviados; o corpo volta como arquivo para quem chamou `send_head`:
+        GET copia os bytes, HEAD só recebe os cabeçalhos."""
+        self._send_headers(code, content_type, body)
+        return io.BytesIO(body)
+
+    def _refuse(self, code, message):
+        body = json.dumps({"error": message}, ensure_ascii=False).encode("utf-8")
+        self._send_headers(code, "application/json; charset=utf-8", body)
         self.wfile.write(body)
 
     def _head_error(self, code, message):
-        """Mesmo corpo JSON de `_refuse`, mas devolvido como arquivo para quem chamou
-        `send_head`: GET copia os bytes, HEAD só recebe os cabeçalhos."""
-        import io
-
+        """Mesmo corpo JSON de `_refuse`, devolvido como arquivo."""
         body = json.dumps({"error": message}, ensure_ascii=False).encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        return io.BytesIO(body)
+        return self._head_file(code, "application/json; charset=utf-8", body)
 
     def __init__(self, *args, clip_roots=None, **kwargs):
         # Antes do `super().__init__`: a stdlib atende o pedido dentro do construtor.
@@ -322,40 +328,20 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
             self._refuse(500, f"Não consegui gravar as decisões: {exc.strerror or type(exc).__name__}.")
             return
         body = json.dumps({"path": str(path), "name": path.name}, ensure_ascii=False).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
+        self._send_headers(200, "application/json; charset=utf-8", body)
         self.wfile.write(body)
 
     def send_head(self):
-        import io
-
         if not self._local_request():
-            body = json.dumps(
-                {"error": "Pedido de outra origem; este servidor só atende esta máquina."},
-                ensure_ascii=False,
-            ).encode("utf-8")
-            self.send_response(403)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            return io.BytesIO(body)
+            return self._head_error(403, "Pedido de outra origem; este servidor só atende esta máquina.")
         if self.path.split("?")[0] == PING_PATH:
             # Identidade do servidor: é assim que `status`/`stop` sabem que o PID
             # gravado ainda é deste servidor, e não de um processo que reusou o número.
+            server = cast("_ExclusiveServer", self.server)
             body = json.dumps(
-                {
-                    "session": cast("_ExclusiveServer", self.server).session_id,
-                    "port": cast("_ExclusiveServer", self.server).server_address[1],
-                },
-                ensure_ascii=False,
+                {"session": server.session_id, "port": server.server_address[1]}, ensure_ascii=False
             ).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            return io.BytesIO(body)
+            return self._head_file(200, "application/json; charset=utf-8", body)
         # O token vive só na memória do servidor e na página servida por ele: quem
         # abrir o review.html direto do disco continua com o caminho do download.
         if self.path.split("?")[0] in ("/review.html", "/"):
@@ -365,11 +351,7 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
                 body = _inject_token(
                     page.read_text(encoding="utf-8"), cast("_ExclusiveServer", self.server).save_token or ""
                 ).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                return io.BytesIO(body)
+                return self._head_file(200, "text/html; charset=utf-8", body)
         path_only = self.path.split("?")[0]
         if not self._served_file_allowed(path_only):
             return self._head_error(404, "Não encontrado.")
@@ -578,7 +560,7 @@ def start(project, port: int = DEFAULT_PORT):
 
     Retorna (server, port). O chamador decide quando chamar `serve_forever()`/fechar.
     """
-    directory = Path(project).expanduser().resolve() / "brolls"
+    directory = _brolls(project)
     review = directory / "review.html"
     if not _paths.strict_is_file(review):
         where = labels.shown(review, project=project)
@@ -609,12 +591,9 @@ def run(project, port: int = DEFAULT_PORT) -> int:
         server, bound_port = start(project, port)
         starting.target = f"127.0.0.1:{bound_port}"
         starting.set(port=bound_port)
-    directory = Path(project).expanduser().resolve() / "brolls"
+    directory = _brolls(project)
     payload = {
-        "urls": [
-            f"http://localhost:{bound_port}/review.html",
-            f"http://127.0.0.1:{bound_port}/review.html",
-        ],
+        "urls": _urls(bound_port),
         "port": bound_port,
         "session": server.session_id,
         "directory": str(directory),
@@ -636,10 +615,12 @@ def run(project, port: int = DEFAULT_PORT) -> int:
 
 
 def _brolls(project):
+    """Pasta `brolls/` do projeto, já resolvida."""
     return Path(project).expanduser().resolve() / "brolls"
 
 
 def _urls(port):
+    """Endereços locais em que o `review.html` fica disponível nesta porta."""
     return [
         f"http://localhost:{port}/review.html",
         f"http://127.0.0.1:{port}/review.html",
@@ -651,7 +632,7 @@ def _windows():
     return _paths._os_name() == "nt"  # pylint: disable=protected-access
 
 
-def _alive(pid):  # noqa: PLR0911 - existing size; one early return per platform/liveness check outcome
+def _alive(pid):
     """O processo do PID file ainda existe? Somente leitura, e igual no Windows.
 
     `os.kill(pid, 0)` no Windows mataria o processo (a stdlib mapeia qualquer sinal
@@ -674,12 +655,8 @@ def _alive(pid):  # noqa: PLR0911 - existing size; one early return per platform
         return bool(ok) and code.value == 259  # noqa: PLR2004 - STILL_ACTIVE, a Windows API constant
     try:
         os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        # Um PID de outro dono nunca é o nosso servidor; quem confirma é o ping.
-        return False
     except OSError:
+        # Sem processo, ou um PID de outro dono (nunca o nosso servidor; quem confirma é o ping).
         return False
     return True
 
@@ -715,13 +692,32 @@ def _valid_ping_target(url):
     return parsed.scheme == "http" and parsed.hostname in ("127.0.0.1", "localhost")
 
 
+def _open_ping(url, *, timeout):
+    """Abre o ping sem seguir redirecionamento nem proxy: um 3xx vira `HTTPError` e o ping dá "não é nosso".
+
+    `ProxyHandler({})` ignora `HTTP_PROXY`/`http_proxy` do ambiente: o ping é de loopback, e um proxy que
+    respondesse no lugar do servidor faria `status` e `--stop` julgarem errado quem está na porta."""
+    import urllib.request
+
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        # pylint: disable-next=too-many-arguments,too-many-positional-arguments
+        def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ARG002, PLR0913, PLR0917
+            return None
+
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
+    with effects.op("net.get", url):  # `_ping` already pinned scheme+host via `_valid_ping_target`
+        return opener.open(url, timeout=timeout)
+
+
 def _ping(port, session, timeout=1.0):
     """O servidor desta porta é o da nossa sessão? Só uma leitura, nada é gravado.
 
     Sem isso, um PID reaproveitado pelo sistema apareceria como "rodando" — e um
     `--stop` mataria um processo inocente.
     """
-    if not port or not session or not isinstance(session, str):
+    # Porta é um `int` de verdade (nunca `bool`, texto ou float) dentro da faixa TCP: o PID file é lido do disco.
+    port_ok = not isinstance(port, bool) and isinstance(port, int) and 0 < port <= MAX_PORT
+    if not port_ok or not session or not isinstance(session, str):
         return False
     import urllib.error
 
@@ -729,8 +725,13 @@ def _ping(port, session, timeout=1.0):
     if not _valid_ping_target(url):
         return False
     try:
-        with effects.open_url(url, timeout=timeout) as response:  # `_valid_ping_target` above pins scheme+host
-            answer = json.loads(response.read().decode("utf-8"))
+        with _open_ping(url, timeout=timeout) as response:
+            answer = json.loads(response.read(4096).decode("utf-8"))  # o corpo do ping é minúsculo
+    except urllib.error.HTTPError as err:
+        # 3xx (não seguido) e 4xx seguram o socket: sem fechar, o 3.14 avisa `ResourceWarning`.
+        # Vem antes do `URLError` porque `HTTPError` é subclasse dele.
+        err.close()
+        return False
     except (OSError, ValueError, urllib.error.URLError):
         return False
     if not isinstance(answer, dict):
@@ -834,16 +835,16 @@ def state(project, timeout=PING_TIMEOUT_S):
     }
 
 
-def _payload_in(output: str) -> bool:
-    """A linha JSON com a porta já apareceu no log do servidor de fundo?"""
+def _payload_in(output: str) -> dict | None:
+    """A linha JSON com a porta, se já apareceu no log do servidor de fundo."""
     for line in output.splitlines():
         try:
             candidate = json.loads(line)
         except ValueError:
             continue
         if isinstance(candidate, dict) and candidate.get("port"):
-            return True
-    return False
+            return candidate
+    return None
 
 
 def _tail(output: str, lines: int = 20) -> str:
@@ -852,9 +853,7 @@ def _tail(output: str, lines: int = 20) -> str:
     return f"\n\nÚltimas linhas do log:\n{text}" if text else ""
 
 
-def start_background(  # noqa: C901 - existing size; spawns, waits for and validates the detached server
-    project, port: int = DEFAULT_PORT
-):
+def start_background(project, port: int = DEFAULT_PORT):
     """Sobe o servidor num processo solto e devolve as URLs quando ele já responde.
 
     Um subprocesso (nunca `fork`) mantém o mesmo comportamento no Windows: o filho
@@ -905,19 +904,12 @@ def start_background(  # noqa: C901 - existing size; spawns, waits for and valid
     deadline = time.monotonic() + BACKGROUND_TIMEOUT
     while time.monotonic() < deadline:
         output = log.read_text(encoding="utf-8", errors="replace")
-        if process.poll() is not None and not _payload_in(output):
+        payload = _payload_in(output)
+        if process.poll() is not None and not payload:
             raise ValueError(
                 "O servidor do Storyboard não subiu. Rode `serve` sem `--background` "
                 f"para ver o erro; a saída ficou em {labels.shown(log)}.{_tail(output)}"
             )
-        for line in output.splitlines():
-            try:
-                candidate = json.loads(line)
-            except ValueError:
-                continue
-            if isinstance(candidate, dict) and candidate.get("port"):
-                payload = candidate
-                break
         if payload:
             break
         time.sleep(0.05)

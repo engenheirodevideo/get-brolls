@@ -5,10 +5,8 @@
 # e `unused-argument` vêm de `_PinnedHTTPSHandler.https_open`/`connect_pinned`, que
 # seguem a assinatura fixa de `urllib.request`/`http.client`; `protected-access` é o
 # `_create_connection` interno de `HTTPSConnection`, trocado de propósito para pinar
-# o IP resolvido sem repetir a validação de TLS/hostname. O ciclo
-# (getbrolls.http <-> getbrolls.runtime) já existia antes da 2.6.0: `runtime.py`
-# importa `http.ProviderError` tardiamente (dentro de função) exatamente para
-# quebrar esse ciclo em tempo de execução.
+# o IP resolvido sem repetir a validação de TLS/hostname. `ProviderError` mora em `errors`
+# e continua acessível aqui (`http.ProviderError`, a mesma classe).
 
 import contextlib
 import email.utils
@@ -29,6 +27,7 @@ from pathlib import Path
 
 from . import __version__, effects, labels, logs
 from .config import cache_root
+from .errors import ProviderError
 from .runtime import record_warning, redact, secret_name, stderr_tail
 
 _logger = logs.get("http")
@@ -40,10 +39,6 @@ def _host_of(url):
         return urllib.parse.urlsplit(url).hostname or "-"
     except ValueError:
         return "-"
-
-
-class ProviderError(ValueError):
-    pass
 
 
 class DownloadTooLargeError(ProviderError):

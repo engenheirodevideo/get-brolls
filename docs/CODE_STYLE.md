@@ -28,6 +28,7 @@ A base é o [Google Python Style Guide](https://google.github.io/styleguide/pygu
 - **Tipos:** anotação obrigatória na API pública do SDK (`getbrolls.sdk`) e recomendada no resto; o `pyright` precisa passar.
 - **Recursos avançados:** sem metaclasse, sem mexer em `__dict__` alheio, sem `exec`. A exceção documentada é o loader de plugin, que existe para isso.
 - **Processos:** sempre lista de argv, sem `shell=True`, com timeout quando a espera puder travar, e um ambiente mínimo quando o processo não precisa do nosso.
+- **Imports entre módulos do pacote:** `scripts/getbrolls` é organizado em camadas (base, núcleo, serviços, contratos de plugin, domínio, anfitrião de plugin, funcionalidades, comandos, entrada). Um import de módulo aponta para a mesma camada ou para uma abaixo, e o grafo não tem ciclo. Subir de camada só vale dentro de função, como adiamento deliberado, e fica registrado com motivo na allowlist. `tests/test_import_rules.py` confere as regras com a tabela e a allowlist de `tests/import_rules/`: módulo novo entra em `layers.txt`, a allowlist e o catraca só diminuem, e dois módulos que se importam precisam estar em `pairs_accepted.txt`. Plugins importam só `getbrolls.sdk`, e `tests/test_sdk_surface_frozen.py` congela o que o SDK e a CLI expõem.
 
 ## Regras de estilo
 
@@ -70,8 +71,8 @@ Toda ação nova da CLI, ou flag nova de uma ação, passa por esta lista no mes
 
 1. `write_marks.MARKS` tem a marca dela (`L`, `0`, `G`, `OK`, `OK1` ou `P`); flag de modo (`--dry-run`) entra
    em `write_marks.MODE_FLAGS` pelo comando.
-2. `cli.SUMMARIES` descreve o comando; quem só lê entra em `runtime.READ_ONLY_COMMANDS` (ou
-   `READ_ONLY_ACTIONS`); `capabilities --json` mostra o que mudou.
+2. `cli.SUMMARIES` descreve o comando; quem só lê entra em `command_policy.READ_ONLY_COMMANDS` (ou
+   `READ_ONLY_ACTIONS`; o `runtime` só reexporta); `capabilities --json` mostra o que mudou.
 3. `tests/fixtures/cli_surface.json` regravado (`GB_UPDATE_CLI_SURFACE=1`) e o espelho da skill em
    sincronia (`python3 scripts/gen_skill_mirror.py --check`).
 4. `docs/CLI_CONTRACT.md`: nenhum `error_code` novo (são sete); recusa com motivo estável usa

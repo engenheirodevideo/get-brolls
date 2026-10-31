@@ -13,6 +13,8 @@ from typing import NamedTuple, NoReturn
 from urllib.parse import urlsplit
 
 from .. import __version__, _paths
+from ..errors import DataRootError
+from . import jsonschema, schemas
 from .contracts import CORE, NAME_RE, OFFICIAL_IDS, RESERVED_IDS, SDK_API, official_claim
 from .kinds import OFFICIAL_ONLY_SINGULAR, SUPPORTED_PLURAL, plural
 
@@ -99,7 +101,10 @@ BINARY_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}")
 SERVICE_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
 RUNTIME_RE = SERVICE_RE
 _DIST_NAME = r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?"
-_VERSION_CLAUSE = r"(?:>=|<=|==|>|<)\d+(?:\.\d+){0,2}"
+# Cada número de versão tem no máximo 9 dígitos: o `int()` de um número enorme (mais de 4300 dígitos) é
+# `ValueError` do Python, não `ManifestError`, e um manifesto não pode derrubar a carga dos outros.
+_VERSION_NUMBER = r"\d{1,9}"
+_VERSION_CLAUSE = rf"(?:>=|<=|==|>|<){_VERSION_NUMBER}(?:\.{_VERSION_NUMBER}){{0,2}}"
 # Requisito Python: nome da distribuição, extras opcionais e cláusulas na mesma
 # gramática de `requires_getbrolls` (sem marcadores, URLs nem caminhos).
 REQUIREMENT_RE = re.compile(
@@ -115,7 +120,7 @@ ENV_RE = re.compile(r"[A-Z][A-Z0-9_]{1,63}")
 PATH_MAX_CHARS = 4096
 NAME_MAX_CHARS = 80
 DESCRIPTION_MAX_CHARS = 500
-CLAUSE_RE = re.compile(r"\s*(>=|<=|==|>|<)\s*(\d+(?:\.\d+){0,2})\s*")
+CLAUSE_RE = re.compile(rf"\s*(>=|<=|==|>|<)\s*({_VERSION_NUMBER}(?:\.{_VERSION_NUMBER}){{0,2}})\s*")
 
 
 class ManifestError(ValueError):
@@ -533,6 +538,7 @@ def read_manifest(folder: Path, require_folder_match: bool = True, *, official: 
             _fail(ident, f"{field} ainda não é suportado nesta versão do SDK.")
     optional = _optional_fields(ident, raw)
     permissions = validate_permissions(ident, raw.get("permissions", {}))
+    _check_schema(ident, raw)
     return {
         "id": ident,
         "name": raw["name"].strip(),
@@ -547,6 +553,22 @@ def read_manifest(folder: Path, require_folder_match: bool = True, *, official: 
         "permissions": permissions,
         **optional,
     }
+
+
+def _check_schema(ident, raw):
+    """Confere o manifesto do `sdk_api` desta versão contra `schemas/plugin_manifest.schema.json`.
+
+    Roda depois das conferências do código, que dão as mensagens. Um manifesto de outro `sdk_api` não
+    passa por aqui: ele é lido e fica incompatível (`compatibility_problem`), a recusa de sempre. Sem a
+    pasta de dados, o plugin fica inválido com o motivo, nunca roda sem a conferência."""
+    if raw["sdk_api"] != SDK_API:
+        return
+    try:
+        problems = jsonschema.errors(raw, schemas.load("plugin_manifest"))
+    except DataRootError as exc:
+        _fail(ident, str(exc))
+    if problems:
+        _fail(ident, "fora do formato do manifesto: " + "; ".join(problems[:3]) + ".")
 
 
 def _as_tuple(text):

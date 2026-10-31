@@ -12,7 +12,7 @@ from _symlink import needs_symlink
 from test_sdk_install import InstallTestCase, write_plugin
 
 from getbrolls.sdk import install as install_mod
-from getbrolls.sdk import loader, remove
+from getbrolls.sdk import loader, remove, staging
 
 
 class RemoveTests(InstallTestCase):
@@ -82,10 +82,10 @@ class RemoveTests(InstallTestCase):
 
     def test_leftover_removed_dir_is_swept_not_restored(self):
         root = self.home / "plugins"
-        old = int(time.time()) - install_mod.STALE_STAGING_MAX_AGE_S - 10
+        old = int(time.time()) - staging.STALE_STAGING_MAX_AGE_S - 10
         leftover = write_plugin(root / f".removed-{old}-{uuid.uuid4().hex}")
         young = write_plugin(root / f".removed-{int(time.time())}-{uuid.uuid4().hex}")
-        install_mod._sweep_stale_staging()
+        staging._sweep_stale_staging()
         self.assertFalse(leftover.exists())
         self.assertTrue(young.exists())
         self.assertFalse((root / "demo").exists())

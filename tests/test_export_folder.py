@@ -176,7 +176,9 @@ class FailureAndSweepTests(FolderTestCase):
 
         with (
             mock.patch.object(Path, "unlink", autospec=True, side_effect=stubborn),
-            mock.patch.object(export_folder.delivery, "_freeze", wraps=export_folder.delivery._freeze) as freeze,
+            mock.patch.object(
+                export_folder.delivery_files, "_freeze", wraps=export_folder.delivery_files._freeze
+            ) as freeze,
             self.assertRaises(ValueError),
         ):
             self.export(place=place_then_fail)
@@ -375,7 +377,7 @@ class CrashSafeRemovalTests(FolderTestCase):
 
         with (
             mock.patch.object(Path, "unlink", autospec=True, side_effect=locked),
-            mock.patch.object(export_folder.delivery, "_thaw_unlink", side_effect=PermissionError("em uso")),
+            mock.patch.object(export_folder.delivery_sweep, "thaw_unlink", side_effect=PermissionError("em uso")),
             self.assertRaisesRegex(ValueError, "falhou depois de ligar o clipe"),
         ):
             self.export(place=place_then_fail)
@@ -410,7 +412,9 @@ class CrashSafeRemovalTests(FolderTestCase):
 
         with (
             mock.patch.object(Path, "unlink", autospec=True, side_effect=stubborn),
-            mock.patch.object(export_folder.delivery, "_freeze", wraps=export_folder.delivery._freeze) as freeze,
+            mock.patch.object(
+                export_folder.delivery_files, "_freeze", wraps=export_folder.delivery_files._freeze
+            ) as freeze,
         ):
             self.assertEqual([], export_folder.sweep_abandoned(self.root()))
         freeze.assert_called_once_with(str(self.clip), "hardlink")
@@ -427,8 +431,8 @@ class CrashSafeRemovalTests(FolderTestCase):
                 (staging / "assets" / "x.mp4").write_bytes(b"x")
                 with (
                     mock.patch.object(Path, "unlink", autospec=True, side_effect=[PermissionError("x"), None, None]),
-                    mock.patch.object(export_folder.delivery, "_thaw_unlink"),
-                    mock.patch.object(export_folder.delivery, "_freeze") as freeze,
+                    mock.patch.object(export_folder.delivery_sweep, "thaw_unlink"),
+                    mock.patch.object(export_folder.delivery_files, "_freeze") as freeze,
                 ):
                     export_folder.sweep_abandoned(self.root())
                 freeze.assert_not_called()

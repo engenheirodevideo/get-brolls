@@ -87,7 +87,7 @@ O caminho em cada campo é o do JSON da saída (`[]` é cada item de uma lista);
 | `client list` | `clients[].root` |
 | `client show` | `client.root` |
 | `deliver` | `delivery`, `readme` |
-| `doctor` | `install.app_log`, `install.env_file.path`, `install.env_file.searched[]`, `install.gb_home`, `install.profile.trust_file`, `install.profile.values.cache_dir.value`, `install.profile.values.home.value`, `install.profile.values.runtime_dir.value`, `install.runtime.tools.path`, `install.runtime.venv.path` |
+| `doctor` | `install.app_log`, `install.env_file.path`, `install.env_file.searched[]`, `install.gb_home`, `install.profile.trust_file`, `install.profile.values.cache_dir.value`, `install.profile.values.home.value`, `install.profile.values.runtime_dir.value`, `install.runtime.tools.path`, `install.runtime.venv.path`, `venv.path`, `venv.python` |
 | `fetch` | `local_path` |
 | `import-review` | `file`, `review` |
 | `init` | `project`, `summary.do.command` |
@@ -148,7 +148,7 @@ versão minor.
 | `error_code` | Saída | Origem |
 |---|---|---|
 | `INVALID_DATA` | `1` | Qualquer erro de dados ou de operação (`ValueError` depois do parse), inclusive de comando de plugin e de exportador. É o padrão para o que não é dos outros códigos. |
-| `IO_ERROR` | `1` | Erro do sistema de arquivos ou de rede (`OSError`): permissão, disco, arquivo que sumiu. Também um `.env` que existe mas não abre (sem permissão de leitura) ou uma pasta sem permissão no caminho do perfil ou do `$GB_HOME`, antes de o comando começar. |
+| `IO_ERROR` | `1` | Erro do sistema de arquivos ou de rede (`OSError`): permissão, disco, arquivo que sumiu. Também um `.env` que existe mas não abre (sem permissão de leitura) ou uma pasta sem permissão no caminho do perfil ou do `$GB_HOME`, antes de o comando começar. Também um `plugins.json` ou um `marketplaces.json` que não dá para ler (sem permissão, ou uma pasta, um FIFO ou um dispositivo no lugar do arquivo): a mensagem diz "não é um arquivo comum" ou o motivo do sistema, não manda apagar nada, e o arquivo pode estar certo. Conteúdo ruim (JSON quebrado, fora do schema) continua `INVALID_DATA`. `plugins --action marketplace-*`, `search` e `install --id <id>@<marketplace>` recusam com `IO_ERROR`; `capabilities` e `doctor` seguem e relatam o motivo em `marketplaces_error`; `plugins --action update --all` segue como prévia e põe o plugin daquele marketplace em `skipped`, com o mesmo motivo. |
 | `LOCKED` | `1` | Outro processo segura uma trava: a do projeto (`brolls/.command.lock`), a de `analysis/`, a do runtime (`setup`, `.getbrolls-setup.lock`), a dos plugins (`$GB_HOME/.plugins.lock`), a dos clientes (`$GB_HOME/.clients.lock`), a das receitas de um cliente (`recipes/.lock`), a dos perfis confiáveis (`$GB_HOME/trusted-profiles.json.lock`) ou a do índice da biblioteca pessoal (`$GB_HOME/library/index.lock`). Repetir depois resolve. |
 | `USAGE_ERROR` | `2` | Erro do argparse ou `UsageError` explícito (`.env` recusado, perfil não confiável, combinação de flags inválida). |
 | `INTERNAL_ERROR` | `3` | Dentro de um comando, qualquer exceção que não seja `ValueError`, `OSError` nem `OverflowError` (`KeyError`, `IndexError`, `TypeError`, `AttributeError`, `RuntimeError`…); fora dele, qualquer exceção: assinatura de bug. |
@@ -251,6 +251,15 @@ segura a fila é ritmo; uma parada por recusa nunca traz horário, porque espera
 | `active` | Já há um item entregue esperando `mark`. | Feche o item com `mark`. |
 | `empty` | Nada pendente. Um provedor parado sem pendentes também dá `empty`; com pendentes, `next` recusa (veja abaixo). | Nada a esperar. |
 
+`queue --action next` com um `RULES.md` inválido (ou ilegível) recusa: sai com `1`, `error_code` `INVALID_DATA`, e nenhum
+item é entregue, porque o ritmo do `RULES.md` não pode virar o padrão mais rápido em silêncio. Sem `RULES.md` o ritmo
+padrão vale, como sempre. `status`, `queue add`, `queue mark`, `queue resume` e `queue status` seguem com o aviso
+`RULES_UNAVAILABLE`.
+
+Um `work/queue.json` com `providers.<provedor>` que não é objeto, um `cooldown_strikes` que não é inteiro ou um
+timestamp sem fuso horário é fila inválida em todos os comandos da fila: `INVALID_DATA`, saída `1` (em `status`, o
+campo `queue.error`, com saída `0`).
+
 `mark --failed` e `mark --skipped` leem o `--reason` em texto livre e o põem em um de três tipos. Uma recusa
 vence uma palavra de limite no mesmo texto: um 403 de causa desconhecida não vira "espere e volte".
 
@@ -310,6 +319,19 @@ O `oe` é o instante de validade em hexadecimal, em segundos Unix. A expiração
 recusa, e a conclusão é parar e diagnosticar. Nenhum `error_code` nem
 `reason_code` novo.
 
+O coletor com `--project` consulta a fila antes de cada pedido, não só no início: uma parada **ou um cooldown em
+vigor** gravado por outro processo, mesmo no meio do lote, o faz terminar (saída `1`, o resto `skipped` com motivo
+`aborted` para a parada e `cooldown` para o cooldown; `stopped_by` `cooldown` neste caso). Uma fila ilegível, ou o
+módulo da fila indisponível, também recusa: sem saber, não se pede. O `curl` do coletor não tenta de novo
+(sem `--retry`): um 429 custa um pedido por item, não três.
+
+O resumo do lote (`--summary-json` e o JSON impresso) ganha o booleano `refusal_not_recorded`. Fica `true` quando um
+401/403/429 não pôde ser gravado em `work/queue.json`, porque outro comando segurava a trava do projeto por mais de
+5 s ou porque a gravação falhou (qualquer erro do sistema: disco cheio, pasta só de leitura, arquivo preso por outro
+programa); o lote então termina com saída `1`, a mensagem diz que a recusa não foi registrada e o próximo lote não saberá dela
+(confirme a fila com a pessoa antes de repetir). Sem esse problema o campo é `false`. Nenhum `error_code` nem
+`reason_code` novo.
+
 ## Avisos (`warnings`)
 
 Um aviso é um objeto `{"code": "<CÓDIGO>", "message": "<texto para a pessoa>"}` na
@@ -355,7 +377,7 @@ que a pessoa ou o agente deveria saber. O `getbrolls.log` registra só o código
 | `RECOVERED_WRITE` | Uma gravação interrompida foi retomada antes do comando. |
 | `REFERENCE_POSTER_MISSING` | A referência ficou sem imagem de cartaz. |
 | `RULES_LAYER_IGNORED` | Uma camada do `RULES.md` foi ignorada. |
-| `RULES_UNAVAILABLE` | `queue` seguiu sem o `RULES.md` para o ritmo. |
+| `RULES_UNAVAILABLE` | `queue` (`add`, `mark`, `resume`, `status`) seguiu sem o `RULES.md` para o ritmo; `queue next` recusa (veja "Fila"). |
 | `SOURCE_CACHE_STALE` | O cache de fonte de um candidato tem sha divergente e não foi reutilizado. |
 | `SOURCE_INDEX_UNREADABLE` | O índice de fontes privadas estava ilegível e foi tratado como vazio. |
 | `YTDLP_WARNING` | Aviso repassado do yt-dlp. |
@@ -447,6 +469,37 @@ que já traziam `ms` (`command_end`, `request`, `subprocess`, `fetch`, `setup_*`
 fica como está; a linha sem tempo nenhum não ganha o campo. `command_end` ganha também `outcome`
 (`ok`/`error`), ao lado do `status` de sempre, e `reason` quando o erro traz `reason_code`. `command` é o comando da CLI, também nas linhas
 que o servidor do `serve` grava (`command=serve`).
+
+## Linhas `event=library` e `event=library_lock`
+
+A biblioteca pessoal (`$GB_HOME/library`) deixa duas linhas próprias no `getbrolls.log` do
+comando (o do projeto ou o da instalação), com a mesma redação e rotação das outras. Elas
+não trazem termo de busca, nota, cliente nem caminho.
+
+`event=library` (nível INFO) sai uma vez por uso da biblioteca:
+
+| Campo | O que traz |
+|---|---|
+| `action` | `learn` (as três formas de `learn` e a busca sem resultado que o `search` guarda sozinho), `search` (`library --search`) ou `hints` (as pistas `library_hints` que o `search` anexa). |
+| `entries` | Quantas entradas foram gravadas (`learn`: `1`) ou devolvidas (`search`: assets, buscas e preferências somados; `hints`: o número de pistas). `0` com a biblioteca desligada. |
+| `disabled` | `True` quando `GB_LIBRARY=off` desligou a biblioteca e nada foi lido nem gravado; `False` no uso normal. |
+
+`event=library_lock` descreve a trava do índice (`$GB_HOME/library/index.lock`). Só o caso
+normal tem nível DEBUG; o resto é aviso que merece olhar:
+
+| Campo | Nível | Quando sai |
+|---|---|---|
+| `waited_ms`, `timeout=False` | DEBUG | A trava foi tomada; `waited_ms` é a espera (e `duration_ms` repete o valor). |
+| `waited_ms`, `timeout=True` | WARNING | Passaram 10 s sem conseguir a trava: o comando termina com `LOCKED`. |
+| `stale_swept` | INFO | Quantas sobras `index.lock.stale.*` com mais de 2 minutos foram limpas por quem tinha a trava. |
+| `foreign_lock_kept` | WARNING | Na hora de soltar, o arquivo no nome já era a trava de outro processo; foi deixado como está. |
+| `fresh_lock_kept` | WARNING | Ao assumir uma trava velha, a de outro processo, nova, tinha sido tirada por engano e outro processo já pegou o nome: a nova dele fica onde está. Traz `reason`. |
+| `fresh_lock_restored` | WARNING | A trava nova de outro processo voltou ao nome, recriada com a mesma idade (sistema sem hardlink). Traz `reason`. |
+| `fresh_lock_aside` | WARNING | A trava nova de outro processo não pôde voltar e ficou de lado; o comando recusa com `LOCKED` em vez de entrar junto. Traz `reason`. |
+
+`reason` é a descrição curta do erro do sistema, sem caminho. Trava ocupada por mais de
+10 s: espere a outra execução terminar e repita; só apague o `index.lock` se nenhuma
+execução estiver em andamento.
 
 ## O que só lê
 
@@ -549,12 +602,17 @@ máquina. Chaves do topo:
 | `plugin_commands` | Comandos de plugin habilitado: `plugin`, `command`, `status`, `argv`. |
 | `plugins_problems` | Plugin que não está habilitado nem desligado de propósito (inválido, com falha, suspenso…), com `status` e `reason`. |
 | `plugins_error` | Só quando o inventário de plugins não pôde ser lido. |
-| `marketplaces` | Marketplaces fixados: nome, commit do índice, quantos plugins, `allowed` pelo perfil e um eventual problema do cache. |
+| `marketplaces` | Marketplaces fixados: nome, commit do índice, quantos plugins, `allowed` pelo perfil, `official` (se é o índice oficial) e um eventual problema do cache. |
 | `marketplaces_error` | Só quando `$GB_HOME/marketplaces.json` não pôde ser lido. |
 | `environments` | As pontes de ambiente que vêm com o getbrolls (hoje `hyperframes`): `id`, `version`, `kind` (`bridge`), `readback` (`files`), `origin` (`official`), `sha256` (o pin do core) e `status`; a mesma lista de `environment --action list`, sem o motivo. |
 
 `capabilities` só acrescenta chaves; uma chave existente não muda de sentido sem
 subir `schema_version`.
+
+Sem os arquivos de dados da instalação (schemas, plugins oficiais), `capabilities`
+não tem o que descrever: sai com `4` e `error_code: "PREREQUISITE_MISSING"`, como
+os outros comandos. `doctor` continua respondendo e diz o que reinstalar.
+Com uma venv em uso (`GB_VENV_PATH`, `GB_RUNTIME_DIR`) e sem esses arquivos, o bloco `venv` do `doctor` traz `status: "skipped"` e `reason: "install_data_missing"`: sem os pinos não há o que comparar, e o item "dados da instalação" de `summary.missing` é quem manda.
 
 ## Variáveis de ambiente
 
@@ -576,6 +634,7 @@ ambiente do processo, em deprecação). No `.env`, só o nome `GB_*` é aceito.
 | `GB_PREVIEW_MODE`, `GB_GIF_SCOPE`, `GB_GIF_WIDTH`, `GB_GIF_FPS`, `GB_GIF_COLORS`, `GB_GIF_MAX_MB`, `GB_PREVIEW_MAX_SECONDS`, `GB_SCAN_MAX_SECONDS`, `GB_STATIC_FRAMES` | Prévias. |
 | `GB_FONT_FILE` | Fonte TrueType dos rótulos do contact sheet. |
 | `GB_PACE_MIN_S`, `GB_PACE_MAX_S`, `GB_MAX_PER_HOUR`, `GB_MAX_PER_DAY`, `GB_YTDLP_SLEEP` | Ritmo da fila social e pausas do yt-dlp. |
+| `GB_LOCK_WAIT_S` | Segundos que um comando espera o projeto ocupado por outro antes de `LOCKED` (0 a 3600; padrão 0, recusa na hora). |
 | `GB_DELIVERY_COPY` | `1` faz o `deliver` copiar em vez de criar hardlink. |
 | `GB_LOG_LEVEL` | Nível do `getbrolls.log` do projeto e da instalação (`DEBUG`, `INFO`, `WARNING`, `ERROR` ou `off`). |
 | `GB_LOG_STDERR` | `1` espelha o `getbrolls.log` no stderr. |

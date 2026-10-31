@@ -39,15 +39,15 @@ class TempProject(unittest.TestCase):
 
 class ReadSchemaTests(unittest.TestCase):
     def test_declared_version_is_returned(self):
-        self.assertEqual(1, versioning.read_schema({"schema": "getbrolls.project/1"}, "project"))
+        self.assertEqual(1, versioning.read_schema({"schema": "getbrolls.project/1"}, "project", 1))
         self.assertEqual(2, versioning.read_schema({"schema": "getbrolls.project/2"}, "project", supported=2))
 
     def test_absent_means_one(self):
-        self.assertEqual(1, versioning.read_schema({}, "project"))
+        self.assertEqual(1, versioning.read_schema({}, "project", 1))
 
     def test_newer_is_refused_with_the_standard_phrase(self):
         with self.assertRaises(ValueError) as ctx:
-            versioning.read_schema({"schema": "getbrolls.project/2"}, "project", label="project.json")
+            versioning.read_schema({"schema": "getbrolls.project/2"}, "project", 1, label="project.json")
         self.assertEqual(
             "project.json foi gravado por uma versão mais nova do getbrolls (schema getbrolls.project/2); "
             "atualize antes de continuar.",
@@ -57,7 +57,7 @@ class ReadSchemaTests(unittest.TestCase):
     def test_other_family_or_malformed_is_invalid_not_newer(self):
         for bad in ("getbrolls.client/1", "getbrolls.project/0", "getbrolls.project/01", "project/1", 1, None, True):
             with self.subTest(value=bad), self.assertRaises(ValueError) as ctx:
-                versioning.read_schema({"schema": bad}, "project", label="project.json")
+                versioning.read_schema({"schema": bad}, "project", 1, label="project.json")
             self.assertIn("project.json é incompatível", str(ctx.exception))
             self.assertNotIn(NEWER, str(ctx.exception))
 
@@ -66,18 +66,18 @@ class ReadSchemaTests(unittest.TestCase):
             pass
 
         with self.assertRaises(ValueError) as ctx:
-            versioning.read_schema({"schema": "getbrolls.client/1"}, "project", invalid="mensagem própria")
+            versioning.read_schema({"schema": "getbrolls.client/1"}, "project", 1, invalid="mensagem própria")
         self.assertEqual("mensagem própria", str(ctx.exception))
         with self.assertRaises(OwnError):
-            versioning.read_schema({"schema": "getbrolls.client/1"}, "project", invalid=lambda: OwnError("x"))
+            versioning.read_schema({"schema": "getbrolls.client/1"}, "project", 1, invalid=lambda: OwnError("x"))
         with self.assertRaises(ValueError) as ctx:
-            versioning.read_schema({"schema": "getbrolls.project/2"}, "project", invalid=lambda: OwnError("x"))
+            versioning.read_schema({"schema": "getbrolls.project/2"}, "project", 1, invalid=lambda: OwnError("x"))
         self.assertNotIsInstance(ctx.exception, OwnError)
         self.assertIn(NEWER, str(ctx.exception))
 
     def test_stamp_schema_puts_the_field_first_and_copies(self):
         data = {"id": "x", "schema": "velho"}
-        stamped = versioning.stamp_schema(data, "project")
+        stamped = versioning.stamp_schema(data, "project", 1)
         self.assertEqual(["schema", "id"], list(stamped))
         self.assertEqual("getbrolls.project/1", stamped["schema"])
         self.assertEqual("velho", data["schema"])
@@ -266,7 +266,10 @@ class SchemaFileTests(unittest.TestCase):
         check_schema(schema)
         self.assertEqual(schema, schemas.load("project"))
         self.assertIn("project", schemas.NAMES)
-        self.assertEqual({"const": layout.PROJECT_SCHEMA}, schema["properties"]["schema"])
+        self.assertEqual(
+            {"const": f"getbrolls.{layout.PROJECT_FAMILY}/{schemas.version(layout.PROJECT_FAMILY)}"},
+            schema["properties"]["schema"],
+        )
         self.assertEqual({"enum": [1]}, schema["properties"]["layout"])
 
     def test_schema_is_shipped_as_package_data(self):

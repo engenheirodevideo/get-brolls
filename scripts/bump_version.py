@@ -101,23 +101,22 @@ def _write_init(root: Path, version: str, _date_str: str) -> None:
     _write(path, new_text)
 
 
-# -- package.json ---------------------------------------------------------
+# -- package.json and .claude-plugin/plugin.json: a top-level "version" ------
 
 
-def _package_json_path(root: Path) -> Path:
-    return root / "package.json"
+def _json_version_target(rel: str) -> Target:
+    """Alvo de um JSON cujo `version` de nível superior é a versão do produto."""
 
+    def check(root: Path, version: str) -> bool:
+        return json.loads(_read(root / rel)).get("version") == version
 
-def _check_package_json(root: Path, version: str) -> bool:
-    data = json.loads(_read(_package_json_path(root)))
-    return data.get("version") == version
+    def write(root: Path, version: str, _date_str: str) -> None:
+        path = root / rel
+        data = json.loads(_read(path))
+        data["version"] = version
+        _write(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
-
-def _write_package_json(root: Path, version: str, _date_str: str) -> None:
-    path = _package_json_path(root)
-    data = json.loads(_read(path))
-    data["version"] = version
-    _write(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    return Target(rel, check, write)
 
 
 # -- package-lock.json ------------------------------------------------
@@ -140,25 +139,6 @@ def _write_package_lock(root: Path, version: str, _date_str: str) -> None:
     data["version"] = version
     if "" in data.get("packages", {}):
         data["packages"][""]["version"] = version
-    _write(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
-
-
-# -- .claude-plugin/plugin.json ----------------------------------------
-
-
-def _plugin_json_path(root: Path) -> Path:
-    return root / ".claude-plugin" / "plugin.json"
-
-
-def _check_plugin_json(root: Path, version: str) -> bool:
-    data = json.loads(_read(_plugin_json_path(root)))
-    return data.get("version") == version
-
-
-def _write_plugin_json(root: Path, version: str, _date_str: str) -> None:
-    path = _plugin_json_path(root)
-    data = json.loads(_read(path))
-    data["version"] = version
     _write(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
 
@@ -466,9 +446,9 @@ def pins_targets(root: Path) -> list[Target]:
 
 TARGETS: list[Target] = [
     Target("scripts/getbrolls/__init__.py", _check_init, _write_init),
-    Target("package.json", _check_package_json, _write_package_json),
+    _json_version_target("package.json"),
     Target("package-lock.json", _check_package_lock, _write_package_lock),
-    Target(".claude-plugin/plugin.json", _check_plugin_json, _write_plugin_json),
+    _json_version_target(".claude-plugin/plugin.json"),
     Target(
         ".claude-plugin/marketplace.json",
         _check_marketplace_json,

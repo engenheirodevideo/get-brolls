@@ -36,9 +36,6 @@ ASSET_FOLDERS = ("marca", "lettering", "sfx", "musica", "imagem", "composicao", 
 PROJECT_FOLDERS = ("aroll", *(f"assets/{name}" for name in ASSET_FOLDERS), "broll", "analysis")
 PROJECT_FILE = "project.json"
 PROJECT_FAMILY = "project"
-PROJECT_SCHEMA = versioning.schema_name(PROJECT_FAMILY, 1)
-SUPPORTED_SCHEMA = 1
-LAYOUT_VERSION = 1
 _CANVAS = re.compile(r"([0-9]+)x([0-9]+)")
 _FPS = re.compile(r"([0-9]+)(?:/([0-9]+))?")
 
@@ -136,7 +133,7 @@ def validate_project(doc):
         raise ValueError(  # noqa: TRY004 - contrato da CLI: dado inválido é ValueError (INVALID_DATA)
             f"{PROJECT_FILE} é incompatível: tem que ser um objeto JSON."
         )
-    versioning.read_schema(doc, PROJECT_FAMILY, SUPPORTED_SCHEMA, label=PROJECT_FILE)
+    versioning.read_schema(doc, PROJECT_FAMILY, schemas.version(PROJECT_FAMILY), label=PROJECT_FILE)
     if "template" in doc:
         raise TemplateKeyError(recipe_key="recipe" in doc, recipe_set=doc.get("recipe") is not None)
     _check_pair(doc, "canvas", ("width", "height"))
@@ -339,7 +336,7 @@ def new_project_doc(*, project_id=None, client=None, recipe=None, canvas=None, f
     doc = versioning.stamp_schema(
         {
             "id": project_id or str(uuid.uuid4()),
-            "layout": LAYOUT_VERSION,
+            "layout": schemas.version(PROJECT_FAMILY, "layout"),
             "client": check_client(client),
             "recipe": recipe,
             "canvas": canvas,
@@ -348,6 +345,7 @@ def new_project_doc(*, project_id=None, client=None, recipe=None, canvas=None, f
             "ext": {},
         },
         PROJECT_FAMILY,
+        schemas.version(PROJECT_FAMILY),
     )
     return validate_project(doc)
 

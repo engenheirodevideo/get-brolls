@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Thin wrapper: confere o sistema e chama `gb.py setup`, que instala em $GB_HOME/runtime/<versão>/ (ou GB_RUNTIME_DIR).
 # Dependencies are installed from PyPI/npm on the recipient's computer, never vendored; `setup` installs the
-# Python ones with --require-hashes (every file must match a sha256 listed in requirements.txt).
+# Python ones with --require-hashes (every file must match a sha256 listed in the requirements files).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 case "${1:-}" in ''|--check) ;; *) printf 'Uso: bash scripts/install.sh [--check]\n'; exit 2;; esac

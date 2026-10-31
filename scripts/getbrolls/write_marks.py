@@ -14,7 +14,7 @@ LEVELS = ("L", "0", "G", "OK", "OK1", "P")
 # Flags de modo: cada uma é uma ação com a própria marca (`setup --check|--where` × `setup`).
 # `--dry-run` é `L` no sentido do contrato: não grava dado nem estado. A trava, o `getbrolls.log` e o
 # `diagnostics.jsonl` do projeto continuam sendo escritos, como em qualquer comando que não está em
-# `runtime.READ_ONLY_*`. `serve --background|--stop` grava `brolls/.serve.pid` e `.serve.log`.
+# `command_policy.READ_ONLY_*`. `serve --background|--stop` grava `brolls/.serve.pid` e `.serve.log`.
 MODE_FLAGS = {
     "setup": ("--check", "--where"),
     "serve": ("--background", "--stop"),
@@ -33,7 +33,7 @@ MARKS: dict[tuple[str, str | None], str] = {
     ("brief", None): "L",
     # O PRD §2 K lista o `browser-plan` como só leitura; a marca segue o comportamento real: ele toma a trava
     # e grava `brolls/` (`.command.lock`, `manifest.json`, `events.jsonl`, `getbrolls.log`, `candidates/`,
-    # `previews/`, `clips/`) e `output/playwright/`. Por isso também não está em `runtime.READ_ONLY_COMMANDS`.
+    # `previews/`, `clips/`) e `output/playwright/`. Por isso também não está em `command_policy.READ_ONLY_COMMANDS`.
     ("browser-plan", None): "G",
     ("capabilities", None): "L",
     ("client", "add"): "OK1",

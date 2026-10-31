@@ -381,8 +381,9 @@ def metadata(url):
     try:
         data = json.loads(raw)
     except ValueError:
-        return {}
+        data = None
     if not isinstance(data, dict):
+        record_warning("YTDLP_WARNING", "metadados não vieram desta página: o yt-dlp devolveu metadados inválidos.")
         return {}
     duration = data.get("duration")
     # `uploader_id` do TikTok já vem como `@handle`; o do YouTube é o id do canal.

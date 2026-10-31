@@ -30,7 +30,7 @@
    "bytes": 374,
    "lines": [
     "{",
-    "  \"schema_version\": 1,",
+    "  \"schema_version\": 2,",
     "  \"assets\": [],",
     "  \"queries\": [",
     "    {",
@@ -54,7 +54,7 @@
     "  \"preferences\": []",
     "}"
    ],
-   "sha256": "ca892b1a09a3f380a90b641711e4bed22a711ec80ae8e16c3ede0c116133a134"
+   "sha256": "7ea1312f8558db425286e2be7dd7d631989f90642d5f6ae57c7ec30e2332c87c"
   }
  },
  "stderr": null,

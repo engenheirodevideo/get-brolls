@@ -31,6 +31,29 @@ def review_hash(doc, project):
     return digest({"v": HASH_VERSION, "meta": meta, "scenes": scenes})
 
 
+BOM = "\ufeff"
+
+
+def file_form(path):
+    """`(bom, eol)` do arquivo da pessoa: se começa com BOM e o fim de linha que ele usa (`\\r\\n` se a maioria for).
+
+    Só lê. Arquivo ilegível ou ainda inexistente vale `(False, "\\n")`, o formato do gerador.
+    """
+    try:
+        raw = Path(path).read_bytes()
+    except OSError:  # no file to imitate: the generator's own format
+        return False, "\n"
+    crlf = raw.count(b"\r\n")
+    return raw.startswith(BOM.encode()), "\r\n" if crlf * 2 > raw.count(b"\n") else "\n"
+
+
+def in_form(text, form):
+    """`text` com o BOM e o fim de linha de `form` (`file_form`): o arquivo regravado fica como a pessoa o deixou."""
+    bom, eol = form
+    body = text.removeprefix(BOM).replace("\r\n", "\n")
+    return (BOM if bom else "") + (body.replace("\n", eol) if eol != "\n" else body)
+
+
 def set_status(text, status):
     """Troca (ou insere) `status:` no frontmatter; os limites vêm do próprio `parse_frontmatter`."""
     if status not in STATUSES:
@@ -97,7 +120,9 @@ def review_state(project, doc):
     current = review_hash(doc, project)
     path = reviews_path(project)
     if strict_is_file(path):
-        for raw in reversed(path.read_text(encoding="utf-8").splitlines()):
+        # `split("\n")`, não `splitlines()`: o autor grava com `ensure_ascii=False` uma linha por `\n`, e
+        # `splitlines()` quebraria também em U+2028/U+0085 dentro da frase da pessoa.
+        for raw in reversed(path.read_text(encoding="utf-8").split("\n")):
             try:
                 entry = json.loads(raw)
             except json.JSONDecodeError:

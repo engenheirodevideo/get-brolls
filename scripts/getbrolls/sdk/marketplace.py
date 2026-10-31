@@ -21,6 +21,7 @@ teto não pode ser adicionado nem atualizado por nome, some de `pinned_indexes` 
 `search`, e aparece com `allowed: false` no `marketplace-list`.
 """
 
+import errno
 import hashlib
 import json
 import logging
@@ -31,11 +32,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
 
-from .. import _paths, effects, labels, logs, versioning
+from .. import _paths, effects, json_read, labels, logs, versioning
 from ..errors import UsageError
 from ..rules import home_dir
 from ..runtime import force_rmtree, record_warning, scrub_home, usage_errors
-from . import git_source, install, loader
+from . import git_source, install, jsonschema, loader, schemas
 from .files import is_link
 from .guard import plain_line
 from .marketplace_index import (
@@ -52,9 +53,11 @@ from .marketplace_index import (
 _log = logs.get("sdk")
 
 STATE_FAMILY = "marketplaces"
-STATE_VERSION = 1
 STATE_NAME = "marketplaces.json"
 CACHE_DIRNAME = "marketplaces"
+# Teto de leitura do marketplaces.json: cada marketplace ocupa umas centenas de bytes, então milhares
+# cabem com folga em 1 MiB, bem abaixo do teto padrão do `json_read` (o pior caso de memória cai junto).
+STATE_MAX_BYTES = 1024 * 1024
 RECORD_KEYS = ("source", "ref", "commit", "index_sha256", "added_at", "updated_at")
 REMOVE_NOTE = (
     "Os plugins já instalados deste marketplace continuam instalados e habilitados; "
@@ -156,8 +159,12 @@ def cache_path(name: str) -> Path:
     return home_dir() / CACHE_DIRNAME / name / INDEX_NAME
 
 
+def _state_schema():
+    return versioning.schema_name(STATE_FAMILY, schemas.version(STATE_FAMILY))
+
+
 def _empty_state():
-    return {"schema": versioning.schema_name(STATE_FAMILY, STATE_VERSION), "marketplaces": {}}
+    return {"schema": _state_schema(), "marketplaces": {}}
 
 
 def _valid_record(record):
@@ -184,7 +191,10 @@ def _valid_name(name):
 
 
 def read_state() -> dict:
-    """`marketplaces.json` como dict (vazio sem arquivo); inválido vira `ValueError`."""
+    """`marketplaces.json` como dict (vazio sem arquivo); conteúdo inválido vira `ValueError`.
+
+    Arquivo que não dá para ler (sem permissão, disco) e pasta, FIFO ou dispositivo no lugar dele são
+    `OSError` (IO_ERROR), sem travar num FIFO: o arquivo pode estar certo, e a recusa não manda apagá-lo."""
     path = state_path()
     if not _paths.strict_exists(path):
         return _empty_state()
@@ -193,15 +203,23 @@ def read_state() -> dict:
         "marketplaces."
     )
     try:
-        data = json.loads(path.read_bytes().decode("utf-8"))
-    except (ValueError, UnicodeDecodeError, OSError, RecursionError):
+        data = json_read.read(path, max_bytes=STATE_MAX_BYTES)
+    except json_read.JsonReadError as exc:
+        if exc.reason == "not_regular":
+            raise _refused(
+                "state", "state_unreadable", OSError(errno.EINVAL, "não é um arquivo comum", str(path))
+            ) from None
         raise _refused("state", "state_invalid", ValueError(invalid)) from None
+    except OSError as exc:
+        raise _refused("state", "state_unreadable", exc) from None
     if not isinstance(data, dict) or set(data) != {"schema", "marketplaces"}:
         raise _refused("state", "state_invalid", ValueError(invalid))
-    versioning.read_schema(data, STATE_FAMILY, STATE_VERSION, label=STATE_NAME, invalid=invalid)
+    versioning.read_schema(data, STATE_FAMILY, schemas.version(STATE_FAMILY), label=STATE_NAME, invalid=invalid)
     markets = data["marketplaces"]
-    if not isinstance(markets, dict) or not all(
-        _valid_name(name) and _valid_record(record) for name, record in markets.items()
+    if (
+        not isinstance(markets, dict)
+        or not all(_valid_name(name) and _valid_record(record) for name, record in markets.items())
+        or jsonschema.errors(data, schemas.load(STATE_FAMILY))
     ):
         raise _refused("state", "state_invalid", ValueError(invalid))
     return data
@@ -210,7 +228,7 @@ def read_state() -> dict:
 def _write_state(data):
     effects.mkdir(home_dir(), parents=True, exist_ok=True)
     ordered = {
-        "schema": versioning.schema_name(STATE_FAMILY, STATE_VERSION),
+        "schema": _state_schema(),
         "marketplaces": dict(sorted(data["marketplaces"].items())),
     }
     _atomic_write_bytes(state_path(), (json.dumps(ordered, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
@@ -330,12 +348,12 @@ def is_official(name: str, source: str | None) -> bool:
 
 
 def official_marketplace(name: str | None) -> bool:
-    """`name` é um marketplace gravado aqui que é o índice oficial? Estado ilegível vale `False`."""
+    """`name` é um marketplace gravado aqui que é o índice oficial? Estado inválido ou ilegível vale `False`."""
     if not name:
         return False
     try:
         record = read_state()["marketplaces"].get(name)
-    except ValueError:
+    except (ValueError, OSError):
         return False
     return record is not None and is_official(name, record["source"])
 
@@ -507,7 +525,8 @@ def listing() -> dict:
 
 def summary() -> list[dict]:
     """`[{name, commit, plugins, allowed, problem}]` em ordem de nome, sem rede e sem caminho
-    da máquina (para `capabilities` e `doctor`). Só levanta `ValueError` (estado ilegível)."""
+    da máquina (para `capabilities` e `doctor`). Levanta `ValueError` (estado inválido) ou `OSError`
+    (estado que não dá para ler)."""
     rows = [
         {key: row[key] for key in ("name", "commit", "plugins", "allowed", "official", "problem")}
         for row in listing()["marketplaces"]
@@ -767,12 +786,14 @@ def refresh(name: str | None = None, commit: str | None = None, allow_rollback: 
         try:
             with logs.handled():
                 results.append(_refresh_one(state, current, None, allow_rollback))
-        except ValueError as exc:
+        except (ValueError, OSError) as exc:
+            # Um disco que não grava o cache de um marketplace também não para os outros.
             failed.append(current)
             logs.event(
                 _log, logging.WARNING, "marketplace_update_failed", marketplace=current, error=type(exc).__name__
             )
-            results.append({"name": current, "allowed": True, "changed": False, "error": str(exc)})
+            error = labels.os_message(exc) if isinstance(exc, OSError) else str(exc)
+            results.append({"name": current, "allowed": True, "changed": False, "error": error})
     if failed and len(failed) == sum(1 for row in results if row["allowed"]):
         # Nenhum dos permitidos atualizou: o comando falhou, não é sucesso parcial.
         errors = "; ".join(f"{row['name']}: {row['error']}" for row in results if "error" in row)

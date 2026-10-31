@@ -61,7 +61,7 @@ class ClipTests(PlaceTestCase):
 
     def test_no_hardlink_falls_back_to_copy_never_symlink(self):
         clip = self.file("brolls/clips/a.mp4", mode=0o444)
-        with mock.patch.object(export_place.delivery.os, "link", side_effect=OSError("sem hardlink")):
+        with mock.patch.object(export_place.delivery_files.os, "link", side_effect=OSError("sem hardlink")):
             method, _ = export_place.place(source_of(clip, "hardlink"), self.staging / "assets/clips/y.mp4")
         self.assertEqual("copy", method)
         self.assertFalse((self.staging / "assets/clips/y.mp4").is_symlink())
@@ -297,7 +297,7 @@ class RecheckTests(PlaceTestCase):
             return "hardlink"
 
         with (
-            mock.patch.object(export_place.delivery, "link_or_copy", side_effect=swapped),
+            mock.patch.object(export_place.delivery_files, "link_or_copy", side_effect=swapped),
             self.assertRaisesRegex(ValueError, "a.mp4 mudou durante o export"),
         ):
             export_place.place(source_of(clip, "hardlink"), dest)

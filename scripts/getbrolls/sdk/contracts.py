@@ -12,7 +12,8 @@ from ..http import ProviderError
 from . import names
 from .errors import ApiError
 
-# Muda só em major do getbrolls. Plugin declara o mesmo número em `sdk_api`.
+# Muda só em major do getbrolls. Plugin declara o mesmo número em `sdk_api`. Constante pública do SDK,
+# igual ao `sdk_api` de `schemas/plugin_manifest.schema.json` (o teste do registro confere as duas).
 SDK_API = 1
 # Dono dos built-ins no registro; nenhum plugin pode usar este id.
 CORE = "core"

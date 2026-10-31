@@ -11,6 +11,7 @@ from pathlib import Path
 from . import effects, versioning
 from ._paths import strict_exists, strict_is_file, strict_lexists
 from .models import id_stem, now
+from .sdk import jsonschema, schemas
 
 
 def digest(path):
@@ -25,8 +26,8 @@ def atomic_write(path, text, *, unique=False):
     """Grava `text` inteiro de uma vez (temporário + troca), em UTF-8 e com o `\\n` como está.
 
     É `effects.write_atomic` (uma linha `fs.write` no getbrolls.log). Sem `newline="\\n"`, o
-    Windows trocaria cada `\\n` por `\\r\\n`: o arquivo sairia diferente do macOS e do Linux,
-    e o ROTEIRO.md revisado voltaria com o CRLF que a revisão tirou. `unique=True` dá ao
+    Windows trocaria cada `\\n` por `\\r\\n`: o arquivo sairia diferente do macOS e do Linux. Quem
+    quer o fim de linha original (o CRLF do ROTEIRO.md revisado) o devolve no `text`. `unique=True` dá ao
     temporário um nome só deste processo (`<nome>.<uuid>.tmp`): dois gravadores ao mesmo tempo
     nunca escrevem no mesmo temporário."""
     effects.write_atomic(path, text, unique=unique)
@@ -52,16 +53,24 @@ _INVALID_MANIFEST = (
 )
 
 
+_INVALID_JOURNAL = (
+    "Journal de recuperação inválido. Preserve .pending-transaction.json e restaure o projeto antes de continuar."
+)
+
+
 def validate_manifest(data):  # noqa: C901, PLR0912 - existing size; validator with one check per manifest field
     # Manifesto anterior ao campo carrega (ausente = 1); o de versão mais nova sai com a
     # frase própria, e qualquer outro valor com a mensagem genérica.
     if isinstance(data, dict):
-        versioning.read_version(data, "manifest.json", invalid=_INVALID_MANIFEST)
+        versioning.read_version(data, "manifest.json", schemas.version("manifest"), invalid=_INVALID_MANIFEST)
     # Tipo errado levanta `TypeError` e valor errado, `ValueError`: o `except` abaixo
     # trata os dois (e `KeyError`) como a mesma recusa, com a mensagem de sempre.
     try:
         if not isinstance(data, dict) or not isinstance(data.get("items"), list):
             raise TypeError
+        # O schema do manifesto cobre só o topo; cada item segue sendo lido por este validador (2.5, edição à mão).
+        if jsonschema.errors(data, schemas.load("manifest")):
+            raise ValueError
         seen = set()
         for c in data["items"]:
             if not isinstance(c, dict) or not isinstance(c.get("id"), str) or not c["id"] or c["id"] in seen:
@@ -74,7 +83,9 @@ def validate_manifest(data):  # noqa: C901, PLR0912 - existing size; validator w
             # present and unrecognized, never its absence. Same strictness as the
             # top-level check above: `True == 1` and `1.0 == 1` must not pass as the
             # int `1`.
-            if "schema_version" in c and (type(c["schema_version"]) is not int or c["schema_version"] != 1):
+            if "schema_version" in c and (
+                type(c["schema_version"]) is not int or c["schema_version"] != schemas.version("candidate")
+            ):
                 raise ValueError
             for field in (
                 "media",
@@ -145,9 +156,11 @@ class Ledger:
             )
         try:
             self.data = (
-                versioning.stamp(validate_manifest(json.loads(self.path.read_text(encoding="utf-8"))))
+                versioning.stamp(
+                    validate_manifest(json.loads(self.path.read_text(encoding="utf-8"))), schemas.version("manifest")
+                )
                 if strict_exists(self.path)
-                else {"schema_version": 1, "items": []}
+                else versioning.stamp({"items": []}, schemas.version("manifest"))
             )
         except json.JSONDecodeError:
             raise ValueError(
@@ -205,7 +218,10 @@ class Ledger:
             }
             for i, c in enumerate(candidates or [None])
         ]
-        journal = {"data": self.data, "events": events, **({"publish": list(publish)} if publish else {})}
+        journal = versioning.stamp(
+            {"data": self.data, "events": events, **({"publish": list(publish)} if publish else {})},
+            schemas.version("pending_transaction"),
+        )
         atomic_write(self.pending, json.dumps(journal, ensure_ascii=False, indent=2))
         from .runtime import record_commit
 
@@ -251,20 +267,27 @@ class Ledger:
     def _finish_transaction(self):
         try:
             transaction = json.loads(self.pending.read_text(encoding="utf-8"))
+        except ValueError:
+            raise ValueError(_INVALID_JOURNAL) from None
+        # Journal de 2.5 não tem o campo (vale 1); o de versão mais nova sai com a frase própria e fica no lugar.
+        if isinstance(transaction, dict):
+            versioning.read_version(
+                transaction,
+                ".pending-transaction.json",
+                schemas.version("pending_transaction"),
+                invalid=_INVALID_JOURNAL,
+            )
+        try:
+            # O schema já exige `events` como lista de objetos com `transaction` em texto.
+            if jsonschema.errors(transaction, schemas.load("pending_transaction")):
+                raise ValueError
             data = validate_manifest(transaction["data"])
             events = transaction["events"]
-            if not isinstance(events, list) or any(
-                not isinstance(e, dict) or not isinstance(e.get("transaction"), str) for e in events
-            ):
-                raise ValueError
             publish = transaction.get("publish", [])
             if not isinstance(publish, list) or not all(_published_name(name) for name in publish):
                 raise ValueError
         except (KeyError, ValueError, TypeError):
-            raise ValueError(
-                "Journal de recuperação inválido. Preserve .pending-transaction.json e restaure "
-                "o projeto antes de continuar."
-            ) from None
+            raise ValueError(_INVALID_JOURNAL) from None
         # O nome final do clipe vem antes do manifesto e fora do `ledger.commit`: a troca grava a
         # própria linha `fs.replace`, e uma falha dela não entra no `count` do lote.
         self._publish_clips(publish)

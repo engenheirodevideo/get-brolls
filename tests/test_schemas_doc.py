@@ -17,7 +17,7 @@ from _paths import ROOT
 import bump_version
 
 from getbrolls import analysis_contract, assets, clients, layout, recipe_init, recipes, roteiro, vocab
-from getbrolls.sdk import contracts, marketplace, marketplace_index
+from getbrolls.sdk import contracts, marketplace, marketplace_index, schemas
 
 DOC = ROOT / "docs" / "SCHEMAS.md"
 SCHEMAS = sorted((ROOT / "schemas").glob("*.schema.json"))
@@ -31,15 +31,15 @@ def doc_text():
 def families_in_code():
     """Toda família `getbrolls.<nome>/<N>` que o código grava ou confere."""
     found = {
-        layout.PROJECT_SCHEMA,
-        f"getbrolls.{clients.CLIENT_SCHEMA}/{clients.SUPPORTED}",
-        f"getbrolls.{clients.REGISTRY_SCHEMA}/{clients.SUPPORTED}",
-        f"getbrolls.{recipes.FAMILY}/{recipes.SUPPORTED}",
-        f"getbrolls.{recipes.COMPONENTS_FAMILY}/{recipes.SUPPORTED}",
-        f"getbrolls.{recipe_init.LOCK_FAMILY}/{recipe_init.SUPPORTED}",
-        f"getbrolls.{marketplace.STATE_FAMILY}/{marketplace.STATE_VERSION}",
-        f"getbrolls.{marketplace_index.FAMILY}/{marketplace_index.SCHEMA_VERSION}",
-        *(f"getbrolls.{name}/{version}" for name, version in analysis_contract.SUPPORTED.items()),
+        f"getbrolls.{layout.PROJECT_FAMILY}/{schemas.version(layout.PROJECT_FAMILY)}",
+        f"getbrolls.{clients.CLIENT_SCHEMA}/{schemas.version(clients.CLIENT_SCHEMA)}",
+        f"getbrolls.{clients.REGISTRY_SCHEMA}/{schemas.version(clients.REGISTRY_SCHEMA)}",
+        f"getbrolls.{recipes.FAMILY}/{schemas.version(recipes.FAMILY)}",
+        f"getbrolls.{recipes.COMPONENTS_FAMILY}/{schemas.version(recipes.COMPONENTS_FAMILY)}",
+        f"getbrolls.{recipe_init.LOCK_FAMILY}/{schemas.version(recipe_init.LOCK_FAMILY)}",
+        f"getbrolls.{marketplace.STATE_FAMILY}/{schemas.version(marketplace.STATE_FAMILY)}",
+        f"getbrolls.{marketplace_index.FAMILY}/{schemas.version(marketplace_index.FAMILY)}",
+        *(f"getbrolls.{name}/{version}" for name, version in analysis_contract.supported().items()),
     }
     for path in (ROOT / "scripts" / "getbrolls").rglob("*.py"):
         found.update(FAMILY_LITERAL.findall(path.read_text(encoding="utf-8")))
@@ -71,6 +71,27 @@ class PublishedSchemas(unittest.TestCase):
         for family in sorted(families_in_code()):
             with self.subTest(family=family):
                 self.assertIn(f"`{family}`", text)
+
+    def test_every_schema_is_listed_with_its_version_field_and_value(self):
+        lines = doc_text().splitlines()
+        for name in schemas.names():
+            field = schemas.version_field(name)
+            value = schemas.load(name)["properties"][field].get("const")
+            shown = f"`{value}`" if isinstance(value, str) else f"`{schemas.version(name)}`"
+            link = f"](../schemas/{name}.schema.json)"
+            with self.subTest(schema=name):
+                rows = [line for line in lines if link in line]
+                self.assertTrue(rows, f"{name}: sem linha com o link")
+                self.assertTrue(
+                    any(f"`{field}`" in row and shown in row for row in rows),
+                    f"{name}: nenhuma linha traz `{field}` com {shown}",
+                )
+
+    def test_the_version_rule_names_the_registry_call(self):
+        text = doc_text()
+        self.assertIn("A versão mora no schema", text)
+        self.assertIn("getbrolls.sdk.schemas.version", text)
+        self.assertIn("tests/test_schema_registry.py", text)
 
     def test_the_id_host_constant_is_the_documented_one(self):
         text = doc_text()

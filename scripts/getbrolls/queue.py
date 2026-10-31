@@ -24,13 +24,13 @@ import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from . import effects, labels, logs, versioning
+from . import effects, json_read, labels, logs, versioning
 from ._paths import cli_prefix_text, strict_is_file
+from .sdk import jsonschema, schemas
 
 log = logs.get("queue")
 
 QUEUE_FILE = Path("work") / "queue.json"
-SCHEMA_VERSION = 1
 STATUSES = ("pending", "active", "done", "failed", "skipped")
 TERMINAL_STATUSES = ("done", "failed", "skipped")
 
@@ -122,9 +122,13 @@ def _parse(stamp):
     if not stamp:
         return None
     try:
-        return datetime.fromisoformat(stamp)
+        moment = datetime.fromisoformat(stamp)
     except (TypeError, ValueError):
         raise ValueError(f"queue.json inválido: timestamp corrompido ({stamp!r}).") from None
+    if moment.tzinfo is None:
+        # Comparing it with an aware instant would raise TypeError (an internal error): refuse it as data.
+        raise ValueError(f"queue.json inválido: timestamp sem fuso horário ({stamp!r}).")
+    return moment
 
 
 def _rng():
@@ -136,7 +140,7 @@ def queue_path(project):
 
 
 def empty_state():
-    return {"schema_version": SCHEMA_VERSION, "items": [], "providers": {}}
+    return {"schema_version": schemas.version("queue"), "items": [], "providers": {}}
 
 
 def _check(data, path):
@@ -146,6 +150,8 @@ def _check(data, path):
     seen_ids = set()
     active_by_provider = {}
     for item in data["items"]:
+        if not isinstance(item, dict):
+            continue  # the schema check at the end of `load` refuses it
         item_id = item.get("id")
         if item_id in seen_ids:
             raise ValueError(f"queue.json inválido em {labels.shown(path)}: id duplicado {item_id!r}.")
@@ -170,13 +176,41 @@ def _check(data, path):
             )
 
 
+def _check_shapes(data, path):
+    """Shape of every provider state and every timestamp, so no command meets a TypeError later.
+
+    A null provider state reads as the default state; anything else must be an object whose
+    timestamps are timezone-aware ISO strings and whose strike counter is an integer.
+    """
+    where = labels.shown(path)
+    for name, state in data["providers"].items():
+        if state is None:
+            continue
+        if not isinstance(state, dict):
+            raise ValueError(  # noqa: TRY004 - contrato da CLI: dado inválido é ValueError (INVALID_DATA)
+                f"queue.json inválido em {where}: estado de {name!r} corrompido; "
+                "preserve o arquivo e restaure uma cópia válida."
+            )
+        for key in ("last_action_at", "next_allowed_at", "cooldown_until"):
+            _parse(state.get(key))
+        strikes = state.get("cooldown_strikes", 0)
+        if strikes is not None and (isinstance(strikes, bool) or not isinstance(strikes, int)):
+            raise ValueError(f"queue.json inválido em {where}: cooldown_strikes de {name!r} não é inteiro.")
+        _stopped(state, name)
+    for item in data["items"]:
+        if not isinstance(item, dict):
+            continue  # the schema check at the end of `load` refuses it
+        for key in ("added_at", "started_at", "finished_at"):
+            _parse(item.get(key))
+
+
 def load(path):
     path = Path(path)
     if not strict_is_file(path):
         return empty_state()
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+        data = json_read.read(path)
+    except json_read.JsonReadError:
         raise ValueError(
             f"queue.json inválido em {labels.shown(path)}; preserve o arquivo e restaure uma cópia válida."
         ) from None
@@ -184,13 +218,18 @@ def load(path):
         raise ValueError(  # noqa: TRY004 - contrato da CLI: dado inválido é ValueError (INVALID_DATA)
             f"queue.json incompatível em {labels.shown(path)}."
         )
-    invalid = f"queue.json incompatível em {labels.shown(path)} (schema_version esperado {SCHEMA_VERSION})."
-    versioning.read_version(data, f"queue.json em {labels.shown(path)}", SCHEMA_VERSION, invalid=invalid)
+    current = schemas.version("queue")
+    invalid = f"queue.json incompatível em {labels.shown(path)} (schema_version esperado {current})."
+    versioning.read_version(data, f"queue.json em {labels.shown(path)}", current, invalid=invalid)
     if not isinstance(data.get("items"), list) or not isinstance(data.get("providers"), dict):
         raise ValueError(  # noqa: TRY004 - contrato da CLI: dado inválido é ValueError (INVALID_DATA)
             f"queue.json incompatível em {labels.shown(path)}."
         )
+    _check_shapes(data, path)
     _check(data, path)
+    # Last, so the specific messages above keep naming the provider or the item; it also catches what they skip.
+    if jsonschema.errors(data, schemas.load("queue")):
+        raise ValueError(f"queue.json incompatível em {labels.shown(path)}.")
     return data
 
 
@@ -203,7 +242,9 @@ def save(path, data):
         try:
             with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as stream:
                 effects.make_private(temp)  # inside: Ctrl-C during the wait closes the file and removes it
-                stream.write(json.dumps(versioning.stamp(data, SCHEMA_VERSION), ensure_ascii=False, indent=2) + "\n")
+                stream.write(
+                    json.dumps(versioning.stamp(data, schemas.version("queue")), ensure_ascii=False, indent=2) + "\n"
+                )
                 stream.flush()
                 os.fsync(stream.fileno())
             Path(temp).chmod(0o600)
@@ -340,6 +381,23 @@ def stop_of(project, provider):
         return None
     data = load(path)
     return stopped_providers(data).get(provider)
+
+
+def hold_of(project, provider, at=None):
+    """What holds `provider` in `<project>/work/queue.json`, read-only: `(stopped, cooldown_until)`.
+
+    `stopped` is the recorded stop (or None); `cooldown_until` is the stamp of a cooldown that is still
+    running at `at` (or None once it passed). A queue.json that cannot be read raises, like `stop_of`.
+    """
+    path = queue_path(project)
+    if not strict_is_file(path):
+        return None, None
+    data = load(path)
+    stopped = stopped_providers(data).get(provider)
+    state = _provider_view(data, provider)
+    until = _parse(state.get("cooldown_until"))
+    running = until is not None and until > _at(at)
+    return stopped, (state["cooldown_until"] if running else None)
 
 
 def add(data, provider, urls, at=None):

@@ -10,10 +10,12 @@ import contextlib
 import io
 import logging
 import os
+import random
 import shutil as _shutil
 import socket
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -23,8 +25,8 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _media import skip_unless_ffmpeg, synth_audio, synth_video
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
+from getbrolls import instagram_media, logs, social
 from getbrolls import instagram_pairs as ig
-from getbrolls import logs, social
 from getbrolls.http import ProviderError
 
 PUBLIC_DNS = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))]
@@ -161,8 +163,8 @@ class InstagramPairsPairStageLoggingTests(unittest.TestCase):
                 Path(cmd[cmd.index("--output") + 1]).write_bytes(payload)
 
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                patch.object(ig.subprocess, "run", side_effect=success),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(subprocess, "run", side_effect=success),
                 self.assertLogs("getbrolls.instagram_pairs", "DEBUG") as cm,
             ):
                 action = ig.download_or_reuse(
@@ -193,8 +195,8 @@ class InstagramPairsPairStageLoggingTests(unittest.TestCase):
                 raise subprocess.CalledProcessError(18, cmd, stderr=b"partial transfer")
 
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                patch.object(ig.subprocess, "run", side_effect=fail),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(subprocess, "run", side_effect=fail),
                 self.assertLogs("getbrolls.instagram_pairs", "DEBUG") as cm,
                 self.assertRaises(ig.CollectError),
             ):
@@ -220,8 +222,8 @@ class InstagramPairsPairStageLoggingTests(unittest.TestCase):
             conf.write_text(f'url = "https://example.org/media"\noutput = "{source}"\n', encoding="utf-8")
             target = root / "part.mp4"
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                patch.object(ig, "_reused_part_is_valid", return_value=True),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(instagram_media, "_reused_part_is_valid", return_value=True),
                 self.assertLogs("getbrolls.instagram_pairs", "DEBUG") as cm,
             ):
                 action = ig.download_or_reuse(
@@ -271,8 +273,8 @@ class InstagramPairsBlockedLoggingTests(unittest.TestCase):
                 raise subprocess.CalledProcessError(22, cmd, stderr=b"curl: (22) The requested URL returned error: 429")
 
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                patch.object(ig.subprocess, "run", side_effect=blocked_curl),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(subprocess, "run", side_effect=blocked_curl),
                 self.assertRaises(ig.CollectError) as ctx,
             ):
                 ig.download_or_reuse(
@@ -298,8 +300,8 @@ class InstagramPairsBlockedLoggingTests(unittest.TestCase):
                 raise subprocess.CalledProcessError(22, cmd, stderr=b"curl: (22) The requested URL returned error: 403")
 
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                patch.object(ig.subprocess, "run", side_effect=refused_curl),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(subprocess, "run", side_effect=refused_curl),
                 self.assertRaises(ig.CollectError) as ctx,
             ):
                 ig.download_or_reuse(
@@ -339,8 +341,8 @@ class InstagramPairsPaceLoggingTests(unittest.TestCase):
 
     def test_pace_logs_wait_s_and_not_the_stem(self):
         with (
-            patch.object(ig.random, "uniform", return_value=0.5),
-            patch.object(ig.time, "sleep", return_value=None),
+            patch.object(random, "uniform", return_value=0.5),
+            patch.object(time, "sleep", return_value=None),
             self.assertLogs("getbrolls.instagram_pairs", "DEBUG") as cm,
         ):
             ig._pause_before("creatorname_01_ABCDEF", 1, 1)
@@ -443,7 +445,7 @@ class InstagramPairsUnconfiguredLoggerTests(unittest.TestCase):
             ]
             logs._degrade()
             try:
-                with patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS):
+                with patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS):
                     # No --project: never triggers ffmpeg (fails first, on a non-media
                     # fixture) but logs.configure() must not have been called either way.
                     with patch.object(logs, "configure") as configure_spy:
@@ -497,7 +499,7 @@ class InstagramPairsStdoutParityTests(unittest.TestCase):
                 out, err = io.StringIO(), io.StringIO()
                 with (
                     patch.dict(os.environ, env, clear=False),
-                    patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                    patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
                     contextlib.redirect_stdout(out),
                     contextlib.redirect_stderr(err),
                 ):

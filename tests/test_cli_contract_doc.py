@@ -18,6 +18,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _paths import CLI_ARGV, ROOT
 
 from getbrolls import capabilities, cli, config, runtime
+from getbrolls.sdk import schemas
 
 DOC = ROOT / "docs" / "CLI_CONTRACT.md"
 SOURCES = ROOT / "scripts" / "getbrolls"
@@ -252,7 +253,7 @@ class EnvironmentAndCapabilities(unittest.TestCase):
         for key in (*manifest, "plugins_error", "marketplaces_error"):
             with self.subTest(key=key):
                 self.assertIn(f"`{key}`", text)
-        self.assertIn(f"(`{capabilities.SCHEMA_VERSION}`)", text)
+        self.assertIn(f"(`{schemas.version('capabilities')}`)", text)
         for key in manifest["commands"][0]:
             with self.subTest(command_key=key):
                 self.assertIn(f"`{key}`", text)

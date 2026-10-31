@@ -87,18 +87,18 @@ class PublishedSchemaTests(unittest.TestCase):
 
 class SchemaNameTests(unittest.TestCase):
     def test_known_names(self):
-        self.assertEqual(("media", 1), ac.schema_name({"schema": "getbrolls.media/1"}))
-        self.assertEqual(("analysis_index", 1), ac.schema_name({"schema": "getbrolls.analysis_index/1"}))
+        self.assertEqual(("media", 1), ac.declared_schema({"schema": "getbrolls.media/1"}))
+        self.assertEqual(("analysis_index", 1), ac.declared_schema({"schema": "getbrolls.analysis_index/1"}))
 
     def test_newer_version_is_refused(self):
         with self.assertRaises(ac.Invalid) as caught:
-            ac.schema_name({"schema": "getbrolls.media/2"})
+            ac.declared_schema({"schema": "getbrolls.media/2"})
         self.assertEqual("NEWER_SCHEMA", caught.exception.code)
 
     def test_unknown_namespace_and_malformed_values(self):
         for value in ("outro.media/1", "getbrolls.outro/1", "getbrolls.media/0", "getbrolls.media", 1, None):
             with self.subTest(value=value), self.assertRaises(ac.Invalid) as caught:
-                ac.schema_name({"schema": value})
+                ac.declared_schema({"schema": value})
             self.assertEqual("UNKNOWN_SCHEMA", caught.exception.code)
 
     def test_check_doc_reports_the_schema_problem(self):

@@ -17,7 +17,8 @@ from test_repository import _logical_units
 from test_sdk_install import HAS_GIT, InstallTestCase, git, head, write_plugin
 from test_sdk_loader import MANIFEST, PLUGIN_CODE
 
-from getbrolls.sdk import git_source, loader, remove, scaffold
+from getbrolls import runtime
+from getbrolls.sdk import git_source, loader, materialize, plugin_state, remove, scaffold, staging
 from getbrolls.sdk import install as install_mod
 from getbrolls.sdk.files import counted_files
 from getbrolls.sdk.registry import get_registry, reset_registry
@@ -38,9 +39,9 @@ class VcsComponentTests(unittest.TestCase):
             "a\\b.py",
         ):
             with self.subTest(path=bad), self.assertRaises(ValueError):
-                install_mod._refuse_git_path_component(bad)
+                materialize._refuse_git_path_component(bad)
         for good in ("plugin.py", "hgrc.txt", "svnkit/a.py", ".gitattributes", "docs/.hgignore"):
-            install_mod._refuse_git_path_component(good)
+            materialize._refuse_git_path_component(good)
 
 
 class FolderInstallHardeningTests(InstallTestCase):
@@ -143,7 +144,7 @@ class SweepTests(InstallTestCase):
 
     def stale_old(self, plugin_id):
         (self.home / "plugins").mkdir(parents=True, exist_ok=True)
-        epoch = int(time.time()) - (install_mod.STALE_STAGING_MAX_AGE_S + 60)
+        epoch = int(time.time()) - (staging.STALE_STAGING_MAX_AGE_S + 60)
         return self.home / "plugins" / f".old-{epoch}-{plugin_id}-{uuid.uuid4().hex}"
 
     def test_empty_or_foreign_old_folder_is_deleted_not_restored(self):
@@ -155,18 +156,61 @@ class SweepTests(InstallTestCase):
         # (`_restorable`), não a regra do id removido.
         pin = {"sha256": "0" * 64, "version": "0.1.0"}
         loader.write_state({"enabled": {"demo": pin}, "last_pins": {"alheio": pin}})
-        install_mod._sweep_stale_staging()
+        staging._sweep_stale_staging()
         self.assertFalse(empty.exists())
         self.assertFalse(foreign.exists())
         self.assertFalse((self.home / "plugins" / "demo").exists())
         self.assertFalse((self.home / "plugins" / "alheio").exists())
+
+    def test_old_folder_with_an_invalid_plugin_id_in_its_name_is_left_alone(self):
+        corrupt = self.stale_old("Nome Ruim")
+        corrupt.mkdir()
+        staging._sweep_stale_staging()
+        self.assertTrue(corrupt.is_dir(), "a name that is no plugin id is never used as a path")
+
+    def test_old_folder_is_left_alone_when_the_state_file_cannot_be_read(self):
+        retired = self.stale_old("demo")
+        write_plugin(retired)
+        with patch.object(loader, "read_state", side_effect=ValueError("corrupt")):
+            staging._sweep_stale_staging()
+        self.assertTrue((retired / "plugin.py").is_file())
+        self.assertFalse((self.home / "plugins" / "demo").exists())
+
+    def test_old_folder_is_deleted_when_the_plugin_is_back_in_place(self):
+        retired = self.stale_old("demo")
+        write_plugin(retired)
+        write_plugin(self.home / "plugins" / "demo")
+        loader.write_state({"enabled": {"demo": {"sha256": "0" * 64, "version": "0.1.0"}}})
+        staging._sweep_stale_staging()
+        self.assertFalse(retired.exists())
+        self.assertTrue((self.home / "plugins" / "demo" / "plugin.py").is_file())
+
+    def test_a_folder_that_cannot_be_swept_does_not_stop_the_caller(self):
+        retired = self.stale_old("demo")
+        write_plugin(retired)
+        loader.write_state({"enabled": {"demo": {"sha256": "0" * 64, "version": "0.1.0"}}})
+        with patch.object(staging.effects, "replace", side_effect=OSError("racing process")):
+            staging._sweep_stale_staging()
+        self.assertTrue((retired / "plugin.py").is_file(), "left for the next sweep")
+
+    def test_a_staging_name_is_hidden_even_from_an_error_type_with_its_own_constructor(self):
+        class PickyError(ValueError):
+            def __init__(self, code, detail):
+                super().__init__(f"{code}: {detail}")
+
+        name = f".install-{int(time.time())}-{uuid.uuid4().hex}"
+        with self.assertRaises(ValueError) as raised, staging._staging_names_hidden():
+            raise PickyError("E1", f"Plugin {name}: broken")
+        self.assertEqual("E1: Plugin da origem: broken", str(raised.exception))
+        self.assertNotIn(name, str(raised.exception))
+        self.assertNotIn(".install-", str(raised.exception))
 
     def test_matching_old_folder_is_restored(self):
         retired = self.stale_old("demo")
         write_plugin(retired)
         # Como um update interrompido deixa: o plugins.json ainda pina o plugin.
         loader.write_state({"enabled": {"demo": {"sha256": loader.folder_digest(retired), "version": "0.1.0"}}})
-        install_mod._sweep_stale_staging()
+        staging._sweep_stale_staging()
         self.assertTrue((self.home / "plugins" / "demo" / "plugin.py").is_file())
 
     def test_stale_old_folder_never_resurrects_a_removed_plugin(self):
@@ -177,21 +221,21 @@ class SweepTests(InstallTestCase):
         install_mod.install(str(source), confirm=True, expect=sha)
         write_plugin(source, {**MANIFEST, "version": "0.2.0"}, PLUGIN_CODE + "\n# v0.2\n")
         sha2 = install_mod.update("demo", confirm=False)["plugin"]["sha256"]
-        real_rmtree = install_mod.force_rmtree
+        real_rmtree = runtime.force_rmtree
 
         def interrupted(path):
             if Path(path).name.startswith(".old-"):
                 raise KeyboardInterrupt
             return real_rmtree(path)
 
-        with patch.object(install_mod, "force_rmtree", interrupted), self.assertRaises(KeyboardInterrupt):
+        with patch.object(runtime, "force_rmtree", interrupted), self.assertRaises(KeyboardInterrupt):
             install_mod.update("demo", confirm=True, expect=sha2)
         self.assertEqual(1, len([p for p in (self.home / "plugins").iterdir() if p.name.startswith(".old-")]))
         remove.remove("demo", confirm=True)
 
         later = time.time() + 2 * 3600
         with patch("time.time", return_value=later):
-            install_mod._sweep_stale_staging()
+            staging._sweep_stale_staging()
         self.assertFalse((self.home / "plugins" / "demo").exists())
         self.assertEqual([], self.leftover_staging())
         self.assertEqual([], loader.inventory())
@@ -204,12 +248,11 @@ class SweepTests(InstallTestCase):
         preview2 = install_mod.update("demo", confirm=False)
 
         real_replace = os.replace
-        calls = {"n": 0}
-        first_failing_call = 2  # a 1ª (retirar a pasta atual) passa; a troca nova e o rollback falham
 
         def flaky(src, dst):
-            calls["n"] += 1
-            if calls["n"] >= first_failing_call:
+            # Retirar a pasta atual (e gravar o plugins.json) passa; a troca nova (`.install-*`) e o
+            # rollback (`.old-*`) falham.
+            if Path(src).name.startswith((".install-", ".old-")):
                 raise OSError("falha simulada")
             return real_replace(src, dst)
 
@@ -219,6 +262,57 @@ class SweepTests(InstallTestCase):
         retired = [p for p in (self.home / "plugins").iterdir() if p.name.startswith(".old-")]
         self.assertEqual(1, len(retired))
         self.assertEqual(PLUGIN_CODE, (retired[0] / "plugin.py").read_text(encoding="utf-8"))
+
+
+class UpdatePinThenMoveTests(InstallTestCase):
+    """O `update` grava o pin antes de trocar a pasta, como o `install`: nenhuma falha deixa código novo
+    com o pin antigo (ou o contrário)."""
+
+    def installed_with_update(self):
+        source = write_plugin(self.work / "demo_src")
+        sha = install_mod.install(str(source), confirm=False)["plugin"]["sha256"]
+        install_mod.install(str(source), confirm=True, expect=sha)
+        write_plugin(source, {**MANIFEST, "version": "0.2.0"}, PLUGIN_CODE + "\n# v0.2\n")
+        return sha, install_mod.update("demo", confirm=False)["plugin"]["sha256"]
+
+    def assert_old_plugin_still_runs(self, sha):
+        reset_registry()
+        row = loader.inventory()[0]
+        self.assertEqual(("enabled", "0.1.0"), (row["status"], row["version"]))
+        self.assertEqual(sha, loader.read_state()["enabled"]["demo"]["sha256"])
+        self.assertEqual(PLUGIN_CODE, (self.home / "plugins" / "demo" / "plugin.py").read_text(encoding="utf-8"))
+        self.assertIn("demo", get_registry().provider_names())
+        self.assertEqual([], [p.name for p in (self.home / "plugins").iterdir() if p.name.startswith(".")])
+
+    def test_a_pin_that_cannot_be_written_leaves_the_old_content_in_place(self):
+        sha, sha2 = self.installed_with_update()
+        with (
+            patch.object(plugin_state, "write_state", side_effect=OSError(28, "No space left on device")),
+            self.assertRaises(OSError),
+        ):
+            install_mod.update("demo", confirm=True, expect=sha2)
+        self.assert_old_plugin_still_runs(sha)
+
+    def test_a_failed_swap_puts_the_old_pin_back(self):
+        sha, sha2 = self.installed_with_update()
+        real_replace = os.replace
+
+        def swap_fails(src, dst):
+            if Path(src).name.startswith(".install-"):
+                raise OSError("falha simulada")
+            return real_replace(src, dst)
+
+        with patch("getbrolls.sdk.install.os.replace", side_effect=swap_fails), self.assertRaises(OSError):
+            install_mod.update("demo", confirm=True, expect=sha2)
+        self.assert_old_plugin_still_runs(sha)
+
+    def test_a_successful_update_pins_the_new_content(self):
+        _sha, sha2 = self.installed_with_update()
+        install_mod.update("demo", confirm=True, expect=sha2)
+        reset_registry()
+        row = loader.inventory()[0]
+        self.assertEqual(("enabled", "0.2.0"), (row["status"], row["version"]))
+        self.assertEqual(sha2, loader.read_state()["enabled"]["demo"]["sha256"])
 
 
 class ScaffoldReadmeTests(unittest.TestCase):
@@ -338,13 +432,13 @@ class GitHardeningTests(InstallTestCase):
     def test_materialized_tree_never_shares_the_clone_folder(self):
         repo = self.repo()
         seen = {}
-        real_write = install_mod._write_tree_entry
+        real_write = materialize._write_tree_entry
 
         def spy(dest, root, path, mode, content):
             seen.setdefault("git_in_dest", (Path(dest) / ".git").exists())
             return real_write(dest, root, path, mode, content)
 
-        with patch.object(install_mod, "_write_tree_entry", side_effect=spy):
+        with patch.object(materialize, "_write_tree_entry", side_effect=spy):
             preview = install_mod.install(str(repo), confirm=False)
         self.assertIs(False, seen["git_in_dest"])
         self.assertIsInstance(preview["plugin"]["commit"], str)

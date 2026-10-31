@@ -2,7 +2,7 @@
 
 Para cada arquivo: um arquivo antigo, sem o campo, carrega; a versão 2 é recusada com
 a frase de "versão mais nova"; `True` e `1.0` não passam pelo inteiro 1; e toda
-gravação nova declara `schema_version: 1`.
+gravação nova declara `schema_version: 1` (a fila e a biblioteca, `2`: elas leem 1 e 2).
 """
 
 import json
@@ -11,6 +11,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest import mock
 
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
@@ -19,6 +20,9 @@ from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys
 from getbrolls import export_folder, library, memory, queue, roteiro_ids, versioning
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 NEWER = "versão mais nova do getbrolls"
 
@@ -36,14 +40,14 @@ class TempDirTestCase(unittest.TestCase):
 
 class ReadVersionTests(unittest.TestCase):
     def test_absent_means_one(self):
-        self.assertEqual(1, versioning.read_version({}, "x.json"))
+        self.assertEqual(1, versioning.read_version({}, "x.json", 1))
 
     def test_supported_value_is_returned(self):
         self.assertEqual(2, versioning.read_version({"schema_version": 2}, "x.json", supported=2))
 
     def test_newer_is_refused_with_the_standard_phrase(self):
         with self.assertRaises(ValueError) as ctx:
-            versioning.read_version({"schema_version": 2}, "x.json")
+            versioning.read_version({"schema_version": 2}, "x.json", 1)
         self.assertEqual(
             "x.json foi gravado por uma versão mais nova do getbrolls (schema_version 2); atualize antes de continuar.",
             str(ctx.exception),
@@ -52,22 +56,38 @@ class ReadVersionTests(unittest.TestCase):
     def test_bool_float_text_and_zero_are_invalid_not_newer(self):
         for bad in (True, 1.0, "1", 0, -1, None):
             with self.subTest(value=bad), self.assertRaises(ValueError) as ctx:
-                versioning.read_version({"schema_version": bad}, "x.json")
+                versioning.read_version({"schema_version": bad}, "x.json", 1)
             self.assertIn("x.json é incompatível", str(ctx.exception))
             self.assertNotIn(NEWER, str(ctx.exception))
 
     def test_caller_message_replaces_the_invalid_one_only(self):
         with self.assertRaisesRegex(ValueError, "^meu erro$"):
-            versioning.read_version({"schema_version": "1"}, "x.json", invalid="meu erro")
+            versioning.read_version({"schema_version": "1"}, "x.json", 1, invalid="meu erro")
         with self.assertRaisesRegex(ValueError, NEWER):
-            versioning.read_version({"schema_version": 3}, "x.json", invalid="meu erro")
+            versioning.read_version({"schema_version": 3}, "x.json", 1, invalid="meu erro")
 
     def test_stamp_puts_the_version_first_and_copies(self):
         data = {"items": [], "schema_version": 7}
-        stamped = versioning.stamp(data)
+        stamped = versioning.stamp(data, 1)
         self.assertEqual(["schema_version", "items"], list(stamped))
         self.assertEqual(1, stamped["schema_version"])
         self.assertEqual(7, data["schema_version"])
+
+
+class NoDefaultVersionTests(unittest.TestCase):
+    """Quem chama passa a versão: sem argumento, `TypeError`, nunca um 1 implícito."""
+
+    def test_each_function_requires_its_version_argument(self):
+        calls: dict[str, tuple[Callable[..., object], tuple]] = {
+            "read_version": (versioning.read_version, ({}, "x.json")),
+            "stamp": (versioning.stamp, ({},)),
+            "schema_name": (versioning.schema_name, ("project",)),
+            "read_schema": (versioning.read_schema, ({}, "project")),
+            "stamp_schema": (versioning.stamp_schema, ({}, "project")),
+        }
+        for name, (function, args) in calls.items():
+            with self.subTest(function=name), self.assertRaises(TypeError):
+                function(*args)
 
 
 class ManifestTests(TempDirTestCase):
@@ -171,10 +191,17 @@ class QueueTests(TempDirTestCase):
         self.write_json(self.path(), {"items": [], "providers": {}})
         data = queue.load(self.path())
         queue.save(self.path(), data)
-        self.assertEqual(1, json.loads(self.path().read_text(encoding="utf-8"))["schema_version"])
+        self.assertEqual(2, json.loads(self.path().read_text(encoding="utf-8"))["schema_version"])
 
-    def test_version_two_is_refused_as_newer(self):
-        self.write_json(self.path(), {"schema_version": 2, "items": [], "providers": {}})
+    def test_versions_one_and_two_load_and_are_saved_as_two(self):
+        for version in (1, 2):
+            with self.subTest(version=version):
+                self.write_json(self.path(), {"schema_version": version, "items": [], "providers": {}})
+                queue.save(self.path(), queue.load(self.path()))
+                self.assertEqual(2, json.loads(self.path().read_text(encoding="utf-8"))["schema_version"])
+
+    def test_version_three_is_refused_as_newer(self):
+        self.write_json(self.path(), {"schema_version": 3, "items": [], "providers": {}})
         with self.assertRaisesRegex(ValueError, NEWER):
             queue.load(self.path())
 
@@ -197,10 +224,17 @@ class LibraryIndexTests(TempDirTestCase):
         self.write_json(library.index_path(), {"assets": [], "queries": [], "providers": {}, "preferences": []})
         data = library.load_index()
         library.save_index(data)
-        self.assertEqual(1, json.loads(library.index_path().read_text(encoding="utf-8"))["schema_version"])
+        self.assertEqual(2, json.loads(library.index_path().read_text(encoding="utf-8"))["schema_version"])
 
-    def test_version_two_is_refused_as_newer(self):
-        self.write_json(library.index_path(), {"schema_version": 2})
+    def test_versions_one_and_two_load_and_are_saved_as_two(self):
+        for version in (1, 2):
+            with self.subTest(version=version):
+                self.write_json(library.index_path(), {"schema_version": version})
+                library.save_index(library.load_index())
+                self.assertEqual(2, json.loads(library.index_path().read_text(encoding="utf-8"))["schema_version"])
+
+    def test_version_three_is_refused_as_newer(self):
+        self.write_json(library.index_path(), {"schema_version": 3})
         with self.assertRaisesRegex(ValueError, NEWER):
             library.load_index()
 

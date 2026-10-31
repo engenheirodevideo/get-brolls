@@ -17,7 +17,7 @@ from test_sdk_manifest import BASE, write_plugin
 from getbrolls import http
 from getbrolls.http import ProviderError
 from getbrolls.sdk import api as sdk_api
-from getbrolls.sdk import loader
+from getbrolls.sdk import loader, plugin_digest
 from getbrolls.sdk.api import PluginApi, route_scope
 from getbrolls.sdk.manifest import ManifestError, read_manifest
 from getbrolls.sdk.registry import Registry, get_registry
@@ -147,7 +147,7 @@ class DigestLimitTests(LoaderTestCase):
         folder = self.install()
         loader.enable("demo", confirm=True)
         (folder / "cache.bin").write_bytes(b"x" * 64)
-        with patch.object(loader, "DIGEST_MAX_FILE_BYTES", 16):
+        with patch.object(plugin_digest, "DIGEST_MAX_FILE_BYTES", 16):
             rows = {row["id"]: row for row in loader.inventory()}
             self.assertEqual("suspended", rows["demo"]["status"])
             self.assertIn("teto", rows["demo"]["reason"])
@@ -160,10 +160,11 @@ class DigestLimitTests(LoaderTestCase):
         loader.enable("demo", confirm=True)
         for n in range(4):
             (folder / f"parte{n}.txt").write_bytes(b"y" * 40)
-        with patch.object(loader, "DIGEST_MAX_TOTAL_BYTES", 100):
+        with patch.object(plugin_digest, "DIGEST_MAX_TOTAL_BYTES", 100):
             rows = {row["id"]: row for row in loader.inventory()}
         self.assertEqual("suspended", rows["demo"]["status"])
-        with patch.object(loader, "DIGEST_MAX_TOTAL_BYTES", 100), self.assertRaises(ValueError):
+        self.assertIn("teto de 100 bytes", rows["demo"]["reason"])
+        with patch.object(plugin_digest, "DIGEST_MAX_TOTAL_BYTES", 100), self.assertRaises(ValueError):
             loader.enable("demo", confirm=True)
 
 

@@ -140,6 +140,14 @@ Se a pasta mudar, o plugin fica suspenso até nova revisão e novo `--expect`.
 6. Registre no README quais arquivos o editor/motion tool espera abrir.
 7. Trate tudo como experimental até rodar com um roteiro revisado real.
 
+## Ponte HyperFrames e ids reservados
+
+A ponte HyperFrames é um plugin **oficial**: vem dentro do getbrolls e só carrega se a pasta bater com o pin do core. Plugin de terceiros não declara `environments` e não usa os ids oficiais (`hyperframes`, `davinci`, `asr`, `analysis_vision`, `analysis_audio`, `analysis_ocr`, `analysis_game`) nem o prefixo `<oficial>_`: `plugins --action new --id hyperframes` e `--id hyperframes_media` são recusados com "escolha outro". Para levar o roteiro a um editor ou a um motor de motion, escreva um **exporter** (acima). Detalhes em [`SDK.md`](SDK.md) e [`SECURITY.md#plugins`](SECURITY.md#plugins).
+
+## Publicar num marketplace
+
+Um marketplace é um repositório git com um `getbrolls-marketplace.json` na raiz (formato em [`../schemas/marketplace_index.schema.json`](../schemas/marketplace_index.schema.json)). Cada entrada diz de onde vem o plugin (repositório e commit) e traz o `content_sha256`: o mesmo `sha256` que a prévia do `install --source` mostra para a pasta. Quem usa instala com `getbrolls plugins --action install --id <id>@<marketplace>`, também em dois passos, e o getbrolls recusa o plugin se o conteúdo ou o manifesto não baterem com a entrada. O `tier` que a entrada declara não é verificado fora do índice oficial. Veja [`SDK.md#marketplaces`](SDK.md#marketplaces).
+
 ## O que o plugin não deve fazer
 
 - Não aprovar candidato por conta própria.

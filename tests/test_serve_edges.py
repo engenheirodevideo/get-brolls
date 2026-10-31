@@ -530,7 +530,7 @@ def _ping_answer(payload):
 
 class PingTests(unittest.TestCase):
     def test_missing_port_or_session_never_opens_a_socket(self):
-        with patch.object(serve.effects, "open_url") as opened:
+        with patch.object(serve, "_open_ping") as opened:
             self.assertFalse(serve._ping(None, "sessao"))
             self.assertFalse(serve._ping(0, "sessao"))
             self.assertFalse(serve._ping(8767, ""))
@@ -541,7 +541,7 @@ class PingTests(unittest.TestCase):
     def test_a_target_that_is_not_local_http_is_never_contacted(self):
         with (
             patch.object(serve, "_valid_ping_target", return_value=False),
-            patch.object(serve.effects, "open_url") as opened,
+            patch.object(serve, "_open_ping") as opened,
         ):
             self.assertFalse(serve._ping(8767, "sessao"))
         opened.assert_not_called()
@@ -564,17 +564,17 @@ class PingTests(unittest.TestCase):
             (b"\xff\xfe", False),
         ]
         for payload, expected in cases:
-            with self.subTest(payload=payload), patch.object(serve.effects, "open_url", _ping_answer(payload)):
+            with self.subTest(payload=payload), patch.object(serve, "_open_ping", _ping_answer(payload)):
                 self.assertIs(expected, serve._ping(8767, "sessao"))
 
     def test_network_errors_are_not_the_server(self):
         for error in (urllib.error.URLError("recusado"), ConnectionRefusedError(), TimeoutError()):
-            with self.subTest(error=type(error).__name__), patch.object(serve.effects, "open_url", side_effect=error):
+            with self.subTest(error=type(error).__name__), patch.object(serve, "_open_ping", side_effect=error):
                 self.assertFalse(serve._ping(8767, "sessao"))
 
     def test_the_url_and_timeout_come_from_the_arguments(self):
         opener = _ping_answer(json.dumps({"session": "s"}).encode())
-        with patch.object(serve.effects, "open_url", opener):
+        with patch.object(serve, "_open_ping", opener):
             self.assertTrue(serve._ping(4321, "s", timeout=0.5))
         self.assertEqual(("http://127.0.0.1:4321/__ping",), opener.call_args.args)
         self.assertEqual(0.5, opener.call_args.kwargs["timeout"])

@@ -29,10 +29,12 @@ from getbrolls import (
     cli,
     clients,
     commands,
-    config,
     delivery,
+    delivery_files,
     delivery_sweep,
     effects,
+    env_loader,
+    fetch_commands,
     health,
     http,
     labels,
@@ -47,6 +49,7 @@ from getbrolls import (
     roteiro,
     rules,
     runtime,
+    search_commands,
     serve,
     social,
 )
@@ -134,7 +137,7 @@ class DeliveryTests(LabelCase):
     def test_a_delivered_file_that_cannot_be_frozen_is_named_under_the_project(self):
         path = self.file("entrega/01_abertura/clip.mp4")
         with patch.object(Path, "chmod", side_effect=denied(path)):
-            warnings = self.warnings_of(delivery, lambda: delivery._freeze(path, "hardlink"))
+            warnings = self.warnings_of(delivery_files, lambda: delivery_files._freeze(path, "hardlink"))
         self.assertEqual(1, len(warnings), warnings)
         self.assertTrue(
             warnings[0].startswith(
@@ -150,7 +153,7 @@ class DeliveryTests(LabelCase):
         self.addCleanup(path.chmod, 0o644)
         final = path.with_name("clip.mp4")
         with patch.object(Path, "chmod", side_effect=denied(path)):
-            warnings = self.warnings_of(delivery, lambda: delivery._writable(path, shown=final))
+            warnings = self.warnings_of(delivery_files, lambda: delivery_files._writable(path, shown=final))
         self.assertTrue(
             warnings[0].startswith(
                 "Não consegui deixar a cópia <projeto>/entrega/01_abertura/clip.mp4 editável (Permission denied)"
@@ -163,15 +166,15 @@ class DeliveryTests(LabelCase):
         dest = self.file("entrega/01_abertura/clip.mp4")
         src = self.file("brolls/clips/clip.mp4", b"y")
         cases = {
-            "compare": lambda: delivery._compared(
-                lambda *_: (_ for _ in ()).throw(delivery._CompareError("Permission denied")),
+            "compare": lambda: delivery_files._compared(
+                lambda *_: (_ for _ in ()).throw(delivery_files._CompareError("Permission denied")),
                 dest,
                 src,
             ),
-            "edited": lambda: (_ for _ in ()).throw(delivery._edited(dest)),
+            "edited": lambda: (_ for _ in ()).throw(delivery_files._edited(dest)),
             "make_room": lambda: delivery._make_room(dest, "o clipe novo"),
         }
-        with patch.object(delivery, "_thaw_unlink", side_effect=denied(dest)):
+        with patch.object(delivery_sweep, "thaw_unlink", side_effect=denied(dest)):
             for name, call in cases.items():
                 with self.subTest(name=name), self.assertRaises((ValueError, OSError)) as ctx:
                     call()
@@ -184,8 +187,8 @@ class DeliveryTests(LabelCase):
         # no Windows `open` e `stat` dão frases diferentes para uma pasta que falta.
         with self.assertRaises(OSError) as system:
             missing.stat()
-        with self.assertRaises(delivery._CompareError) as ctx:
-            delivery._same_bytes(missing, missing)
+        with self.assertRaises(delivery_files._CompareError) as ctx:
+            delivery_files._same_bytes(missing, missing)
         self.assertEqual(system.exception.strerror, str(ctx.exception))
         self.assert_no_machine_path(str(ctx.exception))
 
@@ -195,7 +198,7 @@ class DeliveryTests(LabelCase):
         dest.parent.mkdir(parents=True)
         with (
             patch.object(delivery.effects, "link", side_effect=OSError(errno.EXDEV, "cross-device")),
-            patch.object(delivery, "_copy_whole", side_effect=denied(dest)),
+            patch.object(delivery_files, "_copy_whole", side_effect=denied(dest)),
             self.assertRaises(OSError) as ctx,
         ):
             delivery.link_or_copy(src, dest)
@@ -218,8 +221,8 @@ class DeliveryTests(LabelCase):
 
 
 class CommandsTests(LabelCase):
-    def warnings_of(self, call):
-        with patch.object(commands, "record_warning") as warn:
+    def warnings_of(self, call, module=commands):
+        with patch.object(module, "record_warning") as warn:
             call()
         return [args[1] for args, _ in warn.call_args_list]
 
@@ -240,7 +243,8 @@ class CommandsTests(LabelCase):
         ctx = SimpleNamespace(dry_run=False, args=SimpleNamespace(project=None))
         with patch("getbrolls.library.learn_query", side_effect=denied(self.gbhome / "library" / "index.json")):
             warnings = self.warnings_of(
-                lambda: commands._search_record_provider_failure(ctx, "youtube", "foguete", ValueError("x"))
+                lambda: search_commands._search_record_provider_failure(ctx, "youtube", "foguete", ValueError("x")),
+                search_commands,
             )
         self.assertEqual("Permission denied", warnings[-1])
 
@@ -256,7 +260,7 @@ class CommandsTests(LabelCase):
         ledger = SimpleNamespace(root=self.project / "brolls")
         candidate = {"id": "local:abc", "preview": {}, "local_path": str(local)}
         with patch("getbrolls.media.image_preview", side_effect=denied(local)):
-            warnings = self.warnings_of(lambda: commands.reference_poster(ledger, candidate))
+            warnings = self.warnings_of(lambda: fetch_commands.reference_poster(ledger, candidate), fetch_commands)
         self.assertEqual(["Não consegui montar o cartaz estático desta referência (Permission denied)."], warnings)
 
     def test_status_of_a_missing_project_echoes_the_folder_as_typed(self):
@@ -416,11 +420,14 @@ class InstallationTests(LabelCase):
         env = self.gbhome / ".env"
         env.write_text("", encoding="utf-8")
         choice = SimpleNamespace(path=env, source="gb_home", ignored=False)
-        with patch.object(config, "_home_from_profile", return_value=True):
-            config._note_home_ignored([(1, "GB_HOME", "/outra")], env)  # o .env do $GB_HOME: a marca
-        self.addCleanup(config._HOME_IGNORED.clear)
-        with patch.object(config, "load_env", return_value=set()), patch("getbrolls.runtime.record_warning") as warn:
-            config.load_env_choice(choice, warn=True)
+        with patch.object(env_loader, "_home_from_profile", return_value=True):
+            env_loader._note_home_ignored([(1, "GB_HOME", "/outra")], env)  # o .env do $GB_HOME: a marca
+        self.addCleanup(env_loader._HOME_IGNORED.clear)
+        with (
+            patch.object(env_loader, "load_env", return_value=set()),
+            patch("getbrolls.runtime.record_warning") as warn,
+        ):
+            env_loader.load_env_choice(choice, warn=True)
         messages = [args[1] for args, _ in warn.call_args_list]
         self.assertTrue(any(m.startswith("GB_HOME do .env ($GB_HOME/.env) foi ignorado") for m in messages), messages)
 

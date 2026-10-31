@@ -59,6 +59,8 @@ ALLOWED_FIELDS = frozenset(
         ("doctor", "stdout.json.install.profile.values.runtime_dir.value"),
         ("doctor", "stdout.json.install.runtime.tools.path"),
         ("doctor", "stdout.json.install.runtime.venv.path"),
+        ("doctor", "stdout.json.venv.path"),
+        ("doctor", "stdout.json.venv.python"),
         ("fetch", "stdout.json.local_path"),
         ("import-review", "stdout.json.file"),
         ("import-review", "stdout.json.review"),

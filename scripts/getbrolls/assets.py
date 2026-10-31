@@ -24,6 +24,8 @@ from .rules import home_dir
 
 LICENSE_SUFFIX = ".licenca.json"
 LICENSE_FIELDS = ("origem", "licenca", "credito")
+# O `.licenca.json` é arquivo da pessoa, fora de `schemas/`: lê a versão 1 (campo opcional).
+LICENSE_SUPPORTED = 1
 # Grafia em inglês da versão de testes da 2.6: recusada com a chave em português (sem alias).
 _ENGLISH_KEYS = {"source": "origem", "license_name": "licenca", "attribution": "credito"}
 _NAME = re.compile(r"^[\w][\w \-]{0,79}$")
@@ -207,7 +209,7 @@ def _normalize_license(name, data):
     if english:
         return None, f"{name} usa chaves em inglês, que saíram; troque {', '.join(english)}."
     try:
-        versioning.read_version(data, name)
+        versioning.read_version(data, name, LICENSE_SUPPORTED)
     except ValueError as exc:
         return None, str(exc)
     fields = {k: v for k, v in data.items() if k != versioning.FIELD}

@@ -25,7 +25,7 @@ from typing import NoReturn
 from .. import logs, versioning
 from ..errors import UsageError
 from ..runtime import redact
-from . import kinds
+from . import kinds, schemas
 from .contracts import CORE, NAME_RE, RESERVED_IDS, official_claim
 from .git_source import COMMIT_RE, validate_ref, validate_repo_path, validate_url
 from .guard import plain_line
@@ -42,7 +42,6 @@ from .manifest import (
 )
 
 FAMILY = "marketplace_index"
-SCHEMA_VERSION = 1
 INDEX_NAME = "getbrolls-marketplace.json"
 INDEX_MAX_BYTES = 1024 * 1024
 INDEX_MAX_DEPTH = 32
@@ -64,7 +63,7 @@ DETAIL_MAX_CHARS = 300
 _log = logs.get("sdk")
 
 TOP_LEVEL_REQUIRED = ("schema", "name", "plugins", "renames")
-TOP_LEVEL_OPTIONAL = ("description", "metadata")
+# Optional top-level keys: `description`, `metadata`.
 ENTRY_KEYS = (
     "id",
     "version",
@@ -344,6 +343,16 @@ def _manifest_rules(raw, where):
     _fail(where, problem)
 
 
+def _index_schema():
+    """O valor do campo `schema` do índice desta versão: `getbrolls.marketplace_index/<N>` do schema."""
+    return versioning.schema_name(FAMILY, schemas.version(FAMILY))
+
+
+def _entry_api_floor():
+    """O menor `sdk_api` que uma entrada pode declarar: o `minimum` que o schema publicado fixa."""
+    return schemas.load(FAMILY)["properties"]["plugins"]["items"]["properties"]["sdk_api"]["minimum"]
+
+
 def validate_entry(raw: object, where: str) -> dict:
     """Uma entrada de `plugins[]` validada e normalizada, com as chaves na ordem de `ENTRY_KEYS`.
 
@@ -357,8 +366,9 @@ def validate_entry(raw: object, where: str) -> dict:
         _fail(where, f"tier tem que ser {', '.join(TIERS)}.")
     if not isinstance(raw["content_sha256"], str) or not SHA256_RE.fullmatch(raw["content_sha256"]):
         _fail(where, "content_sha256 tem que ter 64 caracteres hexadecimais minúsculos.")
-    if type(raw["sdk_api"]) is not int or raw["sdk_api"] < 1:
-        _fail(where, "sdk_api tem que ser um inteiro a partir de 1.")
+    floor = _entry_api_floor()
+    if type(raw["sdk_api"]) is not int or raw["sdk_api"] < floor:
+        _fail(where, f"sdk_api tem que ser um inteiro a partir de {floor}.")
     if raw["attestation"] is not None:
         _fail(where, "attestation tem que ser null nesta versão (assinatura fica para uma versão futura).")
     if type(raw["yanked"]) is not bool:
@@ -447,11 +457,9 @@ def validate_index(raw: object) -> dict:
     versioning.read_schema(
         raw,
         FAMILY,
-        supported=SCHEMA_VERSION,
+        supported=schemas.version(FAMILY),
         label=INDEX_NAME,
-        invalid=lambda: MarketplaceIndexError(
-            f"Índice: schema tem que ser {versioning.schema_name(FAMILY, SCHEMA_VERSION)!r}."
-        ),
+        invalid=lambda: MarketplaceIndexError(f"Índice: schema tem que ser {_index_schema()!r}."),
     )
     name = validate_marketplace_name(raw["name"])
     description = _description(raw.get("description"), name)
@@ -463,7 +471,7 @@ def validate_index(raw: object) -> dict:
     entries, incompatible = _read_plugins(plugins, name)
     known = {entry["id"] for entry in entries} | {row["id"] for row in incompatible if row["id"]}
     result = {
-        "schema": versioning.schema_name(FAMILY, SCHEMA_VERSION),
+        "schema": _index_schema(),
         "name": name,
         "description": description,
         "plugins": entries,

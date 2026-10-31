@@ -22,7 +22,7 @@ from ..runtime import force_rmtree
 from . import loader, registry_state
 from .contracts import NAME_RE
 from .files import is_link
-from .install import new_removed_staging_name
+from .staging import new_removed_staging_name
 
 _log = logs.get("sdk")
 

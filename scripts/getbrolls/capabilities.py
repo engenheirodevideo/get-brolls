@@ -1,7 +1,7 @@
 """`capabilities`: manifesto JSON dos comandos, derivado do parser e das tabelas do runtime.
 
 Nada aqui é escrito à mão por comando: nomes, flags, `choices`, defaults e ajuda vêm do
-`argparse`; o que só lê vem de `runtime.READ_ONLY_*`; os códigos de saída, de `cli.EXIT_CODES`
+`argparse`; o que só lê vem de `command_policy.READ_ONLY_*`; os códigos de saída, de `cli_summaries.EXIT_CODES`
 e `runtime.ERROR_EXIT`. Os comandos de plugin saem do manifesto, sem rodar código de plugin.
 """
 
@@ -11,10 +11,9 @@ e `runtime.ERROR_EXIT`. Os comandos de plugin saem do manifesto, sem rodar códi
 import argparse
 from pathlib import PurePath
 
-from . import __version__, _paths, cli, runtime
-from .sdk import environments, loader, marketplace
+from . import __version__, _paths, cli_parser, cli_summaries, labels, runtime
+from .sdk import environments, loader, marketplace, schemas
 
-SCHEMA_VERSION = 1
 ERROR_CODES = (
     "INVALID_DATA",
     "IO_ERROR",
@@ -65,7 +64,7 @@ def _option(action):
 
 
 def _described_actions(parser):
-    skipped = (argparse._HelpAction, cli._VersionAction, argparse._SubParsersAction)  # pylint: disable=protected-access
+    skipped = (argparse._HelpAction, cli_parser._VersionAction, argparse._SubParsersAction)  # pylint: disable=protected-access
     return [a for a in parser._actions if not isinstance(a, skipped)]  # pylint: disable=protected-access
 
 
@@ -78,11 +77,11 @@ def _read_only(name):
 def _command(name, parser):
     actions = _described_actions(parser)
     alternatives = [
-        [f"--{dest.replace('_', '-')}" for dest in group] for group in cli.PROJECT_ALTERNATIVES.get(name, ())
+        [f"--{dest.replace('_', '-')}" for dest in group] for group in cli_parser.PROJECT_ALTERNATIVES.get(name, ())
     ]
     return {
         "name": name,
-        "summary": cli.SUMMARIES[name],
+        "summary": cli_summaries.SUMMARIES[name],
         "requires_project": bool(alternatives) or any("--project" in a.option_strings and a.required for a in actions),
         "project_alternatives": alternatives,
         "read_only": _read_only(name),
@@ -105,8 +104,9 @@ def _plugin_rows():
     """
     try:
         inventory = loader.inventory()
-    except ValueError as exc:
-        return [], [], marketplace.portable_text(exc)
+    except (ValueError, OSError) as exc:
+        # `plugins.json` que não dá para ler (pasta, sem permissão) sai como E/S, sem mandar apagar.
+        return [], [], marketplace.portable_text(labels.os_message(exc) if isinstance(exc, OSError) else exc)
     commands = [
         {"plugin": row["id"], "command": command, "status": row["status"], "argv": ["x", row["id"], command]}
         for row in inventory
@@ -136,7 +136,7 @@ def describe(parser):
     subparsers = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction)).choices  # pylint: disable=protected-access
     plugin_commands, plugins_problems, plugins_error = _plugin_rows()
     manifest = {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": schemas.version("capabilities"),
         "name": "getbrolls",
         "version": __version__,
         "prog": parser.prog,
@@ -144,7 +144,9 @@ def describe(parser):
         "output": {"stdout": "JSON do resultado", "stderr": "JSON do erro, com error_code"},
         "global_options": [_option(a) for a in _described_actions(parser) if a.option_strings],
         "commands": [_command(name, subparsers[name]) for name in sorted(subparsers)],
-        "exit_codes": [{"code": code, "name": name, "meaning": meaning} for code, name, meaning in cli.EXIT_CODES],
+        "exit_codes": [
+            {"code": code, "name": name, "meaning": meaning} for code, name, meaning in cli_summaries.EXIT_CODES
+        ],
         "error_codes": sorted(
             ({"code": code, "exit": runtime.exit_code_for(code)} for code in ERROR_CODES), key=lambda row: row["code"]
         ),
@@ -159,8 +161,11 @@ def describe(parser):
         manifest["plugins_error"] = plugins_error
     try:
         manifest["marketplaces"] = marketplace.summary()
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
         manifest["marketplaces"] = []
-        # Sem caminho da máquina: o estado é sempre `$GB_HOME/marketplaces.json`.
-        manifest["marketplaces_error"] = marketplace.portable_text(exc)
+        # Sem caminho da máquina: o estado é sempre `$GB_HOME/marketplaces.json`. Arquivo que não dá
+        # para ler (pasta, FIFO, sem permissão) sai como E/S, sem mandar apagar.
+        manifest["marketplaces_error"] = marketplace.portable_text(
+            labels.os_message(exc) if isinstance(exc, OSError) else exc
+        )
     return manifest

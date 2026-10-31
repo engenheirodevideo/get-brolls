@@ -14,7 +14,8 @@
     "plan_version": {
       "type": "integer",
       "minimum": 3,
-      "description": "Informativo; o exporter não deve recusar por ele."
+      "default": 3,
+      "description": "Informativo; o exporter não deve recusar por ele. minimum é o piso aceito (um plano gravado por versão anterior continua válido); default é a versão corrente do plano que o core grava."
     },
     "meta": {
       "type": "object",

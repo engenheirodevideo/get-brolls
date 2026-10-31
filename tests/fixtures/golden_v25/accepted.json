@@ -926,6 +926,35 @@
      "kind": "changed"
     }
    ]
+  },
+  {
+   "id": "fila-biblioteca-versao-2",
+   "lista": "acrescimo",
+   "changelog": "**Biblioteca e fila gravam `schema_version: 2`.**",
+   "ratificado": "2026-10-23",
+   "diferencas_sha256": "1663ba32a2bf3b54e0bff8233847fa0e38901bae9fbaffd532a77145f52c1965",
+   "match": [
+    {
+     "case": "fluxo/learn",
+     "where": "files/gbhome/library/index.json",
+     "kind": "changed"
+    },
+    {
+     "case": "fluxo/queue_add",
+     "where": "files/work/proj/work/queue.json",
+     "kind": "changed"
+    },
+    {
+     "case": "fluxo/queue_mark",
+     "where": "files/work/proj/work/queue.json",
+     "kind": "changed"
+    },
+    {
+     "case": "fluxo/queue_next",
+     "where": "files/work/proj/work/queue.json",
+     "kind": "changed"
+    }
+   ]
   }
  ]
 }

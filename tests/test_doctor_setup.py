@@ -3,6 +3,7 @@
 import contextlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -211,14 +212,14 @@ class SetupCheckTests(unittest.TestCase):
             cases = {
                 "ready": (),
                 "broken-pin": (patch.dict(os.environ, {"GB_FFMPEG_PATH": str(Path(tmp) / "sem-ffmpeg")}),),
-                "no-curl": (patch.object(commands.shutil, "which", side_effect=which("curl")),),
-                "no-npx": (patch.object(commands.shutil, "which", side_effect=which("npx")),),
+                "no-curl": (patch.object(shutil, "which", side_effect=which("curl")),),
+                "no-npx": (patch.object(shutil, "which", side_effect=which("npx")),),
                 "no-data": (patch.object(_paths, "data_inventory", return_value=(["docs/RULES.md"], [])),),
             }
             for label, patches in cases.items():
                 with self.subTest(case=label), contextlib.ExitStack() as stack:
                     stack.enter_context(patch.dict(os.environ, clean, clear=True))
-                    stack.enter_context(patch.object(commands.shutil, "which", side_effect=which()))
+                    stack.enter_context(patch.object(shutil, "which", side_effect=which()))
                     for item in patches:
                         stack.enter_context(item)
                     doctor = cli.main(["doctor"])

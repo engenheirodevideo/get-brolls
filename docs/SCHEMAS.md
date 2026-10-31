@@ -28,7 +28,9 @@ Cada família de arquivo declara a versão de um de dois jeitos:
 - **Famílias que já existiam** mantêm o campo próprio: `schema_version` (manifesto,
   candidatos, referências, fila, biblioteca, estado do roteiro, marcador do export,
   perfil), `version` (`BRIEF.md`, `RULES.md`), `export_version` e `plan_version`
-  (plano de export).
+  (plano de export). `plan_version` tem piso (`minimum`) e versão corrente
+  (`default`): o piso é o que um plano antigo ainda pode trazer, o `default` é o
+  que o core grava.
 
 A leitura é a mesma para os dois jeitos:
 
@@ -43,6 +45,17 @@ A leitura é a mesma para os dois jeitos:
 `NaN` e `Infinity` são recusados nas famílias novas; os arquivos de análise e o
 índice de marketplace recusam também chave repetida. Os arquivos JSONL de log não
 têm versão por linha.
+
+### A versão mora no schema
+
+Todo JSON que o getbrolls grava ou lê como dado tem um schema em `schemas/`, e o número da
+versão sai dele: o código pergunta a `getbrolls.sdk.schemas.version(<nome>)` em vez de repetir
+um literal. O schema declara a versão na propriedade do campo de versão da família: um
+`maximum` quando a família já teve versões anteriores (fila e biblioteca: `1` e `2`, campo
+ausente vale `1`), senão um `const`; nas famílias `getbrolls.<família>/<N>`, o `N` da constante.
+Mudar o formato de um arquivo é subir a versão no schema e registrar a mudança no CHANGELOG;
+`tests/test_schema_registry.py` confere que não sobrou literal de versão no código nem gravador
+sem schema.
 
 ### `$id` dos schemas
 
@@ -74,16 +87,63 @@ O endereço-base mora numa constante só (`SCHEMA_ID_BASE`, em
 | pacote de entrega | `schema` | `getbrolls.handoff/1` | [`handoff.schema.json`](../schemas/handoff.schema.json) |
 | volta do pacote | `schema` | `getbrolls.handoff_return/1` | [`handoff_return.schema.json`](../schemas/handoff_return.schema.json) |
 | índice de marketplace | `schema` | `getbrolls.marketplace_index/1` | [`marketplace_index.schema.json`](../schemas/marketplace_index.schema.json) |
-| estado dos marketplaces | `schema` | `getbrolls.marketplaces/1` | validado em código |
+| estado dos marketplaces | `schema` | `getbrolls.marketplaces/1` | [`marketplaces.schema.json`](../schemas/marketplaces.schema.json) |
 | candidato | `schema_version` | `1` | [`candidate.schema.json`](../schemas/candidate.schema.json) |
 | brief | `version` | `1` | [`brief.schema.json`](../schemas/brief.schema.json) |
-| plano de export | `export_version` (e `plan_version` do plano de cena) | `2` | [`export_plan.schema.json`](../schemas/export_plan.schema.json) |
-| manifesto, referências, fila, biblioteca, estado do roteiro, marcador do export, perfil e confiança | `schema_version` | `1` | validado em código |
-| `RULES.md` | `version` | `1` | validado em código |
-| marcador do runtime | `schema` (inteiro) | `1` | validado em código |
+| plano de export | `export_version` (e `plan_version` do plano de cena, piso `3` e corrente `3`) | `2` | [`export_plan.schema.json`](../schemas/export_plan.schema.json) |
+| manifesto | `schema_version` | `1` | [`manifest.schema.json`](../schemas/manifest.schema.json) |
+| referências | `schema_version` | `1` | [`references.schema.json`](../schemas/references.schema.json) |
+| estado do roteiro | `schema_version` | `1` | [`roteiro_state.schema.json`](../schemas/roteiro_state.schema.json) |
+| marcador do export | `schema_version` | `1` | [`export_marker.schema.json`](../schemas/export_marker.schema.json) |
+| perfil (`getbrolls.toml`) | `schema_version` | `1` | [`profile_toml.schema.json`](../schemas/profile_toml.schema.json) |
+| confiança (`trusted-profiles.json`) | `schema_version` | `1` | [`trusted_profiles.schema.json`](../schemas/trusted_profiles.schema.json) |
+| fila (`work/queue.json`) | `schema_version` | `2` (lê `1` e `2`; regrava `1` como `2`) | [`queue.schema.json`](../schemas/queue.schema.json) |
+| biblioteca (`library/index.json`) | `schema_version` | `2` (lê `1` e `2`; regrava `1` como `2`) | [`library_index.schema.json`](../schemas/library_index.schema.json) |
+| `RULES.md` | `version` | `1` | [`rules_block.schema.json`](../schemas/rules_block.schema.json) |
+| marcador do runtime | `schema` (inteiro) | `1` | [`runtime_marker.schema.json`](../schemas/runtime_marker.schema.json) |
 
 `getbrolls.permissions_increase/1` não é um arquivo: é o domínio do sha256 que a
 prévia de um `update` de marketplace mostra quando o plugin pede permissão nova.
+
+## Schemas por área
+
+Um schema por arquivo persistido. O campo é o que carrega a versão e o valor é o que o schema
+declara hoje (`getbrolls.sdk.schemas.version`). Onde a coluna diz "só a versão", o schema declara
+por enquanto apenas o campo de versão e o objeto fica aberto; o restante do formato entra quando o
+arquivo passa a ser lido contra o schema.
+
+### Projeto: manifesto, fila e biblioteca
+
+| Arquivo | Schema | Campo | Valor | Estado |
+|---|---|---|---|---|
+| `brolls/manifest.json` | [`manifest.schema.json`](../schemas/manifest.schema.json) | `schema_version` | `1` | valida o topo na leitura; cada item segue `candidate` ao gravar |
+| `brolls/references.json` | [`references.schema.json`](../schemas/references.schema.json) | `schema_version` | `1` | valida na leitura |
+| `brolls/roteiro-state.json` | [`roteiro_state.schema.json`](../schemas/roteiro_state.schema.json) | `schema_version` | `1` | valida na leitura |
+| `brolls/.pending-transaction.json` | [`pending_transaction.schema.json`](../schemas/pending_transaction.schema.json) | `schema_version` | `1` (sem o campo, `1`) | valida na leitura |
+| `work/queue.json` | [`queue.schema.json`](../schemas/queue.schema.json) | `schema_version` | `2` (lê `1` e `2`) | valida na leitura |
+| `$GB_HOME/library/index.json` | [`library_index.schema.json`](../schemas/library_index.schema.json) | `schema_version` | `2` (lê `1` e `2`) | valida na leitura |
+| `.getbrolls-sources/index.json` | [`source_index.schema.json`](../schemas/source_index.schema.json) | `schema_version` | `1` (sem o campo, `1`) | valida ao gravar; a leitura segue leniente |
+
+### Projeto: export, revisão e relatórios
+
+| Arquivo | Schema | Campo | Valor | Estado |
+|---|---|---|---|---|
+| `exports/<exporter>/<NNN>/.getbrolls-export.json` | [`export_marker.schema.json`](../schemas/export_marker.schema.json) | `schema_version` | `1` (ausente vale `1`) | formato completo, que o core grava (conferido nos testes); na leitura só `marker` e a versão contam: versão mais nova vale como pasta sem marcador (não é lida e o staging não é apagado) |
+| decisões da página de revisão | [`review_decisions.schema.json`](../schemas/review_decisions.schema.json) | `templateVersion` | `2` | envelope no schema, lido contra ele; os itens ficam abertos e o leitor os confere um a um; `templateVersion` maior é recusado com a frase de versão mais nova |
+| `--summary-json` do lote do Instagram | [`instagram_summary.schema.json`](../schemas/instagram_summary.schema.json) | `schema_version` | `1` | formato completo; só o core grava (a gravação é conferida contra o schema nos testes) |
+
+### Instalação, pasta pessoal e SDK
+
+| Arquivo | Schema | Campo | Valor | Estado |
+|---|---|---|---|---|
+| `RULES.md` (bloco JSON) | [`rules_block.schema.json`](../schemas/rules_block.schema.json) | `version` | `1` | lido contra o schema depois de fundir as camadas e das conferências do código; objeto aberto |
+| `$GB_HOME/trusted-profiles.json` | [`trusted_profiles.schema.json`](../schemas/trusted_profiles.schema.json) | `schema_version` | `1` | estrito: versão ausente, outra versão ou documento fora do schema é `store_corrupt`; sem a pasta de dados, só a forma e nenhum perfil confiável |
+| `getbrolls.toml` | [`profile_toml.schema.json`](../schemas/profile_toml.schema.json) | `schema_version` | `1` | lido contra o schema depois das conferências do código; ausente vale `1` |
+| saída de `capabilities --json` | [`capabilities.schema.json`](../schemas/capabilities.schema.json) | `schema_version` | `1` | saída que só cresce: o schema liga quem grava, objetos abertos |
+| marcador `.getbrolls-runtime-<parte>.json` | [`runtime_marker.schema.json`](../schemas/runtime_marker.schema.json) | `schema` (inteiro) | `1` | a versão é a constante de inicialização `MARKER_SCHEMA_VERSION`, igual à do schema; marcador mais novo é parte não pronta e de outra versão (conflito de runtime, nunca montada por cima) |
+| `$GB_HOME/plugins.json` | [`plugins_state.schema.json`](../schemas/plugins_state.schema.json) | `schema` | `getbrolls.plugins/1` | lido contra o schema; ausente vale `1` (o arquivo da 2.5); `digest: 2` do pin é o formato do hash, não a versão do arquivo |
+| `$GB_HOME/marketplaces.json` | [`marketplaces.schema.json`](../schemas/marketplaces.schema.json) | `schema` | `getbrolls.marketplaces/1` | lido contra o schema depois das conferências do código |
+| `getbrolls-plugin.json` | [`plugin_manifest.schema.json`](../schemas/plugin_manifest.schema.json) | `sdk_api` | `1` | lido contra o schema quando declara o `sdk_api` desta versão; outro `sdk_api` fica incompatível, com o motivo. `SDK_API` é constante pública do SDK, igual à do schema |
 
 ## Mapa dos contratos
 
@@ -95,14 +155,14 @@ Caminhos relativos à pasta do projeto, salvo `$GB_HOME/…` (pasta pessoal, pad
 | Arquivo | Versão | Grava | Lê | Formato |
 |---|---|---|---|---|
 | `project.json` | `schema` | `init`, `migrate --action apply` | todos os comandos de projeto (`layout`) | [`project.schema.json`](../schemas/project.schema.json) |
-| `brolls/manifest.json` | `schema_version` | comandos de coleta (`search`, `resolve`, `preview`, `approve`, `permit`, `fetch`, `verify`, `deliver`…) | `status`, `brief`, `review`, `export`, plugins (`ctx`) | validado em código; cada item segue [`candidate.schema.json`](../schemas/candidate.schema.json) |
+| `brolls/manifest.json` | `schema_version` | comandos de coleta (`search`, `resolve`, `preview`, `approve`, `permit`, `fetch`, `verify`, `deliver`…) | `status`, `brief`, `review`, `export`, plugins (`ctx`) | [`manifest.schema.json`](../schemas/manifest.schema.json); cada item segue [`candidate.schema.json`](../schemas/candidate.schema.json) |
 | `brolls/candidates/<id>.json` | `schema_version` | os mesmos, a cada gravação do manifesto | quem lê um candidato só | [`candidate.schema.json`](../schemas/candidate.schema.json) |
-| `brolls/references.json` | `schema_version` | `remember` | `references`, `learn --from-candidate` | validado em código |
-| `brolls/roteiro-state.json` | `schema_version` | `roteiro --action sync` | `roteiro`, `status` | validado em código |
-| `work/queue.json` | `schema_version` | `queue` | `queue --action status`, `status` | validado em código |
-| `.getbrolls-sources/index.json` | sem campo | `preview`, `inspect`, `fetch` (cache privado de fontes) | os mesmos | validado em código; ilegível vira índice vazio |
+| `brolls/references.json` | `schema_version` | `remember` | `references`, `learn --from-candidate` | [`references.schema.json`](../schemas/references.schema.json) |
+| `brolls/roteiro-state.json` | `schema_version` | `roteiro --action sync` | `roteiro`, `status` | [`roteiro_state.schema.json`](../schemas/roteiro_state.schema.json) |
+| `work/queue.json` | `schema_version` | `queue` | `queue --action status`, `status` | [`queue.schema.json`](../schemas/queue.schema.json) |
+| `.getbrolls-sources/index.json` | `schema_version` (sem o campo, `1`) | `preview`, `inspect`, `fetch` (cache privado de fontes) | os mesmos | [`source_index.schema.json`](../schemas/source_index.schema.json); ilegível, ou de versão mais nova, vira índice vazio |
 | `BRIEF.md` (bloco JSON) | `version` | `init-brief`, `roteiro --action sync` | `brief`, `status`, `search --shot` | [`brief.schema.json`](../schemas/brief.schema.json) |
-| `RULES.md` (bloco JSON) | `version` | `init-rules` | todo comando que aplica regras | validado em código; veja [RULES.md](RULES.md) |
+| `RULES.md` (bloco JSON) | `version` | `init-rules` | todo comando que aplica regras | [`rules_block.schema.json`](../schemas/rules_block.schema.json); veja [RULES.md](RULES.md) |
 | `ROTEIRO.md` (frontmatter) | sem campo; `type: roteiro` | `roteiro --action new`, `init --recipe` | `roteiro`, `status`, `export`, a selagem da receita | validado em código; veja [`references/roteiro.md`](../references/roteiro.md) |
 | `aroll/<nome>.transcript.json` | sem campo | a pessoa (por exemplo, o `transcribe` do HyperFrames) | `export` | palavras `[{"text", "start", "end"}]` em segundos |
 | `assets/<tipo>/<nome>.licenca.json` | `schema_version` opcional | a pessoa | `assets`, `export`, a selagem da receita | validado em código |
@@ -131,32 +191,32 @@ cara de segredo, caminho absoluto e arquivo acima de 16 MiB.
 | Arquivo | Versão | Grava | Lê | Formato |
 |---|---|---|---|---|
 | `exports/<exporter>/<NNN>/getbrolls-plan.json` | `export_version` | `export` (o plano exato que o exporter recebeu) | quem audita o export | [`export_plan.schema.json`](../schemas/export_plan.schema.json) |
-| `exports/<exporter>/<NNN>/.getbrolls-export.json` | `schema_version` | `export` (marcador do core) | `export` (próxima pasta, varredura) | validado em código |
+| `exports/<exporter>/<NNN>/.getbrolls-export.json` | `schema_version` | `export` (marcador do core) | `export` (próxima pasta, varredura) | [`export_marker.schema.json`](../schemas/export_marker.schema.json) |
 | `exports/<exporter>/LATEST` | texto | `export` | a pessoa | número da pasta mais nova |
 
 ### Instalação e pasta pessoal
 
 | Arquivo | Versão | Grava | Lê | Formato |
 |---|---|---|---|---|
-| `getbrolls.toml` | `schema_version` | a pessoa | todo comando (perfil de workspace) | validado em código; veja o [MANUAL.md](MANUAL.md) |
-| `$GB_HOME/trusted-profiles.json` | `schema_version` | `profile --action trust|untrust` | todo comando | validado em código |
-| `$GB_HOME/library/index.json` | `schema_version` | `learn` e `search` (aprendizado automático de busca vazia) | `search`, `library` | validado em código |
+| `getbrolls.toml` | `schema_version` | a pessoa | todo comando (perfil de workspace) | [`profile_toml.schema.json`](../schemas/profile_toml.schema.json); veja o [MANUAL.md](MANUAL.md) |
+| `$GB_HOME/trusted-profiles.json` | `schema_version` | `profile --action trust|untrust` | todo comando | [`trusted_profiles.schema.json`](../schemas/trusted_profiles.schema.json) |
+| `$GB_HOME/library/index.json` | `schema_version` | `learn` e `search` (aprendizado automático de busca vazia) | `search`, `library` | [`library_index.schema.json`](../schemas/library_index.schema.json) |
 | `$GB_HOME/clients.json` | `schema` | `client --action add|remove` | `client`, `assets`, `init`, `migrate`, `recipe` | [`clients.schema.json`](../schemas/clients.schema.json) |
 | `<pasta do cliente>/client.json` | `schema` | `client --action add` | `client`, `assets`, `recipe` | [`client.schema.json`](../schemas/client.schema.json) |
 | `<pasta do cliente>/recipes/<slug>/<N>/getbrolls-recipe.json` | `schema` + `version` | a selagem da receita | `recipe --action list\|show`, `init --recipe` | [`recipe.schema.json`](../schemas/recipe.schema.json) |
 | `<pasta do cliente>/recipes/<slug>/<N>/getbrolls-recipe.sha256` | formato do `sha256sum` | a selagem da receita | `recipe --action show`, `init --recipe` | uma linha: sha256 do `getbrolls-recipe.json` |
 | `<pasta do cliente>/recipes/<slug>/<N>/components.json` | `schema` | a selagem da receita | `recipe --action show`, `init --recipe` | [`components.schema.json`](../schemas/components.schema.json) |
-| `$GB_HOME/runtime/<versão>/.getbrolls-runtime-<parte>.json` | `schema` (inteiro) | `setup` | `setup`, `doctor`, toda a CLI | validado em código: `building`, `upgrading` ou `ready` |
+| `$GB_HOME/runtime/<versão>/.getbrolls-runtime-<parte>.json` | `schema` (inteiro) | `setup` | `setup`, `doctor`, toda a CLI | [`runtime_marker.schema.json`](../schemas/runtime_marker.schema.json): `building`, `upgrading` ou `ready` |
 
 ### Plugins e marketplaces
 
 | Arquivo | Versão | Grava | Lê | Formato |
 |---|---|---|---|---|
-| `getbrolls-plugin.json` | `sdk_api` | o autor do plugin (`plugins --action new` gera um) | `plugins`, toda a CLI | validado em código; veja [SDK.md](SDK.md#manifesto) |
-| `$GB_HOME/plugins.json` | sem campo | `plugins --action enable|disable|install|update|remove` | toda a CLI | validado em código: pins, últimos pins e origens |
+| `getbrolls-plugin.json` | `sdk_api` | o autor do plugin (`plugins --action new` gera um) | `plugins`, toda a CLI | [`plugin_manifest.schema.json`](../schemas/plugin_manifest.schema.json); veja [SDK.md](SDK.md#manifesto) |
+| `$GB_HOME/plugins.json` | `schema` (ausente vale `1`) | `plugins --action enable|disable|install|update|remove` | toda a CLI | [`plugins_state.schema.json`](../schemas/plugins_state.schema.json): pins, últimos pins e origens; cada pin grava `digest: 2`, o hash da pasta enquadrado por arquivo, de domínio `getbrolls.plugin_folder/2` (pin sem a chave é do formato antigo e suspende o plugin até novo `enable`) |
 | `$GB_HOME/plugin-data/<id>/` | do plugin | o plugin (`api.data_dir`) | o plugin | livre |
 | `getbrolls-marketplace.json` (raiz do repositório do marketplace) | `schema` | o mantenedor do marketplace | `plugins --action marketplace-*`, `search`, `install --id <id>@<marketplace>` | [`marketplace_index.schema.json`](../schemas/marketplace_index.schema.json) |
-| `$GB_HOME/marketplaces.json` | `schema` | `plugins --action marketplace-add|update|remove` | `plugins`, `capabilities`, `doctor` | validado em código |
+| `$GB_HOME/marketplaces.json` | `schema` | `plugins --action marketplace-add|update|remove` | `plugins`, `capabilities`, `doctor` | [`marketplaces.schema.json`](../schemas/marketplaces.schema.json) |
 | `$GB_HOME/marketplaces/<nome>/` | do índice | `marketplace-add`, `marketplace-update` | os mesmos | cache conferido por sha256 a cada leitura |
 
 ## Layouts de projeto
@@ -255,6 +315,7 @@ como marcador de projeto e não descer em `broll/` nem em `analysis/`.
 | `$GB_HOME/.clients.lock` | Trava do registro de clientes. |
 | `$GB_HOME/logs/.getbrolls.log.lock` | Trava da rotação do log da instalação: tomada só em volta de cada linha, por quem a grava. |
 | `.getbrolls-setup.lock` | Trava do `setup` na pasta do runtime. |
+| `$GB_HOME/library/index.lock` | Trava do índice da biblioteca pessoal: uma escrita por vez; o `learn` espera até 10 s por ela antes de recusar com `LOCKED`. As linhas `event=library` e `event=library_lock` do `getbrolls.log` estão descritas em [CLI_CONTRACT.md](CLI_CONTRACT.md#linhas-eventlibrary-e-eventlibrary_lock). |
 | `brolls/.serve.pid`, `brolls/.serve.log` (e `.serve.log.1`) | Servidor de fundo do `serve --background`: PID e log da rodada atual e da anterior. |
 
 Os arquivos JSONL não têm versão por linha: cada linha é um objeto independente, e

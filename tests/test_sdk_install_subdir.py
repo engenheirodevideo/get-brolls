@@ -15,7 +15,7 @@ from _symlink import needs_symlink
 from test_sdk_install import HAS_GIT, InstallTestCase, _git_test_env, git, head, write_plugin
 from test_sdk_loader import MANIFEST
 
-from getbrolls.sdk import git_source, loader
+from getbrolls.sdk import git_source, loader, materialize
 from getbrolls.sdk import install as install_mod
 from getbrolls.sdk.files import LFS_POINTER_PREFIX, is_lfs_pointer
 from getbrolls.sdk.git_source import GitSource
@@ -280,14 +280,14 @@ class FetchFileTests(InstallTestCase):
         self.assertEqual(head(repo), commit)
         self.assertEqual({"schema_version": 1}, json.loads(data))
 
-        real_blob = install_mod._git_blob
+        real_blob = materialize._git_blob
         with (
-            patch.object(install_mod, "_git_blob", side_effect=AssertionError("não devia ler")),
+            patch.object(materialize, "_git_blob", side_effect=AssertionError("não devia ler")),
             self.assertRaises(ValueError) as ctx,
         ):
             install_mod.fetch_file(spec, "getbrolls-marketplace.json", 5)
         self.assertIn("passa de 5 bytes", str(ctx.exception))
-        self.assertIs(real_blob, install_mod._git_blob)
+        self.assertIs(real_blob, materialize._git_blob)
 
         for bad in ("nada.json", "../x", ".git/config"):
             with self.subTest(path=bad), self.assertRaises(ValueError):

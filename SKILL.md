@@ -7,7 +7,7 @@ metadata:
   type: "skill"
   status: "current"
   created: "2026-09-15"
-  updated: "2026-09-26"
+  updated: "2026-10-31"
   tags: "b-roll, youtube, instagram, tiktok, storyboard"
 ---
 

@@ -123,6 +123,10 @@ def _brief_for_check(project):
         return None, f"BRIEF.md não pôde ser lido para conferir o aspecto: {labels.reason(exc)}"
     if not isinstance(data, dict):
         return None, "BRIEF.md não pôde ser lido para conferir o aspecto: o bloco json não é um objeto."
+    try:
+        roteiro_plan.brief_delivery_format(data)
+    except ValueError as exc:
+        return None, str(exc)
     return data, None
 
 
@@ -179,7 +183,7 @@ def _review(args):
     if not expect:
         raise _refused("review", "expect_missing", ValueError(EXPECT_MISSING))
     path = roteiro.roteiro_path(args.project)
-    # `load_text` tira BOM e CRLF: `set_status` e o hash da revisão trabalham sobre o mesmo texto.
+    # `load_text` tira BOM e CRLF: `set_status` e o hash da revisão usam o mesmo texto; a gravação os devolve.
     text = roteiro.load_text(args.project)
     doc = roteiro.parse(text)
     refusal = roteiro.skeleton_refusal(doc)
@@ -194,7 +198,8 @@ def _review(args):
         raise _refused("review", "changed_during_review", ValueError(REVIEW_CHANGED))
     if marked != text:
         # Link (nota do Obsidian) continua link: grava no arquivo de verdade, como o sync.
-        atomic_write(path.resolve(), marked)
+        # Quem edita em CRLF (ou com BOM) continua com o arquivo do jeito que o editor o deixou.
+        atomic_write(path.resolve(), roteiro_review.in_form(marked, roteiro_review.file_form(path)))
     entry = roteiro_review.record_review(args.project, doc, args.by, args.channel, args.statement)
     return {
         "review": entry,

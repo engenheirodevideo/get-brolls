@@ -16,7 +16,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _cli import run_cli
 from _paths import ROOT
 
-from getbrolls import _paths, cli, rendering
+from getbrolls import cli, install_report, rendering
 from getbrolls.sdk import scaffold
 
 # Os subcomandos da CLI, o mais longo primeiro (`init-brief` antes de `init`).
@@ -303,7 +303,7 @@ class ExamplePluginsInstallFromTheDataRootTests(unittest.TestCase):
                 self.assertIn("`install.data_root`", text)
 
     def test_the_data_root_the_doctor_shows_holds_the_examples(self):
-        data_root = _paths.build_info()["data_root"]
+        data_root = install_report.build_info()["data_root"]
         self.assertIsNotNone(data_root)
         for ident in ("banco_http", "exporter_example", "pasta_local"):
             self.assertTrue((Path(data_root) / "examples" / "plugins" / ident / "getbrolls-plugin.json").is_file())

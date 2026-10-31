@@ -2,7 +2,7 @@
 # continua sem dependência: nada aqui é importado pelo código de produção.
 # ruff: o `extend-select` do pyproject.toml segue o conjunto padrão do ruff, que
 # cresce nos minors 0.x; como pylint e astroid, o bump é manual (o dependabot ignora).
-ruff==0.16.8
+ruff==0.17.2
 pyright==1.1.414
 pylint==4.0.9
 # astroid infere assinatura da stdlib pelo interpretador que roda o lint; pinado

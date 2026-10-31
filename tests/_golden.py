@@ -20,7 +20,7 @@ Nada aqui importa `getbrolls`: o mesmo módulo grava o checkout em teste e a ár
 import argparse
 import contextlib
 import dataclasses
-import datetime
+import datetime as dt
 import hashlib
 import json
 import os
@@ -130,8 +130,8 @@ def run_days(today):
     """A data da rodada e a do dia seguinte: uma rodada dura menos de um minuto e pode cruzar a meia-noite."""
     if not today:
         return ()
-    first = datetime.date.fromisoformat(today)
-    return (first.isoformat(), (first + datetime.timedelta(days=1)).isoformat())
+    first = dt.date.fromisoformat(today)
+    return (first.isoformat(), (first + dt.timedelta(days=1)).isoformat())
 
 
 def _posix_quoting(match):
@@ -238,7 +238,7 @@ class Normalizer:
         return {"text": lines}
 
 
-# A chave da venv do runtime é um resumo derivado (o sha do `requirements.txt`, `_paths.part_sha`): muda a cada
+# A chave da venv do runtime é um resumo derivado (o sha dos arquivos de requisitos, `_paths.part_sha`): muda a cada
 # bump de dependência e a cada regeração dos hashes, sem que o comando mude. Só esse campo, nesse caminho do
 # `doctor`; a chave das ferramentas (`tools`) e qualquer outro campo valem byte a byte. O arquivo do ouro guarda a
 # chave do dia em que foi gravado (qualquer 16 hex vira marcador); o registro da rodada só vira marcador quando traz
@@ -267,10 +267,10 @@ def _mask_venv_key(text, venv_key=None):
     return json.dumps(record, ensure_ascii=False, indent=1) + "\n"
 
 
-# No Windows, `runtime.make_private` registra cada ACL privada como uma linha `proc.run` do `icacls` (fica no log por
-# rastreabilidade); o ouro foi gravado no POSIX, onde ela não existe. Só essa forma, inteira e bem-sucedida, sai da
-# comparação, e só das linhas acrescentadas a um `getbrolls.log`: qualquer outra linha `proc.run` (outra ferramenta,
-# outro desfecho, um campo a mais) continua contando.
+# No Windows, `private_files.make_private` registra cada ACL privada como uma linha `proc.run` do `icacls` (fica no
+# log por rastreabilidade); o ouro foi gravado no POSIX, onde ela não existe. Só essa forma, inteira e
+# bem-sucedida, sai da comparação, e só das linhas acrescentadas a um `getbrolls.log`: qualquer outra linha
+# `proc.run` (outra ferramenta, outro desfecho, um campo a mais) continua contando.
 ICACLS_OP_LINE = re.compile(
     r"level=INFO logger=getbrolls\.effects event=op operation=proc\.run target=icacls outcome=ok "
     r"duration_ms=<MS> error_code=- error=- command=[a-z_]+ exit=0"
@@ -456,7 +456,7 @@ COMMAND_LOCK = ".command.lock"
 
 def file_bytes(path, windows=None):
     """Os bytes de `path` como o ouro os guarda. A trava do projeto no Windows (`msvcrt`) tem 1 byte `\\0`
-    (`runtime._acquire_lock`); a do POSIX (`flock`) fica vazia. Só no Windows as duas valem o mesmo: no POSIX um
+    (`file_locks._acquire_lock`); a do POSIX (`flock`) fica vazia. Só no Windows as duas valem o mesmo: no POSIX um
     byte na trava é uma diferença."""
     data = path.read_bytes()
     if (_windows() if windows is None else windows) and path.name == COMMAND_LOCK and data == b"\0":

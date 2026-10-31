@@ -21,7 +21,7 @@ import urllib.parse
 from pathlib import Path, PureWindowsPath
 
 from . import __version__, assets, effects, export_folder, export_gates, export_place, export_plan, logs
-from .delivery import copies_forced
+from .delivery_files import copies_forced
 from .labels import OS_REASONS
 from .ledger import existing_project_id
 from .rules import home_dir

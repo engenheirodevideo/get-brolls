@@ -179,19 +179,34 @@ def _merge_layers(layers):
     return r, sources
 
 
+def _schemas():
+    from .sdk import schemas  # tardio: o sdk importa `rules` (home_dir)
+
+    return schemas
+
+
 def _validate_version(r):
-    """Normaliza `version` do RULES.md para 1: ausente vale 1; versão mais nova sai com a frase padrão.
+    """Normaliza `version` do RULES.md: ausente vale 1; versão mais nova que a do schema sai com a frase padrão.
 
     `schema_version` não é sinônimo (saiu com a versão de testes da 2.6): é uma chave como outra
     qualquer, que o getbrolls ignora, como a 2.5 fazia.
     """
-    value = r.get("version", 1)
-    versioning.read_version(
-        {versioning.FIELD: value},
+    declared = {versioning.FIELD: r["version"]} if "version" in r else {}
+    r["version"] = versioning.read_version(
+        declared,
         "RULES.md",
+        _schemas().version("rules_block"),
         invalid='Em RULES.md, "version" tem que ser o número 1. Ajuste essa linha.',
     )
-    r["version"] = value
+
+
+def _validate_schema(r):
+    """Confere as regras fundidas contra `schemas/rules_block.schema.json`, depois das conferências acima."""
+    from .sdk import jsonschema  # tardio: o sdk importa `rules` (home_dir)
+
+    problems = jsonschema.errors(r, _schemas().load("rules_block"))
+    if problems:
+        raise ValueError("Em RULES.md, o bloco json está fora do formato: " + "; ".join(problems[:3]) + ".")
 
 
 def _validate_asset_types(r):
@@ -337,6 +352,7 @@ def load_rules(project):
     _validate_browser(r)
     # Optional `pacing` block for the social queue; the environment still wins.
     validate_pacing_block(r.get("pacing"))
+    _validate_schema(r)
     # Aditivo: `sources` diz de que arquivo veio cada campo e `rules_warnings` o que
     # foi ignorado pelo caminho. Nenhum consumidor existente lê essas duas chaves.
     r["sources"] = sources

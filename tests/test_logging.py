@@ -262,6 +262,45 @@ class ConfigureRobustnessTests(unittest.TestCase):
             finally:
                 logs._degrade()
 
+    def test_a_setup_failure_says_so_on_stderr_and_the_command_goes_on(self):
+        failing = patch.object(logs, "_configure", side_effect=OSError(28, "No space left on /secret/place"))
+        err = io.StringIO()
+        with failing, contextlib.redirect_stderr(err):
+            try:
+                logs.configure(None, read_only=False)  # must not raise
+                logs.event(logs.get("setup-failure"), logging.INFO, "probe")  # and logging stays harmless
+            finally:
+                logs._degrade()
+        lines = err.getvalue().splitlines()
+        self.assertEqual(1, len(lines), lines)
+        self.assertIn("getbrolls.log", lines[0])
+        self.assertIn("OSError", lines[0])
+        self.assertNotIn("/secret/place", lines[0], "the reason is the class only: a message can carry paths")
+
+    def test_a_working_setup_prints_nothing_on_stderr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "proj"
+            (project / "brolls").mkdir(parents=True)
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), patch.dict(os.environ, {"GB_LOG_STDERR": ""}):
+                try:
+                    logs.configure(str(project), read_only=False)
+                    logs.event(logs.get("setup-ok"), logging.INFO, "probe")
+                finally:
+                    logs._degrade()
+            self.assertEqual("", err.getvalue())
+
+    def test_a_failing_stderr_never_breaks_the_command(self):
+        class Closed:
+            def write(self, _text):
+                raise ValueError("I/O operation on closed file")
+
+        with patch.object(logs, "_configure", side_effect=OSError("x")), patch.object(logs.sys, "stderr", Closed()):
+            try:
+                logs.configure(None, read_only=False)  # must not raise
+            finally:
+                logs._degrade()
+
     @unittest.skipIf(os.name == "nt", "permissões POSIX")
     def test_unwritable_directory_never_raises(self):
         with tempfile.TemporaryDirectory() as tmp:

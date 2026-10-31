@@ -76,7 +76,7 @@ class LibraryTests(LibraryBase):
             self.assertEqual(0o600, stat.S_IMODE(path.stat().st_mode))
         self.assertFalse(list(path.parent.glob("*.tmp")))
         data = json.loads(path.read_text(encoding="utf-8"))
-        self.assertEqual(1, data["schema_version"])
+        self.assertEqual(2, data["schema_version"])
         self.assertEqual("hit", data["queries"][0]["outcome"])
         self.assertEqual({"hit": 1, "miss": 0}, data["providers"]["youtube"]["outcomes"])
 

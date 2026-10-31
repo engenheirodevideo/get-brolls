@@ -170,7 +170,10 @@ class SourceIndexTests(AcquisitionCase):
 
     def test_a_good_save_replaces_the_index_and_leaves_no_temp_file(self):
         acquisition._save_index(self.cache, {"a": [{"sha": "x"}]})
-        self.assertEqual({"a": [{"sha": "x"}]}, json.loads((self.cache / acquisition.INDEX_NAME).read_text("utf-8")))
+        self.assertEqual(
+            {"schema_version": 1, "a": [{"sha": "x"}]},
+            json.loads((self.cache / acquisition.INDEX_NAME).read_text("utf-8")),
+        )
         self.assertEqual([acquisition.INDEX_NAME], [path.name for path in self.cache.iterdir()])
 
 

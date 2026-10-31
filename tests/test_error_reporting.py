@@ -1,4 +1,4 @@
-"""Legible failures across the subprocess and network boundaries (issue #31 waves B/C).
+"""Legible failures across the subprocess and network boundaries (issue #31, parts B/C).
 
 Covers yt-dlp error classification in social.py, http.download/get_json error separation,
 provider refresh(), media.run and the Instagram pair collector.
@@ -28,7 +28,7 @@ from _cli import run_cli
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 from _portable import unlink_frozen
 
-from getbrolls import cli, http, media, providers, queue, runtime, social
+from getbrolls import cli, http, instagram_media, media, providers, queue, runtime, social
 from getbrolls import instagram_pairs as ig
 from getbrolls.http import ProviderError
 from getbrolls.ledger import Ledger
@@ -345,7 +345,7 @@ class RunErrorTests(unittest.TestCase):
         with (
             contextlib.redirect_stderr(io.StringIO()),
             patch.object(
-                ig.subprocess,
+                subprocess,
                 "run",
                 side_effect=subprocess.CalledProcessError(7, ["ffmpeg", "x"], output="", stderr="boom detail"),
             ),
@@ -365,9 +365,9 @@ class ReuseValidityTests(unittest.TestCase):
             part = root / "p.mp4"
             part.write_bytes(b"not-really-media")
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
                 contextlib.redirect_stderr(io.StringIO()),
-                patch.object(ig.subprocess, "run", side_effect=subprocess.CalledProcessError(1, ["ffprobe"])),
+                patch.object(subprocess, "run", side_effect=subprocess.CalledProcessError(1, ["ffprobe"])),
                 self.assertRaises(ig.CollectError) as ctx,
             ):
                 ig.download_or_reuse(
@@ -388,8 +388,8 @@ class ReuseValidityTests(unittest.TestCase):
             part = root / "p.mp4"
             part.write_bytes(b"looks-fine")
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                patch.object(ig.subprocess, "run", return_value=subprocess.CompletedProcess(["ffprobe"], 0)),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(["ffprobe"], 0)),
             ):
                 action = ig.download_or_reuse(
                     cfg_path=conf,
@@ -412,8 +412,8 @@ class TimeoutTests(unittest.TestCase):
                 raise subprocess.TimeoutExpired(cmd, 600)
 
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                patch.object(ig.subprocess, "run", side_effect=timeout),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(subprocess, "run", side_effect=timeout),
                 contextlib.redirect_stderr(io.StringIO()),
                 self.assertRaises(ig.CollectError) as ctx,
             ):
@@ -431,7 +431,7 @@ class AudioHashOptionalTests(unittest.TestCase):
     def test_verify_output_hash_is_null_when_not_requested(self):
         with (
             patch.object(
-                ig,
+                instagram_media,
                 "ffprobe_json",
                 return_value={
                     "format": {"duration": "1.0", "size": "10"},
@@ -441,7 +441,7 @@ class AudioHashOptionalTests(unittest.TestCase):
                     ],
                 },
             ),
-            patch.object(ig, "audio_hash") as hash_fn,
+            patch.object(instagram_media, "audio_hash") as hash_fn,
         ):
             report = ig.verify_output(Path("/dev/null"), compute_audio_hash=False)
         hash_fn.assert_not_called()

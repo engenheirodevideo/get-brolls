@@ -21,7 +21,7 @@ from test_profile_cli import ProfileCliCase, sha, write
 from test_recipe_init import RecipeInitCase
 from test_recipe_store import RecipeCase
 
-from getbrolls import clients, profile, recipe_init, recipes, runtime
+from getbrolls import clients, file_locks, private_files, profile, profile_trust, recipe_init, recipes
 from getbrolls.errors import LockedError
 
 
@@ -101,7 +101,7 @@ class ClientLogTests(ClientsTestCase, LogCase):
         with self.captured() as cm, self.assertRaises(ValueError):
             clients.load_client("acme-secreto")
         self.rows(cm).one("client_refused", reason="client_file_invalid")
-        runtime.force_rmtree(self.base / "acme-secreto")
+        private_files.force_rmtree(self.base / "acme-secreto")
         with self.captured() as cm, self.assertRaises(ValueError):
             clients.load_client("acme-secreto")
         self.rows(cm).one("client_refused", reason="folder_missing")
@@ -385,8 +385,8 @@ class ProfileLogTests(ProfileCliCase):
         write(self.toml, 'cache_dir = "c"\n')
         self.home.mkdir(exist_ok=True)
         lock_path = self.home / f"{profile.TRUST_FILE}.lock"
-        with lock_path.open("a+", encoding="utf-8") as held, patch.object(profile, "LOCK_TIMEOUT_S", 0.1):
-            runtime._acquire_lock(held)  # pylint: disable=protected-access
+        with lock_path.open("a+", encoding="utf-8") as held, patch.object(profile_trust, "LOCK_TIMEOUT_S", 0.1):
+            file_locks._acquire_lock(held)  # pylint: disable=protected-access
             try:
                 with (
                     patch.dict(os.environ, {"GB_HOME": str(self.home)}),
@@ -400,7 +400,7 @@ class ProfileLogTests(ProfileCliCase):
                         expect=sha(self.toml),
                     )
             finally:
-                runtime._release_lock(held)  # pylint: disable=protected-access
+                file_locks._release_lock(held)  # pylint: disable=protected-access
         row = events([record.getMessage() for record in cm.records], "lock_busy")[0]
         self.assertEqual(
             {"lock": lock_path.name, "error_code": "LOCKED"}, {key: row[key] for key in ("lock", "error_code")}

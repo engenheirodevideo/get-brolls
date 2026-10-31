@@ -69,7 +69,10 @@ dentro de `$GB_HOME/plugins/` são consideradas (por padrão,
 
 ## Manifesto
 
-Campos de `getbrolls-plugin.json`:
+Campos de `getbrolls-plugin.json` (o formato publicado é
+[`schemas/plugin_manifest.schema.json`](../schemas/plugin_manifest.schema.json); o manifesto do
+`sdk_api` desta versão é conferido contra ele depois das conferências do código, e `SDK_API` é igual
+ao `sdk_api` desse schema):
 
 | Campo | Tipo | Obrigatório | Descrição |
 |---|---|---|---|
@@ -78,7 +81,7 @@ Campos de `getbrolls-plugin.json`:
 | `description` | string | não | Até 500 caracteres. |
 | `version` | string | sim | `X.Y.Z` do próprio plugin. |
 | `sdk_api` | inteiro | sim | Versão do contrato do SDK que o plugin fala; hoje `1`. Diferente da versão instalada do getbrolls, o plugin é recusado. |
-| `requires_getbrolls` | string | sim | Faixa de compatibilidade, ex.: `">=2.5,<3"`. |
+| `requires_getbrolls` | string | sim | Faixa de compatibilidade, ex.: `">=2.6,<3"`. |
 | `entry` | string | sim | Nome do arquivo de entrada na raiz da pasta do plugin: `[A-Za-z0-9_]{1,64}\.py` (sem subpasta, hífen ou ponto extra). |
 | `contributes` | objeto | não (padrão `{}`) | Listas por tipo de contribuição — veja abaixo. Chave ausente vale lista vazia. |
 | `permissions` | objeto | não (padrão `{}`) | `network` (hosts liberados para `get_json`/`download`), `env` (variáveis liberadas para `env`), `paths` (pastas liberadas para `local_file`) e `project_write` (áreas do projeto em que o plugin pode gravar pela API do core; hoje só `"analysis"`); cada chave ausente vale lista vazia. |
@@ -147,6 +150,10 @@ Qualquer campo de topo fora da tabela recusa o manifesto, e uma chave de
 novo só entra de dois jeitos: dentro de `metadata` (que o core ignora) ou com um
 `sdk_api` novo (2). Assim um manifesto válido hoje continua válido, e um plugin
 escrito para uma versão mais nova nunca é carregado pela metade numa mais velha.
+
+O estado dos plugins (`$GB_HOME/plugins.json`) grava `"schema": "getbrolls.plugins/1"`
+([`schemas/plugins_state.schema.json`](../schemas/plugins_state.schema.json)); um arquivo sem o
+campo (o da 2.5) vale a versão 1, e um número maior que o suportado é recusado sem tocar no arquivo.
 
 ### Dependências (`requires`)
 
@@ -804,8 +811,9 @@ exportador pode esperar:
   ele que diz se o seu código entende o plano. `plan_version` é o formato do
   plano de cena do roteiro (`roteiro --action plan`), de onde vêm as cenas; ele
   pode subir sem mudar nada para o exportador. No schema publicado,
-  `plan_version` só exige `>= 3` — o exportador não deve recusar por esse
-  valor.
+  `plan_version` tem piso `minimum` (`3`, o que ainda é aceito) e versão corrente
+  `default` (`3`, o que o core grava): o schema só exige `>= 3`, e o exportador
+  não deve recusar por esse valor.
 - **`$id` por versão.** O `$id` do schema aponta para a tag da versão
   (`.../get-brolls/v2.6.0/schemas/export_plan.schema.json`), não para a `main`.
 
@@ -1019,7 +1027,9 @@ getbrolls plugins --action install --id <id>@<marketplace> --yes --expect <sha25
   ou com o prefixo `<oficial>_`, de qualquer lado, recusa o índice inteiro, porque
   `search` mostraria `renamed_to` e o `install` apontaria o impostor.
 - Depois de materializar: sha256 do conteúdo diferente do `content_sha256` da
-  entrada é recusa dura, sem prévia nova; manifesto que diverge da entrada em
+  entrada é recusa dura (o `content_sha256` é o hash da pasta do pin, no formato
+  enquadrado descrito em "pin de hash" abaixo, o mesmo `sha256` que a prévia
+  do `install --source` mostra), sem prévia nova; manifesto que diverge da entrada em
   `id`, `version`, `sdk_api`, `requires_getbrolls`, `permissions`,
   `contributes`, `requires`, `platforms` ou `license` também. Divergência só na
   `description` vira aviso.
@@ -1033,6 +1043,14 @@ getbrolls plugins --action install --id <id>@<marketplace> --yes --expect <sha25
   afrouxa nenhuma das conferências acima. `marketplace-add` de outra origem
   avisa, e cada marketplace traz `official` em `marketplace-list`,
   `capabilities` e `doctor`.
+- `marketplaces.json` que não é um arquivo comum (uma pasta, um FIFO) ou que o
+  sistema não deixa ler é uma recusa de E/S (`IO_ERROR`, exit 1) nos comandos
+  que precisam dele, como `marketplace-list`: "Não consegui acessar
+  `$GB_HOME/marketplaces.json` (não é um arquivo comum). Confira o caminho e as
+  permissões e repita." Já `doctor` e `capabilities` seguem e relatam o motivo
+  em `marketplaces_error`, e o inventário de plugins continua (ver
+  `marketplace_notice` abaixo). Um arquivo legível mas ruim (conteúdo malformado
+  ou acima de 1 MiB) segue sendo "inválido" (`INVALID_DATA`).
 - `marketplace-update` lista em `diff.changed` as entradas cujo commit ou
   `content_sha256` mudou (de/para), mesmo sem versão nova. Um commit do índice
   que não descende do fixado (volta atrás ou história reescrita) é erro de uso
@@ -1063,16 +1081,21 @@ getbrolls plugins --action install --id <id>@<marketplace> --yes --expect <sha25
   plugin instalado por marketplace com entrada nova, versão de/para, tier,
   `permissions_added`, `auto_update_eligible` e o comando da prévia por id; mais
   `up_to_date`, `skipped` (com o motivo, ex.: `yanked`) e `outside_marketplace`.
+  Se o `marketplaces.json` não puder ser lido (é uma pasta ou outro tipo que
+  não é arquivo comum, ou falta permissão), o `--all` não para: cada plugin
+  daquele marketplace vai para `skipped`, com o motivo de E/S ("Não consegui
+  acessar `$GB_HOME/marketplaces.json` ..."), e o comando sai com 0.
   `auto_update_eligible` é só a política exibida: tier `official` ou `verified`
   verificado (só no índice oficial) e nenhuma permissão nova; `community` e tier
   só declarado nunca são elegíveis. `--all` com `--yes`,
   `--expect` ou `--id` é erro de uso; aplicar em lote fica para uma versão futura.
 - `plugins --action list` e cada linha de `plugins[]` do `doctor` trazem
   `origin` (`source`, `commit`, `ref`, `subdir`, `marketplace`, `tier`,
-  `index_commit`, `tier_verified`, `tier_note`; `null` para plugin copiado à mão) e `marketplace_notice`, o
+  `index_commit`, `tier_verified`, `tier_note`; `null` para plugin copiado à mão) e, dentro dele, `marketplace_notice`, o
   que o índice fixado diz hoje do plugin instalado: retirado (`yanked`),
-  obsoleto, renomeado, fora do índice ou marketplace removido (`null` quando não
-  há nada a dizer), sem rede e sem caminho da máquina. O `doctor` ganha
+  obsoleto, renomeado, fora do índice, marketplace removido ou
+  `marketplaces.json` que não pôde ser lido (o motivo de E/S, sem mandar apagar
+  nada); `null` quando não há nada a dizer. Sem rede e sem caminho da máquina. O `doctor` ganha
   `marketplaces` (nome, commit, plugins, `allowed`, `official`, `problem`) quando
   há algum; `capabilities` sempre traz a
   mesma lista.
@@ -1134,10 +1157,18 @@ getbrolls plugins --action remove --id <id> --yes
   arquivos adicionados, removidos e alterados, comparados com o que o pin
   guarda em `plugins.json` (`enabled.<id>.permissions` e `.files`). Confirmar exige
   `--yes --expect <sha256>`, o mesmo valor da prévia — `--yes` sozinho é
-  recusado, como no install/update. Um `plugins.json` de antes desta versão
-  (pin sem `files`) continua válido; a prévia só avisa que o diff é
+  recusado, como no install/update. Um pin sem `files` (de uma versão antiga)
+  com o hash de hoje continua válido; a prévia só avisa que o diff é
   desconhecido e pede para conferir a pasta. O primeiro `enable` de um plugin
   nunca pinado segue só com `--yes`.
+- **Pin do formato antigo (antes da 2.6.0).** O pin guarda o formato do hash em
+  `digest` (hoje `2`). Uma entrada sem essa chave é do formato antigo, que não
+  amarrava o conteúdo: o plugin fica `suspended` com esse motivo até um novo
+  `plugins --action enable --id <id>`. A prévia traz o `diff` de sempre, mas o
+  de arquivos pode vir vazio (só o formato mudou), e a `note` do `diff` diz isso;
+  confirmar exige `--yes --expect <sha256>`, como em qualquer conteúdo mudado.
+  O mesmo vale para um `last_pins` antigo. `list`, `remove` e `doctor`
+  funcionam com qualquer número de pins antigos.
 - O mesmo vale depois de um `disable`: ele tira o plugin de `enabled` mas
   guarda o último pin em `plugins.json` (`last_pins.<id>`). Religar com a pasta
   igual é só `--yes`; com a pasta mudada, a prévia traz o `diff` e confirmar
@@ -1146,7 +1177,10 @@ getbrolls plugins --action remove --id <id> --yes
   disso o pin guarda só o sha256 total (`files_omitted`) e a prévia diz
   "muitos arquivos, diff omitido" — o `--expect` continua obrigatório.
 - `--yes` grava um **pin de hash**: um sha256 sobre todo arquivo da pasta do
-  plugin, exceto lixo de SO (`.DS_Store`, `Thumbs.db`, `desktop.ini`) e a pasta
+  plugin (o formato `2`: uma etiqueta de domínio e, por arquivo, na ordem dos
+  caminhos, o tamanho do caminho em 8 bytes, o caminho em UTF-8 e o sha256 do
+  arquivo; duas pastas diferentes nunca dão o mesmo valor), exceto lixo de SO
+  (`.DS_Store`, `Thumbs.db`, `desktop.ini`) e a pasta
   `.git` **de topo** — só essas ficam fora da conta, e por isso o código do
   plugin **não pode ler nem executar** nada com esses nomes nem de dentro do
   `.git` de topo. O `install` nunca grava esses nomes em `plugins/`. Qualquer

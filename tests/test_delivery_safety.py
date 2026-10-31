@@ -27,7 +27,7 @@ from _paths import ROOT  # também insere scripts/ em sys.path
 from _portable import unlink_frozen
 from _symlink import needs_symlink
 
-from getbrolls import delivery, runtime
+from getbrolls import delivery, delivery_files, runtime
 from getbrolls.commands import mark_rejected
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, invalidate_approval, now, set_segment
@@ -269,8 +269,11 @@ class ComparisonIOFailureIsNotAnEditClaim(unittest.TestCase):
             src.write_bytes(b"mesmo conteudo")
             dest.write_bytes(b"mesmo conteudo")
 
-            broken = delivery._CompareError(f"[Errno 13] Permission denied: '{dest}'")
-            with patch.object(delivery, "_same_file", side_effect=broken), self.assertRaises(ValueError) as caught:
+            broken = delivery_files._CompareError(f"[Errno 13] Permission denied: '{dest}'")
+            with (
+                patch.object(delivery_files, "_same_file", side_effect=broken),
+                self.assertRaises(ValueError) as caught,
+            ):
                 delivery.link_or_copy(src, dest)
             message = str(caught.exception)
             self.assertNotIn("parece edição sua", message)
@@ -282,16 +285,16 @@ class ComparisonIOFailureIsNotAnEditClaim(unittest.TestCase):
             missing = Path(tmp) / "nao-existe.mp4"
             other = Path(tmp) / "outro.mp4"
             other.write_bytes(b"x")
-            with self.assertRaises(delivery._CompareError):
-                delivery._same_file(missing, other)
+            with self.assertRaises(delivery_files._CompareError):
+                delivery_files._same_file(missing, other)
 
     def test_same_bytes_raises_compare_error_instead_of_silently_returning_false(self):
         with tempfile.TemporaryDirectory() as tmp:
             missing = Path(tmp) / "nao-existe.mp4"
             other = Path(tmp) / "outro.mp4"
             other.write_bytes(b"x")
-            with self.assertRaises(delivery._CompareError):
-                delivery._same_bytes(missing, other)
+            with self.assertRaises(delivery_files._CompareError):
+                delivery_files._same_bytes(missing, other)
 
 
 class InterruptedCopy(unittest.TestCase):
@@ -620,7 +623,7 @@ class CopyReadOnlyWarning(unittest.TestCase):
             token = runtime.ACTIVE.set(event)
             try:
                 with patch.object(Path, "chmod", refuse):
-                    delivery._copy_whole(src, dest)
+                    delivery_files._copy_whole(src, dest)
             finally:
                 runtime.ACTIVE.reset(token)
             warning = next(w for w in event["warnings"] if w["code"] == "DELIVERY_COPY_READ_ONLY")
@@ -664,7 +667,7 @@ class FreezeFailureIsSurfacedAsAWarning(unittest.TestCase):
             event = {"warnings": [], "state_committed": False}
             token = runtime.ACTIVE.set(event)
             try:
-                delivery._freeze(path, "hardlink")
+                delivery_files._freeze(path, "hardlink")
             finally:
                 runtime.ACTIVE.reset(token)
                 os.chmod = original
@@ -680,7 +683,7 @@ class FreezeFailureIsSurfacedAsAWarning(unittest.TestCase):
             event = {"warnings": [], "state_committed": False}
             token = runtime.ACTIVE.set(event)
             try:
-                delivery._freeze(path, "hardlink")
+                delivery_files._freeze(path, "hardlink")
             finally:
                 runtime.ACTIVE.reset(token)
             self.assertEqual([], event["warnings"])
@@ -716,7 +719,7 @@ class UnverifiedAndRejectedItemsAreNeverDelivered(unittest.TestCase):
     def test_falsy_but_not_the_false_singleton_is_also_skipped(self):
         """Finding: the old guard used `is False`, so `0`/`None` (falsy, but not the
         `False` singleton) slipped through and were delivered anyway, while
-        `STAGE_TESTS["verified"]` in commands.py (which uses `bool(...)`) already
+        `STAGE_TESTS["verified"]` in summaries.py (which uses `bool(...)`) already
         reported the same item as unverified — an inconsistent reader."""
         for falsy in (0, None, 0.0, ""):
             with self.subTest(verified=falsy), tempfile.TemporaryDirectory() as tmp:

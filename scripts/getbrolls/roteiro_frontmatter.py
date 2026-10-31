@@ -123,7 +123,8 @@ def _field(  # noqa: C901, PLR0911, PLR0912 - one branch and return per field ru
         meta[key] = value
         return None
     if key == "duracao_alvo_s":
-        if quoted or not (value.isascii() and value.isdigit()) or not 5 <= int(value) <= 600:  # noqa: PLR2004 - spec bounds  # pylint: disable=line-too-long
+        # Até 4 dígitos antes do `int()`: milhares de dígitos o fariam levantar (limite de conversão do Python).
+        if quoted or not (value.isascii() and value.isdigit() and len(value) <= 4 and 5 <= int(value) <= 600):  # noqa: PLR2004 - spec bounds  # pylint: disable=line-too-long
             return '"duracao_alvo_s" tem que ser um inteiro de 5 a 600'
         meta[key] = int(value)
         return None

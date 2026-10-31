@@ -64,7 +64,28 @@ class LoadTargetsTests(unittest.TestCase):
         self.assertEqual(
             {
                 f"scripts/getbrolls/{name}.py"
-                for name in ("cli", "runtime", "errors", "_paths", "ledger", "effects", "logs")
+                for name in (
+                    "cli",
+                    "cli_parser",
+                    "cli_project_args",
+                    "cli_summaries",
+                    "runtime",
+                    "errors",
+                    "_paths",
+                    "runtime_parts",
+                    "install_report",
+                    "ledger",
+                    "effects",
+                    "logs",
+                    "_salt_read",
+                    "redaction",
+                    "private_files",
+                    "file_locks",
+                    "error_codes",
+                    "command_policy",
+                    "diagnostics",
+                    "effects_salt",
+                )
             },
             set(targets.strict_files),
         )

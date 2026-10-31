@@ -10,6 +10,7 @@ Todo processo git sai de `run_git`, com o ambiente limpo (`git_env`) e a
 configuração de `GIT_HARDENING` na linha de comando.
 """
 
+import contextlib
 import errno
 import logging
 import os
@@ -392,21 +393,25 @@ def has_core_ssh_command(env):
     `--global` a busca cairia no cwd deste processo, que pode por acaso estar
     dentro de outro repositório qualquer. `--includes` resolve
     `[include]`/`[includeIf]` do config global, senão um `core.sshCommand`
-    guardado num arquivo incluído passaria despercebido."""
+    guardado num arquivo incluído passaria despercebido. Roda na pasta neutra de
+    `_neutral_cwd`, como o `run_git` sem `cwd`: um `includeIf "gitdir:..."` não
+    vê o repositório em que a pessoa está."""
     git = shutil.which("git")
     if not git:
         return False
     started = time.monotonic()
-    done = effects.run(
-        [git, "config", "--global", "--includes", "--get", "core.sshCommand"],
-        env=env,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=10,
-        check=False,
-    )
+    with _neutral_cwd(env) as (neutral, neutral_env):
+        done = effects.run(
+            [git, "config", "--global", "--includes", "--get", "core.sshCommand"],
+            cwd=neutral,
+            env=neutral_env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            check=False,
+        )
     # `--get` sai 1 quando a chave não existe: isso é resposta, não falha.
     _log_git(["config"], started, "ok" if done.returncode in (0, 1) else "error", done.returncode)
     return bool(done.stdout.strip())
@@ -492,18 +497,39 @@ def _log_git(args, started, status, exit_code):
 def run_git(args, cwd=None, ssh=False, binary=False, local=False):
     """Roda `git <GIT_HARDENING> <args>` com `git_env`; saída não zero vira `ValueError`.
 
-    `local=True` (origem que é pasta local) libera o transporte `file://`."""
+    `local=True` (origem que é pasta local) libera o transporte `file://`. Sem `cwd` (o `ls-remote`, o
+    `init` e o `clone --bare`, que rodam antes de existir um clone), o git roda numa pasta temporária
+    vazia, com `GIT_CEILING_DIRECTORIES` na pasta de cima: nunca acha nem lê o repositório em que a
+    pessoa está (um `url.<x>.insteadOf` ou `core.sshCommand` dali mudaria a busca). Quem passa caminho
+    nos `args` o passa absoluto."""
     git = shutil.which("git")
     if not git:
         raise _refused(
             "git_missing", ValueError("git não encontrado no PATH; instale o git ou use --source com uma pasta local.")
         )
+    command = [git, *GIT_HARDENING, *(LOCAL_PROTOCOL if local else []), *args]
     env = git_env(ssh=ssh)
+    if cwd is None:
+        with _neutral_cwd(env) as (neutral, neutral_env):
+            return _spawn_git(command, args, neutral, neutral_env, binary)
+    return _spawn_git(command, args, cwd, env, binary)
+
+
+@contextlib.contextmanager
+def _neutral_cwd(env):
+    """Uma pasta temporária vazia (`gb-git-*`) e uma cópia de `env` com `GIT_CEILING_DIRECTORIES` na pasta de
+    cima: o git que roda ali não acha o repositório em que a pessoa está. `env` não muda."""
+    with effects.temp_dir(prefix="gb-git-") as neutral:
+        yield neutral, {**env, "GIT_CEILING_DIRECTORIES": str(Path(neutral).parent)}
+
+
+def _spawn_git(command, args, cwd, env, binary):
+    """O processo de `run_git` (`command` é a linha inteira; `args`, só o que vai no log)."""
     text_kwargs = {} if binary else {"text": True, "encoding": "utf-8", "errors": "replace"}
     started = time.monotonic()
     try:
         done = effects.run(
-            [git, *GIT_HARDENING, *(LOCAL_PROTOCOL if local else []), *args],
+            command,
             cwd=cwd,
             env=env,
             capture_output=True,
@@ -628,7 +654,7 @@ def _fetch_commit(spec, clone):
         sha, ref_name = validate_commit(spec.commit), validate_ref(spec.ref or "HEAD")
     else:
         ref_name, sha = resolve_ref(spec)
-    git_text(["init", "--quiet", str(clone)])
+    git_text(["init", "--quiet", str(Path(clone).absolute())])
     via = "sha"
     try:
         _fetch_one(spec, clone, sha)
@@ -704,7 +730,7 @@ def descends_from(spec, old, new):
     try:
         clone = tmp / "history.git"
         git_text(
-            ["clone", "--quiet", "--bare", "--no-tags", "--filter=tree:0", "--", uri, str(clone)],
+            ["clone", "--quiet", "--bare", "--no-tags", "--filter=tree:0", "--", uri, str(clone.absolute())],
             ssh=ssh,
             local=local,
         )

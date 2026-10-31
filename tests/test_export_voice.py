@@ -167,6 +167,11 @@ class TimedWordsTests(unittest.TestCase):
         os.utime(path, ns=(1_000_000_000_000, 1_000_000_000_000))
         self.assertEqual((words(("a", 9.6, 10.6)), []), self.run_words())
 
+    def test_sidecar_with_a_utf8_bom_is_read_like_one_without(self):
+        raw = b"\xef\xbb\xbf" + json.dumps(words(("a", 0.0, 1.0))).encode("utf-8")
+        self.sidecar(None, raw=raw)
+        self.assertEqual((words(("a", 9.6, 10.6)), []), self.run_words())
+
     def test_too_many_words_and_too_big_file(self):
         self.sidecar(words(*((f"w{i}", i * 0.001, i * 0.001 + 0.0005) for i in range(5001))))
         self.assertIn("mais de 5000 palavras", self.run_words(duration=10.0)[1][0])

@@ -438,11 +438,20 @@ class GbHomeOutsideHomeTests(unittest.TestCase):
         folder.mkdir(parents=True)
         (folder / "client.json").write_text(
             json.dumps(
-                {"schema": "getbrolls.client/1", "slug": "acme", "name": "Acme", "created": "x", "defaults": {}}
+                {
+                    "schema": "getbrolls.client/1",
+                    "slug": "acme",
+                    "name": "Acme",
+                    "created": "2026-01-02T03:04:05+00:00",
+                    "defaults": {},
+                }
             ),
             encoding="utf-8",
         )
-        registry = {"schema": "getbrolls.clients/1", "clients": [{"slug": "acme", "root": str(folder), "added": "x"}]}
+        registry = {
+            "schema": "getbrolls.clients/1",
+            "clients": [{"slug": "acme", "root": str(folder), "added": "2026-01-02T03:04:05+00:00"}],
+        }
         before = json.dumps(registry)
         (self.home / "clients.json").write_text(before, encoding="utf-8")
         self.assertEqual(str(folder), clients.show("acme")["client"]["root"])

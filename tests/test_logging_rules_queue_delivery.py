@@ -18,7 +18,7 @@ from unittest.mock import patch
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import acquisition, delivery, queue
+from getbrolls import acquisition, delivery, delivery_files, queue
 from getbrolls.ledger import Ledger
 from getbrolls.models import approve, candidate, id_stem, now, set_segment
 from getbrolls.rules import allowed, load_rules, sync_formats
@@ -553,8 +553,8 @@ class DeliveryConflictLoggingTests(unittest.TestCase):
     def test_io_error_conflict_logs_kind(self):
         with tempfile.TemporaryDirectory() as tmp:
             _project(tmp, [_fetched("a", "T", shot="abertura")])
-            broken = delivery._CompareError("[Errno 13] Permission denied")
-            with patch.object(delivery, "_same_file", side_effect=broken):
+            broken = delivery_files._CompareError("[Errno 13] Permission denied")
+            with patch.object(delivery_files, "_same_file", side_effect=broken):
                 beat_dir = Path(tmp) / delivery.DELIVERY_DIR / "01-abertura-t"
                 beat_dir.mkdir(parents=True)
                 (beat_dir / "01-abertura-t.mp4").write_bytes(b"qualquer coisa")

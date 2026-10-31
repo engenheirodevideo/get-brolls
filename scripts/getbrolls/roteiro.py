@@ -35,7 +35,6 @@ is_roteiro = roteiro_frontmatter.is_roteiro
 # Diretivas de direção reservadas: reconhecidas e recusadas até a versão que as implementa.
 RESERVED_DIRECTIVES = ("DIRECAO", "TRANSICAO", "RITMO", "VELOCIDADE")
 LAYERS = ("LETTERING", "SFX", "MUSICA", "COMP")
-PRESENTER = ("A-ROLL", "UGC")
 WORDS_PER_S = 2.5
 MIN_SPOKEN_S = 1.5
 SILENT_SCENE_S = 2.0

@@ -18,9 +18,9 @@ import time
 import uuid
 from pathlib import Path, PurePosixPath
 
-from . import delivery, effects, export_place
+from . import delivery_files, delivery_sweep, effects, export_place, versioning
 from ._paths import strict_exists, strict_is_dir, strict_is_file, strict_lexists
-from .sdk import loader
+from .sdk import loader, schemas
 
 EXPORTS_DIR = "exports"
 MARKER = ".getbrolls-export.json"
@@ -90,7 +90,7 @@ def next_number(root):
 
 
 def _read_marker(path):
-    """Marcador do core como dict, só se for arquivo regular pequeno com `"marker": "getbrolls-export"`."""
+    """Marcador do core como dict: arquivo regular pequeno, `"marker": "getbrolls-export"` e versão que o core lê."""
     try:
         info = path.lstat()
         if not stat.S_ISREG(info.st_mode) or info.st_size > MARKER_MAX_BYTES:
@@ -99,7 +99,16 @@ def _read_marker(path):
     # lenient: a staging marker it cannot read leaves the folder in place, with the no-marker warning
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
-    return data if isinstance(data, dict) and data.get("marker") == MARKER_ID else None
+    if not isinstance(data, dict) or data.get("marker") != MARKER_ID:
+        return None
+    # Marcador de versão mais nova (ou com versão inválida): o core não o lê nem apaga o staging dele. O resto
+    # do formato fica por conta de quem lê (marcadores feitos à mão ou incompletos seguem valendo como hoje);
+    # o schema amarra o que o core grava.
+    try:
+        versioning.read_version(data, MARKER, schemas.version("export_marker"))
+    except ValueError:
+        return None
+    return data
 
 
 def latest_marker(root):
@@ -146,10 +155,10 @@ def _remove_file(path, source):
         if source is None and path.lstat().st_nlink > 1:
             raise
         try:
-            delivery._thaw_unlink(path)  # pylint: disable=protected-access  # cross: helper privado legado
+            delivery_sweep.thaw_unlink(path)
         finally:
             if source is not None:
-                delivery._freeze(source, "hardlink")  # pylint: disable=protected-access  # cross: idem
+                delivery_files._freeze(source, "hardlink")  # pylint: disable=protected-access  # cross: idem
 
 
 def remove_staging(staging, sources_by_rel=None):
@@ -297,7 +306,7 @@ def _marker_bytes(base, state, number, media):
     # A identidade do marcador vem depois da base: `marker_base` nunca a sobrescreve.
     body = {
         **base,
-        "schema_version": 1,
+        "schema_version": schemas.version("export_marker"),
         "marker": MARKER_ID,
         "state": state,
         "number": folder_name(number),

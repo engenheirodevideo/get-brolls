@@ -190,7 +190,7 @@ class PublishJournalTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp, patch.object(Ledger, "_finish_transaction", spy):
             Ledger(tmp).save("fixture")
-        self.assertEqual({"data", "events"}, set(seen[0]))
+        self.assertEqual({"schema_version", "data", "events"}, set(seen[0]))
 
 
 if __name__ == "__main__":

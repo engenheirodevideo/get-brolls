@@ -8,6 +8,7 @@ import json
 from . import effects, versioning
 from ._paths import strict_exists
 from .models import now, signature
+from .sdk import jsonschema, schemas
 
 REFERENCES_FILE = "references.json"
 
@@ -26,7 +27,9 @@ def load_references(root):
         raise ValueError(  # noqa: TRY004 - contrato da CLI: dado inválido é ValueError (INVALID_DATA)
             f"{REFERENCES_FILE} é incompatível: esperado um objeto JSON."
         )
-    versioning.read_version(data, REFERENCES_FILE)
+    versioning.read_version(data, REFERENCES_FILE, schemas.version("references"))
+    if jsonschema.errors(data, schemas.load("references")):
+        raise ValueError(f"{REFERENCES_FILE} é incompatível: o formato não segue o schema `references`.")
     return data
 
 
@@ -38,7 +41,7 @@ def remember(ledger, c, decision, reason, by):
     ):
         raise ValueError("Aprove este insert antes de guardá-lo como referência positiva.")
     path = ledger.root / REFERENCES_FILE
-    data = versioning.stamp(load_references(ledger.root))
+    data = versioning.stamp(load_references(ledger.root), schemas.version("references"))
     entry = {
         "id": c["id"],
         "signature": signature(c),

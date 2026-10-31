@@ -14,12 +14,14 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _cli import run_cli
 from _paths import ROOT
 from _plugin_pins import pin_plugins
+from test_cli_edges import entry
 from test_sdk_loader import MANIFEST, LoaderTestCase
 from test_sdk_marketplace_client import MarketplaceTestCase
 
 from getbrolls import __version__, _paths, capabilities, cli
 from getbrolls.cli import build_parser
-from getbrolls.sdk import marketplace
+from getbrolls.errors import DataRootError
+from getbrolls.sdk import marketplace, schemas
 
 WHEEL = _paths.Install("wheel", Path("site") / "getbrolls", Path("site") / "getbrolls" / "_data", None)
 BROKEN_CODE = "raise SystemExit('não devia rodar')\n"
@@ -246,6 +248,23 @@ class CapabilitiesCliTests(unittest.TestCase):
 
     def test_json_flag_is_optional(self):
         self.assertEqual(run_cli("capabilities"), run_cli("capabilities", "--json"))
+
+    def test_missing_install_data_is_a_prerequisite_error(self):
+        # Sem os arquivos de dados não há schema nem plugins para descrever: sai 4, como os outros comandos.
+        def missing(*_args, **_kwargs):
+            raise DataRootError("dados ausentes")
+
+        # `schemas.load` is cached per process: a schema an earlier test already read would never touch the
+        # missing data root. Start cold (and leave it cold) so the result does not depend on the test order.
+        schemas.load.cache_clear()
+        self.addCleanup(schemas.load.cache_clear)
+
+        code, out, err = entry(["capabilities", "--json"], patch.object(_paths, "data_root", missing))
+        self.assertEqual(cli.EXIT_PREREQUISITE, code)
+        self.assertEqual("", out)
+        payload = json.loads(err)
+        self.assertEqual("PREREQUISITE_MISSING", payload["error_code"])
+        self.assertEqual("capabilities", payload["operation"])
 
 
 if __name__ == "__main__":

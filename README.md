@@ -41,6 +41,9 @@ A prévia pode baixar mídia de trabalho para mostrar o movimento. A entrega fin
 
 ## Atualizações
 
+- **2.6.0** O getbrolls vira um comando instalável (`uv tool install` ou `pipx`) com `setup` e runtime em `$GB_HOME/runtime`; `doctor` e `setup --check` mostram `ready` e saem com `4` quando falta algo. Perfil `getbrolls.toml` (`profile`), projeto de layout 1 (`init`, `migrate`) com pastas de cliente e receitas (`client`, `recipe`), análise de mídia em `analysis/`, roteiro e exportação por plugin de terceiros (`roteiro`, `export`), plugins do SDK com marketplace (`plugins`, `x`, experimental), ponte HyperFrames listada por `environment` e `capabilities --json` para agentes. Erro de operação ou de dados sai com `1` (antes `2`); a tabela de códigos está em [docs/CLI_CONTRACT.md](docs/CLI_CONTRACT.md). Projeto da 2.5 continua igual (layout 0). Lista completa e migração no [CHANGELOG.md](CHANGELOG.md).
+- **2.5.2** O `doctor` passa a conferir a `.venv` contra as versões fixadas: código atualizado sem rodar o instalador de novo aparece em `summary.missing` (item `venv`). Mensagem do instalador diz se a falha foi rede, hash ou versão do Python.
+- **2.5.1** Segurança: `certifi` 2026.10.19 tira a raiz emSign ECC Root CA - G3 (GHSA-6q48-6c7w-9gw2) e os instaladores instalam o pip 26.2.2 e todas as dependências Python conferindo o sha256 de cada arquivo (`--require-hashes`). Rode o instalador de novo. Dependências atualizadas como um conjunto revisado.
 - **2.5.0** Log por projeto em `brolls/getbrolls.log` (`GB_LOG_LEVEL`, `GB_LOG_STDERR`): comandos, trilha de aprovação, subprocessos e rede, sem nomes, frases de aprovação nem URLs. `reject` zera o `output`, `verify` confere todos os clipes e desmarca o que foi alterado, e `deliver` pula clipe rejeitado ou reprovado e lista em `skipped`. Storyboard local endurecido (só `review.html`, `previews/` e `clips/`, cabeçalhos contra embutir a página). `~/.getbrolls/RULES.md` ilegível passa a parar o comando em vez de ser ignorado.
 - **2.4.3** Portão único de release (`scripts/preflight.sh`), versão escrita numa passada (`scripts/bump_version.py`) e espelho do SKILL.md gerado (`scripts/gen_skill_mirror.py`). `GB_CACHE_DIR` passa a valer no `.env`; `GETBROLLS_CACHE_DIR` continua funcionando. Sem mudança no fluxo de coleta.
 - **2.4.2** Frontmatter do SKILL.md válido como YAML (a `description` ganha aspas; o GitHub não renderizava o arquivo).
@@ -103,9 +106,12 @@ Sem clonar, o getbrolls instala como pacote e ganha o comando `getbrolls`:
 
 ```sh
 uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0
-getbrolls doctor
 getbrolls setup --check
+getbrolls setup
+getbrolls doctor
 ```
+
+O `uv tool install` só instala o comando; o `setup` instala yt-dlp e Playwright CLI no runtime. `setup --check` não instala nada e sai com `4` enquanto faltar algo; o `doctor` confirma com `ready: true`.
 
 `pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0` também serve. Os exemplos deste README usam o comando `getbrolls …`. Num clone, sem instalar o pacote, `python3 scripts/gb.py …` roda os mesmos comandos (no Windows, `python scripts/gb.py …`; de outra pasta, use o caminho absoluto de `scripts/gb.py`). O `.env` do pacote fica em `$GB_HOME/.env`, e o runtime em `$GB_HOME/runtime/`. Quem usa o plugin do Claude Code não precisa mudar nada.
 
@@ -209,7 +215,10 @@ $get-brolls <seu pedido>   # Codex — mesma coisa
 **3. Confira o ambiente** quando algo não funcionar:
 
 ```text
-getbrolls doctor   # verifica ferramentas e diz o que falta
+getbrolls doctor          # verifica ferramentas; ready: false e saída 4 se falta algo
+getbrolls setup --check   # confere o runtime sem instalar; saída 4 se falta algo
+getbrolls setup           # instala yt-dlp e Playwright CLI em $GB_HOME/runtime
+getbrolls providers       # fontes, transporte e se a chave está configurada
 ```
 
 **4. Pesquise e escolha** (o agente executa por você, mas dá pra rodar na mão):
@@ -244,6 +253,48 @@ getbrolls verify ...          # confere a entrega no projeto
 ```text
 getbrolls status --project /caminho/meu-video   # resumo por etapa, só leitura
 ```
+
+**7. Projeto de layout 1, clientes e receitas** (opcional, a partir da 2.6):
+
+```text
+getbrolls init --project /caminho/meu-video --canvas 1080x1920 --fps 30   # cria project.json, aroll/, assets/, broll/ e analysis/
+getbrolls migrate --project /caminho/projeto-antigo --action plan          # mostra o project.json que seria gravado
+getbrolls migrate --project /caminho/projeto-antigo --action apply         # grava só o project.json, sem mover nada
+getbrolls client --action add --slug cliente-exemplo --name "Cliente Exemplo" --root /caminho/clientes   # cria a pasta do cliente e registra
+getbrolls client --action list|show|remove ...   # remove só desregistra; a pasta fica
+getbrolls recipe --action list|show ...          # lê as receitas seladas dos clientes
+getbrolls init --client cliente-exemplo --slug video-01                    # projeto novo em <pasta do cliente>/projetos/video-01/
+```
+
+Sem `project.json`, o projeto segue no layout 0 da 2.5: nada muda de lugar. Só `init` e `migrate --action apply` levam um projeto ao layout 1, e aí ele exige o getbrolls 2.6 ou mais novo.
+
+**8. Análise, roteiro e exportação** (opcional, experimental):
+
+```text
+getbrolls analysis --project /caminho/meu-video --action register --path aroll/c01.mp4   # registra a mídia com um media_id por conteúdo
+getbrolls analysis --project /caminho/meu-video --action list|check                     # lista as mídias ou confere analysis/ (só leem)
+getbrolls roteiro --project /caminho/meu-video --action new --genero reels --tema "Tema"   # cria o ROTEIRO.md
+getbrolls roteiro --project /caminho/meu-video --action check|plan|sync|review ...        # valida, mostra o sync, grava os beats ou registra a revisão
+getbrolls export --project /caminho/meu-video --to meu_exporter --dry-run                  # mostra o que o exportador gravaria, sem gravar
+```
+
+O `roteiro --action plan` e o `sync` pedem um `BRIEF.md` (`init-brief` ou `/getbrolls:get-brolls-brief`). O `export` precisa de um exportador de plugin de terceiros habilitado e de um `BRIEF.md` que reflita o roteiro; se não refletir, ele recusa e pede `roteiro --action plan` e `sync`.
+
+**9. Plugins do SDK, perfil e agentes** (experimental):
+
+```text
+getbrolls plugins --action list|search|marketplace-list ...   # inventário sem executar código; search lê só os índices em cache, sem rede
+getbrolls plugins --action install --id <id>@<marketplace>    # instala pelo marketplace: prévia primeiro, depois --yes --expect <sha256>
+getbrolls plugins --action enable --id <id>                   # mostra manifesto e permissões; com o ok da pessoa, repita com --yes
+getbrolls x --list                                            # comandos dos plugins habilitados
+getbrolls profile --action show|trust|untrust                 # perfil getbrolls.toml em vigor; trust mostra a prévia e o sha256
+getbrolls environment --action list                           # pontes oficiais (hoje o HyperFrames), sem rodar código delas
+getbrolls capabilities --json                                 # comandos, flags e códigos de saída em JSON, para agentes
+getbrolls init-rules --project /caminho/meu-video --format reels   # cria o RULES.md do projeto
+getbrolls browser-plan --project /caminho/meu-video --url URL      # planeja a captura de uma página pelo navegador (não captura)
+```
+
+Plugin de SDK roda como código local seu, sem sandbox: leia [docs/PLUGIN_DEV_QUICKSTART.md](docs/PLUGIN_DEV_QUICKSTART.md) e [docs/SECURITY.md](docs/SECURITY.md) antes de habilitar um. Um `getbrolls.toml` de workspace só vale depois de `profile --action trust`.
 
 Cada subcomando aceita `help`; a sintaxe completa está em [Usar pelo terminal](#usar-pelo-terminal).
 
@@ -333,6 +384,11 @@ Substitua o nome e a evidência pelos dados reais. Repita `permit` e `fetch` par
 - GIF padrão: 360 px, 8 fps, 128 cores, até 10 segundos e 5 MB. Intervalo acima do limite de duração é recusado; tamanho excessivo gera prévia estática com aviso. `GB_PREVIEW_MODE=static` usa poster e sequência de quadros.
 - `--reference-only` prepara uma referência estática sem obter mídia remota; um poster isolado não comprova movimento.
 - Os utilitários em `scripts/getbrolls/tools/youtube/` oferecem busca, quadros, cortes e verificação de YouTube por `VIDEO_ID`. Seus resultados precisam ser importados pela CLI para integrar o registro e a revisão do projeto.
+- Layout do projeto: o `status` traz `layout` com `version`, `source` e `problem`. Projeto da 2.5 mostra `version: 0` e `source: "inferred"`; depois de `init` ou `migrate --action apply`, `version: 1` e `source: "project.json"`. `migrate --action plan` mostra o `project.json` que seria gravado (`would_write`) e não grava nada.
+- Análise de mídia: `analysis --action register --path aroll/c01.mp4` devolve o `media_id` (calculado pelo conteúdo do arquivo) e grava em `analysis/`; `list` e `check` só leem, e `check` responde `"ok": true` com a lista de arquivos. Se o ffprobe não conseguir ler a mídia, ela fica registrada, mas o comando sai com `1` e o aviso `MEDIA_PROBE_FAILED`: confira o arquivo.
+- Roteiro: `roteiro --action check` valida o `ROTEIRO.md` e mostra o plano de cena e o `review.sha256`; `roteiro --action review` registra a revisão humana e exige `--by`, `--channel chat`, `--statement` e `--expect` com esse sha256 (se o roteiro mudou desde então, ele recusa). `--force` em `new` recomeça do esqueleto e guarda o atual em `ROTEIRO.md.bak`.
+- Plugins: `plugins --action install` e `enable` mostram primeiro o manifesto, as permissões e o `sha256`; com o ok da pessoa, repita com `--yes` (no `install`, também `--expect <sha256>`). `plugins --action new --id meu_motion --kind exporter --path /caminho/lab` gera um plugin mínimo e `plugins --action check --path /caminho/lab/meu_motion` o valida (executa o `register()` do plugin).
+- Agentes e scripts: `capabilities --json` devolve `commands`, `exit_codes`, `error_codes`, `plugin_commands` e `environments`. Códigos de saída: `0` deu certo, `1` erro de operação ou de dados, `2` erro de uso, `3` erro interno, `4` falta um pré-requisito, `130` interrompido. Referência: [docs/CLI_CONTRACT.md](docs/CLI_CONTRACT.md).
 
 Use `getbrolls --help` e `getbrolls preview --help` para consultar os argumentos.
 

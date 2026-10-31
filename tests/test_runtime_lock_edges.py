@@ -16,6 +16,7 @@ import shutil
 import stat
 import sys
 import tempfile
+import threading
 import types
 import unittest
 from pathlib import Path
@@ -25,7 +26,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 import _paths  # noqa: F401  (efeito de import: põe scripts/ no sys.path)  # pylint: disable=unused-import
 from _symlink import needs_symlink
 
-from getbrolls import logs, runtime
+from getbrolls import config, effects, file_locks, logs, private_files, runtime
 from getbrolls.errors import LockedError
 
 IS_ROOT = hasattr(os, "geteuid") and os.geteuid() == 0
@@ -74,6 +75,25 @@ class WindowsLockBackendTests(unittest.TestCase):
         self.assertEqual(1, len(calls))
 
 
+class NeverRaisingViewTests(unittest.TestCase):
+    """`is_folder` and `_visible` count what the OS refuses to show as absent, never as a traceback."""
+
+    def setUp(self):
+        self.base = Path(tempfile.mkdtemp(prefix="gb-view-"))
+        self.addCleanup(shutil.rmtree, self.base, ignore_errors=True)
+
+    def test_a_folder_that_cannot_be_inspected_counts_as_absent(self):
+        with patch.object(Path, "is_dir", side_effect=PermissionError(errno.EACCES, "denied")):
+            self.assertFalse(runtime.is_folder(self.base))
+        self.assertTrue(runtime.is_folder(self.base))
+
+    def test_a_path_that_cannot_be_inspected_counts_as_not_visible(self):
+        with patch.object(Path, "exists", side_effect=PermissionError(errno.EACCES, "denied")):
+            self.assertFalse(runtime._visible(self.base))  # pylint: disable=protected-access
+        self.assertTrue(runtime._visible(self.base))  # pylint: disable=protected-access
+        self.assertFalse(runtime._visible(self.base / "nao-existe"))  # pylint: disable=protected-access
+
+
 class LockFileEdgeTests(unittest.TestCase):
     def setUp(self):
         self.base = Path(tempfile.mkdtemp(prefix="gb-lock-edges-"))
@@ -84,7 +104,12 @@ class LockFileEdgeTests(unittest.TestCase):
         target = self.base / "fora.lock"
         link = self.base / ".command.lock"
         link.symlink_to(target)
-        with patch.object(runtime.os, "O_NOFOLLOW", 0, create=True):
+        # `_LOCK_FLAGS` is fixed at import: without also dropping O_NOFOLLOW from it, the open itself refuses the
+        # link (ELOOP) and the explicit check never runs.
+        with (
+            patch.object(file_locks.os, "O_NOFOLLOW", 0, create=True),
+            patch.object(file_locks, "_LOCK_FLAGS", os.O_RDWR | os.O_CREAT | os.O_APPEND),
+        ):
             with (
                 self.assertRaisesRegex(ValueError, r"\.command\.lock .* é um link") as raised,
                 runtime.exclusive_lock(link, "ocupada"),
@@ -105,8 +130,8 @@ class LockFileEdgeTests(unittest.TestCase):
     def test_try_lock_yields_false_when_the_lock_call_fails(self):
         lock = self.base / ".lock"
         with (
-            patch.object(runtime, "_acquire_lock", side_effect=OSError(errno.ENOLCK, "no locks")),
-            patch.object(runtime, "_release_lock") as release,
+            patch.object(file_locks, "_acquire_lock", side_effect=OSError(errno.ENOLCK, "no locks")),
+            patch.object(file_locks, "_release_lock") as release,
             runtime.try_lock(lock, 5) as held,
         ):
             self.assertFalse(held)
@@ -116,7 +141,7 @@ class LockFileEdgeTests(unittest.TestCase):
     def test_a_busy_lock_is_locked_even_when_its_log_line_fails(self):
         lock = self.base / ".command.lock"
         with (
-            patch.object(runtime, "_acquire_lock", side_effect=BlockingIOError),
+            patch.object(file_locks, "_acquire_lock", side_effect=BlockingIOError),
             patch.object(logs, "refusal", side_effect=RuntimeError("log quebrado")) as refusal,
             self.assertRaises(LockedError) as raised,
             runtime.exclusive_lock(lock, "Projeto ocupado."),
@@ -125,6 +150,88 @@ class LockFileEdgeTests(unittest.TestCase):
         refusal.assert_called_once()
         self.assertEqual("Projeto ocupado.", str(raised.exception))
         self.assertEqual("LOCKED", runtime.error_code_for(raised.exception))
+
+
+class ProjectLockWaitTests(unittest.TestCase):
+    """`GB_LOCK_WAIT_S` and the explicit `wait_s` of `project_lock`: wait for a busy project, then `LOCKED`."""
+
+    def setUp(self):
+        self.project = Path(tempfile.mkdtemp(prefix="gb-lock-wait-"))
+        self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
+        (self.project / "brolls").mkdir()
+        self.lock_file = self.project / "brolls" / runtime.COMMAND_LOCK
+
+    @contextlib.contextmanager
+    def busy_for(self, seconds):
+        """The project lock held by another open file for `seconds`, released by a timer thread."""
+        holder = contextlib.ExitStack()
+        holder.enter_context(runtime.exclusive_lock(self.lock_file, "ocupada"))
+        timer = threading.Timer(seconds, holder.close)
+        timer.start()
+        try:
+            yield
+        finally:
+            timer.join()
+            timer.cancel()
+
+    def take(self, **kwargs):
+        with runtime.project_lock(self.project, **kwargs):
+            return "taken"
+
+    def test_a_busy_project_is_locked_at_once_by_default(self):
+        with (
+            patch.dict(os.environ, {"GB_LOCK_WAIT_S": ""}),
+            self.busy_for(0.4),
+            self.assertRaises(LockedError) as raised,
+        ):
+            self.take()
+        self.assertEqual("LOCKED", runtime.error_code_for(raised.exception))
+
+    def test_the_env_wait_outlasts_a_short_hold(self):
+        with patch.dict(os.environ, {"GB_LOCK_WAIT_S": "5"}), self.busy_for(0.3):
+            self.assertEqual("taken", self.take())
+
+    def test_the_env_wait_ends_in_locked_when_the_hold_is_longer(self):
+        with (
+            patch.dict(os.environ, {"GB_LOCK_WAIT_S": "0.2"}),
+            self.busy_for(1.5),
+            self.assertRaises(LockedError),
+        ):
+            self.take()
+
+    def test_an_explicit_wait_wins_over_the_env(self):
+        with (
+            patch.dict(os.environ, {"GB_LOCK_WAIT_S": "5"}),
+            self.busy_for(0.4),
+            self.assertRaises(LockedError),
+        ):
+            self.take(wait_s=0)
+        with patch.dict(os.environ, {"GB_LOCK_WAIT_S": "0"}), self.busy_for(0.3):
+            self.assertEqual("taken", self.take(wait_s=5))
+
+    def test_an_invalid_env_value_is_a_usage_style_error_naming_the_key(self):
+        for value in ("abc", "-1", "nan", "inf", "99999"):
+            with (
+                self.subTest(value=value),
+                patch.dict(os.environ, {"GB_LOCK_WAIT_S": value}),
+                self.assertRaisesRegex(ValueError, "GB_LOCK_WAIT_S"),
+            ):
+                self.take()
+
+    def test_an_invalid_env_value_is_ignored_when_the_wait_is_explicit(self):
+        with patch.dict(os.environ, {"GB_LOCK_WAIT_S": "abc"}):
+            self.assertEqual("taken", self.take(wait_s=0))
+
+    def test_no_project_takes_no_lock_and_reads_no_setting(self):
+        with patch.dict(os.environ, {"GB_LOCK_WAIT_S": "abc"}), runtime.project_lock(None):
+            pass
+
+    def test_the_wait_is_a_valid_declared_key(self):
+        self.assertIn("GB_LOCK_WAIT_S", config.KEYS)
+        with patch.dict(os.environ, {"GB_LOCK_WAIT_S": " 2.5 "}):
+            self.assertEqual(2.5, config.lock_wait_s())
+        with patch.dict(os.environ, {"GB_LOCK_WAIT_S": ""}):
+            self.assertEqual(0.0, config.lock_wait_s())
 
 
 class RecordWarningTests(unittest.TestCase):
@@ -152,6 +259,76 @@ class ForceRmtreeEdgeTests(unittest.TestCase):
                 if not path.is_symlink():
                     path.chmod(0o700)
         shutil.rmtree(self.base, ignore_errors=True)
+
+    def op_lines_of(self, remove):
+        """The `event=op` fields `force_rmtree` logs while `remove` runs it."""
+        rows = []
+
+        def record(_logger, _level, name, **fields):
+            if name == "op":
+                rows.append(fields)
+
+        with (
+            patch.object(logs, "event", record),
+            patch.object(effects._logger, "isEnabledFor", return_value=True),  # pylint: disable=protected-access
+        ):
+            remove()
+        return rows
+
+    def the_op_line(self, remove):
+        rows = self.op_lines_of(remove)
+        self.assertEqual(1, len(rows), rows)
+        return rows[0]
+
+    def test_a_removed_tree_logs_outcome_ok(self):
+        root = self.base / "some"
+        (root / "sub").mkdir(parents=True)
+        (root / "sub" / "a.txt").write_text("a", encoding="utf-8")
+        row = self.the_op_line(lambda: runtime.force_rmtree(root))
+        self.assertEqual(("fs.rmtree", "ok"), (row["operation"], row["outcome"]))
+        self.assertFalse(os.path.lexists(root))
+
+    def test_a_tree_that_could_not_be_removed_never_logs_outcome_ok(self):
+        root = self.base / "stays"
+        root.mkdir()
+        (root / "a.txt").write_text("a", encoding="utf-8")
+        with patch.object(private_files.shutil, "rmtree"):  # the delete does nothing, as when every retry fails
+            row = self.the_op_line(lambda: runtime.force_rmtree(root))  # still never raises
+        self.assertEqual("fs.rmtree", row["operation"])
+        self.assertEqual("error", row["outcome"])
+        self.assertTrue(row["error"])
+        self.assertTrue(root.is_dir(), "what is left stays for the next sweep")
+
+    def test_the_error_that_stopped_the_delete_is_the_one_the_line_names(self):
+        root = self.base / "stopped"
+        root.mkdir()
+        with patch.object(private_files.shutil, "rmtree", side_effect=PermissionError(errno.EACCES, "denied")):
+            row = self.the_op_line(lambda: runtime.force_rmtree(root))
+        self.assertEqual(("error", "PermissionError"), (row["outcome"], row["error"]))
+
+    def test_an_error_after_the_tree_is_gone_still_logs_ok(self):
+        root = self.base / "gone"
+        root.mkdir()
+
+        def remove_then_fail(path, **_kwargs):
+            Path(path).rmdir()
+            raise OSError(errno.EIO, "late failure")
+
+        with patch.object(private_files.shutil, "rmtree", side_effect=remove_then_fail):
+            row = self.the_op_line(lambda: runtime.force_rmtree(root))
+        self.assertEqual("ok", row["outcome"])
+
+    @unittest.skipUnless(hasattr(os, "chflags") and hasattr(stat, "UF_IMMUTABLE"), "needs BSD file flags")
+    def test_an_immutable_file_leaves_the_tree_and_the_line_says_so(self):
+        root = self.base / "immutable"
+        root.mkdir()
+        kept = root / "kept.txt"
+        kept.write_text("k", encoding="utf-8")
+        os.chflags(kept, stat.UF_IMMUTABLE)
+        self.addCleanup(os.chflags, kept, 0)
+        row = self.the_op_line(lambda: runtime.force_rmtree(root))
+        self.assertEqual("error", row["outcome"])
+        self.assertTrue(kept.exists())
 
     @unittest.skipIf(IS_ROOT, "root ignora o modo da pasta")
     def test_a_root_without_any_permission_is_removed(self):
@@ -198,7 +375,7 @@ class ForceRmtreeEdgeTests(unittest.TestCase):
             callback(os.unlink, str(failed), OSError(errno.ENOENT, "sumiu"))
             return None
 
-        with patch.object(runtime.shutil, "rmtree", side_effect=racing_rmtree):
+        with patch.object(private_files.shutil, "rmtree", side_effect=racing_rmtree):
             runtime.force_rmtree(root)
         self.assertEqual([swapped / "sumiu.txt"], retries)
         self.assertEqual(0o500, stat.S_IMODE(outside.stat().st_mode), "o alvo do link nunca é tocado")
@@ -251,7 +428,7 @@ class DiagnosticsWriteFailureTests(unittest.TestCase):
         self.log = self.project / "brolls" / "diagnostics.jsonl"
 
     def test_write_diagnostics_log_returns_none_when_the_file_cannot_be_written(self):
-        with patch.object(runtime, "_ensure_private_file", side_effect=PermissionError("negado")):
+        with patch.object(private_files, "_ensure_private_file", side_effect=PermissionError("negado")):
             self.assertIsNone(runtime.write_diagnostics_log(self.project, {"operation": "x", "status": "error"}))
         self.assertFalse(self.log.exists())
 
@@ -266,7 +443,7 @@ class DiagnosticsWriteFailureTests(unittest.TestCase):
     def test_unwritable_log_with_a_non_dict_result_warns_on_stderr(self):
         stderr = io.StringIO()
         with (
-            patch.object(runtime, "_ensure_private_file", side_effect=PermissionError("negado")),
+            patch.object(private_files, "_ensure_private_file", side_effect=PermissionError("negado")),
             contextlib.redirect_stderr(stderr),
         ):
             result = runtime.audited(argparse.Namespace(command="resolve", project=str(self.project)), lambda _: None)

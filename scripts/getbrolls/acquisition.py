@@ -13,7 +13,7 @@ import uuid
 from pathlib import Path
 from typing import NamedTuple
 
-from . import effects, logs
+from . import effects, logs, versioning
 from ._paths import strict_is_file
 from .errors import PrerequisiteError
 from .http import DOWNLOAD_MAX_BYTES
@@ -21,6 +21,7 @@ from .ledger import digest
 from .media import probe
 from .models import id_stem, now
 from .runtime import ACTIVE, force_rmtree, record_warning
+from .sdk import schemas
 
 INDEX_NAME = "index.json"
 ROUTE_PREFIX = "plugin:"
@@ -61,6 +62,15 @@ def _load_index(cache):
         return {}
     if not isinstance(data, dict):
         return {}
+    # The version key is not an entry of the id map: it is read and dropped before the map is rebuilt. A newer
+    # or malformed one means a file this version cannot read: treated as empty (the cache is rebuilt by the
+    # next save), never a refusal, and the file is not renamed.
+    try:
+        versioning.read_version(data, "Índice de fontes", schemas.version("source_index"))
+    except ValueError as error:
+        record_warning("SOURCE_INDEX_UNREADABLE", f"{error} Tratado como vazio.")
+        return {}
+    data = {key: value for key, value in data.items() if key != versioning.FIELD}
     # Valid JSON with the wrong shape (a value that is not a list, an entry that is not an
     # object) would break every reader below on each run: such values and entries are dropped,
     # and the next `_save_index` writes the clean index back.
@@ -75,6 +85,7 @@ def _save_index(cache, index):
     if not isinstance(index, dict):
         raise TypeError("Índice de fontes inválido: esperado objeto {candidato: [entradas]}.")
     path = cache / INDEX_NAME
+    document = versioning.stamp(index, schemas.version("source_index"))
     with effects.op("fs.write", path):
         fd, temp_name = tempfile.mkstemp(dir=str(cache), prefix=".index-", suffix=".tmp")
         temp = Path(temp_name)
@@ -89,7 +100,7 @@ def _save_index(cache, index):
                 raise
             with stream:  # the only closer of the descriptor from here on
                 effects.make_private(temp)  # on the empty file, before the first byte
-                stream.write(json.dumps(index, ensure_ascii=False))
+                stream.write(json.dumps(document, ensure_ascii=False))
             temp.chmod(0o600)
             temp.replace(path)
         except BaseException:

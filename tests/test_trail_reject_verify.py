@@ -1,7 +1,7 @@
 """Regression tests for six approval/rights-trail defects fixed together:
 
 1. Rejecting an already-fetched candidate must clear `output` (both
-   `commands.mark_rejected` and the Storyboard rejection branch inside
+   `candidate_commands.mark_rejected` and the Storyboard rejection branch inside
    `review.import_review`), so a rejected item stops counting as
    delivered/verified in `status`.
 2. `approve()` (models.py) must drop a stale `rejection` dict left by an
@@ -43,7 +43,7 @@ from _media import skip_unless_ffmpeg, synth_video
 # import side effect: inserts scripts/ into sys.path
 from _paths import ROOT  # noqa: F401  # pylint: disable=unused-import
 
-from getbrolls import commands
+from getbrolls import fetch_commands
 from getbrolls.cli import main
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, set_segment
@@ -288,9 +288,9 @@ class VerifyRestoresVerifiedFlagTests(unittest.TestCase):
                     raise ValueError("decode failed")
                 return real_run(args)
 
-            real_run = commands.run
+            real_run = fetch_commands.run
             with (
-                patch.object(commands, "run", side_effect=decode_fails),
+                patch.object(fetch_commands, "run", side_effect=decode_fails),
                 contextlib.redirect_stdout(io.StringIO()),
                 self.assertRaises(OperationError),
             ):

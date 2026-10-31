@@ -17,6 +17,7 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.request
 from pathlib import Path
 from unittest import mock
 
@@ -24,8 +25,9 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 import _paths as _test_paths  # noqa: F401  (efeito de import: põe scripts/ no sys.path)  # pylint: disable=unused-import
 from _fake_secrets import joined
 from _listing import visible_names
+from _override import override
 
-from getbrolls import delivery, delivery_sweep, effects, logs, runtime
+from getbrolls import delivery, delivery_files, delivery_sweep, effects, effects_salt, logs, runtime
 from getbrolls.bootstrap import StepResult, _StepFailedError
 from getbrolls.errors import LockedError, PrerequisiteError, UsageError
 from getbrolls.instagram_pairs import CollectError
@@ -253,7 +255,7 @@ class OneLinePerOperationTests(EffectsCase):
             mock.patch.object(Path, "replace", side_effect=PermissionError(errno.EACCES, "pasta trancada")),
             self.assertRaises(PermissionError),
         ):
-            delivery._take_name(part, folder / "clip.mp4", linked=self.tmp / "src.mp4")
+            delivery_files._take_name(part, folder / "clip.mp4", linked=self.tmp / "src.mp4")
         row = self.recorder.one()
         self.assertEqual(("fs.replace", "error", "IO_ERROR"), (row["operation"], row["outcome"], row["error_code"]))
 
@@ -274,7 +276,7 @@ class OneLinePerOperationTests(EffectsCase):
             return real(path, target)
 
         with mock.patch.object(Path, "replace", windows_like):
-            delivery._take_name(part, dest, linked=source)
+            delivery_files._take_name(part, dest, linked=source)
         rows = [row for row in self.recorder.ops() if row["operation"] == "fs.replace"]
         self.assertEqual([("skipped", "eacces"), ("ok", None)], [(row["outcome"], row.get("fallback")) for row in rows])
         self.assertEqual(b"novo", dest.read_bytes())
@@ -357,6 +359,46 @@ class OneLinePerOperationTests(EffectsCase):
         self.assertIsNone(effects.serve(server, address="127.0.0.1:8767"))
         row = self.recorder.one()
         self.assertEqual(("server.stop", "127.0.0.1:8767", "ok"), (row["operation"], row["target"], row["outcome"]))
+
+    @mock.patch.dict(os.environ)
+    def test_open_url_logs_one_net_line_with_the_host_for_a_string_and_for_a_request(self):
+        # O proxy do ambiente não pode desviar o GET de loopback.
+        for name in ("HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"):
+            os.environ.pop(name, None)
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            @override
+            def do_GET(self):  # pylint: disable=invalid-name
+                self.send_response(200)
+                self.send_header("Content-Length", "5")
+                self.end_headers()
+                self.wfile.write(b"hello")
+
+            def log_message(self, format, *args):  # noqa: A002  # pylint: disable=redefined-builtin
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        self.addCleanup(server.server_close)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join)
+        self.addCleanup(server.shutdown)
+        url = f"http://127.0.0.1:{server.server_address[1]}/clip"
+        for label, request in (("string", url), ("request", urllib.request.Request(url))):
+            with self.subTest(request=label):
+                self.recorder.calls.clear()
+                with effects.open_url(request, timeout=5) as response:
+                    self.assertEqual(b"hello", response.read())
+                row = self.recorder.one()
+                self.assertEqual(("net.get", "ok"), (row["operation"], row["outcome"]))
+                self.assertIn("127.0.0.1", row["target"])
+
+    def test_open_url_logs_the_operation_the_caller_names(self):
+        response = mock.MagicMock()
+        with mock.patch.object(effects.urllib.request, "urlopen", return_value=response):
+            self.assertIs(response, effects.open_url("http://127.0.0.1:1/clip", timeout=5, operation="net.download"))
+        row = self.recorder.one()
+        self.assertEqual(("net.download", "ok"), (row["operation"], row["outcome"]))
 
     def test_every_operation_name_used_by_a_helper_is_known(self):
         self.assertTrue(effects.OPERATIONS)
@@ -592,16 +634,16 @@ class SaltedHashTests(EffectsCase):
         env.start()
         self.addCleanup(env.stop)
         self.project = self.tmp / "proj"
-        salts = mock.patch.dict(effects._salts, clear=True)
+        salts = mock.patch.dict(effects_salt._salts, clear=True)
         salts.start()
         self.addCleanup(salts.stop)
-        effects._salt_warned.clear()
+        effects_salt._salt_warned.clear()
         state = mock.patch.dict(logs._state, {"project": self.project})
         state.start()
         self.addCleanup(state.stop)
 
     def salt_file(self):
-        return self.home / effects.SALT_FILE
+        return self.home / effects_salt.SALT_FILE
 
     def test_the_salt_is_created_once_private_and_never_logged(self):
         self.assertFalse(self.salt_file().exists())
@@ -636,8 +678,8 @@ class SaltedHashTests(EffectsCase):
         return [fields["reason"] for _level, name, fields in self.recorder.calls if name == "log_salt_unavailable"]
 
     def fresh_process(self):
-        effects._salts.clear()
-        effects._salt_warned.clear()
+        effects_salt._salts.clear()
+        effects_salt._salt_warned.clear()
 
     def test_a_linked_salt_is_never_followed_and_warns_once(self):
         self.home.mkdir()
@@ -662,18 +704,18 @@ class SaltedHashTests(EffectsCase):
         self.assertEqual("ok", effects.salt_state())
 
     def repair_into(self, results):
-        results.append(effects._create_salt(self.salt_file(), swap=True))
+        results.append(effects_salt._create_salt(self.salt_file(), swap=True))
 
     def test_without_flock_two_racing_repairers_keep_the_same_salt(self):
         """Sem `fcntl` (Windows), o conserto do sal passa por uma trava em arquivo no `$GB_HOME`."""
         self.home.mkdir()
-        real_aside = effects._set_aside
+        real_aside = effects_salt._set_aside
 
         def slow_aside(path):
             time.sleep(0.02)  # alarga a janela entre conferir e trocar, onde a corrida acontece
             real_aside(path)
 
-        with mock.patch.object(logs, "fcntl", None), mock.patch.object(effects, "_set_aside", slow_aside):
+        with mock.patch.object(logs, "fcntl", None), mock.patch.object(effects_salt, "_set_aside", slow_aside):
             for round_number in range(15):
                 self.salt_file().write_text("nao-e-sal\n", encoding="utf-8")
                 results = []
@@ -682,20 +724,20 @@ class SaltedHashTests(EffectsCase):
                     worker.start()
                 for worker in workers:
                     worker.join()
-                final = effects._inspect_salt(self.salt_file())
+                final = effects_salt._inspect_salt(self.salt_file())
                 with self.subTest(round=round_number):
                     self.assertEqual([final, final], results)
-        self.assertFalse([p for p in self.home.iterdir() if p.name.startswith(effects.SALT_FILE + ".")])
-        lock = self.home / effects.SALT_REPAIR_LOCK
+        self.assertFalse([p for p in self.home.iterdir() if p.name.startswith(effects_salt.SALT_FILE + ".")])
+        lock = self.home / effects_salt.SALT_REPAIR_LOCK
         self.assertTrue(lock.exists())
-        self.assertFalse(lock.name.startswith(effects.SALT_FILE))
+        self.assertFalse(lock.name.startswith(effects_salt.SALT_FILE))
 
     def test_a_repair_removes_the_malformed_file_and_old_leftovers(self):
         self.home.mkdir()
         self.salt_file().write_text("nao-e-sal\n", encoding="utf-8")
-        (self.home / f"{effects.SALT_FILE}.bad-antigo").write_text("x", encoding="utf-8")
+        (self.home / f"{effects_salt.SALT_FILE}.bad-antigo").write_text("x", encoding="utf-8")
         target_of(self.project / "entrega" / "a")
-        self.assertEqual([effects.SALT_FILE], visible_names(self.home))
+        self.assertEqual([effects_salt.SALT_FILE], visible_names(self.home))
         self.assertEqual("ok", effects.salt_state())
 
     @unittest.skipUnless(POSIX and os.geteuid() != 0, "permissões POSIX, sem root")
@@ -726,7 +768,7 @@ class SaltedHashTests(EffectsCase):
             self.fresh_process()
             second = target_of(self.project / "entrega" / "a")
         self.assertEqual(first, second)
-        self.assertEqual([effects.SALT_FILE], sorted(p.name for p in self.home.iterdir()))
+        self.assertEqual([effects_salt.SALT_FILE], sorted(p.name for p in self.home.iterdir()))
         self.assertEqual([], self.warnings())
         if POSIX:
             self.assertEqual(0o600, stat.S_IMODE(self.salt_file().stat().st_mode))
@@ -742,7 +784,7 @@ class SaltedHashTests(EffectsCase):
 
         writer = threading.Thread(target=finish)
         writer.start()
-        state, found = effects._inspect_salt(self.salt_file())
+        state, found = effects_salt._inspect_salt(self.salt_file())
         writer.join()
         self.assertEqual(("ok", bytes.fromhex(salt)), (state, found))
 

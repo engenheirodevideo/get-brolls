@@ -22,7 +22,7 @@ from test_sdk_loader import PLUGIN_CODE
 
 from getbrolls import runtime
 from getbrolls.sdk import install as install_mod
-from getbrolls.sdk import loader
+from getbrolls.sdk import loader, materialize
 
 IS_ROOT = hasattr(os, "geteuid") and os.geteuid() == 0
 
@@ -119,7 +119,7 @@ class GitCleanupTests(InstallTestCase):
             removed.append(Path(path).name)
             return real(path)
 
-        with patch.object(install_mod, "force_rmtree", side_effect=spy):
+        with patch.object(runtime, "force_rmtree", side_effect=spy):
             preview = install_mod.install(str(repo), confirm=False)
             install_mod.install(str(repo), confirm=True, expect=preview["plugin"]["sha256"])
         self.assertTrue(all(name.startswith(".install-") for name in removed), removed)
@@ -189,15 +189,15 @@ class WindowsNameTests(InstallTestCase):
                 self.assertIn("renomeie o arquivo ou a pasta", str(caught.exception))
                 self.assertEqual([], self.leftover_staging())
                 self.assertFalse((self.home / "plugins" / "demo").exists())
-        install_mod._refuse_tree_collisions(["a.b/c.py", ".oculto/x.txt", "com10.txt", "lpt.txt", "conin.txt"])
+        materialize._refuse_tree_collisions(["a.b/c.py", ".oculto/x.txt", "com10.txt", "lpt.txt", "conin.txt"])
 
     def test_collision_key_drops_trailing_dots_and_spaces(self):
         for pair in (["plugin.py", "plugin.py."], ["Dados/x.py", "dados. /x.py"], ["a.txt", "A.TXT .."]):
             with self.subTest(pair=pair):
                 with self.assertRaises(ValueError) as caught:
-                    install_mod._refuse_tree_collisions(pair)
+                    materialize._refuse_tree_collisions(pair)
                 self.assertIn("colidem", str(caught.exception))
-        install_mod._refuse_tree_collisions(["plugin.py", "plugin.pyc.txt", "console.py", "auxiliar/x.py"])
+        materialize._refuse_tree_collisions(["plugin.py", "plugin.pyc.txt", "console.py", "auxiliar/x.py"])
 
 
 @unittest.skipUnless(os.name == "nt", "junction do NTFS só existe no Windows")

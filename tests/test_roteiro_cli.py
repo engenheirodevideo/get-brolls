@@ -295,14 +295,14 @@ class ReviewWriteTests(CliCase):
         self.fill_skeleton()
         self.write_brief()
 
-    def test_review_normalizes_bom_and_crlf_and_sync_accepts_it(self):
+    def test_review_keeps_bom_and_crlf_and_sync_accepts_it(self):
         self.base()
         path = self.project / "ROTEIRO.md"
         path.write_bytes(b"\xef\xbb\xbf" + path.read_text(encoding="utf-8").replace("\n", "\r\n").encode("utf-8"))
         self.review()
         raw = path.read_bytes()
-        self.assertFalse(raw.startswith(b"\xef\xbb\xbf"))
-        self.assertNotIn(b"\r", raw)
+        self.assertTrue(raw.startswith(b"\xef\xbb\xbf"))
+        self.assertNotRegex(raw, rb"(?<!\r)\n")
         self.assertIn(b"status: revisado", raw)
         self.assertTrue(self.cli("roteiro", "--action", "check")["review"]["reviewed"])
         self.assertIn("Sincronizado", self.cli("roteiro", "--action", "sync")["summary"]["line"])

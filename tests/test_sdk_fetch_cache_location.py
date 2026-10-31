@@ -58,7 +58,7 @@ class FetchCacheLocationTests(FetchRouteCase):
         # Entrada no formato antigo (absoluto, apontando para o original) e sem o
         # arquivo na cópia: o original continua lá, mas a cópia não pode usá-lo.
         data = json.loads(self.index(self.project).read_text(encoding="utf-8"))
-        for entries in data.values():
+        for entries in (value for value in data.values() if isinstance(value, list)):  # skips `schema_version`
             for entry in entries:
                 if isinstance(entry, dict) and entry.get("path"):
                     name = entry["path"].split("/")[-1]
@@ -76,7 +76,7 @@ class FetchCacheLocationTests(FetchRouteCase):
         original = self.project
         self.project = self.relocate("-legado", copy=True)
         data = json.loads(self.index(self.project).read_text(encoding="utf-8"))
-        for entries in data.values():
+        for entries in (value for value in data.values() if isinstance(value, list)):  # skips `schema_version`
             for entry in entries:
                 if isinstance(entry, dict) and entry.get("path"):
                     entry["path"] = str(original / ".getbrolls-sources" / entry["path"].split("/")[-1])
@@ -91,7 +91,7 @@ class FetchCacheLocationTests(FetchRouteCase):
         um novo intervalo: sem arquivo válido no cache, o fetch é recusado."""
         cache = self.project / ".getbrolls-sources"
         data = json.loads(self.index(self.project).read_text(encoding="utf-8"))
-        for entries in data.values():
+        for entries in (value for value in data.values() if isinstance(value, list)):  # skips `schema_version`
             for entry in entries:
                 if isinstance(entry, dict) and entry.get("path"):
                     rewrite(cache, entry)

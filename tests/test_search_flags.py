@@ -293,7 +293,8 @@ class LongQueryRetry(unittest.TestCase):
 
         def fake(name, query, limit, media="any"):
             seen.append(query)
-            return found(2) if len(query.split()) <= 6 else []  # noqa: PLR2004 - SEARCH_QUERY_TOKENS em commands.py
+            # SEARCH_QUERY_TOKENS (6) em search_commands.py
+            return found(2) if len(query.split()) <= 6 else []  # noqa: PLR2004
 
         with tempfile.TemporaryDirectory() as tmp, patch.object(providers, "search", side_effect=fake):
             result = audited(args(tmp, query=self.LONG), execute)

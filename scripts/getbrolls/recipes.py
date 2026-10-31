@@ -30,10 +30,6 @@ Esta versão da CLI ainda não sela receita (`recipe` só tem `list` e `show`); 
 selagem que o passo futuro vai usar.
 """
 
-# pylint: disable=too-many-lines
-# `too-many-lines`: selar, conferir e listar uma versão decidem juntos o que é uma receita íntegra (e o que a
-# listagem mostra dela); separar a listagem em módulo próprio quebraria o que os testes e o `show` compartilham.
-
 import dataclasses
 import errno
 import hashlib
@@ -41,8 +37,6 @@ import json
 import logging
 import os
 import posixpath
-import re
-import unicodedata
 import uuid
 from pathlib import Path
 
@@ -65,6 +59,22 @@ from ._paths import strict_is_dir, strict_is_file
 from .errors import UsageError
 from .ledger import existing_project_id
 from .models import now
+from .recipe_files import (  # noqa: F401 -- reexported: recipe_init and tests keep reading these here; pylint: disable=unused-import
+    ASSETS,
+    TEXT_MAX,
+    _check_text,
+    _file_name,
+    _kind_folder,
+    _nfc,
+    _refused,
+    _shown,
+    check_slug,
+    component_path,
+    copy_hashed,
+    refuse_link,
+    safe_relative,
+    sha256_file,
+)
 from .roteiro_frontmatter import fold, roteiro_path
 from .roteiro_plan import full_role
 from .sdk import schemas
@@ -81,11 +91,9 @@ COMPONENTS_FILE = "components.json"
 FIXED_FILES = (RECIPE_FILE, SEAL_FILE)
 FAMILY = "recipe"
 COMPONENTS_FAMILY = "components"
-SUPPORTED = 1
 SEAL_MAX = 256
 LOCK = ".lock"
 STAGING_PREFIX = ".staging-"
-ASSETS = "assets"
 SPEECH_PLACEHOLDER = "{fala da cena}"
 TEXT_PLACEHOLDER = "{texto}"
 NOT_TRANSFERRED = "not_transferred"
@@ -94,7 +102,6 @@ PROVENANCE_KIND = "project"
 STEPS = ("briefing", "roteiro", "storyboard", "frame", "checklist", "plano")
 RENAME_ATTEMPTS = 5
 LOCK_WAIT_S = 5.0
-TEXT_MAX = 200
 READ_ONLY = 0o444
 # Pastas da versão selada: leitura e travessia, sem escrita (um Finder, um zip ou um sincronizador não solta lixo
 # dentro). O Windows não apaga pasta marcada somente leitura, então lá a pasta continua gravável.
@@ -102,66 +109,8 @@ READ_ONLY_DIR = 0o555 if os.name != "nt" else 0o755
 DS_STORE = ".DS_Store"
 APPLEDOUBLE = "._"
 RECIPE_MAX = 4 * 1024 * 1024
-_CHUNK = 1024 * 1024
-_COMPONENT_DEPTH = 3  # assets/<tipo>/<arquivo>
-_KIND_RE = re.compile(r"[a-z][a-z0-9_]{0,31}")
 _LAYER_KIND = {"LETTERING": "lettering", "SFX": "sfx", "MUSICA": "musica", "COMP": "composicao"}
 _BUSY = "Outro comando está mudando as receitas deste cliente. Aguarde terminar antes de repetir."
-
-
-def _shown(path):
-    """Caminho para a saída (`path` de `seal_project`/`show`): a pasta pessoal vira `~`."""
-    return runtime.scrub_home(str(path))
-
-
-def _nfc(text):
-    """O texto em NFC: o selo guarda nomes NFC, e o disco (HFS+, SMB, zip) pode guardar NFD."""
-    return unicodedata.normalize("NFC", text)
-
-
-def _place(path, *, project=None, client_root=None):
-    """Caminho para uma mensagem: `<projeto>/…`, `<cliente>/…` (a pasta que quem chama já tem)
-    ou outra marca de `labels.shown`; nunca o caminho da máquina. Não lê o registro de clientes:
-    uma mensagem de erro não pode depender de outro arquivo nem trocar o erro por outro."""
-    return labels.shown(path, project=project, extra=[(client_root, "<cliente>")])
-
-
-def _refused(action, reason, exc, **fields):
-    """Registra a recusa (`recipe_refused`: ação, motivo e `error_code`) e devolve `exc` para levantar.
-
-    Nunca o slug da receita, o cliente nem um caminho: o nome de uma receita costuma carregar o do cliente.
-    """
-    return logs.refusal(_log, "recipe_refused", exc, action=action, reason=reason, **fields)
-
-
-def _check_text(value, flag):
-    """Texto opcional de uma linha (`--title`, `--by`); `None` fica `None`."""
-    if value is None:
-        return None
-    text = unicodedata.normalize("NFC", value).strip() if isinstance(value, str) else ""
-    if not text or len(text) > TEXT_MAX or any(unicodedata.category(char) == "Cc" for char in text):
-        raise ValueError(f"{flag} tem que ser texto de uma linha, de 1 a {TEXT_MAX} caracteres.")
-    return text
-
-
-def check_slug(slug):
-    """Slug de receita válido (a regra de slug de cliente, sem ponto); `ValueError` senão."""
-    refs.recipe_ref(refs.PERSONAL_OWNER, slug, 1)
-    return slug
-
-
-def refuse_link(path, *, project=None, client_root=None):
-    """`path` como veio; `ValueError` quando é link: o getbrolls nunca segue link numa receita."""
-    if is_link(path):
-        raise _refused(
-            "lookup",
-            "link",
-            ValueError(
-                f"{_place(path, project=project, client_root=client_root)} é um link; o getbrolls não lê nem grava "
-                "receitas através de links."
-            ),
-        )
-    return path
 
 
 def recipes_root(owner):
@@ -311,7 +260,7 @@ def _collect(project, wanted, warnings):
     """[(tipo, nome, arquivo)] dos componentes achados, sem repetir; pendente vira aviso."""
     rows, seen = [], set()
     for kind, name in wanted:
-        key = (kind, fold(unicodedata.normalize("NFC", name)))
+        key = (kind, fold(_nfc(name)))
         if key in seen:
             continue
         seen.add(key)
@@ -326,82 +275,6 @@ def _collect(project, wanted, warnings):
             continue
         rows.append((kind, name, Path(found["path"])))
     return rows
-
-
-def _file_name(name, path):
-    """Nome do arquivo na receita: o do componente, que continua achado pelo mesmo nome."""
-    if fold(unicodedata.normalize("NFC", path.stem)) == fold(unicodedata.normalize("NFC", name)):
-        return unicodedata.normalize("NFC", path.name)
-    return f"{unicodedata.normalize('NFC', name).strip()}{path.suffix.lower()}"
-
-
-def copy_hashed(source, target, expected=None, *, project=None, client_root=None):
-    """Copia `source` para `target` novo (nunca sobrescreve) e devolve o sha256 dos bytes copiados.
-
-    Com `expected`, os bytes que passaram precisam ter esse sha256: senão o arquivo novo é
-    apagado e `ValueError` diz qual mudou.
-    """
-    digest = hashlib.sha256()
-    try:
-        with (
-            effects.op("fs.copy", target, fallback=(FileExistsError,)),
-            source.open("rb") as reader,
-            target.open("xb") as writer,
-        ):
-            while chunk := reader.read(_CHUNK):
-                digest.update(chunk)
-                writer.write(chunk)
-    except FileExistsError:
-        raise _refused(
-            "copy",
-            "exists",
-            ValueError(f"{_place(target, project=project, client_root=client_root)} já existe; nada foi sobrescrito."),
-        ) from None
-    except BaseException:
-        effects.unlink(target, missing_ok=True)
-        raise
-    value = digest.hexdigest()
-    if expected is not None and value != expected:
-        effects.unlink(target, missing_ok=True)
-        raise _refused(
-            "copy",
-            "changed_while_copying",
-            ValueError(f"{source.name} mudou durante a cópia (sha256 diferente da receita); nada foi copiado."),
-        )
-    return value
-
-
-def _kind_folder(kind):
-    """Pasta do tipo em `assets/`: a do tipo conhecido; tipo que esta versão não conhece usa o próprio nome."""
-    spec = assets.ASSET_KINDS.get(kind)
-    return spec.folder.removeprefix("assets/") if spec else kind
-
-
-def safe_relative(rel, kind=None):
-    """Caminho relativo seguro de componente (`assets/<tipo>/<arquivo>`); `ValueError` senão.
-
-    O arquivo nunca começa com `.` nem termina em `.licenca.json` (licença nunca viaja na
-    receita). A pasta é a de um tipo (`[a-z][a-z0-9_]*`), nunca a do A-ROLL, que é só do
-    projeto; com `kind`, tem que ser a pasta desse tipo (`sfx` só em `assets/sfx/`).
-    """
-    from .analysis_contract import Invalid, relative
-
-    unsafe = ValueError(f'Caminho de componente inseguro na receita: "{rel}".')
-    try:
-        parts = relative(rel)
-    except Invalid:
-        raise unsafe from None
-    if len(parts) != _COMPONENT_DEPTH or parts[0] != ASSETS or not _KIND_RE.fullmatch(parts[1]):
-        raise unsafe
-    spec = assets.ASSET_KINDS.get(parts[1])
-    if spec is not None and not spec.personal:
-        raise unsafe
-    name = parts[2]
-    if name.startswith(".") or name.lower().endswith(assets.LICENSE_SUFFIX):
-        raise unsafe
-    if kind is not None and parts[1] != _kind_folder(kind):
-        raise unsafe
-    return parts
 
 
 def _stage_components(staging, rows):
@@ -427,7 +300,7 @@ def _validated(doc, family, label):
         raise ValueError(  # noqa: TRY004 - contrato da CLI: dado inválido é ValueError (INVALID_DATA)
             f"{label} tem que ser um objeto JSON."
         )
-    versioning.read_schema(doc, family, SUPPORTED, label=label)
+    versioning.read_schema(doc, family, schemas.version(family), label=label)
     problems = errors(doc, schemas.load(family))
     if problems:
         raise ValueError(f"{label} fora do schema: " + "; ".join(problems[:5]))
@@ -455,7 +328,9 @@ def write_new(path, text):
 def _write_components(staging, owner, items):
     """Grava `components.json` na versão em montagem; devolve o ponteiro `{file, sha256}` da receita."""
     doc = validate_components(
-        versioning.stamp_schema({"scope": "recipe", "owner": owner, "items": items}, COMPONENTS_FAMILY)
+        versioning.stamp_schema(
+            {"scope": "recipe", "owner": owner, "items": items}, COMPONENTS_FAMILY, schemas.version(COMPONENTS_FAMILY)
+        )
     )
     text = _dump(doc)
     write_new(staging / COMPONENTS_FILE, text)
@@ -560,6 +435,7 @@ def _draft(project, slug, owner, parsed, extra):
             "licence": NOT_TRANSFERRED,
         },
         FAMILY,
+        schemas.version(FAMILY),
     )
 
 
@@ -694,44 +570,6 @@ def _identity_problems(doc, owner, slug, number):
     if doc["ref"] != expected:
         problems.append(f"{RECIPE_FILE} traz a ref {doc['ref']}, não {expected}.")
     return problems
-
-
-def _on_disk(parent, part):
-    """`parent/part` com o nome como o disco o guarda: o selo diz NFC, e HFS+, SMB e zip guardam NFD."""
-    try:
-        names = [entry.name for entry in parent.iterdir()]
-    except OSError:  # the strict test that follows says what is wrong with the folder
-        names = []
-    found = [name for name in names if _nfc(name) == part]
-    if len(found) > 1:
-        raise ValueError(f"dois nomes iguais em NFC: {part}")
-    return parent / (found[0] if found else part)
-
-
-def component_path(folder, rel, kind=None):
-    """Arquivo `rel` de `assets/` dentro da versão, conferido antes de qualquer leitura.
-
-    `ValueError` quando o caminho é inseguro (`..`, absoluto, `\\`, `:`, fora de `assets/<tipo>/`),
-    quando algum pedaço do caminho é link ou quando não é arquivo.
-    """
-    parts = safe_relative(rel, kind)
-    here = folder
-    for part in parts:
-        here = _on_disk(here, part)
-        if is_link(here):
-            raise ValueError(f"{rel} é um link; a receita só aceita arquivos comuns.")
-    if not strict_is_file(here):
-        raise ValueError(f"{rel} não existe na receita.")
-    return here
-
-
-def sha256_file(path):
-    """sha256 dos bytes de `path`, lido em blocos."""
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while chunk := handle.read(_CHUNK):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _components_problems(folder, doc):

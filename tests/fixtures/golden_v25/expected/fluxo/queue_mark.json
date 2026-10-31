@@ -27,7 +27,7 @@
    "bytes": 472,
    "lines": [
     "{",
-    "  \"schema_version\": 1,",
+    "  \"schema_version\": 2,",
     "  \"items\": [",
     "    {",
     "      \"id\": \"instagram:ABC123\",",
@@ -50,7 +50,7 @@
     "  }",
     "}"
    ],
-   "sha256": "9c8e0a20d82a9594e126c1859be60320b3e02fe47e10d6bdacaa18162fb085c9"
+   "sha256": "8cc302284136b7d8f75d7c1078c1ff3e60cd2eb5e0a71e9ec5e849b7d7b29db2"
   }
  },
  "stderr": null,

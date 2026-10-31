@@ -35,7 +35,7 @@ from functools import cache
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT
 
-from getbrolls import _paths, brief, cli, guidance
+from getbrolls import _paths, brief, cli, cli_parser, guidance
 
 SOURCES = ROOT / "scripts" / "getbrolls"
 DOCS = ("SKILL.md", "skills/get-brolls/SKILL.md", "commands/*.md", "references/**/*.md")
@@ -84,7 +84,7 @@ GOLDEN_PINNED: dict[tuple[str, str, str], str] = {
         "daqui é só um ponto de partida",
     ): "fluxo/brief",
     (
-        "scripts/getbrolls/commands.py",
+        "scripts/getbrolls/brief_report.py",
         "brief --validate --project ...",
         "Resolva os pontos acima e repita",
     ): "fluxo/brief_validate",
@@ -99,7 +99,7 @@ GOLDEN_PINNED: dict[tuple[str, str, str], str] = {
 @cache
 def subparsers():
     cli.build_parser()
-    return dict(cli._SUBPARSERS)  # pylint: disable=protected-access
+    return dict(cli_parser._SUBPARSERS)  # pylint: disable=protected-access
 
 
 @cache

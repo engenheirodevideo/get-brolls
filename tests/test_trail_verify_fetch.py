@@ -33,7 +33,7 @@ from _media import skip_unless_ffmpeg, synth_image, synth_video
 # import side effect: inserts scripts/ into sys.path
 from _paths import ROOT  # noqa: F401  # pylint: disable=unused-import
 
-from getbrolls import cli, commands, http, providers
+from getbrolls import cli, fetch_commands, http, providers
 from getbrolls.errors import PrerequisiteError
 from getbrolls.ledger import Ledger
 from getbrolls.models import approve, candidate, id_stem, set_segment
@@ -143,7 +143,7 @@ class VerifyTamperTests(unittest.TestCase):
             self.assertTrue(out["output"]["verified"])
             events = (root / "brolls" / "events.jsonl").read_bytes()
             with (
-                patch.object(commands, "probe", side_effect=PrerequisiteError("ffprobe não encontrado.")),
+                patch.object(fetch_commands, "probe", side_effect=PrerequisiteError("ffprobe não encontrado.")),
                 self.assertRaises(OperationError) as ctx,
             ):
                 cli.main(["verify", "--project", str(root)])

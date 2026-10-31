@@ -59,6 +59,7 @@ only-include = ["scripts/getbrolls", "assets", "schemas", "references", "example
 [tool.hatch.build.targets.wheel.force-include]
 "docs/RULES.md" = "getbrolls/_data/docs/RULES.md"
 "docs/BRIEF.md" = "getbrolls/_data/docs/BRIEF.md"
+"requirements-bootstrap.txt" = "getbrolls/_data/requirements-bootstrap.txt"
 "requirements.txt" = "getbrolls/_data/requirements.txt"
 "package.json" = "getbrolls/_data/package.json"
 "package-lock.json" = "getbrolls/_data/package-lock.json"
@@ -78,6 +79,7 @@ only-include = [
     "docs/RULES.md",
     "docs/BRIEF.md",
     "packaging",
+    "requirements-bootstrap.txt",
     "requirements.txt",
     "package.json",
     "package-lock.json",
@@ -175,9 +177,6 @@ ignore = ["E501", "RUF001", "RUF002", "RUF003", "PLC0415"]
 "scripts/getbrolls/social.py" = ["S603"]
 "scripts/getbrolls/instagram_pairs.py" = ["S603", "S607", "T201"]
 "scripts/getbrolls/serve.py" = ["S603", "S607", "T201"]
-# `setup` monta a venv com `sys.executable -m venv`/pip (argv em lista, sem shell),
-# encerra a árvore do passo com `taskkill` no Windows e mostra o progresso em stderr.
-"scripts/getbrolls/bootstrap.py" = ["S603", "S607", "T201"]
 "scripts/bump_version.py" = ["S603", "T201"]
 # PTH105: a troca de pasta do `update` usa `os.replace` (não `Path.replace`) de
 # propósito, para o teste de rollback poder trocar só essa chamada via
@@ -201,6 +200,20 @@ ignore = ["E501", "RUF001", "RUF002", "RUF003", "PLC0415"]
 # imprime o resumo e as lacunas: é a interface dele.
 "scripts/check_coverage.py" = ["S603", "T201"]
 
+# Módulos que receberam código de outro módulo na 2.6.0. Cada um herda só os ignores do módulo de onde o
+# código saiu, para que mover código não troque uma regra por uma supressão na linha. Quem não aparece
+# aqui não ganha ignore: passa pelas regras plenas.
+"scripts/getbrolls/diagnostics.py" = ["T201"]
+"scripts/getbrolls/cli_parser.py" = ["T201"]
+# `setup` roda `sys.executable -m venv`/pip (argv em lista, sem shell), encerra a árvore do passo com
+# `taskkill` no Windows e mostra o progresso em stderr.
+"scripts/getbrolls/bootstrap_steps.py" = ["S603", "S607", "T201"]
+"scripts/getbrolls/instagram_common.py" = ["S603", "S607", "T201"]
+"scripts/getbrolls/instagram_media.py" = ["S603", "S607", "T201"]
+"scripts/getbrolls/instagram_queue.py" = ["S603", "S607", "T201"]
+"scripts/getbrolls/sdk/materialize.py" = ["PTH105"]
+"scripts/getbrolls/sdk/staging.py" = ["PTH105"]
+
 [tool.getbrolls.coverage]
 # Metas do gate de cobertura (`python3 scripts/check_coverage.py`, CONTRIBUTING.md). Os
 # percentuais valem sem arredondamento: 99,99% não passa numa meta de 100%.
@@ -215,12 +228,25 @@ file_branches = 85
 # Módulos de contrato: cada linha e cada ramo.
 strict_files = [
     "scripts/getbrolls/cli.py",
+    "scripts/getbrolls/cli_parser.py",
+    "scripts/getbrolls/cli_project_args.py",
+    "scripts/getbrolls/cli_summaries.py",
     "scripts/getbrolls/runtime.py",
     "scripts/getbrolls/errors.py",
     "scripts/getbrolls/_paths.py",
+    "scripts/getbrolls/runtime_parts.py",
+    "scripts/getbrolls/install_report.py",
     "scripts/getbrolls/ledger.py",
     "scripts/getbrolls/effects.py",
     "scripts/getbrolls/logs.py",
+    "scripts/getbrolls/_salt_read.py",
+    "scripts/getbrolls/redaction.py",
+    "scripts/getbrolls/private_files.py",
+    "scripts/getbrolls/file_locks.py",
+    "scripts/getbrolls/error_codes.py",
+    "scripts/getbrolls/command_policy.py",
+    "scripts/getbrolls/diagnostics.py",
+    "scripts/getbrolls/effects_salt.py",
 ]
 strict_lines = 100
 strict_branches = 100

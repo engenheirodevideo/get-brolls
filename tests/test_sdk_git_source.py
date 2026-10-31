@@ -206,5 +206,82 @@ class DescendsFromTests(unittest.TestCase):
         self.assertFalse(git_source.descends_from(spec, self.first, rewritten))
 
 
+@unittest.skipUnless(HAS_GIT, "git required")
+class OutsideTheCurrentRepoTests(unittest.TestCase):
+    """O git que roda antes de existir um clone (`ls-remote`, `init`, `clone --bare`) não lê a configuração
+    do repositório em que a pessoa está: um `url.<x>.insteadOf` dali redirecionaria a busca."""
+
+    def setUp(self):
+        self.work = Path(tempfile.mkdtemp(prefix="gb-cwd-test-")).resolve()
+        self.addCleanup(runtime.force_rmtree, self.work)
+        self.repo = self.work / "origem"
+        self.repo.mkdir()
+        git(self.repo, "init", "--quiet", "--initial-branch", "main")
+        (self.repo / "a.txt").write_text("A", encoding="utf-8")
+        git(self.repo, "add", ".")
+        git(self.repo, "commit", "--quiet", "-m", "A")
+        self.first = head(self.repo)
+        (self.repo / "b.txt").write_text("B", encoding="utf-8")
+        git(self.repo, "add", ".")
+        git(self.repo, "commit", "--quiet", "-m", "B")
+        self.second = head(self.repo)
+        hostile = self.work / "hostil"
+        hostile.mkdir()
+        git(hostile, "init", "--quiet")
+        git(hostile, "config", f"url.{(self.work / 'sumiu').as_uri()}/.insteadOf", "file:///")
+        previous = Path.cwd()
+        os.chdir(hostile)
+        self.addCleanup(os.chdir, previous)
+        self.spec = GitSource(str(self.repo))
+
+    def test_ls_remote_ignores_the_current_repo_config(self):
+        self.assertEqual(("HEAD", self.second), git_source.resolve_ref(self.spec))
+
+    def test_fetch_ignores_the_current_repo_config(self):
+        self.assertEqual(self.second, git_source.fetch(self.spec, self.work / "clone"))
+
+    def test_history_clone_ignores_the_current_repo_config(self):
+        self.assertTrue(git_source.descends_from(self.spec, self.first, self.second))
+
+    def _probe(self, home):
+        """`has_core_ssh_command` with a HOME of its own, recording the call `effects.run` receives."""
+        calls = []
+        real_run = git_source.effects.run
+
+        def spy(command, **kwargs):
+            calls.append(kwargs)
+            return real_run(command, **kwargs)
+
+        env = {**git_source.git_env(), "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config")}
+        with patch.object(git_source.effects, "run", side_effect=spy):
+            found = git_source.has_core_ssh_command(env)
+        return found, calls, env
+
+    def test_the_ssh_command_probe_runs_outside_the_current_repo(self):
+        home = self.work / "home"
+        home.mkdir()
+        found, calls, env = self._probe(home)
+        self.assertFalse(found)
+        self.assertEqual(1, len(calls))
+        cwd = Path(calls[0]["cwd"])
+        self.assertTrue(cwd.name.startswith("gb-git-"))
+        self.assertNotIn(self.work, cwd.resolve().parents)
+        self.assertEqual(str(cwd.parent), calls[0]["env"]["GIT_CEILING_DIRECTORIES"])
+        self.assertNotIn("GIT_CEILING_DIRECTORIES", env, "the caller's env is not changed")
+        self.assertFalse(cwd.exists(), "the neutral folder goes away after the probe")
+
+    def test_the_ssh_command_probe_still_reads_the_global_config(self):
+        home = self.work / "home"
+        home.mkdir()
+        (home / ".gitconfig").write_text("[core]\n\tsshCommand = ssh -i chave\n", encoding="utf-8")
+        found, _calls, _env = self._probe(home)
+        self.assertTrue(found)
+
+    def test_git_env_for_ssh_does_not_carry_the_probe_ceiling(self):
+        with patch.dict(os.environ, {"HOME": str(self.work)}, clear=False):
+            env = git_source.git_env(ssh=True)
+        self.assertNotIn("GIT_CEILING_DIRECTORIES", env)
+
+
 if __name__ == "__main__":
     unittest.main()

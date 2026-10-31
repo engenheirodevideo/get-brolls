@@ -4,11 +4,13 @@ import contextlib
 import errno
 import io
 import json
+import os
 import shutil
 import socket
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from typing import Any
@@ -19,8 +21,8 @@ from _logs import LogCase
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 from _symlink import needs_symlink
 
+from getbrolls import instagram_common, instagram_media, labels, queue
 from getbrolls import instagram_pairs as ig
-from getbrolls import queue
 
 PUBLIC_ROW = (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))
 PUBLIC_DNS = [PUBLIC_ROW]
@@ -61,7 +63,7 @@ class ShellEchoTests(QuietCase):
 
     def test_run_echoes_the_quoted_command_unless_quiet(self):
         done = subprocess.CompletedProcess(["echo"], 0, "ok", "")
-        with patch.object(ig.subprocess, "run", return_value=done):
+        with patch.object(subprocess, "run", return_value=done):
             self.assertIs(done, ig.run(["echo", "a b", ""]))
             self.assertEqual("+ echo 'a b' ''\n", self.err.getvalue())
             self.err.truncate(0)
@@ -71,7 +73,7 @@ class ShellEchoTests(QuietCase):
 
     def test_a_failed_command_is_a_collect_error_with_its_exit_and_stderr_tail(self):
         failing = curl_failure(3, "boom: falhou feio")
-        with patch.object(ig.subprocess, "run", side_effect=failing), self.assertRaises(ig.CollectError) as caught:
+        with patch.object(subprocess, "run", side_effect=failing), self.assertRaises(ig.CollectError) as caught:
             ig.run(["ffmpeg", "-i", "x"], quiet=True)
         self.assertEqual(1, caught.exception.code)
         self.assertIn("ffmpeg falhou (exit 3): boom: falhou feio", caught.exception.message)
@@ -82,7 +84,7 @@ class UrlRefusalTests(QuietCase):
     def refusal(self, url):
         conf = write_conf(self.root / "c.conf", url)
         with (
-            patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
+            patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
             self.captured() as logged,
             self.assertRaises(ig.CollectError) as caught,
         ):
@@ -136,7 +138,7 @@ class UrlRefusalTests(QuietCase):
                 conf = write_conf(self.root / "c.conf", "https://media.example.test/v")
                 lookup: Any = {"side_effect": dns} if isinstance(dns, BaseException) else {"return_value": dns}
                 with (
-                    patch.object(ig.socket, "getaddrinfo", **lookup),
+                    patch.object(socket, "getaddrinfo", **lookup),
                     self.captured() as logged,
                     self.assertRaises(ig.CollectError),
                 ):
@@ -147,13 +149,13 @@ class UrlRefusalTests(QuietCase):
         for url in ("https://93.184.216.34/v", "https://[2606:2800:220:1:248:1893:25c8:1946]/v"):
             with self.subTest(url=url):
                 conf = write_conf(self.root / "c.conf", url)
-                with patch.object(ig.socket, "getaddrinfo", side_effect=AssertionError("sem DNS")):
+                with patch.object(socket, "getaddrinfo", side_effect=AssertionError("sem DNS")):
                     parsed = ig.parse_curl_config(conf)
                 self.assertEqual({"url": url, "output": None, "curl_resolve": None}, parsed)
 
     def test_the_host_is_pinned_in_lower_case_and_the_port_443_is_accepted(self):
         conf = write_conf(self.root / "c.conf", "https://Media.Example.TEST:443/v")
-        with patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS):
+        with patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS):
             parsed = ig.parse_curl_config(conf)
         self.assertEqual("media.example.test:443:93.184.216.34", parsed["curl_resolve"])
 
@@ -210,11 +212,11 @@ class StemAndPairTests(QuietCase):
 
     def test_ensure_tool_refuses_a_missing_command(self):
         with (
-            patch.object(ig.shutil, "which", return_value=None),
+            patch.object(shutil, "which", return_value=None),
             self.assertRaisesRegex(ig.CollectError, "comando obrigatório não encontrado: curl"),
         ):
             ig.ensure_tool("curl")
-        with patch.object(ig.shutil, "which", return_value="/usr/bin/curl"):
+        with patch.object(shutil, "which", return_value="/usr/bin/curl"):
             self.assertIsNone(ig.ensure_tool("curl"))
 
 
@@ -222,7 +224,7 @@ class DownloadEdgeTests(QuietCase):
     def setUp(self):
         super().setUp()
         self.part = self.root / "parts" / "v.mp4"
-        self.getaddrinfo = self.enterContext(patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS))
+        self.getaddrinfo = self.enterContext(patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS))
 
     def download(self, conf, **overrides):
         kwargs: dict[str, Any] = {
@@ -239,7 +241,7 @@ class DownloadEdgeTests(QuietCase):
         conf = write_conf(self.root / "v.conf", "https://example.org/v")
         failing = curl_failure(22, "curl: (22) The requested URL returned error: 429")
         with (
-            patch.object(ig.subprocess, "run", side_effect=failing),
+            patch.object(subprocess, "run", side_effect=failing),
             self.captured() as logged,
             self.assertRaises(ig.CollectError) as caught,
         ):
@@ -253,7 +255,7 @@ class DownloadEdgeTests(QuietCase):
     def test_a_missing_curl_is_a_plain_failure_without_exit_code_or_cooldown(self):
         conf = write_conf(self.root / "v.conf", "https://example.org/v")
         with (
-            patch.object(ig.subprocess, "run", side_effect=FileNotFoundError("curl")),
+            patch.object(subprocess, "run", side_effect=FileNotFoundError("curl")),
             self.captured() as logged,
             self.assertRaises(ig.CollectError) as caught,
         ):
@@ -271,14 +273,14 @@ class DownloadEdgeTests(QuietCase):
         ):
             with (
                 self.subTest(tail=tail),
-                patch.object(ig.subprocess, "run", side_effect=failure),
+                patch.object(subprocess, "run", side_effect=failure),
                 self.captured(),
                 self.assertRaises(ig.CollectError) as caught,
             ):
                 self.download(conf)
             message = caught.exception.message
             self.assertNotIn(str(self.root), message)
-            self.assertIn(tail, ig.labels.for_log(message))
+            self.assertIn(tail, labels.for_log(message))
 
     def test_a_transfer_that_writes_nothing_is_an_empty_media_error(self):
         conf = write_conf(self.root / "v.conf", "https://example.org/v")
@@ -292,7 +294,7 @@ class DownloadEdgeTests(QuietCase):
 
         for name, fake in (("missing", writes_nothing), ("zero", writes_zero_bytes)):
             with self.subTest(name=name):
-                with patch.object(ig.subprocess, "run", side_effect=fake), self.assertRaises(ig.CollectError) as caught:
+                with patch.object(subprocess, "run", side_effect=fake), self.assertRaises(ig.CollectError) as caught:
                     self.download(conf)
                 self.assertIn("mídia vazia para o config", caught.exception.message)
                 self.assertFalse(self.part.exists())
@@ -308,7 +310,7 @@ class DownloadEdgeTests(QuietCase):
             Path(cmd[cmd.index("--output") + 1]).write_bytes(b"midia")
             return subprocess.CompletedProcess(cmd, 0)
 
-        with patch.object(ig.subprocess, "run", side_effect=ok):
+        with patch.object(subprocess, "run", side_effect=ok):
             self.assertEqual("downloaded", self.download(conf))
         self.assertNotIn("--resolve", commands[0])
         self.assertEqual(b'url = "https://93.184.216.34/v"\n', inputs[0])
@@ -324,7 +326,7 @@ class DownloadEdgeTests(QuietCase):
             Path(cmd[cmd.index("--output") + 1]).write_bytes(b"midia")
             return subprocess.CompletedProcess(cmd, 0)
 
-        with patch.object(ig.subprocess, "run", side_effect=ok):
+        with patch.object(subprocess, "run", side_effect=ok):
             self.assertEqual("downloaded", self.download(conf))
         return seen["cmd"], seen["input"], seen["kwargs"]
 
@@ -343,9 +345,10 @@ class DownloadEdgeTests(QuietCase):
 
     def test_the_stdin_config_keeps_the_options_and_the_pin_of_the_transfer(self):
         cmd, _stdin, _kwargs = self.run_download("https://media.example.test/v.mp4?oe=1")
-        for option, value in (("--proto", "=https"), ("--retry", "2"), ("--max-time", "180")):
+        for option, value in (("--proto", "=https"), ("--max-time", "180")):
             self.assertEqual(value, cmd[cmd.index(option) + 1])
         self.assertIn("--fail", cmd)
+        self.assertNotIn("--retry", cmd, "a retry would hit a 429 again")
         self.assertEqual("media.example.test:443:93.184.216.34", cmd[cmd.index("--resolve") + 1])
 
     def test_a_quote_and_a_backslash_in_the_url_are_escaped_for_the_curl_config(self):
@@ -358,7 +361,7 @@ class DownloadEdgeTests(QuietCase):
         source.write_bytes(b"truncado")
         conf = write_conf(self.root / "v.conf", "https://example.org/v", output=source)
         with (
-            patch.object(ig.subprocess, "run", side_effect=curl_failure(1, "Invalid data")),
+            patch.object(subprocess, "run", side_effect=curl_failure(1, "Invalid data")),
             self.assertRaisesRegex(ig.CollectError, "parte reutilizada está corrompida; use --force-download"),
         ):
             self.download(conf, prefer_config_output=True)
@@ -368,7 +371,7 @@ class DownloadEdgeTests(QuietCase):
         source = self.root / "ja-baixado.mp4"
         source.write_bytes(b"completo")
         probe_ok = subprocess.CompletedProcess([], 0, "{}", "")
-        with patch.object(ig.subprocess, "run", return_value=probe_ok) as probe:
+        with patch.object(subprocess, "run", return_value=probe_ok) as probe:
             conf = write_conf(self.root / "v.conf", "https://example.org/v", output=source)
             self.assertEqual("reused-config-output", self.download(conf, prefer_config_output=True))
             self.assertEqual(b"completo", self.part.read_bytes())
@@ -382,7 +385,7 @@ class DownloadEdgeTests(QuietCase):
 class MergeAndVerifyTests(QuietCase):
     def test_merge_copies_the_streams_or_reencodes_them(self):
         commands = []
-        with patch.object(ig, "run", side_effect=lambda cmd, quiet=False: commands.append((cmd, quiet))):
+        with patch.object(instagram_common, "run", side_effect=lambda cmd, quiet=False: commands.append((cmd, quiet))):
             ig.merge_parts(Path("v.mp4"), Path("a.mp4"), self.root / "sub" / "out.mp4", copy_streams=True)
             ig.merge_parts(Path("v.mp4"), Path("a.mp4"), self.root / "sub" / "out.mp4", copy_streams=False)
         self.assertEqual(2, len(commands))
@@ -406,7 +409,7 @@ class MergeAndVerifyTests(QuietCase):
         ):
             with (
                 self.subTest(message=message),
-                patch.object(ig, "ffprobe_json", return_value={"streams": streams}),
+                patch.object(instagram_media, "ffprobe_json", return_value={"streams": streams}),
                 self.assertRaisesRegex(ig.CollectError, message),
             ):
                 ig.verify_output(Path("x.mp4"))
@@ -420,8 +423,8 @@ class MergeAndVerifyTests(QuietCase):
             "format": {"size": "10", "duration": "1.5"},
         }
         with (
-            patch.object(ig, "ffprobe_json", return_value=data),
-            patch.object(ig, "audio_hash", return_value="abc") as hashed,
+            patch.object(instagram_media, "ffprobe_json", return_value=data),
+            patch.object(instagram_media, "audio_hash", return_value="abc") as hashed,
         ):
             quick = ig.verify_output(Path("x.mp4"), compute_audio_hash=False)
             hashed.assert_not_called()
@@ -432,7 +435,7 @@ class MergeAndVerifyTests(QuietCase):
             (10, 1.5, "h264", "yuv420p", 2, 4, "aac"),
             tuple(quick[k] for k in ("size", "duration", "video_codec", "pix_fmt", "width", "height", "audio_codec")),
         )
-        with patch.object(ig, "ffprobe_json", return_value={"streams": data["streams"]}):
+        with patch.object(instagram_media, "ffprobe_json", return_value={"streams": data["streams"]}):
             bare = ig.verify_output(Path("x.mp4"), compute_audio_hash=False)
         self.assertEqual((0, 0.0), (bare["size"], bare["duration"]))
 
@@ -442,7 +445,7 @@ class PublishAndProcessTests(QuietCase):
         source = self.root / "src.mp4"
         source.write_bytes(b"midia")
         destination = self.root / "out.mp4"
-        with patch.object(ig.os, "fsync", side_effect=OSError(errno.EIO, "disco")), self.assertRaises(OSError):
+        with patch.object(os, "fsync", side_effect=OSError(errno.EIO, "disco")), self.assertRaises(OSError):
             ig.publish_exclusive(source, destination)
         self.assertFalse(destination.exists())
         self.assertEqual(b"midia", source.read_bytes())
@@ -526,22 +529,18 @@ class CooldownRecordTests(QuietCase):
         with patch.dict(sys.modules, {"getbrolls.queue": None}):
             self.assertIsNone(ig.record_queue_cooldown(self.root, "403"))
         self.assertIn("dependências indisponíveis", self.err.getvalue())
-        with patch("getbrolls.runtime.project_lock", side_effect=OSError("trava ocupada")):
-            self.assertIsNone(ig.record_queue_cooldown(self.root, "403"))
-        self.assertIn("cooldown não registrado (trava ocupada)", self.err.getvalue())
+        with (
+            patch("getbrolls.runtime.project_lock", side_effect=OSError("trava ocupada")),
+            self.assertRaises(ig.QueueNotRecordedError),
+        ):
+            ig.record_queue_cooldown(self.root, "403")
+        self.assertIn("cooldown não registrado: Erro de E/S", self.err.getvalue())
         with patch("getbrolls.queue.record_cooldown", side_effect=ValueError("fila ruim")):
             self.assertIsNone(ig.record_queue_cooldown(self.root, "403"))
         self.assertIn("cooldown não registrado (fila ruim)", self.err.getvalue())
         self.assertFalse(
             queue.load(queue.queue_path(self.root))["providers"].get("instagram", {}).get("cooldown_until")
         )
-
-    def test_run_as_a_script_the_cooldown_is_still_recorded(self):
-        with patch.object(ig, "__package__", ""):
-            until = ig.record_queue_cooldown(self.root, "403")
-        self.assertTrue(until)
-        saved = queue.load(queue.queue_path(self.root))
-        self.assertEqual(until, saved["providers"]["instagram"]["cooldown_until"])
 
     def test_a_project_without_queue_json_records_nothing(self):
         empty = self.root / "outro"
@@ -555,7 +554,7 @@ class BatchEdgeTests(QuietCase):
         super().setUp()
         self.real_ensure_tool = ig.ensure_tool
         self.enterContext(patch.object(ig, "ensure_tool"))
-        self.enterContext(patch.object(ig.time, "sleep"))
+        self.enterContext(patch.object(time, "sleep"))
         configs = self.root / "configs"
         configs.mkdir()
         for stem in ("01_A", "02_B"):
@@ -634,7 +633,7 @@ class BatchEdgeTests(QuietCase):
                 self.err.truncate()
                 with (
                     patch.object(ig, "ensure_tool", self.real_ensure_tool),
-                    patch.object(ig.shutil, "which", side_effect=lambda name, t=tool: None if name == t else name),
+                    patch.object(shutil, "which", side_effect=lambda name, t=tool: None if name == t else name),
                     patch.object(ig, "run_batch") as batch,
                 ):
                     self.assert_refused(self.argv(), f"comando obrigatório não encontrado: {tool}")

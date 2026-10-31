@@ -27,7 +27,7 @@ from test_sdk_marketplace_install import REF, MarketInstallCase
 
 from getbrolls import logs, runtime
 from getbrolls.errors import LockedError, UsageError
-from getbrolls.sdk import git_source, loader, marketplace
+from getbrolls.sdk import git_source, loader, marketplace, materialize
 from getbrolls.sdk import install as install_mod
 from getbrolls.sdk import marketplace_index as mi
 from getbrolls.sdk import marketplace_install as mki
@@ -712,10 +712,10 @@ class PluginInstallLogTests(InstallTestCase, LogCase):
         repo2 = write_plugin(clean / "demo_repo2")
         git(repo2, "init", "--quiet")
         self.commit_file(repo2, "grande.bin", b"x" * 50_000, "grande")
-        with patch.object(install_mod, "MAX_BYTES", 10_000), self.captured() as cm, self.assertRaises(ValueError):
+        with patch.object(materialize, "MAX_BYTES", 10_000), self.captured() as cm, self.assertRaises(ValueError):
             install_mod.install(str(repo2), confirm=False)
         self.rows(cm).one("plugin_content_refused", reason="oversized_blob")
-        with patch.object(install_mod, "MAX_FILES", 1), self.captured() as cm, self.assertRaises(ValueError):
+        with patch.object(materialize, "MAX_FILES", 1), self.captured() as cm, self.assertRaises(ValueError):
             install_mod.install(str(repo2), confirm=False)
         self.rows(cm).one("plugin_content_refused", reason="too_many_files")
 
@@ -729,7 +729,7 @@ class PluginInstallLogTests(InstallTestCase, LogCase):
 
     def test_a_name_that_is_not_nfc_is_refused_by_reason(self):
         with self.captured() as cm, self.assertRaises(ValueError):
-            install_mod._refuse_non_nfc("á.py", "na pasta")
+            materialize._refuse_non_nfc("á.py", "na pasta")
         self.rows(cm).one("plugin_content_refused", reason="non_nfc")
 
     def test_an_update_logs_the_preview_the_confirmation_and_the_new_commit(self):

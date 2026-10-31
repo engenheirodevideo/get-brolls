@@ -11,7 +11,7 @@ from typing import Any
 
 
 def _not_installed() -> Any:
-    """Construtor enquanto `registry` não instalou o seu (nunca depois de importar `getbrolls.sdk`)."""
+    """Construtor enquanto `getbrolls.sdk.registry` não foi importado (ele instala o seu ao ser importado)."""
     raise RuntimeError("getbrolls.sdk.registry ainda não foi importado.")
 
 
@@ -42,6 +42,8 @@ def get() -> Any:
     """O registro do processo, montado na primeira consulta (`registry.get_registry`).
 
     Raises:
-        RuntimeError: nenhuma função instalada; não acontece depois de importar `getbrolls.sdk`.
+        RuntimeError: nenhuma função instalada, isto é, `getbrolls.sdk.registry` ainda não foi importado.
+            Importar só `getbrolls.sdk` não basta (os nomes são resolvidos sob demanda); o primeiro acesso a
+            `getbrolls.sdk.get_registry`, ou o import direto de `getbrolls.sdk.registry`, instala a função.
     """
     return _STATE["build"]()

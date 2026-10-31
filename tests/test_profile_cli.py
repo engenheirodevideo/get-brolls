@@ -18,7 +18,7 @@ from _paths import cli, split_command
 from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, PLUGIN_CODE
 
-from getbrolls import _paths, capabilities, config, profile, serve
+from getbrolls import _paths, capabilities, cli_parser, config, env_loader, profile, serve
 from getbrolls import cli as gb_cli
 from getbrolls.errors import UsageError
 from getbrolls.sdk import loader
@@ -352,7 +352,7 @@ class InProcessCase(ProfileCliCase):
         self.addCleanup(profile.reset_state)
         saved = dict(config._ENV_APPLIED)  # pylint: disable=protected-access
         self.addCleanup(lambda: (config._ENV_APPLIED.clear(), config._ENV_APPLIED.update(saved)))  # pylint: disable=protected-access
-        self.addCleanup(config.load_env, self.tmp / "nao-existe.env")
+        self.addCleanup(env_loader.load_env, self.tmp / "nao-existe.env")
 
     def trust_here(self, path=None):
         path = path or self.toml
@@ -388,7 +388,7 @@ class InProcessTests(InProcessCase):
         write(self.toml, 'cache_dir = "c"\n')
         self.trust_here()
         with contextlib.chdir(self.ws):
-            config.load_environment(self.args(), warn=False)
+            env_loader.load_environment(self.args(), warn=False)
         self.assertEqual(str(self.toml), os.environ["GB_PROFILE"])
         self.assertEqual(sha(self.toml), os.environ["GB_PROFILE_SHA256"])
         self.assertEqual(str(self.ws / "c"), os.environ["GB_CACHE_DIR"])
@@ -398,7 +398,7 @@ class InProcessTests(InProcessCase):
 
     def test_no_profile_exports_off_to_children(self):
         with contextlib.chdir(self.ws):
-            config.load_environment(self.args(), warn=False)
+            env_loader.load_environment(self.args(), warn=False)
         self.assertEqual("off", os.environ["GB_PROFILE"])
         self.assertNotIn("GB_PROFILE_SHA256", os.environ)
 
@@ -406,7 +406,7 @@ class InProcessTests(InProcessCase):
         write(self.toml, 'cache_dir = "c"\n')
         self.trust_here()
         with contextlib.chdir(self.ws):
-            config.load_environment(self.args(), warn=False)
+            env_loader.load_environment(self.args(), warn=False)
             self.assertEqual(str(self.toml), os.environ["GB_PROFILE"])
             profile.untrust(self.toml, located=profile.locate(None, str(self.toml)))
             with self.assertRaises(UsageError):
@@ -468,7 +468,7 @@ class ProfileGrammarTests(ProfileCliCase):
         self.assertIn("profile --action trust --path", preview["confirm"]["command"])
 
     def test_the_renamed_hook_only_answers_the_positional_form(self):
-        hook = gb_cli._profile_renamed  # pylint: disable=protected-access
+        hook = cli_parser._profile_renamed  # pylint: disable=protected-access
         self.assertIsNone(hook(("--action=show", "show")))
         self.assertIsNone(hook(("--action", "bogus")))
         self.assertIsNone(hook(("--project", "p")))

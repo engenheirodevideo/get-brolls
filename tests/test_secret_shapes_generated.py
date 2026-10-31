@@ -18,7 +18,7 @@ from _fake_secrets import joined
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 from test_secret_corpus import ENTRY_POINTS
 
-from getbrolls import _tokens, labels, logs, runtime
+from getbrolls import _tokens, labels, logs, redaction, runtime
 
 ALNUM = string.ascii_letters + string.digits
 BASE64URL = ALNUM + "-_"
@@ -282,7 +282,7 @@ class PipelineOrderTests(unittest.TestCase):
             for entry, run in ENTRY_POINTS.items():
                 seen = []
                 with (
-                    patch.object(runtime, "_URL_PATTERN", _Spy(runtime._URL_PATTERN, seen)),  # pylint: disable=protected-access
+                    patch.object(redaction, "_URL_PATTERN", _Spy(redaction._URL_PATTERN, seen)),  # pylint: disable=protected-access
                     patch.object(labels, "_ABSOLUTE", _Spy(labels._ABSOLUTE, seen)),  # pylint: disable=protected-access
                     patch.object(labels, "_ENCODED", _Spy(labels._ENCODED, seen)),  # pylint: disable=protected-access
                     patch.object(_paths, "replace_folder", _Spy(_paths.replace_folder, seen)),

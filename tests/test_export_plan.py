@@ -15,7 +15,17 @@ from _media import skip_unless_ffmpeg, synth_video
 from _paths import ROOT
 from _schemas import strict
 
-from getbrolls import analysis, assets, delivery, export_plan, export_voice, layout, roteiro, roteiro_plan, runtime
+from getbrolls import (
+    analysis,
+    assets,
+    delivery_sweep,
+    export_plan,
+    export_voice,
+    layout,
+    roteiro,
+    roteiro_plan,
+    runtime,
+)
 from getbrolls.sdk.exporters import find_local_paths
 from getbrolls.sdk.jsonschema import errors
 
@@ -363,7 +373,7 @@ class SlotAndClipTests(ExportPlanTestCase):
     def test_vanished_clip_is_kept_as_changed_after_the_good_ones(self):
         plan, items = full_project(self.root)
         # Clipe congelado: no Windows, somente leitura só sai depois de degelar.
-        delivery._thaw_unlink(self.root / "brolls" / "clips" / "c02-a.mp4")
+        delivery_sweep.thaw_unlink(self.root / "brolls" / "clips" / "c02-a.mp4")
         with mock.patch.object(export_plan, "probe_voice", fake_probe):
             result, _ = export_plan.build(self.root, plan, items, "exports/exporter_example/001")
         slot = result["scenes"][1]["layout"]["slots"][0]
@@ -374,7 +384,7 @@ class SlotAndClipTests(ExportPlanTestCase):
     def test_clip_outside_clips_folder_or_link_is_refused(self):
         plan, items = full_project(self.root)
         items[0]["output"]["path"] = "../fora.mp4"
-        delivery._thaw_unlink(self.root / "brolls" / "clips" / "c02-b.mov")
+        delivery_sweep.thaw_unlink(self.root / "brolls" / "clips" / "c02-b.mov")
         try:
             (self.root / "brolls" / "clips" / "c02-b.mov").symlink_to(self.root / "ROTEIRO.md")
         except OSError:

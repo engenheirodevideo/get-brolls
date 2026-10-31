@@ -12,8 +12,11 @@ from unittest.mock import patch
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 import _paths  # noqa: F401  (efeito de import: põe scripts/ no sys.path)  # pylint: disable=unused-import
 
-from getbrolls import config, profile
-from getbrolls.errors import LockedError, PrerequisiteError, UsageError
+from getbrolls import _paths as core_paths
+from getbrolls import cli, config, profile, profile_trust
+from getbrolls.cli import build_parser
+from getbrolls.errors import DataRootError, LockedError, PrerequisiteError, UsageError
+from getbrolls.sdk import schemas
 
 POSIX = os.name != "nt"
 
@@ -394,7 +397,7 @@ class TrustTests(ProfileCase):
         path = write_profile(self.tmp / "ws", 'home = "x"\n')
         sha = profile.load(path).sha256
         with (
-            patch.object(profile, "LOCK_TIMEOUT_S", 0.05),
+            patch.object(profile_trust, "LOCK_TIMEOUT_S", 0.05),
             patch("getbrolls.runtime._acquire_lock", side_effect=BlockingIOError),
             self.assertRaises(LockedError) as caught,
         ):
@@ -539,6 +542,74 @@ class ApplyTests(ProfileCase):
         self.assertEqual("default", sources["tools.venv"]["source"])
         self.assertIsNone(sources["tools.venv"]["value"])
         self.assertEqual("default", profile.value_sources(None, {})["cache_dir"]["source"])
+
+
+class BrokenDataRootTests(ProfileCase):
+    """Sem a pasta de dados, o store de confiança não tem versão para comparar: nenhum perfil vale por ele.
+
+    O `doctor` ainda chega ao relatório (nunca a saída 4 antes dele), e nada é gravado por cima do store.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.ws = self.tmp / "ws"
+        self.toml = write_profile(self.ws, 'cache_dir = "c"\n')
+        sha = profile.load(self.toml).sha256
+        profile.trust(self.toml, located=profile.Located(self.toml, "flag", False, ()), yes=True, expect=sha)
+        self.store = self.home / profile.TRUST_FILE
+        self.stored = self.store.read_bytes()
+        unknown = core_paths.detect(Path(tempfile.gettempdir()) / "nada" / "getbrolls")
+        patcher = patch.object(core_paths, "install", return_value=unknown)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        schemas.load.cache_clear()
+        self.addCleanup(schemas.load.cache_clear)
+
+    def test_the_trusted_profile_is_untrusted_and_the_store_is_kept(self):
+        located = profile.Located(self.toml, "flag", False, ())
+        self.assertEqual({}, profile.read_store(self.home)["profiles"])
+        self.assertEqual("untrusted", profile.trust_state(profile.load(self.toml), located, self.home, environ={}))
+        self.assertEqual(self.stored, self.store.read_bytes())
+
+    def test_a_store_of_the_wrong_shape_is_still_corrupt(self):
+        self.store.write_text('{"schema_version": 1, "profiles": []}', encoding="utf-8")
+        with self.assertRaises(UsageError) as caught:
+            profile.read_store(self.home)
+        self.assertEqual("store_corrupt", caught.exception.reason)
+
+    def test_trusting_without_the_data_stops_before_writing(self):
+        other = write_profile(self.tmp / "outro", 'cache_dir = "d"\n')
+        sha = profile.load(other).sha256
+        with self.assertRaises(DataRootError):
+            profile.trust(other, located=profile.Located(other, "flag", False, ()), yes=True, expect=sha)
+        self.assertEqual(self.stored, self.store.read_bytes())
+
+    def test_doctor_reaches_its_report_and_a_strict_command_refuses_the_profile(self):
+        doctor = build_parser().parse_args(["--profile", str(self.toml), "doctor"])
+        self.assertEqual("untrusted", profile.activate(doctor).trust)
+        strict = build_parser().parse_args(["--profile", str(self.toml), "providers"])
+        with self.assertRaises(profile.ProfileRefusedError) as caught:
+            profile.activate(strict)
+        self.assertEqual("untrusted", caught.exception.reason)
+
+    def test_doctor_reports_with_every_home_file_present(self):
+        (self.home / "plugins.json").write_text('{"schema": "getbrolls.plugins/1", "enabled": {}}', encoding="utf-8")
+        (self.home / "marketplaces.json").write_text(
+            '{"schema": "getbrolls.marketplaces/1", "marketplaces": {}}', encoding="utf-8"
+        )
+        (self.home / "clients.json").write_text('{"schema": "getbrolls.clients/1", "clients": []}', encoding="utf-8")
+        result = cli.main(["--profile", str(self.toml), "doctor"])
+        self.assertIs(False, result["ready"])
+        self.assertEqual("untrusted", result["install"]["profile"]["trust"])
+        self.assertEqual(self.stored, self.store.read_bytes())
+
+    def test_a_declared_toml_version_is_an_invalid_profile_not_a_crash(self):
+        declared = write_profile(self.tmp / "declarado", 'schema_version = 1\ncache_dir = "c"\n')
+        doctor = build_parser().parse_args(["--profile", str(declared), "doctor"])
+        active = profile.activate(doctor)
+        self.assertEqual("invalid", active.trust)
+        self.assertIn("reinstale", (active.error or "").lower())
+        self.assertIn("GB_CACHE_DIR", profile.load(self.toml).values)
 
 
 if __name__ == "__main__":

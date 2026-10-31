@@ -47,7 +47,7 @@ from _symlink import needs_symlink
 from test_sdk_loader import MANIFEST, PLUGIN_CODE, LoaderTestCase
 
 from getbrolls import runtime
-from getbrolls.sdk import git_source, loader
+from getbrolls.sdk import git_source, loader, materialize, staging
 from getbrolls.sdk import install as install_mod
 
 HAS_GIT = shutil.which("git") is not None
@@ -295,7 +295,7 @@ class FolderInstallTests(InstallTestCase):
     def test_install_refuses_a_source_over_the_file_cap(self):
         source = write_plugin(self.work / "demo_src")
         (source / "extra.txt").write_text("mais um arquivo\n", encoding="utf-8")
-        with patch.object(install_mod, "MAX_FILES", 2), self.assertRaises(ValueError) as ctx:
+        with patch.object(materialize, "MAX_FILES", 2), self.assertRaises(ValueError) as ctx:
             install_mod.install(str(source), confirm=False)
         self.assertIn("arquivos", str(ctx.exception))
         self.assertFalse((self.home / "plugins" / "demo").exists())
@@ -380,7 +380,7 @@ class FolderInstallTests(InstallTestCase):
         # A idade vem do epoch codificado no NOME, não do
         # `st_mtime` — por isso o nome já nasce com um epoch antigo, sem
         # precisar de `os.utime`.
-        old_epoch = int(time.time()) - (install_mod.STALE_STAGING_MAX_AGE_S + 60)
+        old_epoch = int(time.time()) - (staging.STALE_STAGING_MAX_AGE_S + 60)
         stale_install = self.home / "plugins" / f".install-{old_epoch}-{uuid.uuid4().hex}"
         stale_install.mkdir()
         (stale_install / "resto.txt").write_text("x", encoding="utf-8")
@@ -549,9 +549,9 @@ class FolderInstallTests(InstallTestCase):
             "sub/git~1/evil",
         ):
             with self.subTest(path=bad), self.assertRaises(ValueError):
-                install_mod._refuse_git_path_component(bad)
-        install_mod._refuse_git_path_component("normal/path/plugin.py")  # não levanta
-        install_mod._refuse_git_path_component("gita/evil")  # prefixo, não é ".git": não levanta
+                materialize._refuse_git_path_component(bad)
+        materialize._refuse_git_path_component("normal/path/plugin.py")  # não levanta
+        materialize._refuse_git_path_component("gita/evil")  # prefixo, não é ".git": não levanta
 
     # -- Varredura de resto não apaga a única cópia de um plugin -------------
 
@@ -561,11 +561,11 @@ class FolderInstallTests(InstallTestCase):
         install_mod.install(str(source), confirm=True, expect=preview["plugin"]["sha256"])
 
         current = self.home / "plugins" / "demo"
-        old_epoch = int(time.time()) - (install_mod.STALE_STAGING_MAX_AGE_S + 60)
+        old_epoch = int(time.time()) - (staging.STALE_STAGING_MAX_AGE_S + 60)
         retired = self.home / "plugins" / f".old-{old_epoch}-demo-{uuid.uuid4().hex}"
         current.rename(retired)  # simula a morte do processo entre as duas trocas do update
 
-        install_mod._sweep_stale_staging()
+        staging._sweep_stale_staging()
 
         self.assertFalse(retired.exists())
         self.assertTrue((current / "plugin.py").is_file())
@@ -575,7 +575,7 @@ class FolderInstallTests(InstallTestCase):
         fresh_install = self.home / "plugins" / f".install-{int(time.time())}-{uuid.uuid4().hex}"
         fresh_install.mkdir()
 
-        install_mod._sweep_stale_staging()
+        staging._sweep_stale_staging()
 
         self.assertTrue(fresh_install.exists())
 
@@ -590,12 +590,12 @@ class FolderInstallTests(InstallTestCase):
         fresh_epoch = int(time.time())
         young = self.home / "plugins" / f".old-{fresh_epoch}-demo-{uuid.uuid4().hex}"
         write_plugin(young)
-        old_time = time.time() - (install_mod.STALE_STAGING_MAX_AGE_S + 3600)
+        old_time = time.time() - (staging.STALE_STAGING_MAX_AGE_S + 3600)
         os.utime(young / "getbrolls-plugin.json", (old_time, old_time))
         os.utime(young / "plugin.py", (old_time, old_time))
         os.utime(young, (old_time, old_time))
 
-        install_mod._sweep_stale_staging()
+        staging._sweep_stale_staging()
 
         self.assertTrue(young.exists())
         self.assertFalse((self.home / "plugins" / "demo").exists())
@@ -609,19 +609,22 @@ class FolderInstallTests(InstallTestCase):
         legacy = self.home / "plugins" / ".old-orfao"
         legacy.mkdir()
 
-        install_mod._sweep_stale_staging()
+        staging._sweep_stale_staging()
 
         self.assertTrue(legacy.exists())
 
     def test_a_sweep_error_does_not_abort_install(self):
         source = write_plugin(self.work / "demo_src")
         (self.home / "plugins").mkdir(parents=True, exist_ok=True)
-        old_epoch = int(time.time()) - (install_mod.STALE_STAGING_MAX_AGE_S + 60)
+        old_epoch = int(time.time()) - (staging.STALE_STAGING_MAX_AGE_S + 60)
         stale = self.home / "plugins" / f".old-{old_epoch}-outroplugin-{uuid.uuid4().hex}"
         stale.mkdir()
 
-        with patch.object(install_mod, "_sweep_one_stale_entry", side_effect=OSError("falha simulada na varredura")):
+        with patch.object(
+            staging, "_sweep_one_stale_entry", side_effect=OSError("falha simulada na varredura")
+        ) as sweep:
             preview = install_mod.install(str(source), confirm=False)
+        sweep.assert_called()
         self.assertFalse(preview["installed"])
 
         done = install_mod.install(str(source), confirm=True, expect=preview["plugin"]["sha256"])
@@ -785,7 +788,7 @@ class GitInstallTests(InstallTestCase):
 
     def test_install_from_git_refuses_over_the_file_cap(self):
         repo = self.repo()
-        with patch.object(install_mod, "MAX_FILES", 1), self.assertRaises(ValueError) as ctx:
+        with patch.object(materialize, "MAX_FILES", 1), self.assertRaises(ValueError) as ctx:
             install_mod.install(str(repo), confirm=False)
         self.assertIn("arquivos", str(ctx.exception))
 
@@ -802,7 +805,7 @@ class GitInstallTests(InstallTestCase):
             ["git", "rev-parse", "HEAD:grande.bin"], cwd=repo, check=True, capture_output=True, text=True
         ).stdout.strip()
 
-        real_blob = install_mod._git_blob
+        real_blob = materialize._git_blob
 
         def spy(dest, sha):
             if sha == big_sha:
@@ -810,8 +813,8 @@ class GitInstallTests(InstallTestCase):
             return real_blob(dest, sha)
 
         with (
-            patch.object(install_mod, "MAX_BYTES", 10_000),
-            patch.object(install_mod, "_git_blob", side_effect=spy),
+            patch.object(materialize, "MAX_BYTES", 10_000),
+            patch.object(materialize, "_git_blob", side_effect=spy),
             self.assertRaises(ValueError) as ctx,
         ):
             install_mod.install(str(repo), confirm=False)

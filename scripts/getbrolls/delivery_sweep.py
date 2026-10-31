@@ -46,7 +46,11 @@ def thaw_unlink(path):
             # Somente leitura (Windows): a tentativa falha como esperado e a de baixo, degelada, apaga.
             first.skip(fallback="eacces")
     with effects.op("fs.unlink", path):
-        path.chmod(stat.S_IWRITE | stat.S_IREAD)
+        # `chmod` segue o link: num link, devolveria a escrita ao clipe de `brolls/` e ninguém a tiraria
+        # de novo. O atributo somente-leitura é do arquivo; o do link não impede apagá-lo.
+        # lenient: link test of the path being thawed; a stat failure falls to the chmod/unlink below
+        if not path.is_symlink():
+            path.chmod(stat.S_IWRITE | stat.S_IREAD)
         path.unlink()
 
 
@@ -205,7 +209,14 @@ class Pristine:
 
 
 # `linked`: {caminho: clipe} da mídia fora do plano que ainda é hardlink de um clipe de `brolls/`.
-_SweepContext = namedtuple("_SweepContext", "expected dry_run owned brolls_root real_root pristine linked")
+_SweepContext = namedtuple("_SweepContext", "expected dry_run owned brolls_root real_root pristine linked gone")
+
+
+def _is_empty(path, rel, ctx):
+    """A pasta está vazia, ou ficará: no ensaio nada sai do disco, então vale o que o ensaio já marcou para sair."""
+    if not ctx.dry_run:
+        return not any(path.iterdir())
+    return all(f"{rel}/{child.name}" in ctx.gone for child in path.iterdir())
 
 
 def _sweep_empty_directory(path, rel, ctx):
@@ -223,7 +234,7 @@ def _sweep_empty_directory(path, rel, ctx):
     """
     if not (
         BEAT_DIR_RE.match(path.name)
-        and not any(path.iterdir())
+        and _is_empty(path, rel, ctx)
         and rel not in ctx.expected
         and confined(path, ctx.real_root)
     ):
@@ -324,7 +335,7 @@ def sweep(  # noqa: PLR0913 - one input per rule the sweep applies
     removed, kept = [], []
     if not strict_is_dir(root):
         return removed, kept
-    ctx = _SweepContext(expected, dry_run, set(owned), brolls_root, root.resolve(), Pristine(sources), {})
+    ctx = _SweepContext(expected, dry_run, set(owned), brolls_root, root.resolve(), Pristine(sources), {}, set())
     paths = [(path, path.relative_to(root).as_posix()) for path in sorted(root.rglob("*"), reverse=True)]
     verdicts = _verdicts(paths, ctx)
     for path, rel in paths:
@@ -340,6 +351,7 @@ def sweep(  # noqa: PLR0913 - one input per rule the sweep applies
             outcome = _sweep_empty_directory(path, rel, ctx)
         if outcome == "removed":
             removed.append(rel)
+            ctx.gone.add(rel)
         elif outcome in ("kept", "edited"):
             kept.append(rel)
             if outcome == "edited" and edited is not None:

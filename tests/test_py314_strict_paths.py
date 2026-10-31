@@ -36,9 +36,11 @@ from getbrolls import (
     config,
     delivery,
     delivery_sweep,
+    env_loader,
     export_folder,
     export_gates,
     export_plan,
+    install_report,
     layout,
     library,
     media,
@@ -53,6 +55,7 @@ from getbrolls import (
     roteiro_ids,
     roteiro_sync,
     rules,
+    runtime_parts,
     serve,
 )
 from getbrolls.sdk import cli as sdk_cli
@@ -172,7 +175,7 @@ class SettingsFilesTests(Locked):
             "config.venv_override": ({"GB_VENV_PATH": target}, config.venv_override),
             "media.find_font": ({"GB_FONT_FILE": target}, media.find_font),
             # Antes: nenhuma chave carregada, calado.
-            "config.load_env": ({}, lambda: config.load_env(target)),
+            "env_loader.load_env": ({}, lambda: env_loader.load_env(target)),
             "rules.video_format_unchosen": ({}, lambda: rules.video_format_unchosen(self.project, {})),
             "rules.seed_project_rules": ({}, lambda: rules.seed_project_rules(self.project, "reels")),
         }
@@ -458,7 +461,7 @@ class DiagnosticsTests(Locked):
     def test_doctor_lists_unreadable_data_files_apart_from_missing_ones(self):
         root, missing, unreadable = self.locked_data_root()
         with patch.object(_paths, "data_root", return_value=root):
-            report = _paths.install_report()
+            report = install_report.install_report()
             summary = commands.doctor_summary({}, (), report["data_missing"], report["data_unreadable"])
             step = bootstrap._data_step()
         # Antes: os arquivos de `assets/` saíam em `data_missing` ("Faltam: …"), como se a
@@ -481,13 +484,13 @@ class DiagnosticsTests(Locked):
         )
 
     def test_an_intact_install_has_no_unreadable_data(self):
-        self.assertEqual([], _paths.install_report()["data_unreadable"])
+        self.assertEqual([], install_report.install_report()["data_unreadable"])
 
     def test_setup_where_reports_a_runtime_part_whose_contents_it_cannot_open(self):
         runtime_dir = self.base / "runtime"
         (runtime_dir / ".venv" / "bin").mkdir(parents=True)
         with patch.dict(os.environ, {"GB_RUNTIME_DIR": str(runtime_dir)}):
-            _paths.write_marker("venv", runtime_dir, "ready")
+            runtime_parts.write_marker("venv", runtime_dir, "ready")
             (runtime_dir / ".venv").chmod(0)
             self.addCleanup((runtime_dir / ".venv").chmod, 0o700)
             info = bootstrap.where("venv")

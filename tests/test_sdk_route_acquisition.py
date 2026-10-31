@@ -198,6 +198,7 @@ class RouteAcquisitionTests(LoaderTestCase):
         acquisition.prepare_source(ledger, c, 0, 2)
         self.assertEqual(digest(self.source), c["local_sha256"])
         saved = json.loads(index.read_text(encoding="utf-8"))
+        self.assertEqual(1, saved.pop("schema_version"))  # the version is metadata, not an entry of the id map
         for key, entries in saved.items():
             with self.subTest(key=key):
                 self.assertIsInstance(entries, list)

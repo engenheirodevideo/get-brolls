@@ -87,7 +87,9 @@ MODULE_PRIMITIVES = {
     "importlib": frozenset({"import_module"}),
 }
 # `os.open` só conta com flag de escrita; estas flags, sozinhas, só leem.
-READ_FLAGS = frozenset({"O_RDONLY", "O_DIRECTORY", "O_NOFOLLOW", "O_CLOEXEC", "O_BINARY", "O_NONBLOCK", "O_NOATIME"})
+READ_FLAGS = frozenset(
+    {"O_RDONLY", "O_DIRECTORY", "O_NOFOLLOW", "O_CLOEXEC", "O_BINARY", "O_NONBLOCK", "O_NOATIME", "O_NOCTTY"}
+)
 # Métodos de `Path` sem homônimo comum: contam chamados ou passados como valor.
 PATH_METHODS = frozenset(
     {"unlink", "mkdir", "write_text", "write_bytes", "rmdir", "touch", "symlink_to", "hardlink_to"}

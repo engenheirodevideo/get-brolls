@@ -61,3 +61,7 @@ class Refusal(ValueError):  # noqa: N818 - o nome vem do contrato (`Refusal`), n
 
     def __reduce__(self):
         return (_rebuild_refusal, (type(self), self.args[0], self.reason_code))
+
+
+class ProviderError(ValueError):
+    """Falha de um provedor, da rede ou de uma fonte (`http`, `providers`, plugins): o comando diz o que houve."""

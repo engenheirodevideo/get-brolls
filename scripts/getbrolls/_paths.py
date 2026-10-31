@@ -14,7 +14,6 @@ import functools
 import hashlib
 import json
 import os
-import platform
 import re
 import shlex
 import shutil
@@ -25,7 +24,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import effects
+from . import json_read, versioning
 from .errors import DataRootError, UsageError
 
 # O que `stat` responde quando o caminho comprovadamente não está lá: não existe, um trecho
@@ -164,27 +163,46 @@ REQUIRED_DATA: tuple[str, ...] = (
     "plugins_official/hyperframes/README.md",
     "plugins_official/hyperframes/getbrolls-plugin.json",
     "plugins_official/hyperframes/plugin.py",
+    "requirements-bootstrap.txt",
     "requirements.txt",
     "schemas/analysis_index.schema.json",
     "schemas/brief.schema.json",
     "schemas/candidate.schema.json",
+    "schemas/capabilities.schema.json",
     "schemas/client.schema.json",
     "schemas/clients.schema.json",
     "schemas/components.schema.json",
     "schemas/draft.schema.json",
+    "schemas/export_marker.schema.json",
     "schemas/export_plan.schema.json",
     "schemas/handoff.schema.json",
     "schemas/handoff_return.schema.json",
+    "schemas/instagram_summary.schema.json",
+    "schemas/library_index.schema.json",
+    "schemas/manifest.schema.json",
     "schemas/markers.schema.json",
     "schemas/marketplace_index.schema.json",
+    "schemas/marketplaces.schema.json",
     "schemas/media.schema.json",
+    "schemas/pending_transaction.schema.json",
+    "schemas/plugin_manifest.schema.json",
+    "schemas/plugins_state.schema.json",
+    "schemas/profile_toml.schema.json",
     "schemas/project.schema.json",
+    "schemas/queue.schema.json",
     "schemas/recipe.schema.json",
     "schemas/recipe_lock.schema.json",
+    "schemas/references.schema.json",
+    "schemas/review_decisions.schema.json",
+    "schemas/roteiro_state.schema.json",
+    "schemas/rules_block.schema.json",
+    "schemas/runtime_marker.schema.json",
     "schemas/scenes.schema.json",
     "schemas/silence.schema.json",
+    "schemas/source_index.schema.json",
     "schemas/speakers.schema.json",
     "schemas/transcript.schema.json",
+    "schemas/trusted_profiles.schema.json",
     "schemas/visual.schema.json",
 )
 WHEEL_MANIFEST = "_data/MANIFEST"  # relativo à pasta do pacote
@@ -197,10 +215,6 @@ DATA_REINSTALL = f"Reinstale (`{REINSTALL_COMMAND}`) ou rode pelo repositório (
 _DATA_ROOT_MISSING = f"Os arquivos de dados do getbrolls não estão junto do pacote. {DATA_REINSTALL}"
 _ENV_FLAG_MISSING = "--env-file não existe. Confira o caminho."
 _ENV_VAR_MISSING = "GB_ENV_FILE aponta para um arquivo que não existe. Confira o caminho ou remova a variável."
-_ENV_CHECKOUT_NOTE = (
-    "Este .env está na pasta da instalação e só vale para ela; prefira $GB_HOME/.env "
-    "(padrão ~/.getbrolls/.env), que vale para qualquer instalação."
-)
 # Sem aspas no Windows só o que nenhum shell (Git Bash, PowerShell, cmd) reinterpreta.
 _NT_SAFE = frozenset("_-.,:/=@+")
 
@@ -324,19 +338,27 @@ def gb_home() -> Path:
 
 # Partes do runtime e a pasta de cada uma dentro da raiz.
 RUNTIME_PARTS: dict[str, str] = {"venv": ".venv", "tools": ".tools"}
-# Arquivos que definem a versão de cada parte: o `npm ci` exige os dois do npm em acordo.
-_PART_FILES: dict[str, tuple[str, ...]] = {
-    "venv": ("requirements.txt",),
+# Arquivos que definem a versão de cada parte: o `npm ci` exige os dois do npm em acordo, e a venv
+# é o pip de `requirements-bootstrap.txt` mais o conjunto de `requirements.txt`.
+PART_FILES: dict[str, tuple[str, ...]] = {
+    "venv": ("requirements-bootstrap.txt", "requirements.txt"),
     "tools": ("package.json", "package-lock.json"),
 }
 # Marcador de cada parte, na raiz dela (ao lado de `.venv`/`.tools`). Quem instala grava
 # `building` antes e `ready` por último: quem lê só aceita uma parte compartilhada `ready`.
 RUNTIME_MARKER = ".getbrolls-runtime-{part}.json"
+# Versão do marcador: constante de inicialização (o runtime é resolvido antes de a pasta de dados existir),
+# igual à de `schemas/runtime_marker.schema.json` (o teste do registro confere as duas).
 MARKER_SCHEMA_VERSION = 1
 MARKER_STATUSES = ("building", "upgrading", "ready")
 _RUNTIME_CONFLICT = (
     "{source} aponta para uma pasta de runtime montada por outra versão do getbrolls ({part}). "
     "Pastas explícitas não são trocadas sozinhas: use uma pasta por versão ou apague essa à mão."
+)
+# A pasta compartilhada (`$GB_HOME/runtime/<sha>`) com o marcador de uma versão mais nova: nunca montada por cima.
+_RUNTIME_NEWER = (
+    "A pasta de runtime compartilhada ({part}) foi montada por uma versão mais nova do getbrolls; "
+    "atualize o getbrolls ou aponte GB_RUNTIME_DIR para outra pasta."
 )
 
 # Chaves que o perfil aplicou ao ambiente, com o valor aplicado (ver `note_profile_env`).
@@ -565,7 +587,7 @@ def part_sha(part: str) -> str | None:
     a mesma versão do runtime precisa da mesma chave em qualquer sistema.
     """
     try:
-        files = [data_root() / name for name in _PART_FILES[part]]
+        files = [data_root() / name for name in PART_FILES[part]]
         signature = tuple((str(path), info.st_mtime_ns, info.st_size) for path, info in ((p, p.stat()) for p in files))
         cached = _SHA_CACHE.get(part)
         if cached is not None and cached[0] == signature:
@@ -613,39 +635,21 @@ def marker_path(part: str, root: Path) -> Path:
 def read_marker(part: str, root: Path) -> dict | None:
     """Conteúdo do marcador, ou `None` (ausente, ilegível, não é objeto); nunca levanta."""
     try:
-        marker = json.loads(marker_path(part, root).read_text(encoding="utf-8"))
+        # Um marcador tem poucos campos: 64 KiB já é folga; a recusa do `json_read` é um `ValueError`.
+        # `write_marker` grava o `python` como escape ASCII, inclusive um surrogate de caminho não-UTF-8.
+        marker = json_read.read(marker_path(part, root), max_bytes=64 * 1024, allow_lone_surrogates=True)
     except (OSError, ValueError):
         return None
     return marker if isinstance(marker, dict) else None
 
 
-def write_marker(part: str, root: Path, status: str, extra: Mapping[str, object] | None = None) -> Path:
-    """Grava o marcador da parte (troca atômica do arquivo); devolve o caminho.
+def marker_supported(marker: Mapping) -> bool:
+    """O marcador é de uma versão que esta lê: `schema` ausente (vale 1) ou inteiro até `MARKER_SCHEMA_VERSION`.
 
-    Registra a versão da parte e, na `.venv`, o Python base que a criou; `extra` acrescenta
-    campos informativos (o `upgraded` do `setup --upgrade`, por exemplo).
-    """
-    if status not in MARKER_STATUSES:
-        raise ValueError(f"status de marcador desconhecido: {status}")
-    from . import __version__  # tardio: este módulo só depende da stdlib e de `errors`
-
-    python = getattr(sys, "_base_executable", None) or sys.executable
-    marker = {
-        "schema": MARKER_SCHEMA_VERSION,
-        "part": part,
-        "sha": part_sha(part),
-        "status": status,
-        "python": python if part == "venv" else None,
-        "getbrolls": __version__,
-        **(extra or {}),
-    }
-    path = marker_path(part, root)
-    effects.mkdir(root, parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    with effects.op("fs.write", path):
-        temporary.write_text(json.dumps(marker, indent=2) + "\n", encoding="utf-8", newline="\n")
-        temporary.replace(path)
-    return path
+    Um marcador mais novo (ou com `schema` ilegível) é de outra versão do getbrolls: a parte não está pronta
+    e não é desta — quem instala recusa (`runtime_conflict`) em vez de montar por cima."""
+    version = marker.get("schema", versioning.FIRST_VERSION)
+    return type(version) is int and 1 <= version <= MARKER_SCHEMA_VERSION
 
 
 def venv_python(folder: Path) -> Path:
@@ -689,7 +693,9 @@ def part_ready(part: str, root: Path) -> bool:
     """
     marker = read_marker(part, root)
     sha = part_sha(part)
-    if marker is None or sha is None or marker.get("status") != "ready" or marker.get("sha") != sha:
+    if marker is None or not marker_supported(marker) or sha is None:
+        return False
+    if marker.get("status") != "ready" or marker.get("sha") != sha:
         return False
     folder = root / RUNTIME_PARTS[part]
     if part == "venv":
@@ -699,21 +705,33 @@ def part_ready(part: str, root: Path) -> bool:
 
 
 def runtime_conflict(part: str) -> str | None:
-    """Mensagem quando a pasta explícita já tem esta parte pronta de outra versão.
+    """Mensagem quando a pasta da parte é de outra versão do getbrolls; `None` quando é desta.
 
     Duas versões dividindo uma pasta explícita se reinstalariam sem fim; quem instala
     recusa em vez de apagar. Um marcador que não chegou a `ready` é build interrompido.
+    Um marcador de versão mais nova (`marker_supported` falso) é sempre de outra versão,
+    pronto ou não, e também na pasta compartilhada: nunca "ausente, monte por cima".
     """
     explicit = _explicit_root()
     if explicit is None:
-        return None
+        root = runtime_root(part)[0]
+        marker = read_marker(part, root)
+        return _RUNTIME_NEWER.format(part=part) if marker is not None and not marker_supported(marker) else None
     root, source = explicit
     marker = read_marker(part, root)
-    if marker is None or marker.get("status") != "ready" or marker.get("sha") == part_sha(part):
+    if marker is None:
+        return None
+    if marker_supported(marker) and (marker.get("status") != "ready" or marker.get("sha") == part_sha(part)):
         return None
     return _RUNTIME_CONFLICT.format(
         source=source if source == "GB_RUNTIME_DIR" else "O runtime_dir do perfil", part=part
     )
+
+
+def newer_marker_message(part: str, root: Path) -> str:
+    """A recusa para a parte em `root` com o marcador de uma versão mais nova: o conflito de runtime."""
+    conflict = runtime_conflict(part) if runtime_root(part)[0] == root else None
+    return conflict or _RUNTIME_NEWER.format(part=part)
 
 
 def _runtime_part(part: str) -> RuntimePart:
@@ -905,65 +923,3 @@ def installer_hint() -> str:
         scripts = inst.checkout_root / "scripts"
         return f'bash "{scripts / "install.sh"}" (ou "{scripts / "install.ps1"}" no Windows)'
     return "rode `getbrolls setup` (instala yt-dlp e Playwright em $GB_HOME/runtime)"
-
-
-def old_env_names(environ: Mapping[str, str] | None = None) -> list[str]:
-    """Os `GETBROLLS_X` do ambiente que a versão de testes da 2.6 lia como `GB_X` e que não valem mais.
-
-    Só os que têm um `GB_X` do core; `GETBROLLS_CACHE_DIR` (da 2.5) continua valendo e não entra."""
-    from . import config  # tardio: o config importa o runtime, que não precisa entrar aqui
-
-    known = config.KEYS | config.PROCESS_ONLY_KEYS
-    prefix = "GETBROLLS_"
-    environ = os.environ if environ is None else environ
-    return sorted(
-        name
-        for name in environ
-        if name.startswith(prefix) and name != "GETBROLLS_CACHE_DIR" and "GB_" + name[len(prefix) :] in known
-    )
-
-
-def build_info() -> dict:
-    """Versão, Python e origem desta instalação."""
-    from . import __version__  # tardio: este módulo só depende da stdlib e de `errors`
-
-    inst = install()
-    return {
-        "version": __version__,
-        "python": platform.python_version(),
-        "origin": inst.origin,
-        "package_dir": str(inst.package_dir),
-        "data_root": str(inst.data_root) if inst.data_root is not None else None,
-    }
-
-
-def env_report(env_flag: str | None) -> dict:
-    """Qual `.env` vale (e o que foi procurado); erro de uso vira `{"error"}`, nunca levanta."""
-    try:
-        choice = env_file(env_flag)
-    except UsageError as exc:
-        return {"error": str(exc)}
-    return {
-        "path": str(choice.path) if choice.path is not None else None,
-        "source": choice.source,
-        "ignored": [str(path) for path in choice.ignored],
-        "searched": [str(path) for path in choice.searched],
-        "note": _ENV_CHECKOUT_NOTE if choice.source == "checkout" else None,
-    }
-
-
-def install_report(env_flag: str | None = None) -> dict:
-    """Retrato da instalação para o `doctor`; nunca levanta."""
-    try:
-        missing, unreadable = data_inventory()
-    except DataRootError:
-        missing, unreadable = list(REQUIRED_DATA), []
-    return {
-        **build_info(),
-        "data_missing": missing,
-        "data_unreadable": unreadable,
-        "cli": {"argv": cli_argv(), "command": cli_command()},
-        "runtime": runtime_info(),
-        "env_file": env_report(env_flag),
-        "gb_home": str(gb_home()),
-    }

@@ -24,7 +24,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _paths import ROOT
 from _symlink import needs_symlink
 
-from getbrolls import delivery
+from getbrolls import delivery, delivery_files, delivery_sweep
 
 # Reimport com apelido só pra isolar o setup do teste que precisa dele
 # (mesmo motivo do redefined-outer-name em tests/pylintrc).
@@ -633,9 +633,9 @@ class FrozenFiles(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "congelado.mp4"
             path.write_bytes(b"bytes")
-            delivery._freeze(path, "hardlink")
+            delivery_files._freeze(path, "hardlink")
             self.assertFalse(os.access(path, os.W_OK))
-            delivery._thaw_unlink(path)
+            delivery_sweep.thaw_unlink(path)
             self.assertFalse(path.exists())
 
     def test_thaw_unlink_gives_the_write_bit_back_when_unlink_is_refused(self):
@@ -643,7 +643,7 @@ class FrozenFiles(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "congelado.mp4"
             path.write_bytes(b"bytes")
-            delivery._freeze(path, "hardlink")
+            delivery_files._freeze(path, "hardlink")
             real = Path.unlink
             refused = []
 
@@ -655,7 +655,7 @@ class FrozenFiles(unittest.TestCase):
 
             Path.unlink = windowsish
             try:
-                delivery._thaw_unlink(path)
+                delivery_sweep.thaw_unlink(path)
             finally:
                 Path.unlink = real
             self.assertEqual([str(path)], refused)

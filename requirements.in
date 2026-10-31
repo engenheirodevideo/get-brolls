@@ -1,14 +1,14 @@
 # Top-level runtime pins of the `setup` venv: the input of requirements.txt, which holds the
 # full hashed set. Bump a version here, then regenerate from the repository root as CONTRIBUTING.md
 # says (uv 0.11; the recipe there keeps the hand-written header of requirements.txt).
-yt-dlp[default]==2026.8.19
+yt-dlp[default]==2026.10.21
 yt-dlp-ejs==0.8.0
-brotli==1.2.0
-certifi==2026.7.22
-charset-normalizer==3.5.1
+brotli==1.2.1
+certifi==2026.10.23
+charset-normalizer==3.5.2
 idna==3.20
 mutagen==1.48.1
-pycryptodomex==3.23.0
+pycryptodomex==3.24.1
 requests==2.34.2
 urllib3==2.8.0
-websockets==17.1
+websockets==17.3

@@ -13,6 +13,7 @@ from _media import synth_audio
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import instagram_pairs as ig
+from getbrolls import instagram_urls
 
 # Um host de CDN com IPv6 na frente e dois IPv4, na ordem em que o resolver os devolve.
 CDN_ADDRESSES = [
@@ -45,18 +46,18 @@ class InstagramRecoveryTests(unittest.TestCase):
             public_name = root / "public-name.conf"
             public_name.write_text('url = "https://media.example.test/video"\n', encoding="utf-8")
             private_dns = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443))]
-            with patch.object(ig.socket, "getaddrinfo", return_value=private_dns), self.assertRaises(ig.CollectError):
+            with patch.object(socket, "getaddrinfo", return_value=private_dns), self.assertRaises(ig.CollectError):
                 ig.parse_curl_config(public_name)
             mixed_dns = [
                 (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443)),
                 (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.2", 443)),
             ]
-            with patch.object(ig.socket, "getaddrinfo", return_value=mixed_dns), self.assertRaises(ig.CollectError):
+            with patch.object(socket, "getaddrinfo", return_value=mixed_dns), self.assertRaises(ig.CollectError):
                 ig.parse_curl_config(public_name)
             trailing_dot = root / "trailing-dot.conf"
             trailing_dot.write_text('url = "https://media.example.test./video"\n', encoding="utf-8")
             public_dns = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))]
-            with patch.object(ig.socket, "getaddrinfo", return_value=public_dns), self.assertRaises(ig.CollectError):
+            with patch.object(socket, "getaddrinfo", return_value=public_dns), self.assertRaises(ig.CollectError):
                 ig.parse_curl_config(trailing_dot)
             for output in ("../../outside.mp4", "/etc/passwd"):
                 with self.subTest(output=output), self.assertRaises(ig.CollectError):
@@ -72,7 +73,7 @@ class InstagramRecoveryTests(unittest.TestCase):
             conf = root / "safe.conf"
             conf.write_text(f'url = "https://example.org/media"\noutput = "{inside}"\n', encoding="utf-8")
             public_dns = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))]
-            with patch.object(ig.socket, "getaddrinfo", return_value=public_dns):
+            with patch.object(socket, "getaddrinfo", return_value=public_dns):
                 parsed = ig.parse_curl_config(conf)
             self.assertEqual("https://example.org/media", parsed["url"])
             self.assertEqual("example.org:443:93.184.216.34", parsed["curl_resolve"])
@@ -81,10 +82,10 @@ class InstagramRecoveryTests(unittest.TestCase):
     def test_curl_resolution_pins_every_address(self):
         """O `--resolve` leva todos os endereços checados, IPv4 primeiro: rede só IPv4 não cai num IPv6."""
         with (
-            patch.object(ig.socket, "getaddrinfo", return_value=CDN_ADDRESSES),
-            patch.object(ig, "_curl_takes_address_list", return_value=True),
+            patch.object(socket, "getaddrinfo", return_value=CDN_ADDRESSES),
+            patch.object(instagram_urls, "_curl_takes_address_list", return_value=True),
         ):
-            resolved = ig._curl_resolution("media.example.test", Path("x.conf"))  # pylint: disable=protected-access
+            resolved = instagram_urls._curl_resolution("media.example.test", Path("x.conf"))  # pylint: disable=protected-access
         self.assertEqual(
             "media.example.test:443:93.184.216.34,93.184.216.35,[2606:2800:220:1:248:1893:25c8:1946]",
             resolved,
@@ -93,14 +94,14 @@ class InstagramRecoveryTests(unittest.TestCase):
     def test_an_old_curl_gets_only_the_first_ipv4(self):
         """curl < 7.59 pula a lista inteira e resolve pelo DNS: o pin fica num endereço só."""
         with (
-            patch.object(ig.socket, "getaddrinfo", return_value=CDN_ADDRESSES),
-            patch.object(ig, "_curl_takes_address_list", return_value=False),
+            patch.object(socket, "getaddrinfo", return_value=CDN_ADDRESSES),
+            patch.object(instagram_urls, "_curl_takes_address_list", return_value=False),
         ):
-            resolved = ig._curl_resolution("media.example.test", Path("x.conf"))  # pylint: disable=protected-access
+            resolved = instagram_urls._curl_resolution("media.example.test", Path("x.conf"))  # pylint: disable=protected-access
         self.assertEqual("media.example.test:443:93.184.216.34", resolved)
 
     def test_the_curl_version_decides_the_address_list(self):
-        check = ig._curl_takes_address_list  # pylint: disable=protected-access
+        check = instagram_urls._curl_takes_address_list  # pylint: disable=protected-access
         self.addCleanup(check.cache_clear)
         for answer, expected in (
             ("curl 7.58.0 (x86_64-pc-linux-gnu) libcurl/7.58.0", False),
@@ -115,7 +116,7 @@ class InstagramRecoveryTests(unittest.TestCase):
                     effect: Any = answer
                 else:
                     effect = [subprocess.CompletedProcess(["curl", "--version"], 0, answer, "")]
-                with patch.object(ig.subprocess, "run", side_effect=effect):
+                with patch.object(subprocess, "run", side_effect=effect):
                     self.assertIs(expected, check())
 
     def test_unsafe_stem_fails_only_that_item(self):
@@ -193,8 +194,8 @@ class InstagramRecoveryTests(unittest.TestCase):
             }
             public_dns = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))]
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=public_dns),
-                patch.object(ig.subprocess, "run", side_effect=fail) as called,
+                patch.object(socket, "getaddrinfo", return_value=public_dns),
+                patch.object(subprocess, "run", side_effect=fail) as called,
                 self.assertRaises(ig.CollectError),
             ):
                 ig.download_or_reuse(**kwargs)
@@ -207,8 +208,8 @@ class InstagramRecoveryTests(unittest.TestCase):
                 Path(cmd[cmd.index("--output") + 1]).write_bytes(b"complete")
 
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=public_dns),
-                patch.object(ig.subprocess, "run", side_effect=success),
+                patch.object(socket, "getaddrinfo", return_value=public_dns),
+                patch.object(subprocess, "run", side_effect=success),
             ):
                 self.assertEqual(ig.download_or_reuse(**kwargs), "downloaded")
             self.assertEqual(target.read_bytes(), b"complete")
@@ -292,7 +293,7 @@ class InstagramRecoveryTests(unittest.TestCase):
                 "0",
             ]
             public_dns = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))]
-            with patch.object(ig.socket, "getaddrinfo", return_value=public_dns):
+            with patch.object(socket, "getaddrinfo", return_value=public_dns):
                 self.assertEqual(1, ig.main(args))
             report = ig.verify_output(root / "out/01_TEST.mp4")
             self.assertTrue(report["audio_hash_sha256"])

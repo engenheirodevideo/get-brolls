@@ -17,7 +17,7 @@ import tempfile
 import urllib.parse
 from pathlib import Path, PurePath
 
-from . import _paths, _tokens
+from . import _paths, _tokens, redaction
 
 OUTSIDE = "<pasta fora do projeto>"
 # O `--project` como a pessoa o digitou e a pasta que ele vale (`note_typed_project`): o erro de E/S de um
@@ -38,7 +38,7 @@ def anchors(project=None, extra=()):
     """`(pasta, marca)` desta máquina, para `_paths.label`: `extra` primeiro, depois o projeto
     (`project`, ou o do comando em curso), `$GB_HOME`, o cache, um `$GB_RUNTIME_DIR` explícito,
     a pasta temporária e a pasta pessoal. Nunca levanta; uma pasta que não dá para saber fica de fora."""
-    from . import logs  # local: logs imports runtime, which imports modules that use this one
+    from . import logs  # local: logs imports this module
 
     found = [(root, tag) for root, tag in extra if root is not None]
     project = project if project is not None else logs.project_root()
@@ -146,17 +146,15 @@ def as_typed(path) -> str | None:
 
 
 def message_of(exc, limit=None, *, project=None) -> str:
-    """O texto de um erro para a mensagem do comando: redigido (`runtime.redact`), com as pastas pela marca e o
+    """O texto de um erro para a mensagem do comando: redigido (`redaction.redact`), com as pastas pela marca e o
     arquivo de um `OSError` dentro do `--project` (ou acima dele) como a pessoa o digitou; só então o corte."""
-    from . import runtime  # local: runtime imports this module
-
     # Credentials first, on the whole text (and on the typed path it gives back): then the typed path, the labels
     # and the cut.
-    value = runtime.redact(exc, limit=None)
+    value = redaction.redact(exc, limit=None)
     typed = as_typed(exc.filename) if isinstance(exc, OSError) and exc.filename else None
     if isinstance(exc, OSError) and typed is None:
         value = _known_names(exc, value, project)  # before the typed project: that one is given back as typed
-    name = runtime.redact(exc.filename, limit=None) if typed is not None else ""
+    name = redaction.redact(exc.filename, limit=None) if typed is not None else ""
     if typed is not None and name in value:
         value = value.replace(name, _TYPED_MARK)
     elif _TYPED:
@@ -165,7 +163,7 @@ def message_of(exc, limit=None, *, project=None) -> str:
         value = re.sub(r"(?<![\w/\\.~-])" + re.escape(typed) + _TYPED_END, lambda _found: _TYPED_MARK, value)
     else:
         typed = None
-    echoed = runtime.redact(typed, limit=None) if typed is not None else _TYPED_MARK
+    echoed = redaction.redact(typed, limit=None) if typed is not None else _TYPED_MARK
     result = for_log(value, project=project).replace(_TYPED_MARK, echoed)
     return result if limit is None else result[:limit]
 
@@ -174,13 +172,11 @@ def _known_names(exc, value, project):
     """`value` (o texto de `exc`) com cada caminho que o próprio erro carrega (`filename`, `filename2`) trocado
     pela marca dele, pelo texto exato do caminho: um nome com espaço ou aspas não depende do padrão de texto livre.
     O mais longo primeiro, e só como nome inteiro: `a.mp4` não é o começo de `a.mp42`."""
-    from . import runtime  # local: runtime imports this module
-
     marks = {}
     for name in (exc.filename, exc.filename2):
         if not isinstance(name, (str, os.PathLike)):
             continue
-        written = runtime.redact(os.fspath(name), limit=None)
+        written = redaction.redact(os.fspath(name), limit=None)
         if len(written) < _MIN_NAMES or not ("/" in written or "\\" in written):
             continue
         label = shown(name, project=project)
@@ -252,7 +248,6 @@ _TRAILING = ",;:()[]{}."
 # antes disto.
 _LINE_END = re.compile(r"[\r\n\x0b\x0c\x1c-\x1e\x85\u2028\u2029]")
 _REASON = re.compile(r"[:;]\s")
-_SEPARATOR = re.compile(r"[/\\]")
 _CLOSERS = {
     "'": "'",
     '"': '"',

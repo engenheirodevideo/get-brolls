@@ -19,7 +19,7 @@ import _paths  # noqa: F401  (efeito de import: põe scripts/ no sys.path)  # py
 from _paths import CLI_ARGV
 
 from getbrolls import _paths as paths
-from getbrolls import cli, commands, config, runtime
+from getbrolls import cli, commands, config, env_loader, install_report, runtime
 from getbrolls.errors import UsageError
 from getbrolls.runtime import OperationError
 
@@ -76,7 +76,7 @@ class EnvFileOrderTests(unittest.TestCase):
         install_patch = patch.object(paths, "install", return_value=self.checkout)
         self.install = install_patch.start()
         self.addCleanup(install_patch.stop)
-        self.addCleanup(config.load_env, self.base / "nao-existe.env")
+        self.addCleanup(env_loader.load_env, self.base / "nao-existe.env")
 
     def env(self, where, text):
         return _touch(where, text)
@@ -124,7 +124,7 @@ class EnvFileOrderTests(unittest.TestCase):
 
     def test_doctor_install_report_explains_a_checkout_env(self):
         self.checkout_env("GB_GIF_WIDTH=240\n")
-        report = paths.install_report()["env_file"]
+        report = install_report.install_report()["env_file"]
         self.assertEqual("checkout", report["source"])
         self.assertIn("$GB_HOME/.env", report["note"])
         self.assertNotIn(str(self.base), report["note"])
@@ -132,7 +132,7 @@ class EnvFileOrderTests(unittest.TestCase):
     def test_doctor_install_report_has_no_note_for_a_home_env(self):
         self.install.return_value = _fake_wheel(self.base)
         self.home_env("GB_GIF_WIDTH=260\n")
-        self.assertIsNone(paths.install_report()["env_file"]["note"])
+        self.assertIsNone(install_report.install_report()["env_file"]["note"])
 
     def test_home_env_loads_for_a_wheel_install(self):
         self.install.return_value = _fake_wheel(self.base)
@@ -241,7 +241,7 @@ class EnvFileOrderTests(unittest.TestCase):
             with self.subTest(where=where.name):
                 path = self.env(where, "GB_GIF_WIDTH=300\nGB_ENV_FILE=/x\n")
                 with self.assertRaises(UsageError) as caught:
-                    config.load_env(path, source="flag")
+                    env_loader.load_env(path, source="flag")
                 self.assertIn("GB_ENV_FILE (linha 2)", str(caught.exception))
                 self.assertNotIn("GB_GIF_WIDTH", os.environ)
                 path.unlink()
@@ -395,7 +395,7 @@ class UnreadableEnvFileTests(unittest.TestCase):
         denied = PermissionError(13, "Permission denied", folder)
         args = Namespace(command="status", project=folder + "/p", env_file=None)
         with (
-            patch.object(config, "load_environment", side_effect=denied),
+            patch.object(env_loader, "load_environment", side_effect=denied),
             patch.object(cli, "_log_early_refusal") as refused,
             self.assertRaises(OperationError) as caught,
         ):

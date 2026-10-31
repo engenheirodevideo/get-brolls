@@ -12,6 +12,8 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 import _paths  # noqa: F401  (efeito de import: põe scripts/ no sys.path)  # pylint: disable=unused-import
 
 from getbrolls import _paths as paths
+from getbrolls import bootstrap, runtime_parts, venv_state
+from getbrolls.errors import UsageError
 
 
 def _touch(path, text=""):
@@ -25,6 +27,7 @@ def _fake_wheel(base):
     pkg = base / "site" / "getbrolls"
     data = pkg / "_data"
     _touch(data / "MANIFEST", "")
+    _touch(data / "requirements-bootstrap.txt", "pip==1\n")
     _touch(data / "requirements.txt", "yt-dlp==1\n")
     _touch(data / "package.json", '{"name": "t"}\n')
     _touch(data / "package-lock.json", "{}\n")
@@ -35,6 +38,7 @@ def _fake_checkout(base):
     root = base / "repo"
     for sentinel in ("scripts/gb.py", "docs/RULES.md", "assets/brand-logo.png"):
         _touch(root / sentinel)
+    _touch(root / "requirements-bootstrap.txt", "pip==1\n")
     _touch(root / "requirements.txt", "yt-dlp==1\n")
     _touch(root / "package.json", "{}\n")
     _touch(root / "package-lock.json", "{}\n")
@@ -122,9 +126,9 @@ class ReadyMarkerTests(_Layout):
             _build_venv(root)
             self.assertEqual("checkout", paths.venv_dir().source)
             self.assertFalse(paths.runtime_info()["venv"]["managed"])
-            paths.write_marker("venv", root, "building")
+            runtime_parts.write_marker("venv", root, "building")
             self.assertEqual("checkout", paths.venv_dir().source)
-            paths.write_marker("venv", root, "ready")
+            runtime_parts.write_marker("venv", root, "ready")
             self.assertEqual(paths.RuntimePart(root / ".venv", "gb_home"), paths.venv_dir())
             info = paths.runtime_info()["venv"]
             self.assertTrue(info["managed"])
@@ -133,7 +137,7 @@ class ReadyMarkerTests(_Layout):
     def test_marker_with_a_stale_sha_is_not_ready(self):
         root = self.base / "explicit"
         _build_venv(root)
-        paths.write_marker("venv", root, "ready")
+        runtime_parts.write_marker("venv", root, "ready")
         self.assertTrue(paths.part_ready("venv", root))
         _touch(self.data / "requirements.txt", "yt-dlp==4444\n")
         self.assertFalse(paths.part_ready("venv", root))
@@ -141,7 +145,7 @@ class ReadyMarkerTests(_Layout):
     def test_venv_whose_base_python_is_gone_is_not_ready(self):
         root = self.base / "explicit"
         _build_venv(root, home=self.base / "python-removido")
-        paths.write_marker("venv", root, "ready")
+        runtime_parts.write_marker("venv", root, "ready")
         self.assertFalse(paths.part_ready("venv", root))
         (root / ".venv" / "pyvenv.cfg").unlink()
         self.assertFalse(paths.part_ready("venv", root))
@@ -150,12 +154,12 @@ class ReadyMarkerTests(_Layout):
         root = self.base / "explicit"
         (root / ".tools").mkdir(parents=True)
         self.assertFalse(paths.part_ready("tools", root))
-        paths.write_marker("tools", root, "ready")
+        runtime_parts.write_marker("tools", root, "ready")
         self.assertTrue(paths.part_ready("tools", root))
 
     def test_marker_format(self):
         root = self.base / "explicit"
-        written = paths.write_marker("venv", root, "building")
+        written = runtime_parts.write_marker("venv", root, "building")
         self.assertEqual(root / ".getbrolls-runtime-venv.json", written)
         marker = json.loads(written.read_text(encoding="utf-8"))
         self.assertEqual(
@@ -166,12 +170,14 @@ class ReadyMarkerTests(_Layout):
         self.assertEqual(("venv", "building"), (marker["part"], marker["status"]))
         self.assertEqual(paths.part_sha("venv"), marker["sha"])
         self.assertTrue(marker["python"])
-        self.assertIsNone(json.loads(paths.write_marker("tools", root, "ready").read_text(encoding="utf-8"))["python"])
+        self.assertIsNone(
+            json.loads(runtime_parts.write_marker("tools", root, "ready").read_text(encoding="utf-8"))["python"]
+        )
         self.assertEqual([], [p.name for p in root.iterdir() if p.name.endswith(".tmp")])
 
     def test_write_marker_refuses_an_unknown_status(self):
         with self.assertRaises(ValueError):
-            paths.write_marker("venv", self.base, "quase")
+            runtime_parts.write_marker("venv", self.base, "quase")
 
     def test_read_marker_never_raises(self):
         root = self.base / "explicit"
@@ -228,7 +234,7 @@ class ConflictTests(_Layout):
         with patch.dict(os.environ, {"GB_RUNTIME_DIR": str(explicit)}):
             self.assertIsNone(paths.runtime_conflict("venv"))
             _build_venv(explicit)
-            paths.write_marker("venv", explicit, "ready")
+            runtime_parts.write_marker("venv", explicit, "ready")
             self.assertIsNone(paths.runtime_conflict("venv"))
             _touch(self.data / "requirements.txt", "yt-dlp==55555\n")
             message = paths.runtime_conflict("venv")
@@ -242,15 +248,85 @@ class ConflictTests(_Layout):
     def test_a_crashed_build_is_not_a_conflict(self):
         explicit = self.base / "explicit"
         with patch.dict(os.environ, {"GB_RUNTIME_DIR": str(explicit)}):
-            paths.write_marker("venv", explicit, "building")
+            runtime_parts.write_marker("venv", explicit, "building")
             _touch(self.data / "requirements.txt", "yt-dlp==666666\n")
             self.assertIsNone(paths.runtime_conflict("venv"))
 
     def test_the_shared_layout_never_conflicts(self):
         root = self.shared_root("venv")
-        paths.write_marker("venv", root, "ready")
+        runtime_parts.write_marker("venv", root, "ready")
         _touch(self.data / "requirements.txt", "yt-dlp==7777777\n")
         self.assertIsNone(paths.runtime_conflict("venv"))
+
+
+def _newer_marker(part, root, status="ready"):
+    """Marcador da versão atual da parte, mas com o `schema` de uma versão mais nova do getbrolls."""
+    path = runtime_parts.write_marker(part, root, status)
+    marker = json.loads(path.read_text(encoding="utf-8"))
+    marker["schema"] = paths.MARKER_SCHEMA_VERSION + 1
+    path.write_text(json.dumps(marker), encoding="utf-8")
+    return path
+
+
+class NewerMarkerTests(_Layout):
+    """Um marcador mais novo é "não pronto e não é desta versão": nunca "ausente, monte por cima"."""
+
+    def test_only_this_version_or_an_unversioned_marker_is_supported(self):
+        current = paths.MARKER_SCHEMA_VERSION
+        self.assertTrue(paths.marker_supported({"schema": current}))
+        self.assertTrue(paths.marker_supported({"status": "ready"}))  # sem o campo: vale 1
+        for value in (current + 1, 0, True, "1", 1.0, None):
+            with self.subTest(value=value):
+                self.assertFalse(paths.marker_supported({"schema": value}))
+
+    def test_a_marker_without_the_field_still_counts_as_ready(self):
+        root = self.base / "explicit"
+        _build_venv(root)
+        path = runtime_parts.write_marker("venv", root, "ready")
+        marker = json.loads(path.read_text(encoding="utf-8"))
+        del marker["schema"]
+        path.write_text(json.dumps(marker), encoding="utf-8")
+        self.assertTrue(paths.part_ready("venv", root))
+
+    def test_a_newer_marker_in_an_explicit_dir_is_never_ready_and_is_a_conflict(self):
+        explicit = self.base / "explicit"
+        with patch.dict(os.environ, {"GB_RUNTIME_DIR": str(explicit)}):
+            _build_venv(explicit)
+            for status in ("ready", "building"):
+                with self.subTest(status=status):
+                    _newer_marker("venv", explicit, status)
+                    self.assertFalse(paths.part_ready("venv", explicit))
+                    message = paths.runtime_conflict("venv")
+                    assert message is not None
+                    self.assertIn("GB_RUNTIME_DIR", message)
+                    self.assertEqual(message, paths.runtime_info()["venv"]["conflict"])
+                    self.assertFalse(paths.runtime_info()["venv"]["managed"])
+
+    def test_a_newer_marker_in_the_shared_dir_is_a_conflict_not_a_rebuild(self):
+        root = self.shared_root("venv")
+        _build_venv(root)
+        _newer_marker("venv", root)
+        self.assertFalse(paths.part_ready("venv", root))
+        message = paths.runtime_conflict("venv")
+        assert message is not None
+        self.assertIn("versão mais nova", message)
+        self.assertNotIn(str(self.base), message)
+        self.assertEqual(message, paths.runtime_info()["venv"]["conflict"])
+        # A decisão sob a trava da raiz: o `setup` público pararia antes, no `runtime_conflict` acima.
+        with self.assertRaises(UsageError) as caught:
+            bootstrap._part_state("venv", root)  # pylint: disable=protected-access
+        self.assertEqual(message, str(caught.exception))
+        self.assertTrue((root / ".venv" / "pyvenv.cfg").exists())
+
+    def test_doctor_names_the_newer_venv_and_the_path_ytdlp_still_counts(self):
+        root = self.shared_root("venv")
+        _build_venv(root)
+        _newer_marker("venv", root)
+        healthy = bootstrap.StepResult(0, ())
+        with patch.object(venv_state, "venv_health", return_value=healthy):
+            problem = bootstrap.ytdlp_problem("venv", str(root / ".venv" / "bin" / "yt-dlp"))
+        self.assertEqual(paths.runtime_conflict("venv"), problem)
+        self.assertIsNone(bootstrap.ytdlp_problem("path", "/usr/bin/yt-dlp"))
 
 
 class HintTests(unittest.TestCase):

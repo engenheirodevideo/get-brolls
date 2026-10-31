@@ -12,7 +12,8 @@ from _media import synth_video
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import media
-from getbrolls.config import load_env, settings
+from getbrolls.config import settings
+from getbrolls.env_loader import load_env
 from getbrolls.ledger import Ledger
 from getbrolls.media import find_font, frame_times, probe, review_preview
 from getbrolls.models import candidate, require_fetch, set_segment, signature

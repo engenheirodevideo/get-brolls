@@ -1,0 +1,7 @@
+# The venv's own pip, installed by the installers before requirements.txt with
+# `pip install --require-hashes --only-binary :all:`: the pip that ensurepip puts in a new venv
+# vendors an older certifi, so the only thing it downloads is this wheel, checked against the
+# sha256 PyPI publishes for pip 26.2.2 (wheel and sdist; the sdist is never built).
+pip==26.2.2 \
+    --hash=sha256:fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70 \
+    --hash=sha256:3a8e5c800492787f33a4114ef54444546c340df428974ebba17e0fd47e11af2f

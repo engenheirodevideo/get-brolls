@@ -47,6 +47,16 @@ class ManifestCandidateValidationTests(unittest.TestCase):
             with self.subTest(data=data), self.assertRaisesRegex(ValueError, "manifest.json inválido"):
                 validate_manifest(data)
 
+    def test_an_item_without_a_usable_id_is_refused(self):
+        for label, items in {
+            "id_missing": [{k: v for k, v in _item().items() if k != "id"}],
+            "id_empty": [_item(id="")],
+            "id_is_a_number": [_item(id=7)],
+            "id_repeated": [_item(), _item()],
+        }.items():
+            with self.subTest(label), self.assertRaisesRegex(ValueError, "manifest.json inválido"):
+                validate_manifest({"schema_version": 1, "items": items})
+
     def test_a_valid_item_with_previews_and_output_loads(self):
         item = _item(output__path="clips/um.mp4", preview__poster_path="previews/um.jpg")
         self.manifest.write_text(json.dumps({"schema_version": 1, "items": [item]}), encoding="utf-8")
@@ -139,6 +149,15 @@ class RecoveryJournalTests(unittest.TestCase):
                 self.assertEqual(raw, self.pending.read_text(encoding="utf-8"))
                 self.assertFalse((self.root / "manifest.json").exists(), "nada é gravado antes da recusa")
                 self.assertFalse((self.root / "events.jsonl").exists())
+
+    def test_a_journal_that_is_not_a_json_object_is_refused_and_kept(self):
+        for label, raw in {"not_json": "{journal", "a_list": "[]", "a_text": '"journal"'}.items():
+            with self.subTest(label):
+                self.pending.write_text(raw, encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "Journal de recuperação inválido"):
+                    Ledger(self.project)
+                self.assertEqual(raw, self.pending.read_text(encoding="utf-8"))
+                self.assertFalse((self.root / "manifest.json").exists(), "nada é gravado antes da recusa")
 
     def test_an_unreadable_events_log_stops_the_recovery_and_keeps_both_files(self):
         for label, history in {

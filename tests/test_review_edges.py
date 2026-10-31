@@ -243,6 +243,29 @@ class SkippedItemTests(unittest.TestCase):
                 skipped_item = next(c for c in ledger.data["items"] if c["id"] == payload["items"][1]["id"])
                 self.assertNotIn("review", skipped_item)
 
+    def test_changes_without_a_comment_is_skipped_asking_what_to_change(self):
+        for state in ("changes", "alternative"):
+            with self.subTest(state):
+                ledger, payload, result = self._import_with(lambda item, s=state: item.update(state=s, comment="  "))
+                self.assertEqual(1, result["imported"])
+                self.assertEqual("invalid_item", result["skipped"][0]["reason"])
+                self.assertIn("Faltou dizer", result["skipped"][0]["detail"])
+                skipped_item = next(c for c in ledger.data["items"] if c["id"] == payload["items"][1]["id"])
+                self.assertNotIn("review", skipped_item)
+
+    def test_when_every_item_is_skipped_the_import_fails_with_each_reason(self):
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        ledger = _ledger(folder, "one")
+        payload = _exported(ledger)
+        payload["items"][0]["state"] = "changes"
+        payload["items"][0]["comment"] = ""
+        path = _save(ledger, payload)
+        with self.assertRaises(ValueError) as caught:
+            import_review(ledger, path, "Human")
+        self.assertIn("Nenhuma decisão pôde ser importada.", str(caught.exception))
+        self.assertIn("Faltou dizer", str(caught.exception))
+
     def test_a_public_https_suggestion_is_kept_on_the_review(self):
         link = "https://example.com/better-clip"
         ledger, payload, result = self._import_with(lambda item: item.update(suggestion=link))

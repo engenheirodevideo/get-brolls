@@ -43,3 +43,4 @@ Uma regravação que muda o que o `accepted.json` leva entra com o item sem data
 - 2026-10-12: layout0: o doctor perde install.env_aliases: os nomes GETBROLLS_X deixam de valer como GB_X
 - 2026-10-12: fluxo: o fetch dá o nome final ao clipe antes do ledger.commit do manifesto
 - 2026-10-12: layout0: o fetch dá o nome final ao clipe antes do ledger.commit do manifesto
+- 2026-10-23: fluxo: a biblioteca e a fila gravam schema_version 2 (o escopo de cliente e a parada de provedor); a 2.5 recusa o arquivo em vez de ignorar o campo (ratificado pelo mantenedor em 2026-10-23)

@@ -17,7 +17,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 import _paths  # noqa: F401  (efeito de import: põe scripts/ no sys.path)  # pylint: disable=unused-import
 from _cli import run_cli
 
-from getbrolls import library, profile, runtime
+from getbrolls import library, profile, profile_trust, runtime
 from getbrolls.errors import LockedError
 
 
@@ -28,7 +28,7 @@ class LockedErrorTests(unittest.TestCase):
 
     def test_busy_trust_store_is_locked_error(self):
         with (
-            patch.object(profile, "LOCK_TIMEOUT_S", 0.0),
+            patch.object(profile_trust, "LOCK_TIMEOUT_S", 0.0),
             patch.object(runtime, "_acquire_lock", side_effect=BlockingIOError),
             self.assertRaises(LockedError) as raised,
         ):

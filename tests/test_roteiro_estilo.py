@@ -5,7 +5,8 @@ import unittest
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import export_plan, roteiro_frontmatter, roteiro_plan
+from getbrolls import roteiro_frontmatter, roteiro_plan
+from getbrolls.sdk import schemas
 
 HEAD = ["---", "type: roteiro", "genero: reels", "tema: x"]
 
@@ -25,6 +26,8 @@ class EstiloTests(unittest.TestCase):
         self.assertTrue(any('"estilo" tem que ser um slug' in message for _, message in errors), errors)
 
     def test_the_plan_and_export_versions(self):
-        self.assertEqual((3, 1, 2), (roteiro_plan.PLAN_VERSION, roteiro_plan.HASH_VERSION, export_plan.EXPORT_VERSION))
+        self.assertEqual(
+            (3, 1, 2), (roteiro_plan.plan_version(), roteiro_plan.HASH_VERSION, schemas.version("export_plan"))
+        )
         self.assertEqual("estilo", roteiro_plan.META_KEYS[-1])
         self.assertNotIn("direcao", roteiro_plan.META_KEYS)

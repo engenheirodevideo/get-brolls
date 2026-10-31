@@ -17,7 +17,7 @@ from test_sdk_loader import MANIFEST
 
 from getbrolls import runtime
 from getbrolls.errors import UsageError
-from getbrolls.sdk import git_source, loader, marketplace, marketplace_install
+from getbrolls.sdk import git_source, loader, marketplace, marketplace_install, materialize
 from getbrolls.sdk import install as install_mod
 from getbrolls.sdk import marketplace_index as mi
 
@@ -346,6 +346,39 @@ class RefreshTests(MarketplaceTestCase):
         with self.assertRaises(ValueError):
             marketplace.refresh()
 
+    def test_a_disk_error_in_one_marketplace_does_not_stop_the_others(self):
+        alfa = self.index_repo(name="alfa", folder="a")
+        beta = self.index_repo(name="beta", folder="b")
+        marketplace.add(str(alfa))
+        marketplace.add(str(beta))
+        new_alfa = self.commit_index(alfa, "alfa", [])
+        new_beta = self.commit_index(beta, "beta", [])
+        real_write = marketplace._write_cache
+
+        def alfa_cannot_write(name, data):
+            if name == "alfa":
+                raise PermissionError(13, "Permission denied", str(marketplace.cache_path(name)))
+            return real_write(name, data)
+
+        with patch.object(marketplace, "_write_cache", side_effect=alfa_cannot_write):
+            done = marketplace.refresh()
+        self.assertEqual(["alfa"], done["failed"])
+        rows = {row["name"]: row for row in done["marketplaces"]}
+        self.assertIn("sem permissão", rows["alfa"]["error"])
+        self.assertNotIn(str(self.home), rows["alfa"]["error"])
+        self.assertTrue(rows["beta"]["changed"])
+        commits = {name: record["commit"] for name, record in marketplace.read_state()["marketplaces"].items()}
+        self.assertEqual(new_beta, commits["beta"])
+        self.assertNotEqual(new_alfa, commits["alfa"])
+
+        self.commit_index(beta, "beta", [build_entry(beta, head(beta))])
+        with (
+            patch.object(marketplace, "_write_cache", side_effect=PermissionError(13, "Permission denied")),
+            self.assertRaises(ValueError) as ctx,
+        ):
+            marketplace.refresh()
+        self.assertIn("Nenhum marketplace foi atualizado", str(ctx.exception))
+
 
 class PolicyTests(MarketplaceTestCase):
     def test_policy_hides_restricted_marketplace(self):
@@ -503,7 +536,7 @@ class SearchTests(MarketplaceTestCase):
 
     def test_search_never_touches_network(self):
         self.two_marketplaces()
-        with self.no_network(), patch.object(install_mod, "_run_git", side_effect=AssertionError("rede")):
+        with self.no_network(), patch.object(materialize, "_run_git", side_effect=AssertionError("rede")):
             self.assertEqual(3, len(marketplace.search("demo")["results"]))
             run = run_cli("plugins", "--action", "search", "--query", "demo", env=self.env())
         self.assertEqual(3, len(run["results"]))

@@ -262,7 +262,7 @@ class ApproveAllLoggingTests(unittest.TestCase):
         """Uses `--candidate` repeated (not `--all`), so the pre-existing
         `APPROVE_ALL_WIDE` warning (which names the approver for the human
         reading the response, and is mirrored into the log like every other
-        `record_warning`, unrelated to this task's call sites) never fires;
+        `record_warning`, unrelated to the call sites under test) never fires;
         this keeps the privacy assertion below meaningful."""
 
         with tempfile.TemporaryDirectory() as tmp:

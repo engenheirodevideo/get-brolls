@@ -170,7 +170,7 @@ def _read(sidecar):
     if problem or raw is None:
         return None, None, problem
     try:
-        data = json.loads(raw.decode("utf-8"))
+        data = json.loads(raw.decode("utf-8-sig"))  # BOM do Bloco de Notas/PowerShell
     except (ValueError, RecursionError):  # UnicodeDecodeError e JSONDecodeError são ValueError; número enorme também
         return None, None, "não é JSON UTF-8"
     if not isinstance(data, list):

@@ -7,7 +7,7 @@ Duas partes que não se misturam:
   aninhamento acima de `MAX_DEPTH`, chave com cara de segredo (recusada, não
   apagada), texto com cara de caminho absoluto (POSIX, `C:\\`, UNC, `~/`) e arquivo
   acima de `MAX_FILE`. Não conhece schema nenhum.
-- **Validador** (`schema_name`, `check_doc`, `check_times`): confere um documento já
+- **Validador** (`declared_schema`, `check_doc`, `check_times`): confere um documento já
   em memória contra `schemas/<nome>.schema.json` (subconjunto de `sdk.jsonschema`) e
   as regras entre campos que esse subconjunto não expressa. Não toca o disco, então
   vale igual para o que o core lê e para o que um plugin entrega.
@@ -48,8 +48,6 @@ COMPONENTS = ("media", "transcript", "scenes", "silence", "speakers", "visual")
 FAILURE_STATUSES = vocab.ANALYSIS_STATUSES_WITH_REASON
 DOCUMENTS = (*COMPONENTS, "analysis_index", "markers")
 NAMESPACE = "getbrolls"
-# Maior versão (`getbrolls.<nome>/<N>`) que este leitor entende, por documento.
-SUPPORTED: dict[str, int] = dict.fromkeys(DOCUMENTS, 1)
 
 MAX_FILE = 16 * 1024 * 1024
 MAX_TEXT = 1024 * 1024
@@ -77,6 +75,11 @@ class Invalid(ValueError):  # noqa: N818
     def as_dict(self) -> dict:
         """O problema como `{code, where}`, a forma que `check_doc` devolve."""
         return {"code": self.code, "where": self.where}
+
+
+def supported() -> dict[str, int]:
+    """Maior versão (`getbrolls.<nome>/<N>`) que este leitor entende, por documento, lida do schema."""
+    return {name: schemas.version(name) for name in DOCUMENTS}
 
 
 def _schema_string(name: str, version: int) -> str:
@@ -277,14 +280,14 @@ def read_json(root: Path, rel: str) -> dict:
 # -- validador ----------------------------------------------------------------
 
 
-def schema_name(doc) -> tuple[str, int]:
+def declared_schema(doc) -> tuple[str, int]:
     """(`nome`, `N`) de `"schema": "getbrolls.<nome>/<N>"`; recusa outro namespace e N novo."""
     value = doc.get("schema") if isinstance(doc, dict) else None
     match = _SCHEMA_RE.fullmatch(value) if isinstance(value, str) else None
-    if match is None or match[1] != NAMESPACE or match[2] not in SUPPORTED:
+    if match is None or match[1] != NAMESPACE or match[2] not in DOCUMENTS:
         raise Invalid("UNKNOWN_SCHEMA", "$.schema")
     name, version = match[2], int(match[3])
-    if version > SUPPORTED[name]:
+    if version > schemas.version(name):
         raise Invalid("NEWER_SCHEMA", "$.schema")
     return name, version
 
@@ -382,12 +385,12 @@ def check_doc(doc, name: str) -> list[dict]:
     não veio do disco), schema publicado e, só com o schema limpo, as regras entre
     campos. `name` fora de `DOCUMENTS` é erro de programação (`ValueError`).
     """
-    if name not in SUPPORTED:
+    if name not in DOCUMENTS:
         raise ValueError(f"Documento de análise desconhecido: {name}")
     if not isinstance(doc, dict):
         return [Invalid("EXPECTED_OBJECT", "$").as_dict()]
     try:
-        found, version = schema_name(doc)
+        found, version = declared_schema(doc)
         if doc["schema"] != _schema_string(name, version) or found != name:
             raise Invalid("SCHEMA_MISMATCH", "$.schema")
         _walk(doc, "$")

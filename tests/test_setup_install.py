@@ -1,6 +1,6 @@
 """`getbrolls setup` instala a venv do yt-dlp e o Playwright CLI no runtime compartilhado, sem rede nos testes.
 
-Um `FakeRunner` toma o lugar de `bootstrap.run_step` (o único ponto que abre processo):
+Um `FakeRunner` toma o lugar de `bootstrap_steps.run_step` (o único ponto que abre processo):
 registra cada chamada e cria os arquivos que o passo real criaria. `run_step` em si é
 testado à parte, com processos Python de verdade e sem rede.
 """
@@ -23,14 +23,14 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _paths import CLI_ARGV, ROOT
 from _symlink import needs_symlink
 
-from getbrolls import _paths, bootstrap, cli, runtime
+from getbrolls import _paths, bootstrap, bootstrap_steps, cli, file_locks, runtime_parts
 from getbrolls.errors import LockedError, UsageError
 
 WINDOWS = os.name == "nt"
 PYTHON_LAYOUT = "Scripts/python.exe" if WINDOWS else "bin/python"
 YTDLP_LAYOUT = "Scripts/yt-dlp.exe" if WINDOWS else "bin/yt-dlp"
 CLI_NAMES = ("playwright-cli", "playwright-cli.cmd") if WINDOWS else ("playwright-cli",)
-VENV_LABELS = ("venv", "pip", "probe", "version", "upgrade")
+VENV_LABELS = ("venv", "pip-bootstrap", "pip", "probe", "version", "upgrade")
 # A sonda de saúde da venv (`python -I -c "import yt_dlp"`) roda em toda conferência;
 # `labels()` a deixa de fora para as sequências de montagem ficarem legíveis.
 HEALTH = bootstrap.HEALTH_LABEL
@@ -49,7 +49,7 @@ def _fake_wheel(base):
     pkg = base / "site" / "getbrolls"
     data = pkg / "_data"
     _touch(data / "MANIFEST", "")
-    for name in ("requirements.txt", "package.json", "package-lock.json"):
+    for name in ("requirements-bootstrap.txt", "requirements.txt", "package.json", "package-lock.json"):
         shutil.copyfile(ROOT / name, data / name)
     return _paths.detect(pkg)
 
@@ -144,7 +144,7 @@ class _Setup(unittest.TestCase):
             patch.object(_paths, "install", return_value=self.inst),
             patch.dict(os.environ, env, clear=True),
             patch.dict(_paths._PROFILE_ENV, {}, clear=True),  # pylint: disable=protected-access
-            patch.object(bootstrap, "run_step", side_effect=self._run_step),
+            patch.object(bootstrap_steps, "run_step", side_effect=self._run_step),
         ):
             active.start()
             self.addCleanup(active.stop)
@@ -196,7 +196,9 @@ class InstallTests(_Setup):
         self.assertEqual(_paths.part_sha("tools"), tools_marker["sha"])
         self.assertEqual(self.tools_root() / ".tools", _paths.tools_dir().path)
         self.assertTrue(_paths.runtime_info()["tools"]["managed"])
-        self.assertEqual(["venv", "pip", "probe", "version", "node", "npm", "playwright"], self.runner.labels())
+        self.assertEqual(
+            ["venv", "pip-bootstrap", "pip", "probe", "version", "node", "npm", "playwright"], self.runner.labels()
+        )
 
     def test_npm_argv_is_constant_and_runs_in_the_tools_dir(self):
         self.install()
@@ -209,6 +211,14 @@ class InstallTests(_Setup):
         for name in ("package.json", "package-lock.json"):
             self.assertEqual((self.data / name).read_bytes(), (tools / name).read_bytes())
         bootstrap._assert_batch_safe(argv)  # pylint: disable=protected-access
+
+    def test_venv_key_is_the_sha_of_both_requirements_files(self):
+        # Um pip novo em requirements-bootstrap.txt monta outra venv, como um pino novo em requirements.txt.
+        parts = [
+            (self.data / name).read_bytes().replace(b"\r\n", b"\n")
+            for name in ("requirements-bootstrap.txt", "requirements.txt")
+        ]
+        self.assertEqual(hashlib.sha256(b"\0".join(parts)).hexdigest()[:16], self.root().name)
 
     def test_tools_key_is_the_sha_of_both_package_files(self):
         # The key ignores line endings (a Windows checkout may turn LF into CRLF).
@@ -298,6 +308,21 @@ class InstallTests(_Setup):
         self.assertEqual(":all:", argv[argv.index("--only-binary") + 1])
         self.assertLess(argv.index("--only-binary"), argv.index("-r"))
 
+    def test_the_venvs_pip_comes_first_from_the_hashed_bootstrap_file(self):
+        # O pip que o `venv` traz carrega um certifi antigo: a primeira coisa que ele baixa é o pip fixado com sha256.
+        self.install()
+        labels = self.runner.labels()
+        self.assertLess(labels.index("pip-bootstrap"), labels.index("pip"))
+        _label, argv, _cwd, _env = next(call for call in self.runner.calls if call[0] == "pip-bootstrap")
+        recorded = Path(argv[argv.index("-r") + 1])
+        self.assertEqual(self.root() / "requirements-bootstrap.txt", recorded)
+        self.assertEqual((self.data / "requirements-bootstrap.txt").read_bytes(), recorded.read_bytes())
+        self.assertEqual(str(self.root() / ".venv" / PYTHON_LAYOUT), argv[0])
+        self.assertEqual(["-m", "pip", "install"], argv[1:4])
+        self.assertIn("--require-hashes", argv)
+        self.assertEqual(":all:", argv[argv.index("--only-binary") + 1])
+        self.assertNotIn("--upgrade", argv)
+
     def test_pip_no_binary_in_the_environment_never_reaches_a_step(self):
         # `PIP_NO_BINARY` traria o sdist de volta; a opção `--only-binary :all:` da linha de comando já vence,
         # e o ambiente do filho nem leva a variável.
@@ -381,28 +406,54 @@ class FailureTests(_Setup):
         entry = self.failed(self.install())
         self.assertIn("rede", entry["error"])
 
-    def test_a_file_whose_hash_is_not_listed_fails_through_the_existing_pip_error(self):
-        # Texto real do pip 26 diante de um hash que não confere: não é rede, nem versão do Python,
-        # nem conflito; cai na mensagem genérica que já existe, com o texto do pip em `output_tail`.
-        tail = [
-            (
-                "ERROR: THESE PACKAGES DO NOT MATCH THE HASHES FROM THE REQUIREMENTS FILE. If you have updated "
-                "the package versions, please update the hashes. Otherwise, examine the package contents "
-                "carefully; someone may have tampered with them."
-            ),
-            "    idna==3.20 from https://files.pythonhosted.org/packages/idna-3.20-py3-none-any.whl:",
-            "        Expected sha256 " + "0" * 64,
-            "             Got        " + "ab" * 32,
-        ]
-        self.runner.fail["pip"] = (1, tail)
+    HASH_MISMATCH = (
+        (
+            "ERROR: THESE PACKAGES DO NOT MATCH THE HASHES FROM THE REQUIREMENTS FILE. If you have updated "
+            "the package versions, please update the hashes. Otherwise, examine the package contents "
+            "carefully; someone may have tampered with them."
+        ),
+        "    idna==3.20 from https://files.pythonhosted.org/packages/idna-3.20-py3-none-any.whl:",
+        "        Expected sha256 " + "0" * 64,
+        "             Got        " + "ab" * 32,
+    )
+
+    def test_a_file_whose_hash_does_not_match_says_hash(self):
+        # Texto real do pip 26 diante de um hash que não confere: não é rede nem versão do Python.
+        self.runner.fail["pip"] = (1, list(self.HASH_MISMATCH))
         entry = self.failed(self.install())
-        self.assertEqual(bootstrap.PIP_FAILED.format(code=1), entry["error"])
+        self.assertEqual(bootstrap.PIP_HASH_FAILED.format(file="requirements.txt"), entry["error"])
         self.assertIn("DO NOT MATCH THE HASHES", "\n".join(entry["output_tail"]))
-        classified = bootstrap._classify_pip_code(bootstrap.StepResult(1, tuple(tail)))  # pylint: disable=protected-access
-        self.assertEqual("pip_failed", classified[0])
-        self.assertEqual(["venv", "pip"], self.labels(VENV_LABELS))  # sem sonda: a venv não chega a ficar pronta
+        self.assertEqual(
+            ["venv", "pip-bootstrap", "pip"], self.labels(VENV_LABELS)
+        )  # sem sonda: a venv não fica pronta
         pip_argv = next(argv for label, argv, _cwd, _env in self.runner.calls if label == "pip")
         self.assertIn("--require-hashes", pip_argv)
+
+    def test_a_hash_mismatch_after_a_retried_connection_still_says_hash(self):
+        # O erro de hash é a falha final: um retry de rede antes dele, no mesmo log, não pode escondê-lo.
+        tail = ("WARNING: Retrying ... NewConnectionError: Failed to establish a new connection", *self.HASH_MISMATCH)
+        code, message = bootstrap._classify_pip_code(bootstrap.StepResult(1, tail), "requirements.txt")  # pylint: disable=protected-access
+        self.assertEqual(("pip_hash", bootstrap.PIP_HASH_FAILED.format(file="requirements.txt")), (code, message))
+
+    def test_a_requirement_without_a_hash_says_hash(self):
+        tail = ("ERROR: Hashes are required in --require-hashes mode, but they are missing from some requirements.",)
+        code, _message = bootstrap._classify_pip_code(bootstrap.StepResult(1, tail), "requirements.txt")  # pylint: disable=protected-access
+        self.assertEqual("pip_hash", code)
+
+    def test_a_bootstrap_failure_stops_before_the_runtime_set(self):
+        self.runner.fail["pip-bootstrap"] = (1, list(self.HASH_MISMATCH))
+        entry = self.failed(self.install())
+        self.assertEqual(bootstrap.PIP_HASH_FAILED.format(file="requirements-bootstrap.txt"), entry["error"])
+        self.assertEqual(["venv", "pip-bootstrap"], self.labels(VENV_LABELS))
+
+    def test_a_bootstrap_without_network_says_network(self):
+        self.runner.fail["pip-bootstrap"] = (
+            1,
+            ["WARNING: Retrying ... NewConnectionError: Failed to establish a new connection"],
+        )
+        entry = self.failed(self.install())
+        self.assertIn("rede", entry["error"])
+        self.assertEqual(["venv", "pip-bootstrap"], self.labels(VENV_LABELS))
 
     def test_a_missing_hash_in_the_file_fails_through_the_existing_pip_error(self):
         self.runner.fail["pip"] = (
@@ -437,7 +488,7 @@ class FailureTests(_Setup):
     def test_interrupted_build_is_rebuilt(self):
         root = self.root()
         _touch(root / ".venv" / "half-written")
-        _paths.write_marker("venv", root, "building")
+        runtime_parts.write_marker("venv", root, "building")
         result = self.install()
         self.assertEqual("installed", self.venv_entry(result)["status"])
         self.assertIn("venv", self.runner.labels())
@@ -459,7 +510,7 @@ class FailureTests(_Setup):
         root = self.root()
         root.mkdir(parents=True)
         (root / ".venv").symlink_to(target, target_is_directory=True)
-        _paths.write_marker("venv", root, "building")
+        runtime_parts.write_marker("venv", root, "building")
         with self.assertRaises(UsageError) as caught:
             self.install()
         self.assertIn("link", str(caught.exception))
@@ -491,7 +542,7 @@ class ForeignAndPinTests(_Setup):
         explicit = self.base / "explicit"
         _make_venv(explicit / ".venv")
         _touch(explicit / ".venv" / YTDLP_LAYOUT)
-        _paths.write_marker("venv", explicit, "ready")
+        runtime_parts.write_marker("venv", explicit, "ready")
         marker = json.loads(_paths.marker_path("venv", explicit).read_text(encoding="utf-8"))
         marker["sha"] = "0" * 16
         _paths.marker_path("venv", explicit).write_text(json.dumps(marker), encoding="utf-8")
@@ -516,12 +567,12 @@ class ForeignAndPinTests(_Setup):
         root = self.root()
         root.mkdir(parents=True)
         with (root / bootstrap.LOCK_NAME).open("a+", encoding="utf-8") as held:
-            runtime._acquire_lock(held)  # pylint: disable=protected-access
+            file_locks._acquire_lock(held)  # pylint: disable=protected-access
             try:
                 with self.assertRaises(LockedError) as caught:
                     self.install()
             finally:
-                runtime._release_lock(held)  # pylint: disable=protected-access
+                file_locks._release_lock(held)  # pylint: disable=protected-access
         self.assertIn("Outro `setup`", str(caught.exception))
         self.assertEqual([], self.runner.labels())
 
@@ -558,7 +609,7 @@ class ToolsTests(_Setup):
     def test_interrupted_tools_build_is_rebuilt(self):
         root = self.tools_root()
         _touch(root / ".tools" / "node_modules" / "half-written")
-        _paths.write_marker("tools", root, "building")
+        runtime_parts.write_marker("tools", root, "building")
         result = self.install()
         self.assertEqual("installed", self.tools_entry(result)["status"])
         self.assertFalse((root / ".tools" / "node_modules" / "half-written").exists())
@@ -607,7 +658,7 @@ class ToolsTests(_Setup):
         root = self.tools_root()
         root.mkdir(parents=True)
         (root / ".tools").symlink_to(target, target_is_directory=True)
-        _paths.write_marker("tools", root, "building")
+        runtime_parts.write_marker("tools", root, "building")
         with self.assertRaises(UsageError) as caught:
             self.install()
         self.assertIn("link", str(caught.exception))
@@ -618,12 +669,12 @@ class ToolsTests(_Setup):
         root = self.tools_root()
         root.mkdir(parents=True)
         with (root / bootstrap.LOCK_NAME).open("a+", encoding="utf-8") as held:
-            runtime._acquire_lock(held)  # pylint: disable=protected-access
+            file_locks._acquire_lock(held)  # pylint: disable=protected-access
             try:
                 with self.assertRaises(LockedError) as caught:
                     self.install()
             finally:
-                runtime._release_lock(held)  # pylint: disable=protected-access
+                file_locks._release_lock(held)  # pylint: disable=protected-access
         self.assertIn("Outro `setup`", str(caught.exception))
         self.assertEqual([], self.labels(TOOLS_LABELS))
 
@@ -755,7 +806,9 @@ class UpgradeTests(_Setup):
         result = self.install(upgrade="ytdlp")
         self.assertEqual("failed", result["upgrade"]["status"])
         self.assertIn("fixada", result["upgrade"]["error"])
-        self.assertEqual(["version", "upgrade", "venv", "pip", "probe", "version"], self.runner.labels())
+        self.assertEqual(
+            ["version", "upgrade", "venv", "pip-bootstrap", "pip", "probe", "version"], self.runner.labels()
+        )
         marker = _paths.read_marker("venv", self.root())
         assert marker is not None
         self.assertEqual("ready", marker["status"])

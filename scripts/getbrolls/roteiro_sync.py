@@ -19,7 +19,7 @@ from .brief import brief_path, json_block_spans, read_json_block, validate_brief
 from .ledger import Ledger, atomic_write, existing_project_id
 from .models import invalidate_approval
 from .roteiro_plan import format_problems, full_role, scene_plan
-from .roteiro_review import review_state
+from .roteiro_review import file_form, in_form, review_state
 from .rules import load_rules
 
 log = logs.get("roteiro_sync")
@@ -189,7 +189,10 @@ def _brief(project, rules):
 
 
 def _replace_block(raw, data):
-    """Troca só o miolo do bloco ```json; a prosa em volta fica byte a byte."""
+    """Troca só o miolo do bloco ```json; a prosa em volta fica como estava.
+
+    `raw` vem lido com `\\n`; `_commit` devolve o BOM e o fim de linha do arquivo ao gravar.
+    """
     spans = json_block_spans(raw)
     if not spans:
         raise ValueError("O BRIEF.md não tem o bloco ```json que o sync troca: conserte e repita.")
@@ -295,13 +298,13 @@ def _commit(project, ctx, hits, new_text, new_data):
     if new_text != ctx["text"]:
         # ROTEIRO.md pode ser link (nota do Obsidian): grava no arquivo de verdade e o link continua link.
         effects.copy_file(path, path.with_name(path.name + SYNC_BAK))
-        atomic_write(path.resolve(), new_text)
+        atomic_write(path.resolve(), in_form(new_text, file_form(path)))
         written.append(path.name)
     new_raw = _replace_block(ctx["raw_brief"], new_data)
     if new_raw != ctx["raw_brief"]:
         brief_file = ctx["brief_file"]
         effects.copy_file(brief_file, brief_file.with_name(brief_file.name + SYNC_BAK))
-        atomic_write(brief_file, new_raw)
+        atomic_write(brief_file, in_form(new_raw, file_form(brief_file)))
         written.append(brief_file.name)
     return written
 

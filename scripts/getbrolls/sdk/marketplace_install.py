@@ -34,7 +34,7 @@ import hashlib
 import json
 import logging
 
-from .. import _paths, logs
+from .. import _paths, labels, logs
 from ..errors import UsageError
 from . import git_source, loader, marketplace
 from . import install as plugin_install
@@ -494,6 +494,11 @@ def update_all(confirm: bool, expect: str | None) -> dict:
         except ValueError as exc:
             skipped.append({"id": plugin_id, "marketplace": origin["marketplace"], "reason": str(exc)})
             continue
+        except OSError as exc:
+            # `marketplaces.json` que não dá para ler vira linha `skipped` com o motivo de E/S: a prévia continua.
+            reason = marketplace.portable_text(labels.os_message(exc))
+            skipped.append({"id": plugin_id, "marketplace": origin["marketplace"], "reason": reason})
+            continue
         if row is None:
             up_to_date.append(plugin_id)
         else:
@@ -541,6 +546,10 @@ def _marketplace_notice(plugin_id, name):
         _pin, index = marketplace.load_index(name)
     except ValueError as exc:
         return marketplace.portable_text(exc)
+    except OSError as exc:
+        # `marketplaces.json` que não dá para ler (pasta, FIFO, sem permissão) vira aviso de E/S, sem mandar
+        # apagar: o plugin continua listado no `list` e no `doctor`.
+        return marketplace.portable_text(labels.os_message(exc))
     entry = next((item for item in index["plugins"] if item["id"] == plugin_id), None)
     if entry is None:
         return _unlisted_notice(index, plugin_id, name)

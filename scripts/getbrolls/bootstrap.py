@@ -1,7 +1,7 @@
 """`setup`: instala e confere o runtime compartilhado do getbrolls.
 
 `check()` só lê: sonda os mesmos executáveis obrigatórios do `doctor`, pela mesma regra
-(`commands.readiness_probe`), mais os arquivos de dados, e para o que faltar devolve os
+(`readiness.readiness_probe`), mais os arquivos de dados, e para o que faltar devolve os
 comandos que resolvem. `ready` do `setup --check` e do `doctor` batem. Nunca cria pasta
 nem arquivo.
 
@@ -21,204 +21,96 @@ refaz a venv que não passa; `setup --check` e `doctor` a dão como ausente, mes
 yt-dlp global no PATH (o que vale é o executável em uso, `social.ytdlp_in_use`).
 """
 
-# pylint: disable=cyclic-import,too-many-lines
-# `cyclic-import` vem de getbrolls.bootstrap <-> getbrolls.commands: o `commands` importa
-# este módulo de forma tardia (dentro de `_execute_toolchain`), o que quebra o ciclo em
-# tempo de execução; o pylint só permite suprimir R0401 no módulo.
-# `too-many-lines`: o ciclo inteiro do `setup` (passos, partes, trava e relatório) fica num módulo
-# só, e o log de cada passo e de cada recusa mora ao lado do código que ele descreve.
-
-import collections
 import contextlib
 import logging
 import os
 import re
 import shutil
-import signal
-import stat
-import subprocess
 import sys
-import threading
 import time
-from dataclasses import dataclass
 from pathlib import Path
 
-from . import _paths, commands, effects, logs, runtime
-from .config import SECRET_ENV_SUFFIXES, TOOL_PATH_KEYS
-from .errors import LockedError, UsageError
+from . import _paths, effects, logs, readiness, runtime_parts
+from .bootstrap_messages import (  # noqa: F401 -- reexported: importers and tests keep reading these here; pylint: disable=unused-import
+    _HASHED_FLAGS,
+    _NPM_ARGS,
+    _NPM_SECRETS,
+    _PIN_TOOLS,
+    _PIP_FLAGS,
+    _TOOLS_FILES,
+    _UPGRADE_SPECS,
+    _VENV_PINS,
+    ENSUREPIP_MISSING,
+    FOREIGN_BROKEN,
+    HEALTH_LABEL,
+    KEPT_ERROR_LINES,
+    LOCK_NAME,
+    LOW_DISK,
+    LOW_DISK_BYTES,
+    MIN_NODE_MAJOR,
+    NODE_MISSING,
+    NODE_TOO_OLD,
+    NOT_A_FOLDER,
+    NPM_CACHE,
+    NPM_FAILED,
+    NPM_MISSING,
+    PART_STEP,
+    PINNED,
+    PIP_CONFLICT_FAILED,
+    PIP_FAILED,
+    PIP_HASH_FAILED,
+    PIP_NETWORK_FAILED,
+    PIP_VERSION_FAILED,
+    PROBE_FAILED,
+    RUNTIME_STEPS,
+    STEP_IDS,
+    STEP_TIMEOUT_S,
+    SYSTEM_HINTS,
+    TAIL_LINES,
+    TIMED_OUT,
+    TOOLS_PROBE_FAILED,
+    UPGRADE_FAILED,
+    UPGRADE_FOREIGN,
+    UPGRADE_PINNED,
+    UPGRADE_REBUILD_FAILED,
+    UPGRADE_UNCHANGED,
+    VENV_BROKEN,
+    VENV_EXPECTED,
+    VENV_FAILED,
+    VENV_PIN_BROKEN,
+    YTDLP_FROM_PATH,
+)
+from .bootstrap_steps import (  # noqa: F401 -- reexported: importers and tests keep reading these here; pylint: disable=unused-import
+    StepResult,
+    _assert_batch_safe,
+    _classify_pip,
+    _classify_pip_code,
+    _install_env,
+    _is_link,
+    _kill_tree,
+    _log_step_end,
+    _progress,
+    _python_version,
+    _refused,
+    _RootLock,
+    _step,
+    _StepFailedError,
+    _Tail,
+    run_step,
+)
+from .errors import UsageError
 from .models import now
-from .social import LAYOUTS
+from .venv_state import (  # noqa: F401 -- reexported: importers and tests keep reading these here; pylint: disable=unused-import
+    _PROBES,
+    _part_state,
+    _pinned_key,
+    _tools_cli,
+    _venv_ytdlp,
+    venv_health,
+    ytdlp_problem,
+)
 
 _log = logs.get("bootstrap")
-
-# Executável do `doctor` → id do passo; os que não estão aqui usam o próprio nome.
-STEP_IDS = {"yt-dlp": "ytdlp", "playwright-cli": "playwright"}
-# Passos que o runtime da instalação resolve (vêm primeiro); os outros são do sistema.
-RUNTIME_STEPS = ("ytdlp", "playwright")
-# Pin → executável que ele fixa: um pin quebrado reprova o passo, como no `doctor`.
-_PIN_TOOLS = {**{key: name for name, key in TOOL_PATH_KEYS.items()}, "GB_VENV_PATH": "yt-dlp"}
-# Pins que tiram a `.venv` das mãos do `setup`.
-_VENV_PINS = ("GB_YTDLP_PATH", "GB_VENV_PATH")
-
-PART_STEP = {"venv": "ytdlp", "tools": "playwright"}
-# Teto de cada passo, em segundos; estourou → a árvore do processo é encerrada (código 124).
-STEP_TIMEOUT_S = {"venv": 300, "pip": 1200, "npm": 1200, "probe": 60, "health": 20}
-# Sonda barata da venv em uso: o Python dela importa o yt_dlp? (`venv_health`)
-HEALTH_LABEL = "health"
-MIN_NODE_MAJOR = 22
-# argv do npm: constante (sem caminho), então passa pela regra do `.cmd` no Windows; a
-# pasta vai no `cwd` (o npm usa o `package.json` dali) e o cache, pelo ambiente.
-_NPM_ARGS = ("ci", "--ignore-scripts", "--no-audit", "--no-fund")
-_TOOLS_FILES = ("package.json", "package-lock.json")
-NPM_CACHE = ".npm-cache"
-TAIL_LINES = 40
-# Linhas `ERROR:` do passo (e a linha seguinte, que nomeia o pacote) que sobrevivem ao corte da cauda: o pip lista um
-# `Expected sha256` por hash do pacote (até 170), e sem isso a cauda perderia o diagnóstico de um arquivo adulterado.
-KEPT_ERROR_LINES = 8
-TIMED_OUT = 124
-NOT_FOUND = 127
-LOCK_NAME = ".getbrolls-setup.lock"
-LOW_DISK_BYTES = 1 << 30
-_PIP_FLAGS = ("--disable-pip-version-check", "--no-input", "--progress-bar", "off")
-_HASHED_FLAGS = ("--require-hashes", "--only-binary", ":all:")
-_UPGRADE_SPECS = ("yt-dlp[default]", "yt-dlp-ejs")
-_BATCH_SAFE = re.compile(r"[A-Za-z0-9_\-=.]+")
-# `PIP_NO_BINARY` traria o sdist de volta (e as ferramentas de construção sem hash) ao passo do pip.
-_ENV_DROPPED = ("PYTHONPATH", "PYTHONHOME", "PIP_NO_BINARY")
-# Segredos que o passo do npm precisa: o `.npmrc` de um registro privado costuma ler
-# `${NPM_TOKEN}`. Os outros `*_TOKEN`/`*_KEY` continuam de fora de todo passo.
-_NPM_SECRETS = ("NPM_TOKEN",)
-
-PIP_VERSION_FAILED = (
-    "Falha ao instalar as dependências Python: seu Python é {version}; o conjunto fixado foi validado "
-    "em Python 3.11–3.13. Rode o getbrolls com um Python dessa faixa ou atualize requirements.txt "
-    "como um conjunto revisado."
-)
-PIP_NETWORK_FAILED = (
-    "Falha ao baixar as dependências Python: sem acesso à rede ou ao índice de pacotes (PyPI, proxy, "
-    "certificado). Confira a conexão e rode o `setup` de novo."
-)
-PIP_CONFLICT_FAILED = (
-    "Falha ao instalar as dependências Python: o pip não achou um conjunto compatível (conflito entre "
-    "versões ou com o arquivo de restrições requirements.txt). Isso não é sobre a versão do seu Python; "
-    "veja `output_tail` e revise o conjunto fixado."
-)
-PIP_FAILED = "Falha ao instalar as dependências Python (pip saiu com {code}); veja `output_tail`."
-ENSUREPIP_MISSING = (
-    "O Python que roda o getbrolls não consegue criar venv (falta o ensurepip). No Debian/Ubuntu, "
-    "instale o pacote `python3-venv` (ou `python3.X-venv` da sua versão) e rode o `setup` de novo."
-)
-VENV_FAILED = "Falha ao criar a venv (python -m venv saiu com {code}); veja `output_tail`."
-PROBE_FAILED = "A venv foi criada, mas o yt-dlp não respondeu; veja `output_tail`."
-STEP_TIMED_OUT = "O passo `{label}` passou do tempo limite ({seconds} s) e foi encerrado."
-LOCKED = "Outro `setup` está instalando nesta pasta agora; espere ele terminar e rode de novo."
-ROOT_IS_LINK = (
-    "A pasta do runtime ({folder}) é um link (ou junção); o `setup` não instala através de link. "
-    "Remova o link à mão ou aponte GB_RUNTIME_DIR para uma pasta de verdade."
-)
-FOREIGN_BROKEN = (
-    "A pasta do runtime ({folder}) já existe, não foi criada pelo getbrolls e está incompleta; "
-    "apague essa pasta ou aponte GB_RUNTIME_DIR para outra."
-)
-NOT_A_FOLDER = (
-    "A pasta do runtime ({folder}) é um link ou não é uma pasta comum; o `setup` não apaga isso. "
-    "Remova o link à mão ou aponte GB_RUNTIME_DIR para outra pasta."
-)
-PINNED = "yt-dlp fixado por {key}: o `setup` não mexe na venv."
-UPGRADE_PINNED = (
-    "yt-dlp está fixado por {key} (ambiente, .env ou perfil): `setup --upgrade ytdlp` só atualiza a venv "
-    "gerenciada. Atualize o yt-dlp desse caminho à mão ou remova a variável."
-)
-UPGRADE_FOREIGN = "A venv em uso não foi criada pelo getbrolls: `setup --upgrade ytdlp` só atualiza a venv gerenciada."
-UPGRADE_FAILED = "A atualização do yt-dlp falhou; a venv foi refeita na versão fixada. {reason}"
-UPGRADE_REBUILD_FAILED = (
-    "A atualização do yt-dlp falhou e a venv não pôde ser refeita na versão fixada: ela foi removida e o "
-    "yt-dlp do getbrolls não está pronto. Rode `{fix}` quando a causa for resolvida. Atualização: {reason} "
-    "Refazer: {rebuild}"
-)
-UPGRADE_UNCHANGED = (
-    "O yt-dlp continua na versão {version}: ou ela já é a mais nova, ou o índice de pacotes não respondeu "
-    "(rede, proxy). Nada mudou na venv."
-)
-VENV_BROKEN = (
-    "A venv do yt-dlp em uso não funciona (o Python dela não importa o yt_dlp; ele pode ter sido removido "
-    "ou atualizado). Rode `{fix}` para refazê-la."
-)
-VENV_PIN_BROKEN = (
-    "A venv de GB_VENV_PATH não funciona (o Python dela não importa o yt_dlp). Conserte essa venv ou remova a variável."
-)
-VENV_EXPECTED = (
-    "A venv gerenciada do yt-dlp está pela metade (marcador `{status}`): o yt-dlp do PATH não a substitui. "
-    "Rode `{fix}`."
-)
-YTDLP_FROM_PATH = (
-    "yt-dlp do PATH, fora do runtime do getbrolls: vale, mas a versão é a desse executável; `setup` instala a "
-    "versão fixada na venv gerenciada."
-)
-NPM_MISSING = (
-    "npm não encontrado no PATH: o Playwright CLI (Instagram) ficou de fora. Instale o Node {major}+ "
-    "(ele traz o npm) e rode o `setup` de novo."
-)
-NODE_MISSING = (
-    "Node não encontrado no PATH: o Playwright CLI (Instagram) precisa de Node {major}+. Instale e rode o "
-    "`setup` de novo."
-)
-NODE_TOO_OLD = (
-    "O Playwright CLI (Instagram) precisa de Node {major}+; o Node do PATH é {version}. Atualize e rode o "
-    "`setup` de novo."
-)
-NPM_FAILED = (
-    "Falha ao instalar o Playwright CLI (npm ci saiu com {code}); veja `output_tail`. Sem acesso ao "
-    "registro do npm (rede, proxy, certificado), confira a conexão e rode o `setup` de novo."
-)
-TOOLS_PROBE_FAILED = "O npm terminou, mas o Playwright CLI não respondeu; veja `output_tail`."
-LOW_DISK = "Pouco espaço livre na pasta do runtime ({free} MiB; recomendado 1 GiB ou mais)."
-
-_NETWORK_MARKERS = (
-    "newconnectionerror",
-    "max retries exceeded",
-    "temporary failure in name resolution",
-    "name or service not known",
-    "nodename nor servname",
-    "could not fetch url",
-    "connecttimeout",
-    "readtimeouterror",
-    "proxyerror",
-    "sslerror",
-    "certificate_verify_failed",
-    "network is unreachable",
-    "connection refused",
-)
-_VERSION_MARKERS = ("requires-python", "requires a different python")
-# Conflito de resolução/restrições: não é a versão do Python nem a rede.
-_CONFLICT_MARKERS = ("resolutionimpossible", "conflicting dependencies", "constraint file", "constraints.txt")
-# "No matching distribution" só aponta o Python quando o pip cita a etiqueta/versão dele.
-_PYTHON_TAG_HINTS = ("python_tag", "no wheel for tag", "different python", "python version", " cp3")
-
-# Ferramenta do sistema → sistema operacional → como instalar. Só dica: o `setup` não instala.
-_NODE_HINTS = {
-    "darwin": "brew install node",
-    "linux": "instale o Node 22+ (nodejs.org ou o gerenciador da distribuição)",
-    "nt": "winget install --id OpenJS.NodeJS.LTS -e",
-}
-_FFMPEG_HINTS = {
-    "darwin": "brew install ffmpeg",
-    "linux": "sudo apt install ffmpeg",
-    "nt": "winget install Gyan.FFmpeg",
-}
-SYSTEM_HINTS: dict[str, dict[str, str]] = {
-    "ffmpeg": _FFMPEG_HINTS,
-    "ffprobe": _FFMPEG_HINTS,
-    "curl": {"darwin": "brew install curl", "linux": "sudo apt install curl", "nt": "winget install --id cURL.cURL -e"},
-    "node": _NODE_HINTS,
-    "npx": _NODE_HINTS,
-    "npm": _NODE_HINTS,
-}
-
-
-def _refused(reason: str, exc: Exception) -> Exception:
-    """Registra a recusa (`setup_refused`: motivo e `error_code`) e devolve `exc` para levantar."""
-    return logs.refusal(_log, "setup_refused", exc, reason=reason)
 
 
 def system_hint(name: str, platform: str | None = None) -> str | None:
@@ -229,282 +121,6 @@ def system_hint(name: str, platform: str | None = None) -> str | None:
     if hints is None:
         return None
     return hints.get(platform, hints["linux"])
-
-
-@dataclass(frozen=True)
-class StepResult:
-    """Código de saída e as últimas linhas (stdout e stderr juntos) de um passo."""
-
-    returncode: int
-    output: tuple[str, ...]
-
-
-def _progress(message: str) -> None:
-    print(f"getbrolls setup: {message}", file=sys.stderr, flush=True)
-
-
-def _assert_batch_safe(argv: list[str]) -> None:
-    """`.cmd`/`.bat` passam pelo cmd.exe: só argumentos constantes e inofensivos (bug se não)."""
-    if argv and argv[0].lower().endswith((".cmd", ".bat")):
-        unsafe = [arg for arg in argv[1:] if not _BATCH_SAFE.fullmatch(arg)]
-        if unsafe:
-            raise RuntimeError(f"argumento não constante para um script .cmd/.bat: {unsafe!r}")
-
-
-def _install_env(*, keep: tuple[str, ...] = (), **extra: str) -> dict[str, str]:
-    """Ambiente do passo: sem segredos nem `PYTHONPATH`/`PYTHONHOME` herdados.
-
-    `keep` devolve segredos nomeados que o passo precisa (o `NPM_TOKEN` do `npm ci`).
-    """
-    env = {
-        key: value
-        for key, value in os.environ.items()
-        if (key in keep or not key.endswith(SECRET_ENV_SUFFIXES)) and key not in _ENV_DROPPED
-    }
-    env.update(extra)
-    return env
-
-
-def _kill_tree(proc: subprocess.Popen) -> None:
-    """Encerra o processo e os filhos dele (grupo próprio no POSIX, `taskkill /T` no Windows)."""
-    if proc.poll() is not None:
-        return
-    with effects.op("proc.kill", proc.args, pid=proc.pid):
-        if os.name == "nt":
-            # taskkill travado ou ausente não pode esconder o erro do passo: o `kill` abaixo encerra o filho.
-            with contextlib.suppress(subprocess.TimeoutExpired, OSError):
-                subprocess.run(
-                    ["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True, check=False, timeout=30
-                )
-        else:
-            killpg = getattr(os, "killpg", None)
-            if killpg is not None:
-                with contextlib.suppress(OSError):
-                    killpg(proc.pid, getattr(signal, "SIGKILL", signal.SIGTERM))
-        if proc.poll() is None:
-            proc.kill()
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            proc.wait(timeout=10)
-
-
-class _Tail:
-    """As últimas `TAIL_LINES` linhas de um passo, mais as linhas `ERROR:` do começo que o corte levaria."""
-
-    def __init__(self) -> None:
-        self._last: collections.deque[tuple[int, str]] = collections.deque(maxlen=TAIL_LINES)
-        self._errors: list[tuple[int, str]] = []
-        self._count = 0
-        self._after_error = False
-
-    def add(self, text: str) -> None:
-        """Registra a próxima linha; guarda também as `ERROR:` (e a linha seguinte) do começo."""
-        self._count += 1
-        self._last.append((self._count, text))
-        if (self._after_error or text.startswith("ERROR:")) and len(self._errors) < KEPT_ERROR_LINES:
-            self._errors.append((self._count, text))
-        self._after_error = text.startswith("ERROR:")
-
-    def lines(self) -> tuple[str, ...]:
-        """Em ordem de leitura; uma linha `ERROR:` que ainda está na cauda não se repete."""
-        first = self._last[0][0] if self._last else 0
-        kept = [text for number, text in self._errors if number < first]
-        return tuple(kept + [text for _number, text in self._last])
-
-
-def run_step(
-    argv: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None, timeout: int, label: str
-) -> StepResult:
-    """Roda um passo da instalação: o único lugar deste módulo que abre processo.
-
-    Nunca usa shell. A saída é lida numa thread (o tempo limite vale mesmo com o filho
-    calado) e só vai para o stderr quando ele é um terminal; o resultado guarda as últimas
-    linhas. Tempo esgotado encerra a árvore do processo e devolve 124; Ctrl+C encerra a
-    árvore e segue adiante; executável ausente devolve 127.
-    """
-    _assert_batch_safe(argv)
-    windows = os.name == "nt"
-    with effects.op("proc.run", argv) as running:
-        try:
-            proc = subprocess.Popen(  # pylint: disable=consider-using-with  # encerrado abaixo em todo caminho
-                argv,
-                cwd=cwd,
-                env=env,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                shell=False,
-                # Grupo próprio: o tempo limite e o Ctrl+C encerram o passo e os filhos dele.
-                creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if windows else 0,
-                start_new_session=not windows,
-            )
-        except OSError as exc:
-            running.set(exit=NOT_FOUND)
-            return StepResult(NOT_FOUND, (f"{label}: {exc.strerror or exc}",))
-        tail = _Tail()
-        echo = sys.stderr.isatty()
-        stream = proc.stdout
-        if stream is None:  # stdout=PIPE sempre abre o pipe; só para o verificador de tipos
-            raise RuntimeError("run_step sem pipe de saída")
-
-        def read():
-            for line in stream:
-                tail.add(line.rstrip("\r\n"))
-                if echo:
-                    sys.stderr.write(line)
-
-        reader = threading.Thread(target=read, name=f"setup-{label}", daemon=True)
-        reader.start()
-        try:
-            returncode = proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            _kill_tree(proc)
-            returncode = TIMED_OUT
-        except KeyboardInterrupt:
-            _kill_tree(proc)
-            raise
-        finally:
-            reader.join(timeout=10)
-            stream.close()
-        running.set(exit=returncode)
-        return StepResult(returncode, tail.lines())
-
-
-class _RootLock:
-    """Trava exclusiva de uma raiz do runtime; outro `setup` na mesma raiz é recusado."""
-
-    def __init__(self, root: Path):
-        self.root = root
-        self._stream = None
-
-    def __enter__(self):
-        if _is_link(self.root):
-            # `runtime/<sha>` como link instalaria no alvo dele, fora do GB_HOME.
-            raise _refused("runtime_link", UsageError(ROOT_IS_LINK.format(folder=self.root.name)))
-        if self.root.is_relative_to(_paths.gb_home()):
-            effects.mkdir(self.root, mode=0o700, parents=True, exist_ok=True)
-        else:
-            effects.mkdir(self.root, parents=True, exist_ok=True)
-        # effect-exempt: lock file of the runtime root; a busy lock already logs lock_busy, as in runtime
-        stream = (self.root / LOCK_NAME).open("a+", encoding="utf-8", newline="\n")  # pylint: disable=consider-using-with
-        try:
-            runtime._acquire_lock(stream)  # pylint: disable=protected-access
-        except BlockingIOError as exc:
-            stream.close()
-            raise runtime.lock_busy(LOCK_NAME, time.monotonic(), LockedError(LOCKED)) from exc
-        self._stream = stream
-        return self
-
-    def __exit__(self, *exc_info):
-        stream, self._stream = self._stream, None
-        if stream is not None:
-            try:
-                runtime._release_lock(stream)  # pylint: disable=protected-access
-            finally:
-                stream.close()
-
-
-def _venv_ytdlp(folder: Path) -> Path | None:
-    # lenient: tool discovery in the runtime: not found sends the user to setup
-    return next((folder / relative for relative in LAYOUTS if (folder / relative).is_file()), None)
-
-
-def _tools_cli(folder: Path) -> Path | None:
-    """O Playwright CLI que o `npm ci` deixa em `node_modules/.bin` (o `.cmd` no Windows)."""
-    names = ("playwright-cli.cmd", "playwright-cli") if os.name == "nt" else ("playwright-cli",)
-    bin_dir = folder / "node_modules" / ".bin"
-    # lenient: tool discovery in the runtime: not found sends the user to setup
-    return next((bin_dir / name for name in names if (bin_dir / name).is_file()), None)
-
-
-# Arquivo que prova que a parte funciona: o executável que o resto do getbrolls usa.
-_PROBES = {"venv": _venv_ytdlp, "tools": _tools_cli}
-
-
-def _is_link(path: Path) -> bool:
-    """Link simbólico ou, no Windows, qualquer ponto de reanálise (junção inclusive)."""
-    try:
-        info = path.lstat()
-    # lenient: link probe only: a path it cannot lstat is no link; the rmtree or install after it raises
-    except OSError:
-        return False
-    reparse = getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
-    return stat.S_ISLNK(info.st_mode) or bool(reparse)
-
-
-def venv_health(folder: Path) -> StepResult:
-    """Roda `<python da venv> -I -c "import yt_dlp"` (tempo curto, sem shell, sem segredos).
-
-    `-I` isola o interpretador: nem `PYTHONPATH`, nem site do usuário, nem a pasta atual
-    decidem o import. Python ausente ou que não executa (link quebrado, "bad interpreter")
-    sai diferente de 0, como o import que falha.
-    """
-    python = _paths.venv_python(folder)
-    started = time.monotonic()
-    result = run_step(
-        [str(python), "-I", "-c", "import yt_dlp"],
-        # lenient: working folder of the health probe only: None runs it from the current folder
-        cwd=folder if folder.is_dir() else None,
-        env=_install_env(),
-        timeout=STEP_TIMEOUT_S["health"],
-        label=HEALTH_LABEL,
-    )
-    logs.event(
-        _log,
-        logging.DEBUG,
-        "setup_health",
-        status="ok" if result.returncode == 0 else "error",
-        exit=result.returncode,
-        ms=round((time.monotonic() - started) * 1000),
-    )
-    return result
-
-
-def ytdlp_problem(source: str | None, executable: str | None) -> str | None:
-    """Por que o yt-dlp em uso não vale, ou `None`: a regra do `doctor` e do `setup --check`.
-
-    Da venv (`source == "venv"`): o Python dela tem que importar o yt_dlp. Do PATH: vale,
-    salvo quando a venv gerenciada ficou pela metade (marcador sem `ready`), que o PATH
-    não substitui.
-    """
-    fix = _paths.cli_prefix_text() + " setup"
-    if source == "venv" and executable:
-        folder = Path(executable).parent.parent  # bin/yt-dlp → .venv
-        healthy = venv_health(folder).returncode == 0
-        root = folder.parent
-        marker = _paths.read_marker("venv", root)
-        if healthy and (marker is None or _paths.part_ready("venv", root)):
-            return None
-        if healthy:  # venv gerenciada que o `setup` refaz: pela metade ou sem o Python base
-            status = marker.get("status") if marker else None
-            return VENV_EXPECTED.format(status=status, fix=fix) if status != "ready" else VENV_BROKEN.format(fix=fix)
-        return VENV_PIN_BROKEN if os.environ.get("GB_VENV_PATH") else VENV_BROKEN.format(fix=fix)
-    if source == "path" and not _pinned_key():
-        root = _paths.runtime_target("venv").path.parent
-        marker = _paths.read_marker("venv", root)
-        if marker is not None and not _paths.part_ready("venv", root):
-            return VENV_EXPECTED.format(status=marker.get("status"), fix=fix)
-    return None
-
-
-def _part_state(part: str, root: Path) -> str:
-    """`ready` | `owned` (marcador nosso, qualquer outro estado) | `foreign_ok` | `foreign_broken` | `absent`.
-
-    A `.venv` só é `ready` se, além dos arquivos, o Python dela importa o yt_dlp.
-    """
-    folder = root / _paths.RUNTIME_PARTS[part]
-    probe = _PROBES[part]
-    if _paths.read_marker(part, root) is not None:
-        intact = _paths.part_ready(part, root) and not _is_link(folder) and probe(folder) is not None
-        if intact and (part != "venv" or venv_health(folder).returncode == 0):
-            return "ready"
-        return "owned"
-    # lenient: part absent: nothing to remove, and installing it there raises on a locked folder
-    if not os.path.lexists(folder):
-        return "absent"
-    return "foreign_ok" if probe(folder) is not None else "foreign_broken"
 
 
 def _remove_part(folder: Path) -> None:
@@ -531,80 +147,6 @@ def _free_space_warning(root: Path) -> str | None:
     return LOW_DISK.format(free=free // (1 << 20)) if free < LOW_DISK_BYTES else None
 
 
-def _classify_pip_code(result: StepResult) -> tuple[str, str]:
-    """`(código, mensagem)` da falha do pip: versão do Python (só se o pip disser), conflito, rede ou genérica."""
-    text = "\n".join(result.output).lower()
-    version_failed = PIP_VERSION_FAILED.format(version=_python_version())
-    if any(marker in text for marker in _VERSION_MARKERS):
-        return "pip_python_version", version_failed
-    if any(marker in text for marker in _CONFLICT_MARKERS):
-        return "pip_conflict", PIP_CONFLICT_FAILED
-    if any(marker in text for marker in _NETWORK_MARKERS):
-        return "pip_network", PIP_NETWORK_FAILED
-    if "no matching distribution" in text and any(hint in text for hint in _PYTHON_TAG_HINTS):
-        return "pip_python_version", version_failed
-    return "pip_failed", PIP_FAILED.format(code=result.returncode)
-
-
-def _classify_pip(result: StepResult) -> str:
-    """Mensagem para a falha do pip (o código do log vem de `_classify_pip_code`)."""
-    return _classify_pip_code(result)[1]
-
-
-def _python_version() -> str:
-    return ".".join(str(part) for part in sys.version_info[:3])
-
-
-class _StepFailedError(Exception):
-    """Um passo da montagem falhou; `message` vai para a pessoa, `result` para o `output_tail`.
-
-    `code` é o motivo estável para o log (`timeout`, `venv_failed`, `pip_network`, `npm_failed`…).
-    """
-
-    # No `event=op` (`logs.error_code`, `logs.outcome_for`): erro de operação, não bug, e uma falha,
-    # não uma recusa.
-    error_code = "INVALID_DATA"
-    outcome = "error"
-
-    def __init__(self, message: str, result: StepResult, code: str = "step_failed"):
-        super().__init__(message)
-        self.message = message
-        self.result = result
-        self.code = code
-
-
-def _log_step_end(label: str, kind: str, started: float, status: str, exit_code: int | None) -> None:
-    """`setup_step_end`: como o passo acabou e quanto levou; só o rótulo, nunca a linha de comando."""
-    logs.event(
-        _log,
-        logging.INFO if status == "ok" else logging.WARNING,
-        "setup_step_end",
-        step=label,
-        kind=kind,
-        status=status,
-        exit=exit_code,
-        ms=round((time.monotonic() - started) * 1000),
-    )
-
-
-def _step(argv: list[str], *, cwd: Path, label: str, kind: str, env: dict[str, str] | None = None) -> StepResult:
-    _progress(f"{label}…")
-    logs.event(_log, logging.INFO, "setup_step_start", step=label, kind=kind)
-    started = time.monotonic()
-    try:
-        result = run_step(
-            argv, cwd=cwd, env=env if env is not None else _install_env(), timeout=STEP_TIMEOUT_S[kind], label=label
-        )
-    except KeyboardInterrupt:
-        _log_step_end(label, kind, started, "interrupted", None)
-        raise
-    if result.returncode == TIMED_OUT:
-        _log_step_end(label, kind, started, "timeout", result.returncode)
-        raise _StepFailedError(STEP_TIMED_OUT.format(label=label, seconds=STEP_TIMEOUT_S[kind]), result, code="timeout")
-    _log_step_end(label, kind, started, "ok" if result.returncode == 0 else "error", result.returncode)
-    return result
-
-
 def _ytdlp_version(folder: Path, root: Path) -> str:
     ytdlp = _venv_ytdlp(folder)
     if ytdlp is None:
@@ -616,38 +158,47 @@ def _ytdlp_version(folder: Path, root: Path) -> str:
     return lines[-1]
 
 
+def _pip_hashed(python: str, root: Path, name: str, label: str) -> None:
+    """Instala a cópia gravada em `root` do arquivo de requisitos `name` dos dados; falha → `_StepFailedError`.
+
+    `--require-hashes`: o pip só instala o arquivo cujo sha256 está no arquivo; um hash que não confere (ou
+    falta) é a falha `pip_hash`. `--only-binary :all:`: só rodas, nunca sdist: o pip não confere hash do que
+    instala para construir um sdist, e a opção de linha de comando vence `PIP_NO_BINARY`/pip.conf. Plataforma
+    sem roda falha rápido, como falha do pip. O `--upgrade ytdlp` não usa nenhuma das duas.
+    """
+    recorded = root / name
+    effects.copy_file(_paths.data_path(name), recorded)
+    result = _step(
+        [python, "-m", "pip", "install", *_PIP_FLAGS, *_HASHED_FLAGS, "-r", str(recorded)],
+        cwd=root,
+        label=label,
+        kind="pip",
+    )
+    if result.returncode != 0:
+        code, message = _classify_pip_code(result, name)
+        raise _StepFailedError(message, result, code=code)
+
+
 def _build_venv(root: Path) -> str:
     """Monta a `.venv` em `root` (marcador `building` antes, `ready` por último); devolve a versão do yt-dlp."""
     folder = root / _paths.RUNTIME_PARTS["venv"]
-    _paths.write_marker("venv", root, "building")
+    runtime_parts.write_marker("venv", root, "building")
     _remove_part(folder)
     result = _step([sys.executable, "-m", "venv", str(folder)], cwd=root, label="venv", kind="venv")
     if result.returncode != 0:
         text = "\n".join(result.output).lower()
         message = ENSUREPIP_MISSING if "ensurepip" in text else VENV_FAILED.format(code=result.returncode)
         raise _StepFailedError(message, result, code="ensurepip_missing" if "ensurepip" in text else "venv_failed")
-    recorded = root / "requirements.txt"
-    effects.copy_file(_paths.data_path("requirements.txt"), recorded)
     python = str(_paths.venv_python(folder))
-    # `--require-hashes`: o pip só instala o arquivo cujo sha256 está no `requirements.txt`; um hash que
-    # não confere (ou falta) cai na falha do pip de sempre, sem código novo. `--only-binary :all:`: só rodas,
-    # nunca sdist: o pip não confere hash do que instala para construir um sdist, e a opção de linha de comando
-    # vence `PIP_NO_BINARY`/pip.conf. Plataforma sem roda falha rápido, também como falha do pip.
-    # O `--upgrade ytdlp` não usa nenhuma das duas.
-    result = _step(
-        [python, "-m", "pip", "install", *_PIP_FLAGS, *_HASHED_FLAGS, "-r", str(recorded)],
-        cwd=root,
-        label="pip",
-        kind="pip",
-    )
-    if result.returncode != 0:
-        code, message = _classify_pip_code(result)
-        raise _StepFailedError(message, result, code=code)
+    # O pip que o `venv` traz carrega um certifi antigo: o primeiro download é o pip fixado em
+    # `requirements-bootstrap.txt`, com hash, antes do conjunto do runtime.
+    _pip_hashed(python, root, "requirements-bootstrap.txt", "pip-bootstrap")
+    _pip_hashed(python, root, "requirements.txt", "pip")
     result = _step([python, "-c", "import yt_dlp, yt_dlp_ejs"], cwd=root, label="probe", kind="probe")
     if result.returncode != 0:
         raise _StepFailedError(PROBE_FAILED, result, code="probe_failed")
     version = _ytdlp_version(folder, root)
-    _paths.write_marker("venv", root, "ready")
+    runtime_parts.write_marker("venv", root, "ready")
     return version
 
 
@@ -663,7 +214,7 @@ def _build_tools(root: Path, npm: str) -> str:
     o `npm ci` instala exatamente o que o lock fixa, sem rodar scripts de pacote.
     """
     folder = root / _paths.RUNTIME_PARTS["tools"]
-    _paths.write_marker("tools", root, "building")
+    runtime_parts.write_marker("tools", root, "building")
     _remove_part(folder)
     effects.mkdir(folder)
     for name in _TOOLS_FILES:
@@ -679,7 +230,7 @@ def _build_tools(root: Path, npm: str) -> str:
     version = _last_line(result)
     if result.returncode != 0 or version is None:
         raise _StepFailedError(TOOLS_PROBE_FAILED, result, code="tools_probe_failed")
-    _paths.write_marker("tools", root, "ready")
+    runtime_parts.write_marker("tools", root, "ready")
     return version
 
 
@@ -694,10 +245,6 @@ def _fail(entry: dict, root: Path, exc: _StepFailedError) -> dict:
     logs.event(_log, logging.WARNING, "setup_part_failed", part=part, reason=exc.code, exit=exc.result.returncode)
     _progress(f"falhou: {exc.message}")
     return entry
-
-
-def _pinned_key() -> str | None:
-    return next((key for key in _VENV_PINS if os.environ.get(key)), None)
 
 
 def _log_part(entry: dict, started: float) -> None:
@@ -797,7 +344,7 @@ def _upgrade(entry: dict) -> dict:
     except _StepFailedError:
         upgrade["previous"] = None
     earlier = (_paths.read_marker("venv", root) or {}).get("upgraded")
-    _paths.write_marker("venv", root, "upgrading")
+    runtime_parts.write_marker("venv", root, "upgrading")
     argv = [str(_paths.venv_python(folder)), "-m", "pip", "install", *_PIP_FLAGS, "--upgrade", *_UPGRADE_SPECS]
     try:
         result = _step(argv, cwd=root, label="upgrade", kind="pip")
@@ -822,12 +369,12 @@ def _upgrade(entry: dict) -> dict:
     entry["version"] = version
     upgrade["version"] = version
     if version == upgrade["previous"]:
-        _paths.write_marker("venv", root, "ready", {"upgraded": earlier} if earlier else None)
+        runtime_parts.write_marker("venv", root, "ready", {"upgraded": earlier} if earlier else None)
         upgrade["status"] = "unchanged"
         upgrade["warnings"].append(UPGRADE_UNCHANGED.format(version=version))
         _progress(upgrade["warnings"][-1])
         return upgrade
-    _paths.write_marker("venv", root, "ready", {"upgraded": {"yt-dlp": version, "at": now()}})
+    runtime_parts.write_marker("venv", root, "ready", {"upgraded": {"yt-dlp": version, "at": now()}})
     upgrade["status"] = "upgraded"
     return upgrade
 
@@ -844,7 +391,7 @@ def ensure_venv(upgrade: bool = False) -> tuple[dict, dict | None]:
         _log_part(entry, started)
         return entry, None
     if entry["sha"] is None:
-        entry.update(status="skipped", error=commands.data_fix())
+        entry.update(status="skipped", error=readiness.data_fix())
         logs.event(_log, logging.INFO, "setup_part_skipped", part="venv", reason="data_missing")
         _log_part(entry, started)
         return entry, None
@@ -898,7 +445,7 @@ def ensure_tools() -> dict:
     entry = _entry("tools")
     started = time.monotonic()
     if entry["sha"] is None:
-        entry.update(status="skipped", error=commands.data_fix())
+        entry.update(status="skipped", error=readiness.data_fix())
         logs.event(_log, logging.INFO, "setup_part_skipped", part="tools", reason="data_missing")
         _log_part(entry, started)
         return entry
@@ -982,7 +529,7 @@ def install(upgrade: str | None = None) -> dict:
 
 def _step_names():
     """(id, executável) na ordem: runtime primeiro, depois o sistema na ordem do `doctor`."""
-    names = [(STEP_IDS.get(name, name), name) for name in commands.REQUIRED_EXECUTABLES]
+    names = [(STEP_IDS.get(name, name), name) for name in readiness.REQUIRED_EXECUTABLES]
     first = sorted((pair for pair in names if pair[0] in RUNTIME_STEPS), key=lambda p: RUNTIME_STEPS.index(p[0]))
     return first + [pair for pair in names if pair[0] not in RUNTIME_STEPS]
 
@@ -993,8 +540,8 @@ def _resolved():
     O do yt-dlp leva um terceiro item: `{"source", "found", "problem"}` do executável em
     uso (`social.ytdlp_in_use`), mesmo quando ele não vale.
     """
-    overrides, pin_problems, social, present = commands.readiness_probe()
-    resolved = commands.doctor_resolved(overrides)
+    overrides, pin_problems, social, present = readiness.readiness_probe()
+    resolved = readiness.doctor_resolved(overrides)
     broken = {_PIN_TOOLS.get(problem["item"]): problem["note"] for problem in pin_problems}
     found: dict[str, tuple] = {
         step: (resolved.get(name) if present.get(name) and name not in broken else None, broken.get(name))
@@ -1006,15 +553,15 @@ def _resolved():
 
 
 def _data_step():
-    missing, unreadable = commands.data_problems()
+    missing, unreadable = readiness.data_problems()
     if not missing and not unreadable:
         return {"id": "data", "ok": True, "found": str(_paths.data_root()), "commands": []}
     return {
         "id": "data",
         "ok": False,
         "found": None,
-        "commands": [commands.data_fix()] if missing else [],
-        "note": ". ".join(commands.data_problem_notes(missing, unreadable)),
+        "commands": [readiness.data_fix()] if missing else [],
+        "note": ". ".join(readiness.data_problem_notes(missing, unreadable)),
     }
 
 
@@ -1047,7 +594,7 @@ def check() -> dict:
                 entry["note"] = YTDLP_FROM_PATH
         else:
             entry["commands"] = []
-            entry["note"] = commands.SYSTEM_TOOLS
+            entry["note"] = readiness.SYSTEM_TOOLS
             entry["hint"] = system_hint(name)
         steps.append(entry)
     steps.append(_data_step())

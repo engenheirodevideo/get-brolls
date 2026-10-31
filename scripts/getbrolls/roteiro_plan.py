@@ -12,6 +12,7 @@ import json
 
 from . import assets
 from .roteiro import ASPECT_TO_FORMAT, canonical, fold, spoken_words, take_problem
+from .sdk import schemas
 
 BRAND_WORDS = ("logo", "marca", "cta")
 # Lado esquerdo do SPLIT é sempre `-a`, o direito sempre `-b`: o id não muda quando
@@ -21,8 +22,16 @@ _LAYER_KIND = {"SFX": "sfx", "MUSICA": "musica", "COMP": "composicao"}
 # Versão da forma do plano (exporters) e da entrada dos hashes: mudar a forma sobe o número.
 # A forma 2 acrescenta `words`, `layout.full_role` e `layout.slots`; a 3 troca `meta.direcao` por
 # `meta.estilo`. O hash não muda.
-PLAN_VERSION = 3
 HASH_VERSION = 1
+
+
+def plan_version():
+    """A versão corrente da forma do plano, lida do schema do plano de export.
+
+    Vem de `plan_version.default`; na falta dele, o piso."""
+    return schemas.version("export_plan", "plan_version")
+
+
 META_KEYS = ("aspecto", "legenda", "duracao_alvo_s", "genero", "tema", "cliente", "estilo")
 # Papel da vaga única de `[FULL: x]` por `full_role`.
 _FULL_SLOT = {"beat": "broll", "marca": "brand", "cartela": "card"}
@@ -297,7 +306,7 @@ def scene_plan(project, doc):
         scenes.append(_scene_row(project, scene, components, beat_ids))
     total = round(sum(s.duration_s for s in doc.scenes), 1)
     return {
-        "plan_version": PLAN_VERSION, "meta": {key: doc.meta.get(key) for key in META_KEYS},
+        "plan_version": plan_version(), "meta": {key: doc.meta.get(key) for key in META_KEYS},
         "scenes": scenes, "beats": beats, "total_s": total, "warnings": warnings, "problems": problems,
     }  # fmt: skip
 
@@ -305,6 +314,20 @@ def scene_plan(project, doc):
 def _format_label(value):
     """`em "reels"`; sem valor, `com o formato não definido` (nunca "None" na mensagem)."""
     return f'em "{value}"' if value else "com o formato não definido"
+
+
+def brief_delivery_format(brief_data):
+    """`video.delivery.format` do BRIEF.md; `ValueError` (INVALID_DATA) quando um nível do caminho não é objeto."""
+    node = brief_data
+    for label, key in (("o bloco json", "video"), ('"video"', "delivery"), ('"video.delivery"', "format")):
+        if not isinstance(node, dict):
+            raise ValueError(  # noqa: TRY004 - dado inválido é ValueError (INVALID_DATA)
+                f"BRIEF.md não pôde ser lido para conferir o aspecto: {label} não é um objeto."
+            )
+        node = node.get(key)
+        if node is None:
+            return None
+    return node
 
 
 def format_problems(project, doc, rules, brief_data=None):
@@ -332,7 +355,7 @@ def aspect_problems(meta, rules, brief_data=None):
             "--force --project PROJETO` ou ajuste o aspecto do roteiro."
         )
     if brief_data is not None:
-        delivered = ((brief_data.get("video") or {}).get("delivery") or {}).get("format")
+        delivered = brief_delivery_format(brief_data)
         if delivered != expected:
             problems.append(
                 f"O roteiro está em {meta['aspecto']} ({expected}) e o BRIEF.md entrega {_format_label(delivered)}. "

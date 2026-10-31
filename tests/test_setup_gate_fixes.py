@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 from _symlink import needs_symlink
 from test_setup_install import PYTHON_LAYOUT, YTDLP_LAYOUT, _Setup, _touch
 
-from getbrolls import _paths, bootstrap, cli, runtime
+from getbrolls import _paths, bootstrap, cli, file_locks, readiness, runtime, runtime_parts
 from getbrolls.errors import LockedError, UsageError
 
 
@@ -74,7 +74,10 @@ class BrokenVenvTests(_Gate):
         self.runner.calls.clear()
         result = self.install()
         self.assertEqual("installed", self.venv_entry(result)["status"])
-        self.assertEqual(["venv", "pip", "probe", "version"], self.labels(("venv", "pip", "probe", "version")))
+        self.assertEqual(
+            ["venv", "pip-bootstrap", "pip", "probe", "version"],
+            self.labels(("venv", "pip-bootstrap", "pip", "probe", "version")),
+        )
         self.assertTrue(_paths.part_ready("venv", self.root()))
 
 
@@ -162,7 +165,7 @@ class UpgradeReportingTests(_Gate):
     def setUp(self):
         super().setUp()
         # O pacote de mentira só tem os arquivos de dependência: o passo `data` não decide aqui.
-        active = patch.object(bootstrap.commands, "data_problems", return_value=([], []))
+        active = patch.object(readiness, "data_problems", return_value=([], []))
         active.start()
         self.addCleanup(active.stop)
 
@@ -224,12 +227,12 @@ class LockAndLinkTests(_Gate):
         root = self.root()
         root.mkdir(parents=True)
         with (root / bootstrap.LOCK_NAME).open("a+", encoding="utf-8") as held:
-            runtime._acquire_lock(held)  # pylint: disable=protected-access
+            file_locks._acquire_lock(held)  # pylint: disable=protected-access
             try:
                 with self.assertRaises(LockedError) as caught:
                     self.install()
             finally:
-                runtime._release_lock(held)  # pylint: disable=protected-access
+                file_locks._release_lock(held)  # pylint: disable=protected-access
         self.assertEqual("LOCKED", runtime.error_code_for(caught.exception))
         self.assertEqual(1, runtime.exit_code_for("LOCKED"))
 
@@ -272,8 +275,8 @@ class KillTreeTests(unittest.TestCase):
         for error in (subprocess.TimeoutExpired("taskkill", 30), OSError("taskkill ausente")):
             with (
                 self.subTest(error=type(error).__name__),
-                patch.object(bootstrap.os, "name", "nt"),
-                patch.object(bootstrap.subprocess, "run", side_effect=error),
+                patch.object(os, "name", "nt"),
+                patch.object(subprocess, "run", side_effect=error),
             ):
                 bootstrap._kill_tree(proc)  # pylint: disable=protected-access
             proc.kill.assert_called()
@@ -306,13 +309,13 @@ class CheckAgreesWithSetupTests(_Gate):
 
     def test_marker_left_at_upgrading_with_a_working_venv(self):
         self.install()
-        _paths.write_marker("venv", self.root(), "upgrading")
+        runtime_parts.write_marker("venv", self.root(), "upgrading")
         self.assert_not_ready()
         self.assertEqual("installed", self.venv_entry(self.install())["status"])
 
     def test_marker_left_at_building(self):
         self.install()
-        _paths.write_marker("venv", self.root(), "building")
+        runtime_parts.write_marker("venv", self.root(), "building")
         self.assert_not_ready()
         self.assertEqual("installed", self.venv_entry(self.install())["status"])
 

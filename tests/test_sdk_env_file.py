@@ -20,7 +20,7 @@ from _paths import ROOT
 from _plugin_pins import pin_plugins
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
-from getbrolls import config
+from getbrolls import config, env_loader
 from getbrolls.sdk import loader
 from getbrolls.sdk.api import PluginApi
 from getbrolls.sdk.registry import Registry
@@ -46,8 +46,8 @@ class PluginEnvKeysTests(LoaderTestCase):
         path = self.env_file("BANCO_HTTP_TOKEN=tk_teste_123\nGB_LIBRARY=off\n")
         with patch.dict(os.environ, {}):
             os.environ.pop("BANCO_HTTP_TOKEN", None)
-            config.load_env(path)
-            self.addCleanup(config.load_env, self.work / "nao-existe.env")
+            env_loader.load_env(path)
+            self.addCleanup(env_loader.load_env, self.work / "nao-existe.env")
             # Chega ao plugin por api.env, nunca ao ambiente do processo.
             self.assertNotIn("BANCO_HTTP_TOKEN", os.environ)
             self.assertEqual("tk_teste_123", config.plugin_env_value("banco_http", "BANCO_HTTP_TOKEN"))
@@ -64,7 +64,7 @@ class PluginEnvKeysTests(LoaderTestCase):
     def test_unknown_key_still_errors(self):
         path = self.env_file("BANCO_HTTP_TOKEN=x\nNAO_DECLARADA=1\n")
         with patch.dict(os.environ, {}), self.assertRaises(ValueError) as caught:
-            config.load_env(path)
+            env_loader.load_env(path)
         self.assertIn("variável desconhecida na linha 2: NAO_DECLARADA", str(caught.exception))
         err = run_cli("--env-file", str(path), "providers", expect=1, env={"GB_HOME": str(self.home)})
         self.assertIn("NAO_DECLARADA", err["error"])
@@ -89,20 +89,20 @@ class PluginEnvKeysTests(LoaderTestCase):
         )
         refused = ("HTTPS_PROXY", "SSLKEYLOGFILE", "NODE_OPTIONS", "OUTRO_TOKEN", "PYTHONPATH", "GB_LIBRARY_X")
         self.declare(*refused)
-        self.assertEqual(frozenset({"BANCO_HTTP_TOKEN", "OUTRO_TOKEN"}), config.plugin_env_keys())
+        self.assertEqual(frozenset({"BANCO_HTTP_TOKEN", "OUTRO_TOKEN"}), env_loader.plugin_env_keys())
         for key in refused:
             if key == "OUTRO_TOKEN":
                 continue
             with self.subTest(key=key):
                 path = self.env_file(f"BANCO_HTTP_TOKEN=ok\n{key}=x\n")
                 with patch.dict(os.environ, {}), self.assertRaises(ValueError) as caught:
-                    config.load_env(path)
+                    env_loader.load_env(path)
                 self.assertIn(key, str(caught.exception))
                 self.assertIn("espaço de nomes", str(caught.exception))
         path = self.env_file("BANCO_HTTP_TOKEN=ok\nOUTRO_TOKEN=y\n")
         with patch.dict(os.environ, {}):
-            config.load_env(path)
-            self.addCleanup(config.load_env, self.work / "nao-existe.env")
+            env_loader.load_env(path)
+            self.addCleanup(env_loader.load_env, self.work / "nao-existe.env")
             self.assertNotIn("OUTRO_TOKEN", os.environ)
             self.assertEqual("y", config.plugin_env_value("outro", "OUTRO_TOKEN"))
 
@@ -147,8 +147,8 @@ class PluginEnvKeysTests(LoaderTestCase):
         path = self.env_file("BANCO_HTTP_TOKEN=tk_teste_123\n")
         with patch.dict(os.environ, {}):
             os.environ.pop("BANCO_HTTP_TOKEN", None)
-            config.load_env(path)
-            self.addCleanup(config.load_env, self.work / "nao-existe.env")
+            env_loader.load_env(path)
+            self.addCleanup(env_loader.load_env, self.work / "nao-existe.env")
             self.assertTrue(config.env_is_set("BANCO_HTTP_TOKEN", "banco_http"))
             self.assertFalse(config.env_is_set("BANCO_HTTP_TOKEN", "banco"))
             self.assertFalse(config.env_is_set("BANCO_HTTP_TOKEN"))
@@ -162,7 +162,7 @@ class PluginEnvKeysTests(LoaderTestCase):
         shutil.rmtree(self.home / "plugins" / "banco_http")
         path = self.env_file("BANCO_HTTP_TOKEN=tk\n")
         with patch.dict(os.environ, {}), self.assertRaises(ValueError) as caught:
-            config.load_env(path)
+            env_loader.load_env(path)
         message = str(caught.exception)
         self.assertIn("banco_http", message)
         self.assertIn("Tire a linha do .env", message)
@@ -221,7 +221,7 @@ class PluginEnvNeverExportedTests(LoaderTestCase):
         super().setUp()
         self.work = Path(tempfile.mkdtemp(prefix="gb-env-"))
         self.addCleanup(shutil.rmtree, self.work, ignore_errors=True)
-        self.addCleanup(config.load_env, self.work / "nao-existe.env")
+        self.addCleanup(env_loader.load_env, self.work / "nao-existe.env")
 
     def plugin(self, plugin_id, env):
         manifest = {**MANIFEST, "id": plugin_id, "contributes": {}, "permissions": {"network": [], "env": env}}
@@ -238,7 +238,7 @@ class PluginEnvNeverExportedTests(LoaderTestCase):
         with patch.dict(os.environ, cleared):
             for key in keys:
                 os.environ.pop(key)
-            config.load_env(path)
+            env_loader.load_env(path)
             for key in keys:
                 with self.subTest(key=key):
                     self.assertNotIn(key, os.environ)
@@ -252,7 +252,7 @@ class PluginEnvNeverExportedTests(LoaderTestCase):
     def test_real_environment_is_the_persons_choice(self):
         self.plugin("xdg", ["XDG_TOKEN"])
         with patch.dict(os.environ, {"XDG_TOKEN": "do-shell"}):
-            config.load_env(self.work / "nao-existe.env")
+            env_loader.load_env(self.work / "nao-existe.env")
             self.assertEqual("do-shell", api_for("xdg", ["XDG_TOKEN"]).env("XDG_TOKEN"))
 
     def test_shell_value_wins_over_env_file_like_core_keys(self):
@@ -261,7 +261,7 @@ class PluginEnvNeverExportedTests(LoaderTestCase):
         path.write_text("BANCO_HTTP_TOKEN=do-env\n", encoding="utf-8")
         api = api_for("banco_http", ["BANCO_HTTP_TOKEN"])
         with patch.dict(os.environ, {"BANCO_HTTP_TOKEN": "do-shell"}):
-            config.load_env(path)
+            env_loader.load_env(path)
             self.assertEqual("do-shell", api.env("BANCO_HTTP_TOKEN"))
         with patch.dict(os.environ, {"BANCO_HTTP_TOKEN": ""}):
             # Vazio no shell conta como não definido: vale o do .env.

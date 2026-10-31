@@ -5,5 +5,5 @@ da CI) falha quando uma pasta mudou e este arquivo não foi gerado de novo.
 """
 
 PINS = {
-    "hyperframes": "376af668f2ed2e78e9e9e28ff85fbd10d07d3bb8a701be7bfee8d2693647306e",
+    "hyperframes": "eebd8b30760f0c58f3a0e2cd94dfdaf90ca0920a745800d185a92bfa400ee675",
 }

@@ -1,12 +1,17 @@
-# pylint: disable=line-too-long  # tabela em markdown: cada linha da tabela não quebra sem virar outro valor
 """Mídia dentro de uma pasta de export: posta pelo core, por id lógico, sem nunca mudar a fonte.
 
-| Fonte | Método |
-|---|---|
-| clipe (`broll/` no layout 1, `brolls/clips/` no 0) **congelado** (somente leitura, como o `deliver` deixa) | hardlink, cópia como alternativa (`delivery.link_or_copy`, sem symlink e sem chmod) |
-| clipe (`broll/` no layout 1, `brolls/clips/` no 0) ainda **gravável** | clone ou cópia, o mesmo caminho de A-ROLL e componentes: nunca hardlink, para o original nunca ficar exposto a uma escrita através do export |
-| mídia da pessoa (`aroll/`, `assets/`, biblioteca pessoal) | clone (`cp -c` no macOS, `cp --reflink=auto` no Linux) ou `shutil.copy2`; nunca hardlink |
-| mídia de resolvedor de plugin | cópia pelo descritor, pela função `copy_plugin(source, dest)` que o chamador injeta |
+Como cada fonte é posta:
+
+- clipe (`broll/` no layout 1, `brolls/clips/` no 0) **congelado** (somente leitura, como o
+  `deliver` deixa): hardlink, cópia como alternativa (`delivery_files.link_or_copy`, sem
+  symlink e sem chmod);
+- clipe (`broll/` no layout 1, `brolls/clips/` no 0) ainda **gravável**: clone ou cópia, o
+  mesmo caminho de A-ROLL e componentes; nunca hardlink, para o original nunca ficar exposto
+  a uma escrita através do export;
+- mídia da pessoa (`aroll/`, `assets/`, biblioteca pessoal): clone (`cp -c` no macOS,
+  `cp --reflink=auto` no Linux) ou `shutil.copy2`; nunca hardlink;
+- mídia de resolvedor de plugin: cópia pelo descritor, pela função `copy_plugin(source, dest)`
+  que o chamador injeta.
 
 Antes de pôr, a fonte é conferida de novo (`lstat`): mesmo `st_dev`/`st_ino`/tamanho
 (e data, quando o plano a tem), arquivo regular e não link. Depois de pôr, confere de
@@ -19,7 +24,6 @@ alguém pode destravar o clipe (`chmod u+w`, ACL do macOS). Por isso o `place` r
 congelado, cai para clone/cópia em vez de ligar o original a um nome gravável dentro
 do export.
 """
-# pylint: enable=line-too-long
 
 import contextlib
 import os
@@ -29,7 +33,7 @@ import subprocess
 import sys
 from pathlib import Path, PurePosixPath
 
-from . import delivery, effects
+from . import delivery_files, effects
 
 # Método que com certeza não duplica bytes em disco: não conta nos MB copiados do resumo.
 # O clone (`cp -c`, `cp --reflink=auto`) conta o tamanho inteiro: num disco que não clona
@@ -211,7 +215,9 @@ def _place(source, dest, copy_plugin):
         # original nunca fica exposto a uma escrita através do nome do export.
         kind = "clone"
     if kind == "hardlink":
-        method = delivery.link_or_copy(source["path"], dest, read_only=False, allow_symlink=False, editable_copy=False)
+        method = delivery_files.link_or_copy(
+            source["path"], dest, read_only=False, allow_symlink=False, editable_copy=False
+        )
     else:
         method = clone_or_copy(source["path"], dest)
     _confirm(source, dest, method)

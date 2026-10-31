@@ -17,10 +17,11 @@ from collections.abc import Callable
 
 FIELD = "schema_version"
 SCHEMA_FIELD = "schema"
+FIRST_VERSION = 1  # a primeira versão, a que vale quando o campo falta
 _SCHEMA = re.compile(r"getbrolls\.([a-z][a-z0-9_]*)/([1-9][0-9]*)")
 
 
-def read_version(data: dict, label: str, supported: int = 1, invalid: str | None = None) -> int:
+def read_version(data: dict, label: str, supported: int, invalid: str | None = None) -> int:
     """Versão declarada em `data` (ausente = 1); `ValueError` quando não dá para ler.
 
     `label` nomeia o arquivo na frase de versão mais nova. `invalid` substitui a
@@ -28,7 +29,7 @@ def read_version(data: dict, label: str, supported: int = 1, invalid: str | None
     incompatível; a frase de versão mais nova é sempre a mesma.
     """
     if FIELD not in data:
-        return 1
+        return FIRST_VERSION
     value = data[FIELD]
     # `type(...) is int`: `True == 1` e `1.0 == 1` não podem passar pelo inteiro 1.
     if type(value) is not int or value < 1:
@@ -42,12 +43,12 @@ def read_version(data: dict, label: str, supported: int = 1, invalid: str | None
     return value
 
 
-def stamp(data: dict, version: int = 1) -> dict:
+def stamp(data: dict, version: int) -> dict:
     """Cópia rasa de `data` com `schema_version` = `version` como primeira chave."""
     return {FIELD: version, **{k: v for k, v in data.items() if k != FIELD}}
 
 
-def schema_name(family: str, version: int = 1) -> str:
+def schema_name(family: str, version: int) -> str:
     """Valor do campo `schema` de uma família: `getbrolls.<família>/<versão>`."""
     return f"getbrolls.{family}/{version}"
 
@@ -55,7 +56,7 @@ def schema_name(family: str, version: int = 1) -> str:
 def read_schema(
     data: dict,
     family: str,
-    supported: int = 1,
+    supported: int,
     label: str | None = None,
     invalid: str | Callable[[], Exception] | None = None,
 ) -> int:
@@ -70,7 +71,7 @@ def read_schema(
     """
     label = label or f"getbrolls.{family}"
     if SCHEMA_FIELD not in data:
-        return 1
+        return FIRST_VERSION
     value = data[SCHEMA_FIELD]
     found = _SCHEMA.fullmatch(value) if isinstance(value, str) else None
     if found is None or found.group(1) != family:
@@ -78,7 +79,7 @@ def read_schema(
             raise invalid()
         raise ValueError(
             invalid
-            or f"{label} é incompatível: {SCHEMA_FIELD} tem que ser {schema_name(family, 1)!r} "
+            or f"{label} é incompatível: {SCHEMA_FIELD} tem que ser {schema_name(family, FIRST_VERSION)!r} "
             f"ou uma versão maior da mesma família (veio {value!r})."
         )
     version = int(found.group(2))
@@ -90,6 +91,6 @@ def read_schema(
     return version
 
 
-def stamp_schema(data: dict, family: str, version: int = 1) -> dict:
+def stamp_schema(data: dict, family: str, version: int) -> dict:
     """Cópia rasa de `data` com `schema` = `getbrolls.<family>/<version>` como primeira chave."""
     return {SCHEMA_FIELD: schema_name(family, version), **{k: v for k, v in data.items() if k != SCHEMA_FIELD}}

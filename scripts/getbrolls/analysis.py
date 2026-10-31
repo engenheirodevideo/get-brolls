@@ -40,7 +40,7 @@ from . import effects, labels, ledger, logs, media, runtime, versioning, vocab
 from ._paths import strict_is_dir, strict_lexists
 from .errors import PrerequisiteError
 from .models import now
-from .sdk import files
+from .sdk import files, schemas
 
 _log = logs.get("analysis")
 
@@ -285,7 +285,7 @@ def _read_index(project: Path) -> dict | None:
 
 
 def _new_index() -> dict:
-    return versioning.stamp_schema({"updated": now(), "media": []}, "analysis_index")
+    return versioning.stamp_schema({"updated": now(), "media": []}, "analysis_index", schemas.version("analysis_index"))
 
 
 def _write_index(project: Path, index: dict) -> None:
@@ -470,6 +470,7 @@ def _media_doc(rel, sha, key, role, probed) -> dict:
             **facts,
         },
         "media",
+        schemas.version("media"),
     )
     problems = contract.check_doc(doc, "media")
     if problems:
@@ -691,7 +692,9 @@ def write_component(project, media_id, name, doc, *, producer) -> Path:
     if not isinstance(body, dict):
         raise _refused("not_an_object", ValueError(f"{rel} tem que ser um objeto JSON."))
     header = {"media_id": media_id, "producer": dict(producer), "created": now(), "time_unit": "s"}
-    full = versioning.stamp_schema({**{k: v for k, v in body.items() if k not in _FORCED}, **header}, name)
+    full = versioning.stamp_schema(
+        {**{k: v for k, v in body.items() if k not in _FORCED}, **header}, name, schemas.version(name)
+    )
     problems = contract.check_doc(full, name)
     if problems:
         raise _contract_refusal(rel, problems)
@@ -758,7 +761,9 @@ def write_markers(project, producer, markers) -> Path:
             ) from None
         kept = [m for m in (current or {}).get("markers", []) if m["producer"]["tool"] != tool]
         doc = versioning.stamp_schema(
-            {"updated": now(), "time_unit": "s", "markers": sorted(kept + fresh, key=_marker_order)}, "markers"
+            {"updated": now(), "time_unit": "s", "markers": sorted(kept + fresh, key=_marker_order)},
+            "markers",
+            schemas.version("markers"),
         )
         problems = contract.check_doc(doc, "markers")
         if problems:

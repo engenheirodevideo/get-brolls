@@ -4,7 +4,8 @@ import json
 from pathlib import Path
 
 from .. import __version__, _paths, effects, labels
-from .contracts import CORE, NAME_RE, RESERVED_IDS, SDK_API, official_claim
+from . import schemas
+from .contracts import CORE, NAME_RE, RESERVED_IDS, official_claim
 from .manifest import MANIFEST_NAME, reserved_id_message
 
 # Tipos que o `new` sabe gerar: um subconjunto dos que o SDK carrega.
@@ -185,7 +186,7 @@ def _manifest(plugin_id, kind):
         "name": f"Plugin {plugin_id}",
         "description": "Descreva em uma frase o que este plugin traz.",
         "version": "0.1.0",
-        "sdk_api": SDK_API,
+        "sdk_api": schemas.version("plugin_manifest"),
         "requires_getbrolls": f">={major}.{minor},<{major + 1}",
         "entry": "plugin.py",
         "contributes": contributes,

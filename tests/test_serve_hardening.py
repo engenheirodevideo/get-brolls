@@ -30,7 +30,7 @@ from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys
 from _posix import without_nofollow
 from _symlink import needs_symlink
 
-from getbrolls import config, serve
+from getbrolls import config, env_loader, serve
 
 
 def _project_with_review(root):
@@ -598,7 +598,7 @@ class BackgroundDoesNotReloadSecretsTests(unittest.TestCase):
     def load(self, command, folder):
         """O que o despacho do comando faz com o `.env` (`load_environment`); devolve o que o ambiente ficou tendo."""
         args = Namespace(command=command, project=None, env_file=str(self.write_env(folder)), profile=None)
-        config.load_environment(args, warn=False)
+        env_loader.load_environment(args, warn=False)
         return {key: os.environ.get(key) for key in (*self.SECRETS, "GB_GIF_WIDTH")}
 
     def test_the_marker_is_the_one_the_parent_puts_in_the_child_environment(self):
@@ -616,10 +616,10 @@ class BackgroundDoesNotReloadSecretsTests(unittest.TestCase):
 
     def test_load_env_withholds_only_when_asked(self):
         with tempfile.TemporaryDirectory() as tmp, self.clean_environment():
-            applied = config.load_env(self.write_env(tmp), withhold_secrets=True)
+            applied = env_loader.load_env(self.write_env(tmp), withhold_secrets=True)
             self.assertEqual({"GB_GIF_WIDTH", "GB_LOG_LEVEL"}, set(applied))
         with tempfile.TemporaryDirectory() as tmp, self.clean_environment():
-            applied = config.load_env(self.write_env(tmp))
+            applied = env_loader.load_env(self.write_env(tmp))
             self.assertTrue(set(self.SECRETS) <= set(applied))
 
     def test_a_foreground_command_with_the_variable_exported_still_reads_the_keys(self):

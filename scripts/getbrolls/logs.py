@@ -25,10 +25,10 @@ logger with `logs.get(__name__.rsplit(".", 1)[-1])` and log through
 """
 
 # pylint: disable=broad-exception-caught,too-few-public-methods,no-else-raise,cyclic-import
-# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0). O ciclo
-# (getbrolls.logs <-> getbrolls.runtime) já existia antes da 2.6.0: `runtime.py`
-# importa `logs` tardiamente (dentro de função) exatamente para quebrar esse
-# ciclo em tempo de execução.
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0). Os ciclos
+# (getbrolls.logs <-> getbrolls.labels, getbrolls.logs <-> getbrolls.file_locks) têm a volta dentro de
+# função (`labels` acha a pasta do log, `file_locks.lock_busy` escreve a linha `lock_busy`): quebram em
+# tempo de execução e ficam como pares aceitos em `tests/import_rules/`.
 
 import contextlib
 import contextvars
@@ -44,7 +44,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from . import _paths, labels, runtime
+from . import _paths, error_codes, file_locks, labels, private_files, redaction
 from .errors import Refusal
 
 try:
@@ -139,11 +139,11 @@ def _private_folder(folder):
     # effect-exempt: getbrolls.log handler itself; an op line from inside it would recurse into it
     folder.parent.mkdir(mode=_PRIVATE_DIR_MODE, parents=True, exist_ok=True)
     if made:
-        runtime.make_private(folder.parent, record=False)  # no line: the handler cannot log itself
+        private_files.make_private(folder.parent, record=False)  # no line: the handler cannot log itself
     with contextlib.suppress(FileExistsError):
         # effect-exempt: getbrolls.log handler itself; an op line from inside it would recurse into it
         folder.mkdir(mode=_PRIVATE_DIR_MODE)
-        runtime.make_private(folder, record=False)
+        private_files.make_private(folder, record=False)
     if os.name == "nt" or not hasattr(os, "O_DIRECTORY"):
         info = os.lstat(folder)
         if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode) or getattr(info, "st_reparse_tag", 0):
@@ -183,7 +183,7 @@ def _open_private(path):
         if os.name != "nt" and info.st_uid == os.geteuid() and stat.S_IMODE(info.st_mode) != _PRIVATE_FILE_MODE:
             os.fchmod(fd, _PRIVATE_FILE_MODE)
         if info.st_size == 0:  # new (or still empty): the private ACL on Windows, before the first line
-            runtime.make_private(path, record=False)
+            private_files.make_private(path, record=False)
         # effect-exempt: getbrolls.log handler itself; an op line from inside it would recurse into it
         return os.fdopen(fd, "a", encoding="utf-8", newline="\n")
     except BaseException:
@@ -295,7 +295,7 @@ class _PrivateFileHandler(logging.FileHandler):
         if not self.private_home and fcntl is not None:
             return _folder_lock(folder, ROTATION_LOCK_WAIT_S)
         # The installation log, and the project log where there is no `flock` (Windows).
-        return runtime.try_lock(folder / ROTATION_LOCK, ROTATION_LOCK_WAIT_S)
+        return file_locks.try_lock(folder / ROTATION_LOCK, ROTATION_LOCK_WAIT_S)
 
     def _full(self, stream, line):
         size = os.fstat(stream.fileno()).st_size
@@ -339,7 +339,7 @@ class RedactingFilter(logging.Filter):
             message = str(record.msg)
         message = labels.bounded(message)
         with contextlib.suppress(Exception):
-            message = runtime.scrub_home(labels.text(runtime.redact(message, limit=None)))
+            message = redaction.scrub_home(labels.text(redaction.redact(message, limit=None)))
             message = labels.outside(message)
         record.msg = message[:MAX_MESSAGE_CHARS]
         record.args = ()
@@ -369,7 +369,7 @@ def _format_value(value):
     # Redact the whole value (secrets, then folders), then cut: never the other way around.
     text = labels.bounded(text)
     with contextlib.suppress(Exception):  # logging must never break a command
-        text = labels.outside(runtime.scrub_home(labels.text(runtime.redact(text, limit=None))))
+        text = labels.outside(redaction.scrub_home(labels.text(redaction.redact(text, limit=None))))
     if len(text) > _MAX_VALUE_CHARS:
         text = text[:_MAX_VALUE_CHARS]
     if text == "" or _UNQUOTED_SAFE.search(text):
@@ -422,7 +422,7 @@ def outcome_for(exc):
 def error_code(exc):
     """The `error_code` the CLI gives `exc` if it reaches the JSON error envelope as it is; never raises.
 
-    `runtime.error_code_for`, with the override of `refused_as` for a `ValueError` (the
+    `error_codes.error_code_for`, with the override of `refused_as` for a `ValueError` (the
     caller turns it into another error or handles it); `INTERRUPTED` for Ctrl-C. An external
     tool that failed or timed out (`subprocess.SubprocessError`) is an operation error,
     `INVALID_DATA`, the code its callers give it once they turn it into a `ProviderError`; a
@@ -441,7 +441,7 @@ def error_code(exc):
             return own
         if not isinstance(exc, (ValueError, OSError, OverflowError)):
             return "INTERNAL_ERROR"
-        return _with_override(exc, runtime.error_code_for(exc))
+        return _with_override(exc, error_codes.error_code_for(exc))
     except Exception:  # noqa: BLE001 - logging must never break a command
         return None
 
@@ -460,7 +460,7 @@ def _with_override(exc, code):
 def refusal(logger, event_name, exc, **fields):
     """Log one WARNING `event_name` for a refusal and return `exc`, ready to be raised.
 
-    `error_code` is the code the CLI will give `exc` (`runtime.error_code_for`), so the
+    `error_code` is the code the CLI will give `exc` (`error_codes.error_code_for`), so the
     log line and the JSON error envelope never disagree. A caller that turns the error
     into another one, or handles it and goes on, says so with `refused_as` around the
     call. Pass a stable, low-cardinality `reason` and ids or counts in `fields`; never
@@ -469,7 +469,7 @@ def refusal(logger, event_name, exc, **fields):
     """
     code = None
     with contextlib.suppress(Exception):
-        code = _with_override(exc, runtime.error_code_for(exc))
+        code = _with_override(exc, error_codes.error_code_for(exc))
     event(logger, logging.WARNING, event_name, **fields, error_code=code)
     return exc
 
@@ -582,14 +582,27 @@ def configure(project, *, read_only, installation=False):
 
     Idempotent: calling this twice with the same project/settings/read_only is a
     no-op. Never raises: any failure (bad permissions, a locked rotation file on
-    Windows, a full disk) degrades to a NullHandler and the command proceeds; a
-    failure to write one line later only drops that line.
+    Windows, a full disk) degrades to a NullHandler and the command proceeds, with
+    one warning line on stderr saying there is no log; a failure to write one line
+    later only drops that line.
     """
     logging.raiseExceptions = False
     try:
         _configure(project, read_only=read_only, installation=installation)
-    except Exception:  # noqa: BLE001 - logging setup must never break a command; degrade to a NullHandler instead
+    except Exception as exc:  # noqa: BLE001 - logging setup must never break a command; degrade to a NullHandler
         _degrade()
+        _say_setup_failed(exc)
+
+
+def _say_setup_failed(exc):
+    """One line on stderr (outside the JSON on stdout): the command runs, but with no getbrolls.log.
+
+    Only the exception class: its message can carry a path. Never raises."""
+    with contextlib.suppress(Exception):
+        sys.stderr.write(
+            f"getbrolls: aviso: não consegui preparar o getbrolls.log ({type(exc).__name__}); "
+            "o comando segue sem registro de auditoria.\n"
+        )
 
 
 def enable_project(project):

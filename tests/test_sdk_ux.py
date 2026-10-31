@@ -21,7 +21,7 @@ from test_sdk_loader import MANIFEST, PLUGIN_CODE, LoaderTestCase
 from test_sdk_route_acquisition import ROUTE_MANIFEST, ROUTE_PLUGIN
 from test_sdk_route_fetch import FetchRouteCase
 
-from getbrolls import commands, delivery, providers, rules
+from getbrolls import delivery, inspect_commands, providers, rules
 from getbrolls.brief import _sources
 from getbrolls.cli import build_parser
 from getbrolls.commands import inspect_warnings, provider_error_text
@@ -30,7 +30,7 @@ from getbrolls.http import ProviderError, _scrub
 from getbrolls.models import candidate
 from getbrolls.rendering import render
 from getbrolls.runtime import OperationError, audited
-from getbrolls.sdk import install, loader
+from getbrolls.sdk import install, loader, materialize, plugin_digest
 from getbrolls.sdk.registry import get_registry, reset_registry
 from getbrolls.sdk.scaffold import README
 
@@ -55,9 +55,13 @@ class PinFileMapTests(LoaderTestCase):
         loader.pin(MANIFEST, folder, {"source": str(folder), "commit": None})
         self.assertEqual(loader.file_digests(folder), _state(self.home)["enabled"]["demo"]["files"])
 
-    def test_old_pin_without_the_map_stays_valid(self):
+    def test_current_pin_without_the_map_stays_valid(self):
         folder = self.install()
-        old = {"enabled": {"demo": {"version": "0.1.0", "sha256": loader.folder_digest(folder)}}}
+        old = {
+            "enabled": {
+                "demo": {"version": "0.1.0", "sha256": loader.folder_digest(folder), "digest": loader.DIGEST_FORMAT}
+            }
+        }
         (self.home / "plugins.json").write_text(json.dumps(old), encoding="utf-8")
         self.assertEqual("enabled", loader.inventory()[0]["status"])
 
@@ -473,9 +477,9 @@ class InspectLocalCopyTests(LoaderTestCase):
         ledger = type("L", (), {})()
         with (
             patch("getbrolls.acquisition.cache_direct_media", return_value=str(target)),
-            patch.object(commands, "probe", return_value={"duration_s": 3.0}),
+            patch.object(inspect_commands, "probe", return_value={"duration_s": 3.0}),
         ):
-            probe = commands.probe_direct(ledger, item)
+            probe = inspect_commands.probe_direct(ledger, item)
         self.assertEqual("pasta_local", probe["local_copy"])
 
     def test_builtin_direct_source_is_unchanged(self):
@@ -698,9 +702,9 @@ class MessageFollowUpTests(LoaderTestCase):
 
     def test_pin_map_is_capped_like_install(self):
 
-        self.assertEqual(install.MAX_FILES, loader.PIN_MAP_MAX_FILES)
+        self.assertEqual(materialize.MAX_FILES, plugin_digest.PIN_MAP_MAX_FILES)
         folder = self.install()
-        with patch.object(loader, "PIN_MAP_MAX_FILES", 1):
+        with patch.object(plugin_digest, "PIN_MAP_MAX_FILES", 1):
             loader.enable("demo", confirm=True)
             pin = _state(self.home)["enabled"]["demo"]
             self.assertNotIn("files", pin)
@@ -717,7 +721,7 @@ class MessageFollowUpTests(LoaderTestCase):
         folder = self.install()
         loader.enable("demo", confirm=True)
         (folder / "extra.py").write_text("X = 1\n", encoding="utf-8")
-        with patch.object(loader, "PIN_MAP_MAX_FILES", 2):
+        with patch.object(plugin_digest, "PIN_MAP_MAX_FILES", 2):
             preview = loader.enable("demo", confirm=False)
         self.assertIsNone(preview["diff"]["files"])
         self.assertIn("muitos arquivos, diff omitido", preview["diff"]["note"])
@@ -752,7 +756,8 @@ class MessageFollowUpTests(LoaderTestCase):
         folder = self.install()
         sha = loader.folder_digest(folder)
         (self.home / "plugins.json").write_text(
-            json.dumps({"enabled": {"demo": {"version": "0.1.0", "sha256": sha}}}), encoding="utf-8"
+            json.dumps({"enabled": {"demo": {"version": "0.1.0", "sha256": sha, "digest": loader.DIGEST_FORMAT}}}),
+            encoding="utf-8",
         )
         self.assertEqual("enabled", loader.inventory()[0]["status"])
         (self.home / "plugins.json").write_text(json.dumps({"enabled": {}, "last_pins": {"demo": 1}}), encoding="utf-8")

@@ -8,6 +8,7 @@ import math
 from datetime import UTC, datetime
 
 from . import vocab
+from .sdk import schemas
 
 # Reexport: os estados do candidato moram no vocabulário compartilhado.
 CANDIDATE_STATES = vocab.CANDIDATE_STATES
@@ -24,7 +25,7 @@ def pending_approval():
 
 def candidate(provider, source_id, title, source_url=None):
     return {
-        "schema_version": 1,
+        "schema_version": schemas.version("candidate"),
         "id": f"{provider}:{source_id}",
         "provider": provider,
         "source_id": str(source_id),
@@ -90,7 +91,7 @@ def id_stem(candidate_id):
 
 def empty_output():
     """Shape shared by every path that stops a manifest item pointing at a clip:
-    `invalidate_approval` here, and the rejection paths in commands.py/review.py."""
+    `invalidate_approval` here, and the rejection paths in candidate_commands.py/review.py."""
     return {"path": None, "sha256": None, "verified": False}
 
 
@@ -104,6 +105,8 @@ def invalidate_approval(c, bump_revision=False):
     """
     c["approval"] = {"status": "pending", "by": None, "at": None, "revision": None}
     c.pop("review", None)
+    # `rejection` existe se e somente se a aprovação foi rejeitada: voltar a pendente a desfaz.
+    c.pop("rejection", None)
     c["output"] = empty_output()
     c["state"] = "awaiting_approval"
     if bump_revision:

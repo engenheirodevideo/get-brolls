@@ -43,8 +43,8 @@ def assert_matches_golden(test, scenario, record):
     # A máscara não esconde campo que sumiu: as linhas `fetch` gravadas ainda têm os dois, com um clipe de verdade.
     actual = _golden.serialize(record)
     test.assertEqual([], _golden.fetch_lines_without_clip_fields(actual))
-    # A chave da venv do `doctor` tem de ser a que o checkout calcula do `requirements.txt`; o arquivo do ouro guarda a
-    # do dia em que foi gravado.
+    # A chave da venv do `doctor` tem de ser a que o checkout calcula dos arquivos de requisitos; o arquivo do ouro
+    # guarda a do dia em que foi gravado.
     venv_key = gb_paths.part_sha("venv")
     test.assertEqual(
         _golden.comparable(_expected(scenario, record["case"])), _golden.comparable(actual, venv_key=venv_key)
@@ -192,7 +192,7 @@ class IcaclsLineMaskTests(unittest.TestCase):
 
 
 class VenvKeyMaskTests(unittest.TestCase):
-    """A chave da venv do `doctor` (sha do `requirements.txt`) é a única diferença que os dois lados podem ter."""
+    """A chave da venv do `doctor` (sha dos arquivos de requisitos) é a única diferença que os dois lados podem ter."""
 
     OTHER_SHA = "0123456789abcdef"
 
@@ -272,11 +272,14 @@ class VenvKeyMaskTests(unittest.TestCase):
         misplaced["stdout"]["json"]["other"] = {"shas": {"venv": self.OTHER_SHA}}
         self.assertIn(self.OTHER_SHA, _golden.comparable(self.text(misplaced)))
 
-    def test_the_checkout_key_is_the_sha_of_the_requirements_file(self):
+    def test_the_checkout_key_is_the_sha_of_the_requirements_files(self):
         # O que o teste do ouro compara com o `doctor`: a mesma conta do `runtime/<sha>`.
         key = gb_paths.part_sha("venv")
         self.assertRegex(key or "", r"[0-9a-f]{16}")
-        blob = (ROOT / "requirements.txt").read_bytes().replace(b"\r\n", b"\n")
+        blob = b"\0".join(
+            (ROOT / name).read_bytes().replace(b"\r\n", b"\n")
+            for name in ("requirements-bootstrap.txt", "requirements.txt")
+        )
         self.assertEqual(hashlib.sha256(blob).hexdigest()[:16], key)
 
     def test_text_that_is_not_a_record_is_left_alone(self):

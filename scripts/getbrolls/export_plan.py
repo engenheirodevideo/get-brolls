@@ -24,10 +24,10 @@ from urllib.parse import quote, urlsplit
 from . import __version__, _paths, assets, delivery
 from .export_voice import ProbeMissingError, probe_voice, timed_words
 from .roteiro import END_ANCHOR, fold
-from .roteiro_plan import PLAN_VERSION
+from .roteiro_plan import plan_version
 from .runtime import one_line
+from .sdk import schemas
 
-EXPORT_VERSION = 2
 OUT_DIR_RE = re.compile(r"exports/([a-z][a-z0-9_]{1,31})/([0-9]{3,})")
 # `clip:<candidato>`, `aroll:<nome>`, `asset:<tipo>:<nome>`, `plugin:<id>:<tipo>:<nome>`:
 # sem barra, espaço nem controle.
@@ -582,9 +582,9 @@ def build(  # noqa: PLR0913 - keyword-only project id on top of the build inputs
     clips = collector.clips_by_beat(items)
     scenes, cursor = _build_scenes(collector, clips, plan, exporter)
     result = {
-        "export_version": EXPORT_VERSION, "exporter": exporter, "out_dir": out_dir,
+        "export_version": schemas.version("export_plan"), "exporter": exporter, "out_dir": out_dir,
         "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), "getbrolls_version": __version__,
-        "plan_version": PLAN_VERSION, "meta": _meta(plan, project_id), "total_s": cursor, "timing": _timing(scenes),
+        "plan_version": plan_version(), "meta": _meta(plan, project_id), "total_s": cursor, "timing": _timing(scenes),
         "scenes": scenes, "media": collector.media, "warnings": list(dict.fromkeys(collector.warnings)),
     }  # fmt: skip
     result = json.loads(json.dumps(result, ensure_ascii=False))

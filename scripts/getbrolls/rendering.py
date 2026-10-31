@@ -199,7 +199,7 @@ def _render_credits_header():
 def _render_credit_lines(c, out):
     """Linhas de créditos deste item para credits.md, quando há arquivo coletado."""
     # `one_line`: nenhum valor do candidato quebra a linha e forja outro campo.
-    from .delivery import evidence_line, inert, plugin_label, source_label
+    from .delivery_render import evidence_line, inert, plugin_label, source_label
 
     plugin = plugin_label(c)
     return [

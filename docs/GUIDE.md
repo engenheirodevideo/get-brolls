@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-26
+updated: 2026-10-31
 tags: [get-brolls, guide, installation, providers, storyboard]
 ---
 
@@ -15,10 +15,14 @@ Este é o manual operacional único do **GET B-ROLLS — ENGENHEIRO DE VÍDEO**:
 - [Instalação](#instalação)
 - [Compatibilidade](#compatibilidade)
 - [Fluxo editorial](#fluxo-editorial)
+- [Perfil do workspace](#perfil-do-workspace-getbrollstoml)
 - [Estado do projeto e progresso](#estado-do-projeto-e-progresso)
+- [Comandos de apoio](#comandos-de-apoio)
 - [Fontes e transportes](#fontes-e-transportes)
 - [Plugins](#plugins)
 - [Tipos de assets](#tipos-de-assets-e-formatos)
+- [Roteiro e componentes](#roteiro-e-componentes)
+- [Clientes e receitas](#clientes-e-receitas)
 - [Captura pelo navegador](#captura-de-notícias-e-páginas-pelo-navegador)
 - [Instagram](#instagram--navegadorplaywright-dois-streams-e-mp4)
 - [Storyboard](#storyboard)
@@ -93,7 +97,7 @@ Uma pasta que veio de um zip baixado pode precisar de `Unblock-File -Path script
 
 Linux continua compatível como plataforma secundária. Em Ubuntu/Debian, instale `python3`, `python3-venv`, `ffmpeg` e `curl`, além de Node 22+, e use `scripts/install.sh` como no macOS.
 
-`doctor` lista executáveis e transporte; não certifica login, acesso a cada site ou extração ao vivo. `doctor --live` faz buscas remotas explicitamente e pode consumir quota dos bancos configurados.
+`doctor` lista executáveis e transporte e confere a venv que a CLI usa — a do runtime, a `.venv` antiga do checkout enquanto o runtime compartilhado não existe, ou a de `GB_VENV_PATH` — contra os pinos de `requirements-bootstrap.txt` e `requirements.txt`: venv quebrada ou com versão diferente (por exemplo, código atualizado por `git pull` ou `/plugin update` sem rodar o `setup` de novo) aparece em `summary.missing` como `venv`, e `summary.do` traz o conserto (o `setup`; com `GB_VENV_PATH`, atualizar essa venv ou remover a variável). O bloco `venv` do JSON só aparece quando há venv em uso (não com `GB_YTDLP_PATH`). Não certifica login, acesso a cada site ou extração ao vivo. `doctor --live` faz buscas remotas explicitamente e pode consumir quota dos bancos configurados.
 
 ### Navegador / Instagram
 
@@ -132,6 +136,8 @@ Referências de instalação: [yt-dlp/EJS](https://github.com/yt-dlp/yt-dlp/wiki
 ### Configuração
 
 Copiar `.env.example` para `.env` é opcional (`cp .env.example .env` no macOS; `Copy-Item .env.example .env` no PowerShell). O mesmo arquivo existe comentado em português, `.env.example.pt-BR`: as variáveis e os valores são idênticos, só os comentários mudam de língua. O `.env` que vale é, do mais forte ao mais fraco: `--env-file`, `GB_ENV_FILE` (só no ambiente do processo), o `.env` da raiz da skill (checkout ou plugin, independentemente da pasta atual) e `$GB_HOME/.env`. Só um é lido: havendo dois, vale o de cima e todo comando avisa `ENV_FILE_SHADOWED`; o `doctor` mostra o escolhido em `install.env_file`. `GB_HOME` dentro de `$GB_HOME/.env` é recusado e, em outro `.env`, sai com o aviso `DEPRECATED` (a leitura some na 2.7). Ambiente do processo prevalece. Além das variáveis do core, o `.env` aceita as de `permissions.env` de cada plugin instalado que ficam no espaço de nomes dele — o id em maiúsculas seguido de `_` (ex.: `BANCO_HTTP_TOKEN` do `banco_http`); qualquer outro nome é recusado. Essas variáveis de plugin chegam só ao plugin, por `api.env`: nunca vão para o ambiente do processo nem para ffmpeg, yt-dlp, git ou qualquer outro subprocesso. `--env-file` é opção da raiz do parser e vem antes do subcomando: `getbrolls --env-file CAMINHO <subcomando> …`. Nunca distribua `.env`, cookies, configs CDN ou perfis do navegador.
+
+Duas variáveis da 2.6 valem para qualquer comando. `GB_LOCK_WAIT_S` (0 a 3600 segundos; padrão 0) faz um comando esperar o projeto ocupado por outro antes de sair com `LOCKED`; com 0, ele recusa na hora. Fora do intervalo, ou sem ser um número, o comando para e diz o que corrigir. `GB_LIBRARY=off` desliga a biblioteca entre projetos: `learn` e `library` respondem `enabled: false` e não leem nem gravam nada. A tabela completa das variáveis `GB_*` está em [CLI_CONTRACT.md](CLI_CONTRACT.md).
 
 #### Caminhos explícitos de ferramentas
 
@@ -202,7 +208,7 @@ Defina `GB_SKILL_DIR` e `GB_PROJECT` com os caminhos reais. A trava de projeto u
 
 Após instalar, confirme `yt-dlp` e `playwright-cli` em `doctor`. Para a CLI Playwright local, execute `bash scripts/playwright.sh --version` no macOS ou `& .\scripts\playwright.ps1 --version` no Windows; os dois (e os helpers de YouTube) acham o runtime por `setup --where tools` (ou `venv`). Um status positivo indica disponibilidade, não que todas as URLs serão acessíveis.
 
-O conjunto de referência é yt-dlp 2026.08.19, EJS 0.8.0 e Playwright CLI 0.1.21. A partir da 2.3.5, `requirements.txt` fixa também as dependências Python transitivas nas versões instaladas pela CI macOS/Windows da 2.3.4. `package.json` e `package-lock.json` registram o conjunto npm; o `setup` copia esses manifestos para a `.tools/` do runtime e executa `npm ci --ignore-scripts`. Nenhuma biblioteca é incluída no repositório. Os executáveis Python, Node, FFmpeg e curl continuam sendo instalados pelo usuário.
+O conjunto de referência é yt-dlp 2026.10.21, EJS 0.8.0 e Playwright CLI 0.1.21. A partir da 2.3.5, `requirements.txt` fixa também as dependências Python transitivas; a partir da 2.5.1, cada uma com o sha256 de todos os arquivos que o PyPI publica, gerado de `requirements.in`. O `setup` instala primeiro o pip de `requirements-bootstrap.txt` e depois o `requirements.txt`, os dois com `--require-hashes --only-binary :all:`: arquivo com hash diferente é recusado e nenhum sdist é construído. `package.json` e `package-lock.json` registram o conjunto npm; o `setup` copia esses manifestos para a `.tools/` do runtime e executa `npm ci --ignore-scripts`. Nenhuma biblioteca é incluída no repositório. Os executáveis Python, Node, FFmpeg e curl continuam sendo instalados pelo usuário.
 
 Atualizações de dependências devem entrar por PR, com instalação completa e testes; o Dependabot está configurado para propor essas mudanças semanalmente. Preserve configurações privadas antes de atualizar a skill e repita um ensaio da rota utilizada se as dependências mudarem. Se você personalizou a `.tools/node_modules` do runtime, `npm ci` substituirá essa árvore pela versão registrada no lockfile; mantenha ferramentas próprias fora da pasta gerenciada da skill.
 
@@ -321,6 +327,20 @@ Como só lê, `status` nunca completa uma gravação interrompida: quando existe
 
 Os comandos do fluxo — `search`, `resolve`, `preview`, `review`, `import-review`, `permit`, `fetch` e `verify` — acrescentam ao próprio JSON um campo `summary` com uma linha em português no formato **verbo + objeto + resultado** (por exemplo, "Coletei o corte final de local:abc em clips/….mp4."). O campo é aditivo: nenhuma chave existente muda de nome, tipo ou posição, e integrações que já leem o JSON continuam válidas. Use essa linha para dizer ao usuário o que acabou de acontecer e `status` para o quadro completo da coleta.
 
+## Comandos de apoio
+
+Estes comandos saem do fluxo principal. Todos respondem JSON e, para a lista completa de flags, `getbrolls <comando> --help` ou `getbrolls capabilities`.
+
+- `capabilities` — descreve em JSON os comandos, as flags, os códigos de saída e os comandos de plugin desta instalação. Não precisa de projeto e não grava nada; serve a agentes que precisam saber o que a CLI aceita.
+- `inspect --project <projeto> (--candidate ID | --url URL) [--query "termo"]` — olha a duração, os capítulos e as legendas da fonte antes de você escolher o trecho. Com `--query`, devolve janelas de fala que combinam com o termo.
+- `reject --project <projeto> --candidate ID [--reason "motivo"]` — marca o candidato como rejeitado e invalida as revisões dele. A razão fica gravada e aparece no `status`. `--candidate` pode se repetir.
+- `remember --project <projeto> --candidate ID --decision approved|rejected --reason "motivo" --by "Pessoa"` — guarda a decisão na memória de referências do projeto. Veja [RULES.md](RULES.md#memória-de-referências).
+- `learn --project <projeto> --query "busca" --provider youtube --outcome hit|miss` — guarda na biblioteca entre projetos uma busca que funcionou (ou não); `--preference` guarda uma preferência e `--from-candidate` um trecho útil. `library --project <projeto> --search "termo"` consulta o que foi guardado. A biblioteca nunca transfere direitos: toda resposta traz `rights_not_transferable: true`. `GB_LIBRARY=off` a desliga.
+- `analysis --project <projeto> --action list|check|register` — registra as mídias do projeto de layout 1 em `analysis/` (`register --path aroll/c01.mp4`), lista o que já está registrado e confere os arquivos. `list` num projeto novo diz "Nenhuma mídia registrada".
+- `migrate --project <projeto> --action plan|apply` — adota o layout 1 num projeto antigo: só acrescenta o `project.json`, sem mover nada. Rode `plan` primeiro; ele mostra o que seria gravado sem gravar.
+- `environment --action list` — lista as pontes de ambiente que vêm com o getbrolls (hoje o HyperFrames), com versão, `sha256` e estado, sem rodar código delas.
+- `template` — nome antigo de `recipe`. Qualquer ação responde com o comando novo (`template --action list` diz "agora é `recipe --action list`"). Veja [Clientes e receitas](#clientes-e-receitas).
+
 ## Fontes e transportes
 
 | Fonte | Descoberta | Aquisição |
@@ -412,9 +432,15 @@ explícito. O comando `plugins` gerencia esse ciclo:
 - `plugins --action enable --id <id>` — mostra o manifesto e as permissões declaradas, sem habilitar; rode de novo com `--yes` para confirmar e gravar o pin de hash da pasta (com o sha256 de cada arquivo). Plugin `suspended` porque o conteúdo mudou desde o pin: a prévia do `enable` traz o `diff` (arquivos adicionados, removidos e alterados) e confirmar exige `--yes --expect <sha256>` com o valor da prévia, como no install/update — também depois de um `disable`, que guarda o último pin. Plugin instalado por `install`: prefira `update`, que compara com a origem.
 - `plugins --action disable --id <id>` — desliga um plugin habilitado.
 - `plugins --action check --path <pasta>` — valida o manifesto, roda `register()` contra um registro descartável e confere o contrato de cada contribuição, sem instalar nada. **Executa o código da pasta** com as suas permissões: é ferramenta de quem escreve o plugin, não uma checagem segura de um download que você ainda não revisou. Recusa o mesmo que o `install` recusaria (link simbólico, bytecode, pasta de controle de versão aninhada) e avisa, em `warnings`, sobre `permissions.env`/`permissions.paths` que não vão valer.
-- `plugins --action install --source <pasta-ou-url-git>` — mostra id, versão, permissões, origem, commit e o `sha256` do conteúdo materializado; com `--yes --expect <sha256>` (o mesmo valor da prévia) instala em `plugins/<id>`, habilita com pin de hash e grava a origem.
-- `plugins --action update --id <id>` — mostra a diferença de versão, permissões e arquivos contra a origem gravada; com `--yes --expect <sha256>` troca a pasta e refaz o pin.
+- `plugins --action install --source <pasta-ou-url-git>` — mostra id, versão, permissões, origem, commit e o `sha256` do conteúdo materializado; com `--yes --expect <sha256>` (o mesmo valor da prévia) instala em `plugins/<id>`, habilita com pin de hash e grava a origem. Em repositório git, `--ref` escolhe branch, tag ou `refs/...`, `--commit` fixa um sha de 40 hexadecimais e `--subdir` aponta a pasta do plugin dentro do repositório. Numa pasta comum essas opções são recusadas: aponte `--source` direto para a pasta do plugin.
+- `plugins --action update --id <id>` — mostra a diferença de versão, permissões e arquivos contra a origem gravada; com `--yes --expect <sha256>` troca a pasta e refaz o pin. Em plugin vindo de git, `--commit` volta a um commit anterior. `plugins --action update --all` é só prévia: separa os plugins instalados por marketplace que têm atualização (`plugins`: versão de e para, `tier`, permissões novas e o comando da prévia de cada um) dos que já estão em dia (`up_to_date`), dos que não deu para conferir (`skipped`) e dos que não vieram de marketplace (`outside_marketplace`). Nada é atualizado, e `--yes` ou `--expect` junto de `--all` é erro de uso: confirme um plugin por vez com `--id`.
+- `plugins --action remove --id <id>` — em dois passos: sem `--yes` mostra o que sai; com `--yes` tira a pasta do plugin e o estado dele no `plugins.json`. Os dados em `plugin-data/` ficam.
+- `plugins --action search --query <trecho>` — procura nos índices de marketplace já em cache, sem rede; `--marketplace <nome>` limita a um. Sem marketplace fixado, `results` vem vazio.
+- `plugins --action marketplace-add --source <url-git>` — fixa o índice de um marketplace (repositório git com o `getbrolls-marketplace.json`) num commit; `--ref` escolhe a branch ou a tag e `--commit`, um sha. `marketplace-list` mostra os fixados e só lê. `marketplace-update [--marketplace <nome>]` busca o índice de novo e move o pin (sem `--marketplace`, todos); fixar um commit que não descende do atual exige `--allow-rollback`. `marketplace-remove --marketplace <nome>` tira o índice e o cache; os plugins já instalados ficam. Nenhuma dessas ações atualiza plugin: use `update`.
+- `plugins --action install --id <id>@<marketplace>` — instala pelo índice fixado: a origem e o commit vêm dele. Sem `--yes` é a prévia (manifesto, permissões e o `sha256` esperado); com o ok da pessoa, repita com `--yes --expect <sha256>`. O `tier` é o que o índice declara; só o índice oficial do getbrolls sai verificado. Marketplace não fixado é recusado, com a dica de rodar `marketplace-list`.
 - `plugins --action new --id <id> --kind provider|route|command|exporter [--path <pasta>]` — gera um plugin mínimo que já passa no próprio teste e no `check`.
+
+O `--help` de `plugins` lista as 13 ações: `check`, `disable`, `enable`, `install`, `list`, `marketplace-add`, `marketplace-list`, `marketplace-remove`, `marketplace-update`, `new`, `remove`, `search` e `update`. Um exemplo comentado de cada uma está em [MANUAL.md](MANUAL.md) e o formato do índice, em [SDK.md](SDK.md).
 
 Fonte de plugin aparece em `providers` com `plugin` (e `route`, quando o
 arquivo vem por uma rota do plugin). Rota `stage="fetch"` só baixa no `fetch`:
@@ -638,7 +664,7 @@ bash "$GB_SKILL_DIR/scripts/playwright.sh" -s=getbrolls-instagram requests > "$G
 bash "$GB_SKILL_DIR/scripts/playwright.sh" -s=getbrolls-instagram --raw response-body INDICE_OBSERVADO > "$GB_PROJECT/work/instagram-configs/reel-response.private.txt"
 ```
 
-No Windows, o 0600/0700 do POSIX não tem equivalente: a permissão da pasta é a ACL. O Windows PowerShell cria a pasta dentro do projeto e restringe sua ACL ao dono (quem cria a pasta; numa sessão elevada, com a política de posse do Windows, o grupo Administradores), a SYSTEM e a Administradores, sem herança, antes de gravar as respostas (é a mesma ACL que o getbrolls aplica sozinho aos arquivos e pastas privados que ele cria; veja [Arquivos e pastas privados](SECURITY.md#arquivos-e-pastas-privados)):
+No Windows, o 0600/0700 do POSIX não tem equivalente: a permissão da pasta é a ACL. O Windows PowerShell cria a pasta dentro do projeto e restringe sua ACL ao dono (quem cria a pasta; numa sessão elevada, com a política de posse do Windows, o grupo Administradores), a SYSTEM e a Administradores, sem herança, antes de gravar as respostas (o getbrolls faz um passo a mais: depois da concessão, grava a DACL inteira com `icacls <pasta-pai> /restore`, o que tira também a entrada explícita da conta que criou o arquivo. O trecho abaixo é a forma curta e deixa essa entrada. A ACL exata dos arquivos e pastas privados que o getbrolls cria sozinho está em [Arquivos e pastas privados](SECURITY.md#arquivos-e-pastas-privados)):
 
 ```powershell
 $ConfigDir = Join-Path $env:GB_PROJECT 'work\instagram-configs'
@@ -743,6 +769,8 @@ Padrões por provedor — quando nenhuma variável nem regra é definida, o inte
 | `GB_MAX_PER_DAY` | 60 | 60 |
 
 `GB_PACE_MIN_S`, `GB_PACE_MAX_S`, `GB_MAX_PER_HOUR` e `GB_MAX_PER_DAY` são **globais**: uma vez definidas, o mesmo valor vale para todos os provedores, substituindo os padrões acima por igual. Para diferenciar o ritmo por provedor, use o bloco opcional `pacing` em RULES.md, `"pacing": {"instagram": {"min_s": 60, "max_s": 180, "max_per_hour": 15, "max_per_day": 40}, "tiktok": {...}}`; a variável de ambiente, quando definida, vence a regra do projeto.
+
+`queue --action next` precisa ler o `RULES.md` do projeto (o bloco `pacing` está nele): se o arquivo estiver inválido ou ilegível, o comando sai com `1` e `error_code` `INVALID_DATA` e não entrega item, porque o ritmo não pode virar o padrão mais rápido em silêncio. Conserte o `RULES.md` (ou rode `init-rules --force` para gerar um limpo) e repita. Sem `RULES.md`, vale o ritmo padrão. Os outros comandos da fila (`add`, `mark`, `resume`, `status`) seguem, com o aviso `RULES_UNAVAILABLE`.
 
 No coletor, rode o lote com `--pace 20-60 --max-per-run 25 --continue-on-error --project "$GB_PROJECT"`: pausa aleatória entre pares (nunca antes do primeiro; `--pace 0` desliga), no máximo 25 pares por execução (o restante sai como `skipped`, motivo `max-per-run`) e falha por stem registrada sem interromper os demais. O summary JSON é reescrito após cada stem com `status` `done|failed|skipped` e o processo sai com 1 quando houver falha. O curl faz até 2 retentativas com 5 s de espera. A resposta da CDN decide o resto: um **429** encerra o lote na hora (o restante sai `skipped` com motivo `cooldown`) e registra o cooldown na fila (com `--project` e um `work/queue.json` no projeto); um **403 com o `oe` da URL assinada vencido há mais de 300 s** é URL expirada (com `--continue-on-error` o lote para ali, o restante `skipped` com motivo `recapture`): recapture pela mesma rota autorizada; **qualquer outro 403, ou um 401**, é recusa: o lote termina como erro fatal (restante `skipped` com motivo `aborted`, saída 1) e a fila grava a parada do provedor, sem cooldown. Com a fila parada, o coletor com `--project` sai com 1 antes de qualquer pedido. **Use sempre `--project "$GB_PROJECT"` no coletor**, não `--config-output-root`: sem ele não há fila para ler, a parada nunca é gravada e o lote sai fora dela. Ao ver qualquer um dos três, pare e não insista; detalhes na tabela do coletor em [CLI_CONTRACT.md](CLI_CONTRACT.md#fila-queue).
 

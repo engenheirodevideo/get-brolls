@@ -9,7 +9,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _cli import run_cli
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import cli, config
+from getbrolls import cli, cli_parser, config
 
 
 class JsonFlagTests(unittest.TestCase):
@@ -36,22 +36,22 @@ class JsonFlagTests(unittest.TestCase):
 
     def test_machine_output_reads_the_flag_and_gb_output(self):
         plain = argparse.Namespace(json=False)
-        self.assertFalse(cli.machine_output(plain, environ={}))
-        self.assertTrue(cli.machine_output(argparse.Namespace(json=True), environ={}))
-        self.assertTrue(cli.machine_output(plain, environ={"GB_OUTPUT": "json"}))
+        self.assertFalse(cli_parser.machine_output(plain, environ={}))
+        self.assertTrue(cli_parser.machine_output(argparse.Namespace(json=True), environ={}))
+        self.assertTrue(cli_parser.machine_output(plain, environ={"GB_OUTPUT": "json"}))
         for padded in (" json", "json ", "\tjson\n"):
             with self.subTest(padded=padded):
-                self.assertTrue(cli.machine_output(plain, environ={"GB_OUTPUT": padded}))
+                self.assertTrue(cli_parser.machine_output(plain, environ={"GB_OUTPUT": padded}))
         for value in ("", "human", "JSON", "1"):
             with self.subTest(value=value):
-                self.assertFalse(cli.machine_output(plain, environ={"GB_OUTPUT": value}))
+                self.assertFalse(cli_parser.machine_output(plain, environ={"GB_OUTPUT": value}))
 
     def test_machine_output_reads_the_process_environment_by_default(self):
         plain = argparse.Namespace(json=False)
         with patch.dict(os.environ, {"GB_OUTPUT": "json"}):
-            self.assertTrue(cli.machine_output(plain))
+            self.assertTrue(cli_parser.machine_output(plain))
         with patch.dict(os.environ, {"GB_OUTPUT": "human"}):
-            self.assertFalse(cli.machine_output(plain))
+            self.assertFalse(cli_parser.machine_output(plain))
 
     def test_gb_output_is_a_core_key(self):
         self.assertIn("GB_OUTPUT", config.KEYS)

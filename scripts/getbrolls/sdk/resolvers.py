@@ -148,7 +148,7 @@ def license_line(owner, text):
     """A licença que o plugin informou, numa linha e sem marcação ativa (link, imagem,
     ênfase saem escapados), sempre com o prefixo que diz quem a informou. Nunca vale
     como `permit` nem entra em `rights.evidence`."""
-    from ..delivery import inert
+    from ..delivery_render import inert
 
     clean = guard.sanitize_text(owner, str(text))
     return f"{LICENSE_LABEL} {owner}: {inert(clean, plugin=owner)}"

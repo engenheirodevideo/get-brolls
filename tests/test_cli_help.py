@@ -90,7 +90,9 @@ class DoctorVerdictTests(unittest.TestCase):
         payload = self.payload()
         self.assertEqual("summary", next(iter(payload)))
         summary = payload["summary"]
-        self.assertEqual(["ok", "missing", "optional"], list(summary))
+        self.assertEqual(["ok", "missing", "optional"], list(summary)[:3])
+        # `do` só aparece quando há o que fazer pelo instalador (venv ausente ou desatualizada).
+        self.assertLessEqual(set(summary) - {"ok", "missing", "optional"}, {"do"})
         for key in ("ok", "missing", "optional"):
             self.assertIsInstance(summary[key], list)
         for entry in summary["missing"]:

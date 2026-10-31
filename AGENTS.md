@@ -2,7 +2,7 @@
 type: instructions
 status: current
 created: 2026-09-15
-updated: 2026-09-17
+updated: 2026-10-31
 tags: [get-brolls, documentation]
 ---
 
@@ -21,7 +21,7 @@ Este arquivo é o índice central para agentes e mantenedores: tudo que um agent
 | Instalar no Gemini CLI | [GEMINI.md](GEMINI.md) — o snippet de importação `@` que o usuário acrescenta ao próprio `GEMINI.md`. |
 | Guia operacional (instalação, provedores, navegador, Storyboard, `status`) | [GUIDE.md](docs/GUIDE.md) |
 | Manual + tutorial para quem está chegando (comandos explicados, JSON de saída, automação) | [MANUAL.md](docs/MANUAL.md) |
-| Contrato da CLI para scripts e agentes (stdout/stderr, códigos de saída e de erro, avisos, deprecação) | [CLI_CONTRACT.md](docs/CLI_CONTRACT.md) |
+| Contrato da CLI para scripts e agentes (stdout/stderr, códigos de saída e de erro, avisos, deprecação; `getbrolls capabilities --json` lista comandos, flags e códigos desta instalação) | [CLI_CONTRACT.md](docs/CLI_CONTRACT.md) |
 | Formatos de arquivo (schemas, versões, layouts de projeto, logs, nomes reservados) | [SCHEMAS.md](docs/SCHEMAS.md) |
 | Criar plugins (fontes, rotas, comandos, presets) com o SDK | [PLUGIN_DEV_QUICKSTART.md](docs/PLUGIN_DEV_QUICKSTART.md) para o caminho curto · [SDK.md](docs/SDK.md) para a referência completa |
 | Qualidade, evidências reais e limites conhecidos | [QUALITY.md](docs/QUALITY.md) |
@@ -65,6 +65,7 @@ Execute comandos do mesmo projeto serialmente. Preserve originais, eventos e jou
 - Código novo segue [`docs/CODE_STYLE.md`](docs/CODE_STYLE.md) (Google Python Style Guide adaptado: stdlib, 120 colunas, docstring de uma linha em pt-BR, supressão só na linha e com motivo); a revisão usa o checklist do fim desse arquivo. Toda mudança segue, em ordem, o [`docs/CHECKLIST.md`](docs/CHECKLIST.md).
 - A versão executável vem de `scripts/getbrolls/__init__.py`. Mudança de versão é feita com `python3 scripts/bump_version.py X.Y.Z [--date AAAA-MM-DD]`, que escreve numa passada só `scripts/getbrolls/__init__.py`, `package.json`, `package-lock.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `SKILL.md`, README, README.en, `docs/QUALITY.md` e o stub do CHANGELOG; `--check` só confere e sai 1 se algo divergir, sem escrever. `SKILL.md` da raiz é a fonte canônica; o espelho em `skills/get-brolls/SKILL.md` é **gerado**, nunca editado à mão — `python3 scripts/gen_skill_mirror.py` escreve o espelho (`--check` compara e sai 1 se divergir) e é esse gerador, não sincronia manual, que mantém `description` idêntica e o mesmo conteúdo com caminhos `${CLAUDE_PLUGIN_ROOT}`; CI e `scripts/check.sh`/`check.ps1` rodam o `--check` dos dois. Revisão documental sem alteração de versão deve aparecer no changelog vigente.
 - **`main` é produção.** O plugin instalado por quem usa a skill acompanha `main`, e cada release baixada pelos usuários sai de um commit dessa branch: mudança de comportamento chega por PR com CI verde nos três sistemas operacionais, `bash scripts/preflight.sh` roda antes de qualquer `git tag`, não há push direto em `main`, e mudança de comportamento observável exige entrada no CHANGELOG e compatibilidade retroativa.
+- Todo JSON gravado tem um schema em `schemas/`; a versão vem do schema (`getbrolls.sdk.schemas.version`); mudar o formato é subir a versão no schema e registrar no CHANGELOG; `tests/test_schema_registry.py` confere.
 - Atualize a seção correspondente de `docs/GUIDE.md` junto com o código da rota afetada. O guia é a referência operacional única do produto.
 - Corrija a causa e adicione regressão quando houver bug. Não escreva testes que exijam retirar uma capacidade existente.
 - `status` é o único comando somente leitura: abre o ledger com `recover=False`, não cria a árvore `brolls/` e não pega a trava exclusiva do projeto. Ao mexer nele, preserve esse contrato — nada de recuperar pendência, sincronizar formatos ou escrever para relatar. Comandos de escrita continuam serializados pela trava.

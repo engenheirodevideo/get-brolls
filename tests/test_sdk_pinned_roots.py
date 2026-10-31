@@ -22,7 +22,7 @@ from test_sdk_loader import LoaderTestCase
 from getbrolls.http import ProviderError
 from getbrolls.sdk import api as sdk_api
 from getbrolls.sdk import install as install_mod
-from getbrolls.sdk import loader
+from getbrolls.sdk import loader, plugin_digest
 from getbrolls.sdk.api import PluginApi, route_scope
 from getbrolls.sdk.files import resolved_roots
 from getbrolls.sdk.registry import Registry, get_registry, reset_registry
@@ -196,7 +196,7 @@ class LoadChecksTests(PinnedRootsTestCase):
 
 class EdgeCaseTests(PinnedRootsTestCase):
     def not_utf8(self, paths):
-        """`resolved_roots` do loader com `~/Acervo` num caminho que não cabe em UTF-8 (Linux)."""
+        """`resolved_roots` do hash do pin com `~/Acervo` num caminho que não cabe em UTF-8 (Linux)."""
         real = resolved_roots(paths)
         bad = Path(str(self.person / "Acervo") + "\udcff")
         return [(raw, bad if raw == "~/Acervo" else resolved) for raw, resolved in real[0]], real[1]
@@ -208,7 +208,7 @@ class EdgeCaseTests(PinnedRootsTestCase):
 
     def test_a_root_path_outside_utf8_stays_out_of_the_pin_and_is_ignored_at_load(self):
         self.install(PATHS_MANIFEST, RESOLVER_CODE)
-        with patch.object(loader, "resolved_roots", self.not_utf8):
+        with patch.object(plugin_digest, "resolved_roots", self.not_utf8):
             preview = loader.enable("demo", confirm=False)
             loader.enable("demo", confirm=True)
         only_outra = {"~/Outra": str(self.person / "Outra")}
@@ -224,7 +224,7 @@ class EdgeCaseTests(PinnedRootsTestCase):
         source.mkdir(parents=True)
         (source / "getbrolls-plugin.json").write_text(json.dumps(PATHS_MANIFEST), encoding="utf-8")
         (source / "plugin.py").write_text(RESOLVER_CODE, encoding="utf-8")
-        with patch.object(loader, "resolved_roots", self.not_utf8):
+        with patch.object(plugin_digest, "resolved_roots", self.not_utf8):
             preview = install_mod.install(str(source), confirm=False)
             install_mod.install(str(source), confirm=True, expect=preview["plugin"]["sha256"])
         self.assertEqual({"~/Outra": str(self.person / "Outra")}, self.pinned())

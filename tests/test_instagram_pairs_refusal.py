@@ -1,12 +1,16 @@
 """instagram_pairs: limite de ritmo espera, URL expirada recaptura, recusa para o lote (sem rede)."""
 
 import contextlib
+import errno
 import io
 import json
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -15,12 +19,14 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import instagram_pairs as ig
-from getbrolls import queue
+from getbrolls import instagram_queue, queue
+from getbrolls.runtime import project_lock
 
 PUBLIC_DNS = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))]
 NOW = 1_800_000_000  # 2027-01-15, só um instante fixo para o relógio do teste
 PAST_OE = f"{NOW - 3600:x}"
 FUTURE_OE = f"{NOW + 3600:x}"
+REFUSED_AT = 2
 CDN = "https://scontent.cdninstagram.com/v/t50/video.mp4"
 
 
@@ -112,8 +118,8 @@ class SignedUrlExpiryTests(unittest.TestCase):
 class DownloadClassificationTests(unittest.TestCase):
     def setUp(self):
         self.enterContext(contextlib.redirect_stderr(io.StringIO()))
-        self.enterContext(patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS))
-        self.enterContext(patch.object(ig.time, "time", return_value=NOW))
+        self.enterContext(patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS))
+        self.enterContext(patch.object(time, "time", return_value=NOW))
         self.root = Path(tempfile.mkdtemp(prefix="gb-igrefusal-")).resolve()
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
 
@@ -124,7 +130,7 @@ class DownloadClassificationTests(unittest.TestCase):
 
     def fails(self, url, status):
         with (
-            patch.object(ig.subprocess, "run", side_effect=curl_failure(status)),
+            patch.object(subprocess, "run", side_effect=curl_failure(status)),
             self.assertRaises(ig.CollectError) as caught,
         ):
             download(self.conf(url), self.root)
@@ -188,9 +194,9 @@ class DownloadClassificationTests(unittest.TestCase):
 class BatchStopTests(unittest.TestCase):
     def setUp(self):
         self.enterContext(patch.object(ig, "ensure_tool"))
-        self.enterContext(patch.object(ig.time, "sleep"))
-        self.enterContext(patch.object(ig.time, "time", return_value=NOW))
-        self.enterContext(patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS))
+        self.enterContext(patch.object(time, "sleep"))
+        self.enterContext(patch.object(time, "time", return_value=NOW))
+        self.enterContext(patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS))
         self.enterContext(contextlib.redirect_stdout(io.StringIO()))
         self.err = self.enterContext(contextlib.redirect_stderr(io.StringIO()))
         self.root = Path(tempfile.mkdtemp(prefix="gb-igrefusal-")).resolve()
@@ -207,7 +213,7 @@ class BatchStopTests(unittest.TestCase):
 
     def run_batch(self, failing, *extra):
         commands = []
-        with patch.object(ig.subprocess, "run", side_effect=failing(commands)):
+        with patch.object(subprocess, "run", side_effect=failing(commands)):
             code = ig.main(batch_args(self.root, *extra))
         summary = json.loads((self.root / "work/summary.json").read_text(encoding="utf-8"))
         return code, commands, summary
@@ -312,7 +318,7 @@ class BatchStopTests(unittest.TestCase):
         index = args.index("--project")
         del args[index : index + 2]
         commands = []
-        with patch.object(ig.subprocess, "run", side_effect=curl_failure(429, commands)):
+        with patch.object(subprocess, "run", side_effect=curl_failure(429, commands)):
             self.assertEqual(1, ig.main(args))
         self.assertEqual(1, len(commands))
 
@@ -320,7 +326,7 @@ class BatchStopTests(unittest.TestCase):
         args = batch_args(self.root)
         index = args.index("--project")
         del args[index : index + 2]
-        with patch.object(ig.subprocess, "run", side_effect=curl_failure(403)):
+        with patch.object(subprocess, "run", side_effect=curl_failure(403)):
             self.assertEqual(1, ig.main(args))
         self.assertIn("parada não registrada (nenhum --project informado", self.err.getvalue())
 
@@ -336,11 +342,261 @@ class BatchStopTests(unittest.TestCase):
         self.run_batch(lambda c: curl_failure(403, c))
         self.assertIn("parada não registrada (nenhum work/queue.json", self.err.getvalue())
 
-    def test_the_refusal_record_works_run_as_a_script(self):
-        with patch.object(ig, "__package__", ""):
-            stamp = ig.record_queue_refusal(self.root, "CDN recusou com HTTP 403", "http_403")
-        self.assertTrue(stamp)
+
+class CollectorQueueTests(unittest.TestCase):
+    """The collector against `work/queue.json`: pacing of curl, the lock, the stop and cooldown re-reads."""
+
+    def setUp(self):
+        self.enterContext(patch.object(ig, "ensure_tool"))
+        self.enterContext(patch.object(time, "sleep"))
+        self.enterContext(patch.object(time, "time", return_value=NOW))
+        self.enterContext(patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS))
+        self.enterContext(contextlib.redirect_stdout(io.StringIO()))
+        self.err = self.enterContext(contextlib.redirect_stderr(io.StringIO()))
+        self.root = Path(tempfile.mkdtemp(prefix="gb-igqueue-")).resolve()
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        write_pairs(self.root / "configs", ["01_A", "02_B", "03_C"], url=CDN)
+        state = queue.empty_state()
+        queue.add(state, "instagram", ["https://www.instagram.com/reel/ABC123xyz/"])
+        queue.claim_next(state)
+        queue.save(queue.queue_path(self.root), state)
+
+    def summary(self):
+        return json.loads((self.root / "work/summary.json").read_text(encoding="utf-8"))
+
+    def run_main(self, collect, *extra):
+        with patch.object(ig, "_collect_one", side_effect=collect):
+            code = ig.main(batch_args(self.root, *extra))
+        return code, self.summary()
+
+    @staticmethod
+    def done(stem):
+        return {"stem": stem, "output": f"{stem}.mp4"}
+
+    def test_curl_never_retries_so_a_429_costs_one_hit_per_item(self):
+        commands = []
+        with patch.object(subprocess, "run", side_effect=curl_failure(429, commands)):
+            ig.main(batch_args(self.root, "--continue-on-error"))
+        self.assertEqual(1, len(commands))
+        self.assertNotIn("--retry", commands[0])
+        self.assertNotIn("--retry-all-errors", commands[0])
+
+    def test_a_refusal_on_a_later_item_stops_the_rest_and_is_recorded(self):
+        calls = []
+
+        def collect(stem, *_rest):
+            calls.append(stem)
+            if len(calls) == REFUSED_AT:
+                error = ig.CollectError("CDN recusou o config com HTTP 403", refused=True)
+                error.http_status = "403"
+                raise error
+            return self.done(stem)
+
+        code, summary = self.run_main(lambda *a, **_k: collect(*a), "--continue-on-error")
+        self.assertEqual(1, code)
+        self.assertEqual(["01_A", "02_B"], calls, "item 3 is never requested")
+        self.assertEqual(["done", "failed", "skipped"], [r["status"] for r in summary["results"]])
+        self.assertEqual("aborted", summary["results"][2]["reason"])
+        stopped = queue.load(queue.queue_path(self.root))["providers"]["instagram"]["stopped"]
+        self.assertEqual("http_403", stopped["class"])
+
+    def test_a_refusal_that_could_not_take_the_project_lock_fails_the_batch_and_says_so(self):
+        def refuse(*_a, **_k):
+            error = ig.CollectError("CDN recusou o config com HTTP 403", refused=True)
+            error.http_status = "403"
+            raise error
+
+        with (
+            patch.object(instagram_queue, "RECORD_LOCK_WAIT_S", 0.05),
+            project_lock(self.root),
+        ):
+            code, summary = self.run_main(refuse)
+        self.assertEqual(1, code)
+        self.assertIs(True, summary["refusal_not_recorded"])
+        self.assertNotIn("stopped", queue.load(queue.queue_path(self.root))["providers"].get("instagram", {}))
+        self.assertIn("NÃO foi registrada", self.err.getvalue())
+
+    def test_a_rate_limit_that_could_not_take_the_project_lock_says_so_too(self):
+        def limited(*_a, **_k):
+            error = ig.CollectError("CDN limitou com HTTP 429", cooldown=True)
+            error.http_status = "429"
+            raise error
+
+        with patch.object(instagram_queue, "RECORD_LOCK_WAIT_S", 0.05), project_lock(self.root):
+            code, summary = self.run_main(limited, "--continue-on-error")
+        self.assertEqual(1, code)
+        self.assertIs(True, summary["refusal_not_recorded"])
+
+    def _disk_full(self):
+        return OSError(errno.ENOSPC, "No space left on device", str(self.root / "work" / "queue.json"))
+
+    def assert_unrecorded_without_machine_detail(self, code, summary):
+        self.assertEqual(1, code)
+        self.assertIs(True, summary["refusal_not_recorded"])
+        # Only the lines about the record: the `== stem -> output ==` progress line shows the output path on purpose.
+        err = "\n".join(line for line in self.err.getvalue().splitlines() if "registrad" in line)
+        self.assertIn("NÃO foi registrada", err)
+        self.assertIn("registre-a à mão", err)
+        self.assertNotIn("[Errno", err)
+        self.assertNotIn(str(self.root), err)
+        self.assertNotIn("Traceback", err)
+
+    def test_a_refusal_that_could_not_be_written_to_disk_fails_the_batch_and_says_so(self):
+        def refuse(*_a, **_k):
+            error = ig.CollectError("CDN recusou o config com HTTP 403", refused=True)
+            error.http_status = "403"
+            raise error
+
+        with patch("getbrolls.queue.record_refusal", side_effect=self._disk_full()):
+            code, summary = self.run_main(refuse)
+        self.assert_unrecorded_without_machine_detail(code, summary)
+        self.assertNotIn("stopped", queue.load(queue.queue_path(self.root))["providers"].get("instagram", {}))
+
+    def test_a_rate_limit_that_could_not_be_written_to_disk_fails_the_batch_and_says_so(self):
+        def limited(*_a, **_k):
+            error = ig.CollectError("CDN limitou com HTTP 429", cooldown=True)
+            error.http_status = "429"
+            raise error
+
+        with patch("getbrolls.queue.record_cooldown", side_effect=self._disk_full()):
+            code, summary = self.run_main(limited, "--continue-on-error")
+        self.assert_unrecorded_without_machine_detail(code, summary)
+        instagram = queue.load(queue.queue_path(self.root))["providers"].get("instagram", {})
+        self.assertFalse(instagram.get("cooldown_until"))
+
+    def test_a_lock_that_cannot_be_opened_counts_as_not_recorded(self):
+        def refuse(*_a, **_k):
+            raise ig.CollectError("CDN recusou o config com HTTP 403", refused=True)
+
+        with patch(
+            "getbrolls.runtime.project_lock", side_effect=PermissionError(errno.EACCES, "denied", str(self.root))
+        ):
+            code, summary = self.run_main(refuse)
+        self.assert_unrecorded_without_machine_detail(code, summary)
+
+    def test_the_flag_is_false_when_the_stop_was_recorded(self):
+        def refuse(*_a, **_k):
+            raise ig.CollectError("CDN recusou o config com HTTP 403", refused=True)
+
+        code, summary = self.run_main(refuse)
+        self.assertEqual(1, code)
+        self.assertIs(False, summary["refusal_not_recorded"])
         self.assertIn("stopped", queue.load(queue.queue_path(self.root))["providers"]["instagram"])
+
+    def test_a_short_wait_for_the_lock_still_records_the_stop(self):
+
+        holder = threading.Event()
+
+        def hold():
+            with project_lock(self.root):
+                holder.set()
+                time.sleep(0.2)
+
+        def refuse(*_a, **_k):
+            raise ig.CollectError("CDN recusou o config com HTTP 403", refused=True)
+
+        thread = threading.Thread(target=hold)
+        thread.start()
+        holder.wait(5)
+        try:
+            code, summary = self.run_main(refuse)
+        finally:
+            thread.join()
+        self.assertEqual(1, code)
+        self.assertIs(False, summary["refusal_not_recorded"])
+        self.assertIn("stopped", queue.load(queue.queue_path(self.root))["providers"]["instagram"])
+
+    def test_a_stop_written_by_another_process_mid_batch_is_honoured(self):
+        calls = []
+
+        def collect(stem, *_rest):
+            calls.append(stem)
+            if len(calls) == 1:  # "another process" stops the queue while item 1 runs
+                queue.record_refusal(self.root, "instagram", "HTTP 403", reason_class="http_403")
+            return self.done(stem)
+
+        code, summary = self.run_main(lambda *a, **_k: collect(*a), "--continue-on-error")
+        self.assertEqual(1, code)
+        self.assertEqual(["01_A"], calls, "no request goes out after the stop")
+        self.assertEqual(["done", "skipped", "skipped"], [r["status"] for r in summary["results"]])
+        self.assertEqual(["aborted", "aborted"], [r["reason"] for r in summary["results"][1:]])
+        self.assertIn("parada", self.err.getvalue())
+
+    def test_a_cooldown_written_by_another_process_mid_batch_is_honoured(self):
+        calls = []
+
+        def collect(stem, *_rest):
+            calls.append(stem)
+            if len(calls) == 1:
+                queue.record_cooldown(self.root, "instagram", "HTTP 429")
+            return self.done(stem)
+
+        code, summary = self.run_main(lambda *a, **_k: collect(*a))
+        self.assertEqual(1, code)
+        self.assertEqual(["01_A"], calls)
+        self.assertEqual("cooldown", summary["stopped_by"])
+        self.assertEqual(["cooldown", "cooldown"], [r["reason"] for r in summary["results"][1:]])
+
+    def test_an_active_cooldown_in_the_queue_blocks_the_collector_before_any_request(self):
+        queue.record_cooldown(self.root, "instagram", "HTTP 429")
+        commands = []
+        with patch.object(subprocess, "run", side_effect=curl_failure(200, commands)):
+            code = ig.main(batch_args(self.root))
+        self.assertEqual(1, code)
+        self.assertEqual([], commands)
+        summary = self.summary()
+        self.assertEqual(["skipped"] * 3, [r["status"] for r in summary["results"]])
+        self.assertEqual(["cooldown"] * 3, [r["reason"] for r in summary["results"]])
+        self.assertEqual("cooldown", summary["stopped_by"])
+        self.assertIn("cooldown", self.err.getvalue())
+
+    def test_an_expired_cooldown_lets_the_collector_run(self):
+        path = queue.queue_path(self.root)
+        data = queue.load(path)
+        data["providers"]["instagram"]["cooldown_until"] = "2000-01-01T00:00:00+00:00"
+        queue.save(path, data)
+        calls = []
+        code, _summary = self.run_main(lambda stem, *_r: calls.append(stem) or self.done(stem))
+        self.assertEqual(0, code)
+        self.assertEqual(["01_A", "02_B", "03_C"], calls)
+
+
+class FailClosedImportTests(unittest.TestCase):
+    """`refuse_when_stopped` with `--project`: a missing queue module refuses like an unreadable queue."""
+
+    def setUp(self):
+        self.enterContext(patch.object(ig, "ensure_tool"))
+        self.err = self.enterContext(contextlib.redirect_stderr(io.StringIO()))
+        self.root = Path(tempfile.mkdtemp(prefix="gb-igimport-")).resolve()
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        write_pairs(self.root / "configs", ["01_A"], url=CDN)
+
+    def args(self, *extra):
+        return ig.build_parser().parse_args(batch_args(self.root, *extra))
+
+    def test_an_import_error_with_a_project_refuses_the_batch(self):
+        pairs = [("01_A", self.root / "v", self.root / "a")]
+        with patch.dict(sys.modules, {"getbrolls.queue": None}), self.assertRaises(ig.CollectError):
+            ig.refuse_when_stopped(pairs, self.args())
+        summary = json.loads((self.root / "work/summary.json").read_text(encoding="utf-8"))
+        self.assertEqual(["skipped"], [r["status"] for r in summary["results"]])
+        self.assertIn("fila não consultada", self.err.getvalue())
+
+    def test_the_collector_sends_no_request_when_the_queue_module_is_missing(self):
+        commands = []
+        with (
+            patch.dict(sys.modules, {"getbrolls.queue": None}),
+            patch.object(subprocess, "run", side_effect=curl_failure(200, commands)),
+        ):
+            code = ig.main(batch_args(self.root))
+        self.assertEqual(1, code)
+        self.assertEqual([], commands)
+
+    def test_without_a_project_there_is_no_queue_to_consult(self):
+        args = self.args()
+        args.project = None
+        with patch.dict(sys.modules, {"getbrolls.queue": None}):
+            ig.refuse_when_stopped([("01_A", self.root / "v", self.root / "a")], args)
 
 
 if __name__ == "__main__":

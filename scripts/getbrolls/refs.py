@@ -26,7 +26,6 @@ LOCAL_KINDS = (
 )  # fmt: skip
 # As refs locais que já valem; as outras têm o nome guardado e recusam com a lista destas.
 ACCEPTED_LOCAL = ("asset", "handoff", "seg", "media")
-DOC_NAMES = ("roteiro", "brief", "rules", "storyboard", "status")
 CATALOG = "cat"
 MAX_REF = 512
 MAX_VALUE = 200

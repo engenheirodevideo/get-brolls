@@ -1,12 +1,12 @@
 """Arquivos e pastas "privados" (0600/0700 no POSIX) ganham a ACL equivalente no Windows.
 
-`runtime.make_private(path)` roda `%SystemRoot%\\System32\\icacls.exe <caminho> /grant:r *S-1-3-4:(F)
+`private_files.make_private(path)` roda `%SystemRoot%\\System32\\icacls.exe <caminho> /grant:r *S-1-3-4:(F)
 *S-1-5-18:(F) *S-1-5-32-544:(F) /inheritance:r /L` (pasta: `(OI)(CI)(F)`) e, depois dela, `icacls <pasta>
 /restore <arquivo> /L`, que grava a DACL inteira em SDDL: só o dono (OWNER RIGHTS), SYSTEM e Administradores,
 o mesmo que o CPython dá a `os.mkdir(caminho, 0o700)`, por SID e nunca por nome, sem a entrada explícita de
 quem criou o arquivo. Listas de argumentos, sem shell, e nada no POSIX, onde o `chmod` já rodou. O ramo do
-Windows roda aqui em qualquer sistema com `runtime._is_windows` ligado e `runtime._run_icacls` trocado por um
-gravador: o argv é conferido letra por letra. Uma falha vira uma linha `event=op` com `outcome=error` (o
+Windows roda aqui em qualquer sistema com `private_files._is_windows` ligado e `private_files._run_icacls` trocado
+por um gravador: o argv é conferido letra por letra. Uma falha vira uma linha `event=op` com `outcome=error` (o
 esquema de sempre, sem código novo) e nunca derruba o comando. O teste de verdade (`RealWindowsAclTests`) só
 roda no Windows e lê a ACL de volta em SDDL com `icacls /save`.
 """
@@ -31,7 +31,7 @@ from unittest import mock
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 import _paths as _test_paths  # noqa: F401  (efeito de import: põe scripts/ no sys.path)  # pylint: disable=unused-import
 
-from getbrolls import acquisition, effects, http, library, logs, profile, queue, runtime, serve
+from getbrolls import acquisition, effects, effects_salt, http, library, logs, private_files, profile, queue, serve
 from getbrolls.sdk import safe_copy
 
 # pylint: disable=protected-access
@@ -89,8 +89,8 @@ class WindowsCase(unittest.TestCase):
         self.icacls = mock.MagicMock(side_effect=self._icacls)
         stack = contextlib.ExitStack()
         self.addCleanup(stack.close)
-        stack.enter_context(mock.patch.object(runtime, "_is_windows", return_value=True))
-        stack.enter_context(mock.patch.object(runtime, "_run_icacls", self.icacls))
+        stack.enter_context(mock.patch.object(private_files, "_is_windows", return_value=True))
+        stack.enter_context(mock.patch.object(private_files, "_run_icacls", self.icacls))
         stack.enter_context(mock.patch.object(logs, "event", self.recorder))
         stack.enter_context(mock.patch.object(effects._logger, "isEnabledFor", return_value=True))
         stack.enter_context(mock.patch.dict(logs._state, {"project": None, "command": None}))
@@ -141,19 +141,19 @@ class ArgvTests(WindowsCase):
     def test_a_file_gets_the_three_well_known_sids_and_no_inheritance(self):
         path = self.tmp / "private.json"
         path.write_text("{}", encoding="utf-8")
-        runtime.make_private(path)
+        private_files.make_private(path)
         self.assert_one_grant(path)
 
     def test_a_folder_gets_an_inheritable_grant(self):
         folder = self.tmp / "sources"
         folder.mkdir()
-        runtime.make_private(folder)
+        private_files.make_private(folder)
         self.assert_one_grant(folder, "(OI)(CI)(F)")
 
     def test_it_runs_a_list_without_a_shell_and_waits_for_a_bounded_time(self):
         path = self.tmp / "private.json"
         path.write_text("{}", encoding="utf-8")
-        runtime.make_private(path)
+        private_files.make_private(path)
         self.assertEqual(2, self.icacls.call_count)
         for call in self.icacls.call_args_list:
             with self.subTest(argv=call.args[0]):
@@ -166,7 +166,7 @@ class ArgvTests(WindowsCase):
     def test_the_grant_comes_before_the_inheritance_is_removed(self):
         path = self.tmp / "a"
         path.write_text("", encoding="utf-8")
-        runtime.make_private(path)
+        private_files.make_private(path)
         (argv,) = self.argvs()
         self.assertLess(argv.index("/grant:r"), argv.index("/inheritance:r"))
 
@@ -179,13 +179,13 @@ class ArgvTests(WindowsCase):
                     if name not in env:
                         os.environ.pop(name, None)
                 self.icacls.reset_mock()
-                runtime.make_private(path)
+                private_files.make_private(path)
                 self.assertEqual(self.argvs(), [expected_argv(self.exe, path)])
 
     def test_the_tool_is_the_one_in_system32_never_a_bare_name(self):
         path = self.tmp / "a"
         path.write_text("", encoding="utf-8")
-        runtime.make_private(path)
+        private_files.make_private(path)
         self.assertEqual(2, len(self.calls()))
         for argv in self.calls():
             self.assertEqual(argv[0], self.exe)
@@ -198,13 +198,13 @@ class ArgvTests(WindowsCase):
         default = str(Path("C:\\Windows", "System32", "icacls.exe"))
         real_is_file = Path.is_file
         with mock.patch.object(Path, "is_file", lambda self: str(self) == default or real_is_file(self)):
-            runtime.make_private(path)
+            private_files.make_private(path)
         self.assertEqual(self.argvs(), [expected_argv(default, path)])
 
     def test_a_path_with_spaces_stays_one_argument(self):
         folder = self.tmp / "Pasta com espaço"
         folder.mkdir()
-        runtime.make_private(folder)
+        private_files.make_private(folder)
         self.assertEqual(self.argvs()[0][1], str(folder))
 
     def test_a_mock_of_subprocess_run_never_sees_the_call(self):
@@ -217,7 +217,7 @@ class ArgvTests(WindowsCase):
             mock.patch("subprocess.Popen") as popen,
             mock.patch.object(effects, "run") as effects_run,
         ):
-            runtime.make_private(path)
+            private_files.make_private(path)
         run.assert_not_called()
         popen.assert_not_called()
         effects_run.assert_not_called()
@@ -228,7 +228,7 @@ class LoggingTests(WindowsCase):
     def test_a_success_is_one_op_line_named_by_the_tool_never_by_a_path(self):
         path = self.tmp / "queue.json"
         path.write_text("{}", encoding="utf-8")
-        runtime.make_private(path)
+        private_files.make_private(path)
         (row,) = self.recorder.ops()
         self.assertEqual((row["operation"], row["target"], row["outcome"]), ("proc.run", "icacls", "ok"))
         self.assertEqual(row["exit"], 0)
@@ -239,7 +239,7 @@ class LoggingTests(WindowsCase):
         self.icacls.side_effect = subprocess.CalledProcessError(5, ["icacls"])
         path = self.tmp / "queue.json"
         path.write_text("{}", encoding="utf-8")
-        runtime.make_private(path)
+        private_files.make_private(path)
         (row,) = self.recorder.ops()
         self.assertEqual((row["operation"], row["target"], row["outcome"]), ("proc.run", "icacls", "error"))
         self.assertEqual((row["error_code"], row["error"], row["exit"]), ("INVALID_DATA", "CalledProcessError", 5))
@@ -248,7 +248,7 @@ class LoggingTests(WindowsCase):
         self.icacls.side_effect = FileNotFoundError(2, "icacls")
         path = self.tmp / "queue.json"
         path.write_text("{}", encoding="utf-8")
-        runtime.make_private(path)
+        private_files.make_private(path)
         (row,) = self.recorder.ops()
         self.assertEqual((row["outcome"], row["error_code"], row["error"]), ("error", "IO_ERROR", "FileNotFoundError"))
 
@@ -256,7 +256,7 @@ class LoggingTests(WindowsCase):
         Path(self.exe).unlink()
         path = self.tmp / "queue.json"
         path.write_text("{}", encoding="utf-8")
-        runtime.make_private(path)
+        private_files.make_private(path)
         self.icacls.assert_not_called()
         (row,) = self.recorder.ops()
         self.assertEqual((row["operation"], row["target"], row["outcome"]), ("proc.run", "icacls", "error"))
@@ -266,7 +266,7 @@ class LoggingTests(WindowsCase):
         self.icacls.side_effect = subprocess.TimeoutExpired(["icacls"], 30)
         path = self.tmp / "queue.json"
         path.write_text("{}", encoding="utf-8")
-        runtime.make_private(path)
+        private_files.make_private(path)
         (row,) = self.recorder.ops()
         self.assertEqual((row["outcome"], row["error"]), ("error", "TimeoutExpired"))
 
@@ -276,7 +276,7 @@ class LoggingTests(WindowsCase):
         target.write_text("x", encoding="utf-8")
         link = self.tmp / "link"
         link.symlink_to(target)
-        runtime.make_private(link)
+        private_files.make_private(link)
         self.icacls.assert_not_called()
         self.assertEqual([row["outcome"] for row in self.recorder.ops()], ["error"])
 
@@ -284,8 +284,8 @@ class LoggingTests(WindowsCase):
         path = self.tmp / "folder"
         path.mkdir()
         for tag, allowed in (
-            (runtime._LINK_TAGS[1], False),
-            (runtime._LINK_TAGS[0], False),
+            (private_files._LINK_TAGS[1], False),
+            (private_files._LINK_TAGS[0], False),
             (0x9000001A, True),
         ):
             with self.subTest(tag=hex(tag)):
@@ -293,19 +293,19 @@ class LoggingTests(WindowsCase):
                 self.recorder.calls.clear()
                 info = types.SimpleNamespace(st_mode=stat.S_IFDIR | 0o700, st_reparse_tag=tag)
                 with mock.patch("os.lstat", return_value=info):
-                    runtime.make_private(path)
+                    private_files.make_private(path)
                 self.assertEqual(self.icacls.called, allowed)
                 self.assertEqual([row["outcome"] for row in self.recorder.ops()], ["ok" if allowed else "error"])
 
     def test_a_missing_file_is_an_error_line_and_never_raises(self):
-        runtime.make_private(self.tmp / "nothing")
+        private_files.make_private(self.tmp / "nothing")
         self.icacls.assert_not_called()
         self.assertEqual([row["outcome"] for row in self.recorder.ops()], ["error"])
 
     def test_the_handler_files_run_the_tool_without_writing_a_line(self):
         path = self.tmp / "getbrolls.log"
         path.write_text("", encoding="utf-8")
-        runtime.make_private(path, record=False)
+        private_files.make_private(path, record=False)
         self.assert_one_grant(path)
         self.assertEqual(self.recorder.calls, [])
 
@@ -315,11 +315,11 @@ class LoggingTests(WindowsCase):
         for failure in (subprocess.CalledProcessError(5, ["icacls"]), subprocess.TimeoutExpired(["icacls"], 30)):
             with self.subTest(failure=type(failure).__name__):
                 self.icacls.side_effect = failure
-                runtime.make_private(path, record=False)
+                private_files.make_private(path, record=False)
                 self.assertEqual(self.recorder.calls, [])
         self.icacls.reset_mock()
         Path(self.exe).unlink()
-        runtime.make_private(path, record=False)
+        private_files.make_private(path, record=False)
         self.icacls.assert_not_called()
         self.assertEqual(self.recorder.calls, [])
 
@@ -332,29 +332,29 @@ class PosixTests(unittest.TestCase):
         self.addCleanup(folder.rmdir)
         recorder = Recorder()
         with (
-            mock.patch.object(runtime, "_is_windows", return_value=False),
-            mock.patch.object(runtime, "_run_icacls") as icacls,
+            mock.patch.object(private_files, "_is_windows", return_value=False),
+            mock.patch.object(private_files, "_run_icacls") as icacls,
             mock.patch("subprocess.run") as run,
             mock.patch.object(logs, "event", recorder),
         ):
-            runtime.make_private(folder)
-            runtime.make_private(folder, record=False)
-            runtime.make_private(folder / "missing")
+            private_files.make_private(folder)
+            private_files.make_private(folder, record=False)
+            private_files.make_private(folder / "missing")
         icacls.assert_not_called()
         run.assert_not_called()
         self.assertEqual(recorder.calls, [])
 
     def test_the_real_platform_check_follows_os_name(self):
-        self.assertEqual(runtime._is_windows(), os.name == "nt")
+        self.assertEqual(private_files._is_windows(), os.name == "nt")
 
 
 class BoundRunTests(unittest.TestCase):
-    """`runtime._run_icacls` is `subprocess.run` with the `Popen` of import time: mocks of either never see it."""
+    """`private_files._run_icacls` is `subprocess.run` with the `Popen` of import time: mocks of either never see it."""
 
     def test_it_runs_a_real_child_while_subprocess_is_mocked(self):
         refuse = AssertionError("a mock of subprocess saw the icacls child")
         with mock.patch("subprocess.run", side_effect=refuse), mock.patch("subprocess.Popen", side_effect=refuse):
-            done = runtime._run_icacls(
+            done = private_files._run_icacls(
                 [sys.executable, "-c", "print('ok')"], check=True, capture_output=True, timeout=60
             )
         self.assertEqual((done.returncode, done.stdout.strip()), (0, b"ok"))
@@ -370,7 +370,7 @@ class BoundRunTests(unittest.TestCase):
 
         for run in (mock.MagicMock(), enclosing()):
             with self.subTest(run=run):
-                self.assertIs(runtime._run_bound_at_import(run), run)
+                self.assertIs(private_files._run_bound_at_import(run), run)
 
     def test_only_make_private_launches_the_bound_runner(self):
         """The guard cannot see a call of `_run_icacls`: one anywhere else would start a process with no line."""
@@ -386,16 +386,16 @@ class BoundRunTests(unittest.TestCase):
                     )
                     if isinstance(node, ast.Call) and name == "_run_icacls":
                         callers.append((path.relative_to(PACKAGE).as_posix(), function.name))
-        self.assertEqual(sorted(set(callers)), [("runtime.py", "make_private")])
+        self.assertEqual(sorted(set(callers)), [("private_files.py", "make_private")])
 
     def test_it_keeps_the_failures_of_subprocess_run(self):
         with self.assertRaises(subprocess.CalledProcessError) as failed:
-            runtime._run_icacls(
+            private_files._run_icacls(
                 [sys.executable, "-c", "raise SystemExit(3)"], check=True, capture_output=True, timeout=60
             )
         self.assertEqual(failed.exception.returncode, 3)
         with self.assertRaises(subprocess.TimeoutExpired):
-            runtime._run_icacls(
+            private_files._run_icacls(
                 [sys.executable, "-c", "import time; time.sleep(30)"], check=True, capture_output=True, timeout=0.5
             )
 
@@ -405,10 +405,10 @@ class SitesTests(WindowsCase):
 
     def test_ensure_private_file_applies_it_to_a_new_file_only(self):
         path = self.tmp / "diagnostics.jsonl"
-        runtime._ensure_private_file(path)
+        private_files._ensure_private_file(path)
         self.assert_one_grant(path)
         path.write_text('{"a": 1}\n', encoding="utf-8")
-        runtime._ensure_private_file(path)
+        private_files._ensure_private_file(path)
         self.assertEqual(self.granted(path), 1)
 
     def test_a_private_mkdir_applies_it_to_the_folder_it_created(self):
@@ -453,7 +453,7 @@ class SitesTests(WindowsCase):
 
     def test_the_trust_store_and_its_folder_are_covered(self):
         home = self.tmp / "home"
-        profile._write_store(home, {"trusted": []})
+        profile._write_store(home, {"profiles": {}})
         self.assertEqual(self.granted(home), 1)
         self.assertEqual(self.argvs()[0], expected_argv(self.exe, home, "(OI)(CI)(F)"))
         (argv,) = [a for a in self.argvs() if Path(a[1]).parent == home]
@@ -464,7 +464,7 @@ class SitesTests(WindowsCase):
         home.mkdir()
         self.icacls.side_effect = KeyboardInterrupt
         with self.assertRaises(KeyboardInterrupt):
-            profile._write_store(home, {"trusted": []})
+            profile._write_store(home, {"profiles": {}})
         self.assertEqual(list(home.iterdir()), [])
 
     def test_serve_pid_and_log_are_covered(self):
@@ -525,7 +525,9 @@ class SitesTests(WindowsCase):
         self.assertTrue(Path(argv[1]).name.startswith(".index-"))
         self.assertEqual(argv, expected_argv(self.exe, argv[1]))
         self.assert_empty_when_granted(argv[1])
-        self.assertEqual(json.loads((cache / acquisition.INDEX_NAME).read_text(encoding="utf-8")), {"c1": []})
+        self.assertEqual(
+            json.loads((cache / acquisition.INDEX_NAME).read_text(encoding="utf-8")), {"schema_version": 1, "c1": []}
+        )
 
     def test_ctrl_c_while_the_sources_index_waits_for_the_tool_leaves_no_temporary(self):
         cache = self.tmp / ".getbrolls-sources"
@@ -587,24 +589,24 @@ class SitesTests(WindowsCase):
 
     def test_the_salt_and_its_folder_are_covered_silently(self):
         home = self.tmp / "gbhome"
-        salt = home / effects.SALT_FILE
-        effects._create_salt(salt)
+        salt = home / effects_salt.SALT_FILE
+        effects_salt._create_salt(salt)
         self.assertEqual(self.granted(home), 1)
         covered = [Path(argv[1]) for argv in self.argvs()]
-        self.assertTrue(any(item.parent == home and item.name.startswith(effects.SALT_FILE) for item in covered))
+        self.assertTrue(any(item.parent == home and item.name.startswith(effects_salt.SALT_FILE) for item in covered))
         self.assertEqual(self.recorder.ops(), [])
 
     def test_the_salt_written_in_place_is_covered(self):
         home = self.tmp / "gbhome"
         home.mkdir()
-        salt = home / effects.SALT_FILE
-        effects._create_in_place(salt)
+        salt = home / effects_salt.SALT_FILE
+        effects_salt._create_in_place(salt)
         self.assert_one_grant(salt)
 
     def test_an_existing_home_is_never_restricted_by_the_salt(self):
         home = self.tmp / "gbhome"
         home.mkdir()
-        effects._create_salt(home / effects.SALT_FILE)
+        effects_salt._create_salt(home / effects_salt.SALT_FILE)
         self.assertEqual(self.granted(home), 0)
 
 
@@ -612,7 +614,7 @@ class SitesTests(WindowsCase):
 # sem conteúdo.
 EXEMPT = {
     ("effects.py", "_accepts_a_file"): "probe file removed at once",
-    ("library.py", "_locked"): "empty O_EXCL lock file with no content",
+    ("library.py", "_create_lock"): "empty O_EXCL lock file with no content",
 }
 COVERED_BY = frozenset({"make_private", "_ensure_private_file", "_write_private", "copy_from_fd"})
 PRIVATE = (0o600, 0o700)
@@ -735,7 +737,7 @@ class SddlParsingTests(unittest.TestCase):
 
 
 class _FailureRecorder:
-    """The real `subprocess.run` in place of `runtime._run_icacls`, keeping the exit of every failure."""
+    """The real `subprocess.run` in place of `private_files._run_icacls`, keeping the exit of every failure."""
 
     def __init__(self):
         self.failures = []
@@ -781,7 +783,7 @@ class RealWindowsAclTests(unittest.TestCase):
 
     def test_a_file_keeps_only_the_owner_system_and_administrators(self):
         path = self._new_file()
-        runtime.make_private(path)
+        private_files.make_private(path)
         self.assert_private(path, set())
         self.assertEqual(path.read_text(encoding="utf-8"), "{}")
         path.write_text('{"a": 1}', encoding="utf-8")
@@ -809,10 +811,10 @@ class RealWindowsAclTests(unittest.TestCase):
                 before = self._dacl(path)
                 run = _FailureRecorder()
                 with (
-                    mock.patch.object(runtime, "_PRINCIPALS", principals),
-                    mock.patch.object(runtime, "_run_icacls", run),
+                    mock.patch.object(private_files, "_PRINCIPALS", principals),
+                    mock.patch.object(private_files, "_run_icacls", run),
                 ):
-                    runtime.make_private(path)
+                    private_files.make_private(path)
                 if principals == (unknown,):
                     self.assertTrue(run.failures, "a name that resolves to nobody must make icacls fail")
                     self.assertEqual(self._dacl(path), before, "a refused grant must leave the ACL untouched")
@@ -826,7 +828,7 @@ class RealWindowsAclTests(unittest.TestCase):
         path = self._new_file()
         subprocess.run([self.icacls, str(path), "/grant", "*S-1-1-0:(R)"], check=True, capture_output=True)
         self.assertIn("WD", self._dacl(path))
-        runtime.make_private(path)
+        private_files.make_private(path)
         self.assert_private(path, set())
 
     def test_a_name_with_spaces_and_accents_and_its_folder_keep_only_the_same_three(self):
@@ -836,14 +838,14 @@ class RealWindowsAclTests(unittest.TestCase):
         folder.mkdir()
         path = folder / "decisão final.json"
         path.write_text("{}", encoding="utf-8")
-        runtime.make_private(folder)
-        runtime.make_private(path)
+        private_files.make_private(folder)
+        private_files.make_private(path)
         self.assert_private(folder, {"OI", "CI"})
         self.assert_private(path, set())
         self.assertEqual(path.read_text(encoding="utf-8"), "{}")
 
     def test_a_failure_to_set_the_acl_never_breaks_the_caller(self):
-        runtime.make_private(Path(tempfile.gettempdir()) / "gb-acl-never-created-file")
+        private_files.make_private(Path(tempfile.gettempdir()) / "gb-acl-never-created-file")
 
 
 if __name__ == "__main__":

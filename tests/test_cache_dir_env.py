@@ -10,7 +10,7 @@ from unittest.mock import patch
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import config, http, media
+from getbrolls import config, env_loader, http, media
 
 
 def clean_environ(**values):
@@ -76,7 +76,7 @@ class EnvFileAcceptsNewKeyTests(unittest.TestCase):
             cache_value = str(Path(tmp) / "cache")
             env_path.write_text(f"GB_CACHE_DIR={cache_value}\n", encoding="utf-8")
             with patch.dict(os.environ, clean_environ(), clear=True):
-                config.load_env(env_path)
+                env_loader.load_env(env_path)
                 self.assertEqual(os.environ.get("GB_CACHE_DIR"), cache_value)
                 self.assertEqual(config.cache_root(), Path(cache_value))
 
@@ -85,7 +85,7 @@ class EnvFileAcceptsNewKeyTests(unittest.TestCase):
             env_path = Path(tmp) / ".env"
             env_path.write_text("GETBROLLS_CACHE_DIR=/tmp/whatever\n", encoding="utf-8")
             with patch.dict(os.environ, clean_environ(), clear=True), self.assertRaises(ValueError):
-                config.load_env(env_path)
+                env_loader.load_env(env_path)
 
 
 if __name__ == "__main__":

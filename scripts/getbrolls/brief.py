@@ -12,6 +12,7 @@ from . import _paths, brief_source, vocab
 from .brief_source import BEAT_ID_RE, load_brief
 from .config import env_is_set
 from .limits import MAX_HINT_S, MIN_HINT_S
+from .sdk import schemas
 
 # Reexport: quem já importava daqui (`from .brief import brief_path`, `brief.load_brief`
 # etc.) continua igual; o corpo deste módulo não os usa (mora em `brief_source`, o leaf
@@ -318,8 +319,15 @@ def validate_brief(data, rules=None, project=None):
     `project`: com ROTEIRO.md do getbrolls nessa pasta, `"beats": []` é válido (o roteiro
     gera os beats) e beat `"retired": true` sai da lista.
     """
-    if not isinstance(data, dict) or type(data.get("version")) is not int or data["version"] != 1:
-        raise ValueError('Em BRIEF.md, "version" tem que ser o número 1. Ajuste essa linha.')
+    supported = schemas.version("brief")
+    found = data.get("version") if isinstance(data, dict) else None
+    if type(found) is not int or found < 1:
+        raise ValueError(f'Em BRIEF.md, "version" tem que ser o número {supported}. Ajuste essa linha.')
+    if found > supported:
+        raise ValueError(
+            f'BRIEF.md foi gravado por uma versão mais nova do getbrolls ("version" {found}); '
+            "atualize antes de continuar."
+        )
     video = _dictionary(data, "video")
     delivery = _dictionary(video, "delivery")
     rights = _dictionary(data, "rights")
@@ -382,7 +390,7 @@ def validate_brief(data, rules=None, project=None):
             '--declaration "frase" --force` antes de seguir.'
         )
     return (
-        {"version": 1, "video": video, "rights": rights, "defaults": defaults, "beats": beats},
+        {"version": found, "video": video, "rights": rights, "defaults": defaults, "beats": beats},
         conflicts,
     )
 

@@ -214,7 +214,8 @@ Consulte quando precisar. Cada bloco é um passo do caminho.
 getbrolls providers
 
 # ── doctor ──────────────────────────────────────────────────
-# O QUE FAZ: confere se FFmpeg, Node, yt-dlp e o resto estão instalados.
+# O QUE FAZ: confere se FFmpeg, Node, yt-dlp e o resto estão instalados, e se a venv
+#   em uso bate com as versões fixadas (item "venv" em missing: rode o setup de novo).
 # VOCÊ RECEBE: o que está ok e o que falta, com o nome do que instalar.
 # QUANDO USAR: na primeira vez e sempre que algo der erro.
 # DEU CERTO QUANDO: "summary.missing" vem vazio: [].
@@ -235,6 +236,19 @@ getbrolls setup --check
 # O QUE FAZ: igual ao doctor, mas faz buscas de teste de verdade nas fontes.
 # ATENÇÃO: gasta cota das APIs pagas por uso (Pexels, Pixabay).
 getbrolls doctor --live
+
+# ── environment --action list ───────────────────────────────
+# O QUE FAZ: lista as pontes de ambiente que já vêm com o getbrolls (hoje, o HyperFrames).
+# VOCÊ RECEBE: em "environments", para cada ponte: id, versão, sha256 do pin e "status"
+#              (enabled, disabled…); se não estiver pronta, "reason" diz por quê.
+# QUANDO USAR: antes de usar uma ponte, para ver se ela está ligada. Só lê: não roda código
+#              da ponte e não precisa de projeto.
+getbrolls environment --action list
+
+# ── template (comando antigo) ───────────────────────────────
+# O comando "template" foi renomeado para "recipe". Quem ainda o digita (template --action
+# list, freeze ou show) recebe um erro de uso (código 2) com o comando novo: recipe --action list.
+# O mesmo vale para "init --template": use "init --recipe" (veja "Clientes e receitas").
 
 # ── status ──────────────────────────────────────────────────
 # O QUE FAZ: mostra em que etapa o projeto está.
@@ -291,6 +305,15 @@ getbrolls migrate --action apply --project /caminho/meu-video
 # QUANDO USAR: uma vez, no começo do projeto.
 getbrolls init-rules --format reels --project /caminho/meu-video
 
+# ── init-rules (já com a declaração de direitos) ────────────
+# O QUE FAZ: cria o RULES.md já com o modo "user_declaration": você assume a responsabilidade
+#            pelo uso do material, em vez de juntar uma prova por item.
+# --mode: per_item_evidence (padrão) · user_declaration
+# --responsible e --declaration: quem assume e a frase exata. Escreva a sua; a ferramenta
+#            nunca preenche uma declaração por você.
+# --force: regrava um RULES.md que já existe. Com --format, muda só o formato e guarda o resto.
+getbrolls init-rules --mode user_declaration --responsible "Seu nome" --declaration "Frase da sua declaração" --project /caminho/meu-video
+
 # ── rules ───────────────────────────────────────────────────
 # O QUE FAZ: mostra as regras que estão valendo agora neste projeto.
 getbrolls rules --project /caminho/meu-video
@@ -343,6 +366,13 @@ getbrolls search --provider youtube --query "Sua busca" --shot "<ID_DO_BEAT>" --
 # QUANDO USAR: pra testar se a busca está boa antes de valer.
 getbrolls search --provider youtube --query "Sua busca" --dry-run --project /caminho/meu-video
 
+# ── search --intent --media ─────────────────────────────────
+# O QUE FAZ: diz o que você procura e o tipo de arquivo.
+# --intent: literal (uma pessoa, lugar ou coisa com nome) · illustrative (uma ideia genérica)
+# --media: image · video · any (padrão). Só NASA e Commons têm os dois tipos.
+# Atenção: este comando consulta o provedor na internet.
+getbrolls search --provider nasa --query "Sua busca" --intent illustrative --media image --project /caminho/meu-video
+
 # ── resolve --url ───────────────────────────────────────────
 # O QUE FAZ: registra um vídeo pelo link, sem precisar buscar.
 # VALE PARA: YouTube · Instagram · TikTok · Wikimedia Commons · NASA
@@ -354,6 +384,15 @@ getbrolls resolve --url "URL_PUBLICA" --project /caminho/meu-video
 # DICA: use --creator "Autor" e --source-url "link" pra anotar a origem.
 getbrolls resolve --file "/caminho/arquivo.mp4" --project /caminho/meu-video
 
+# ── resolve (print de notícia ou de site) ───────────────────
+# O QUE FAZ: registra um arquivo que é um print, com os dados que a prévia e a entrega usam.
+# --asset-type: video · image · news_screenshot · web_screenshot (sem ele, vem da extensão)
+# --title: o título do print ou da notícia · --captured-at: a data do print (ISO 8601)
+# --context-image: um segundo print seu, que fica parado ao lado · --shot: o identificador único do insert, ex.: insert-02
+# --intent: literal ou illustrative · --full-preview-file: a prévia pronta que já mostra só este
+#   insert, usada com GB_GIF_SCOPE=full
+getbrolls resolve --file "/caminho/print.png" --asset-type news_screenshot --title "Título da notícia" --captured-at "2026-10-30T10:00:00Z" --source-url "link" --project /caminho/meu-video
+
 # ── inspect --candidate ─────────────────────────────────────
 # O QUE FAZ: raio-x do vídeo: duração, capítulos e legendas.
 # QUANDO USAR: antes de escolher o trecho, pra não assistir tudo.
@@ -364,6 +403,12 @@ getbrolls inspect --candidate "<ID>" --project /caminho/meu-video
 # VOCÊ RECEBE: os trechos mais prováveis, com início e fim em segundos.
 # QUANDO USAR: vídeo de 1 hora e você só precisa de 5 segundos dele.
 getbrolls inspect --url "URL_PUBLICA" --query "O que encontrar no video" --project /caminho/meu-video
+
+# ── inspect --max-windows ───────────────────────────────────
+# O QUE FAZ: limita quantos trechos vêm na resposta (de 1 a 20; padrão 3).
+# ATENÇÃO: --candidate só funciona se o candidato tem URL pública. Num arquivo local, o erro
+#          manda usar "inspect --url" ou importar o original com "resolve --file".
+getbrolls inspect --url "URL_PUBLICA" --query "O que encontrar no video" --max-windows 5 --project /caminho/meu-video
 
 # ── browser-plan ────────────────────────────────────────────
 # O QUE FAZ: planeja o print de uma página (notícia, site) pelo navegador.
@@ -413,6 +458,11 @@ getbrolls review --project /caminho/meu-video
 # ATENÇÃO: abra PELO LINK e salve ANTES de fechar a aba.
 getbrolls serve --background --project /caminho/meu-video
 
+# ── serve --port ────────────────────────────────────────────
+# O QUE FAZ: pede uma porta. O padrão é 8767; se a pedida estiver ocupada, o servidor usa
+#            uma livre. Confira a porta em "port" (e o link em "urls") na resposta.
+getbrolls serve --background --port 8893 --project /caminho/meu-video
+
 # ── serve --stop ────────────────────────────────────────────
 # O QUE FAZ: fecha o Storyboard.
 getbrolls serve --stop --project /caminho/meu-video
@@ -448,6 +498,18 @@ getbrolls approve --candidate "<ID>" --by "Seu nome" --channel chat --statement 
 # O QUE FAZ: descarta o candidato e guarda o motivo.
 # POR QUE O MOTIVO: daqui a meses você sabe por que aquele trecho saiu.
 getbrolls reject --candidate "<ID>" --reason "Motivo do descarte" --project /caminho/meu-video
+
+# ── --confirm-format-change ─────────────────────────────────
+# QUANDO APARECE: você mudou o video_format no RULES.md depois de aprovar trechos. Mudar o
+#   formato-alvo invalida essas aprovações, então o comando para ANTES de mexer em qualquer
+#   item e diz quais seriam atingidos: "Mudar o formato-alvo para reels invalidaria 1
+#   aprovação(ões) já dada(s): <ID>". Nada foi gravado.
+# O QUE FAZER: se é isso mesmo, repita o mesmo comando com --confirm-format-change; os trechos
+#   voltam a aguardar aprovação (awaiting_approval) e rejeições seguem rejeitadas. Se não, volte o video_format
+#   no RULES.md.
+# ONDE VALE: search, resolve, preview, approve, permit, reject, fetch, verify, review,
+#   import-review, remember, browser-plan e deliver. Nos outros comandos a flag não faz nada.
+getbrolls reject --candidate "<ID>" --reason "Motivo do descarte" --confirm-format-change --project /caminho/meu-video
 ```
 
 ## 6 📄 Direitos de uso
@@ -551,8 +613,11 @@ getbrolls references --project /caminho/meu-video
 getbrolls learn --query "Busca realizada" --provider youtube --outcome hit --project /caminho/meu-video
 # Guarda um gosto seu (ex.: "prefiro imagens sem texto na tela")
 getbrolls learn --preference "Preferencia editorial informada" --by "Seu nome" --project /caminho/meu-video
-# Guarda uma anotação livre
-getbrolls learn --note "Aprendizado desta coleta" --project /caminho/meu-video
+# --note é um complemento: só vale junto com --query (sozinho, o comando recusa)
+getbrolls learn --query "Busca realizada" --provider youtube --outcome hit --note "Aprendizado desta coleta" --project /caminho/meu-video
+# Guarda um trecho que você já registrou com remember (vira um ponteiro, sem copiar o vídeo).
+# --shot diz em qual beat ele foi usado. Rode remember antes: sem isso, o comando recusa.
+getbrolls learn --from-candidate "<ID>" --shot "<ID_DO_BEAT>" --project /caminho/meu-video
 
 # ── library ─────────────────────────────────────────────────
 # O QUE FAZ: procura no que você já guardou (buscas, gostos, trechos).
@@ -694,6 +759,8 @@ getbrolls plugins --action list
 #                 depois de revisar, repita com --yes --expect <sha256 da prévia>.
 getbrolls plugins --action install --source "<pasta-ou-url-git>"
 getbrolls plugins --action install --source "<pasta-ou-url-git>" --yes --expect "<sha256>"
+# --subdir: a pasta do plugin dentro do repositório git, quando ele não está na raiz.
+getbrolls plugins --action install --source "<url-git>" --subdir "plugins/demo"
 
 # ── plugins --action marketplace-add / -list / -update / -remove ──
 # O QUE FAZ: um marketplace é um repositório git com o índice getbrolls-marketplace.json.
@@ -702,6 +769,11 @@ getbrolls plugins --action install --source "<pasta-ou-url-git>" --yes --expect 
 #   move o pin e devolve o diff (sem --marketplace, todos; --commit fixa outro; voltar
 #   atrás pede --allow-rollback). Nenhum plugin é atualizado por ele: use update;
 #   marketplace-remove tira o índice e o cache. Plugins já instalados ficam.
+# SE O ARQUIVO NÃO ABRE: se $GB_HOME/marketplaces.json não tem permissão de leitura, ou é uma
+#   pasta no lugar do arquivo, os comandos marketplace-*, search e install --id recusam com
+#   IO_ERROR e a mensagem diz o motivo: confira o caminho e as permissões. Não apague o
+#   arquivo por causa disso. O doctor e o capabilities seguem e mostram o motivo em
+#   "marketplaces_error"; o update --all segue como prévia e põe esses plugins em "skipped".
 getbrolls plugins --action marketplace-add --source "<url-git-do-marketplace>"
 getbrolls plugins --action marketplace-list
 getbrolls plugins --action marketplace-update --marketplace "<nome>"
@@ -775,7 +847,7 @@ getbrolls search --help
 getbrolls capabilities --json
 ```
 
-O `capabilities` serve a agentes e scripts que precisam descobrir o que esta instalação sabe fazer sem ler o `--help` de cada comando: cada comando traz `summary`, `options`, `requires_project` e `read_only` (`true`, `false` ou `"by_action"`); a resposta também traz `invocation` (como chamar esta instalação, sem caminho da máquina), `exit_codes`, `error_codes`, `plugin_commands` (só plugins habilitados, lidos do manifesto) `plugins_problems` (plugins inválidos, com falha ou suspensos, com o motivo) e `marketplaces` (marketplaces de plugins fixados: nome, commit do índice, quantos plugins, `allowed`, `official` — se é o índice oficial — e `problem`, sem caminho da máquina).
+O `capabilities` serve a agentes e scripts que precisam descobrir o que esta instalação sabe fazer sem ler o `--help` de cada comando: cada comando traz `summary`, `options`, `requires_project` e `read_only` (`true`, `false` ou `"by_action"`); a resposta também traz `invocation` (como chamar esta instalação, sem caminho da máquina), `exit_codes`, `error_codes`, `plugin_commands` (só plugins habilitados, lidos do manifesto) `plugins_problems` (plugins inválidos, com falha ou suspensos, com o motivo) e `marketplaces` (marketplaces de plugins fixados: nome, commit do índice, quantos plugins, `allowed`, `official` — se é o índice oficial — e `problem`, sem caminho da máquina), `environments` (as pontes de ambiente, as mesmas de `environment --action list`) e, só quando um arquivo não pôde ser lido, `plugins_error` ou `marketplaces_error`, com o motivo.
 
 ---
 
@@ -905,7 +977,7 @@ Criado pelo `init-rules`. Vale pra todo o projeto.
 
 ## .env: configurações da ferramenta
 
-Arquivo opcional. Copie o [`.env.example.pt-BR`](../.env.example.pt-BR) pra `.env` e mude só o que quiser. A lista completa, com faixas e padrões, está nesse arquivo.
+Arquivo opcional. Copie o [`.env.example.pt-BR`](../.env.example.pt-BR) pra `.env` e mude só o que quiser. A lista completa, com faixas e padrões, está nesse arquivo. Todas as variáveis `GB_*` (a de espera por trava `GB_LOCK_WAIT_S`, a que desliga a biblioteca `GB_LIBRARY`, a que espelha o log no stderr `GB_LOG_STDERR` e as outras) estão na tabela de [CLI_CONTRACT.md](CLI_CONTRACT.md#variáveis-de-ambiente).
 
 **Qual `.env` vale** (só um é lido, nunca se misturam), do mais forte ao mais fraco:
 
@@ -1031,4 +1103,4 @@ echo "Entrega pronta"
 
 ---
 
-Referência completa: [GUIDE.md](GUIDE.md) · Formato do brief: [BRIEF.md](BRIEF.md) · Regras: [RULES.md](RULES.md) · Contrato da CLI: [CLI_CONTRACT.md](CLI_CONTRACT.md) · Formatos de arquivo: [SCHEMAS.md](SCHEMAS.md) · Código da CLI: [`scripts/getbrolls/cli.py`](../scripts/getbrolls/cli.py)
+Referência completa: [GUIDE.md](GUIDE.md) · Formato do brief: [BRIEF.md](BRIEF.md) · Regras: [RULES.md](RULES.md) · Contrato da CLI: [CLI_CONTRACT.md](CLI_CONTRACT.md) · Formatos de arquivo: [SCHEMAS.md](SCHEMAS.md) · Código da CLI: [`scripts/getbrolls/cli_parser.py`](../scripts/getbrolls/cli_parser.py) (subcomandos e opções) · [`scripts/getbrolls/cli_project_args.py`](../scripts/getbrolls/cli_project_args.py) (opções de projeto)

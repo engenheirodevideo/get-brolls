@@ -29,7 +29,7 @@ from unittest import mock
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import CLI_ARGV, ROOT, WHEEL_MODE, wheel_origin
 
-from getbrolls import __version__, _paths, capabilities, cli, commands, logs, runtime
+from getbrolls import __version__, _paths, capabilities, cli, cli_parser, commands, logs, runtime
 from getbrolls.errors import DataRootError, PrerequisiteError, Refusal, UsageError
 from getbrolls.runtime import OperationError
 
@@ -76,7 +76,7 @@ def parse_in_process(argv, *, tty, stdout_tty=None):
 class ProgTests(unittest.TestCase):
     def test_prog_is_getbrolls(self):
         self.assertEqual("getbrolls", cli.build_parser().prog)
-        self.assertEqual("getbrolls search", cli._SUBPARSERS["search"].prog)
+        self.assertEqual("getbrolls search", cli_parser._SUBPARSERS["search"].prog)
 
 
 class VersionTests(unittest.TestCase):
@@ -92,7 +92,7 @@ class VersionTests(unittest.TestCase):
     def test_version_line_uses_this_install(self):
         with mock.patch.object(_paths, "origin", return_value="wheel"):
             self.assertEqual(
-                f"getbrolls {__version__} (Python {platform.python_version()}; dados: wheel)", cli.version_line()
+                f"getbrolls {__version__} (Python {platform.python_version()}; dados: wheel)", cli_parser.version_line()
             )
 
     def test_the_manual_shows_what_the_package_command_prints(self):
@@ -101,7 +101,7 @@ class VersionTests(unittest.TestCase):
         above = lines[: lines.index("getbrolls --version")]
         sample = next(line for line in reversed(above) if "(Python " in line)
         with mock.patch.object(_paths, "origin", return_value="wheel"):
-            printed = cli.version_line()
+            printed = cli_parser.version_line()
         shape = re.escape(printed)
         for number in (__version__, platform.python_version()):
             shape = shape.replace(re.escape(number), r"\d+\.\d+\.\d+")
@@ -110,7 +110,7 @@ class VersionTests(unittest.TestCase):
 
     def test_version_line_without_data_says_they_are_missing(self):
         with mock.patch.object(_paths, "origin", return_value="unknown"):
-            line = cli.version_line()
+            line = cli_parser.version_line()
         self.assertTrue(line.endswith("; dados: ausentes)"), line)
         self.assertIsNone(wheel_origin(line))
 
@@ -172,7 +172,7 @@ class UsageErrorJsonTests(unittest.TestCase):
         self.assertTrue(payload["error"].startswith("um destes argumentos é obrigatório: "), payload)
         payload = self.usage_error("inspect", "--project", self.project, "--candidate", "a", "--url", "b")
         self.assertIn("não vale junto com", payload["error"])
-        self.assertEqual("mensagem nova do argparse", cli.usage_pt_br("mensagem nova do argparse"))
+        self.assertEqual("mensagem nova do argparse", cli_parser.usage_pt_br("mensagem nova do argparse"))
 
     def test_missing_required_option_is_a_usage_error(self):
         payload = self.usage_error("search", "--project", self.project)
@@ -215,7 +215,7 @@ class UsageErrorTerminalTests(unittest.TestCase):
 
     def test_a_broken_stderr_counts_as_not_a_terminal(self):
         with mock.patch.object(cli.sys.stderr, "isatty", side_effect=ValueError("I/O operation on closed file")):
-            self.assertFalse(cli._stderr_is_tty())
+            self.assertFalse(cli_parser._stderr_is_tty())
 
     def test_stderr_to_a_file_is_json_even_with_stdout_on_a_terminal(self):
         code, stderr = parse_in_process(["serch"], tty=False, stdout_tty=True)
@@ -401,12 +401,13 @@ class Utf8StdioTests(unittest.TestCase):
     @staticmethod
     def _help_bytes(entry):
         """`entry(["--help"])` com stdout/stderr num pipe cp1252, como no Windows."""
-        out = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict")
+        raw = io.BytesIO()
+        out = io.TextIOWrapper(raw, encoding="cp1252", errors="strict")
         err = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict")
         with mock.patch("sys.stdout", out), mock.patch("sys.stderr", err), contextlib.suppress(SystemExit):
             entry(["--help"])
         out.flush()
-        return out.buffer.getvalue()  # pyright: ignore[reportAttributeAccessIssue]
+        return raw.getvalue()
 
     def test_instagram_pairs_help_is_utf8(self):
         from getbrolls import instagram_pairs  # pylint: disable=import-outside-toplevel
@@ -710,7 +711,7 @@ class ReasonCodeSurfaceTests(unittest.TestCase):
         with (
             mock.patch.object(commands, "execute", side_effect=exc),
             mock.patch("getbrolls.serve.filter_output"),
-            mock.patch("getbrolls.config.load_environment"),
+            mock.patch("getbrolls.env_loader.load_environment"),
             mock.patch.object(cli, "_serve_writes", return_value=False),
             contextlib.redirect_stdout(out),
             self.assertRaises(SystemExit) as caught,

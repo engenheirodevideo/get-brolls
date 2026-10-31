@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-16
-updated: 2026-10-20
+updated: 2026-10-31
 tags: [get-brolls, eval, blind-tests, quality]
 ---
 
@@ -12,11 +12,15 @@ Esta pasta guarda o processo de **teste cego**: o jeito de medir se a skill entr
 
 Nada aqui substitui [QUALITY.md](../docs/QUALITY.md). Lá ficam as evidências de código e os ensaios por provedor; aqui fica o comportamento do conjunto skill + CLI + agente diante de um roteiro.
 
-## Estado do processo — 2.4.0
+## Estado do processo
+
+A última rodada completa é a da 2.4.0, descrita abaixo. A 2.6.0 não teve rodada nova: o corpus e o processo seguem os mesmos, e os portões automáticos da 2.6.0 estão em [QUALITY.md](../docs/QUALITY.md#portões-da-260). Antes de publicar uma versão que muda o comportamento do agente, rode a rodada completa (veja a cadência).
+
+### Rodada da 2.4.0
 
 A rodada da 2.4.0 foi executada **por inteiro**: os **16 casos** do corpus, distribuídos entre seis executores independentes, cada um cego ao gabarito do seu caso. É a primeira rodada em que nenhum caso ficou de fora — as anteriores cobriam uma amostra. As fricções relatadas pelos executores foram tratadas numa onda de correção dentro da própria 2.4.0, e cada uma virou teste na suíte (a lista está no CHANGELOG e em [QUALITY.md](../docs/QUALITY.md)).
 
-Esta nota registra só o **processo**: que a rodada aconteceu e com que cobertura. As notas por beat, as métricas e o veredito de cada caso são do juiz e ficam em [runs/2026-09-17-2.4.0-rc-claude-opus.md](runs/2026-09-17-2.4.0-rc-claude-opus.md) — o mesmo arquivo reúne a baseline, as rodadas 1 a 3 e, na seção [Rodada final (16 casos)](runs/2026-09-17-2.4.0-rc-claude-opus.md#rodada-final-16-casos), os 16 casos completos com a confirmação pós-onda (c2); nada aqui os antecipa nem os substitui.
+Esta nota registra só o **processo**: que a rodada aconteceu e com que cobertura. As notas por beat, as métricas e o veredito de cada caso são do juiz e ficam em [runs/2026-09-17-2.4.0-rc-claude-opus.md](runs/2026-09-17-2.4.0-rc-claude-opus.md) — o mesmo arquivo reúne a baseline, as rodadas 1 a 3 e, na seção [Rodada final (16 casos)](runs/2026-09-17-2.4.0-rc-claude-opus.md#rodada-final-16-casos), os 16 casos completos com a confirmação pós-correções (c2); nada aqui os antecipa nem os substitui.
 
 ## O que estamos medindo — o propósito do produto
 

@@ -15,32 +15,39 @@ cliente nunca aparece (`search`, `hints`, contadores de fonte).
 # Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0).
 
 import contextlib
+import errno
 import hashlib
 import json
 import logging
 import os
+import stat
 import time
 import unicodedata
 import uuid
 from pathlib import Path
 
-from . import effects, labels, layout, logs, roteiro_frontmatter, versioning
+from . import effects, json_read, labels, layout, logs, roteiro_frontmatter, versioning
 from ._paths import strict_exists
 from .errors import LockedError
 from .memory import load_references
 from .models import now
 from .rules import home_dir
+from .sdk import jsonschema, schemas
 
 _log = logs.get(__name__.rsplit(".", 1)[-1])
 
-SCHEMA_VERSION = 1
-EMPTY = {
-    "schema_version": SCHEMA_VERSION,
-    "assets": [],
-    "queries": [],
-    "providers": {},
-    "preferences": [],
-}
+
+def empty_index():
+    """Biblioteca vazia, na versão corrente do schema (cada chamada devolve um objeto novo)."""
+    return {
+        "schema_version": schemas.version("library_index"),
+        "assets": [],
+        "queries": [],
+        "providers": {},
+        "preferences": [],
+    }
+
+
 OFF_NOTE = (
     "Biblioteca desligada por GB_LIBRARY=off: nada foi lido nem gravado em "
     "~/.getbrolls/library. Apague a variável para voltar a usá-la."
@@ -139,23 +146,29 @@ def _off(**extra):
 def load_index():
     path = index_path()
     if not enabled() or not strict_exists(path):
-        return json.loads(json.dumps(EMPTY))
+        return empty_index()
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+        data = json_read.read(path)
+    except json_read.JsonReadError as exc:
+        if exc.reason == "not_regular":
+            # Pasta ou FIFO no lugar do índice é E/S (IO_ERROR), como a leitura direta respondia: nada de apagar.
+            raise OSError(errno.EINVAL, "não é um arquivo comum", str(path)) from None
         raise ValueError(
             f"{labels.shown(path)} está com JSON inválido. Preserve o arquivo e conserte-o, ou "
             "apague-o para começar uma biblioteca nova; nenhum projeto depende dele."
         ) from None
+    current = schemas.version("library_index")
     invalid = (
-        f"{labels.shown(path)} não é uma biblioteca da versão {SCHEMA_VERSION}. Preserve o "
+        f"{labels.shown(path)} não é uma biblioteca da versão {current}. Preserve o "
         "arquivo e conserte-o, ou apague-o para começar uma biblioteca nova."
     )
     if not isinstance(data, dict):
         raise ValueError(invalid)  # noqa: TRY004 - contrato da CLI: dado inválido é ValueError (INVALID_DATA)
-    versioning.read_version(data, labels.shown(path), SCHEMA_VERSION, invalid=invalid)
-    for key, value in EMPTY.items():
-        data.setdefault(key, json.loads(json.dumps(value)))
+    versioning.read_version(data, labels.shown(path), current, invalid=invalid)
+    for key, value in empty_index().items():
+        data.setdefault(key, value)
+    if jsonschema.errors(data, schemas.load("library_index")):
+        raise ValueError(invalid)
     return data
 
 
@@ -186,51 +199,190 @@ def _write_private(path, text):
 
 
 def save_index(data):
-    _write_private(index_path(), json.dumps(versioning.stamp(data, SCHEMA_VERSION), ensure_ascii=False, indent=2))
+    _write_private(
+        index_path(), json.dumps(versioning.stamp(data, schemas.version("library_index")), ensure_ascii=False, indent=2)
+    )
 
 
 # Trava de diretório: um arquivo criado com O_EXCL, que funciona igual no Windows.
 LOCK_TIMEOUT_S = 10.0
 STALE_LOCK_S = 60.0
+# Uma sobra `index.lock.stale.*` mais velha que isso nenhum processo trataria como trava nova: quem renomeia
+# só devolve ao nome uma trava de até STALE_LOCK_S, e a folga cobre a janela dele e o relógio de outra máquina.
+STALE_GRAVE_S = 2 * STALE_LOCK_S
+LOCK_NAME = "index.lock"
 MAX_QUERIES = 500
+
+
+def _create_lock(path):
+    """Cria a trava do índice com O_EXCL e devolve o `(st_dev, st_ino)` dela; `FileExistsError` se já existe."""
+    # effect-exempt: O_EXCL lock file of the library index; a lock that stays busy logs library_lock
+    fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    try:
+        created = os.fstat(fd)
+    finally:
+        os.close(fd)
+    return created.st_dev, created.st_ino
+
+
+def _recreate_lock(path, stamp):
+    """Devolve a trava (arquivo vazio) ao nome sem hardlink, com a idade de `stamp`: O_EXCL não sobrescreve.
+
+    `FileExistsError` quer dizer que o nome já está tomado; qualquer outro `OSError` também sobe, e o nome fica vazio.
+    """
+    _create_lock(path)
+    with contextlib.suppress(OSError):
+        os.utime(path, (stamp.st_atime, stamp.st_mtime))
+
+
+def _restore_fresh(grave, path, stamp):
+    """Põe de volta no nome a trava nova de outro processo, tirada por engano; devolve `(erro, de_lado)`.
+
+    Com `link` a trava volta com o mesmo inode. Sem ele (exFAT, algumas pastas de rede) é recriada com O_EXCL
+    e a mesma idade: o dono dela solta outro inode e não a apaga, então ela fica sem dono até ficar velha, como
+    a original ficaria (limite conhecido sem hardlink; só disponibilidade, a exclusão vale). Se um terceiro processo
+    já pegou o nome (`FileExistsError`), a trava do outro fica de lado no `grave`, nunca apagada. Qualquer outra falha
+    deixa o nome vazio com o dono ainda lá dentro: `de_lado` é verdadeiro e quem chamou não pode criar a trava.
+    """
+    try:
+        effects.link(grave, path)
+    except OSError as error:
+        try:
+            _recreate_lock(path, stamp)
+        except FileExistsError:
+            logs.event(_log, logging.WARNING, "library_lock", fresh_lock_kept=True, reason=labels.reason(error))
+            return None, False
+        except OSError as failed:
+            logs.event(_log, logging.WARNING, "library_lock", fresh_lock_aside=True, reason=labels.reason(failed))
+            return failed, True
+        logs.event(_log, logging.WARNING, "library_lock", fresh_lock_restored=True, reason=labels.reason(error))
+    with contextlib.suppress(OSError):
+        effects.unlink(grave)
+    return None, False
+
+
+def _take_over_stale(path):
+    """Tira do caminho uma trava velha sem nunca apagar uma trava nova; devolve `(erro, de_lado)`.
+
+    A trava é renomeada para um nome só deste processo e só então reexaminada, uma vez: se outro processo
+    a trocou por uma trava nova entre o exame e a renomeação, ela volta ao lugar (`_restore_fresh`) em vez de
+    apagada. `erro` é o `OSError` que impediu a troca: quem falha em renomear não gira, segue para o prazo.
+    `de_lado` diz que a trava nova de outro processo não pôde voltar ao nome: entrar agora quebraria a exclusão.
+    """
+    grave = path.with_name(f"{path.name}.stale.{os.getpid()}.{uuid.uuid4().hex[:8]}")
+    try:
+        effects.rename(path, grave)
+    except FileNotFoundError:
+        return None, False  # outro processo já a tirou
+    except OSError as error:
+        return error, False
+    try:
+        stamp = grave.stat()
+    # lenient: a taken-over lock it cannot stat is treated as the stale one it was taken for
+    except OSError:
+        stamp = None
+    if stamp is not None and time.time() - stamp.st_mtime <= STALE_LOCK_S:
+        return _restore_fresh(grave, path, stamp)
+    with contextlib.suppress(OSError):
+        effects.unlink(grave)
+    return None, False
+
+
+def _sweep_graves(folder):
+    """Apaga as sobras `index.lock.stale.*` mais velhas que STALE_GRAVE_S; só roda com a trava na mão.
+
+    Uma sobra fica quando um processo morre entre renomear e apagar, ou quando a trava nova de outro ficou de
+    lado. Uma recente pode estar no meio da troca de outro processo e fica; uma velha, esse outro processo
+    também a apagaria. Só arquivo comum, nunca pasta nem link; quem não sai fica para a próxima vez.
+    """
+    try:
+        graves = list(folder.glob(f"{LOCK_NAME}.stale.*"))
+    except OSError:
+        return  # a pasta não deu para listar: a escrita segue, as sobras ficam para a próxima vez
+    swept = 0
+    now_s = time.time()
+    for grave in graves:
+        try:
+            seen = grave.lstat()
+        # lenient: a leftover that vanished or cannot be read is left for the next sweep
+        except OSError:
+            continue
+        if not stat.S_ISREG(seen.st_mode) or now_s - seen.st_mtime <= STALE_GRAVE_S:
+            continue
+        try:
+            effects.unlink(grave)
+        except OSError:
+            continue
+        swept += 1
+    if swept:
+        logs.event(_log, logging.INFO, "library_lock", stale_swept=swept)
+
+
+def _lock_identity(path):
+    """`(st_dev, st_ino)` do arquivo no nome, lido por `fstat` como na criação (no Windows o `stat` diverge)."""
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        seen = os.fstat(fd)
+    finally:
+        os.close(fd)
+    return seen.st_dev, seen.st_ino
+
+
+def _release_lock(path, owned):
+    """Apaga a trava só se ainda for a que este processo criou (`st_dev`/`st_ino`), nunca a de outro pelo nome."""
+    try:
+        found = _lock_identity(path)
+    except OSError:
+        return  # sumiu ou não dá para identificar: fica, e expira em STALE_LOCK_S como qualquer outra
+    if found != owned:
+        logs.event(_log, logging.WARNING, "library_lock", foreign_lock_kept=True)
+        return
+    with contextlib.suppress(OSError):
+        effects.unlink(path)
+
+
+def _is_stale(path):
+    """A trava no nome passou de STALE_LOCK_S; uma que não dá para examinar conta como nova (acaba em LOCKED)."""
+    try:
+        return time.time() - path.stat().st_mtime > STALE_LOCK_S
+    # lenient: stale-lock probe: a lock it cannot stat counts as fresh, so the wait ends in LOCKED
+    except OSError:
+        return False
 
 
 @contextlib.contextmanager
 def _locked():
     """Serializa ler → mudar → gravar; sem isso duas escritas perdem uma entrada."""
-    path = library_dir() / "index.lock"
+    path = library_dir() / LOCK_NAME
     effects.mkdir(path.parent, parents=True, exist_ok=True)
     started = time.monotonic()
     deadline = started + LOCK_TIMEOUT_S
+    blocked, aside = None, False
     while True:
-        try:
-            # effect-exempt: O_EXCL lock file of the library index; a lock that stays busy logs library_lock
-            os.close(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
-            break
-        except FileExistsError:
+        # Com a trava nova de outro processo de lado e o nome vazio, criar a trava aqui entraria junto com ele.
+        if not aside:
             try:
-                stale = time.time() - path.stat().st_mtime > STALE_LOCK_S
-            # lenient: stale-lock probe: a lock it cannot stat counts as fresh, so the wait ends in LOCKED
-            except OSError:
-                stale = False
-            if stale:
-                # Sobrou de um processo que morreu no meio: ninguém a renova.
-                with contextlib.suppress(OSError):
-                    effects.unlink(path)
-                continue
-            if time.monotonic() > deadline:
-                logs.event(
-                    _log,
-                    logging.WARNING,
-                    "library_lock",
-                    waited_ms=round((time.monotonic() - started) * 1000),
-                    timeout=True,
-                )
-                raise LockedError(
-                    f"{labels.shown(path)} está travado há tempo demais por outro getbrolls. "
-                    "Espere a outra execução terminar ou apague esse arquivo."
-                ) from None
-            time.sleep(0.02)
+                owned = _create_lock(path)
+                break
+            except FileExistsError:
+                if _is_stale(path):
+                    # Sobrou de um processo que morreu no meio: ninguém a renova.
+                    blocked, aside = _take_over_stale(path)
+                    if blocked is None:
+                        continue
+        if time.monotonic() > deadline:
+            logs.event(
+                _log,
+                logging.WARNING,
+                "library_lock",
+                waited_ms=round((time.monotonic() - started) * 1000),
+                timeout=True,
+            )
+            raise LockedError(
+                f"{labels.shown(path)} está travado há tempo demais por outro getbrolls. "
+                f"Espere a outra execução terminar ou apague esse arquivo.{_locked_detail(blocked, aside)}"
+            ) from None
+        time.sleep(0.02)
     logs.event(
         _log,
         logging.DEBUG,
@@ -239,10 +391,19 @@ def _locked():
         timeout=False,
     )
     try:
+        _sweep_graves(path.parent)
         yield
     finally:
-        with contextlib.suppress(OSError):
-            effects.unlink(path)
+        _release_lock(path, owned)
+
+
+def _locked_detail(blocked, aside):
+    """O motivo, no fim da mensagem de LOCKED, quando a troca de uma trava velha falhou."""
+    if blocked is None:
+        return ""
+    if aside:
+        return f" A trava de outra execução não pôde voltar ao lugar: {labels.reason(blocked)}."
+    return f" Não foi possível remover a trava velha: {labels.reason(blocked)}."
 
 
 def _update(mutate):

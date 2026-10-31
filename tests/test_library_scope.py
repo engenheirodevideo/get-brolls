@@ -18,7 +18,7 @@ import _isolation  # noqa: F401  # pylint: disable=unused-import
 from _cli import run_cli
 from test_library import LibraryBase, approved_candidate
 
-from getbrolls import commands, layout, library
+from getbrolls import layout, library, search_commands
 from getbrolls.cli import build_parser
 from getbrolls.commands import execute
 from getbrolls.memory import remember
@@ -321,7 +321,7 @@ class WhatIsRecordedTests(ScopeBase):
 
     def test_a_provider_failure_found_in_a_client_project_is_recorded_under_that_client(self):
         context = SimpleNamespace(dry_run=False, args=SimpleNamespace(project=str(self.acme)))
-        commands._search_record_provider_failure(  # pylint: disable=protected-access
+        search_commands._search_record_provider_failure(  # pylint: disable=protected-access
             context, "youtube", ACME_QUERY, ValueError("fora do ar")
         )
         data = json.loads(library.index_path().read_text(encoding="utf-8"))

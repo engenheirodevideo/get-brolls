@@ -14,6 +14,7 @@ from . import effects, logs, versioning
 from ._paths import strict_is_file
 from .ledger import atomic_write
 from .roteiro import SCENE_BEAT_RE
+from .sdk import jsonschema, schemas
 
 log = logs.get("roteiro_ids")
 
@@ -46,12 +47,13 @@ def read_state(project):
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         raise _refused("state_unreadable", ValueError(_BAD_STATE)) from None
     if isinstance(data, dict):
-        versioning.read_version(data, f"brolls/{STATE_FILE}", invalid=_BAD_STATE)
+        versioning.read_version(data, f"brolls/{STATE_FILE}", schemas.version("roteiro_state"), invalid=_BAD_STATE)
     if (
         not isinstance(data, dict)
         or type(data.get("next_id")) is not int
         or data["next_id"] < 1
         or not isinstance(data.get("scenes", {}), dict)
+        or jsonschema.errors(data, schemas.load("roteiro_state"))
     ):
         raise _refused("state_unreadable", ValueError(_BAD_STATE))
     return {"next_id": data["next_id"], "scenes": dict(data.get("scenes") or {})}
@@ -61,7 +63,13 @@ def write_state(project, state):
     """Grava `brolls/roteiro-state.json` (cria a pasta se faltar), de forma atômica."""
     path = state_path(project)
     effects.mkdir(path.parent, parents=True, exist_ok=True)
-    atomic_write(path, json.dumps(versioning.stamp(state), ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    atomic_write(
+        path,
+        json.dumps(
+            versioning.stamp(state, schemas.version("roteiro_state")), ensure_ascii=False, indent=2, sort_keys=True
+        )
+        + "\n",
+    )
 
 
 def signature(scene):

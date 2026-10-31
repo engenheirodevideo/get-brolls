@@ -209,7 +209,7 @@ def note_line(owner, text):
     """Uma nota do exportador pronta para mostrar: uma linha, sem marcação ativa
     (link, imagem e ênfase saem escapados) e com o prefixo que diz de qual plugin veio.
     `ValidatedExport.notes` já vem numa linha, mas com a marcação como o plugin escreveu."""
-    from ..delivery import inert
+    from ..delivery_render import inert
 
     clean = guard.sanitize_text(owner, str(text))
     return f"{NOTE_LABEL} {owner}: {inert(clean, plugin=owner)}"

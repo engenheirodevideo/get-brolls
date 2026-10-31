@@ -10,7 +10,7 @@ from unittest.mock import patch
 import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT
 
-from getbrolls import providers, social
+from getbrolls import providers, runtime, social
 from getbrolls.acquisition import prepare_source
 from getbrolls.cli import main
 from getbrolls.commands import _local_playwright
@@ -347,3 +347,31 @@ class SocialErrorTests(unittest.TestCase):
             with self.assertRaisesRegex(Exception, "bloqueou o IP") as caught:
                 social.run([])
             self.assertNotIn("secret", str(caught.exception))
+
+
+class MetadataWarningTests(unittest.TestCase):
+    URL = "https://www.tiktok.com/@fixture/video/12345"
+
+    def metadata_with(self, raw):
+        """`social.metadata` with yt-dlp answering `raw`: the result and the warnings the command recorded."""
+        event = {"warnings": []}
+        token = runtime.ACTIVE.set(event)
+        try:
+            with patch.object(social, "run", return_value=(raw, [])):
+                found = social.metadata(self.URL)
+        finally:
+            runtime.ACTIVE.reset(token)
+        return found, event["warnings"]
+
+    def test_invalid_json_gives_no_metadata_and_a_warning(self):
+        for raw in ("not json at all", "", '["a", "list"]', "42"):
+            with self.subTest(raw=raw):
+                found, warnings = self.metadata_with(raw)
+                self.assertEqual({}, found)
+                self.assertEqual(["YTDLP_WARNING"], [w["code"] for w in warnings])
+                self.assertIn("metadados não vieram desta página", warnings[0]["message"])
+
+    def test_valid_metadata_records_no_warning(self):
+        found, warnings = self.metadata_with('{"title": "T", "duration": 12.5}')
+        self.assertEqual("T", found["title"])
+        self.assertEqual([], warnings)

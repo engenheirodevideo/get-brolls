@@ -1,6 +1,6 @@
 """Eventos de log do `setup`: cada passo, cada parte e cada recusa, com duração e sem saída de processo.
 
-O `FakeRunner` do teste de instalação toma o lugar de `bootstrap.run_step`: nada abre processo nem
+O `FakeRunner` do teste de instalação toma o lugar de `bootstrap_steps.run_step`: nada abre processo nem
 fala com a rede. Os testes conferem os eventos e que nada sensível chegou à linha: caminho da máquina,
 linha de comando, chave de API, token ou a saída do pip e do npm.
 """
@@ -17,7 +17,7 @@ from _logs import LogCase
 from _symlink import needs_symlink
 from test_setup_install import WINDOWS, FakeRunner, _Setup, _touch
 
-from getbrolls import _paths, bootstrap, runtime
+from getbrolls import bootstrap, file_locks, runtime_parts
 from getbrolls.errors import LockedError, UsageError
 
 
@@ -42,7 +42,7 @@ class SetupLogTests(_Setup, LogCase):
     def test_a_setup_logs_each_step_and_each_part_with_durations_and_no_command_line(self):
         _result, rows = self.logged_install()
         started = [row["step"] for row in rows.all("setup_step_start")]
-        self.assertEqual(["venv", "pip", "probe", "version", "node", "npm", "playwright"], started)
+        self.assertEqual(["venv", "pip-bootstrap", "pip", "probe", "version", "node", "npm", "playwright"], started)
         ended = rows.all("setup_step_end")
         self.assertEqual(started, [row["step"] for row in ended])
         for row in ended:
@@ -166,12 +166,12 @@ class SetupLogTests(_Setup, LogCase):
         root = self.root()
         root.mkdir(parents=True)
         with (root / bootstrap.LOCK_NAME).open("a+", encoding="utf-8") as held:
-            runtime._acquire_lock(held)  # pylint: disable=protected-access
+            file_locks._acquire_lock(held)  # pylint: disable=protected-access
             try:
                 with self.captured() as cm, self.assertRaises(LockedError):
                     self.install()
             finally:
-                runtime._release_lock(held)  # pylint: disable=protected-access
+                file_locks._release_lock(held)  # pylint: disable=protected-access
         row = self.rows(cm).one("lock_busy")
         self.assertEqual(
             {"lock": bootstrap.LOCK_NAME, "error_code": "LOCKED"}, {key: row[key] for key in ("lock", "error_code")}
@@ -184,7 +184,7 @@ class SetupLogTests(_Setup, LogCase):
         root = self.root()
         root.mkdir(parents=True)
         (root / ".venv").symlink_to(target, target_is_directory=True)
-        _paths.write_marker("venv", root, "building")
+        runtime_parts.write_marker("venv", root, "building")
         with self.captured() as cm, self.assertRaises(UsageError):
             self.install()
         rows = self.rows(cm)

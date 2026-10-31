@@ -15,6 +15,7 @@ import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: d
 from _paths import ROOT, command_text, split_command
 
 from getbrolls import _paths as paths
+from getbrolls import install_report, runtime_parts
 from getbrolls.errors import DataRootError, PrerequisiteError, UsageError
 
 GB = ROOT / "scripts" / "gb.py"
@@ -149,7 +150,7 @@ class HomeAndRuntimeTests(unittest.TestCase):
     def test_the_alias_helpers_and_the_report_key_are_gone(self):
         for name in ("apply_env_aliases", "aliased_env_names"):
             self.assertFalse(hasattr(paths, name), name)
-        self.assertNotIn("env_aliases", paths.install_report())
+        self.assertNotIn("env_aliases", install_report.install_report())
 
     def test_old_env_names_lists_the_ignored_getbrolls_variables(self):
         environ = {
@@ -158,10 +159,10 @@ class HomeAndRuntimeTests(unittest.TestCase):
             "GETBROLLS_SEM_PAR": "x",
             "GB_HOME": "/h",
         }
-        self.assertEqual(["GETBROLLS_GIF_WIDTH"], paths.old_env_names(environ))
-        self.assertEqual([], paths.old_env_names({"GB_GIF_WIDTH": "400"}))
+        self.assertEqual(["GETBROLLS_GIF_WIDTH"], install_report.old_env_names(environ))
+        self.assertEqual([], install_report.old_env_names({"GB_GIF_WIDTH": "400"}))
         with patch.dict(os.environ, _clean_env(GETBROLLS_LOG_LEVEL="DEBUG"), clear=True):
-            self.assertEqual(["GETBROLLS_LOG_LEVEL"], paths.old_env_names())
+            self.assertEqual(["GETBROLLS_LOG_LEVEL"], install_report.old_env_names())
 
     def test_runtime_dir_env_wins(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, _clean_env(GB_RUNTIME_DIR=tmp), clear=True):
@@ -181,7 +182,9 @@ class HomeAndRuntimeTests(unittest.TestCase):
                 requirements.write_bytes(b"yt-dlp==1\r\n")
                 os.utime(requirements, ns=(1, 1))  # cache por mtime/tamanho: força a releitura
                 self.assertEqual(lf, paths.part_sha("venv"))
-                self.assertEqual(hashlib.sha256(b"yt-dlp==1\n").hexdigest()[:16], lf)
+                # A chave junta os dois arquivos da venv, o do pip primeiro (o falso guarda o próprio nome).
+                expected = hashlib.sha256(b"requirements-bootstrap.txt" + b"\0" + b"yt-dlp==1\n").hexdigest()[:16]
+                self.assertEqual(expected, lf)
 
     def test_shared_runtime_is_keyed_by_the_part_sha(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -195,7 +198,8 @@ class HomeAndRuntimeTests(unittest.TestCase):
                 _touch(_dir(inst.data_root) / "requirements.txt", "yt-dlp==1\n")
                 _touch(_dir(inst.data_root) / "package-lock.json", "{}\n")
                 first = paths.part_sha("venv")
-                self.assertEqual(hashlib.sha256(b"yt-dlp==1\n").hexdigest()[:16], first)
+                expected = hashlib.sha256(b"requirements-bootstrap.txt" + b"\0" + b"yt-dlp==1\n").hexdigest()[:16]
+                self.assertEqual(expected, first)
                 tools = paths.part_sha("tools")
                 expected = hashlib.sha256(b"package.json" + b"\0" + b"{}\n").hexdigest()[:16]
                 self.assertEqual(expected, tools)
@@ -210,7 +214,7 @@ class HomeAndRuntimeTests(unittest.TestCase):
                 (venv / "pyvenv.cfg").write_text(f"home = {Path(sys.executable).parent}\n", encoding="utf-8")
                 paths.venv_python(venv).parent.mkdir(parents=True)
                 paths.venv_python(venv).write_text("", encoding="utf-8")
-                paths.write_marker("venv", venv.parent, "ready")
+                runtime_parts.write_marker("venv", venv.parent, "ready")
                 self.assertEqual(paths.RuntimePart(venv, "gb_home"), paths.venv_dir())
                 self.assertEqual(paths.RuntimePart(home / "runtime" / tools / ".tools", "gb_home"), paths.tools_dir())
                 info = paths.runtime_info()
@@ -247,6 +251,7 @@ class HomeAndRuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             checkout = _fake_checkout(base)
+            _touch(_dir(checkout.checkout_root) / "requirements-bootstrap.txt", "pip==1\n")
             _touch(_dir(checkout.checkout_root) / "requirements.txt", "yt-dlp\n")
             _touch(_dir(checkout.checkout_root) / "package-lock.json", "{}\n")
             (_dir(checkout.checkout_root) / ".venv").mkdir()
@@ -261,7 +266,7 @@ class HomeAndRuntimeTests(unittest.TestCase):
                 (shared / "pyvenv.cfg").write_text(f"home = {Path(sys.executable).parent}\n", encoding="utf-8")
                 paths.venv_python(shared).parent.mkdir(parents=True)
                 paths.venv_python(shared).write_text("", encoding="utf-8")
-                paths.write_marker("venv", shared.parent, "ready")
+                runtime_parts.write_marker("venv", shared.parent, "ready")
                 self.assertEqual(paths.RuntimePart(shared, "gb_home"), paths.venv_dir())
 
 
@@ -334,7 +339,7 @@ class EnvFileOrderTests(unittest.TestCase):
 
     def test_install_report_never_raises_on_a_bad_env_file(self):
         os.environ["GB_ENV_FILE"] = str(self.base / "nada.env")
-        report = paths.install_report()
+        report = install_report.install_report()
         self.assertIn("error", report["env_file"])
         self.assertEqual("checkout", report["origin"])
         self.assertEqual(str(self.home), report["gb_home"])
@@ -479,7 +484,7 @@ class BuildInfoTests(unittest.TestCase):
         self.addCleanup(paths.install.cache_clear)
 
     def test_build_info_names_the_checkout(self):
-        info = paths.build_info()
+        info = install_report.build_info()
         self.assertEqual("checkout", info["origin"])
         self.assertEqual(str(ROOT), info["data_root"])
         self.assertEqual(".".join(map(str, sys.version_info[:3])), info["python"])
@@ -489,7 +494,7 @@ class BuildInfoTests(unittest.TestCase):
             pkg = Path(tmp) / "getbrolls"
             pkg.mkdir()
             with patch.object(paths, "install", return_value=paths.detect(pkg)):
-                report = paths.install_report()
+                report = install_report.install_report()
         self.assertEqual("unknown", report["origin"])
         self.assertIsNone(report["data_root"])
         self.assertEqual(list(paths.REQUIRED_DATA), report["data_missing"])
@@ -516,7 +521,7 @@ LOCATOR_ALLOWLIST = {
         "FOLDER = Path(__file__).resolve().parent.parent",
     ): "texto do teste gerado para o plugin novo: aponta para a pasta do plugin, não do getbrolls",
     (
-        "sdk/loader.py",
+        "sdk/plugin_digest.py",
         "# lado do `__file__`) não pode custar a memória/tempo dele a cada comando: passou do",
     ): "comentário sobre o plugin carregado",
     (

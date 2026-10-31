@@ -27,6 +27,7 @@ from .layout import ASSET_FOLDERS
 from .ledger import atomic_write
 from .models import now
 from .roteiro_frontmatter import SLUG_MAX, SLUG_RE
+from .sdk import jsonschema, schemas
 from .sdk.files import _too_broad, is_link
 
 _log = logs.get("clients")
@@ -58,7 +59,6 @@ _OLD_FOLDER_FIX = {
 RESERVED_SLUGS = ("pessoal", "personal", "core")
 CLIENT_SCHEMA = "client"
 REGISTRY_SCHEMA = "clients"
-SUPPORTED = 1
 NAME_MAX = 120
 LOCK_WAIT_S = 5.0
 _CLIENT_FILE_MAX = 1024 * 1024
@@ -76,8 +76,14 @@ def _refused(action, reason, exc):
     return logs.refusal(_log, "client_refused", exc, action=action, reason=reason)
 
 
-def _schema_tag(name, version=SUPPORTED):
-    return versioning.schema_name(name, version)
+def _schema_tag(name):
+    """O valor do campo `schema` da família `name` (`client` ou `clients`), com a versão do schema."""
+    return versioning.schema_name(name, schemas.version(name))
+
+
+def _schema_problems(doc, name):
+    """O que `doc` (com o padrão do campo ausente já aplicado) tem fora do schema publicado de `name`."""
+    return jsonschema.errors(doc, schemas.load(name))
 
 
 def registry_path() -> Path:
@@ -155,7 +161,7 @@ def load_registry() -> dict:
     versioning.read_schema(
         data,
         REGISTRY_SCHEMA,
-        SUPPORTED,
+        schemas.version(REGISTRY_SCHEMA),
         label="clients.json",
         invalid=lambda: _invalid_registry(path, f"schema tem que ser {_schema_tag(REGISTRY_SCHEMA)}"),
     )
@@ -165,7 +171,11 @@ def load_registry() -> dict:
     slugs = [row["slug"] for row in rows]
     if len(set(slugs)) != len(slugs):
         raise _invalid_registry(path, "slug repetido")
-    return {"schema": _schema_tag(REGISTRY_SCHEMA), "clients": rows}
+    registry = {"schema": _schema_tag(REGISTRY_SCHEMA), "clients": rows}
+    problems = _schema_problems(registry, REGISTRY_SCHEMA)
+    if problems:
+        raise _invalid_registry(path, "fora do schema (" + "; ".join(problems[:3]) + ")")
+    return registry
 
 
 def _write_registry(rows):
@@ -211,10 +221,10 @@ def _read_client_file(folder, slug, shown=None):
         ) from None
     if not isinstance(data, dict):
         raise _bad_client_file(ValueError(f"{label} tem que ser um objeto JSON."))
-    versioning.read_schema(
+    version = versioning.read_schema(
         data,
         CLIENT_SCHEMA,
-        SUPPORTED,
+        schemas.version(CLIENT_SCHEMA),
         label=label,
         invalid=f"{label}: schema tem que ser {_schema_tag(CLIENT_SCHEMA)} (veio {data.get('schema')!r}).",
     )
@@ -222,6 +232,11 @@ def _read_client_file(folder, slug, shown=None):
         raise _bad_client_file(ValueError(f'{label} é do cliente "{data.get("slug")}", não de "{slug}".'))
     if not isinstance(data.get("name"), str):
         raise _bad_client_file(ValueError(f"{label} precisa de name em texto."))
+    current = dict(data)  # em memória, o padrão do campo ausente; o arquivo não muda
+    current.setdefault(versioning.SCHEMA_FIELD, versioning.schema_name(CLIENT_SCHEMA, version))
+    problems = _schema_problems(current, CLIENT_SCHEMA)
+    if problems:
+        raise _bad_client_file(ValueError(f"{label} fora do schema: " + "; ".join(problems[:3]) + "."))
     return data
 
 

@@ -1,255 +1,95 @@
 """Operational diagnostics. Never log command arguments or tokens; tracebacks are stored redacted."""
 
-# pylint: disable=import-error,missing-function-docstring,broad-exception-caught,use-sequence-for-iteration,missing-class-docstring,cyclic-import,too-many-lines
-# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0). `import-error`
-# é o `fcntl`/`msvcrt` condicional por plataforma em `_acquire_lock`/`_release_lock`.
-# Os ciclos (getbrolls.runtime <-> getbrolls.logs, getbrolls.runtime <-> getbrolls.http)
-# já existiam antes da 2.6.0: os imports de `logs`/`http` aqui são tardios (dentro de
-# função) de propósito, exatamente para quebrar esses ciclos em tempo de execução
-# (ver os comentários "avoids a runtime<->logs/http import cycle" abaixo).
-# `too-many-lines`: as tabelas de só leitura e de trava ficam ao lado da trava que elas decidem.
+# pylint: disable=missing-function-docstring,broad-exception-caught,use-sequence-for-iteration,missing-class-docstring,cyclic-import
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0).
+# `cyclic-import`: `runtime` -> `config` e `runtime` -> `layout` têm a volta dentro de função (o `.env` do
+# `config` e o `audited` que mostra o layout); ficam como pares aceitos em `tests/import_rules/`.
+# O que saiu daqui mora em `redaction`, `private_files`, `file_locks`, `error_codes`, `command_policy` e
+# `diagnostics`; os nomes seguem acessíveis em `runtime` (as ligações logo abaixo dos imports).
 
 import contextlib
-import contextvars
-import errno
 import json
 import logging
-import os
 import re
-import shutil
-import stat
-import subprocess
 import sys
 import time
-import traceback
-import types
 from pathlib import Path
 
-from . import _paths, _tokens, labels
-from .errors import LockedError, PrerequisiteError, Refusal, UsageError
+from . import (
+    _paths,
+    command_policy,
+    config,
+    diagnostics,
+    effects,
+    error_codes,
+    file_locks,
+    labels,
+    logs,
+    private_files,
+    redaction,
+)
+from .errors import ProviderError, Refusal, UsageError
 from .models import now
 
-ACTIVE: contextvars.ContextVar[dict | None] = contextvars.ContextVar("getbrolls_operation", default=None)
+# Moved to `command_policy`; bound here so every importer of `runtime` keeps working (the same objects).
+ACTIVE = command_policy.ACTIVE
+READ_ONLY_COMMANDS = command_policy.READ_ONLY_COMMANDS
+READ_ONLY_ACTIONS = command_policy.READ_ONLY_ACTIONS
+OWN_LOCK_ACTIONS = command_policy.OWN_LOCK_ACTIONS
+SELF_LOCKED_COMMANDS = command_policy.SELF_LOCKED_COMMANDS
+STAGE_COMMANDS = command_policy.STAGE_COMMANDS
+LAYOUT_TOLERANT = command_policy.LAYOUT_TOLERANT
+INSTALLATION_WRITES = command_policy.INSTALLATION_WRITES
+QUIET_ERROR_COMMANDS = command_policy.QUIET_ERROR_COMMANDS
+writes_installation = command_policy.writes_installation
 
+# Moved to `error_codes`.
+ERROR_EXIT = error_codes.ERROR_EXIT
+EXIT_FOR_OTHER_ERRORS = error_codes.EXIT_FOR_OTHER_ERRORS
+exit_code_for = error_codes.exit_code_for
+error_code_for = error_codes.error_code_for
 
-def _acquire_lock(stream, platform=None, windows=None):
-    """Acquire a non-blocking, one-byte lock on Windows or a flock elsewhere."""
-    platform = platform or os.name
-    if platform == "nt":
-        if windows is None:
-            import msvcrt as windows
+# Moved to `diagnostics`.
+STDERR_TAIL_MAX_CHARS = diagnostics.STDERR_TAIL_MAX_CHARS
+redact_diagnostic = diagnostics.redact_diagnostic
+diagnostic_line = diagnostics.diagnostic_line
+redacted_traceback = diagnostics.redacted_traceback
+stderr_tail = diagnostics.stderr_tail
+diagnostics_path = diagnostics.diagnostics_path
 
-        stream.seek(0, os.SEEK_END)
-        if stream.tell() == 0:
-            stream.write("\0")
-            stream.flush()
-        stream.seek(0)
-        try:
-            windows.locking(stream.fileno(), windows.LK_NBLCK, 1)  # pyright: ignore[reportAttributeAccessIssue]
-        except OSError as exc:
-            raise BlockingIOError from exc
-        return
-    import fcntl
+# Moved to `file_locks`.
+_acquire_lock = file_locks._acquire_lock  # pylint: disable=protected-access
+_release_lock = file_locks._release_lock  # pylint: disable=protected-access
+lock_busy = file_locks.lock_busy
+exclusive_lock = file_locks.exclusive_lock
+try_lock = file_locks.try_lock
 
-    fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+# Moved to `private_files`.
+make_private = private_files.make_private
+force_rmtree = private_files.force_rmtree
+_ensure_private_file = private_files._ensure_private_file  # pylint: disable=protected-access
+_owner_only_acl = private_files._owner_only_acl  # pylint: disable=protected-access
 
-
-def _release_lock(stream, platform=None, windows=None):
-    platform = platform or os.name
-    if platform == "nt":
-        if windows is None:
-            import msvcrt as windows
-
-        stream.seek(0)
-        windows.locking(stream.fileno(), windows.LK_UNLCK, 1)  # pyright: ignore[reportAttributeAccessIssue]
-        return
-    import fcntl
-
-    fcntl.flock(stream, fcntl.LOCK_UN)
-
-
-def _is_windows():
-    """Read at each call (not fixed at import), so a test can switch the Windows branch on."""
-    return os.name == "nt"
-
-
-# The principals CPython itself gives a folder made with `os.mkdir(path, 0o700)` on Windows since the fix of
-# CVE-2024-4030, as well-known SIDs: OWNER RIGHTS (whoever owns the object: the account that created it),
-# SYSTEM and the Administrators group. A SID is never looked up, so it cannot depend on the environment
-# (`USERNAME`, `USERDOMAIN`) nor resolve to another account and lock the owner out.
-_PRINCIPALS = ("*S-1-3-4", "*S-1-5-18", "*S-1-5-32-544")
-_ICACLS = "icacls"  # the name in the log line; the process is `_icacls_exe()`
-_ICACLS_TIMEOUT_S = 30
-# `IO_REPARSE_TAG_SYMLINK` and `IO_REPARSE_TAG_MOUNT_POINT` (a junction); `stat` only has them on Windows.
-_LINK_TAGS = (0xA000000C, 0xA0000003)
-
-
-def _run_bound_at_import(real=None):
-    """`subprocess.run` itself, with the globals it has now, at import (`Popen` above all).
-
-    A test that mocks `subprocess.run` or `subprocess.Popen` (and counts calls, or checks every argv)
-    never sees the `icacls` that a private file starts on Windows: this copy keeps the real ones. A `run`
-    that is not a plain function (or that reads variables of an enclosing scope) is used as it is."""
-    if real is None:
-        # Copied at import so a test mocking subprocess never sees this child. `make_private` logs its op line,
-        # except with record=False (the log handler and the salt): that launch stays unlogged, a line would recurse.
-        # effect-exempt: make_private logs this child, except record=False (log, salt), unlogged as it would recurse
-        real = subprocess.run
-    if not isinstance(real, types.FunctionType) or real.__code__.co_freevars:
-        return real
-    run = types.FunctionType(real.__code__, dict(real.__globals__), real.__name__, real.__defaults__, real.__closure__)
-    run.__kwdefaults__ = real.__kwdefaults__
-    return run
-
-
-_run_icacls = _run_bound_at_import()
-
-
-def _icacls_exe():
-    """`%SystemRoot%\\System32\\icacls.exe`, by its full path. A bare `icacls` is looked for in the current
-    folder before System32 (a project folder could ship one), and `shutil.which` does the same on Windows."""
-    path = Path(os.environ.get("SYSTEMROOT") or r"C:\Windows", "System32", "icacls.exe")
-    # lenient: a missing tool is the logged failure of make_private, never a crash; nothing else depends on it
-    if not path.is_file():
-        raise OSError(errno.ENOENT, "icacls.exe not found in System32")
-    return str(path)
-
-
-def _owner_only_argv(path, folder):
-    """`icacls <path> /grant:r <SID>:(F)… /inheritance:r /L`; a folder gets `(OI)(CI)(F)`, so what is made in
-    it later is private too. The grant comes before `/inheritance:r`: should the grant fail, the object is
-    never left with an empty ACL. `/L` acts on a link itself, never on what it points at."""
-    rights = "(OI)(CI)(F)" if folder else "(F)"
-    grants = [f"{principal}:{rights}" for principal in _PRINCIPALS]
-    return [_icacls_exe(), os.fspath(path), "/grant:r", *grants, "/inheritance:r", "/L"]
-
-
-def _owner_only_acl(name, folder):
-    """What `icacls /restore` reads: the name (relative to the folder of the object), then the whole DACL in
-    SDDL, in UTF-16 LE with no BOM and CRLF, as `icacls /save` writes it. The DACL is protected (`P`) and holds
-    exactly the three SIDs of `_PRINCIPALS`, full access (`FA`), inheritable (`OICI`) on a folder."""
-    flags = "OICI" if folder else ""
-    aces = "".join(f"(A;{flags};FA;;;{principal.removeprefix('*')})" for principal in _PRINCIPALS)
-    # `surrogatepass`: an NTFS name may hold a lone surrogate, and the text must name that same object
-    return f"{name}\r\nD:PAI{aces}\r\n".encode("utf-16-le", "surrogatepass")
-
-
-def _scratch_folder():
-    """`%LOCALAPPDATA%\\Temp`, the temporary folder of the profile (the account, SYSTEM and Administrators only).
-
-    Never `TEMP`/`TMP`: they may point at a folder other accounts can write (`C:\\Temp`), where one of them could
-    rewrite the text `/restore` applies before `icacls` reads it."""
-    base = os.environ.get("LOCALAPPDATA")
-    folder = Path(base, "Temp") if base else None
-    # lenient: no profile temporary folder is the logged failure of the restore step; the grant already ran
-    if folder is None or not folder.is_absolute() or not folder.is_dir():
-        raise OSError(errno.ENOENT, "no temporary folder in the profile")
-    return folder
-
-
-@contextlib.contextmanager
-def _owner_only_steps(path):
-    """The two `icacls` runs of `make_private`, one at a time and in order: the grant (`_owner_only_argv`),
-    then `icacls <folder> /restore <file> /L`, which writes the DACL of `_owner_only_acl` over the whole ACL.
-
-    The grant leaves in place any other explicit entry (the account that created the object, say) and
-    `/restore` drops it, so only the three SIDs remain; it replaces the DACL in one write, never leaving it
-    empty. A link (symbolic or junction) is refused before either runs. The file `/restore` reads is made
-    only after the grant ran, in `_scratch_folder`, and is removed on the way out; with no such folder the
-    restore is a failure (the grant stays)."""
-    from . import effects  # local: effects imports this module
-
-    info = os.lstat(path)
-    # A symbolic link or a junction; any other reparse point (a OneDrive placeholder) is a file like the rest.
-    if stat.S_ISLNK(info.st_mode) or getattr(info, "st_reparse_tag", 0) in _LINK_TAGS:
-        raise OSError(errno.EPERM, "not restricting a link")
-    folder = stat.S_ISDIR(info.st_mode)
-    grant = _owner_only_argv(path, folder)
-    path = Path(path)
-
-    with contextlib.ExitStack() as stack:
-
-        def steps():
-            yield grant
-            acl = stack.enter_context(
-                # pylint: disable-next=protected-access  # the scratch file exists for this caller only
-                effects._scratch_file(
-                    _owner_only_acl(path.name, folder), folder=_scratch_folder(), prefix="gb-acl-", suffix=".txt"
-                )
-            )
-            yield [grant[0], os.fspath(path.parent), "/restore", acl, "/L"]
-
-        yield steps()
-
-
-def make_private(path, *, record=True):
-    """The Windows counterpart of `chmod 0600/0700`: only the owner, SYSTEM and Administrators keep access to
-    `path`, nothing is inherited and no other entry stays (the same ACL CPython gives `os.mkdir(path, 0o700)`).
-
-    Called at creation, wherever the code asks for 0600 (file) or 0700 (folder), before any content is
-    written. A no-op off Windows, where the `chmod` already did it, with no process and no log line. On
-    Windows it runs `icacls` from System32 twice (`_owner_only_steps`), as a list, with no shell, under one
-    `proc.run` in the usual `event=op` line (the target is the tool's name, never a path; `exit` is the one of
-    the run that failed, or of the last one). A failure (no `icacls`, a link, a timeout, a non-zero exit) is
-    that line with `outcome=error` and never raises: the command goes on with the ACL the object has then.
-
-    `record=False` is for the log handler's own folder and file and for the log salt: they are made while a
-    line is being written or redacted, and a line about them would recurse. They run the same steps; a
-    failure there is silent.
-    """
-    if not _is_windows():
-        return
-    if not record:
-        with contextlib.suppress(OSError, subprocess.SubprocessError), _owner_only_steps(path) as steps:
-            for argv in steps:
-                _run_icacls(argv, check=True, capture_output=True, timeout=_ICACLS_TIMEOUT_S)
-        return
-    from . import effects  # local: effects imports this module
-
-    # The line of `effects.run`, with `_run_icacls` (bound at import) as the process.
-    with (
-        contextlib.suppress(OSError, subprocess.SubprocessError),
-        effects.op("proc.run", [_ICACLS]) as handle,
-        _owner_only_steps(path) as steps,
-    ):
-        returncode = None
-        for argv in steps:
-            try:
-                returncode = _run_icacls(argv, check=True, capture_output=True, timeout=_ICACLS_TIMEOUT_S).returncode
-            except subprocess.CalledProcessError as exc:
-                handle.set(exit=exc.returncode)
-                raise
-        handle.set(exit=returncode)
-
-
-def _ensure_private_file(path):
-    """Create `path` (empty) if missing, then force 0600 regardless of umask.
-
-    `touch()`'s own `mode=` is still masked by umask, so an explicit `chmod` is the
-    only way to guarantee 0600 both on first creation and on a file left over from
-    before this fix (a plain `diagnostics.jsonl` created 0644 by an older run).
-    On Windows an empty file (new: the first line is written after this) gets the private ACL.
-    """
-    # effect-exempt: creates the append-only journal; diagnostics.jsonl is the audit log, the rest log their op
-    path.touch(exist_ok=True)
-    path.chmod(0o600)
-    if path.stat().st_size == 0:
-        make_private(path)
+# Moved to `redaction`.
+SECRET_NAME_RE = redaction.SECRET_NAME_RE
+REDACT_LIMIT = redaction.REDACT_LIMIT
+secret_name = redaction.secret_name
+one_line = redaction.one_line
+scrub_home = redaction.scrub_home
+redact = redaction.redact
+_HEADER_PATTERN = redaction._HEADER_PATTERN  # pylint: disable=protected-access
+_BEARER_PATTERN = redaction._BEARER_PATTERN  # pylint: disable=protected-access
 
 
 def record_warning(code, message):
     current = ACTIVE.get()
     if current is not None:
         current["warnings"].append({"code": code, "message": message})
-    try:
-        from . import logs  # local: avoids a runtime<->logs import cycle
-
-        # Only the code: warning messages are prose written for the person and may
-        # quote what they typed (an approver's name, a reason). The full message is
-        # already in the command's JSON output; the log only needs to correlate.
+    # Only the code: warning messages are prose written for the person and may
+    # quote what they typed (an approver's name, a reason). The full message is
+    # already in the command's JSON output; the log only needs to correlate.
+    with contextlib.suppress(Exception):  # logging must never break a command
         logs.event(logs.get("runtime"), logging.WARNING, "warning", code=code)
-    except Exception:  # noqa: BLE001, S110 - logging must never break a command
-        pass
 
 
 def record_commit():
@@ -279,366 +119,6 @@ def record_recovered():
         current["recovered"] = True
 
 
-SENSITIVE_HEADERS = ("Authorization", "Cookie", "Set-Cookie", "X-Api-Key")
-# `Name: value` and a quoted/JSON form (`"Name": "value"`, `{'Name': 'value'}`, `=` too); the value stops at a quote
-# or newline, so the braces/quotes of a dict repr survive. No nested quantifiers — linear on adversarial input.
-_HEADER_PATTERN = re.compile(
-    r"(?i)\b(" + "|".join(re.escape(h) for h in SENSITIVE_HEADERS) + r")\s*[\"']?\s*[:=]\s*[\"']?[^\r\n\"']+"
-)
-# A Bearer or Basic credential with no header name in front of it: the whole value, whatever its characters,
-# up to a blank, a quote or the line end (base64 `+/=`, a JWT, `%`-encoded text).
-_BEARER_PATTERN = re.compile(r"(?i)\b(Bearer|Basic)\s+[^\s\"'<>]+")
-# Nome de parâmetro/chave com cara de segredo, casado com o nome INTEIRO
-# (`fullmatch`): a palavra secreta fecha o nome — `auth_token`, `client_secret`,
-# `X-Amz-Signature` casam; `oauth2_token_id`, `monkey`, `profile_id` não. Os nomes
-# soltos do fim cobrem assinaturas de CDN (Akamai `__token__`/`hdnts`/`hdnea`,
-# CloudFront `Key-Pair-Id`) e os prefixos de assinatura S3/GCS.
-SECRET_NAME_RE = re.compile(
-    r"(?i)(?:[a-z0-9_.-]{0,40}[_.-])?"
-    r"(?:api_?key|apikey|access_?token|key|token|secret|signature|sig|password|passwd|pwd|senha|hmac|jwt"
-    r"|credentials?|policy|authorization)"
-    r"|__token__|hdnts|hdnea|key-pair-id|x-amz-[a-z0-9-]*|x-goog-[a-z0-9-]*"
-)
-
-
-def secret_name(name):
-    """`True` quando `name` (chave de JSON ou de query string) parece guardar um segredo."""
-    return isinstance(name, str) and SECRET_NAME_RE.fullmatch(name) is not None
-
-
-# Quebra de linha ou caractere de controle: o que deixa um valor "fugir" da linha
-# dele num Markdown gerado (ORIGEM.md, credits.md) e forjar outra linha.
-_LINE_BREAKING = re.compile(r"[\x00-\x1f\x7f\x85\u2028\u2029]+")
-
-
-def one_line(value):
-    """`value` como texto de uma linha só: controle/quebra de linha viram espaço.
-
-    Texto normal (sem controle) volta idêntico — a saída dos built-ins não muda."""
-    return _LINE_BREAKING.sub(" ", str(value))
-
-
-def _writable(target):
-    """Liga a escrita do dono em `target` (e leitura/entrada, se for pasta); link não é tocado."""
-    with contextlib.suppress(OSError):
-        mode = target.lstat().st_mode
-        if stat.S_ISLNK(mode):
-            return
-        extra = stat.S_IWUSR | (stat.S_IRUSR | stat.S_IXUSR if stat.S_ISDIR(mode) else 0)
-        target.chmod(stat.S_IMODE(mode) | extra)
-
-
-# effect-exempt(3): only compared against the func that rmtree retries; called inside force_rmtree's logged op
-_REMOVE_FUNCS = (os.unlink, os.remove, os.rmdir)
-
-
-def _removable(target):
-    """Libera leitura+execução+escrita do dono numa pasta (0o700) ou escrita numa
-    entrada comum (0o600); link não é tocado. Só precisa ser permissivo o
-    suficiente para apagar — chamada apenas na retentativa do force_rmtree."""
-    with contextlib.suppress(OSError):
-        mode = target.lstat().st_mode
-        if stat.S_ISLNK(mode):
-            return
-        target.chmod(0o700 if stat.S_ISDIR(mode) else 0o600)
-
-
-def force_rmtree(path, *, target=None):
-    """Apaga `path` inteiro mesmo com entrada somente-leitura; pasta ausente não é erro.
-
-    O Git para Windows grava objetos (`.git/objects/**`) como somente-leitura, e o
-    Windows não apaga arquivo somente-leitura — `rmtree(..., ignore_errors=True)`
-    deixava um `.git` dentro do plugin instalado e `.install-*` acumulando. Na
-    falha, libera a escrita da entrada (e da pasta de cima, se ela ainda é parte da
-    árvore — nunca a pasta que CONTÉM `path`) e tenta de novo.
-
-    Numa pasta sem leitura/execução (uma pasta comum plantada pelo dono do plugin,
-    não um objeto git), o walk por fd do `rmtree` chama a retentativa com
-    `func=os.open`/`os.scandir`/`os.lstat` (não `os.unlink`/`os.rmdir`/`os.remove`)
-    — chamar `func(failed)` sem os argumentos certos levantaria `TypeError`. Nesse
-    caso, depois de liberar a permissão, a subárvore é apagada por conta própria
-    (`shutil.rmtree` recursivo) em vez de repetir a chamada original.
-
-    Nunca levanta (guarda `Exception`, não só `OSError`): o que sobrar fica para a
-    varredura seguinte (`install._sweep_stale_staging`)."""
-    from . import effects  # local: avoids a runtime<->effects import cycle
-
-    root = Path(path)
-    # lenient: force_rmtree never raises; the caller reports what is left
-    if not os.path.lexists(root):
-        return
-    # `target`: what the `fs.rmtree` line names (a temporary folder is named by its parent).
-    with effects.op("fs.rmtree", root if target is None else target):
-
-        def retry(func, failed, _exc):
-            failed_path = Path(failed)
-            if failed_path != root:
-                _writable(failed_path.parent)
-            _removable(failed_path)
-            if func in _REMOVE_FUNCS:
-                with contextlib.suppress(OSError):
-                    func(failed)
-            else:
-                # effect-exempt: onexc callback, run only by the shutil.rmtree inside this fs.rmtree op line
-                shutil.rmtree(failed_path, ignore_errors=True)
-
-        with contextlib.suppress(Exception):
-            if sys.version_info >= (3, 12):
-                # O pylint infere a assinatura de `shutil.rmtree` pela stdlib do
-                # interpretador que roda o lint, não pelo `sys.version_info` deste
-                # ramo: `onexc` existe a partir do 3.12, mas o CI faz lint em
-                # 3.11, que não conhece o kwarg. `**kwargs` monta fora da chamada
-                # engana o pylint mas confunde o pyright (perde a distinção entre
-                # os overloads de `onexc`/`onerror`), então a chamada fica direta
-                # com a supressão na linha.
-                shutil.rmtree(root, onexc=retry)  # pylint: disable=unexpected-keyword-arg  # pragma: no cover - 3.12+
-            else:
-                shutil.rmtree(root, onerror=retry)  # pylint: disable=deprecated-argument
-
-
-def scrub_home(text):
-    """Replace the user's home folder with `~`, only as a whole path (never inside `/Users/anax`). Never raises.
-
-    Only for text nobody acts on: the diagnostics file and the `repr`/`traceback`
-    fields, which people paste into bug reports. It is deliberately NOT part of
-    `redact()`: error messages name paths the person (or the agent driving the CLI)
-    must open or pass back as an argument, and `~` inside quotes is not expanded by a
-    shell nor understood by a file reader. Both the raw and the JSON-escaped form of
-    the prefix are replaced, so it also works on an already serialized line on Windows —
-    escaped both ways: `ensure_ascii=True` (`Jo\\u00e3o`) and `ensure_ascii=False` (the way
-    the diagnostics line is written: only the backslashes escaped).
-    """
-    value = str(text)
-    try:
-        home = str(Path.home())
-    except RuntimeError:
-        # No HOME/USERPROFILE to resolve: nothing to scrub.
-        return value
-    if home in ("", "/", "\\"):
-        return value
-    # As written, resolved (a linked HOME) and without `/private`, in every encoding.
-    homes = _paths.with_linked({home, os.path.realpath(home)})
-    windows = re.match(r"[A-Za-z]:[\\/]", home) is not None  # a Windows home ignores case on any system
-    return _paths.replace_spellings(value, homes, "~", ignore_case=windows)
-
-
-_URL_PATTERN = re.compile(r'https?://[^\s"<>]*')
-_HOST_CHAR = re.compile(r"[A-Za-z0-9]")
-
-
-def _omit_url(match):
-    """A URL de verdade vira "[URL omitida]"; a forma citada num texto nosso fica.
-
-    "https://…", "https://," ou "https://<host>" não têm host nenhum (sem letra nem
-    dígito antes da primeira `/`): é exemplo de ajuda, não dado de quem chamou."""
-    url = match.group(0)
-    host = url.split("://", 1)[1].split("/", 1)[0]
-    return url if _HOST_CHAR.search(host) is None else "[URL omitida]"
-
-
-REDACT_LIMIT = 1200
-# Quanto do fim de um traceback fica no diagnostics.jsonl: o frame que levantou e a linha
-# do erro estão no fim, então o corte guarda a cauda, nunca o começo.
-TRACEBACK_TAIL_CHARS = 8000
-
-
-def redact(text, limit: int | None = REDACT_LIMIT):
-    """Strip provider keys, secret-shaped headers/query values and URLs.
-
-    Idempotent (running it twice yields the same string) and never raises — every
-    step is a plain string replace/regex substitution over `str(text)`. Safe for
-    user-facing messages: paths are left intact (see `scrub_home` for why). The result
-    keeps the first `limit` characters; `limit=None` keeps everything.
-    """
-    value = _tokens.hide(text)  # keys by shape first: a URL around a key block must not hide its first line
-    for key in ("PEXELS_API_KEY", "PIXABAY_API_KEY", "YOUTUBE_API_KEY"):
-        secret = os.getenv(key)
-        if secret:
-            value = value.replace(secret, "[REDACTED]")
-    value = _HEADER_PATTERN.sub(lambda m: f"{m.group(1)}: [REDACTED]", value)
-    value = _BEARER_PATTERN.sub(lambda m: f"{m.group(1)} [REDACTED]", value)
-    value = _tokens.hide_labelled(value)
-    value = _URL_PATTERN.sub(_omit_url, value)  # last: every credential is out before the URLs go
-    return value if limit is None else value[:limit]
-
-
-# Par `'chave': 'valor'` (repr de dict) ou `"chave": "valor"` (JSON), com o valor entre aspas
-# simples ou duplas (e `b'…'` de bytes). Cada lado da alternância do valor exclui o que o
-# outro começa (barra invertida): sem retrocesso aninhado, linear em entrada hostil.
-_QUOTED_PAIR_PATTERN = re.compile(
-    r"""(?P<key>(?P<kq>["'])(?P<name>[A-Za-z0-9_.-]{1,80})(?P=kq))(?P<sep>\s*:\s*)b?"""
-    r"""(?P<value>'(?:[^'\\\r\n]|\\.)*'|"(?:[^"\\\r\n]|\\.)*")"""
-)
-
-
-def _hide_quoted_secret(match):
-    if not secret_name(match["name"]):
-        return match.group(0)
-    quote = match["value"][0]
-    return f"{match['key']}{match['sep']}{quote}[REDACTED]{quote}"
-
-
-def redact_diagnostic(text, limit: int | None = REDACT_LIMIT):
-    """`redact` mais um passe para `repr` e `traceback` do diagnostics.jsonl.
-
-    Um segredo dentro de um dict (`{'access_token': '…'}`, ou o mesmo em JSON) não tem `=`
-    nem nome de cabeçalho na frente: aqui, o valor de toda chave entre aspas com cara de
-    segredo (`secret_name`) vira `[REDACTED]`. Só para texto que ninguém lê como mensagem:
-    a `message` da pessoa continua passando só por `redact`. Idempotente e nunca levanta."""
-    value = _QUOTED_PAIR_PATTERN.sub(_hide_quoted_secret, redact(text, limit=None))
-    return value if limit is None else value[:limit]
-
-
-def _redacted_event(value):
-    """`value` (the JSON of an event: dict, list, text) with every text through `redact_diagnostic`, whole and
-    only then labelled: a `password=` in a warning or a message the person reads is as secret in the journal as
-    one in a `repr`. The text is bounded first (`labels.bounded`): nothing hostile is searched at full size."""
-    if isinstance(value, dict):
-        return {key: _redacted_event(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_redacted_event(item) for item in value]
-    if isinstance(value, str):
-        bounded = labels.bounded(value)
-        return bounded if bounded != value else redact_diagnostic(value, limit=None)
-    return value
-
-
-def diagnostic_line(event):
-    """The `diagnostics.jsonl` line of `event`: every text redacted, known folders by label, then home as `~`
-    (escaped forms too)."""
-    return scrub_home(json.dumps(labels.labelled(_redacted_event(event)), ensure_ascii=False))
-
-
-def redacted_traceback():
-    """Traceback da exceção em tratamento, redigido e sem a pasta pessoal, para o diagnostics.jsonl.
-
-    Longo demais, fica a cauda (`…` + os últimos `TRACEBACK_TAIL_CHARS` caracteres): é lá que
-    estão o frame que levantou e a linha do erro."""
-    text = labels.for_log(scrub_home(redact_diagnostic(traceback.format_exc(), limit=None)))  # whole, then cut
-    return text if len(text) <= TRACEBACK_TAIL_CHARS else "…" + text[-TRACEBACK_TAIL_CHARS:]
-
-
-STDERR_TAIL_MAX_CHARS = 600
-
-
-def stderr_tail(stderr, limit=6):
-    """Last `limit` non-empty stderr/detail lines, redacted, with folders by label, joined and capped.
-
-    Shared helper for CLI stderr/detail text (subprocess stderr, HTTP error bodies), so callers cannot drift
-    apart on secrets, URLs, machine paths or how much is surfaced; every cut comes after the redaction.
-    """
-    # Redacted whole, before the split: a private key spans lines, and only its first line says what it is.
-    lines = [line.strip() for line in redact(stderr or "", limit=None).splitlines() if line.strip()]
-    joined = " | ".join(labels.for_log(line, REDACT_LIMIT) for line in lines[-limit:])
-    return joined[:STDERR_TAIL_MAX_CHARS]
-
-
-_LOCK_POLL_S = 0.05
-
-
-_LOCK_FLAGS = os.O_RDWR | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
-
-
-def _open_lock_file(path):
-    refusal = ValueError(f"{path.name} em {labels.shown(path.parent)} é um link; apague o link e repita o comando.")
-    # lenient: link refusal where O_NOFOLLOW is missing; the open below raises on a locked folder
-    if not getattr(os, "O_NOFOLLOW", 0) and path.is_symlink():
-        raise refusal
-    try:
-        # effect-exempt: lock file of exclusive_lock/try_lock; the log takes try_lock per line, logging here recurses
-        fd = os.open(path, _LOCK_FLAGS, 0o644)
-    except OSError as exc:
-        if exc.errno in (errno.ELOOP, errno.EMLINK):
-            raise refusal from None
-        raise
-    # effect-exempt: lock file of exclusive_lock/try_lock; the log takes try_lock per line, logging here recurses
-    return os.fdopen(fd, "a+", encoding="utf-8", newline="\n")
-
-
-def lock_busy(name, started, error):
-    """Registra `lock_busy` (WARNING, com o `error_code` do erro) e devolve `error` para levantar.
-
-    Diz qual trava estava ocupada e quanto se esperou por ela: só o nome do arquivo de trava
-    (`.plugins.lock`, `.command.lock`…), nunca o caminho. `started` é o `time.monotonic()` de
-    quando a espera começou. O log nunca derruba o comando.
-    """
-    try:
-        from . import logs  # local: avoids a runtime<->logs import cycle
-
-        waited_ms = round((time.monotonic() - started) * 1000)
-        logs.refusal(logs.get("runtime"), "lock_busy", error, lock=name, waited_ms=waited_ms)
-    except Exception:  # noqa: BLE001, S110 - logging must never break a command
-        pass
-    return error
-
-
-@contextlib.contextmanager
-def exclusive_lock(path, busy_message, wait_s=0.0):
-    """Trava exclusiva no arquivo `path` (criado se faltar); a pasta tem que existir.
-
-    O arquivo é aberto sem seguir link (`O_NOFOLLOW`; onde não existe, um `lstat` antes):
-    uma trava trocada por link nunca cria nem trava um arquivo fora do lugar.
-    Tenta de novo por até `wait_s` segundos; depois, `LockedError(busy_message)` (código `LOCKED`).
-    """
-    with _open_lock_file(Path(path)) as lock:
-        started = time.monotonic()
-        deadline = started + wait_s
-        while True:
-            try:
-                _acquire_lock(lock)
-                break
-            except BlockingIOError:
-                if time.monotonic() >= deadline:
-                    raise lock_busy(Path(path).name, started, LockedError(busy_message)) from None
-                time.sleep(_LOCK_POLL_S)
-        try:
-            yield
-        finally:
-            _release_lock(lock)
-
-
-_QUIET_LOCK_POLL_S = 0.005
-
-
-@contextlib.contextmanager
-def try_lock(path, wait_s):
-    """Trava exclusiva em `path`, como `exclusive_lock`, mas quieta: rende `False` em vez de levantar.
-
-    `False` quando a trava segue ocupada depois de `wait_s` segundos ou não abre (link no
-    lugar, pasta sem permissão); `True` com ela tomada. Nunca loga: o próprio log do app a
-    toma em volta de cada linha do log da instalação, e logar aqui seria recursão.
-    """
-    try:
-        stream = _open_lock_file(Path(path))
-    except (OSError, ValueError):
-        stream = None
-    if stream is None:
-        yield False
-        return
-    with stream:
-        held = _acquire_within(stream, wait_s)
-        try:
-            yield held
-        finally:
-            if held:
-                with contextlib.suppress(OSError):
-                    _release_lock(stream)
-
-
-def _acquire_within(stream, wait_s):
-    deadline = time.monotonic() + wait_s
-    while True:
-        try:
-            _acquire_lock(stream)
-            return True
-        except BlockingIOError:
-            if time.monotonic() >= deadline:
-                return False
-            time.sleep(_QUIET_LOCK_POLL_S)
-        except OSError:
-            return False
-
-
 @contextlib.contextmanager
 def usage_errors():
     """Todo `ValueError` levantado dentro sai como `UsageError` (exit 2): formato de flag errado
@@ -649,8 +129,6 @@ def usage_errors():
     vai dar ao erro convertido (`INVALID_DATA` para o `Refusal`): a linha do log e o JSON de erro
     nunca discordam.
     """
-    from . import logs  # local: avoids a runtime<->logs import cycle
-
     with logs.refused_as("USAGE_ERROR"):
         try:
             yield
@@ -664,96 +142,23 @@ COMMAND_LOCK = ".command.lock"
 
 
 @contextlib.contextmanager
-def project_lock(project):
+def project_lock(project, wait_s=None):
+    """Trava exclusiva do projeto. `wait_s`: segundos de espera pelo projeto ocupado; `None` vale
+    `GB_LOCK_WAIT_S` (padrão 0). Ao fim da espera, `LOCKED`, como sempre."""
     if not project:
         yield
         return
-    from . import effects  # local: avoids a runtime<->effects import cycle
+    if wait_s is None:
+        wait_s = config.lock_wait_s()
 
     root = Path(project).resolve() / "brolls"
     effects.mkdir(root, parents=True, exist_ok=True)
     with exclusive_lock(
-        root / COMMAND_LOCK, "Outro comando está usando este projeto. Aguarde terminar antes de repetir."
+        root / COMMAND_LOCK,
+        "Outro comando está usando este projeto. Aguarde terminar antes de repetir.",
+        wait_s=wait_s,
     ):
         yield
-
-
-# Comandos que só leem o projeto: sem trava exclusiva e sem criar a árvore.
-# `brief` entra aqui porque só lê BRIEF.md, RULES.md e o manifesto já existente.
-# `doctor` aceita `--project` por uniformidade com o resto da CLI, mas diagnostica a
-# instalação: não pode criar `brolls/` numa pasta que talvez nem seja um projeto.
-# `capabilities` só descreve o parser e o manifesto dos plugins, sem projeto.
-# `setup` nunca recebe nem toca projeto; instala só em `$GB_HOME/runtime` ou `GB_RUNTIME_DIR`.
-# `x` roda comando de plugin, que só lê o projeto por cópias (CommandContext).
-# `profile` só grava `$GB_HOME/trusted-profiles.json` (trust/untrust), nunca um projeto.
-# `rules` só mostra as regras em vigor; `library --search` só consulta a biblioteca pessoal
-# (`$GB_HOME/library`); `references` só lê as referências já decididas do projeto. `providers` só lista
-# as fontes e o que está configurado, sem projeto.
-READ_ONLY_COMMANDS = (
-    "status",
-    "serve",
-    "brief",
-    "doctor",
-    "setup",
-    "x",
-    "capabilities",
-    "profile",
-    "rules",
-    "library",
-    "references",
-    "providers",
-    "environment",
-)
-# (comando, ação) somente leitura, além dos comandos inteiros acima: `queue --action status` só consulta
-# queue.json (mesmo contrato de `status`), nunca deve tomar a trava exclusiva. `roteiro --action check|plan`
-# e `assets` também só leem: plano de cena, sync simulado e inventário de componentes, sem trava nem árvore
-# nova. `client --action list|show` só lê `$GB_HOME/clients.json` e o `client.json` de cada pasta;
-# `recipe --action list|show` só lê as pastas de receita dos clientes registrados, e `template --action
-# freeze|list|show` só recusa com o comando novo. `migrate --action plan` só mostra o `project.json` que o
-# `apply` gravaria. `analysis --action list|check` só lê `analysis/`, sem criar a pasta. `plugins --action
-# list` só lê o inventário. O `plugins --action check` fica de fora: ele executa o `register()` do plugin
-# (código de terceiros, sem sandbox), e o core não garante que esse código não grave.
-READ_ONLY_ACTIONS = {
-    ("analysis", "check"),
-    ("analysis", "list"),
-    ("client", "list"),
-    ("client", "show"),
-    ("migrate", "plan"),
-    ("recipe", "list"),
-    ("recipe", "show"),
-    ("template", "freeze"),
-    ("template", "list"),
-    ("template", "show"),
-    ("queue", "status"),
-    ("roteiro", "check"),
-    ("roteiro", "plan"),
-    ("assets", "list"),
-    ("assets", "where"),
-    ("plugins", "list"),
-    ("plugins", "marketplace-list"),
-    ("plugins", "search"),
-}
-
-# (comando, ação) que grava só sob a própria trava, nunca sob a do projeto: `analysis
-# --action register` calcula o sha256 de uma mídia grande sem segurar o projeto, e só a
-# troca dos arquivos de `analysis/` fica dentro de `analysis/.lock`.
-OWN_LOCK_ACTIONS = {("analysis", "register")}
-
-# Comandos que criam o projeto (ou o `project.json`) e só tomam a trava dele depois de
-# validar tudo: um `init` recusado (cliente desconhecido, template adulterado, flag errada)
-# ou um `migrate` numa pasta que não existe não pode deixar para trás a pasta do projeto,
-# `brolls/.command.lock` nem um log. O log de auditoria só é
-# gravado quando `brolls/` já existe (ou seja, depois que o próprio comando a criou).
-SELF_LOCKED_COMMANDS = ("init", "migrate")
-
-# Comandos de etapa: trabalham sobre candidatos que `search`/`resolve` já registraram. Um typo
-# no `--project` de um deles (uma pasta que não existe) é recusado antes da trava e do log:
-# nunca cria um projeto vazio. Numa pasta que já existe, mesmo sem `brolls/`, eles rodam como
-# sempre (`review` monta o Storyboard vazio). `search`, `resolve`, `init*`, `roteiro` e `queue`
-# continuam criando o projeto, inclusive a pasta.
-_DECISION_STAGES = ("preview", "approve", "permit", "reject", "review", "import-review", "remember")
-_FILE_STAGES = ("fetch", "verify", "deliver")
-STAGE_COMMANDS = _DECISION_STAGES + _FILE_STAGES
 
 
 def is_folder(path):
@@ -793,11 +198,6 @@ def _absent(path):
     return False
 
 
-# Comandos que lidam com um `project.json` ilegível do seu jeito (`status` o mostra como problema do layout; `init`
-# e `migrate` o recusam por nome); nos outros ele é um erro de E/S, nunca um projeto sem componentes.
-LAYOUT_TOLERANT = frozenset({"status", "init", "migrate"})
-
-
 def _surface_layout_shape(command, project, typed):
     """Dá ao comando em curso o aviso `OLD_SHAPE` de um `project.json` de forma antiga, qualquer que seja o comando.
 
@@ -830,73 +230,11 @@ def _refuse_missing_project(project):
     )
 
 
-# (comando, ação) sem projeto que muda o estado da instalação (`$GB_HOME`): só eles gravam o log do app da
-# instalação (`$GB_HOME/logs/getbrolls.log`), do mesmo jeito que só o comando que grava num projeto grava o
-# `brolls/getbrolls.log`. `plugins` usa as ações que já tomam a trava dos plugins e `setup`/`profile` entram
-# por flag e ação (ver `writes_installation`); `list`, `show`, `check`, `search`, `doctor` e o resto só leem.
-INSTALLATION_WRITES = frozenset({("client", "add"), ("client", "remove")})
-
-
-def writes_installation(args):
-    """O comando muda a instalação (plugins, marketplaces, clientes, perfil confiável, `setup`)?
-
-    Só ele abre o log do app da instalação; um comando que só lê não cria o arquivo. A
-    prévia do `profile --action trust` (sem `--yes`) só lê o getbrolls.toml, e a forma
-    posicional antiga (`legacy`) só recusa: o `trust --yes` e o `untrust` é que gravam `trusted-profiles.json`.
-    """
-    command = args.command
-    if command == "plugins":
-        from .sdk.cli import WRITING_ACTIONS  # tardio: o sdk importa este módulo
-
-        return getattr(args, "action", None) in WRITING_ACTIONS
-    if command == "setup":
-        return not (getattr(args, "check", False) or getattr(args, "where", None))
-    if command == "profile":
-        action = getattr(args, "action", None)
-        if getattr(args, "legacy", None):
-            return False  # a forma antiga só recusa (`renamed`): nada grava, nem o log
-        return action == "untrust" or (action == "trust" and bool(getattr(args, "yes", False)))
-    return (command, getattr(args, "action", None)) in INSTALLATION_WRITES
-
-
 # Erro que veio de um plugin: "Plugin <id>: …" (todo erro do core sobre código de
 # plugin usa esse prefixo) ou "Fonte X é do plugin Y, …" (fonte de plugin fora do
 # ar, que já traz a própria dica). RULES.md não tem nada a ver com nenhum dos dois.
 _PLUGIN_ERROR_RE = re.compile(r"Plugin [A-Za-z0-9_-]+: |Fonte \S+ é do plugin ")
 PLUGIN_ERROR_HINT = "Veja plugins --action list / doctor e docs/SDK.md."
-
-
-# Comandos cujo erro sai sem a dica de recovery (nenhum erro mostra traceback nem
-# repr à pessoa; esses ficam só em diagnostics.jsonl).
-QUIET_ERROR_COMMANDS = ("plugins", "x", "export", "assets", "client", "analysis", "template", "recipe")
-
-# `error_code` → código de saída da CLI; qualquer outro código (INVALID_DATA,
-# IO_ERROR, ...) é erro de operação ou de dados: 1. A tabela completa, com o 0, fica
-# em `cli.EXIT_CODES`; este é o único lugar que decide a saída de um erro. `LOCKED`
-# (outro processo segura a trava do projeto ou do runtime) sai 1, como erro de operação,
-# mas com código próprio para quem automatiza saber que basta repetir depois.
-ERROR_EXIT = {"USAGE_ERROR": 2, "INTERNAL_ERROR": 3, "PREREQUISITE_MISSING": 4, "LOCKED": 1, "INTERRUPTED": 130}
-EXIT_FOR_OTHER_ERRORS = 1
-
-
-def exit_code_for(error_code):
-    """Código de saída de um `error_code` do JSON de erro."""
-    return ERROR_EXIT.get(error_code, EXIT_FOR_OTHER_ERRORS)
-
-
-def error_code_for(exc):
-    """`error_code` de uma exceção que a pessoa pode corrigir (não um bug).
-
-    `ValueError` genérico depois do parse continua erro de dados (1), mesmo quando é,
-    na prática, uso errado: só `UsageError` explícito vira `USAGE_ERROR`.
-    """
-    if isinstance(exc, UsageError):
-        return "USAGE_ERROR"
-    if isinstance(exc, PrerequisiteError):
-        return "PREREQUISITE_MISSING"
-    if isinstance(exc, LockedError):
-        return "LOCKED"
-    return "IO_ERROR" if isinstance(exc, OSError) else "INVALID_DATA"
 
 
 _RECOVERY_HINT = "Há uma gravação pendente (recovery_pending=true): o próximo comando a retoma antes de rodar."
@@ -972,8 +310,6 @@ def _classify_audited_error(event, exc, log, project=None):
             + (f" ({labels.shown(log)})." if log else ".")
         )
         return
-    from .http import ProviderError  # local: avoids a runtime<->http import cycle
-
     # `MissingToolError` (yt-dlp/ffmpeg ausente) é ao mesmo tempo `ProviderError` e
     # `PrerequisiteError`: sai 4, com a mensagem e o aviso de fonte de sempre.
     event["error_code"] = error_code_for(exc)
@@ -1042,25 +378,11 @@ def _app_log(project):
     A mesma escolha do log: o do projeto, ou o da instalação para quem muda a instalação
     (com `--project` ou não). Nunca levanta: arquivo que não dá para conferir é `None`.
     """
-    from . import logs  # local: avoids a runtime<->logs import cycle
-
     try:
         path = logs.log_path(project)
     except Exception:  # noqa: BLE001 - the error envelope must come out even if this check fails
         return None
     return str(path) if path else None
-
-
-def diagnostics_path(project):
-    """`<projeto>/brolls/diagnostics.jsonl`; sem projeto, `$GB_HOME/diagnostics.jsonl`.
-
-    `None` só quando nem a pasta pessoal se resolve (sem HOME no ambiente)."""
-    if project:
-        return Path(project).resolve() / "brolls/diagnostics.jsonl"
-    try:
-        return _paths.gb_home() / "diagnostics.jsonl"
-    except RuntimeError:
-        return None
 
 
 def _failure_destination(project, fresh_init):
@@ -1095,7 +417,7 @@ def _write_audit_log(event, log, failure, result):
     try:
         # effect-exempt: audit log writes diagnostics.jsonl itself; an op line per audit line would log the logger
         log.parent.mkdir(parents=True, exist_ok=True)
-        _ensure_private_file(log)
+        private_files._ensure_private_file(log)  # pylint: disable=protected-access
         # effect-exempt: audit log writes diagnostics.jsonl itself; an op line per audit line would log the logger
         with log.open("a", encoding="utf-8", newline="\n") as stream:
             stream.write(diagnostic_line(event) + "\n")
@@ -1191,7 +513,7 @@ def write_diagnostics_log(project, event):
     try:
         # effect-exempt: audit log writes diagnostics.jsonl itself; an op line per audit line would log the logger
         log.parent.mkdir(parents=True, exist_ok=True)
-        _ensure_private_file(log)
+        private_files._ensure_private_file(log)  # pylint: disable=protected-access
         # effect-exempt: audit log writes diagnostics.jsonl itself; an op line per audit line would log the logger
         with log.open("a", encoding="utf-8", newline="\n") as stream:
             stream.write(diagnostic_line(event) + "\n")

@@ -53,7 +53,7 @@ class PackageTests(unittest.TestCase):
     def test_no_module_calls_a_side_effect_primitive_outside_effects(self):
         problems = []
         for name, path in scanned():
-            if name == "effects.py":
+            if name in {"effects.py", "effects_salt.py"}:
                 continue
             found = _effects_guard.bare_effects(path.read_text(encoding="utf-8"))
             problems += [f"{name}:{row}: {problem}: {code}" for row, code, problem in found]
@@ -297,6 +297,22 @@ class GuardSelfTests(unittest.TestCase):
                 return later, cb
             """
         self.assertEqual([(7, "sem effects"), (8, "sem effects")], self.guard(source))
+
+    def test_o_noctty_is_a_read_flag_but_does_not_hide_a_write(self):
+        source = """\
+            import os
+            READ = os.O_RDONLY | getattr(os, "O_NOCTTY", 0)
+            WRITE = os.O_RDONLY | os.O_NOCTTY | os.O_WRONLY
+            CREATE = os.O_RDONLY | getattr(os, "O_NOCTTY", 0) | os.O_CREAT
+            def f(path):
+                os.open(path, os.O_RDONLY | os.O_NOCTTY)
+                os.open(path, READ)
+                os.open(path, os.O_NOCTTY | os.O_WRONLY)
+                os.open(path, os.O_NOCTTY | os.O_CREAT)
+                os.open(path, WRITE)
+                os.open(path, CREATE)
+            """
+        self.assertEqual([(row, "sem effects") for row in range(8, 12)], self.guard(source))
 
     def test_flags_widened_with_an_augmented_or_count_as_a_write(self):
         source = """\

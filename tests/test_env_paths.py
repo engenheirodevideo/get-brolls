@@ -16,7 +16,7 @@ from _cli import run_cli
 from _paths import CLI_ARGV, ROOT, WHEEL_MODE
 
 from getbrolls import _paths as paths
-from getbrolls import config, media, profile, social
+from getbrolls import config, env_loader, media, profile, social
 from getbrolls.errors import UsageError
 from getbrolls.rules import load_rules
 
@@ -186,7 +186,7 @@ class EnvFileTests(unittest.TestCase):
             env_file = Path(d) / ".env"
             env_file.write_text("GB_FFMPEG_PATH=" + str(ffmpeg) + "\nGB_VENV_PATH=\n", encoding="utf-8")
             with clean_env():
-                config.load_env(env_file)
+                env_loader.load_env(env_file)
                 self.assertEqual(os.environ["GB_FFMPEG_PATH"], str(ffmpeg))
                 self.assertEqual(config.tool_path("ffmpeg"), str(ffmpeg))
 
@@ -197,7 +197,7 @@ class EnvFileTests(unittest.TestCase):
             env_file = Path(d) / ".env"
             env_file.write_text("GB_FFMPEG_PATH=" + str(from_file) + "\n", encoding="utf-8")
             with clean_env(GB_FFMPEG_PATH=str(from_process)):
-                config.load_env(env_file)
+                env_loader.load_env(env_file)
                 self.assertEqual(config.tool_path("ffmpeg"), str(from_process))
 
 
@@ -207,7 +207,7 @@ class EnvFileVocabularyTests(unittest.TestCase):
             env_file = Path(d) / ".env"
             env_file.write_text("GB_INVENTADA=1\n", encoding="utf-8")
             with self.assertRaises(ValueError) as raised:
-                config.load_env(env_file)
+                env_loader.load_env(env_file)
         message = str(raised.exception)
         self.assertIn("GB_INVENTADA", message)
         self.assertIn("GB_FONT_FILE", message)
@@ -221,7 +221,7 @@ class EnvFileVocabularyTests(unittest.TestCase):
             env_file.write_text(f"GB_FONT_FILE={font}\n", encoding="utf-8")
             environment = {k: v for k, v in os.environ.items() if k != "GB_FONT_FILE"}
             with patch.dict(os.environ, environment, clear=True):
-                config.load_env(env_file)
+                env_loader.load_env(env_file)
                 self.assertEqual(str(font), os.environ["GB_FONT_FILE"])
         self.assertIn("GB_FONT_FILE", config.KEYS)
 
@@ -399,7 +399,7 @@ class DeclaredKeys(unittest.TestCase):
     def test_both_examples_load_as_they_are(self):
         for name in (".env.example", ".env.example.pt-BR"):
             with self.subTest(example=name), patch.dict(os.environ, {}, clear=False):
-                config.load_env(ROOT / name)
+                env_loader.load_env(ROOT / name)
 
     def test_gb_profile_in_a_dot_env_is_refused(self):
         for key in ("GB_PROFILE", "GB_PROFILE_SHA256"):
@@ -407,7 +407,7 @@ class DeclaredKeys(unittest.TestCase):
                 env_file = Path(tmp) / ".env"
                 env_file.write_text(f"{key}=off\n", encoding="utf-8")
                 with patch.dict(os.environ, {}, clear=False), self.assertRaises(UsageError) as caught:
-                    config.load_env(env_file)
+                    env_loader.load_env(env_file)
                 self.assertIn("só vale no ambiente do processo", str(caught.exception))
 
     def test_gb_brief_file_in_a_dot_env_does_not_break_every_command(self):
@@ -415,7 +415,7 @@ class DeclaredKeys(unittest.TestCase):
             env_file = Path(tmp) / ".env"
             env_file.write_text("GB_BRIEF_FILE=\nGB_SCAN_MAX_SECONDS=120\n", encoding="utf-8")
             with patch.dict(os.environ, {}, clear=False):
-                config.load_env(env_file)
+                env_loader.load_env(env_file)
 
 
 class BriefAndRulesOutsideTheProjectTests(unittest.TestCase):

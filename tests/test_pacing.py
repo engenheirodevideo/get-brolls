@@ -4,9 +4,11 @@ import contextlib
 import io
 import json
 import os
+import random
 import socket
 import subprocess
 import tempfile
+import time
 import unittest
 import urllib.error
 from pathlib import Path
@@ -55,7 +57,7 @@ def fake_process(**kwargs):
 class PairsBatchTests(unittest.TestCase):
     def setUp(self):
         self.enterContext(patch.object(ig, "ensure_tool"))
-        self.sleep = self.enterContext(patch.object(ig.time, "sleep"))
+        self.sleep = self.enterContext(patch.object(time, "sleep"))
         # O script fala no terminal; a suíte não precisa desse ruído.
         self.enterContext(contextlib.redirect_stdout(io.StringIO()))
         self.enterContext(contextlib.redirect_stderr(io.StringIO()))
@@ -80,7 +82,7 @@ class PairsBatchTests(unittest.TestCase):
             write_pairs(root / "configs", ["01_A", "02_B", "03_C"])
             with (
                 patch.object(ig, "process_one", side_effect=fake_process),
-                patch.object(ig.random, "uniform", return_value=7.5),
+                patch.object(random, "uniform", return_value=7.5),
             ):
                 self.assertEqual(0, ig.main(batch_args(root, "--pace", "5-10")))
             self.assertEqual([7.5, 7.5], [call.args[0] for call in self.sleep.call_args_list])
@@ -157,14 +159,12 @@ class PairsBatchTests(unittest.TestCase):
                 raise subprocess.CalledProcessError(22, cmd, stderr=b"curl: (22) The requested URL returned error: 429")
 
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                patch.object(ig.subprocess, "run", side_effect=limited),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(subprocess, "run", side_effect=limited),
             ):
                 self.assertEqual(1, ig.main(batch_args(root, "--pace", "0", "--continue-on-error")))
             self.assertEqual(1, len(commands), "após 429 o lote para de imediato")
-            self.assertIn("--retry", commands[0])
-            self.assertEqual("2", commands[0][commands[0].index("--retry") + 1])
-            self.assertEqual("5", commands[0][commands[0].index("--retry-delay") + 1])
+            self.assertNotIn("--retry", commands[0], "curl must not retry a 429")
             self.assertNotIn("--retry-all-errors", commands[0])
             summary = json.loads((root / "work/summary.json").read_text(encoding="utf-8"))
             self.assertEqual(["failed", "skipped", "skipped"], [item["status"] for item in summary["results"]])
@@ -185,8 +185,8 @@ class PairsBatchTests(unittest.TestCase):
                 raise subprocess.CalledProcessError(22, cmd, stderr=b"curl: (22) The requested URL returned error: 429")
 
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                patch.object(ig.subprocess, "run", side_effect=limited),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(subprocess, "run", side_effect=limited),
             ):
                 self.assertEqual(1, ig.main(batch_args(root, "--pace", "0")))
             summary = json.loads((root / "work/summary.json").read_text(encoding="utf-8"))
@@ -224,8 +224,8 @@ class PairsBatchTests(unittest.TestCase):
                 "0",
             ]
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                patch.object(ig.subprocess, "run", side_effect=limited),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(subprocess, "run", side_effect=limited),
             ):
                 self.assertEqual(1, ig.main(args))
             saved = queue.load(queue.queue_path(project))
@@ -243,8 +243,8 @@ class PairsBatchTests(unittest.TestCase):
             stderr = io.StringIO()
             with (
                 contextlib.redirect_stderr(stderr),
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                patch.object(ig.subprocess, "run", side_effect=limited),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(subprocess, "run", side_effect=limited),
             ):
                 self.assertEqual(1, ig.main(batch_args(root, "--pace", "0", project=False)))
             self.assertIn("WARNING: cooldown não registrado", stderr.getvalue())
@@ -260,8 +260,8 @@ class PairsBatchTests(unittest.TestCase):
             stderr = io.StringIO()
             with (
                 contextlib.redirect_stderr(stderr),
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                patch.object(ig.subprocess, "run", side_effect=limited),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(subprocess, "run", side_effect=limited),
             ):
                 self.assertEqual(1, ig.main(batch_args(root, "--pace", "0")))
             self.assertIn("WARNING: cooldown não registrado", stderr.getvalue())
@@ -276,8 +276,8 @@ class PairsBatchTests(unittest.TestCase):
                 raise subprocess.CalledProcessError(28, cmd, stderr=b"curl: (28) timeout")
 
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                patch.object(ig.subprocess, "run", side_effect=timeout),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(subprocess, "run", side_effect=timeout),
                 self.assertRaises(ig.CollectError) as raised,
             ):
                 ig.download_or_reuse(

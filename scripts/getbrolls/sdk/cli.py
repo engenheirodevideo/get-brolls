@@ -4,6 +4,7 @@ from pathlib import Path
 
 from .. import effects, runtime
 from .._paths import strict_is_dir, strict_lexists
+from ..command_policy import WRITING_ACTIONS
 from ..errors import UsageError
 from ..rules import home_dir
 from . import git_source, loader, official
@@ -20,11 +21,6 @@ _PIN_FLAG_ACTIONS = {
 }
 # Ações em que `--allow-rollback` vale.
 _ROLLBACK_FLAG_ACTIONS = ("marketplace-update",)
-# Ações que gravam em `$GB_HOME` (plugins/, plugins.json, marketplaces): uma por vez,
-# sob `$GB_HOME/.plugins.lock`. A prévia também entra: ela monta o staging em plugins/.
-WRITING_ACTIONS = frozenset(
-    {"enable", "disable", "install", "update", "remove", "marketplace-add", "marketplace-remove", "marketplace-update"}
-)
 PLUGINS_LOCK = ".plugins.lock"
 _BUSY = (
     "Outro comando plugins está mudando os plugins ou marketplaces desta instalação agora; "

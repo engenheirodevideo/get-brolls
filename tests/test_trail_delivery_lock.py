@@ -124,7 +124,7 @@ class DeliveryDestinationConflictTests(unittest.TestCase):
 
 class ConcurrentWriteCommandTests(unittest.TestCase):
     """Two write commands competing for the same project's lock
-    (`runtime.project_lock`/`runtime._acquire_lock`, a non-blocking flock on
+    (`runtime.project_lock`/`file_locks._acquire_lock`, a non-blocking flock on
     `brolls/.command.lock`).
 
     tests/test_queue_integrity.py::QueueActionReadOnlyTests already proves,
