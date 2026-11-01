@@ -1,0 +1,120 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"deliver\", \"status\": \"success\", \"state_committed\": false, \"recovered\": false, \"warnings\": [], \"duration_ms\": \"<MS>\"}"
+  ],
+  "work/proj/brolls/getbrolls.log": [
+   "level=INFO logger=getbrolls.cli event=command_start command=deliver read_only=False options=project",
+   "level=INFO logger=getbrolls.effects event=op operation=deliver.place target=entrega/#2f4c5380/#774508d3.mp4 outcome=ok duration_ms=<MS> error_code=- error=- command=deliver",
+   "level=INFO logger=getbrolls.delivery event=deliver_item beat=abertura mode=hardlink reason=-",
+   "level=INFO logger=getbrolls.effects event=op operation=fs.write target=entrega/#2f4c5380/ORIGEM.md outcome=ok duration_ms=<MS> error_code=- error=- command=deliver",
+   "level=INFO logger=getbrolls.delivery event=sweep removed=0 kept_foreign=0",
+   "level=INFO logger=getbrolls.effects event=op operation=fs.write target=entrega/README.md outcome=ok duration_ms=<MS> error_code=- error=- command=deliver",
+   "level=INFO logger=getbrolls.commands event=deliver delivered=1 skipped=0 conflicts=0 dry_run=False",
+   "level=INFO logger=getbrolls.cli event=command_end command=deliver status=ok error_code=- ms=<MS> outcome=ok duration_ms=<MS>"
+  ]
+ },
+ "argv": [
+  "deliver",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "deliver",
+ "exit": 0,
+ "files": {
+  "work/proj/entrega/01-abertura-o-que-precisa-aparecer-na-tela-neste-trecho/ORIGEM.md": {
+   "bytes": 1169,
+   "lines": [
+    "---",
+    "type: delivery-origin",
+    "status: current",
+    "created: <TODAY>",
+    "updated: <TODAY>",
+    "tags: [get-brolls, entrega]",
+    "---",
+    "",
+    "# Origem de 01-abertura-o-que-precisa-aparecer-na-tela-neste-trecho.mp4",
+    "",
+    "- Arquivo: `01-abertura-o-que-precisa-aparecer-na-tela-neste-trecho.mp4`",
+    "- Candidato: `local:f6c96bb15a4f7e25:shot:abertura`",
+    "- Título na fonte: original.mp4",
+    "- Fonte: original local",
+    "- Autor: não informado",
+    "- Trecho usado: 0.5s → 1.5s",
+    "- Direitos: permitted",
+    "- Licença: ver evidência",
+    "- Licença URL: não informada",
+    "- Evidência: Vídeo sintético de teste gerado localmente",
+    "- Aprovado por: Fixture humano (storyboard)",
+    "- sha256 do arquivo coletado: `<SHA:work/proj/brolls/clips/61dd9e68d8fe00a4-r1.mp4>`",
+    "- Original canônico: `brolls/clips/61dd9e68d8fe00a4-r1.mp4`",
+    "",
+    "**Editar aqui é editar o original.** Estes arquivos são o mesmo arquivo de `brolls/` com outro nome (hardlink), e por isso vêm marcados como somente-leitura: copie antes de mexer. Se você quiser editar dentro de `entrega/`, rode o `deliver` com `GB_DELIVERY_COPY=1` e receba cópias independentes.",
+    "",
+    "Este arquivo é gerado por `deliver`. A pasta `entrega/` inteira pode ser apagada e refeita: o que vale é `brolls/`."
+   ],
+   "sha256": "90cf017f9bae61a9c1b08f6321e733816f657156ae9f75676ea24011021f924d"
+  },
+  "work/proj/entrega/README.md": {
+   "bytes": 1085,
+   "lines": [
+    "---",
+    "type: delivery-index",
+    "status: current",
+    "created: <TODAY>",
+    "updated: <TODAY>",
+    "tags: [get-brolls, entrega]",
+    "---",
+    "",
+    "# Seus trechos",
+    "",
+    "Cada pasta é um trecho do vídeo, na ordem do BRIEF.md. É só arrastar o `.mp4` para o seu editor; o `ORIGEM.md` ao lado diz de onde ele veio e o que você me disse sobre poder usar.",
+    "",
+    "**Editar aqui é editar o original.** Estes arquivos são o mesmo arquivo de `brolls/` com outro nome (hardlink), e por isso vêm marcados como somente-leitura: copie antes de mexer. Se você quiser editar dentro de `entrega/`, rode o `deliver` com `GB_DELIVERY_COPY=1` e receba cópias independentes.",
+    "",
+    "| Beat | Narração | Alvo | Arquivo | Estado | Direitos |",
+    "|---|---|---|---|---|---|",
+    "| abertura | Cole aqui a fala exata deste trecho, ou deixe null. | O que precisa aparecer na tela neste trecho | 01-abertura-o-que-precisa-aparecer-na-tela-neste-trecho/01-abertura-o-que-precisa-aparecer-na-tela-neste-trecho.mp4 | approved | permitted |",
+    "",
+    "## Próximo passo",
+    "",
+    "Fluxo completo: todos os trechos aprovados estão coletados, permitidos, conferidos e organizados em `entrega/`."
+   ],
+   "sha256": "075c1f5890586543e6b730beb8082953b6f87f8619a36a39200cfb312c4b693b"
+  }
+ },
+ "stderr": null,
+ "stdout": {
+  "json": {
+   "delivery": "<T>/work/proj/entrega",
+   "dry_run": false,
+   "items": [
+    {
+     "beat": "abertura",
+     "id": "local:f6c96bb15a4f7e25:shot:abertura",
+     "method": "hardlink",
+     "path": "entrega/01-abertura-o-que-precisa-aparecer-na-tela-neste-trecho/01-abertura-o-que-precisa-aparecer-na-tela-neste-trecho.mp4"
+    }
+   ],
+   "kept": [],
+   "readme": "<T>/work/proj/entrega/README.md",
+   "removed": [],
+   "rows": [
+    {
+     "beat": "abertura",
+     "file": "01-abertura-o-que-precisa-aparecer-na-tela-neste-trecho/01-abertura-o-que-precisa-aparecer-na-tela-neste-trecho.mp4",
+     "method": "hardlink",
+     "narration": "Cole aqui a fala exata deste trecho, ou deixe null.",
+     "rights": "permitted",
+     "state": "approved",
+     "target": "O que precisa aparecer na tela neste trecho"
+    }
+   ],
+   "skipped": [],
+   "summary": {
+    "line": "Organizei 1 trecho em 1 pasta dentro de <projeto>/entrega.",
+    "next": "Fluxo completo: todos os trechos aprovados estão coletados, permitidos, conferidos e organizados em `entrega/`."
+   }
+  }
+ }
+}

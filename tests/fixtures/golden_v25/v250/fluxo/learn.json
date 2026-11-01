@@ -1,0 +1,72 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"learn\", \"status\": \"success\", \"state_committed\": false, \"warnings\": [], \"duration_ms\": \"<MS>\"}"
+  ],
+  "work/proj/brolls/getbrolls.log": [
+   "level=INFO logger=getbrolls.cli event=command_start command=learn read_only=False options=query,provider,outcome,project",
+   "level=INFO logger=getbrolls.library event=library action=learn entries=1 disabled=False",
+   "level=INFO logger=getbrolls.cli event=command_end command=learn status=ok error_code=- ms=<MS>"
+  ]
+ },
+ "argv": [
+  "learn",
+  "--query",
+  "foguete decolando",
+  "--provider",
+  "youtube",
+  "--outcome",
+  "hit",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "learn",
+ "exit": 0,
+ "files": {
+  "gbhome/library/index.json": {
+   "bytes": 374,
+   "lines": [
+    "{",
+    "  \"schema_version\": 1,",
+    "  \"assets\": [],",
+    "  \"queries\": [",
+    "    {",
+    "      \"query\": \"foguete decolando\",",
+    "      \"provider\": \"youtube\",",
+    "      \"outcome\": \"hit\",",
+    "      \"count\": 1,",
+    "      \"at\": \"<TS>\",",
+    "      \"note\": null",
+    "    }",
+    "  ],",
+    "  \"providers\": {",
+    "    \"youtube\": {",
+    "      \"outcomes\": {",
+    "        \"hit\": 1,",
+    "        \"miss\": 0",
+    "      },",
+    "      \"last_at\": \"<TS>\"",
+    "    }",
+    "  },",
+    "  \"preferences\": []",
+    "}"
+   ],
+   "sha256": "ca892b1a09a3f380a90b641711e4bed22a711ec80ae8e16c3ede0c116133a134"
+  }
+ },
+ "stderr": null,
+ "stdout": {
+  "json": {
+   "enabled": true,
+   "entry": {
+    "at": "<TS>",
+    "count": 1,
+    "note": null,
+    "outcome": "hit",
+    "provider": "youtube",
+    "query": "foguete decolando"
+   },
+   "rights_not_transferable": true
+  }
+ }
+}

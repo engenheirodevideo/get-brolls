@@ -1,0 +1,18 @@
+{
+ "appends": {},
+ "argv": [
+  "status",
+  "--projct",
+  "<T>/work/proj"
+ ],
+ "case": "err_unknown_flag",
+ "exit": 2,
+ "files": {},
+ "stderr": {
+  "text": [
+   "usage: gb.py status [-h] --project PROJECT",
+   "gb.py status: error: the following arguments are required: --project"
+  ]
+ },
+ "stdout": null
+}

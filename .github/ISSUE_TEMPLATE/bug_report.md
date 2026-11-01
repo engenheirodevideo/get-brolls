@@ -10,11 +10,11 @@ assignees: ''
 
 - Sistema operacional e versão:
 - Versão do Python (`python3 --version`):
-- Instalação: clone como skill (Codex) ou plugin do Claude Code:
+- Instalação: pacote (`uv tool install` ou `pipx install`), clone como skill (Codex) ou plugin do Claude Code:
 
 ## Saída do doctor
 
-Cole a saída **completa** de `python3 scripts/gb.py doctor` (no Windows, `python scripts/gb.py doctor`). Ela traz versão da skill, Python, caminhos fixados e o veredito `summary`.
+Cole a saída **completa** do `doctor` da instalação onde o problema aconteceu, mesmo que outra também esteja na máquina: no pacote, `getbrolls doctor`; num clone ou no plugin, `python3 <pasta da instalação>/scripts/gb.py doctor` (no Windows, `python`). Ela traz versão da skill, Python, a origem da instalação (`install.origin`), caminhos fixados e o veredito `summary`.
 
 ```json
 

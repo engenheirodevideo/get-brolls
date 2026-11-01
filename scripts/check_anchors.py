@@ -10,6 +10,11 @@ Sai com código 0 e uma linha de confirmação se tudo resolver; código 1 e a
 lista de âncoras quebradas caso contrário.
 """
 
+# pylint: disable=missing-function-docstring,duplicate-code
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0); a
+# duplicação é o helper `_utf8_output`, repetido porque cada script standalone
+# é autossuficiente e não importa dos outros.
+
 from __future__ import annotations
 
 import contextlib
@@ -92,10 +97,10 @@ def check_relative_links(path: Path, markdown: str) -> list[str]:
             continue
         resolved = (path.parent / target).resolve()
         if not resolved.exists():
-            problems.append(f"{path.relative_to(ROOT)}: link quebrado {link}")
+            problems.append(f"{path.relative_to(ROOT).as_posix()}: link quebrado {link}")
             continue
         if anchor and anchor not in extract_headings(resolved.read_text(encoding="utf-8")):
-            problems.append(f"{path.relative_to(ROOT)}: âncora quebrada {link}")
+            problems.append(f"{path.relative_to(ROOT).as_posix()}: âncora quebrada {link}")
     return problems
 
 
@@ -109,7 +114,7 @@ def check() -> list[str]:
             continue
         text = path.read_text(encoding="utf-8")
         problems.extend(
-            f"{path.relative_to(ROOT)}: âncora quebrada GUIDE.md#{anchor}"
+            f"{path.relative_to(ROOT).as_posix()}: âncora quebrada GUIDE.md#{anchor}"
             for anchor in find_anchor_refs(text)
             if anchor not in guide_slugs
         )

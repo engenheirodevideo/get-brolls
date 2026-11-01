@@ -1,0 +1,30 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"review\", \"status\": \"success\", \"state_committed\": false, \"recovered\": false, \"warnings\": [], \"duration_ms\": \"<MS>\"}"
+  ],
+  "work/proj/brolls/getbrolls.log": [
+   "level=INFO logger=getbrolls.cli event=command_start command=review read_only=False options=project",
+   "level=INFO logger=getbrolls.effects event=op operation=fs.write target=brolls/review.html outcome=ok duration_ms=<MS> error_code=- error=- command=review",
+   "level=INFO logger=getbrolls.effects event=op operation=fs.write target=brolls/credits.md outcome=ok duration_ms=<MS> error_code=- error=- command=review",
+   "level=INFO logger=getbrolls.cli event=command_end command=review status=ok error_code=- ms=<MS> outcome=ok duration_ms=<MS>"
+  ]
+ },
+ "argv": [
+  "review",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "review",
+ "exit": 0,
+ "files": {},
+ "stderr": null,
+ "stdout": {
+  "json": {
+   "review": "<T>/work/proj/brolls/review.html",
+   "summary": {
+    "line": "Gerei o Storyboard em <projeto>/brolls/review.html."
+   }
+  }
+ }
+}

@@ -1,0 +1,93 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"brief\", \"status\": \"success\", \"state_committed\": false, \"recovered\": false, \"warnings\": [], \"duration_ms\": \"<MS>\"}"
+  ]
+ },
+ "argv": [
+  "brief",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "brief",
+ "exit": 0,
+ "files": {},
+ "stderr": null,
+ "stdout": {
+  "json": {
+   "beats": [
+    {
+     "candidates": [
+      "local:f6c96bb15a4f7e25:shot:abertura"
+     ],
+     "commands": {
+      "inspect": "<PYNAME> \"<CODE>/scripts/gb.py\" inspect --project <T>/work/proj --candidate ID --query 'Cole aqui a fala exata deste trecho, ou deixe null.'",
+      "preview": "<PYNAME> \"<CODE>/scripts/gb.py\" preview --project <T>/work/proj --candidate ID --narration 'Cole aqui a fala exata deste trecho, ou deixe null.'",
+      "resolve": "<PYNAME> \"<CODE>/scripts/gb.py\" resolve --project <T>/work/proj --url URL_PUBLICA --shot abertura",
+      "search": "<PYNAME> \"<CODE>/scripts/gb.py\" search --project <T>/work/proj --provider youtube --query 'precisa aparecer tela neste trecho' --intent literal --shot abertura"
+     },
+     "id": "abertura",
+     "resolved": {
+      "allowed_sources": [
+       "youtube",
+       "commons",
+       "nasa"
+      ],
+      "blocked_reason": null,
+      "duration_hint_s": 4,
+      "id": "abertura",
+      "intent": "literal",
+      "narration": "Cole aqui a fala exata deste trecho, ou deixe null.",
+      "notes": null,
+      "queries": [],
+      "stock": false,
+      "target": "O que precisa aparecer na tela neste trecho"
+     }
+    }
+   ],
+   "brief": "<T>/work/proj/BRIEF.md",
+   "conflicts": [],
+   "coverage": {
+    "beats": 1,
+    "blocked": 0,
+    "covered": 1,
+    "missing": 0
+   },
+   "defaults": {
+    "allowed_sources": [
+     "youtube",
+     "commons",
+     "nasa"
+    ],
+    "duration_hint_s": 4,
+    "intent": "literal",
+    "stock": false
+   },
+   "rights": {
+    "notes": null,
+    "posture": "per_item_evidence",
+    "stock_allowed": false
+   },
+   "summary": {
+    "line": "Brief de \"Troque pelo nome real do vídeo\": 1 beat, 1 com candidato e 0 sem.",
+    "next": "Vou gerar a prévia dos candidatos que ainda não têm quadro, para você ver antes de decidir. Rode `inspect` antes se ainda não souber onde está o trecho: o `--start`/`--end` daqui é só um ponto de partida, confirmado no contact sheet da fonte antes de aprovar.",
+    "problems": [
+     "video.title ainda está com o texto de exemplo do modelo: troque pelo real.",
+     "video.objective ainda está com o texto de exemplo do modelo: troque pelo real.",
+     "O beat \"abertura\" ainda está com o narration de exemplo do modelo: troque pelo real.",
+     "O beat \"abertura\" ainda está com o target de exemplo do modelo: troque pelo real."
+    ]
+   },
+   "video": {
+    "audience": null,
+    "delivery": {
+     "duration_s": null,
+     "format": "native",
+     "platform": null
+    },
+    "objective": "O que este vídeo precisa provar para quem assiste",
+    "title": "Troque pelo nome real do vídeo"
+   }
+  }
+ }
+}

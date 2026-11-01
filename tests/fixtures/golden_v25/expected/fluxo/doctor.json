@@ -1,0 +1,320 @@
+{
+ "appends": {},
+ "argv": [
+  "doctor"
+ ],
+ "case": "doctor",
+ "exit": 4,
+ "files": {},
+ "stderr": null,
+ "stdout": {
+  "json": {
+   "contact_sheet": {
+    "drawtext": "<MACHINE>",
+    "font": "<MACHINE>",
+    "labels": "<MACHINE>"
+   },
+   "executables": {
+    "bash": false,
+    "curl": false,
+    "deno": false,
+    "ffmpeg": false,
+    "ffprobe": false,
+    "node": false,
+    "npx": false,
+    "playwright-cli": false,
+    "yt-dlp": true
+   },
+   "get_brolls": "<VERSION>",
+   "install": {
+    "app_log": "<T>/gbhome/logs/getbrolls.log",
+    "cli": {
+     "argv": [
+      "<PY>",
+      "<CODE>/scripts/gb.py"
+     ],
+     "command": [
+      "<PYNAME>",
+      "<CODE>/scripts/gb.py"
+     ]
+    },
+    "data_missing": [],
+    "data_root": "<CODE>",
+    "data_unreadable": [],
+    "env_file": {
+     "ignored": [],
+     "note": null,
+     "path": "<T>/vazio.env",
+     "searched": [
+      "<T>/vazio.env"
+     ],
+     "source": "GB_ENV_FILE"
+    },
+    "gb_home": "<T>/gbhome",
+    "gb_home_source": "env",
+    "log_salt": "ok",
+    "origin": "checkout",
+    "package_dir": "<CODE>/scripts/getbrolls",
+    "profile": {
+     "applied": [],
+     "error": null,
+     "message": null,
+     "path": null,
+     "requires": null,
+     "searched": [],
+     "sha256": null,
+     "source": "GB_PROFILE",
+     "trust": "disabled",
+     "trust_file": "<T>/gbhome/trusted-profiles.json",
+     "values": {
+      "cache_dir": {
+       "env": "GB_CACHE_DIR",
+       "source": "env",
+       "value": "<T>/cache"
+      },
+      "home": {
+       "env": "GB_HOME",
+       "source": "env",
+       "value": "<T>/gbhome"
+      },
+      "plugins": {
+       "env": "GB_PLUGINS",
+       "source": "default",
+       "value": null
+      },
+      "runtime_dir": {
+       "env": "GB_RUNTIME_DIR",
+       "source": "env",
+       "value": "<T>/runtime"
+      },
+      "tools.ffmpeg": {
+       "env": "GB_FFMPEG_PATH",
+       "source": "default",
+       "value": null
+      },
+      "tools.ffprobe": {
+       "env": "GB_FFPROBE_PATH",
+       "source": "default",
+       "value": null
+      },
+      "tools.venv": {
+       "env": "GB_VENV_PATH",
+       "source": "default",
+       "value": null
+      },
+      "tools.ytdlp": {
+       "env": "GB_YTDLP_PATH",
+       "source": "env",
+       "value": "<PY>"
+      }
+     }
+    },
+    "python": "<PYV>",
+    "runtime": {
+     "explicit": true,
+     "shas": {
+      "tools": "7ff9d2913771b98c",
+      "venv": "297cf4d1dab00b59"
+     },
+     "tools": {
+      "conflict": null,
+      "managed": false,
+      "marker": null,
+      "path": "<T>/runtime/.tools",
+      "source": "GB_RUNTIME_DIR"
+     },
+     "venv": {
+      "conflict": null,
+      "managed": false,
+      "marker": null,
+      "path": "<T>/runtime/.venv",
+      "source": "GB_RUNTIME_DIR"
+     }
+    },
+    "version": "<VERSION>"
+   },
+   "preview": {
+    "colors": 128,
+    "fps": 8,
+    "frames": 12,
+    "max_mb": 5,
+    "max_seconds": 10,
+    "mode": "gif",
+    "scan_max_seconds": 900,
+    "scope": "broll",
+    "width": 360
+   },
+   "providers": {
+    "commons": {
+     "account_library": false,
+     "configured": true,
+     "download": true,
+     "embed": false,
+     "env_key": null,
+     "resolve_url": false,
+     "search": true,
+     "seek": "unsupported",
+     "transport": "commons"
+    },
+    "instagram": {
+     "account_library": false,
+     "configured": true,
+     "download": true,
+     "embed": false,
+     "env_key": null,
+     "resolve_url": true,
+     "search": false,
+     "seek": "unsupported",
+     "transport": "browser-cdn-pairs / yt-dlp"
+    },
+    "local": {
+     "account_library": false,
+     "configured": true,
+     "download": true,
+     "embed": false,
+     "env_key": null,
+     "resolve_url": false,
+     "search": false,
+     "seek": "local",
+     "transport": "local"
+    },
+    "nasa": {
+     "account_library": false,
+     "configured": true,
+     "download": true,
+     "embed": false,
+     "env_key": null,
+     "resolve_url": false,
+     "search": true,
+     "seek": "unsupported",
+     "transport": "nasa"
+    },
+    "pexels": {
+     "account_library": false,
+     "configured": false,
+     "download": true,
+     "embed": false,
+     "env_key": "PEXELS_API_KEY",
+     "resolve_url": false,
+     "search": true,
+     "seek": "unsupported",
+     "transport": "pexels"
+    },
+    "pixabay": {
+     "account_library": false,
+     "configured": false,
+     "download": true,
+     "embed": false,
+     "env_key": "PIXABAY_API_KEY",
+     "resolve_url": false,
+     "search": true,
+     "seek": "unsupported",
+     "transport": "pixabay"
+    },
+    "tiktok": {
+     "account_library": false,
+     "configured": true,
+     "download": true,
+     "embed": false,
+     "env_key": null,
+     "resolve_url": true,
+     "search": false,
+     "seek": "unsupported",
+     "transport": "yt-dlp"
+    },
+    "youtube": {
+     "account_library": false,
+     "configured": true,
+     "download": true,
+     "embed": false,
+     "env_key": null,
+     "resolve_url": true,
+     "search": true,
+     "seek": "unsupported",
+     "transport": "yt-dlp"
+    }
+   },
+   "python": "<PYV>",
+   "ready": false,
+   "resolved": {
+    "bash": null,
+    "curl": null,
+    "deno": null,
+    "ffmpeg": null,
+    "ffprobe": null,
+    "node": null,
+    "npx": null,
+    "playwright-cli": null,
+    "yt-dlp": "<PY>"
+   },
+   "social": {
+    "engine": "yt-dlp",
+    "executable": "<PY>",
+    "instagram": "Navegador/Playwright → configs vídeo+áudio → scripts/getbrolls/instagram_pairs.py",
+    "installed": true,
+    "javascript_runtime": null,
+    "scope": "Disponibilidade de executáveis; não comprova extração ao vivo nem versão/runtime EJS.",
+    "source": "env",
+    "youtube_api_key_required": false
+   },
+   "summary": {
+    "missing": [
+     {
+      "fix": "instale pelo gerenciador do sistema; veja docs/GUIDE.md#instalação",
+      "item": "curl",
+      "note": "Download dos pares CDN do Instagram fica indisponível"
+     },
+     {
+      "fix": "instale pelo gerenciador do sistema; veja docs/GUIDE.md#instalação",
+      "item": "ffmpeg",
+      "note": "Prévia, corte e verificação ficam indisponíveis"
+     },
+     {
+      "fix": "instale pelo gerenciador do sistema; veja docs/GUIDE.md#instalação",
+      "item": "ffprobe",
+      "note": "Prévia, corte e verificação ficam indisponíveis"
+     },
+     {
+      "fix": "instale pelo gerenciador do sistema; veja docs/GUIDE.md#instalação",
+      "item": "node",
+      "note": "Playwright CLI e runtime EJS do yt-dlp ficam indisponíveis"
+     },
+     {
+      "fix": "instale pelo gerenciador do sistema; veja docs/GUIDE.md#instalação",
+      "item": "npx",
+      "note": "Instalação e execução do Playwright CLI ficam indisponíveis"
+     },
+     {
+      "fix": "bash \"<CODE>/scripts/install.sh\" (ou \"<CODE>/scripts/install.ps1\" no Windows)",
+      "item": "playwright-cli",
+      "note": "Instagram indisponível sem ele"
+     }
+    ],
+    "ok": [
+     "yt-dlp"
+    ],
+    "optional": [
+     {
+      "item": "bash",
+      "note": "Somente os helpers opcionais de YouTube; a CLI não depende dele"
+     },
+     {
+      "item": "deno",
+      "note": "Alternativa ao Node apenas para o runtime EJS"
+     },
+     {
+      "item": "PEXELS_API_KEY",
+      "note": "Busca no Pexels desativada; defina a chave no ambiente ou no .env"
+     },
+     {
+      "item": "PIXABAY_API_KEY",
+      "note": "Busca no Pixabay desativada; defina a chave no ambiente ou no .env"
+     }
+    ]
+   },
+   "tool_paths": {
+    "GB_YTDLP_PATH": "<PY>"
+   }
+  }
+ }
+}

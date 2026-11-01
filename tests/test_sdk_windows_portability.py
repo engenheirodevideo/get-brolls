@@ -1,0 +1,270 @@
+"""Portabilidade para o job Windows do CI.
+
+O Git para Windows grava objetos como somente-leitura, e `shutil.rmtree(...,
+ignore_errors=True)` deixa esses arquivos para trás em silêncio — um `.git` ficava
+dentro do plugin instalado e `.install-*` se acumulavam. `force_rmtree` limpa o bit
+de somente-leitura e tenta de novo; aqui o mesmo efeito é reproduzido também em
+POSIX com uma pasta sem permissão de escrita.
+"""
+
+import os
+import shutil
+import stat
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from test_sdk_install import HAS_GIT, InstallTestCase, _git_test_env, git, write_plugin
+from test_sdk_loader import PLUGIN_CODE
+
+from getbrolls import runtime
+from getbrolls.sdk import install as install_mod
+from getbrolls.sdk import loader, materialize
+
+IS_ROOT = hasattr(os, "geteuid") and os.geteuid() == 0
+
+
+def add_blob(repo, path, content):
+    """Commita `content` em `path` só pelo índice. `core.protectNTFS=false`: o git para Windows
+    recusaria no `update-index` o nome que o teste quer pôr no histórico (`CON`, `x.py.`)."""
+    blob = subprocess.run(
+        ["git", "hash-object", "-w", "--stdin"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        input=content,
+        env=_git_test_env(),
+    ).stdout.decode("ascii")
+    entry = f"100644,{blob.strip()},{path}"
+    subprocess.run(
+        ["git", "-c", "core.protectNTFS=false", "update-index", "--add", "--cacheinfo", entry],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env=_git_test_env(),
+    )
+    git(repo, "-c", "core.protectNTFS=false", "commit", "--quiet", "-m", f"add {path}")
+
+
+def _read_only_tree(base):
+    """Pasta com um arquivo somente-leitura dentro de uma subpasta sem escrita — o
+    equivalente POSIX (e Windows, pelo atributo do arquivo) de um objeto git."""
+    sub = base / "objects" / "ab"
+    sub.mkdir(parents=True)
+    obj = sub / "cdef"
+    obj.write_bytes(b"blob")
+    obj.chmod(stat.S_IREAD)
+    sub.chmod(stat.S_IREAD | stat.S_IEXEC)
+    return sub
+
+
+class ForceRmtreeTests(unittest.TestCase):
+    @unittest.skipIf(IS_ROOT, "root ignora permissão de escrita")
+    def test_read_only_entries_are_removed(self):
+        base = Path(tempfile.mkdtemp(prefix="gb-ro-"))
+        sub = _read_only_tree(base)
+        self.addCleanup(shutil.rmtree, base, ignore_errors=True)
+        self.addCleanup(lambda: sub.exists() and sub.chmod(stat.S_IRWXU))
+        runtime.force_rmtree(base)
+        self.assertFalse(base.exists())
+
+    @unittest.skipIf(IS_ROOT, "root ignora permissão de escrita")
+    @unittest.skipIf(os.name == "nt", "fd-based rmtree walk (func=os.open) é POSIX-only")
+    def test_dirs_without_read_or_execute_permission_are_fully_removed(self):
+        """Numa subpasta sem leitura/execução (0 ou só escrita), o walk por fd
+        do shutil.rmtree chama a retentativa com func=os.open, não
+        os.unlink/os.rmdir/os.remove. Chamar `func(failed)` sem flags levantava
+        TypeError, que escapava do antigo `suppress(OSError)` e violava o "nunca
+        levanta" do docstring — cada retry deixava a árvore para trás."""
+        base = Path(tempfile.mkdtemp(prefix="gb-b2-"))
+        self.addCleanup(shutil.rmtree, base, ignore_errors=True)
+
+        no_perm = base / "locked000"
+        no_perm.mkdir()
+        (no_perm / "inner.txt").write_text("x", encoding="utf-8")
+        no_perm.chmod(0o000)
+        self.addCleanup(lambda: no_perm.exists() and no_perm.chmod(stat.S_IRWXU))
+
+        write_only = base / "locked200"
+        write_only.mkdir()
+        (write_only / "inner.txt").write_text("x", encoding="utf-8")
+        write_only.chmod(0o200)
+        self.addCleanup(lambda: write_only.exists() and write_only.chmod(stat.S_IRWXU))
+
+        runtime.force_rmtree(base)
+        self.assertFalse(base.exists())
+
+    def test_missing_folder_is_fine(self):
+        runtime.force_rmtree(Path(tempfile.gettempdir()) / "gb-nao-existe-mesmo-xyz")
+
+
+@unittest.skipUnless(HAS_GIT, "git required")
+class GitCleanupTests(InstallTestCase):
+    def repo(self):
+        folder = write_plugin(self.work / "demo_repo")
+        git(folder, "init", "--quiet")
+        git(folder, "add", ".")
+        git(folder, "commit", "--quiet", "-m", "v0.1.0")
+        return folder
+
+    def test_install_cleans_clone_and_staging_with_the_forced_removal(self):
+        repo = self.repo()
+        removed = []
+        real = runtime.force_rmtree
+
+        def spy(path):
+            removed.append(Path(path).name)
+            return real(path)
+
+        with patch.object(runtime, "force_rmtree", side_effect=spy):
+            preview = install_mod.install(str(repo), confirm=False)
+            install_mod.install(str(repo), confirm=True, expect=preview["plugin"]["sha256"])
+        self.assertTrue(all(name.startswith(".install-") for name in removed), removed)
+        self.assertGreaterEqual(len(removed), 4)  # clone + staging, em cada uma das duas chamadas
+        self.assertEqual([], self.leftover_staging())
+        self.assertFalse((self.home / "plugins" / "demo" / ".git").exists())
+
+    def test_git_config_written_by_tests_uses_forward_slashes(self):
+        # `.gitconfig` com caminho do Windows (`C:\\Users\\...`) quebra o parser
+        # do git ("bad config line"); o teste do smudge grava o caminho em forma POSIX.
+        source = Path(__file__).with_name("test_sdk_install.py").read_text(encoding="utf-8")
+        self.assertIn('touch "{marker.as_posix()}"', source)
+
+
+@unittest.skipUnless(HAS_GIT, "git required")
+class WindowsNameTests(InstallTestCase):
+    """O Windows apaga ponto e espaço do fim do nome e não grava nome reservado (`CON`,
+    `aux.txt`). `plugin.py.` cairia em cima do `plugin.py` revisado; os dois entram só pelo
+    índice do git, sem passar pelo disco, para o teste valer também no job Windows."""
+
+    def repo_with(self, path, content):
+        repo = write_plugin(self.work / f"repo_{len(list(self.work.iterdir()))}")
+        git(repo, "init", "--quiet")
+        git(repo, "add", ".")
+        git(repo, "commit", "--quiet", "-m", "v0.1.0")
+        add_blob(repo, path, content)
+        return repo
+
+    def test_trailing_dot_and_reserved_names_are_refused(self):
+        evil = (PLUGIN_CODE + "\n# variante que sobrescreveria plugin.py no Windows\n").encode("utf-8")
+        cases = (
+            ("plugin.py.", evil, "plugin.py."),
+            ("plugin.py ", evil, "plugin.py "),
+            ("CON", b"x", "reservado"),
+            ("aux.txt", b"x", "reservado"),
+            ("dados/Nul.json", b"{}", "reservado"),
+        )
+        for path, content, expected in cases:
+            with self.subTest(path=path):
+                repo = self.repo_with(path, content)
+                with self.assertRaises(ValueError) as caught:
+                    install_mod.install(str(repo), confirm=False)
+                self.assertIn(expected, str(caught.exception))
+                self.assertEqual([], self.leftover_staging())
+                self.assertFalse((self.home / "plugins" / "demo").exists())
+
+    def test_a_lone_trailing_dot_or_space_and_the_other_device_names_are_refused(self):
+        """Sem irmão com que colidir, `LEIAME.md.` ainda chegaria no Windows como `LEIAME.md`, com
+        outro sha256 (o install pelo marketplace falharia só lá). `CONIN$`, `CONOUT$`, `COM¹`–`COM³`
+        e `LPT¹`–`LPT³` também são dispositivos no Windows, em arquivo ou em pasta."""
+        cases = (
+            ("LEIAME.md.", "ponto ou espaço no fim"),
+            ("dados./x.json", "ponto ou espaço no fim"),
+            ("notas /a.txt", "ponto ou espaço no fim"),
+            ("CONIN$", "reservado"),
+            ("conout$.txt", "reservado"),
+            ("COM¹.txt", "reservado"),
+            ("lpt³/x.py", "reservado"),
+            ("dados/aux/x.py", "reservado"),
+        )
+        for path, expected in cases:
+            with self.subTest(path=path):
+                repo = self.repo_with(path, b"x")
+                with self.assertRaises(ValueError) as caught:
+                    install_mod.install(str(repo), confirm=False)
+                self.assertIn(expected, str(caught.exception))
+                self.assertIn("renomeie o arquivo ou a pasta", str(caught.exception))
+                self.assertEqual([], self.leftover_staging())
+                self.assertFalse((self.home / "plugins" / "demo").exists())
+        materialize._refuse_tree_collisions(["a.b/c.py", ".oculto/x.txt", "com10.txt", "lpt.txt", "conin.txt"])
+
+    def test_collision_key_drops_trailing_dots_and_spaces(self):
+        for pair in (["plugin.py", "plugin.py."], ["Dados/x.py", "dados. /x.py"], ["a.txt", "A.TXT .."]):
+            with self.subTest(pair=pair):
+                with self.assertRaises(ValueError) as caught:
+                    materialize._refuse_tree_collisions(pair)
+                self.assertIn("colidem", str(caught.exception))
+        materialize._refuse_tree_collisions(["plugin.py", "plugin.pyc.txt", "console.py", "auxiliar/x.py"])
+
+
+@unittest.skipUnless(os.name == "nt", "junction do NTFS só existe no Windows")
+class NtfsJunctionTests(InstallTestCase):
+    """Junction não é `is_symlink()`, mas aponta para conteúdo fora do hash do pin
+    como um link: o loader marca a pasta `invalid` e o install recusa."""
+
+    def plugin_with_junction(self, folder):
+        # _winapi só existe no Windows; a classe inteira já é pulada fora dele.
+        import _winapi  # pylint: disable=import-outside-toplevel,import-error
+
+        write_plugin(folder)
+        outside = self.work / "fora"
+        outside.mkdir()
+        (outside / "segredo.py").write_text("x = 1\n", encoding="utf-8")
+        _winapi.CreateJunction(str(outside), str(folder / "vendor"))  # type: ignore[attr-defined] - só no Windows
+        return folder
+
+    def test_loader_marks_a_folder_with_a_junction_invalid(self):
+
+        self.plugin_with_junction(self.home / "plugins" / "demo")
+        self.assertEqual(("link", "vendor"), loader.content_problem(self.home / "plugins" / "demo"))
+        self.assertEqual("invalid", loader.inventory()[0]["status"])
+
+    def test_install_refuses_a_source_with_a_junction(self):
+        source = self.plugin_with_junction(self.work / "demo_src")
+        with self.assertRaises(ValueError) as caught:
+            install_mod.install(str(source), confirm=False)
+        self.assertIn("vendor", str(caught.exception))
+        self.assertEqual([], self.leftover_staging())
+
+
+class ReparseTagTests(unittest.TestCase):
+    """Só reparse point de "name surrogate" (junction, link do NTFS) conta como link.
+    Arquivo sob demanda do OneDrive e deduplicação também são reparse points, mas
+    guardam o próprio conteúdo: uma pasta sincronizada não pode ficar `invalid`.
+    A lógica do Windows roda em qualquer sistema com um `lstat` falso."""
+
+    CLOUD = 0x9000001A  # IO_REPARSE_TAG_CLOUD (OneDrive Files On-Demand)
+    DEDUP = 0x80000013  # IO_REPARSE_TAG_DEDUP
+    MOUNT_POINT = 0xA0000003  # IO_REPARSE_TAG_MOUNT_POINT (junction)
+    SYMLINK = 0xA000000C  # IO_REPARSE_TAG_SYMLINK
+
+    def is_link_with_tag(self, tag, windows=True):
+
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "pasta"
+            folder.mkdir()
+            real = os.lstat(folder)
+            fake = type("FakeStat", (), {"st_mode": real.st_mode, "st_reparse_tag": tag})()
+            with patch.object(loader.os, "lstat", return_value=fake):
+                return loader._is_link(folder, windows=windows)
+
+    def test_name_surrogate_tags_are_links(self):
+        for tag in (self.MOUNT_POINT, self.SYMLINK):
+            with self.subTest(tag=hex(tag)):
+                self.assertTrue(self.is_link_with_tag(tag))
+
+    def test_other_reparse_points_are_not_links(self):
+        for tag in (self.CLOUD, self.DEDUP, 0):
+            with self.subTest(tag=hex(tag)):
+                self.assertFalse(self.is_link_with_tag(tag))
+
+    def test_posix_ignores_the_reparse_tag(self):
+        # No POSIX só `is_symlink()` decide; a tag (que lá nem existe) não é lida.
+        self.assertFalse(self.is_link_with_tag(self.MOUNT_POINT, windows=False))
+
+
+if __name__ == "__main__":
+    unittest.main()

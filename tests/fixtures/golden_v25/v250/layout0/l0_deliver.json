@@ -1,0 +1,56 @@
+{
+ "appends": {
+  "work/layout0/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"deliver\", \"status\": \"success\", \"state_committed\": false, \"warnings\": [], \"duration_ms\": \"<MS>\"}"
+  ],
+  "work/layout0/proj/brolls/getbrolls.log": [
+   "level=INFO logger=getbrolls.cli event=command_start command=deliver read_only=False options=project",
+   "level=INFO logger=getbrolls.delivery event=deliver_item beat=abertura mode=copy reason=-",
+   "level=INFO logger=getbrolls.delivery event=sweep removed=0 kept_foreign=0",
+   "level=INFO logger=getbrolls.commands event=deliver delivered=1 skipped=0 conflicts=0 dry_run=False",
+   "level=INFO logger=getbrolls.cli event=command_end command=deliver status=ok error_code=- ms=<MS>"
+  ]
+ },
+ "argv": [
+  "deliver",
+  "--project",
+  "<T>/work/layout0/proj"
+ ],
+ "case": "l0_deliver",
+ "exit": 0,
+ "files": {},
+ "stderr": null,
+ "stdout": {
+  "json": {
+   "delivery": "<T>/work/layout0/proj/entrega",
+   "dry_run": false,
+   "items": [
+    {
+     "beat": "abertura",
+     "id": "local:f6c96bb15a4f7e25:shot:abertura",
+     "method": "copy",
+     "path": "entrega/01-abertura-o-que-precisa-aparecer-na-tela-neste-trecho/01-abertura-o-que-precisa-aparecer-na-tela-neste-trecho.mp4"
+    }
+   ],
+   "kept": [],
+   "readme": "<T>/work/layout0/proj/entrega/README.md",
+   "removed": [],
+   "rows": [
+    {
+     "beat": "abertura",
+     "file": "01-abertura-o-que-precisa-aparecer-na-tela-neste-trecho/01-abertura-o-que-precisa-aparecer-na-tela-neste-trecho.mp4",
+     "method": "copy",
+     "narration": "Cole aqui a fala exata deste trecho, ou deixe null.",
+     "rights": "permitted",
+     "state": "verified",
+     "target": "O que precisa aparecer na tela neste trecho"
+    }
+   ],
+   "skipped": [],
+   "summary": {
+    "line": "Organizei 1 trecho em 1 pasta dentro de <T>/work/layout0/proj/entrega.",
+    "next": "Fluxo completo: todos os trechos aprovados estão coletados, permitidos, conferidos e organizados em `entrega/`."
+   }
+  }
+ }
+}
