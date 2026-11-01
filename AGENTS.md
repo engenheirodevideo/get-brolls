@@ -2,11 +2,11 @@
 type: instructions
 status: current
 created: 2026-09-15
-updated: 2026-09-17
+updated: 2026-10-31
 tags: [get-brolls, documentation]
 ---
 
-# Instruções para agentes — Get B-rolls
+# Instruções para agentes — getbrolls
 
 ## Mapa do repositório
 
@@ -17,12 +17,15 @@ Este arquivo é o índice central para agentes e mantenedores: tudo que um agent
 | Operar a skill (coletar, prever, revisar, entregar) | [SKILL.md](SKILL.md) — contrato de operação e fonte canônica; no plugin do Claude Code a skill descoberta é o espelho [skills/get-brolls/SKILL.md](skills/get-brolls/SKILL.md). |
 | Instalar no Codex | Clone o repositório, apresente-o pelo [agents/openai.yaml](agents/openai.yaml) e acione com `$get-brolls`. |
 | Instalar no Claude Code como skill | Clone o repositório na pasta de skills do agente e acione com `/get-brolls`. |
-| Instalar no Claude Code como plugin | `/plugin marketplace add engenheirodevideo/get-brolls`, acione com `/get-brolls:get-brolls` e prepare o ambiente com [`/get-brolls-setup`](commands/get-brolls-setup.md). |
+| Instalar no Claude Code como plugin | `/plugin marketplace add engenheirodevideo/get-brolls` e `/plugin install getbrolls@engenheirodevideo`, acione com `/getbrolls:get-brolls` e prepare o ambiente com [`/getbrolls:get-brolls-setup`](commands/get-brolls-setup.md). |
 | Instalar no Gemini CLI | [GEMINI.md](GEMINI.md) — o snippet de importação `@` que o usuário acrescenta ao próprio `GEMINI.md`. |
 | Guia operacional (instalação, provedores, navegador, Storyboard, `status`) | [GUIDE.md](docs/GUIDE.md) |
 | Manual + tutorial para quem está chegando (comandos explicados, JSON de saída, automação) | [MANUAL.md](docs/MANUAL.md) |
+| Contrato da CLI para scripts e agentes (stdout/stderr, códigos de saída e de erro, avisos, deprecação; `getbrolls capabilities --json` lista comandos, flags e códigos desta instalação) | [CLI_CONTRACT.md](docs/CLI_CONTRACT.md) |
+| Formatos de arquivo (schemas, versões, layouts de projeto, logs, nomes reservados) | [SCHEMAS.md](docs/SCHEMAS.md) |
+| Criar plugins (fontes, rotas, comandos, presets) com o SDK | [PLUGIN_DEV_QUICKSTART.md](docs/PLUGIN_DEV_QUICKSTART.md) para o caminho curto · [SDK.md](docs/SDK.md) para a referência completa |
 | Qualidade, evidências reais e limites conhecidos | [QUALITY.md](docs/QUALITY.md) |
-| Medir qualidade editorial (blind tests) | [eval/README.md](eval/README.md) — processo, rubrica, corpus e rodadas; execute um caso com [`/get-brolls-eval`](commands/get-brolls-eval.md). |
+| Medir qualidade editorial (blind tests) | [eval/README.md](eval/README.md) — processo, rubrica, corpus e rodadas; execute um caso com [`/getbrolls:get-brolls-eval`](commands/get-brolls-eval.md). |
 | Contribuir (fluxo de mudança, revisão, PR) | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | Segurança, egress e dados privados | [SECURITY.md](docs/SECURITY.md) |
 | O que mudou em cada versão | [CHANGELOG.md](CHANGELOG.md) |
@@ -59,13 +62,16 @@ Execute comandos do mesmo projeto serialmente. Preserve originais, eventos e jou
 
 ## Manutenção
 
+- Código novo segue [`docs/CODE_STYLE.md`](docs/CODE_STYLE.md) (Google Python Style Guide adaptado: stdlib, 120 colunas, docstring de uma linha em pt-BR, supressão só na linha e com motivo); a revisão usa o checklist do fim desse arquivo. Toda mudança segue, em ordem, o [`docs/CHECKLIST.md`](docs/CHECKLIST.md).
 - A versão executável vem de `scripts/getbrolls/__init__.py`. Mudança de versão é feita com `python3 scripts/bump_version.py X.Y.Z [--date AAAA-MM-DD]`, que escreve numa passada só `scripts/getbrolls/__init__.py`, `package.json`, `package-lock.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `SKILL.md`, README, README.en, `docs/QUALITY.md` e o stub do CHANGELOG; `--check` só confere e sai 1 se algo divergir, sem escrever. `SKILL.md` da raiz é a fonte canônica; o espelho em `skills/get-brolls/SKILL.md` é **gerado**, nunca editado à mão — `python3 scripts/gen_skill_mirror.py` escreve o espelho (`--check` compara e sai 1 se divergir) e é esse gerador, não sincronia manual, que mantém `description` idêntica e o mesmo conteúdo com caminhos `${CLAUDE_PLUGIN_ROOT}`; CI e `scripts/check.sh`/`check.ps1` rodam o `--check` dos dois. Revisão documental sem alteração de versão deve aparecer no changelog vigente.
 - **`main` é produção.** O plugin instalado por quem usa a skill acompanha `main`, e cada release baixada pelos usuários sai de um commit dessa branch: mudança de comportamento chega por PR com CI verde nos três sistemas operacionais, `bash scripts/preflight.sh` roda antes de qualquer `git tag`, não há push direto em `main`, e mudança de comportamento observável exige entrada no CHANGELOG e compatibilidade retroativa.
+- Todo JSON gravado tem um schema em `schemas/`; a versão vem do schema (`getbrolls.sdk.schemas.version`); mudar o formato é subir a versão no schema e registrar no CHANGELOG; `tests/test_schema_registry.py` confere.
 - Atualize a seção correspondente de `docs/GUIDE.md` junto com o código da rota afetada. O guia é a referência operacional única do produto.
 - Corrija a causa e adicione regressão quando houver bug. Não escreva testes que exijam retirar uma capacidade existente.
 - `status` é o único comando somente leitura: abre o ledger com `recover=False`, não cria a árvore `brolls/` e não pega a trava exclusiva do projeto. Ao mexer nele, preserve esse contrato — nada de recuperar pendência, sincronizar formatos ou escrever para relatar. Comandos de escrita continuam serializados pela trava.
 - Um pin `GB_*_PATH` é promessa, não sugestão: resolva para caminho absoluto e falhe nomeando variável e caminho em vez de voltar à descoberta. A exceção é o `doctor`, que transforma o pin inválido em item de `summary.missing` para continuar diagnosticando.
 - Use mídia sintética e mocks em testes automatizados. Ensaios de rede ficam fora da fonte e registram URL pública, versão utilizada, resultado, dimensão/duração e limites.
+- Código de saída, `error_code` ou aviso novo entra junto com a linha dele em [`docs/CLI_CONTRACT.md`](docs/CLI_CONTRACT.md); arquivo ou schema novo, em [`docs/SCHEMAS.md`](docs/SCHEMAS.md). Os testes conferem os dois contra o código.
 - Valide comandos documentados com `--help` e links relativos. Documentos operacionais que usam frontmatter mantêm `type`, `status`, `created`, `updated` e `tags`; no SKILL esses campos ficam em `metadata`.
 - Não execute publicação, push ou instalação pessoal da skill como parte automática de uma revisão. Faça essas ações somente quando incluídas no pedido do usuário. A árvore do repositório é a fonte oficial da entrega.
 
@@ -77,7 +83,9 @@ python3 scripts/gb.py doctor
 python3 -m unittest discover -s tests -v
 ```
 
-No Windows PowerShell, troque o primeiro comando por `powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -Check` e use `python` nos dois seguintes.
+No pacote instalado, `getbrolls doctor` e `getbrolls setup --check` fazem o papel de `python3 scripts/gb.py doctor`; `doctor` sai com `4` quando falta algo e o `.env` do pacote é `$GB_HOME/.env`. O nome do produto na prosa é "getbrolls" (CLI e pacote); a skill continua `get-brolls`. Procedimento pela pasta da instalação (depois do `install.sh`/`install.ps1`, a skill copiada, o plugin) confere com o script dela, nunca com o `getbrolls` do PATH; o que vai para o projeto (`BRIEF.md`, `RULES.md`, `EXPORT.md`, o Storyboard) cita o subcomando sem prefixo. `tests/test_command_name.py` confere as duas coisas.
+
+No Windows PowerShell, troque o primeiro comando por `powershell -ExecutionPolicy RemoteSigned -File scripts/install.ps1 -Check` e use `python` nos dois seguintes.
 
 `--check` valida pré-requisitos do instalador; não instala bibliotecas nem testa sessão/rede. `doctor` informa disponibilidade; `doctor --live` faz buscas/refresh limitados e pode consumir quota. Nenhum deles substitui teste de aquisição, prévia e decodificação da fonte afetada.
 

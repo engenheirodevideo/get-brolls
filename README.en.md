@@ -15,11 +15,11 @@
     <img src="https://img.shields.io/badge/Playwright-browser-2EAD33?style=flat-square" alt="Playwright for sources that need a browser">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
     <img src="https://img.shields.io/github/actions/workflow/status/engenheirodevideo/get-brolls/test.yml?branch=main&style=flat-square&label=tests" alt="Tests status">
-    <img src="https://img.shields.io/badge/version-2.5.2-blue?style=flat-square" alt="Version 2.5.2">
+    <img src="https://img.shields.io/badge/version-2.6.0-blue?style=flat-square" alt="Version 2.6.0">
   </p>
 </div>
 
-Get B-rolls is a skill for collecting the videos and images that support a line, illustrate an idea, or show the exact person, product, or event mentioned in a script. You describe what you need; the agent researches, prepares previews, and gathers the options into a storyboard for your review.
+getbrolls is a skill for collecting the videos and images that support a line, illustrate an idea, or show the exact person, product, or event mentioned in a script. You describe what you need; the agent researches, prepares previews, and gathers the options into a storyboard for your review.
 
 - **Choose with context.** Each shot can include the supplied narration, selection rationale, time range, creator, and original source.
 - **See it before deciding.** GIFs and contact sheets help you evaluate action, framing, and on-screen text.
@@ -31,6 +31,7 @@ A preview may download working media so you can see the motion. Final delivery r
 
 ## Updates
 
+- **2.6.0.** getbrolls becomes an installable command (`uv tool install` or `pipx`) with `setup` and a runtime in `$GB_HOME/runtime`; `doctor` and `setup --check` report `ready` and exit `4` when something is missing. A `getbrolls.toml` profile (`profile`), the layout 1 project (`init`, `migrate`) with client folders and recipes (`client`, `recipe`), media analysis in `analysis/`, script and export through a third-party plugin (`roteiro`, `export`), SDK plugins with a marketplace (`plugins`, `x`, experimental), the HyperFrames bridge listed by `environment`, and `capabilities --json` for agents. An operation or data error now exits `1` (it was `2`); the code table is in [docs/CLI_CONTRACT.md](docs/CLI_CONTRACT.md). A 2.5 project stays as it is (layout 0). Full list and migration notes in [CHANGELOG.md](CHANGELOG.md).
 - **2.5.2.** `doctor` now checks the `.venv` against the pinned versions: code updated without re-running the installer shows up in `summary.missing` (item `venv`). The installer's failure message says whether it was the network, a hash or the Python version.
 - **2.5.1.** Security: `certifi` 2026.10.19 drops the emSign ECC Root CA - G3 root (GHSA-6q48-6c7w-9gw2) and the installers install pip 26.2.2 and every Python dependency checking each file's sha256 (`--require-hashes`). Re-run the installer. Dependencies updated as a reviewed set.
 - **2.5.0.** Per-project log at `brolls/getbrolls.log` (`GB_LOG_LEVEL`, `GB_LOG_STDERR`): commands, the approval trail, subprocesses and network, with no names, approval statements or URLs. `reject` clears `output`, `verify` checks every clip and unmarks altered ones, and `deliver` skips rejected or failed clips and lists them under `skipped`. Hardened local Storyboard server (only `review.html`, `previews/` and `clips/`, anti-framing headers). An unreadable `~/.getbrolls/RULES.md` now stops the command instead of being ignored.
@@ -67,7 +68,7 @@ The skill only works end to end with **all** of the tools below installed before
 | Node 22+ with npm/npx | Playwright CLI and yt-dlp EJS runtime | YouTube and Instagram fail |
 | curl | Instagram stream pair download | Instagram fails |
 | Git | clone and update | manual installation |
-| yt-dlp and Playwright CLI | installed by `install.sh`/`install.ps1` in step 2 | YouTube/TikTok and Instagram fail |
+| yt-dlp and Playwright CLI | installed in `$GB_HOME/runtime` by `setup` (or `install.sh`/`install.ps1`) in step 2 | YouTube/TikTok and Instagram fail |
 
 macOS (Homebrew):
 
@@ -87,7 +88,7 @@ Ubuntu/Debian:
 sudo apt install python3 python3-venv ffmpeg nodejs npm curl git
 ```
 
-After step 2, `python3 scripts/gb.py doctor` is the gate: empty `summary.missing` and `contact_sheet.labels: true`. If `drawtext` shows up under `summary.optional`, your FFmpeg was built without libfreetype: reinstall it with the command above (on macOS, `brew reinstall ffmpeg`).
+After step 2, `doctor` is the gate: `ready: true` (exit `0`), which depends only on an empty `summary.missing`; anything missing exits `4`. With the whole stack it also shows `contact_sheet.labels: true` — that part is optional and does not change `ready`: if `drawtext` (or `font`) shows up under `summary.optional`, your FFmpeg was built without libfreetype (or no TrueType font was found) and the contact sheet comes out without the number and timecode in each cell; reinstall it with the command above (on macOS, `brew reinstall ffmpeg`) or set `GB_FONT_FILE`.
 
 ### 1. Add the skill to your agent
 
@@ -102,8 +103,24 @@ cd get-brolls
 |---|---|---|---|
 | Codex | `~/.agents/skills/get-brolls/` | `.agents/skills/get-brolls/` | `$get-brolls` |
 | Claude Code | `~/.claude/skills/get-brolls/` | `.claude/skills/get-brolls/` | `/get-brolls` |
+| Other agents | the agent's skills folder | the project's skills folder, if any | by name, `get-brolls` |
 
-When copying a development folder, exclude `.venv/`, `.tools/`, caches, projects, and private files. `skills/` and `.claude-plugin/` are Claude Code plugin artifacts and can be omitted when copying to Codex. Install dependencies in the final destination and open a new agent session. [See installation, updates, and compatibility.](docs/GUIDE.md#instalação)
+When copying a development folder, exclude `.venv/`, `.tools/`, caches, projects, and private files. `skills/` and `.claude-plugin/` are Claude Code plugin artifacts and can be omitted when copying to Codex. Install dependencies in the final destination and open a new agent session. **Other agents:** clone as a skill and run `python3 <absolute-path>/scripts/gb.py setup --check`, then `setup` and `doctor`; there is no `${CLAUDE_PLUGIN_ROOT}` and no slash command outside Claude Code, so ask for the step in words. Before running, the agent says what `setup` does (downloads from PyPI and npm into `$GB_HOME/runtime`, touches no global installation) and, if the host refuses a command or asks for elevation, stops and hands the command to the person. It needs a shell with Python 3.11+, FFmpeg, curl and Node 22+ with npx. [See installation, updates, and compatibility.](docs/GUIDE.md#instalação)
+
+#### Install as a command
+
+Without cloning, getbrolls installs as a package and provides the `getbrolls` command:
+
+```sh
+uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0
+getbrolls setup --check
+getbrolls setup
+getbrolls doctor
+```
+
+`uv tool install` only installs the command; `setup` installs yt-dlp and the Playwright CLI in the runtime. `setup --check` installs nothing and exits `4` while something is missing; `doctor` confirms with `ready: true`.
+
+`pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0` works too. The examples in this README use the `getbrolls …` command. In a clone, without installing the package, `python3 scripts/gb.py …` runs the same commands (on Windows, `python scripts/gb.py …`; from another folder, use the absolute path of `scripts/gb.py`). The package reads its `.env` from `$GB_HOME/.env` and keeps its runtime in `$GB_HOME/runtime/`. Claude Code plugin users need to change nothing.
 
 #### Install as a Claude Code plugin
 
@@ -111,12 +128,12 @@ In Claude Code, you can also install the skill as a plugin, without cloning manu
 
 ```text
 /plugin marketplace add engenheirodevideo/get-brolls
-/plugin install get-brolls@engenheirodevideo
+/plugin install getbrolls@engenheirodevideo
 ```
 
-Then run `/get-brolls-setup` in the session: the command runs the installer inside the plugin folder — `~/.claude/plugins/cache/engenheirodevideo/get-brolls/<version>/` — and reports the `doctor` verdict. You can also follow step 2 manually in that folder. Repeat the setup after each `/plugin update`. For Codex, the full-folder clone described above remains the way to install.
+Then run `/getbrolls:get-brolls-setup` in the session: the command runs `setup --check`, `setup` and `doctor` from the plugin folder — `~/.claude/plugins/cache/engenheirodevideo/getbrolls/<version>/` — and reports the `doctor` verdict. The runtime goes to `$GB_HOME/runtime`, shared across plugin versions, so it survives `/plugin update`. You can also follow step 2 manually in that folder. For Codex, the full-folder clone described above remains the way to install.
 
-The skill triggers from the context of your request ("collect b-roll for this video"); the explicit form is `/get-brolls:get-brolls`, and setup is `/get-brolls-setup`. Do not confuse it with generic download skills: this one is the complete pipeline, with human review and a recorded license.
+The skill triggers from the context of your request ("collect b-roll for this video"); the explicit form is `/getbrolls:get-brolls`, and setup is `/getbrolls:get-brolls-setup`. Do not confuse it with generic download skills: this one is the complete pipeline, with human review and a recorded license.
 
 ### 2. Prepare the environment
 
@@ -135,12 +152,14 @@ python3 scripts/gb.py doctor
 Windows PowerShell:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -Check
-powershell -ExecutionPolicy Bypass -File scripts/install.ps1
+powershell -ExecutionPolicy RemoteSigned -File scripts/install.ps1 -Check
+powershell -ExecutionPolicy RemoteSigned -File scripts/install.ps1
 python scripts/gb.py doctor
 ```
 
-The installer creates local environments and obtains yt-dlp/EJS and Playwright CLI. `--check` only validates prerequisites (Python, FFmpeg/ffprobe, Node, curl, Git) and installs nothing; run it before the full installer to see what is missing. `doctor` checks tool availability once installed; access to each source depends on the URL and, when required, your browser session.
+On Windows, a folder that came from a downloaded zip may need `Unblock-File -Path scripts\*.ps1` once, run by the person; nothing here changes the machine's execution policy.
+
+Here the command is the installed folder's own script: a `getbrolls` on `PATH`, if any, may be another installation. The installer calls `setup`, which installs the pinned yt-dlp/EJS and Playwright CLI in `$GB_HOME/runtime`, outside the skill folder. `--check` only validates prerequisites (Python, FFmpeg/ffprobe, Node, curl, Git) and installs nothing; run it before the full installer to see what is missing. `doctor` checks tool availability once installed; access to each source depends on the URL and, when required, your browser session.
 
 **YouTube works without an API key.** Pexels and Pixabay use their own optional keys, configured in the environment or in the skill's private `.env` file. Available settings are documented in [.env.example](.env.example).
 
@@ -162,20 +181,20 @@ In Claude Code, replace the first invocation with `/get-brolls`. Replace the fol
 The shortest command-line sequence, using a keyless source (NASA). Replace `/path/to/my-video` with your project and `<ID>` with the identifier returned by the search — keep the quotes, because identifiers may contain spaces.
 
 ```sh
-python3 scripts/gb.py search --provider nasa --query "Artemis launch" --limit 3 --intent literal --project /path/to/my-video
-python3 scripts/gb.py preview --candidate "<ID>" --start 0 --end 4 --project /path/to/my-video
-python3 scripts/gb.py review --project /path/to/my-video
-python3 scripts/gb.py serve --background --project /path/to/my-video
+getbrolls search --provider nasa --query "Artemis launch" --limit 3 --intent literal --project /path/to/my-video
+getbrolls preview --candidate "<ID>" --start 0 --end 4 --project /path/to/my-video
+getbrolls review --project /path/to/my-video
+getbrolls serve --background --project /path/to/my-video
 ```
 
 Open [the local storyboard](http://localhost:8767/review.html) at the URL the command returned right away, decide on the shots, and export the JSON — opening it via `file://` can disable local saving, so export before closing the page.
 
 ```sh
-python3 scripts/gb.py import-review --by "Your name" --project /path/to/my-video
-python3 scripts/gb.py serve --stop --project /path/to/my-video
-python3 scripts/gb.py permit --candidate "<ID>" --evidence "Real conditions of use for this source" --project /path/to/my-video
-python3 scripts/gb.py fetch --candidate "<ID>" --project /path/to/my-video
-python3 scripts/gb.py verify --project /path/to/my-video
+getbrolls import-review --by "Your name" --project /path/to/my-video
+getbrolls serve --stop --project /path/to/my-video
+getbrolls permit --candidate "<ID>" --evidence "Real conditions of use for this source" --project /path/to/my-video
+getbrolls fetch --candidate "<ID>" --project /path/to/my-video
+getbrolls verify --project /path/to/my-video
 ```
 
 At the end, `verify` answers `"count": 1` and the approved clip is in `/path/to/my-video/brolls/clips/`, with origin, creator, and decision recorded in `brolls/credits.md`. Replacing `nasa` with `commons` follows the same flow.
@@ -184,15 +203,15 @@ At the end, `verify` answers `"count": 1` and the approved clip is in `/path/to/
 
 If you have never opened a terminal, this is the whole list. Every step is a conversation with the agent; none of them asks for a command.
 
-1. **Install once.** Ask for `/get-brolls-setup`. It installs everything and answers in one line whether you are ready. Repeat after every `/plugin update`.
+1. **Install once.** Ask for `/getbrolls:get-brolls-setup`. It installs everything in `$GB_HOME/runtime` and answers in one line whether you are ready. The runtime survives `/plugin update`.
 2. **Say what you need.** `/get-brolls I need supporting footage for my Reel about X` — and say which folder the project lives in.
-3. **Answer the interview.** At most seven questions, one at a time. "Whatever you think" is a valid answer: the agent applies a default and shows you what it assumed. To start there directly, use `/get-brolls-brief`.
+3. **Answer the interview.** At most seven questions, one at a time. "Whatever you think" is a valid answer: the agent applies a default and shows you what it assumed. To start there directly, use `/getbrolls:get-brolls-brief`.
 4. **Check the brief.** It hands back five lines of what it understood and asks whether that is right. Correct it there.
 5. **Look at the shortlist.** Before downloading anything, it lists 5 to 8 candidates with title, creator, and the exact window. Say which ones work.
-6. **Approve the previews.** Either in chat ("I approve all", or naming the ones you want), or on the Storyboard: ask for `/get-brolls-review`, it sends you a link, you click Approve / Request change / Reject and then **Save decisions**, and come back to say you saved. Nothing is downloaded without this step.
+6. **Approve the previews.** Either in chat ("I approve all", or naming the ones you want), or on the Storyboard: ask for `/getbrolls:get-brolls-review`, it sends you a link, you click Approve / Request change / Reject and then **Save decisions**, and come back to say you saved. No final cut leaves without this step.
 7. **Say who owns the material.** The agent records the usage conditions from what you tell it. You are the one answering for those conditions; it only records what was said and where each file came from.
 8. **Receive.** The cuts land in `entrega/`, one folder per shot, each with an `ORIGEM.md` naming its source.
-9. **Lost the thread?** Ask for `/get-brolls-status`: it tells you where things stand and what comes next.
+9. **Lost the thread?** Ask for `/getbrolls:get-brolls-status`: it tells you where things stand and what comes next.
 
 ## Commands
 
@@ -201,7 +220,7 @@ In order of use — from first contact to delivery:
 **1. Install the environment** (once, in the plugin or clone folder):
 
 ```text
-/get-brolls-setup   # installs dependencies and runs doctor
+/getbrolls:get-brolls-setup   # installs dependencies and runs doctor
 ```
 
 **2. Invoke the skill** with what you need:
@@ -209,46 +228,91 @@ In order of use — from first contact to delivery:
 ```text
 /get-brolls <your request>   # Claude Code — describe the inserts and the project folder
 $get-brolls <your request>   # Codex — same thing
-/get-brolls-brief            # interviews you and writes the video's BRIEF.md
-/get-brolls-review           # builds the Storyboard, sends the link, imports the decisions
-/get-brolls-status           # says where the collection stands and what comes next
+/getbrolls:get-brolls-brief            # interviews you and writes the video's BRIEF.md
+/getbrolls:get-brolls-review           # builds the Storyboard, sends the link, imports the decisions
+/getbrolls:get-brolls-status           # says where the collection stands and what comes next
 ```
 
 **3. Check the environment** when something misbehaves:
 
 ```text
-python3 scripts/gb.py doctor   # verifies tools and names what is missing
+getbrolls doctor          # verifies tools; ready: false and exit 4 if something is missing
+getbrolls setup --check   # checks the runtime without installing; exit 4 if something is missing
+getbrolls setup           # installs yt-dlp and the Playwright CLI in $GB_HOME/runtime
+getbrolls providers       # sources, transport and whether the key is configured
 ```
 
 **4. Search and choose** (the agent runs these for you, but they work by hand):
 
 ```text
-python3 scripts/gb.py search ...    # search candidates in the chosen source
-python3 scripts/gb.py preview ...   # build GIF/contact sheet for the range
-python3 scripts/gb.py review ...    # assemble the brolls/review.html storyboard
-python3 scripts/gb.py serve ...     # serve the storyboard at http://localhost:8767/review.html
+getbrolls search ...    # search candidates in the chosen source
+getbrolls preview ...   # build GIF/contact sheet for the range
+getbrolls review ...    # assemble the brolls/review.html storyboard
+getbrolls serve ...     # serve the storyboard at http://localhost:8767/review.html
 ```
 
 **4b. Paced social batches** (optional, for several Reels/videos at once):
 
 ```text
-python3 scripts/gb.py queue --action add|next|mark|status ...   # enqueue, get the next item at the right pace, close it out
+getbrolls queue --action add|next|mark|status ...   # enqueue, get the next item at the right pace, close it out
 ```
 
 **5. Decide and receive**:
 
 ```text
-python3 scripts/gb.py import-review ...   # import your storyboard decisions
-python3 scripts/gb.py permit ...          # record the source usage conditions
-python3 scripts/gb.py fetch ...           # download the approved final cut
-python3 scripts/gb.py verify ...          # verify the delivery in the project
+getbrolls import-review ...   # import your storyboard decisions
+getbrolls permit ...          # record the source usage conditions
+getbrolls fetch ...           # download the approved final cut
+getbrolls verify ...          # verify the delivery in the project
 ```
 
 **6. Lost?** Ask where the project stands:
 
 ```text
-python3 scripts/gb.py status --project /path/my-video   # per-stage summary, read-only
+getbrolls status --project /path/my-video   # per-stage summary, read-only
 ```
+
+**7. Layout 1 project, clients and recipes** (optional, since 2.6):
+
+```text
+getbrolls init --project /path/my-video --canvas 1080x1920 --fps 30   # creates project.json, aroll/, assets/, broll/ and analysis/
+getbrolls migrate --project /path/old-project --action plan            # shows the project.json that would be written
+getbrolls migrate --project /path/old-project --action apply           # writes only project.json, moves nothing
+getbrolls client --action add --slug example-client --name "Example Client" --root /path/clients   # creates the client folder and registers it
+getbrolls client --action list|show|remove ...   # remove only unregisters; the folder stays
+getbrolls recipe --action list|show ...          # reads the clients' sealed recipes
+getbrolls init --client example-client --slug video-01                 # new project in <client folder>/projetos/video-01/
+```
+
+Without a `project.json`, a project stays on the 2.5 layout 0: nothing moves. Only `init` and `migrate --action apply` take a project to layout 1, and from then on it needs getbrolls 2.6 or newer.
+
+**8. Analysis, script and export** (optional, experimental):
+
+```text
+getbrolls analysis --project /path/my-video --action register --path aroll/c01.mp4   # registers the media with a content-based media_id
+getbrolls analysis --project /path/my-video --action list|check                     # lists the media or checks analysis/ (read-only)
+getbrolls roteiro --project /path/my-video --action new --genero reels --tema "Topic"   # creates ROTEIRO.md
+getbrolls roteiro --project /path/my-video --action check|plan|sync|review ...          # validates, shows the sync, writes the beats or records the review
+getbrolls export --project /path/my-video --to my_exporter --dry-run                     # shows what the exporter would write, without writing
+```
+
+`roteiro --action plan` and `sync` need a `BRIEF.md` (`init-brief` or `/getbrolls:get-brolls-brief`). `export` needs an enabled third-party exporter plugin and a `BRIEF.md` that matches the script; if it does not, it refuses and asks for `roteiro --action plan` and `sync`.
+
+**9. SDK plugins, profile and agents** (experimental):
+
+```text
+getbrolls plugins --action list|search|marketplace-list ...   # inventory without running code; search reads only the cached indexes, no network
+getbrolls plugins --action install --id <id>@<marketplace>    # installs from the marketplace: preview first, then --yes --expect <sha256>
+getbrolls plugins --action enable --id <id>                   # shows manifest and permissions; with the person's ok, repeat with --yes
+getbrolls x --list                                            # commands of the enabled plugins
+getbrolls profile --action show|trust|untrust                 # the getbrolls.toml profile in effect; trust shows the preview and the sha256
+getbrolls environment --action list                           # official bridges (today HyperFrames), without running their code
+getbrolls capabilities --json                                 # commands, flags and exit codes as JSON, for agents
+getbrolls init-rules --project /path/my-video --format reels   # creates the project's RULES.md
+getbrolls browser-plan --project /path/my-video --url URL      # plans a page capture through the browser (does not capture)
+```
+
+An SDK plugin runs as your own local code, with no sandbox: read [docs/PLUGIN_DEV_QUICKSTART.md](docs/PLUGIN_DEV_QUICKSTART.md) and [docs/SECURITY.md](docs/SECURITY.md) before enabling one. A workspace `getbrolls.toml` only counts after `profile --action trust`.
 
 Every subcommand accepts `help`; full syntax lives in the terminal section.
 
@@ -262,7 +326,7 @@ Every subcommand accepts `help`; full syntax lives in the terminal section.
 - **Provenance record.** Every delivered shot carries source, creator, time range, and conditions of use — editorial approval is always yours.
 - **Protected network access.** The collector accepts only public HTTPS URLs without credentials, rejects hostnames that resolve to local networks, and does not follow redirects.
 - **Native on macOS and Windows.** Dedicated installers for both systems; the Bash YouTube helpers are optional.
-- **Installable as a Claude Code plugin.** The repository itself is its own plugin marketplace, with `/get-brolls-setup` configuring the plugin folder and a mirrored skill that resolves paths via `${CLAUDE_PLUGIN_ROOT}`. The clone-as-skill flow remains identical for Codex.
+- **Installable as a Claude Code plugin.** The repository itself is its own plugin marketplace, with `/getbrolls:get-brolls-setup` configuring the plugin folder and a mirrored skill that resolves paths via `${CLAUDE_PLUGIN_ROOT}`. The clone-as-skill flow remains identical for Codex.
 
 ## Storyboard
 
@@ -278,7 +342,7 @@ The `review` command generates `brolls/review.html`: a local page where you can 
 
 The gallery remains static; animation runs only in the selected shot and respects reduced-motion preferences. An optional screenshot of the speaker provides context and remains static. To evaluate a finished composition using the same insert, set `GB_GIF_SCOPE=full` and provide `--full-preview-file`.
 
-Share the complete **`brolls/` folder** so that its images and GIFs remain accessible. To continue editing or regenerate previews, also preserve the originals and `.getbrolls-sources/`. [Review details.](docs/GUIDE.md#storyboard)
+To only show the Storyboard, share the minimal package: `brolls/review.html` with the `brolls/previews/` folder beside it, so the images and GIFs stay reachable. Do not send the whole `brolls/` folder: it holds logs and diagnostics. To continue editing or regenerate previews, also preserve the originals and `.getbrolls-sources/`. [Review details.](docs/GUIDE.md#storyboard)
 
 ## Sources
 
@@ -301,26 +365,26 @@ Recorded trials include real acquisition from YouTube, Instagram, TikTok, Pexels
 
 ## Command-line usage
 
-Run the examples below from the skill folder. Replace `/path/to/my-video` with your project folder and `<ID>` with the identifier returned by the search — keep the quotes, because identifiers may contain spaces.
+Replace `/path/to/my-video` with your project folder and `<ID>` with the identifier returned by the search — keep the quotes, because identifiers may contain spaces.
 
 ```sh
-python3 scripts/gb.py status --project /path/to/my-video
-python3 scripts/gb.py rules --project /path/to/my-video
-python3 scripts/gb.py references --project /path/to/my-video
-python3 scripts/gb.py search --provider youtube --query "NASA Artemis launch" --limit 3 --intent literal --project /path/to/my-video
-python3 scripts/gb.py preview --candidate "<ID>" --start 0 --end 5 --reason "Show the liftoff mentioned in the video" --project /path/to/my-video
-python3 scripts/gb.py review --project /path/to/my-video
-python3 scripts/gb.py serve --background --project /path/to/my-video
+getbrolls status --project /path/to/my-video
+getbrolls rules --project /path/to/my-video
+getbrolls references --project /path/to/my-video
+getbrolls search --provider youtube --query "NASA Artemis launch" --limit 3 --intent literal --project /path/to/my-video
+getbrolls preview --candidate "<ID>" --start 0 --end 5 --reason "Show the liftoff mentioned in the video" --project /path/to/my-video
+getbrolls review --project /path/to/my-video
+getbrolls serve --background --project /path/to/my-video
 ```
 
 Open [the local storyboard](http://localhost:8767/review.html) at the URL the command returned right away, review the shots, and export your decisions — opening it via `file://` can disable local saving, so export before closing the page.
 
 ```sh
-python3 scripts/gb.py import-review --by "Reviewer's name" --project /path/to/my-video
-python3 scripts/gb.py serve --stop --project /path/to/my-video
-python3 scripts/gb.py permit --candidate "<ID>" --evidence "Real evidence of the conditions of use" --project /path/to/my-video
-python3 scripts/gb.py fetch --candidate "<ID>" --project /path/to/my-video
-python3 scripts/gb.py verify --project /path/to/my-video
+getbrolls import-review --by "Reviewer's name" --project /path/to/my-video
+getbrolls serve --stop --project /path/to/my-video
+getbrolls permit --candidate "<ID>" --evidence "Real evidence of the conditions of use" --project /path/to/my-video
+getbrolls fetch --candidate "<ID>" --project /path/to/my-video
+getbrolls verify --project /path/to/my-video
 ```
 
 Replace the name and evidence with real data. Repeat `permit` and `fetch` for every approved candidate. `approve` can also record an explicit decision you have already received. `verify` checks file integrity and decoding; the editorial judgment remains yours.
@@ -339,8 +403,13 @@ Replace the name and evidence with real data. Repeat `permit` and `fetch` for ev
 - Default GIF: 360 px, 8 fps, 128 colors, up to 10 seconds and 5 MB. A time range beyond the duration limit is rejected; an oversized result falls back to a still preview with a warning. `GB_PREVIEW_MODE=static` uses a poster and contact sheet.
 - `--reference-only` prepares a static reference without obtaining remote media; a poster alone does not prove motion.
 - The utilities in `scripts/getbrolls/tools/youtube/` provide YouTube search, frames, clips, and verification by `VIDEO_ID`. Their output must be imported through the CLI to become part of the project's record and review.
+- Project layout: `status` returns `layout` with `version`, `source` and `problem`. A 2.5 project shows `version: 0` and `source: "inferred"`; after `init` or `migrate --action apply`, `version: 1` and `source: "project.json"`. `migrate --action plan` shows the `project.json` that would be written (`would_write`) and writes nothing.
+- Media analysis: `analysis --action register --path aroll/c01.mp4` returns the `media_id` (computed from the file content) and writes to `analysis/`; `list` and `check` only read, and `check` answers `"ok": true` with the list of files. If ffprobe cannot read the media, it stays registered, but the command exits `1` with the `MEDIA_PROBE_FAILED` warning: check the file.
+- Script: `roteiro --action check` validates `ROTEIRO.md` and shows the scene plan and `review.sha256`; `roteiro --action review` records the human review and requires `--by`, `--channel chat`, `--statement` and `--expect` with that sha256 (if the script changed since, it refuses). `--force` on `new` starts over from the skeleton and keeps the current file as `ROTEIRO.md.bak`.
+- Plugins: `plugins --action install` and `enable` first show the manifest, the permissions and the `sha256`; with the person's ok, repeat with `--yes` (for `install`, also `--expect <sha256>`). `plugins --action new --id meu_motion --kind exporter --path /path/lab` generates a minimal plugin and `plugins --action check --path /path/lab/meu_motion` validates it (it runs the plugin's `register()`).
+- Agents and scripts: `capabilities --json` returns `commands`, `exit_codes`, `error_codes`, `plugin_commands` and `environments`. Exit codes: `0` success, `1` operation or data error, `2` usage error, `3` internal error, `4` a prerequisite is missing, `130` interrupted. Reference: [docs/CLI_CONTRACT.md](docs/CLI_CONTRACT.md).
 
-Use `python3 scripts/gb.py --help` and `python3 scripts/gb.py preview --help` to inspect arguments. Outside the skill folder, use the absolute path to `scripts/gb.py`.
+Use `getbrolls --help` and `getbrolls preview --help` to inspect arguments.
 
 </details>
 
@@ -365,6 +434,8 @@ Run one command per project at a time. Preserve originals, cache, and event hist
 | [AGENTS.md](AGENTS.md) | Index for agents and maintainers: repository map, per-agent installation, and maintenance rules. |
 | [docs/MANUAL.md](docs/MANUAL.md) | Manual + tutorial in Portuguese: every command explained, output format, BRIEF/RULES/.env, and automation. |
 | [docs/GUIDE.md](docs/GUIDE.md) · [SKILL.md](SKILL.md) | Complete operating guide and agent execution instructions. |
+| [docs/CLI_CONTRACT.md](docs/CLI_CONTRACT.md) · [docs/SCHEMAS.md](docs/SCHEMAS.md) | CLI contract for scripts and agents (output, exit and error codes, deprecation) and the format of every file the tool writes (in Portuguese). |
+| [docs/PLUGIN_DEV_QUICKSTART.md](docs/PLUGIN_DEV_QUICKSTART.md) · [docs/SDK.md](docs/SDK.md) | SDK plugins (experimental, in Portuguese): quickstart, security checklist, examples, your own sources, routes, commands and exporters in `$GB_HOME/plugins` (default `~/.getbrolls/plugins`). Not to be confused with the Claude Code plugin. |
 | [docs/QUALITY.md](docs/QUALITY.md) | Tests, real-world evidence, and known limitations. |
 | [docs/RULES.md](docs/RULES.md) · [.env.example](.env.example) | Editorial rules and configuration options. |
 | [docs/SECURITY.md](docs/SECURITY.md) | Handling of private data and vulnerability reporting. |

@@ -1,14 +1,18 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "engenheirodevideo",
+  "description": "Engenheiro de Vídeo plugins for Claude Code: getbrolls, B-roll planning and sourcing with human review and provenance.",
   "owner": {
     "name": "Bruno Moreira — Engenheiro de Vídeo"
   },
+  "renames": {
+    "get-brolls": "getbrolls"
+  },
   "plugins": [
     {
-      "name": "get-brolls",
+      "name": "getbrolls",
       "source": "./",
-      "version": "2.5.2",
+      "version": "2.6.0",
       "author": {
         "name": "Bruno Moreira — Engenheiro de Vídeo",
         "url": "https://www.instagram.com/zbrunomoreira/"

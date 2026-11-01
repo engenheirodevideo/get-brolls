@@ -13,9 +13,14 @@ escreve, numa passada só, a versão nova em:
 - `SKILL.md` (`metadata.version` e `metadata.updated`);
 - `README.md` / `README.en.md` (badge: URL e `alt`);
 - `docs/QUALITY.md` (título `# Qualidade e evidências — GET B-ROLLS <v>`);
+- `docs/MANUAL.md` (linha `Versão <v>.` do começo);
 - `CHANGELOG.md` (stub `## <v> — <data>` abaixo de `## Unreleased`, só se
   ainda não existir uma seção para essa versão);
-- `skills/get-brolls/SKILL.md`, regerado chamando `gen_skill_mirror.py`.
+- `schemas/*.schema.json` (`$id` de cada schema publicado, apontando para a tag
+  `v<v>` em `SCHEMA_ID_BASE`; todo arquivo que casar com o glob entra);
+- `skills/get-brolls/SKILL.md`, regerado chamando `gen_skill_mirror.py`;
+- `plugins_official/<id>/getbrolls-plugin.json` (`version` de cada plugin oficial) e, por último,
+  `scripts/getbrolls/sdk/official_pins.py`, regerado chamando `gen_official_pins.py`.
 
 `--check` não escreve nada: lê as mesmas fontes (exceto `CHANGELOG.md`, cujo
 corpo é prosa humana) e sai com código 1 assim que alguma delas divergir da
@@ -25,6 +30,11 @@ temporária, nunca para a árvore real.
 
 Sem dependências externas (stdlib).
 """
+
+# pylint: disable=missing-function-docstring,duplicate-code
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0); a
+# duplicação é o helper `_utf8_output`, repetido porque cada script standalone
+# é autossuficiente e não importa dos outros.
 
 from __future__ import annotations
 
@@ -64,7 +74,7 @@ def _read(path: Path) -> str:
 
 
 def _write(path: Path, text: str) -> None:
-    path.write_text(text, encoding="utf-8")
+    path.write_text(text, encoding="utf-8", newline="\n")
 
 
 # -- scripts/getbrolls/__init__.py -------------------------------------
@@ -91,23 +101,22 @@ def _write_init(root: Path, version: str, _date_str: str) -> None:
     _write(path, new_text)
 
 
-# -- package.json ---------------------------------------------------------
+# -- package.json and .claude-plugin/plugin.json: a top-level "version" ------
 
 
-def _package_json_path(root: Path) -> Path:
-    return root / "package.json"
+def _json_version_target(rel: str) -> Target:
+    """Alvo de um JSON cujo `version` de nível superior é a versão do produto."""
 
+    def check(root: Path, version: str) -> bool:
+        return json.loads(_read(root / rel)).get("version") == version
 
-def _check_package_json(root: Path, version: str) -> bool:
-    data = json.loads(_read(_package_json_path(root)))
-    return data.get("version") == version
+    def write(root: Path, version: str, _date_str: str) -> None:
+        path = root / rel
+        data = json.loads(_read(path))
+        data["version"] = version
+        _write(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
-
-def _write_package_json(root: Path, version: str, _date_str: str) -> None:
-    path = _package_json_path(root)
-    data = json.loads(_read(path))
-    data["version"] = version
-    _write(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    return Target(rel, check, write)
 
 
 # -- package-lock.json ------------------------------------------------
@@ -130,25 +139,6 @@ def _write_package_lock(root: Path, version: str, _date_str: str) -> None:
     data["version"] = version
     if "" in data.get("packages", {}):
         data["packages"][""]["version"] = version
-    _write(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
-
-
-# -- .claude-plugin/plugin.json ----------------------------------------
-
-
-def _plugin_json_path(root: Path) -> Path:
-    return root / ".claude-plugin" / "plugin.json"
-
-
-def _check_plugin_json(root: Path, version: str) -> bool:
-    data = json.loads(_read(_plugin_json_path(root)))
-    return data.get("version") == version
-
-
-def _write_plugin_json(root: Path, version: str, _date_str: str) -> None:
-    path = _plugin_json_path(root)
-    data = json.loads(_read(path))
-    data["version"] = version
     _write(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
 
@@ -267,6 +257,28 @@ def _write_quality_md(root: Path, version: str, _date_str: str) -> None:
     _write(path, text)
 
 
+_MANUAL_VERSION_RE = re.compile(r"^Versão (\d+\.\d+\.\d+)\.", re.MULTILINE)
+_MANUAL_VERSION_SUB_RE = re.compile(r"^(Versão )\d+\.\d+\.\d+(\.)", re.MULTILINE)
+
+
+def _manual_md_path(root: Path) -> Path:
+    return root / "docs" / "MANUAL.md"
+
+
+def _check_manual_md(root: Path, version: str) -> bool:
+    match = _MANUAL_VERSION_RE.search(_read(_manual_md_path(root)))
+    return bool(match) and match.group(1) == version
+
+
+def _write_manual_md(root: Path, version: str, _date_str: str) -> None:
+    path = _manual_md_path(root)
+    text = _read(path)
+    text, count = _MANUAL_VERSION_SUB_RE.subn(rf"\g<1>{version}\g<2>", text)
+    if count != 1:
+        raise ValueError(f"linha de versão não encontrada em {path}")
+    _write(path, text)
+
+
 # -- CHANGELOG.md (fora da coerência: corpo é prosa humana) -----------
 
 
@@ -289,6 +301,50 @@ def _write_changelog(root: Path, version: str, date_str: str) -> None:
         raise ValueError(f"'## Unreleased' não encontrado em {path}")
     stub = f"## Unreleased\n\n## {version} — {date_str}\n"
     _write(path, text.replace(marker, stub, 1))
+
+
+# -- schemas/*.schema.json ($id de cada schema publicado aponta para a tag da versão) ---
+
+# Endereço de onde os schemas são servidos. Quando o repositório mudar de nome, só esta
+# constante muda: a escrita reescreve o `$id` inteiro, host antigo incluído, e a
+# checagem exige exatamente este prefixo.
+SCHEMA_ID_BASE = "https://raw.githubusercontent.com/engenheirodevideo/get-brolls"
+# O primeiro `"$id": "..."` do arquivo, qualquer que seja o endereço atual.
+_SCHEMA_ID_RE = re.compile(r'("\$id":\s*")[^"]*(")')
+
+
+def _schema_id(version: str, name: str) -> str:
+    return f"{SCHEMA_ID_BASE}/v{version}/schemas/{name}"
+
+
+def _check_schema_id(path: Path, version: str) -> bool:
+    try:
+        schema = json.loads(_read(path))
+    except (OSError, ValueError):
+        return False
+    return isinstance(schema, dict) and schema.get("$id") == _schema_id(version, path.name)
+
+
+def _write_schema_id(path: Path, version: str) -> None:
+    text = _read(path)
+    # Substituição de texto, não round-trip por json.dumps: preserva a formatação
+    # manual do schema (objetos numa linha só), que json.dumps quebraria em várias.
+    text, count = _SCHEMA_ID_RE.subn(rf"\g<1>{_schema_id(version, path.name)}\g<2>", text, count=1)
+    if count != 1:
+        raise ValueError(f"$id não encontrado em {path}")
+    _write(path, text)
+
+
+def schema_targets(root: Path) -> list[Target]:
+    """Um alvo por `schemas/*.schema.json` de `root`: schema novo entra sem editar este script."""
+    return [
+        Target(
+            f"schemas/{path.name}",
+            lambda r, v, name=path.name: _check_schema_id(r / "schemas" / name, v),
+            lambda r, v, _d, name=path.name: _write_schema_id(r / "schemas" / name, v),
+        )
+        for path in sorted((root / "schemas").glob("*.schema.json"))
+    ]
 
 
 # -- skills/get-brolls/SKILL.md (regerado, não editado diretamente) ---
@@ -321,11 +377,78 @@ def _write_skill_mirror(root: Path, _version: str, _date_str: str) -> None:
         raise ValueError(f"gen_skill_mirror.py falhou: {result.stderr.strip() or result.stdout.strip()}")
 
 
+# -- plugins_official/<id>/getbrolls-plugin.json e o pin gerado ----------
+
+# O primeiro `"version": "..."` do manifesto: troca de texto, preserva a formatação.
+_MANIFEST_VERSION_RE = re.compile(r'("version":\s*")[^"]*(")')
+
+
+def _check_official_manifest(path: Path, version: str) -> bool:
+    try:
+        manifest = json.loads(_read(path))
+    except (OSError, ValueError):
+        return False
+    return isinstance(manifest, dict) and manifest.get("version") == version
+
+
+def _write_official_manifest(path: Path, version: str) -> None:
+    text, count = _MANIFEST_VERSION_RE.subn(rf"\g<1>{version}\g<2>", _read(path), count=1)
+    if count != 1:
+        raise ValueError(f"version não encontrado em {path}")
+    _write(path, text)
+
+
+def _official_target(rel: Path) -> Target:
+    return Target(
+        rel.as_posix(),
+        lambda r, v: _check_official_manifest(r / rel, v),
+        lambda r, v, _d: _write_official_manifest(r / rel, v),
+    )
+
+
+def official_targets(root: Path) -> list[Target]:
+    """Um alvo por `plugins_official/<id>/getbrolls-plugin.json`: a versão do plugin oficial é a do getbrolls."""
+    return [
+        _official_target(path.relative_to(root))
+        for path in sorted((root / "plugins_official").glob("*/getbrolls-plugin.json"))
+    ]
+
+
+def _official_pins(root: Path, *flags: str) -> subprocess.CompletedProcess:
+    script = Path(__file__).resolve().parent / "gen_official_pins.py"
+    return subprocess.run(
+        [sys.executable, str(script), *flags, "--root", str(root)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+
+def _write_official_pins(root: Path, _version: str, _date_str: str) -> None:
+    result = _official_pins(root)
+    if result.returncode != 0:
+        raise ValueError(f"gen_official_pins.py falhou: {result.stderr.strip() or result.stdout.strip()}")
+
+
+def pins_targets(root: Path) -> list[Target]:
+    """O pin dos plugins oficiais, gerado de novo depois da versão nova (o manifesto entra no hash)."""
+    if not (root / "plugins_official").is_dir():
+        return []
+    return [
+        Target(
+            "scripts/getbrolls/sdk/official_pins.py",
+            lambda r, _v: _official_pins(r, "--check").returncode == 0,
+            _write_official_pins,
+        )
+    ]
+
+
 TARGETS: list[Target] = [
     Target("scripts/getbrolls/__init__.py", _check_init, _write_init),
-    Target("package.json", _check_package_json, _write_package_json),
+    _json_version_target("package.json"),
     Target("package-lock.json", _check_package_lock, _write_package_lock),
-    Target(".claude-plugin/plugin.json", _check_plugin_json, _write_plugin_json),
+    _json_version_target(".claude-plugin/plugin.json"),
     Target(
         ".claude-plugin/marketplace.json",
         _check_marketplace_json,
@@ -335,11 +458,17 @@ TARGETS: list[Target] = [
     Target("README.md", _check_readme_pt, _write_readme_pt),
     Target("README.en.md", _check_readme_en, _write_readme_en),
     Target("docs/QUALITY.md", _check_quality_md, _write_quality_md),
+    Target("docs/MANUAL.md", _check_manual_md, _write_manual_md),
     Target("CHANGELOG.md", _check_changelog, _write_changelog),
-    # A regeneração do espelho depende do SKILL.md já escrito; roda por
-    # último tanto na checagem quanto na escrita.
-    Target("skills/get-brolls/SKILL.md", _check_skill_mirror, _write_skill_mirror),
 ]
+# A regeneração do espelho depende do SKILL.md já escrito; roda por último tanto na
+# checagem quanto na escrita.
+MIRROR_TARGET = Target("skills/get-brolls/SKILL.md", _check_skill_mirror, _write_skill_mirror)
+
+
+def targets(root: Path) -> list[Target]:
+    """Todas as fontes de versão de `root`, na ordem de escrita."""
+    return [*TARGETS, *schema_targets(root), *official_targets(root), MIRROR_TARGET, *pins_targets(root)]
 
 
 def run(root: Path, version: str, date_str: str, check: bool) -> int:
@@ -351,7 +480,7 @@ def run(root: Path, version: str, date_str: str, check: bool) -> int:
         return 2
 
     if check:
-        divergent = [t.name for t in TARGETS if not t.check(root, version)]
+        divergent = [t.name for t in targets(root) if not t.check(root, version)]
         if divergent:
             print("fora de sincronia com a versão " + version + ":", file=sys.stderr)
             for name in divergent:
@@ -360,7 +489,7 @@ def run(root: Path, version: str, date_str: str, check: bool) -> int:
         print(f"todas as fontes coerentes com a versão {version}.")
         return 0
 
-    for target in TARGETS:
+    for target in targets(root):
         target.write(root, version, date_str)
     print(f"versão atualizada para {version}.")
     return 0
@@ -369,9 +498,10 @@ def run(root: Path, version: str, date_str: str, check: bool) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("version", help="nova versão, no formato X.Y.Z")
+    today = _date.today().isoformat()  # noqa: DTZ011 - local date; tz-aware would shift day near midnight
     parser.add_argument(
         "--date",
-        default=_date.today().isoformat(),  # noqa: DTZ011 - local date of the CLI run; timezone-aware would shift the day near midnight
+        default=today,
         help="data AAAA-MM-DD usada no CHANGELOG e em SKILL.md (padrão: hoje)",
     )
     parser.add_argument(

@@ -2,21 +2,21 @@
 type: documentation
 status: current
 created: 2026-09-23
-updated: 2026-09-23
+updated: 2026-09-30
 tags: [get-brolls, manual, tutorial, commands]
 ---
 
-# 🎬 Get B-rolls: manual + tutorial
+# 🎬 getbrolls: manual + tutorial
 
-Versão 2.5.2. Feito pra **videomaker que está começando a mexer com código**.
+Versão 2.6.0. Feito pra **videomaker que está começando a mexer com código**.
 
-Você pede o B-roll, vê a prévia, aprova, e **só o trecho aprovado** é baixado, com a fonte anotada.
+Você pede o B-roll, vê a prévia, aprova, e **só o trecho aprovado** vira corte final, com a fonte anotada. A prévia pode baixar antes uma mídia de trabalho temporária para dentro do projeto; a aprovação e o `permit` valem para o corte final, não para cada byte.
 
 ## ⚡ Se ler só isso, já dá pra usar
 
 - 💬 **No Claude Code, é só pedir:** `/get-brolls` + o que você precisa + a pasta do vídeo. O agente roda os comandos por você.
-- 🔒 **Nada é baixado sem duas coisas:** você **aprovar** o trecho e **registrar os direitos** de uso.
-- 🧭 **Se perdeu?** Peça `/get-brolls-status` (ou rode o `status`). Ele diz o próximo passo.
+- 🔒 **O corte final não sai sem duas coisas:** você **aprovar** o trecho e **registrar os direitos** de uso. A prévia pode buscar mídia de trabalho temporária antes disso (`--reference-only` evita).
+- 🧭 **Se perdeu?** Peça `/getbrolls:get-brolls-status` (ou rode o `status`). Ele diz o próximo passo.
 
 ## 📖 Dicionário rápido
 
@@ -40,6 +40,107 @@ Você pede o B-roll, vê a prévia, aprova, e **só o trecho aprovado** é baixa
 | **JSON** | O formato da resposta. Um texto organizado em `"chave": valor`, que tanto você quanto um script conseguem ler |
 | **Script** | Um arquivo com vários comandos em sequência, que roda sozinho |
 
+## 📦 Instalar como comando
+
+Além do plugin do Claude Code e do checkout, o getbrolls instala como pacote e ganha o comando `getbrolls`:
+
+```bash
+uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0
+# ou
+pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0
+
+getbrolls setup
+getbrolls doctor
+```
+
+- **`getbrolls: command not found` depois de instalar?** A pasta de comandos do `uv` (ou do `pipx`) ainda não está no `PATH`: rode `uv tool update-shell` (ou `pipx ensurepath`), abra um terminal novo e confira com `getbrolls --version`.
+- Em todo este manual, o comando é `getbrolls …`. Num clone, sem instalar o pacote, `python3 scripts/gb.py …` roda os mesmos comandos (no Windows, `python scripts/gb.py …`; de outra pasta, use o caminho absoluto de `scripts/gb.py`).
+- **Usa o plugin do Claude Code? Nada muda.** O agente roda os comandos por você.
+- **`getbrolls setup` instala o runtime** e nunca pergunta nada:
+  - o yt-dlp numa venv criada com o Python que roda o getbrolls, em `$GB_HOME/runtime/<versão>/.venv`;
+  - o Playwright CLI (Instagram) com `npm ci --ignore-scripts`, em `$GB_HOME/runtime/<versão>/.tools` (precisa de Node 22+ e npm no `PATH`; sem eles, essa parte fica de fora com a dica de instalação);
+  - `<versão>` é a das dependências de cada parte; com `GB_RUNTIME_DIR`, as duas partes vão para essa pasta;
+  - FFmpeg, ffprobe, curl e Node são do sistema: o `setup` só confere e mostra o comando do seu sistema (`brew`, `apt` ou `winget install Gyan.FFmpeg`);
+  - nunca mexe no projeto nem na pasta da instalação; progresso no stderr, resultado em JSON no stdout; sai `0` pronto e `4` se ainda falta algo;
+  - o ambiente dos passos não leva segredos (`*_API_KEY`, `*_TOKEN`, `*_SECRET`), com uma exceção: o `npm ci` recebe o `NPM_TOKEN`, que o `.npmrc` de um registro privado costuma ler.
+- **Rodar de novo é seguro:** o que já está pronto não é refeito, e uma instalação interrompida é refeita. **Depois de atualizar o getbrolls (ou o plugin), rode `getbrolls setup` de novo:** só a parte cuja versão das dependências mudou é instalada.
+- **Venv quebrada se refaz sozinha.** A venv só conta como pronta se o Python dela ainda existe e importa o yt-dlp (`python -I -c "import yt_dlp"`, com tempo curto). Python do sistema removido ou atualizado (link `bin/python` quebrado, "bad interpreter"): o `setup` refaz a venv em vez de responder `already`, e o `setup --check`/`doctor` dão o yt-dlp como ausente, mesmo com outro yt-dlp no `PATH`.
+- **Qual yt-dlp vale:** o do pin `GB_YTDLP_PATH`, depois o da venv (a do runtime ou `GB_VENV_PATH`), depois o do `PATH`. O `setup --check` julga esse mesmo executável: `steps[ytdlp].found` é o que está em uso e `source` diz de onde veio (`env`, `venv` ou `path`). Sem venv gerenciada, um yt-dlp do `PATH` vale, com `source: "path"` e uma nota; se o `setup` tentou montar a venv e falhou (ou ela ficou pela metade), o yt-dlp do `PATH` não esconde a falha e o `summary.line` nunca diz "Runtime pronto".
+- **`getbrolls setup --upgrade ytdlp`** atualiza o yt-dlp da venv gerenciada além da versão fixada. `upgrade.status` diz o que houve:
+  - `upgraded`: a versão mudou (`previous` → `version`);
+  - `unchanged`: o pip terminou, mas a versão é a mesma (já era a mais nova, ou o índice de pacotes não respondeu), com o motivo em `upgrade.warnings`; sai `0`;
+  - `failed`: a atualização falhou. Se a venv foi refeita na versão fixada, `ready` continua `true` e o `setup` sai com `1`, para o script perceber; se nem isso deu, a venv é removida, o `error` diz isso (rode `getbrolls setup` quando a causa for resolvida) e o `setup` sai com `4`.
+- `getbrolls setup --where` mostra, sem instalar nada, onde cada parte fica e qual está em uso (`--where venv` ou `--where tools` para uma só) e, em `app_log`, onde grava o log da instalação. Em cada parte, `exists` diz se a pasta já existe; quando ela não dá para ver (uma pasta sem permissão no caminho), `exists` vem `null` e `problem` diz o motivo (`sem_permissao`, ou `ilegivel` para outro erro de leitura), em vez de `false`. Uma pasta que existe mas não abre também traz `problem`. Com `problem`, `managed` vem `null` e os campos de `in_use` também: não dá para saber se a parte está pronta nem qual seria usada. Sem problema, `problem` é `null`. Sai `0`, salvo erro de uso do `.env` (`--env-file`/`GB_ENV_FILE` que não existe, linha recusada), que vale para qualquer comando e sai `2`.
+- `getbrolls setup --check` mostra o que falta (yt-dlp, Playwright CLI, FFmpeg, ffprobe, curl, Node, npx e os arquivos de dados, os mesmos itens obrigatórios do `doctor`) e como resolver (`getbrolls setup` para yt-dlp e Playwright), sem instalar nada. `getbrolls doctor` diz se está pronto (`ready`) e sai com código `4` quando falta algo; o `ready` dos dois bate.
+- **Python antigo:** abaixo do 3.11, `scripts/gb.py` e os instaladores param antes de qualquer outra coisa com "getbrolls precisa de Python 3.11 ou mais novo; você tem X.Y" e código `4`.
+- **Dois `setup` ao mesmo tempo:** o segundo para com `error_code: "LOCKED"` e código `1` (o mesmo de dois comandos no mesmo projeto); espere o primeiro terminar e rode de novo. A pasta `runtime/<versão>` nunca pode ser um link: o `setup` recusa em vez de instalar no destino dele.
+- **Windows:** os comandos sugeridos pela ferramenta (`summary.do.command`) usam `python` e aspas duplas e rodam colados no PowerShell, no cmd e no Git Bash quando nenhum caminho tem `$`, `%` ou `"`; com esses caracteres, ajuste as aspas à mão.
+
+## 🗂️ Perfil do workspace (`getbrolls.toml`)
+
+Um `getbrolls.toml` na pasta do workspace fixa pastas, executáveis e plugins para quem trabalha ali, sem script de variáveis de ambiente:
+
+```toml
+requires = ">=2.6,<3"                          # versão do getbrolls que este workspace aceita
+home = "/caminho/fora-do-repositorio/.getbrolls" # GB_HOME: absoluto ou relativo ao getbrolls.toml (sem ~)
+cache_dir = ".cache/getbrolls"
+runtime_dir = "/caminho/fora-do-repositorio/runtime"
+plugins = []                                   # teto: só estes plugins podem valer ([] = nenhum)
+
+[tools]                                        # só caminhos absolutos
+ffmpeg = "/usr/local/bin/ffmpeg"
+ffprobe = "/usr/local/bin/ffprobe"
+```
+
+- **`home` fora do repositório.** Num workspace que é repositório compartilhado, ponha o `home` (e o `runtime_dir`) numa pasta fora dele: o `.env`, o `plugins.json` e o `marketplaces/` desse `GB_HOME` não entram no sha do perfil, e quem pode gravar no repositório poderia deixar ali um `.env` ou um plugin habilitado. Com o `home` dentro da pasta do `getbrolls.toml` (como `home = ".getbrolls"`), a prévia do `profile --action trust` avisa disso em `warnings`; o aviso não impede a confiança, só diz o risco.
+- **`runtime_dir` é a raiz do runtime:** o `setup` grava as duas partes direto nela — `<runtime_dir>/.venv/` (yt-dlp) e `<runtime_dir>/.tools/` (Playwright CLI) —, sem a subpasta `<versão>` do padrão `$GB_HOME/runtime/<versão>/`. Para reaproveitar um runtime já montado, aponte para a pasta que contém `.venv/` e `.tools/`, não para a de cima. Uma pasta por versão do getbrolls: pasta montada por outra versão é recusada, nunca trocada sozinha.
+
+- **Onde é achado:** `--profile <arquivo>`, depois `GB_PROFILE`, depois subindo a partir do `--project` e, por fim, da pasta atual. `--profile off` (ou `GB_PROFILE=off`) desliga.
+- **Precedência:** flag > ambiente (incluindo o `.env`) > perfil > padrão. O `home` do perfil é aplicado antes, então decide qual `$GB_HOME/.env` é lido. `plugins` só estreita o `GB_PLUGINS`, nunca acrescenta.
+- **Confiança em dois passos:** o perfil pode apontar executáveis, então só vale depois de `getbrolls profile --action trust` (mostra o que ele fixaria e o sha256) e `getbrolls profile --action trust --yes --expect <sha256>`. Editou o arquivo, precisa confiar de novo; `getbrolls profile --action untrust` desfaz. O único dispensado é `$GB_HOME/getbrolls.toml`.
+- **Sem confiança:** só `doctor`, `profile`, `capabilities` e `setup --where`/`setup --check` rodam, relatando o problema (o `doctor` em `summary.missing`). Todo o resto para com código `2` e a dica do `profile --action trust` antes de tocar em nada, inclusive comandos que não usam projeto, como `providers` e `plugins --action list`, e o `setup` que instala. `requires` que não bate sai com `4`.
+- **A prévia avisa:** `profile --action trust` lista em `warnings` o `home`, `runtime_dir` ou `cache_dir` que caem dentro da pasta do `getbrolls.toml` (num repositório compartilhado, quem grava ali poderia deixar um `.env` ou um `plugins.json` que o sha do perfil não cobre) e ids de `plugins` que não estão instalados (sem efeito até serem instalados).
+- **`home` do perfil:** com o `GB_HOME` vindo do perfil, o `.env`, o `plugins.json` e a pasta `marketplaces/` dali só valem se não forem links e forem seus, sem gravação por grupo ou outros (as mesmas recusas do próprio `getbrolls.toml`); senão, qualquer comando para com código `2`. Um `GB_HOME` num `.env` fora dessa pasta (o do checkout, `GB_ENV_FILE` ou `--env-file`) é ignorado, com o aviso `ENV_GB_HOME_IGNORED`: para a pasta pessoal, o `home` do perfil confiável vence o `.env` (é ele que decide qual `.env` é lido); um `GB_HOME` exportado no ambiente continua vencendo o perfil.
+- **`doctor`** mostra em `install.profile` o perfil em vigor (`path`, `source`, `trust`, `applied` com as variáveis que ele pôs e `values` com valor e origem de cada campo) e em `install.gb_home` a pasta pessoal que valeu, com a origem em `install.gb_home_source` (`env`, `env_file`, `profile` ou `default`).
+- `getbrolls profile --action show` lista cada campo com o valor e a origem (`env`, `env_file`, `profile` ou `default`).
+- O perfil não escolhe qual instalação roda: use `requires` para exigir a versão certa.
+
+**Do script de variáveis para o perfil.** Um workspace que hoje usa um script assim:
+
+```bash
+export GB_HOME="$WS/.getbrolls"
+export GB_CACHE_DIR="$WS/.cache/getbrolls"
+export GB_VENV_PATH="$WS/tools/beta/.venv"
+export GB_YTDLP_PATH="$WS/tools/beta/.venv/bin/yt-dlp"
+export GB_FFMPEG_PATH="/usr/local/bin/ffmpeg"
+export GB_FFPROBE_PATH="/usr/local/bin/ffprobe"
+export GB_PLUGINS="off"
+mkdir -p "$GB_HOME" "$GB_CACHE_DIR"
+```
+
+vira este `getbrolls.toml` na raiz do workspace (troque `/caminho/do/workspace` pelo caminho real):
+
+```toml
+requires = "==2.6.0"        # o clone fixado; outra versão sai com código 4
+home = ".getbrolls"
+cache_dir = ".cache/getbrolls"
+plugins = []                # equivale a GB_PLUGINS=off
+
+[tools]
+venv = "/caminho/do/workspace/tools/beta/.venv"
+ytdlp = "/caminho/do/workspace/tools/beta/.venv/bin/yt-dlp"
+ffmpeg = "/usr/local/bin/ffmpeg"
+ffprobe = "/usr/local/bin/ffprobe"
+```
+
+Depois de `getbrolls profile --action trust` e `getbrolls profile --action trust --yes --expect <sha256>`, `getbrolls doctor` dentro do workspace relata as mesmas pastas e os mesmos executáveis que o script. Não precisa mais do `mkdir`: as pastas são criadas quando o primeiro comando grava nelas.
+
+**O que o perfil não faz:**
+
+- Não habilita plugin: `plugins` só estreita o que o ambiente já permite (`[]` ou `"off"` desliga; uma lista limita). Quem quer habilitar um plugin continua usando `GB_PLUGINS` ou `plugins --action enable`.
+- Não aceita caminho relativo em `[tools]`: ferramentas são caminhos absolutos. Só `home`, `cache_dir` e `runtime_dir` são relativos, ao lado do próprio `getbrolls.toml`.
+- Não vale sem a confiança de dois passos, nem depois de o arquivo mudar; um `getbrolls.toml` que seja link simbólico é recusado.
+
 ## 🧭 O caminho inteiro em 8 passos
 
 ```text
@@ -57,41 +158,40 @@ Usa a NASA, que não pede chave. **Rode um por vez, na ordem.**
 **Como ler os blocos de código:**
 - Linha que começa com `#` é **explicação**: não precisa copiar.
 - Troque `/caminho/meu-video` pela pasta do seu vídeo e `<ID>` pelo código que a busca devolver. **Mantenha as aspas.**
-- Rode **dentro da pasta da skill** (onde está o `scripts/gb.py`). Instalou como plugin do Claude Code? A pasta é a do plugin: veja [instalação](GUIDE.md#instalação).
-- No Windows, escreva `python` no lugar de `python3`.
+- Os comandos usam o `getbrolls`, que roda de qualquer pasta. Sem o pacote instalado, veja [Instalar como comando](#-instalar-como-comando).
 
 ```bash
 # ── PASSO 1: BUSCAR ─────────────────────────────────────────
 # O QUE FAZ: procura 3 vídeos do lançamento do Artemis no acervo da NASA.
 # VOCÊ RECEBE: uma lista. Cada item tem um "id". Copie o id do que quiser.
-python3 scripts/gb.py search --provider nasa --query "Artemis launch" --limit 3 --project /caminho/meu-video
+getbrolls search --provider nasa --query "Artemis launch" --limit 3 --project /caminho/meu-video
 
 # ── PASSO 2: PRÉVIA ─────────────────────────────────────────
 # O QUE FAZ: gera um GIF do segundo 0 ao 4 desse vídeo.
 # VOCÊ RECEBE: o GIF e uma folha de quadros em brolls/previews/.
-python3 scripts/gb.py preview --candidate "<ID>" --start 0 --end 4 --project /caminho/meu-video
+getbrolls preview --candidate "<ID>" --start 0 --end 4 --project /caminho/meu-video
 
 # ── PASSO 3: STORYBOARD ─────────────────────────────────────
 # O QUE FAZ: monta a página de aprovação e abre no navegador.
 # VOCÊ RECEBE: um link. Abra, clique em Aprovar e depois em "Salvar decisões".
-python3 scripts/gb.py review --project /caminho/meu-video
-python3 scripts/gb.py serve --background --project /caminho/meu-video
+getbrolls review --project /caminho/meu-video
+getbrolls serve --background --project /caminho/meu-video
 
 # ── PASSO 4: TRAZER A APROVAÇÃO ─────────────────────────────
 # O QUE FAZ: lê o que você salvou no navegador e fecha a página.
-python3 scripts/gb.py import-review --by "Seu nome" --project /caminho/meu-video
-python3 scripts/gb.py serve --stop --project /caminho/meu-video
+getbrolls import-review --by "Seu nome" --project /caminho/meu-video
+getbrolls serve --stop --project /caminho/meu-video
 
 # ── PASSO 5: DIREITOS ───────────────────────────────────────
 # O QUE FAZ: registra os termos de uso padrão da NASA para esse vídeo.
-python3 scripts/gb.py permit --candidate "<ID>" --preset nasa --project /caminho/meu-video
+getbrolls permit --candidate "<ID>" --preset nasa --project /caminho/meu-video
 
 # ── PASSO 6: BAIXAR E ENTREGAR ──────────────────────────────
 # O QUE FAZ: corta só o trecho aprovado, confere o arquivo e organiza.
 # VOCÊ RECEBE: a pasta entrega/, pronta pra arrastar pro editor.
-python3 scripts/gb.py fetch --candidate "<ID>" --project /caminho/meu-video
-python3 scripts/gb.py verify --project /caminho/meu-video
-python3 scripts/gb.py deliver --project /caminho/meu-video
+getbrolls fetch --candidate "<ID>" --project /caminho/meu-video
+getbrolls verify --project /caminho/meu-video
+getbrolls deliver --project /caminho/meu-video
 ```
 
 ✅ **Pronto:** o corte está em `entrega/`, com um `ORIGEM.md` dizendo de onde veio. Como este teste não usou BRIEF, ele cai na pasta `00-sem-beat/`.
@@ -104,73 +204,141 @@ Consulte quando precisar. Cada bloco é um passo do caminho.
 
 ## 1 🩺 Conferir
 
-> 💬 **No chat:** `/get-brolls-setup` instala e confere · `/get-brolls-status` diz onde você parou.
+> 💬 **No chat:** `/getbrolls:get-brolls-setup` instala e confere · `/getbrolls:get-brolls-status` diz onde você parou.
 
 ```bash
 # ── providers ───────────────────────────────────────────────
 # O QUE FAZ: lista de onde dá pra puxar vídeo (YouTube, NASA, Pexels…).
 # VOCÊ RECEBE: cada fonte, se está ligada e se precisa de chave de API.
 # QUANDO USAR: pra saber quais fontes estão disponíveis na sua máquina.
-python3 scripts/gb.py providers
+getbrolls providers
 
 # ── doctor ──────────────────────────────────────────────────
-# O QUE FAZ: confere se FFmpeg, Node, yt-dlp e o resto estão instalados, e se a .venv
-#   bate com as versões fixadas (item "venv" em missing: rode o instalador de novo).
+# O QUE FAZ: confere se FFmpeg, Node, yt-dlp e o resto estão instalados, e se a venv
+#   em uso bate com as versões fixadas (item "venv" em missing: rode o setup de novo).
 # VOCÊ RECEBE: o que está ok e o que falta, com o nome do que instalar.
 # QUANDO USAR: na primeira vez e sempre que algo der erro.
 # DEU CERTO QUANDO: "summary.missing" vem vazio: [].
-python3 scripts/gb.py doctor
+getbrolls doctor
+
+# ── doctor: pronto ou não ───────────────────────────────────
+# O doctor traz "ready" logo depois de "summary" e sai com código 4 quando
+# "summary.missing" não está vazio (o JSON sai igual). No bloco "install" ele
+# mostra a origem (pacote ou checkout), a pasta de dados, o runtime e qual .env valeu.
+
+# ── setup --check ───────────────────────────────────────────
+# O QUE FAZ: mostra o que falta no runtime e os comandos para resolver. Não instala nada.
+# Sai com código 4 quando falta algo. Sem --check, "setup" instala o que falta
+# (código 0 pronto, 4 se ainda falta item do sistema); --where só mostra as pastas.
+getbrolls setup --check
 
 # ── doctor --live ───────────────────────────────────────────
 # O QUE FAZ: igual ao doctor, mas faz buscas de teste de verdade nas fontes.
 # ATENÇÃO: gasta cota das APIs pagas por uso (Pexels, Pixabay).
-python3 scripts/gb.py doctor --live
+getbrolls doctor --live
+
+# ── environment --action list ───────────────────────────────
+# O QUE FAZ: lista as pontes de ambiente que já vêm com o getbrolls (hoje, o HyperFrames).
+# VOCÊ RECEBE: em "environments", para cada ponte: id, versão, sha256 do pin e "status"
+#              (enabled, disabled…); se não estiver pronta, "reason" diz por quê.
+# QUANDO USAR: antes de usar uma ponte, para ver se ela está ligada. Só lê: não roda código
+#              da ponte e não precisa de projeto.
+getbrolls environment --action list
+
+# ── template (comando antigo) ───────────────────────────────
+# O comando "template" foi renomeado para "recipe". Quem ainda o digita (template --action
+# list, freeze ou show) recebe um erro de uso (código 2) com o comando novo: recipe --action list.
+# O mesmo vale para "init --template": use "init --recipe" (veja "Clientes e receitas").
 
 # ── status ──────────────────────────────────────────────────
 # O QUE FAZ: mostra em que etapa o projeto está.
 # VOCÊ RECEBE: quantos candidatos, prévias, aprovados, baixados…
 #              e o PRÓXIMO COMANDO já pronto pra copiar (em "summary.do").
 # QUANDO USAR: sempre que se perder. Só lê, não altera nada.
-python3 scripts/gb.py status --project /caminho/meu-video
+getbrolls status --project /caminho/meu-video
 ```
 
 ## 2 📝 Planejar (opcional, mas recomendado)
 
-> Pensa como a **pré-produção**: RULES é o padrão do canal, BRIEF é o roteiro deste vídeo.
-> 💬 **No chat:** `/get-brolls-brief` faz uma entrevista de até 7 perguntas e escreve o BRIEF por você.
+> Pensa como a **pré-produção**: RULES é o padrão do canal, BRIEF é o plano do vídeo (o que cada trecho precisa mostrar).
+> 💬 **No chat:** `/getbrolls:get-brolls-brief` faz uma entrevista de até 7 perguntas e escreve o BRIEF por você.
+
+**Primeira vez? Esta ordem dá certo sem editar JSON** (cada comando mostra o próximo em `summary.do`):
+
+1. `init --project /caminho/meu-video` cria o projeto.
+2. `roteiro --action new --genero reels --tema "Seu tema"` cria o `ROTEIRO.md` e, se o projeto ainda não tem `RULES.md`, um no formato do roteiro (`reels`, 9:16).
+3. Escreva a fala de cada cena e rode `roteiro --action check`: ele mostra o plano e o `review.sha256`. Texto de esqueleto (o que está entre chaves, como `{a dor, em uma frase}`) vira o aviso `ROTEIRO_ESQUELETO`; enquanto sobrar algum, `review` e `sync` recusam e dizem as cenas a editar.
+4. `init-brief` cria o `BRIEF.md` já no formato do roteiro e com `"beats": []` (os beats nascem do roteiro); preencha título, objetivo e direitos.
+5. Mostre o roteiro à pessoa e registre com `roteiro --action review … --expect <sha256>`; depois `roteiro --action sync` grava os beats.
+6. `status` diz o próximo passo (buscar o primeiro beat).
+
+Sem roteiro, o caminho é `init` → `init-rules` → `init-brief` (o modelo vem com um beat de exemplo para trocar) → `brief`.
 
 ```bash
+# ── init [--client … --canvas … --fps …] ────────────────────
+# O QUE FAZ: cria um projeto novo de layout 1: project.json (id, cliente,
+#            quadro e fps) e as pastas aroll/, assets/<sete pastas>, broll/ e analysis/.
+# --client: cliente já registrado (client --action add). Com receita: veja "Clientes e receitas".
+# RECUSA: pasta que já tem project.json ou brolls/manifest.json (esse usa migrate).
+# OPCIONAL: projetos sem init continuam funcionando como sempre.
+getbrolls init --client acme --canvas 1080x1920 --fps 30 --project /caminho/meu-video
+# Sem --project: com --client e --slug, o projeto nasce em <pasta do cliente>/projetos/<slug>/.
+getbrolls init --client acme --slug video-01
+
+# ── migrate --action plan|apply [--client …] ────────────────
+# O QUE FAZ: adota o layout 1 num projeto antigo (com brolls/manifest.json) só
+#            acrescentando o project.json. Não move, renomeia nem apaga nada.
+#            O id é o project_id do manifesto (uuid em minúsculas; outro texto vira
+#            um uuid derivado dele); o cliente vem do ROTEIRO.md (ou de --client).
+# plan:  só lê; mostra o project.json com o MESMO id que o apply grava (sem project_id,
+#        "será gerado") e avisa de cliente não registrado e de broll/ sua com arquivos.
+# apply: grava. Já migrado: sai 0 com changed false ("nada a migrar"). Recusa pasta que
+#        não existe, project.json quebrado ou gravação interrompida.
+# status mostra o resultado em layout {version, source, problem}.
+getbrolls migrate --action plan --project /caminho/meu-video
+getbrolls migrate --action apply --project /caminho/meu-video
+
 # ── init-rules ──────────────────────────────────────────────
 # O QUE FAZ: cria o arquivo RULES.md na pasta do projeto.
 # DENTRO DELE: formato do vídeo, fontes preferidas e sites bloqueados.
 # --format: reels (vertical 9:16) · horizontal (16:9) · native (formato original)
 # QUANDO USAR: uma vez, no começo do projeto.
-python3 scripts/gb.py init-rules --format reels --project /caminho/meu-video
+getbrolls init-rules --format reels --project /caminho/meu-video
+
+# ── init-rules (já com a declaração de direitos) ────────────
+# O QUE FAZ: cria o RULES.md já com o modo "user_declaration": você assume a responsabilidade
+#            pelo uso do material, em vez de juntar uma prova por item.
+# --mode: per_item_evidence (padrão) · user_declaration
+# --responsible e --declaration: quem assume e a frase exata. Escreva a sua; a ferramenta
+#            nunca preenche uma declaração por você.
+# --force: regrava um RULES.md que já existe. Com --format, muda só o formato e guarda o resto.
+getbrolls init-rules --mode user_declaration --responsible "Seu nome" --declaration "Frase da sua declaração" --project /caminho/meu-video
 
 # ── rules ───────────────────────────────────────────────────
 # O QUE FAZ: mostra as regras que estão valendo agora neste projeto.
-python3 scripts/gb.py rules --project /caminho/meu-video
+getbrolls rules --project /caminho/meu-video
 
 # ── init-brief ──────────────────────────────────────────────
 # O QUE FAZ: cria o BRIEF.md, o plano do vídeo dividido em beats.
+# COM ROTEIRO.md: o formato vem do roteiro e "beats" fica [] (o sync preenche).
 # DEPOIS: abra e preencha (veja "📐 Os arquivos que você edita" lá embaixo).
-python3 scripts/gb.py init-brief --project /caminho/meu-video
+getbrolls init-brief --project /caminho/meu-video
 
 # ── brief ───────────────────────────────────────────────────
 # O QUE FAZ: lê o BRIEF e, pra cada beat, monta o comando de busca pronto.
 # VOCÊ RECEBE: os beats, o que falta cobrir e os comandos pra copiar.
-python3 scripts/gb.py brief --project /caminho/meu-video
+getbrolls brief --project /caminho/meu-video
 
 # ── brief --validate ────────────────────────────────────────
 # O QUE FAZ: só confere se o BRIEF está preenchido certo.
 # VOCÊ RECEBE: a lista de erros, ou nada se estiver tudo certo.
 # QUANDO USAR: toda vez que editar o BRIEF na mão.
-python3 scripts/gb.py brief --validate --project /caminho/meu-video
+getbrolls brief --validate --project /caminho/meu-video
 
 # ── brief --beat ────────────────────────────────────────────
 # O QUE FAZ: mostra um beat só, com o comando pronto dele.
 # O ID DO BEAT é o "id" que está no BRIEF (ex.: "abertura").
-python3 scripts/gb.py brief --beat "<ID_DO_BEAT>" --project /caminho/meu-video
+getbrolls brief --beat "<ID_DO_BEAT>" --project /caminho/meu-video
 ```
 
 ## 3 🔎 Buscar
@@ -184,50 +352,74 @@ python3 scripts/gb.py brief --beat "<ID_DO_BEAT>" --project /caminho/meu-video
 # --provider: youtube · nasa · commons · pexels · pixabay
 # --limit: quantos resultados (padrão 8).
 # VOCÊ RECEBE: uma lista ("items"). Cada item tem "id", título, canal e duração.
-python3 scripts/gb.py search --provider youtube --query "Sua busca" --project /caminho/meu-video
+getbrolls search --provider youtube --query "Sua busca" --project /caminho/meu-video
 
 # ── search --shot ───────────────────────────────────────────
 # O QUE FAZ: igual, mas já liga os resultados a um beat do BRIEF.
 # POR QUE: assim a entrega sai organizada por beat no final.
-python3 scripts/gb.py search --provider youtube --query "Sua busca" --shot "<ID_DO_BEAT>" --project /caminho/meu-video
+# ATENÇÃO: a fonte tem que estar em allowed_sources do beat no BRIEF;
+#          fora da lista, o comando recusa e diz quais fontes valem.
+getbrolls search --provider youtube --query "Sua busca" --shot "<ID_DO_BEAT>" --project /caminho/meu-video
 
 # ── search --dry-run ────────────────────────────────────────
 # O QUE FAZ: só espia o resultado, sem salvar nada no projeto.
 # QUANDO USAR: pra testar se a busca está boa antes de valer.
-python3 scripts/gb.py search --provider youtube --query "Sua busca" --dry-run --project /caminho/meu-video
+getbrolls search --provider youtube --query "Sua busca" --dry-run --project /caminho/meu-video
+
+# ── search --intent --media ─────────────────────────────────
+# O QUE FAZ: diz o que você procura e o tipo de arquivo.
+# --intent: literal (uma pessoa, lugar ou coisa com nome) · illustrative (uma ideia genérica)
+# --media: image · video · any (padrão). Só NASA e Commons têm os dois tipos.
+# Atenção: este comando consulta o provedor na internet.
+getbrolls search --provider nasa --query "Sua busca" --intent illustrative --media image --project /caminho/meu-video
 
 # ── resolve --url ───────────────────────────────────────────
 # O QUE FAZ: registra um vídeo pelo link, sem precisar buscar.
 # VALE PARA: YouTube · Instagram · TikTok · Wikimedia Commons · NASA
 # QUANDO USAR: quando você já sabe exatamente qual vídeo quer.
-python3 scripts/gb.py resolve --url "URL_PUBLICA" --project /caminho/meu-video
+getbrolls resolve --url "URL_PUBLICA" --project /caminho/meu-video
 
 # ── resolve --file ──────────────────────────────────────────
 # O QUE FAZ: registra um vídeo ou imagem que já está no seu computador.
 # DICA: use --creator "Autor" e --source-url "link" pra anotar a origem.
-python3 scripts/gb.py resolve --file "/caminho/arquivo.mp4" --project /caminho/meu-video
+getbrolls resolve --file "/caminho/arquivo.mp4" --project /caminho/meu-video
+
+# ── resolve (print de notícia ou de site) ───────────────────
+# O QUE FAZ: registra um arquivo que é um print, com os dados que a prévia e a entrega usam.
+# --asset-type: video · image · news_screenshot · web_screenshot (sem ele, vem da extensão)
+# --title: o título do print ou da notícia · --captured-at: a data do print (ISO 8601)
+# --context-image: um segundo print seu, que fica parado ao lado · --shot: o identificador único do insert, ex.: insert-02
+# --intent: literal ou illustrative · --full-preview-file: a prévia pronta que já mostra só este
+#   insert, usada com GB_GIF_SCOPE=full
+getbrolls resolve --file "/caminho/print.png" --asset-type news_screenshot --title "Título da notícia" --captured-at "2026-10-30T10:00:00Z" --source-url "link" --project /caminho/meu-video
 
 # ── inspect --candidate ─────────────────────────────────────
 # O QUE FAZ: raio-x do vídeo: duração, capítulos e legendas.
 # QUANDO USAR: antes de escolher o trecho, pra não assistir tudo.
-python3 scripts/gb.py inspect --candidate "<ID>" --project /caminho/meu-video
+getbrolls inspect --candidate "<ID>" --project /caminho/meu-video
 
 # ── inspect --url --query ───────────────────────────────────
 # O QUE FAZ: procura pela legenda em que minuto falam do assunto.
 # VOCÊ RECEBE: os trechos mais prováveis, com início e fim em segundos.
 # QUANDO USAR: vídeo de 1 hora e você só precisa de 5 segundos dele.
-python3 scripts/gb.py inspect --url "URL_PUBLICA" --query "O que encontrar no video" --project /caminho/meu-video
+getbrolls inspect --url "URL_PUBLICA" --query "O que encontrar no video" --project /caminho/meu-video
+
+# ── inspect --max-windows ───────────────────────────────────
+# O QUE FAZ: limita quantos trechos vêm na resposta (de 1 a 20; padrão 3).
+# ATENÇÃO: --candidate só funciona se o candidato tem URL pública. Num arquivo local, o erro
+#          manda usar "inspect --url" ou importar o original com "resolve --file".
+getbrolls inspect --url "URL_PUBLICA" --query "O que encontrar no video" --max-windows 5 --project /caminho/meu-video
 
 # ── browser-plan ────────────────────────────────────────────
 # O QUE FAZ: planeja o print de uma página (notícia, site) pelo navegador.
 # QUANDO USAR: quando o B-roll é uma manchete ou uma tela de site.
-python3 scripts/gb.py browser-plan --url "URL_DA_PAGINA" --project /caminho/meu-video
+getbrolls browser-plan --url "URL_DA_PAGINA" --project /caminho/meu-video
 ```
 
 ## 4 👀 Prévia e Storyboard
 
 > É o **offline**: você vê o trecho em movimento, leve, antes de baixar em alta.
-> 💬 **No chat:** `/get-brolls-review` monta, manda o link e importa suas decisões.
+> 💬 **No chat:** `/getbrolls:get-brolls-review` monta, manda o link e importa suas decisões.
 
 ```bash
 # ── preview ─────────────────────────────────────────────────
@@ -236,21 +428,26 @@ python3 scripts/gb.py browser-plan --url "URL_DA_PAGINA" --project /caminho/meu-
 # OPCIONAIS: --narration (a fala do roteiro) e --reason (por que escolheu).
 #            Os dois aparecem no Storyboard pra quem for aprovar.
 # VOCÊ RECEBE: GIF, pôster e folha de quadros em brolls/previews/.
-python3 scripts/gb.py preview --candidate "<ID>" --start 10 --end 15 --narration "Fala exata do roteiro" --reason "Motivo da escolha" --project /caminho/meu-video
+getbrolls preview --candidate "<ID>" --start 10 --end 15 --narration "Fala exata do roteiro" --reason "Motivo da escolha" --project /caminho/meu-video
+
+# ── preview (foto) ──────────────────────────────────────────
+# O QUE FAZ: foto da NASA, do Commons ou do seu computador não tem trecho.
+#            Rode sem --start/--end: a prévia é a própria imagem, parada.
+getbrolls preview --candidate "<ID>" --project /caminho/meu-video
 
 # ── preview --scan ──────────────────────────────────────────
 # O QUE FAZ: gera uma folha com quadros do vídeo inteiro, cada um com o tempo.
 # QUANDO USAR: pra achar o in/out certo e depois gerar o GIF só dele.
-python3 scripts/gb.py preview --candidate "<ID>" --scan --project /caminho/meu-video
+getbrolls preview --candidate "<ID>" --scan --project /caminho/meu-video
 
 # ── preview --reference-only ────────────────────────────────
 # O QUE FAZ: gera só uma imagem parada de referência, sem baixar o vídeo.
-python3 scripts/gb.py preview --candidate "<ID>" --reference-only --project /caminho/meu-video
+getbrolls preview --candidate "<ID>" --reference-only --project /caminho/meu-video
 
 # ── review ──────────────────────────────────────────────────
 # O QUE FAZ: monta o Storyboard (brolls/review.html) com todas as prévias.
 # QUANDO USAR: depois de gerar as prévias.
-python3 scripts/gb.py review --project /caminho/meu-video
+getbrolls review --project /caminho/meu-video
 
 # ── serve --background ──────────────────────────────────────
 # O QUE FAZ: abre o Storyboard no navegador.
@@ -259,40 +456,60 @@ python3 scripts/gb.py review --project /caminho/meu-video
 # NA PÁGINA: em cada trecho → Aprovar · Pedir ajuste · Reprovar.
 #            No fim → "Salvar decisões".
 # ATENÇÃO: abra PELO LINK e salve ANTES de fechar a aba.
-python3 scripts/gb.py serve --background --project /caminho/meu-video
+getbrolls serve --background --project /caminho/meu-video
+
+# ── serve --port ────────────────────────────────────────────
+# O QUE FAZ: pede uma porta. O padrão é 8767; se a pedida estiver ocupada, o servidor usa
+#            uma livre. Confira a porta em "port" (e o link em "urls") na resposta.
+getbrolls serve --background --port 8893 --project /caminho/meu-video
 
 # ── serve --stop ────────────────────────────────────────────
 # O QUE FAZ: fecha o Storyboard.
-python3 scripts/gb.py serve --stop --project /caminho/meu-video
+getbrolls serve --stop --project /caminho/meu-video
 ```
 
 ## 5 ✅ Aprovar
 
-> É a **aprovação do cliente**. Primeira trava: sem ela, nada baixa.
+> É a **aprovação do cliente**. Primeira trava: sem ela, o corte final não sai.
 
 ```bash
 # ── import-review ───────────────────────────────────────────
 # O QUE FAZ: traz pro projeto o que você decidiu no Storyboard.
 # --by: seu nome, que fica registrado como quem aprovou.
 # QUANDO USAR: logo depois de clicar em "Salvar decisões".
-python3 scripts/gb.py import-review --by "Seu nome" --project /caminho/meu-video
+getbrolls import-review --by "Seu nome" --project /caminho/meu-video
 
 # ── import-review --file ────────────────────────────────────
 # O QUE FAZ: igual, escolhendo um arquivo de decisões específico.
 # QUANDO USAR: se salvou mais de uma vez e quer uma versão anterior.
-python3 scripts/gb.py import-review --file "/caminho/decisoes.json" --by "Seu nome" --project /caminho/meu-video
+getbrolls import-review --file "/caminho/decisoes.json" --by "Seu nome" --project /caminho/meu-video
 
 # ── approve ─────────────────────────────────────────────────
 # O QUE FAZ: aprova um trecho sem abrir o Storyboard.
 # REGISTRA: quem aprovou (--by) e a frase exata da aprovação (--statement).
+# VÁRIOS: repita --candidate "<ID>" para cada trecho que você mostrou.
 # APROVAR TUDO: troque --candidate "<ID>" por --all
 #               (só se você viu todas as prévias).
-python3 scripts/gb.py approve --candidate "<ID>" --by "Seu nome" --channel chat --statement "Frase exata da aprovacao recebida" --project /caminho/meu-video
+# MUDOU DE IDEIA: aprovar pelo ID (um ou vários) desfaz um reject;
+#                 o --all nunca aprova um item rejeitado.
+getbrolls approve --candidate "<ID>" --by "Seu nome" --channel chat --statement "Frase exata da aprovacao recebida" --project /caminho/meu-video
 
 # ── reject ──────────────────────────────────────────────────
 # O QUE FAZ: descarta o candidato e guarda o motivo.
 # POR QUE O MOTIVO: daqui a meses você sabe por que aquele trecho saiu.
-python3 scripts/gb.py reject --candidate "<ID>" --reason "Motivo do descarte" --project /caminho/meu-video
+getbrolls reject --candidate "<ID>" --reason "Motivo do descarte" --project /caminho/meu-video
+
+# ── --confirm-format-change ─────────────────────────────────
+# QUANDO APARECE: você mudou o video_format no RULES.md depois de aprovar trechos. Mudar o
+#   formato-alvo invalida essas aprovações, então o comando para ANTES de mexer em qualquer
+#   item e diz quais seriam atingidos: "Mudar o formato-alvo para reels invalidaria 1
+#   aprovação(ões) já dada(s): <ID>". Nada foi gravado.
+# O QUE FAZER: se é isso mesmo, repita o mesmo comando com --confirm-format-change; os trechos
+#   voltam a aguardar aprovação (awaiting_approval) e rejeições seguem rejeitadas. Se não, volte o video_format
+#   no RULES.md.
+# ONDE VALE: search, resolve, preview, approve, permit, reject, fetch, verify, review,
+#   import-review, remember, browser-plan e deliver. Nos outros comandos a flag não faz nada.
+getbrolls reject --candidate "<ID>" --reason "Motivo do descarte" --confirm-format-change --project /caminho/meu-video
 ```
 
 ## 6 📄 Direitos de uso
@@ -304,18 +521,18 @@ python3 scripts/gb.py reject --candidate "<ID>" --reason "Motivo do descarte" --
 # ── Opção A: permit --evidence ──────────────────────────────
 # O QUE FAZ: registra as condições que você leu na página da fonte.
 # QUANDO USAR: você foi na página do vídeo e viu a licença.
-python3 scripts/gb.py permit --candidate "<ID>" --evidence "Condições de uso reais dessa fonte" --project /caminho/meu-video
+getbrolls permit --candidate "<ID>" --evidence "Condições de uso reais dessa fonte" --project /caminho/meu-video
 
 # ── Opção B: permit --preset ────────────────────────────────
 # O QUE FAZ: usa o texto de termos padrão da fonte.
 # VALORES: youtube · nasa · commons · pexels · pixabay
 # ATENÇÃO: mesmo assim, confira a página do vídeo.
-python3 scripts/gb.py permit --candidate "<ID>" --preset youtube --project /caminho/meu-video
+getbrolls permit --candidate "<ID>" --preset youtube --project /caminho/meu-video
 
 # ── Opção C: permit --declared-by ───────────────────────────
 # O QUE FAZ: registra que você assume a responsabilidade pelo uso.
 # EXIGE: nome e sobrenome + uma frase com pelo menos 20 caracteres.
-python3 scripts/gb.py permit --candidate "<ID>" --declared-by "Seu Nome" --declaration-text "Frase dizendo que você assume o uso" --project /caminho/meu-video
+getbrolls permit --candidate "<ID>" --declared-by "Seu Nome" --declaration-text "Frase dizendo que você assume o uso" --project /caminho/meu-video
 ```
 
 ## 7 ⬇️ Baixar
@@ -323,15 +540,18 @@ python3 scripts/gb.py permit --candidate "<ID>" --declared-by "Seu Nome" --decla
 ```bash
 # ── fetch ───────────────────────────────────────────────────
 # O QUE FAZ: baixa e corta só o trecho aprovado (1080p quando a fonte tem).
-# VAI PARA: brolls/clips/
+# VAI PARA: broll/ (projeto criado com init, layout 1) ou brolls/clips/ (os demais)
 # SE RECUSAR: falta aprovar (passo 5) ou registrar os direitos (passo 6).
-python3 scripts/gb.py fetch --candidate "<ID>" --project /caminho/meu-video
+getbrolls fetch --candidate "<ID>" --project /caminho/meu-video
+
+# FONTE DE PLUGIN JÁ CONSUMIDA (compra ou cota de uso único): rode de novo com --reacquire.
+getbrolls fetch --candidate "<ID>" --reacquire --project /caminho/meu-video
 
 # ── verify ──────────────────────────────────────────────────
 # O QUE FAZ: confere se cada arquivo baixado está inteiro e abre.
 # COMO: compara uma "impressão digital" do arquivo (hash) e tenta decodificar.
 # DEU CERTO QUANDO: o "count" bate com o número de trechos baixados.
-python3 scripts/gb.py verify --project /caminho/meu-video
+getbrolls verify --project /caminho/meu-video
 ```
 
 ## 8 📦 Entregar
@@ -339,14 +559,14 @@ python3 scripts/gb.py verify --project /caminho/meu-video
 ```bash
 # ── deliver --dry-run ───────────────────────────────────────
 # O QUE FAZ: mostra como a pasta de entrega vai ficar, sem criar nada.
-python3 scripts/gb.py deliver --dry-run --project /caminho/meu-video
+getbrolls deliver --dry-run --project /caminho/meu-video
 
 # ── deliver ─────────────────────────────────────────────────
 # O QUE FAZ: organiza tudo em entrega/, uma pasta por beat.
 # CADA PASTA TEM: o corte, a folha de quadros e o ORIGEM.md (fonte, autor, trecho e hash).
 # SEM BRIEF: tudo vai para a pasta 00-sem-beat/.
 # É DAQUI que você arrasta pro editor.
-python3 scripts/gb.py deliver --project /caminho/meu-video
+getbrolls deliver --project /caminho/meu-video
 ```
 
 **Como a pasta do projeto fica no final:**
@@ -365,7 +585,7 @@ meu-video/
     ├── manifest.json   # a "ficha" de todos os candidatos
     ├── review.html     # o Storyboard
     ├── previews/       # GIFs e folhas de quadros
-    ├── clips/          # cortes finais
+    ├── clips/          # cortes finais (no projeto do init, ficam em broll/)
     ├── credits.md      # créditos de tudo que foi usado
     └── getbrolls.log   # registro de cada passo (pra achar erro)
 ```
@@ -380,26 +600,29 @@ meu-video/
 # ── remember ────────────────────────────────────────────────
 # O QUE FAZ: guarda um trecho que funcionou (approved) ou não (rejected).
 # VALE PARA: este projeto.
-python3 scripts/gb.py remember --candidate "<ID>" --decision approved --reason "Motivo real da aprovacao" --by "Seu nome" --project /caminho/meu-video
-python3 scripts/gb.py remember --candidate "<ID>" --decision rejected --reason "Motivo real do descarte" --by "Seu nome" --project /caminho/meu-video
+getbrolls remember --candidate "<ID>" --decision approved --reason "Motivo real da aprovacao" --by "Seu nome" --project /caminho/meu-video
+getbrolls remember --candidate "<ID>" --decision rejected --reason "Motivo real do descarte" --by "Seu nome" --project /caminho/meu-video
 
 # ── references ──────────────────────────────────────────────
 # O QUE FAZ: mostra tudo que foi guardado com remember neste projeto.
-python3 scripts/gb.py references --project /caminho/meu-video
+getbrolls references --project /caminho/meu-video
 
 # ── learn ───────────────────────────────────────────────────
 # O QUE FAZ: guarda aprendizados que valem pra TODOS os seus projetos.
 # --outcome hit (a busca rendeu) ou miss (não rendeu)
-python3 scripts/gb.py learn --query "Busca realizada" --provider youtube --outcome hit --project /caminho/meu-video
+getbrolls learn --query "Busca realizada" --provider youtube --outcome hit --project /caminho/meu-video
 # Guarda um gosto seu (ex.: "prefiro imagens sem texto na tela")
-python3 scripts/gb.py learn --preference "Preferencia editorial informada" --by "Seu nome" --project /caminho/meu-video
-# Guarda uma anotação livre
-python3 scripts/gb.py learn --note "Aprendizado desta coleta" --project /caminho/meu-video
+getbrolls learn --preference "Preferencia editorial informada" --by "Seu nome" --project /caminho/meu-video
+# --note é um complemento: só vale junto com --query (sozinho, o comando recusa)
+getbrolls learn --query "Busca realizada" --provider youtube --outcome hit --note "Aprendizado desta coleta" --project /caminho/meu-video
+# Guarda um trecho que você já registrou com remember (vira um ponteiro, sem copiar o vídeo).
+# --shot diz em qual beat ele foi usado. Rode remember antes: sem isso, o comando recusa.
+getbrolls learn --from-candidate "<ID>" --shot "<ID_DO_BEAT>" --project /caminho/meu-video
 
 # ── library ─────────────────────────────────────────────────
 # O QUE FAZ: procura no que você já guardou (buscas, gostos, trechos).
 # QUANDO USAR: antes de começar a buscar num projeto novo.
-python3 scripts/gb.py library --search "Termo para consultar" --project /caminho/meu-video
+getbrolls library --search "Termo para consultar" --project /caminho/meu-video
 ```
 
 ## 📥 Fila: vários Reels/TikToks sem tomar bloqueio
@@ -411,40 +634,220 @@ python3 scripts/gb.py library --search "Termo para consultar" --project /caminho
 # ── queue add ───────────────────────────────────────────────
 # O QUE FAZ: coloca um ou mais links na fila. Link repetido é ignorado.
 # --provider: instagram · tiktok · youtube
-python3 scripts/gb.py queue --action add --provider instagram --url "URL_DO_REEL" --project /caminho/meu-video
+getbrolls queue --action add --provider instagram --url "URL_DO_REEL" --project /caminho/meu-video
 
 # ── queue next ──────────────────────────────────────────────
 # O QUE FAZ: entrega o próximo link, se já puder.
 # VOCÊ RECEBE: {"item": {...}} → pode baixar esse agora
 #          ou: {"item": null, "wait_seconds": 83} → espere 83 s e peça de novo
-python3 scripts/gb.py queue --action next --provider instagram --project /caminho/meu-video
+#               (motivo `cooldown` = limite temporário: espere e volte; se o bloqueio voltar, pare)
+#          ou: erro "Fila de `instagram` parada" → recusa de acesso: pare e veja `queue resume` abaixo
+getbrolls queue --action next --provider instagram --project /caminho/meu-video
 
 # ── queue mark ──────────────────────────────────────────────
 # O QUE FAZ: diz à fila como foi o item que você pegou no next.
 # ✅ Baixou:
-python3 scripts/gb.py queue --action mark --id "<ID_DA_FILA>" --done --project /caminho/meu-video
-# ❌ Falhou (se o motivo tiver 403, 429 ou "login", a fila pausa de 30 min até 4 h):
-python3 scripts/gb.py queue --action mark --id "<ID_DA_FILA>" --failed --reason "Motivo da falha" --project /caminho/meu-video
+getbrolls queue --action mark --id "<ID_DA_FILA>" --done --project /caminho/meu-video
+# ❌ Falhou: com 429 ou "rate limit" no motivo, a fila pausa de 30 min até 4 h (só ritmo);
+#    com 401, 403, "login", desafio ou CAPTCHA, a fila daquela fonte PARA, sem horário para voltar:
+#    esperar não libera nada. URL expirada confirmada: recapture pela mesma rota permitida.
+getbrolls queue --action mark --id "<ID_DA_FILA>" --failed --reason "Motivo da falha" --project /caminho/meu-video
 # ⏭️ Pulou:
-python3 scripts/gb.py queue --action mark --id "<ID_DA_FILA>" --skipped --reason "Motivo para pular" --project /caminho/meu-video
+getbrolls queue --action mark --id "<ID_DA_FILA>" --skipped --reason "Motivo para pular" --project /caminho/meu-video
+
+# ── queue resume ────────────────────────────────────────────
+# O QUE FAZ: tira a parada de uma fonte. Só VOCÊ roda, depois de confirmar que o acesso voltou;
+#   AT é o `stopped.at` que o `status` mostra. O agente nunca roda isto por conta própria.
+getbrolls queue --action resume --provider instagram --by "SEU NOME" --phrase "SUA FRASE EXATA" --expect AT --project /caminho/meu-video
 
 # ── queue status ────────────────────────────────────────────
-# O QUE FAZ: mostra quantos faltam, quantos foram e se está em pausa.
-python3 scripts/gb.py queue --action status --project /caminho/meu-video
+# O QUE FAZ: mostra quantos faltam, quantos foram e se está em pausa ou parada.
+getbrolls queue --action status --project /caminho/meu-video
+```
+
+## 🎬 Roteiro e componentes (opcional)
+
+> Para quem quer o conteúdo pronto (reels 9:16): o `ROTEIRO.md` descreve o vídeo por cenas, e os beats do BRIEF nascem dele. Só vale o `ROTEIRO.md` criado pelo `roteiro --action new` (frontmatter `type: roteiro`); um roteiro seu, escrito à parte, não muda nada. Detalhes em [GUIDE.md](GUIDE.md#roteiro-e-componentes).
+
+```bash
+# ── roteiro --action new ────────────────────────────────────
+# O QUE FAZ: cria o ROTEIRO.md com o esqueleto do gênero e as pastas aroll/ e assets/.
+#            Sem RULES.md no projeto, cria um no formato do roteiro (reels); um RULES.md
+#            que já existe nunca é tocado (se o formato dele divergir, o check avisa).
+# --force recomeça do esqueleto e guarda o anterior em ROTEIRO.md.bak.
+getbrolls roteiro --action new --genero reels --tema "Seu tema" --project /caminho/meu-video
+
+# ── roteiro --action check ──────────────────────────────────
+# O QUE FAZ: valida o roteiro e mostra o plano de cena (componentes, duração). Só lê.
+#            Sem RULES.md no projeto (ninguém escolheu formato), vale o aspecto do roteiro.
+getbrolls roteiro --action check --project /caminho/meu-video
+
+# ── roteiro --action review ─────────────────────────────────
+# O QUE FAZ: registra que VOCÊ revisou o texto atual. Mudou o conteúdo? Revise de novo.
+# --expect é o review.sha256 que o check mostrou: se o arquivo mudou desde então, recusa.
+getbrolls roteiro --action review --by "Seu Nome" --channel chat --statement "pode seguir" --expect <sha256> --project /caminho/meu-video
+
+# ── roteiro --action plan / sync ────────────────────────────
+# O QUE FAZ: plan mostra o que o sync mudaria no BRIEF.md, sem gravar;
+#            sync grava os ids de cena e os beats cNN (só com revisão válida).
+# ATENÇÃO: alvo novo num beat já aprovado pede --confirm-target-change.
+getbrolls roteiro --action plan --project /caminho/meu-video
+getbrolls roteiro --action sync --project /caminho/meu-video
+
+# ── assets --action list / where ────────────────────────────
+# O QUE FAZ: mostra os componentes (marca, lettering, sfx, musica, imagem, composicao)
+#            e onde cada nome resolve: projeto, pasta do cliente ou biblioteca pessoal. Só lê.
+getbrolls assets --action list --project /caminho/meu-video
+getbrolls assets --action where --kind sfx --name whoosh --project /caminho/meu-video
+
+# ── analysis --action register / list / check ───────────────
+# O QUE FAZ: register dá a uma mídia do projeto um id por conteúdo e grava
+#            analysis/media/<id>/media.json (duração, quadro, codecs pelo ffprobe);
+#            o hash só roda de novo quando tamanho ou mtime mudam. list e check só leem;
+#            check sai com código 1 quando acha problema (pasta órfã, JSON inválido, link).
+# --role só quando a pasta não diz o papel (aroll/, broll/, assets/musica/, assets/sfx/).
+getbrolls analysis --action register --path aroll/c01.mp4 --project /caminho/meu-video
+getbrolls analysis --action check --project /caminho/meu-video
+
+# ── export --to … [--dry-run] ───────────────────────────────
+# export --to hyperframes|davinci recusa: esta versão ainda não tem comando que monte a timeline neles.
+# O QUE FAZ: com o roteiro revisado e sincronizado, monta um projeto de edição numa
+#            pasta nova exports/<exporter>/001/, 002/… (LATEST guarda a mais nova).
+#            O exporter vem de um plugin de terceiros habilitado; nenhuma pasta de export é apagada.
+# --dry-run mostra a pasta, os arquivos e a mídia, sem gravar nada.
+# Passo a passo: references/roteiro.md#export-do-roteiro-ao-projeto-de-edição
+getbrolls export --to meu_exporter --dry-run --project /caminho/meu-video
+getbrolls export --to meu_exporter --project /caminho/meu-video
+```
+
+## 🏢 Clientes e receitas (opcional)
+
+> Para quem produz para clientes: a marca e os sons do cliente ficam numa pasta dele, e um vídeo pronto vira receita para os próximos. Licenças e aprovações nunca vão junto. Detalhes em [GUIDE.md](GUIDE.md#clientes-e-receitas).
+
+```bash
+# ── client --action add ─────────────────────────────────────
+# O QUE FAZ: cria <pasta>/cliente-exemplo/ com client.json, assets/, recipes/ e projetos/ e registra o cliente.
+getbrolls client --action add --slug cliente-exemplo --root /caminho/Clientes
+
+# ── recipe --action list / show ─────────────────────────────
+# O QUE FAZ: list mostra as versões; show confere o sha256 de cada arquivo (intact). Só leem.
+getbrolls recipe --action list
+getbrolls recipe --action show --ref cliente-exemplo.reels-split@1
+
+# ── init --recipe ───────────────────────────────────────────
+# O QUE FAZ: cria o projeto novo da receita íntegra: project.json, ROTEIRO.md em rascunho,
+#            componentes e recipe.lock.json. O que o cliente já tem fica na pasta dele;
+#            o resto é copiado sem licença (aviso LICENCE_NOT_TRANSFERRED).
+# DEPOIS: status e export avisam (RECIPE_LOCK_DRIFT) se um componente mudar.
+getbrolls init --recipe reels-split@1 --client cliente-exemplo --tema "Seu tema" --project /caminho/video-novo
+```
+
+## 🧩 Plugins do SDK (experimental)
+
+> Plugins acrescentam fontes, rotas de download e comandos próprios, instalados em `$GB_HOME/plugins` (padrão `~/.getbrolls/plugins`). Não é o plugin do Claude Code. Experimental: o contrato (`sdk_api` 1) pode mudar em versão minor. Detalhes em [SDK.md](SDK.md).
+
+```bash
+# ── plugins --action list ───────────────────────────────────
+# O QUE FAZ: lista os plugins instalados, com status e o que cada um traz.
+# STATUS: disabled · enabled · suspended · invalid · incompatible
+# ATENÇÃO: não roda código do plugin; o resultado real do carregamento sai no doctor.
+getbrolls plugins --action list
+
+# ── plugins --action install ────────────────────────────────
+# O QUE FAZ: traz um plugin de uma pasta ou de um repositório git.
+# EM DOIS PASSOS: sem --yes só mostra manifesto, permissões e o sha256;
+#                 depois de revisar, repita com --yes --expect <sha256 da prévia>.
+getbrolls plugins --action install --source "<pasta-ou-url-git>"
+getbrolls plugins --action install --source "<pasta-ou-url-git>" --yes --expect "<sha256>"
+# --subdir: a pasta do plugin dentro do repositório git, quando ele não está na raiz.
+getbrolls plugins --action install --source "<url-git>" --subdir "plugins/demo"
+
+# ── plugins --action marketplace-add / -list / -update / -remove ──
+# O QUE FAZ: um marketplace é um repositório git com o índice getbrolls-marketplace.json.
+#   marketplace-add fixa o índice num commit (--ref escolhe branch/tag; --commit, um sha);
+#   marketplace-list mostra os fixados (só lê); marketplace-update busca o índice de novo,
+#   move o pin e devolve o diff (sem --marketplace, todos; --commit fixa outro; voltar
+#   atrás pede --allow-rollback). Nenhum plugin é atualizado por ele: use update;
+#   marketplace-remove tira o índice e o cache. Plugins já instalados ficam.
+# SE O ARQUIVO NÃO ABRE: se $GB_HOME/marketplaces.json não tem permissão de leitura, ou é uma
+#   pasta no lugar do arquivo, os comandos marketplace-*, search e install --id recusam com
+#   IO_ERROR e a mensagem diz o motivo: confira o caminho e as permissões. Não apague o
+#   arquivo por causa disso. O doctor e o capabilities seguem e mostram o motivo em
+#   "marketplaces_error"; o update --all segue como prévia e põe esses plugins em "skipped".
+getbrolls plugins --action marketplace-add --source "<url-git-do-marketplace>"
+getbrolls plugins --action marketplace-list
+getbrolls plugins --action marketplace-update --marketplace "<nome>"
+getbrolls plugins --action marketplace-remove --marketplace "<nome>"
+
+# ── plugins --action search ─────────────────────────────────
+# O QUE FAZ: procura nos índices em cache, sem rede (--marketplace limita a um).
+getbrolls plugins --action search --query "banco"
+
+# ── plugins --action install --id <id>@<marketplace> ────────
+# O QUE FAZ: instala pelo índice fixado: a origem e o commit vêm dele.
+# EM DOIS PASSOS: sem --yes é a prévia (manifesto, permissões e o "expect");
+#                 com o ok da pessoa, rode o comando de "next" (--yes --expect <valor>).
+# TIER: "tier" é o que o índice DECLARA (official, verified, community). Só o índice
+#       oficial do getbrolls sai com tier_verified: true; nos outros, tier_label diz
+#       "official (declarado, não verificado)" — o tier nunca muda as regras de instalação.
+getbrolls plugins --action install --id "<id>@<marketplace>"
+getbrolls plugins --action install --id "<id>@<marketplace>" --yes --expect "<expect da prévia>"
+
+# ── plugins --action update ─────────────────────────────────
+# O QUE FAZ: compara com a origem gravada no install e traz a versão nova
+#            (instalado por marketplace: pela entrada do índice fixado; --all só mostra a prévia de todos).
+# CONFIRMA IGUAL AO INSTALL: --yes --expect <sha256 da prévia>.
+getbrolls plugins --action update --id "<id>"
+
+# ── plugins --action remove ─────────────────────────────────
+# O QUE FAZ: tira a pasta do plugin e o estado dele no plugins.json, em dois passos:
+#            sem --yes mostra o que sai; com --yes remove (os dados em plugin-data/ ficam).
+getbrolls plugins --action remove --id "<id>"
+getbrolls plugins --action remove --id "<id>" --yes
+
+# ── plugins --action enable / disable ───────────────────────
+# O QUE FAZ: liga ou desliga um plugin que já está na pasta.
+# ENABLE EM DOIS PASSOS: sem --yes só mostra o manifesto; com --yes liga.
+# PLUGIN SUSPENSO (a pasta mudou): a prévia mostra o que mudou e pede --yes --expect <sha256>.
+getbrolls plugins --action enable --id "<id>"
+getbrolls plugins --action disable --id "<id>"
+
+# ── plugins --action new / check ────────────────────────────
+# O QUE FAZ: new cria um plugin mínimo (provider, route, command ou exporter) que já passa no teste;
+#            check valida uma pasta de plugin.
+# ATENÇÃO: check EXECUTA o código da pasta. Use só em plugin que você escreveu ou revisou.
+getbrolls plugins --action new --id meu_banco --kind route --path "<pasta>"
+getbrolls plugins --action check --path "<pasta>/meu_banco"
+
+# ── x ───────────────────────────────────────────────────────
+# O QUE FAZ: roda um comando próprio de um plugin habilitado. Só lê o projeto.
+# x --list mostra quais comandos existem.
+getbrolls x --list
+getbrolls x pasta_local recentes --arg limite=5 --project /caminho/meu-video
 ```
 
 ## ❓ Ajuda
 
 ```bash
 # Lista todos os comandos
-python3 scripts/gb.py --help
+getbrolls --help
 
-# Mostra a versão instalada
-python3 scripts/gb.py --version
+# Mostra a versão, o Python e de onde vêm os dados: getbrolls 2.6.0 (Python 3.12.4; dados: wheel)
+# (num clone, o script dele diz dados: checkout)
+getbrolls --version
+
+# Mostra o getbrolls.toml em vigor: cada campo com o valor e a origem
+getbrolls profile --action show
 
 # Mostra tudo o que um comando aceita (troque "search" por qualquer um)
-python3 scripts/gb.py search --help
+getbrolls search --help
+
+# Descreve em JSON todos os comandos, flags, o que só lê, códigos de saída e comandos de plugin
+# (gerado do próprio parser; não precisa de projeto e não grava nada). --json é aceito.
+getbrolls capabilities --json
 ```
+
+O `capabilities` serve a agentes e scripts que precisam descobrir o que esta instalação sabe fazer sem ler o `--help` de cada comando: cada comando traz `summary`, `options`, `requires_project` e `read_only` (`true`, `false` ou `"by_action"`); a resposta também traz `invocation` (como chamar esta instalação, sem caminho da máquina), `exit_codes`, `error_codes`, `plugin_commands` (só plugins habilitados, lidos do manifesto) `plugins_problems` (plugins inválidos, com falha ou suspensos, com o motivo) e `marketplaces` (marketplaces de plugins fixados: nome, commit do índice, quantos plugins, `allowed`, `official` — se é o índice oficial — e `problem`, sem caminho da máquina), `environments` (as pontes de ambiente, as mesmas de `environment --action list`) e, só quando um arquivo não pôde ser lido, `plugins_error` ou `marketplaces_error`, com o motivo.
 
 ---
 
@@ -467,15 +870,26 @@ Todo comando responde em **JSON**. Pensa como o **relatório de render**: um tex
   - `command`: o comando pronto pra copiar.
   - `why`: por que é esse o próximo passo.
   - `blocking_human`: `true` quando o próximo passo depende de **você** (aprovar, dar uma informação).
-- 🔴 **Deu erro?** A mensagem sai na última linha, também em JSON, com `error` (o que houve) e `error_code` (o tipo do erro).
+- 🔴 **Deu erro?** A mensagem de erro sai em JSON em stderr, numa linha só, com `error` (o que houve) e `error_code` (o tipo do erro). Nunca sai traceback: os detalhes técnicos ficam em `brolls/diagnostics.jsonl` (ou em `~/.getbrolls/diagnostics.jsonl`, quando o comando não tem projeto).
+- 💡 **`hint`** só aparece no erro quando há o que fazer além de corrigir e repetir: gravação pendente (`recovery_pending: true`, o próximo comando a retoma), estado já gravado (`state_committed: true`, rode `review` para regenerar a página; no `deliver` que falhou nomeando arquivos em conflito, resolva esses arquivos e rode `deliver` de novo) ou gravação interrompida de um comando anterior concluída antes deste (`recovered: true`; o comando que falhou não gravou o estado do projeto).
+- ⌨️ **Comando ou flag digitado errado** (erro de uso, código `2`): o erro vai para stderr; com stderr fora do terminal (agente, script, `2>` para arquivo) sai um JSON com `error`, `error_code: "USAGE_ERROR"`, `usage`, `prog` e `suggestion` (o nome parecido, ou `null`); com stderr no terminal, sai o texto do `usage` e, quando há nome parecido, "Você quis dizer: search?". Vale também para opção obrigatória digitada errado (`--projct` → `--project`).
 
 **Código de saída** (o número que o terminal guarda depois de cada comando, útil em scripts):
 
 | Código | Significa |
 |---|---|
 | `0` | Deu certo |
-| `2` | Erro de uso ou de dados: um ID errado, falta aprovação, link fora do ar |
+| `1` | Erro de operação ou de dados: um ID errado, falta aprovação, link fora do ar. Outro comando usando o mesmo projeto (ou outro `setup` na mesma pasta do runtime) também sai `1`, com `error_code: "LOCKED"`: é só esperar e repetir. `setup --upgrade ytdlp` cuja atualização falhou, com a venv refeita na versão fixada, sai `1` |
+| `2` | Erro de uso: comando, flag ou configuração (`--env-file` que não existe, por exemplo) |
 | `3` | Erro interno (bug). Abra uma issue com o `brolls/diagnostics.jsonl` |
+| `4` | Falta um pré-requisito da instalação: arquivos de dados, ffmpeg, yt-dlp |
+| `130` | Interrompido (Ctrl+C) |
+
+> `serve` em primeiro plano é a exceção do Ctrl+C: é assim que se para o servidor, e ele sai com `0`.
+
+> Até a 2.5, erro de operação ou de dados também saía com `2`. Script que testava `$? -eq 2` para esses erros agora testa `1`.
+
+O contrato completo — o que vai para stdout e stderr, todos os `error_code`, os avisos (`warnings`), o que só lê, `--yes`/`--expect` e a política de deprecação — está em [CLI_CONTRACT.md](CLI_CONTRACT.md). Os formatos dos arquivos que a ferramenta grava (manifesto, `project.json`, `analysis/`, receitas) estão em [SCHEMAS.md](SCHEMAS.md).
 
 ---
 
@@ -483,9 +897,9 @@ Todo comando responde em **JSON**. Pensa como o **relatório de render**: um tex
 
 Dois arquivos na pasta do projeto guardam as suas escolhas. Os dois são Markdown com **um bloco JSON dentro**. **Edite só o bloco JSON.**
 
-## BRIEF.md: o roteiro de B-rolls deste vídeo
+## BRIEF.md: o plano de B-rolls deste vídeo
 
-Criado pelo `init-brief` ou pela entrevista do `/get-brolls-brief`.
+Criado pelo `init-brief` ou pela entrevista do `/getbrolls:get-brolls-brief`.
 
 ```json
 {
@@ -559,11 +973,22 @@ Criado pelo `init-rules`. Vale pra todo o projeto.
 | `copyright.mode` | `per_item_evidence` ou `user_declaration` |
 | `responsible_person` / `declaration` | Seu nome e a frase, se usar `user_declaration` |
 
-> 💡 **Quer uma regra pra todos os projetos?** Crie o arquivo `~/.getbrolls/RULES.md` (`~` é a sua pasta de usuário). A ordem é: global → arquivo em `GB_RULES_FILE` → RULES do projeto. O último vence.
+> 💡 **Quer uma regra pra todos os projetos?** Crie o arquivo `~/.getbrolls/RULES.md` (`~` é a sua pasta de usuário). A ordem é: global → arquivo em `GB_RULES_FILE` → RULES do projeto. Num campo de valor único (`video_format`, por exemplo), o último vence. Numa lista (`asset_types`, `preferred_providers`, `blocked_domains`…), as camadas se somam sem repetir: o projeto acrescenta itens, mas não tira nem reordena os que vieram de cima. O `copyright` vale só no RULES do projeto.
 
 ## .env: configurações da ferramenta
 
-Arquivo opcional na pasta da skill. Copie o [`.env.example.pt-BR`](../.env.example.pt-BR) pra `.env` e mude só o que quiser. A lista completa, com faixas e padrões, está nesse arquivo.
+Arquivo opcional. Copie o [`.env.example.pt-BR`](../.env.example.pt-BR) pra `.env` e mude só o que quiser. A lista completa, com faixas e padrões, está nesse arquivo. Todas as variáveis `GB_*` (a de espera por trava `GB_LOCK_WAIT_S`, a que desliga a biblioteca `GB_LIBRARY`, a que espelha o log no stderr `GB_LOG_STDERR` e as outras) estão na tabela de [CLI_CONTRACT.md](CLI_CONTRACT.md#variáveis-de-ambiente).
+
+**Qual `.env` vale** (só um é lido, nunca se misturam), do mais forte ao mais fraco:
+
+1. `--env-file CAMINHO` (vem antes do subcomando);
+2. a variável `GB_ENV_FILE`, só no ambiente do processo;
+3. o `.env` da pasta do checkout ou do plugin;
+4. `$GB_HOME/.env` (por padrão, `~/.getbrolls/.env`): é o lugar certo no pacote instalado.
+
+- `--env-file` ou `GB_ENV_FILE` apontando para arquivo que não existe é erro de uso (código `2`).
+- Com dois `.env` possíveis (o do checkout e o de `$GB_HOME`), vale o de cima e todo comando avisa `ENV_FILE_SHADOWED`; o `doctor` mostra qual valeu em `install.env_file`.
+- `GB_HOME` dentro de `$GB_HOME/.env` é recusado, também quando esse arquivo chega por `--env-file` ou `GB_ENV_FILE`. Em qualquer outro `.env` ainda funciona, com o aviso `DEPRECATED` quando a linha vale (a leitura sai na 2.7): defina `GB_HOME` no ambiente.
 
 ```bash
 # Chaves dos bancos de imagem (grátis nos sites deles)
@@ -580,10 +1005,10 @@ GB_GIF_WIDTH=480
 GB_PREVIEW_MAX_SECONDS=10
 
 # Entrega com cópias independentes. Sem isso, o arquivo em entrega/ é o MESMO
-# de brolls/clips/ (não ocupa disco a mais) e vem como somente leitura
+# da pasta de clipes finais, broll/ ou brolls/clips/ (não ocupa disco a mais), e vem como somente leitura
 GB_DELIVERY_COPY=1
 
-# Quanto detalhe vai pro brolls/getbrolls.log: DEBUG, INFO (padrão), WARNING, ERROR, off
+# Quanto detalhe vai pro brolls/getbrolls.log (e pro $GB_HOME/logs/getbrolls.log, fora de projeto): DEBUG, INFO (padrão), WARNING, ERROR, off
 GB_LOG_LEVEL=INFO
 ```
 
@@ -606,20 +1031,20 @@ brew install jq
 # O QUE FAZ: busca e guarda o ID do primeiro resultado numa variável.
 # "$( ... )" roda o comando e guarda a resposta.
 # jq -r '.items[0].id' pega o "id" do primeiro item da lista.
-ID=$(python3 scripts/gb.py search --provider nasa --query "Artemis launch" --limit 1 --project /caminho/meu-video | jq -r '.items[0].id')
+ID=$(getbrolls search --provider nasa --query "Artemis launch" --limit 1 --project /caminho/meu-video | jq -r '.items[0].id')
 
 # Confere o que veio
 echo "$ID"
 
 # Agora usa a variável no lugar de <ID>
-python3 scripts/gb.py preview --candidate "$ID" --start 0 --end 4 --project /caminho/meu-video
+getbrolls preview --candidate "$ID" --start 0 --end 4 --project /caminho/meu-video
 ```
 
 ## Receita 2: perguntar "qual o próximo passo?"
 
 ```bash
 # O QUE FAZ: mostra a frase do status e o comando do próximo passo.
-python3 scripts/gb.py status --project /caminho/meu-video | jq -r '.summary.line, .summary.do.command'
+getbrolls status --project /caminho/meu-video | jq -r '.summary.line, .summary.do.command'
 ```
 
 ## Receita 3: um script que busca todos os beats de uma vez
@@ -632,12 +1057,12 @@ Crie um arquivo `buscar_beats.sh` com isto:
 # COMO USAR: troque a pasta do projeto e a lista de beats/buscas.
 PROJETO="/caminho/meu-video"
 
-python3 scripts/gb.py search --provider youtube --query "rocket launch" --limit 5 --shot "abertura" --project "$PROJETO"
-python3 scripts/gb.py search --provider nasa --query "Artemis crew" --limit 5 --shot "tripulacao" --project "$PROJETO"
-python3 scripts/gb.py search --provider commons --query "Moon surface" --limit 5 --shot "lua" --project "$PROJETO"
+getbrolls search --provider youtube --query "rocket launch" --limit 5 --shot "abertura" --project "$PROJETO"
+getbrolls search --provider nasa --query "Artemis crew" --limit 5 --shot "tripulacao" --project "$PROJETO"
+getbrolls search --provider commons --query "Moon surface" --limit 5 --shot "lua" --project "$PROJETO"
 
 # No fim, mostra onde o projeto parou
-python3 scripts/gb.py status --project "$PROJETO" | jq -r '.summary.line'
+getbrolls status --project "$PROJETO" | jq -r '.summary.line'
 ```
 
 E rode:
@@ -652,9 +1077,9 @@ bash buscar_beats.sh
 # O QUE FAZ: "set -e" faz o script parar no primeiro comando que falhar
 #            (código de saída diferente de 0), em vez de seguir no escuro.
 set -e
-python3 scripts/gb.py fetch --candidate "$ID" --project /caminho/meu-video
-python3 scripts/gb.py verify --project /caminho/meu-video
-python3 scripts/gb.py deliver --project /caminho/meu-video
+getbrolls fetch --candidate "$ID" --project /caminho/meu-video
+getbrolls verify --project /caminho/meu-video
+getbrolls deliver --project /caminho/meu-video
 echo "Entrega pronta"
 ```
 
@@ -666,7 +1091,7 @@ echo "Entrega pronta"
 
 | Aconteceu | Faça |
 |---|---|
-| `python3` não existe | No Windows, use `python` |
+| `getbrolls: command not found` | Com o pacote instalado, rode `uv tool update-shell` (ou `pipx ensurepath`) e abra um terminal novo. Num clone ou no plugin não existe `getbrolls`: o comando é o script da instalação. Veja [Instalar como comando](#-instalar-como-comando) |
 | `jq` não existe | `brew install jq` (Mac) |
 | Falta alguma ferramenta | Rode `doctor` |
 | `fetch` recusou | Faltou aprovar (passo 5) ou os direitos (passo 6) |
@@ -674,8 +1099,8 @@ echo "Entrega pronta"
 | "Trecho grande demais" | Prévia aceita no máximo 10 s |
 | Salvei no Storyboard e nada | Rode `import-review` |
 | Não sei onde parei | Rode `status` |
-| Erro estranho | Olhe as últimas linhas do `brolls/getbrolls.log` |
+| Erro estranho | Olhe as últimas linhas do `brolls/getbrolls.log` (de `plugins`, `client`, `recipe`, `profile` e `setup`, que não têm projeto, é o `getbrolls.log` da pasta `logs/` do `$GB_HOME`; o erro diz onde em `app_log`) |
 
 ---
 
-Referência completa: [GUIDE.md](GUIDE.md) · Formato do brief: [BRIEF.md](BRIEF.md) · Regras: [RULES.md](RULES.md) · Código da CLI: [`scripts/getbrolls/cli.py`](../scripts/getbrolls/cli.py)
+Referência completa: [GUIDE.md](GUIDE.md) · Formato do brief: [BRIEF.md](BRIEF.md) · Regras: [RULES.md](RULES.md) · Contrato da CLI: [CLI_CONTRACT.md](CLI_CONTRACT.md) · Formatos de arquivo: [SCHEMAS.md](SCHEMAS.md) · Código da CLI: [`scripts/getbrolls/cli_parser.py`](../scripts/getbrolls/cli_parser.py) (subcomandos e opções) · [`scripts/getbrolls/cli_project_args.py`](../scripts/getbrolls/cli_project_args.py) (opções de projeto)

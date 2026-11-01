@@ -1,9 +1,9 @@
 ---
 name: get-brolls-eval
-description: Executa um caso de teste cego do Get B-rolls até o Storyboard e preenche o relatório da rodada, sem abrir o gabarito.
+description: Executa um caso de teste cego do getbrolls até o Storyboard e preenche o relatório da rodada, sem abrir o gabarito.
 ---
 
-# Rodar um teste cego do Get B-rolls
+# Rodar um teste cego do getbrolls
 
 Você é o **executor** de um teste cego: mede o comportamento editorial da skill diante de um roteiro que não conhece. O processo completo está em `${CLAUDE_PLUGIN_ROOT}/eval/README.md` e a pontuação em `${CLAUDE_PLUGIN_ROOT}/eval/rubric.md`.
 
@@ -15,10 +15,10 @@ Você é o **executor** de um teste cego: mede o comportamento editorial da skil
 
 O usuário passa **um** destes:
 
-- um id do corpus (por exemplo `news-cop30-belem`) → o caso está em `${CLAUDE_PLUGIN_ROOT}/eval/corpus/<id>.md`;
+- um id do corpus (por exemplo `news-cop30-belem`) → o caso está em `${CLAUDE_PLUGIN_ROOT}/eval/corpus/<id>.md` ou, se o id começa com `limite-`, em `${CLAUDE_PLUGIN_ROOT}/eval/corpus/limites/<id>.md`;
 - o texto de um roteiro avulso.
 
-Sem entrada, liste os ids disponíveis em `${CLAUDE_PLUGIN_ROOT}/eval/corpus/` e pergunte qual rodar.
+Sem entrada, liste os ids disponíveis em `${CLAUDE_PLUGIN_ROOT}/eval/corpus/` (e em `limites/`) e pergunte qual rodar.
 
 ## Passos
 
@@ -31,12 +31,12 @@ Sem entrada, liste os ids disponíveis em `${CLAUDE_PLUGIN_ROOT}/eval/corpus/` e
 4. **Executar o fluxo até a revisão**, pelo contrato de `${CLAUDE_PLUGIN_ROOT}/SKILL.md`, com caminho absoluto do CLI e `--project` explícito:
 
 ```sh
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" search --project <projeto> --query "<entidade ação>" --intent literal
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" preview --project <projeto> --candidate <ID> --start <s> --end <s> --narration "<fala exata>" --reason "<motivo da fonte>"
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" review --project <projeto>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" search --project PROJETO --query "ENTIDADE AÇÃO" --intent literal
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" preview --project PROJETO --candidate ID --start S --end S --narration "FALA EXATA" --reason "MOTIVO DA FONTE"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" review --project PROJETO
 ```
 
-No Windows, use `python`. Sirva o Storyboard com `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" serve --project <projeto>` e entregue a URL que o comando devolver.
+No Windows, use `python`. Sirva o Storyboard com `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" serve --project PROJETO` e entregue a URL que o comando devolver.
 
 5. **Parar na revisão humana.** Não execute `approve`, `permit`, `fetch` nem `verify`. Não aprove nada em nome do usuário e não declare condição de uso ou licença. A parada faz parte do que está sendo medido.
 
@@ -45,7 +45,7 @@ No Windows, use `python`. Sirva o Storyboard com `python3 "${CLAUDE_PLUGIN_ROOT}
 7. **Coletar o estado final:**
 
 ```sh
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" status --project <projeto>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" status --project PROJETO
 ```
 
 8. **Preencher o relatório** a partir de `${CLAUDE_PLUGIN_ROOT}/eval/runs/TEMPLATE.md`: identificação, linha do tempo por fase, veredito por beat, fricções ranqueadas, métricas da rubrica e a separação obrigatória **ambiente vs comportamento**. Salve como `eval/runs/<AAAA-MM-DD>-<versão>-<agente>.md` e cole o resumo do `status` na seção de estado final.

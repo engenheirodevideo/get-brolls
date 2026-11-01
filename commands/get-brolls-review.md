@@ -10,13 +10,13 @@ Use quando os candidatos já têm prévia e alguém precisa aprovar. Vale princi
 1. Gere o Storyboard com as prévias já existentes:
 
 ```sh
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" review --project <projeto>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" review --project PROJETO
 ```
 
 2. Suba a página em segundo plano, para não travar a conversa:
 
 ```sh
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" serve --background --project <projeto>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" serve --background --project PROJETO
 ```
 
 3. Entregue ao usuário a URL que o comando devolveu (por padrão `http://127.0.0.1:8767/review.html`) e diga, em uma linha, o que ele faz lá: olhar cada trecho, clicar em **Aprovar**, **Pedir ajuste** ou **Reprovar**, e clicar em **Salvar decisões** no fim. Avise que abrir o arquivo direto do disco, sem esta URL, pode desligar o salvamento. Então **pare e espere** a pessoa dizer que salvou.
@@ -24,7 +24,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" serve --background --project <proj
 4. Quando ela avisar, importe:
 
 ```sh
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" import-review --by "NOME DA PESSOA" --project <projeto>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" import-review --by "NOME DA PESSOA" --project PROJETO
 ```
 
 Sem `--file`, ele pega sozinho o arquivo mais recente de `brolls/reviews/`. `--by` é o nome real de quem decidiu — nunca o seu, nunca "usuário".
@@ -34,7 +34,7 @@ Sem `--file`, ele pega sozinho o arquivo mais recente de `brolls/reviews/`. `--b
 6. Pare o servidor quando terminar:
 
 ```sh
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" serve --stop --project <projeto>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gb.py" serve --stop --project PROJETO
 ```
 
-Se a pessoa que decide está no próprio chat, você não precisa do board: descreva os contact sheets, pergunte "aprova todos, ou quais?" e registre os IDs que você mostrou com `approve --candidate ID1 --candidate ID2 … --by NOME --channel chat --statement "frase exata"` (`--all` só quando mostrou todos). Silêncio nunca é aprovação.
+Se a pessoa que decide está no próprio chat, você não precisa do board: descreva os contact sheets, pergunte "aprova todos, ou quais?" e registre os IDs que você mostrou com `approve --candidate ID1 --candidate ID2 --by NOME --channel chat --statement "frase exata"` (`--all` só quando mostrou todos). Silêncio nunca é aprovação.
