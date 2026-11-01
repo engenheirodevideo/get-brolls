@@ -5,40 +5,74 @@ português dizendo o que fazer. O brief descreve o vídeo e os beats; cada beat 
 comando pronto (`search`/`resolve`/`preview`) e se liga ao candidato pelo `--shot`.
 """
 
-import json
-import os
 import re
-import shlex
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-CLI = ROOT / "scripts" / "gb.py"
+from . import _paths, brief_source, vocab
+from .brief_source import BEAT_ID_RE, load_brief
+from .config import env_is_set
+from .limits import MAX_HINT_S, MIN_HINT_S
+from .sdk import schemas
 
-# O id do beat também é valor de `--shot`, então usa um alfabeto mais estreito que ele.
-BEAT_ID_RE = re.compile(r"[a-z0-9-]{1,40}")
-FORMATS = ("native", "reels", "horizontal")
-INTENTS = ("literal", "illustrative")
+# Reexport: quem já importava daqui (`from .brief import brief_path`, `brief.load_brief`
+# etc.) continua igual; o corpo deste módulo não os usa (mora em `brief_source`, o leaf
+# que `sdk.contracts` lê sem reabrir o ciclo `brief <-> sdk.contracts`).
+brief_path = brief_source.brief_path
+json_block_spans = brief_source.json_block_spans
+read_json_block = brief_source.read_json_block
+read_utf8 = brief_source.read_utf8
+retired_beat_ids = brief_source.retired_beat_ids
+
+FORMATS = vocab.FORMATS
+INTENTS = vocab.MATCH_KINDS
 POSTURES = ("per_item_evidence", "user_declaration")
-SOURCES = (
-    "youtube",
-    "instagram",
-    "tiktok",
-    "pexels",
-    "pixabay",
-    "commons",
-    "nasa",
-    "local",
-)
-STOCK_SOURCES = ("pexels", "pixabay")
-SEARCHABLE = ("youtube", "pexels", "pixabay", "commons", "nasa")
-MIN_HINT_S = 0.5
-MAX_HINT_S = 120
 
 # Teto de palavras da query sugerida, igual ao de `search`: fonte de vídeo casa por
 # palavra, e o `target` é escrito para gente ler, não para a API procurar.
 QUERY_MAX_TOKENS = 6
-# Fontes que publicam foto, na ordem em que valem a tentativa para um beat de imagem.
-STILL_SOURCES = ("commons", "nasa")
+
+
+def _registry():
+    from .sdk.registry import get_registry
+
+    return get_registry()
+
+
+def sources():
+    """Fontes aceitas em allowed_sources: built-ins e plugins habilitados, na ordem do registro."""
+    return _registry().provider_names()
+
+
+def searchable():
+    """Fontes com busca habilitada, entre as carregadas no registro do SDK."""
+    reg = _registry()
+    return tuple(
+        n
+        for n in reg.provider_names()
+        if reg.provider(n).capabilities.search  # type: ignore[union-attr] - name veio de provider_names()
+    )
+
+
+def stock_sources():
+    """Fontes de busca ilustrativa (banco de imagens/vídeos genéricos), entre as carregáveis."""
+    reg = _registry()
+    return tuple(
+        n
+        for n in searchable()
+        if reg.provider(n).capabilities.match_kind == "illustrative"  # type: ignore[union-attr]
+    )
+
+
+def still_sources():
+    """Fontes de busca que entregam imagem parada, entre as carregáveis."""
+    reg = _registry()
+    return tuple(
+        n
+        for n in searchable()
+        if "image" in reg.provider(n).capabilities.media_kinds  # type: ignore[union-attr] - name de searchable()
+    )
+
+
 # O `target` fala de um quadro parado, não de um vídeo: a busca tem que pedir imagem.
 STILL_WORDS = ("foto", "fotografia", "imagem", "print", "still", "captura de tela", "screenshot", "retrato")
 # Palavras que não estreitam busca nenhuma; sair com elas só gasta espaço do teto.
@@ -105,61 +139,6 @@ QUERY_STOPWORDS = frozenset(
 )
 
 
-def read_json_block(path, missing, syntax, not_object=None):
-    """Lê `path` e devolve o único bloco ```json nele, já decodificado.
-
-    `missing` e `syntax` são as mensagens (já prontas, em português) para os
-    casos de zero/mais de um bloco e de JSON malformado, respectivamente. Se
-    `not_object` for informado, o resultado também precisa ser um objeto
-    (dict), senão essa mensagem é levantada.
-    """
-    raw = Path(path).read_text(encoding="utf-8")
-    blocks = re.findall(r"```json\s*\n(.*?)\n```", raw, re.DOTALL)
-    if len(blocks) != 1:
-        raise ValueError(missing)
-    try:
-        value = json.loads(blocks[0])
-    except json.JSONDecodeError:
-        raise ValueError(syntax) from None
-    if not_object is not None and not isinstance(value, dict):
-        raise ValueError(not_object)
-    return value
-
-
-def brief_path(project):
-    """Arquivo que vale para este projeto: GB_BRIEF_FILE vence o BRIEF.md da pasta."""
-    override = os.environ.get("GB_BRIEF_FILE")
-    path = Path(override) if override else Path(project) / "BRIEF.md"
-    # Caminho absoluto: a resposta é lida de outra pasta que não a do projeto.
-    return path.expanduser().resolve()
-
-
-def load_brief(project):
-    """Lê o BRIEF.md do projeto e devolve o JSON cru, sem validar o conteúdo."""
-    path = brief_path(project)
-    if not path.exists():
-        if os.environ.get("GB_BRIEF_FILE"):
-            raise ValueError(
-                "GB_BRIEF_FILE aponta para um arquivo que não existe: corrija o caminho "
-                "ou apague essa variável para usar o BRIEF.md da pasta do trabalho."
-            )
-        raise ValueError(
-            "Este projeto ainda não tem BRIEF.md. Rode `/get-brolls-brief` para fazer a "
-            "entrevista, ou `init-brief --project ...` para criar o modelo e preencher."
-        )
-    return read_json_block(
-        path,
-        missing=(
-            "O BRIEF.md precisa de exatamente um bloco ```json — apague os blocos extras "
-            "ou rode `init-brief` numa pasta limpa para começar de um modelo."
-        ),
-        syntax=(
-            "O bloco json do BRIEF.md está com erro de digitação (vírgula ou aspas "
-            "sobrando). Conserte essa linha e rode `brief --validate` de novo."
-        ),
-    )
-
-
 def _text(value, field, required=True):
     if value is None and not required:
         return None
@@ -183,7 +162,9 @@ def _number(value, field, low, high, required=True):
 
 def _flag(value, field):
     if not isinstance(value, bool):
-        raise ValueError(f'Em BRIEF.md, "{field}" tem que ser true ou false.')
+        raise ValueError(  # noqa: TRY004 - contrato da CLI: dado inválido é ValueError (INVALID_DATA)
+            f'Em BRIEF.md, "{field}" tem que ser true ou false.'
+        )
     return value
 
 
@@ -193,15 +174,41 @@ def _choice(value, field, options):
     return value
 
 
+def _plugin_source_hint(name):
+    """Quando `name` é de um plugin instalado mas não carregado agora (falhou, está
+    suspenso etc.), uma frase extra que nomeia o plugin, o status e o que fazer;
+    senão, string vazia — a fonte é mesmo desconhecida, mensagem de hoje sem troco."""
+    from .sdk import loader
+
+    row = loader.declared_by(name)
+    if row is None:
+        return ""
+    default = (
+        f"Habilite com plugins --action enable --id {row['id']}."
+        if row.get("status") == "disabled"
+        else "Rode plugins --action list / doctor para reabilitar ou consertar o plugin."
+    )
+    hint = loader.status_hint(row, default)
+    return f' A fonte "{name}" é do plugin {row["id"]}, {loader.status_phrase(row)}. {hint}'
+
+
 def _sources(value, field):
     if (
         not isinstance(value, list)
         or not value
-        or any(not isinstance(v, str) or v not in SOURCES for v in value)
+        or any(not isinstance(v, str) for v in value)
         or len(set(value)) != len(value)
     ):
         raise ValueError(
-            f'Em BRIEF.md, "{field}" só aceita, sem repetir, uma lista destas fontes: ' + ", ".join(SOURCES) + "."
+            f'Em BRIEF.md, "{field}" só aceita, sem repetir, uma lista destas fontes: ' + ", ".join(sources()) + "."
+        )
+    unknown = [v for v in value if v not in sources()]
+    if unknown:
+        raise ValueError(
+            f'Em BRIEF.md, "{field}" só aceita, sem repetir, uma lista destas fontes: '
+            + ", ".join(sources())
+            + "."
+            + _plugin_source_hint(unknown[0])
         )
     return list(value)
 
@@ -217,7 +224,7 @@ def _queries(value, field):
 def _dictionary(data, field):
     value = data.get(field)
     if not isinstance(value, dict):
-        raise ValueError(
+        raise ValueError(  # noqa: TRY004 - contrato da CLI: dado inválido é ValueError (INVALID_DATA)
             f'Em BRIEF.md, "{field}" tem que ser um bloco entre chaves com as chaves descritas em docs/BRIEF.md.'
         )
     return value
@@ -233,13 +240,13 @@ def resolve_beat(defaults, beat, position):
             "caracteres com letras minúsculas, números e hífen (ele também vira o "
             "valor de --shot)."
         )
-    sources = (
+    allowed_sources = (
         _sources(beat["allowed_sources"], f"{where}.allowed_sources")
         if beat.get("allowed_sources") is not None
         else list(defaults["allowed_sources"])
     )
     stock = _flag(beat["stock"], f"{where}.stock") if beat.get("stock") is not None else defaults["stock"]
-    banks = [s for s in sources if s in STOCK_SOURCES]
+    banks = [s for s in allowed_sources if s in stock_sources()]
     if stock and not banks:
         raise ValueError(
             f'O beat "{identifier}" está com "stock": true, mas nenhuma fonte de banco '
@@ -256,7 +263,7 @@ def resolve_beat(defaults, beat, position):
         "narration": _text(beat.get("narration"), f"{where}.narration", required=False),
         "target": _text(beat.get("target"), f"{where}.target"),
         "intent": _choice(beat.get("intent", defaults["intent"]), f"{where}.intent", INTENTS),
-        "allowed_sources": sources,
+        "allowed_sources": allowed_sources,
         "stock": stock,
         "duration_hint_s": _number(
             beat.get("duration_hint_s", defaults["duration_hint_s"]),
@@ -274,10 +281,53 @@ def resolve_beat(defaults, beat, position):
     }
 
 
-def validate_brief(data, rules=None):
-    """Devolve (brief normalizado, conflitos). Erro = brief inutilizável; conflito = aviso."""
-    if not isinstance(data, dict) or type(data.get("version")) is not int or data["version"] != 1:
-        raise ValueError('Em BRIEF.md, "version" tem que ser o número 1. Ajuste essa linha.')
+def _active_beats(defaults, raw_beats, roteiro_owned):
+    """Beats validados, na ordem, sem os aposentados (`"retired": true`, gravado pelo sync do roteiro).
+
+    Todo beat é validado (o id aposentado continua reservado); só os ativos voltam.
+    Lista vazia e `retired` só valem quando o projeto tem ROTEIRO.md do getbrolls
+    (`type: roteiro`): aí quem gera os beats é o roteiro.
+    """
+    empty = 'Em BRIEF.md, "beats" tem que ser uma lista com pelo menos um beat; cada beat precisa de "id" e "target".'
+    if (
+        not isinstance(raw_beats, list)
+        or (not raw_beats and not roteiro_owned)
+        or any(not isinstance(b, dict) for b in raw_beats)
+    ):
+        raise ValueError(empty)
+    beats, seen = [], set()
+    for position, raw in enumerate(raw_beats):
+        resolved = resolve_beat(defaults, raw, position)
+        if resolved["id"] in seen:
+            raise ValueError(
+                f'O id de beat "{resolved["id"]}" aparece repetido em BRIEF.md. Cada beat '
+                "precisa de um id único, porque ele vira o --shot do candidato."
+            )
+        seen.add(resolved["id"])
+        # `retired` só existe com ROTEIRO.md do getbrolls: sem ele, o beat é o de sempre.
+        if roteiro_owned and _flag(raw.get("retired", False), f"beats[{position}].retired"):
+            continue
+        beats.append({"id": resolved["id"], "resolved": resolved})
+    if not beats and not roteiro_owned:
+        raise ValueError(empty)
+    return beats
+
+
+def validate_brief(data, rules=None, project=None):
+    """Devolve (brief normalizado, conflitos). Erro = brief inutilizável; conflito = aviso.
+
+    `project`: com ROTEIRO.md do getbrolls nessa pasta, `"beats": []` é válido (o roteiro
+    gera os beats) e beat `"retired": true` sai da lista.
+    """
+    supported = schemas.version("brief")
+    found = data.get("version") if isinstance(data, dict) else None
+    if type(found) is not int or found < 1:
+        raise ValueError(f'Em BRIEF.md, "version" tem que ser o número {supported}. Ajuste essa linha.')
+    if found > supported:
+        raise ValueError(
+            f'BRIEF.md foi gravado por uma versão mais nova do getbrolls ("version" {found}); '
+            "atualize antes de continuar."
+        )
     video = _dictionary(data, "video")
     delivery = _dictionary(video, "delivery")
     rights = _dictionary(data, "rights")
@@ -303,21 +353,12 @@ def validate_brief(data, rules=None):
         "duration_hint_s": _number(defaults.get("duration_hint_s"), "defaults.duration_hint_s", MIN_HINT_S, MAX_HINT_S),
         "stock": _flag(defaults.get("stock"), "defaults.stock"),
     }
-    raw_beats = data.get("beats")
-    if not isinstance(raw_beats, list) or not raw_beats or any(not isinstance(b, dict) for b in raw_beats):
-        raise ValueError(
-            'Em BRIEF.md, "beats" tem que ser uma lista com pelo menos um beat; cada beat precisa de "id" e "target".'
-        )
-    beats, seen = [], set()
-    for position, raw in enumerate(raw_beats):
-        resolved = resolve_beat(defaults, raw, position)
-        if resolved["id"] in seen:
-            raise ValueError(
-                f'O id de beat "{resolved["id"]}" aparece repetido em BRIEF.md. Cada beat '
-                "precisa de um id único, porque ele vira o --shot do candidato."
-            )
-        seen.add(resolved["id"])
-        beats.append({"id": resolved["id"], "resolved": resolved})
+    roteiro_owned = False
+    if project is not None:
+        from .roteiro import is_roteiro
+
+        roteiro_owned = is_roteiro(project)
+    beats = _active_beats(defaults, data.get("beats"), roteiro_owned)
     conflicts = []
     if not rights["stock_allowed"] and any(b["resolved"]["stock"] for b in beats):
         conflicts.append(
@@ -333,7 +374,7 @@ def validate_brief(data, rules=None):
                 f'O brief entrega em "{video["delivery"]["format"]}" e o RULES.md está em '
                 f'"{target}". Não é erro do brief; é um default do RULES.md que ninguém '
                 "alinhou ainda. Resolva com um destes dois, e siga: "
-                f"`init-rules --format {video['delivery']['format']} --force --project <projeto>` "
+                f"`init-rules --format {video['delivery']['format']} --force --project PROJETO` "
                 "alinha a regra ao brief (é o caso quando a pessoa nomeou a plataforma), "
                 f'ou troque "video.delivery.format" para "{target}" no BRIEF.md.'
             )
@@ -349,9 +390,54 @@ def validate_brief(data, rules=None):
             '--declaration "frase" --force` antes de seguir.'
         )
     return (
-        {"version": 1, "video": video, "rights": rights, "defaults": defaults, "beats": beats},
+        {"version": found, "video": video, "rights": rights, "defaults": defaults, "beats": beats},
         conflicts,
     )
+
+
+def beat_sources(project, shot, rules=None):
+    """`allowed_sources` do beat `shot` num BRIEF.md válido; None quando não há o que conferir.
+
+    Brief ausente ou inválido não trava a busca (quem avisa disso é `status`/`brief`),
+    e `--shot` que não é beat do brief segue livre, como sempre foi.
+    """
+    try:
+        data, _ = validate_brief(load_brief(project), rules, project=project)
+    except (ValueError, OSError):
+        return None
+    for beat in data["beats"]:
+        if beat["id"] == shot:
+            return list(beat["resolved"]["allowed_sources"])
+    return None
+
+
+# Textos de exemplo do modelo (`docs/BRIEF.md`): quem os deixou não preencheu o campo.
+TEMPLATE_VIDEO_TEXT = {
+    "title": "Troque pelo nome real do vídeo",
+    "objective": "O que este vídeo precisa provar para quem assiste",
+}
+TEMPLATE_BEAT_TEXT = {
+    "narration": "Cole aqui a fala exata deste trecho, ou deixe null.",
+    "target": "O que precisa aparecer na tela neste trecho",
+}
+
+
+def template_leftovers(data):
+    """Campos que ainda trazem o texto de exemplo do modelo, um aviso por campo.
+
+    O modelo é válido de propósito (serve de ponto de partida), mas buscar pelo
+    "O que precisa aparecer na tela" dele é buscar pelo exemplo, não pelo vídeo.
+    """
+    found = [
+        f"video.{key} ainda está com o texto de exemplo do modelo: troque pelo real."
+        for key, text in TEMPLATE_VIDEO_TEXT.items()
+        if data["video"].get(key) == text
+    ]
+    for beat in data["beats"]:
+        for key, text in TEMPLATE_BEAT_TEXT.items():
+            if beat["resolved"].get(key) == text:
+                found.append(f'O beat "{beat["id"]}" ainda está com o {key} de exemplo do modelo: troque pelo real.')
+    return found
 
 
 def search_query(beat, limit=QUERY_MAX_TOKENS):
@@ -384,18 +470,19 @@ def missing_provider_keys(beat):
     estar mal descrito — é o ambiente, e a pergunta certa é pela chave, não pela
     empresa ou pela data.
     """
-    from .providers import KEYS
-
-    return [
-        {"provider": name, "env_key": KEYS[name]}
-        for name in beat["allowed_sources"]
-        if name in KEYS and not os.environ.get(KEYS[name])
-    ]
+    reg = _registry()
+    result = []
+    for name in beat["allowed_sources"]:
+        source = reg.provider(name)
+        key = source.capabilities.env_key if source else None
+        if key and not env_is_set(key, reg.owner("provider", name)):
+            result.append({"provider": name, "env_key": key})
+    return result
 
 
 def stock_only(beat):
     """Beat que só pode ser atendido por banco (pexels/pixabay), e por mais nada."""
-    return bool(beat["allowed_sources"]) and set(beat["allowed_sources"]) <= set(STOCK_SOURCES)
+    return bool(beat["allowed_sources"]) and set(beat["allowed_sources"]) <= set(stock_sources())
 
 
 def provider_unavailable(beat):
@@ -411,8 +498,8 @@ def unavailable_phrase(entries):
     return (
         f"A única fonte permitida para este trecho é {names}, e ela não está "
         f"disponível neste ambiente: falta a chave de API. Coloque {keys} no arquivo "
-        "`.env` da skill (ou no ambiente) e eu busco na hora. Enquanto a chave não "
-        "existir, nenhuma busca aqui é possível — não é falta de informação sua."
+        "`.env` (`$GB_HOME/.env`, padrão `~/.getbrolls/.env`) ou no ambiente e eu busco na hora. "
+        "Enquanto a chave não existir, nenhuma busca aqui é possível — não é falta de informação sua."
     )
 
 
@@ -423,40 +510,166 @@ def provider_warnings(beats):
     """
     return [
         f'O provedor {entry["provider"]} exigido pelo beat "{beat["id"]}" não está '
-        f"configurado neste ambiente: coloque {entry['env_key']} no `.env` da skill."
+        f"configurado neste ambiente: coloque {entry['env_key']} no `.env` "
+        "(`$GB_HOME/.env`, padrão `~/.getbrolls/.env`)."
         for beat in beats
         for entry in missing_provider_keys(beat["resolved"])
     ]
 
 
 def _cli_prefix():
-    return f'python3 "{CLI}"'
+    return _paths.cli_prefix_text()
 
 
-def beat_commands(project, beat):
-    """search/resolve/inspect/preview prontos para este beat, com --shot, --intent e --narração.
+WAY_OUT = "Se não tiver esse material, remova o beat do BRIEF.md ou siga sem ele."
 
-    Beat sem fonte pesquisável por API (só instagram/tiktok/local) não ganha `search`:
-    no lugar dele vai um `note` explicando que o caminho é `resolve --url/--file`.
+
+def resolve_routes(beat_id, allowed_sources):
+    """Frase com o `resolve` certo para cada fonte sem busca por API do beat.
+
+    Link público (Instagram, TikTok) entra com `resolve --url`; o arquivo da própria
+    pessoa, com `resolve --file`. Sem fonte assim no beat, a frase é vazia.
     """
-    project = shlex.quote(str(Path(project).expanduser().resolve()))
-    prefix = f"{_cli_prefix()} "
+    manual = [source for source in allowed_sources if source not in searchable()]
+    links = [source for source in manual if source != "local"]
+    parts = []
+    if links:
+        parts.append(
+            f"o link público do post ou vídeo ({', '.join(links)}) eu registro com "
+            f"`resolve --url URL_PUBLICA --shot {beat_id}`"
+        )
+    if "local" in manual:
+        parts.append(f"o seu próprio arquivo eu registro com `resolve --file ARQUIVO --shot {beat_id}`")
+    if not parts:
+        return ""
+    return "Se você tiver esse material, " + "; ".join(parts) + "."
+
+
+def exhausted_phrase(beat, allowed_sources, queries):
+    """Todas as fontes pesquisáveis do beat já voltaram vazias para todas as buscas.
+
+    Com fonte que só entra por link ou arquivo no beat, a frase diz "as fontes que
+    consigo pesquisar", não "todas as permitidas", e oferece o `resolve` dela.
+    """
+    asked = " / ".join(f'"{query}"' for query in queries)
+    routes = resolve_routes(beat["id"], beat["allowed_sources"])
+    where = (
+        "em todas as fontes que consigo pesquisar para ele"
+        if routes
+        else "em todas as fontes que o BRIEF.md permite para ele"
+    )
+    return (
+        f'Busquei o beat "{beat["id"]}" {where} ({", ".join(allowed_sources)}) com {asked}, e nenhuma '
+        "trouxe nada. Repetir a mesma busca não vai mudar isso."
+        + (f" {routes}" if routes else "")
+        + " Me diga como seguir: outra forma de dizer o que precisa aparecer "
+        '(acrescente em "queries" do beat — eu tento cada busca nova que ainda não voltou '
+        "vazia), mais fontes em allowed_sources, o seu próprio material para esse trecho, "
+        "ou remova o beat do BRIEF.md (ou siga sem ele)."
+    )
+
+
+def remaining_keys_phrase(beat, entries, searched):
+    """As fontes que ainda não tentei só respondem com chave de API: diga qual configurar."""
+    names = " e ".join(dict.fromkeys(entry["provider"] for entry in entries))
+    keys = " e ".join(dict.fromkeys(entry["env_key"] for entry in entries))
+    head = (
+        f"As outras fontes deste trecho já voltaram vazias; falta tentar {names}, que só responde com chave de API."
+        if searched
+        else f"A busca deste trecho só pode ser feita em {names}, que responde só com chave de API."
+    )
+    routes = resolve_routes(beat["id"], beat["allowed_sources"])
+    route = f" {routes}" if routes else " Ou me diga outra forma de buscar esse trecho."
+    return (
+        f"{head} Coloque {keys} no arquivo `.env` (`$GB_HOME/.env`, padrão `~/.getbrolls/.env`) "
+        f"ou no ambiente e eu busco na hora.{route}"
+    )
+
+
+def search_queries(beat):
+    """Buscas do beat, na ordem: as `queries` da pessoa, ou a derivada do `target`."""
+    return list(beat.get("queries") or []) or [search_query(beat)]
+
+
+def search_plan(beat, tried=()):
+    """Qual busca vem agora para este beat, ou por que nenhuma vem.
+
+    `tried` são os pares (fonte, query) em que a busca deste beat já voltou vazia: a
+    próxima busca passa para a fonte seguinte (pulando a que falta chave de API) e
+    depois para a próxima query de `queries`. Sem nenhum par sobrando, o `state` diz o
+    motivo: `unavailable`/`needs_keys` (só sobra fonte sem chave), `exhausted` (tudo
+    vazio) ou `resolve_only` (nenhuma fonte tem busca por API) — repetir um comando que
+    já voltou vazio, ou que só daria erro, seria andar em círculo.
+    """
     still = wants_a_still(beat)
     # Um beat de foto no YouTube devolve vídeo, sempre: a fonte de imagem vem antes,
     # e a busca sai com `--media image` para o acervo não responder só com vídeo.
-    provider = next((s for s in beat["allowed_sources"] if still and s in STILL_SOURCES), None) or next(
-        (s for s in beat["allowed_sources"] if s in SEARCHABLE), None
+    ordered = list(
+        dict.fromkeys(
+            [s for s in beat["allowed_sources"] if still and s in still_sources()]
+            + [s for s in beat["allowed_sources"] if s in searchable()]
+        )
     )
-    query = search_query(beat)
+    queries = search_queries(beat)
+    absent = missing_provider_keys(beat)
+    keyless = {entry["provider"] for entry in absent}
+    pending = [(source, query) for query in queries for source in ordered if (source, query) not in tried]
+    provider, query = next(((s, q) for s, q in pending if s not in keyless), (None, queries[0]))
+    plan = {
+        "provider": provider,
+        "query": query,
+        "media_image": bool(provider) and still and provider in still_sources(),
+        "state": "search",
+        "sources": ordered,
+        "queries": queries,
+        "needs_keys": [],
+        "note": None,
+    }
+    waiting_keys = [entry for entry in absent if any(source == entry["provider"] for source, _q in pending)]
+    if absent and provider_unavailable(beat):
+        # Problema de ambiente, não de brief: nenhuma fonte responde sem chave, e a
+        # nota diz o que de fato destrava o trecho.
+        plan.update(state="unavailable", needs_keys=absent, note=unavailable_phrase(absent))
+    elif not provider and waiting_keys:
+        # Só conta o que foi buscado com as fontes e buscas de agora: registro de uma
+        # fonte que saiu do brief não é "as outras já voltaram vazias".
+        searched = any((source, query) in tried for source in ordered for query in queries)
+        note = remaining_keys_phrase(beat, waiting_keys, searched=searched)
+        plan.update(state="needs_keys", needs_keys=waiting_keys, note=note)
+    elif not provider and ordered:
+        plan.update(state="exhausted", note=exhausted_phrase(beat, ordered, queries))
+    elif not provider:
+        # Instagram, TikTok e material próprio não têm busca por API: entram por URL/arquivo.
+        plan.update(
+            state="resolve_only",
+            note=(
+                "Nenhuma fonte deste beat é pesquisável por API ("
+                + ", ".join(beat["allowed_sources"])
+                + "): descubra a URL no navegador e registre com o resolve acima."
+            ),
+        )
+    return plan
+
+
+def beat_commands(project, beat, tried=()):
+    """search/resolve/inspect/preview prontos para este beat, com --shot, --intent e --narração.
+
+    Beat sem fonte pesquisável por API (só instagram/tiktok/local) não ganha `search`:
+    no lugar dele vai um `note` explicando que o caminho é `resolve --url/--file`. A
+    escolha da busca (e o motivo de não haver uma) sai de `search_plan`.
+    """
+    project = _paths.quote_arg(str(Path(project).expanduser().resolve()))
+    prefix = f"{_cli_prefix()} "
+    plan = search_plan(beat, tried)
     origin = "--file ARQUIVO" if beat["allowed_sources"] == ["local"] else "--url URL_PUBLICA"
-    narration = f" --narration {shlex.quote(beat['narration'])}" if beat.get("narration") else ""
+    narration = f" --narration {_paths.quote_arg(beat['narration'])}" if beat.get("narration") else ""
     commands = {}
-    if provider:
-        media = " --media image" if still and provider in STILL_SOURCES else ""
+    if plan["provider"]:
+        media = " --media image" if plan["media_image"] else ""
         commands["search"] = (
             prefix
-            + f"search --project {project} --provider {provider} "
-            + f"--query {shlex.quote(query)}{media} --intent {beat['intent']} --shot {beat['id']}"
+            + f"search --project {project} --provider {plan['provider']} "
+            + f"--query {_paths.quote_arg(plan['query'])}{media} --intent {beat['intent']} --shot {beat['id']}"
         )
     # Banco de imagem não tem página para colar: sugerir `resolve --url` num beat que
     # só aceita pexels/pixabay manda a pessoa procurar um link que não existe.
@@ -468,22 +681,11 @@ def beat_commands(project, beat):
     commands["inspect"] = (
         prefix
         + f"inspect --project {project} --candidate ID --query "
-        + shlex.quote(beat.get("narration") or beat["target"])
+        + _paths.quote_arg(beat.get("narration") or beat["target"])
     )
     commands["preview"] = prefix + f"preview --project {project} --candidate ID" + narration
-    if not provider:
-        # Instagram, TikTok e material próprio não têm busca por API: entram por URL/arquivo.
-        commands["note"] = (
-            "Nenhuma fonte deste beat é pesquisável por API ("
-            + ", ".join(beat["allowed_sources"])
-            + "): descubra a URL no navegador e registre com o resolve acima."
-        )
-    absent = missing_provider_keys(beat)
-    if absent and provider_unavailable(beat):
-        # Problema de ambiente, não de brief: some com o `search` que só daria erro e
-        # troca a nota por aquela que diz o que de fato destrava o trecho.
-        commands.pop("search", None)
-        commands["note"] = unavailable_phrase(absent)
+    if plan["note"]:
+        commands["note"] = plan["note"]
     return commands
 
 
@@ -501,4 +703,7 @@ def beat_progress(beats, items):
             if c.get("shot") == beat["id"] and (c.get("approval") or {}).get("status") != "rejected"
         ]
         for beat in beats
+        # Beat aposentado pelo roteiro não é pendência de busca, como em `deliver`.
+        # `validate_brief` já o tira da lista; isto cobre quem passar o beat cru.
+        if beat.get("retired") is not True
     }

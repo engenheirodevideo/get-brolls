@@ -382,8 +382,14 @@
         body: JSON.stringify(result),
       })
         .then((response) => {
-          if (!response.ok) throw new Error(String(response.status));
-          return response.json();
+          if (response.ok) return response.json();
+          // A recusa do servidor traz o motivo em `{"error": …}`; sem corpo legível, fica só o código.
+          return response
+            .json()
+            .catch(() => ({}))
+            .then((body) => {
+              throw Object.assign(new Error(String(response.status)), { reason: body.error });
+            });
         })
         .then((answer) => {
           note("");
@@ -394,10 +400,13 @@
             answer.path,
           );
         })
-        .catch(() => {
-          // Servidor fora do ar ou recusa: cai no download, que nunca depende dele.
-          note("Não consegui salvar no projeto; baixei o arquivo em vez disso.");
+        .catch((error) => {
+          // Servidor fora do ar ou recusa: cai no download, que nunca depende dele. O aviso
+          // vem depois, porque o download limpa o aviso ao terminar; o motivo só aparece
+          // quando foi o servidor que o deu (um erro de rede do navegador não tem `reason`).
           download(result);
+          const fallback = "Não consegui salvar no projeto; baixei o arquivo em vez disso.";
+          note(error.reason ? fallback + " Motivo: " + error.reason : fallback);
         });
       return;
     }

@@ -8,12 +8,14 @@ nos três modos de falha (nenhum bloco, JSON inválido, e — só em `rules` —
 compartilhado não mudou nenhum comportamento observável.
 """
 
+import os
+import tempfile
 import unittest
 from pathlib import Path
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import brief as brief_module
 from getbrolls import rules as rules_module
@@ -51,16 +53,15 @@ class LoadBriefJsonBlockTests(unittest.TestCase):
     """`getbrolls.brief.load_brief`, isolado da checagem de existência do arquivo."""
 
     def setUp(self):
-        import tempfile
 
-        self.tmp = tempfile.TemporaryDirectory()
+        # Ciclo de vida cobre o teste (ou a classe) inteiro; a limpeza já é feita via addCleanup/tearDownClass.
+        self.tmp = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
         self.addCleanup(self.tmp.cleanup)
         self.path = Path(self.tmp.name) / "BRIEF.md"
 
     def _load(self):
         # load_brief() lê `brief_path(project)`; usamos GB_BRIEF_FILE para apontar
         # direto ao arquivo do teste sem depender do layout de projeto.
-        import os
 
         old = os.environ.get("GB_BRIEF_FILE")
         os.environ["GB_BRIEF_FILE"] = str(self.path)
@@ -102,9 +103,9 @@ class ReadRulesBlockTests(unittest.TestCase):
     """`getbrolls.rules.read_rules_block` recebe o path direto, sem passos extras."""
 
     def setUp(self):
-        import tempfile
 
-        self.tmp = tempfile.TemporaryDirectory()
+        # Ciclo de vida cobre o teste (ou a classe) inteiro; a limpeza já é feita via addCleanup/tearDownClass.
+        self.tmp = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
         self.addCleanup(self.tmp.cleanup)
         self.path = Path(self.tmp.name) / "RULES.md"
 
