@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import os
+import random
 import tempfile
 import unittest
 from datetime import UTC, datetime, timedelta
@@ -14,10 +15,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import acquisition, delivery, queue
+from getbrolls import acquisition, delivery, delivery_files, queue
 from getbrolls.ledger import Ledger
 from getbrolls.models import approve, candidate, id_stem, now, set_segment
 from getbrolls.rules import allowed, load_rules, sync_formats
@@ -31,7 +32,6 @@ SECRET_URL_TAIL = "?token=SUPER-SECRET-TOKEN-9Q7"
 
 
 def rng(value=0.0):
-    import random
 
     generator = random.Random(1)
     generator.uniform = lambda a, b: a + value * (b - a)
@@ -46,7 +46,8 @@ class RulesLayersLoggingTests(unittest.TestCase):
     """rules.py: `rules_layers` logs once per load; `_strip_never_inherited` per key."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        # Ciclo de vida cobre o teste (ou a classe) inteiro; a limpeza já é feita via addCleanup/tearDownClass.
+        self.tmp = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
         self.addCleanup(self.tmp.cleanup)
         self.home = Path(self.tmp.name) / "home"
         self.project = Path(self.tmp.name) / "project"
@@ -441,7 +442,10 @@ class AcquisitionMaterializationLoggingTests(unittest.TestCase):
             self.assertIn("reason=digest_mismatch", joined)
 
 
-def _fetched(source_id, title, shot=None, clip="clips/x.mp4", sheet=None, creator=None):  # noqa: PLR0913, PLR0917 - existing size; one field per candidate attribute the fixture builds
+# Tamanho já existente: um campo por atributo do candidato que a fixture monta.
+def _fetched(  # noqa: PLR0913, PLR0917  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    source_id, title, shot=None, clip="clips/x.mp4", sheet=None, creator=None
+):
     c = candidate("local", source_id, title, source_url="https://example.org/" + source_id)
     set_segment(c, 0, 2)
     c["creator"]["name"] = creator or "Autora Exemplo"
@@ -463,6 +467,9 @@ def _fetched(source_id, title, shot=None, clip="clips/x.mp4", sheet=None, creato
         c["shot"] = shot
         c["id"] += ":shot:" + shot
     return c
+
+
+# pylint: enable=too-many-arguments,too-many-positional-arguments
 
 
 def _project(tmp, items):
@@ -546,8 +553,8 @@ class DeliveryConflictLoggingTests(unittest.TestCase):
     def test_io_error_conflict_logs_kind(self):
         with tempfile.TemporaryDirectory() as tmp:
             _project(tmp, [_fetched("a", "T", shot="abertura")])
-            broken = delivery._CompareError("[Errno 13] Permission denied")
-            with patch.object(delivery, "_same_file", side_effect=broken):
+            broken = delivery_files._CompareError("[Errno 13] Permission denied")
+            with patch.object(delivery_files, "_same_file", side_effect=broken):
                 beat_dir = Path(tmp) / delivery.DELIVERY_DIR / "01-abertura-t"
                 beat_dir.mkdir(parents=True)
                 (beat_dir / "01-abertura-t.mp4").write_bytes(b"qualquer coisa")
