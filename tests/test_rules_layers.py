@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls.rules import load_rules
 
@@ -26,7 +26,8 @@ def write_block(path, data):
 
 class RulesLayerTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        # Ciclo de vida cobre o teste (ou a classe) inteiro; a limpeza já é feita via addCleanup/tearDownClass.
+        self.tmp = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
         self.addCleanup(self.tmp.cleanup)
         self.home = Path(self.tmp.name) / "home"
         self.project = Path(self.tmp.name) / "project"
@@ -120,7 +121,7 @@ class RulesLayerTests(unittest.TestCase):
         (self.home).mkdir(parents=True, exist_ok=True)
         global_path = self.home / "RULES.md"
         global_path.write_text("sem bloco json", encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, re.escape(str(global_path))):
+        with self.assertRaisesRegex(ValueError, re.escape("O RULES.md global ($GB_HOME/RULES.md) não pôde ser lido")):
             load_rules(self.project)
 
     def test_a_missing_global_layer_still_behaves_like_before(self):
