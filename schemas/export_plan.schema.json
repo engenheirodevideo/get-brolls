@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls export plan v2",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/export_plan.schema.json",
+  "description": "O que o core entrega a um exporter. Documental e testado: a gramática dos ids de mídia e as referências cruzadas (toda mídia citada existe em media) são conferidas em código (export_plan.check_refs), porque este subconjunto de JSON Schema não tem propertyNames nem patternProperties. Todo texto é cru e não confiável, inclusive credit (nunca pré-escapado pelo core, de fonte nenhuma): o exporter escapa no formato dele. Nenhum valor é caminho absoluto. Evolução: todo objeto deste schema fica aberto, porque pode ganhar campos. O exporter ignora chave desconhecida em qualquer nível; valor de enum que ele não conhece é não suportado, com PluginError claro, e um problem desconhecido vale como indisponível. O exporter recusa export_version que não conhece, também com PluginError. Campo novo opcional ou null e valor novo de enum são mudanças aditivas: não sobem export_version e aparecem no CHANGELOG. Depois da 2.6.0, campo novo entra neste schema fora de required, para um plano gravado por uma versão anterior continuar válido; os testes do core conferem a saída com uma variante fechada, que exige todos os campos. Remover, renomear ou mudar o significado de um campo sobe export_version. export_version é o contrato entre o core e o exporter; plan_version é o formato do plano de cena do roteiro, de onde vêm as cenas.",
+  "type": "object",
+  "required": ["export_version", "exporter", "out_dir", "generated_at", "getbrolls_version", "plan_version", "meta", "total_s", "timing", "scenes", "media", "warnings"],
+  "properties": {
+    "export_version": { "const": 2 },
+    "exporter": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$" },
+    "out_dir": { "type": "string", "pattern": "^(exports|handoffs)/[a-z][a-z0-9_]{1,31}/[0-9]{3,}$" },
+    "generated_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" },
+    "getbrolls_version": { "type": "string", "minLength": 1 },
+    "plan_version": {
+      "type": "integer",
+      "minimum": 3,
+      "default": 3,
+      "description": "Informativo; o exporter não deve recusar por ele. minimum é o piso aceito (um plano gravado por versão anterior continua válido); default é a versão corrente do plano que o core grava."
+    },
+    "meta": {
+      "type": "object",
+      "required": ["aspecto", "legenda", "duracao_alvo_s", "genero", "tema", "projeto_id", "cliente", "estilo", "fps", "canvas"],
+      "properties": {
+        "aspecto": { "enum": ["9:16", "16:9"] },
+        "legenda": { "type": "boolean" },
+        "duracao_alvo_s": { "type": ["integer", "null"] },
+        "genero": { "type": "string" },
+        "tema": { "type": "string" },
+        "projeto_id": { "type": ["string", "null"], "maxLength": 64, "description": "Id do projeto, o mesmo project_id de brolls/manifest.json; continua o mesmo quando a pasta é copiada. O export só lê o id: null quando o projeto ainda não tem um." },
+        "cliente": { "type": ["string", "null"], "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64, "description": "Slug do cliente, vindo do frontmatter do roteiro; null quando o roteiro não diz." },
+        "estilo": { "type": ["string", "null"], "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64, "description": "Slug do estilo, vindo do cabeçalho estilo: do roteiro; null quando o roteiro não diz. Nenhum exporter o aplica ainda." },
+        "fps": {
+          "type": ["object", "null"],
+          "description": "Base de tempo como fração de quadros por segundo: 30 é {num: 30, den: 1}, 29,97 é {num: 30000, den: 1001}. null = o exporter usa o padrão dele.",
+          "required": ["num", "den"],
+          "properties": {
+            "num": { "type": "integer", "minimum": 1 },
+            "den": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "canvas": {
+          "type": ["object", "null"],
+          "description": "Tamanho do quadro em pixels. null = o exporter decide pelo aspecto.",
+          "required": ["width", "height"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "total_s": { "type": "number", "minimum": 0 },
+    "timing": { "enum": ["estimate", "aroll", "mixed"] },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "line", "start_s", "duration_s", "duration_source", "estimate_s", "words", "layout", "voice_media_ids", "words_source", "words_timed", "layers", "extensions", "direction", "speech_clean", "notes", "content_hash"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^c[0-9]{2,3}$" },
+          "title": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "start_s": { "type": "number", "minimum": 0 },
+          "duration_s": { "type": "number", "minimum": 0 },
+          "duration_source": { "enum": ["aroll", "estimate"] },
+          "estimate_s": { "type": "number", "minimum": 0 },
+          "words": { "type": "integer", "minimum": 0 },
+          "layout": {
+            "type": "object",
+            "required": ["kind", "args", "quoted", "full_role", "slots"],
+            "properties": {
+              "kind": { "enum": ["A-ROLL", "BROLL", "SPLIT", "FULL", "UGC"] },
+              "args": { "type": "array", "items": { "type": "string" } },
+              "quoted": { "type": "array", "items": { "type": "boolean" } },
+              "full_role": { "enum": ["cartela", "marca", "beat", null] },
+              "slots": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 2,
+                "items": {
+                  "type": "object",
+                  "required": ["slot", "role", "text", "beat_id", "take", "prompt", "media_id", "extra_media_ids"],
+                  "properties": {
+                    "slot": { "enum": ["a", "b", "main"] },
+                    "role": { "enum": ["broll", "presenter", "card", "brand"] },
+                    "text": { "type": "string" },
+                    "beat_id": { "type": ["string", "null"] },
+                    "take": { "type": ["string", "null"] },
+                    "prompt": { "type": ["string", "null"] },
+                    "media_id": { "type": ["string", "null"], "maxLength": 200 },
+                    "extra_media_ids": { "type": "array", "items": { "type": "string", "maxLength": 200 } }
+                  }
+                }
+              }
+            }
+          },
+          "voice_media_ids": { "type": "array", "maxItems": 1, "items": { "type": "string" } },
+          "words_source": { "enum": ["transcript", "estimate"] },
+          "words_timed": {
+            "type": ["array", "null"],
+            "maxItems": 5000,
+            "items": {
+              "type": "object",
+              "required": ["text", "start", "end"],
+              "properties": {
+                "text": { "type": "string", "minLength": 1, "maxLength": 100 },
+                "start": { "type": "number", "minimum": 0 },
+                "end": { "type": "number", "minimum": 0 }
+              }
+            }
+          },
+          "layers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["kind", "args", "quoted", "line", "anchor", "word_offset", "at_s", "text", "name", "media_id", "component_status", "ref"],
+              "properties": {
+                "kind": { "enum": ["LETTERING", "SFX", "MUSICA", "COMP"] },
+                "args": { "type": "array", "items": { "type": "string" } },
+                "quoted": { "type": "array", "items": { "type": "boolean" } },
+                "line": { "type": "integer", "minimum": 1 },
+                "anchor": { "type": ["integer", "string"] },
+                "word_offset": { "type": "integer", "minimum": 0 },
+                "at_s": { "type": "number", "minimum": 0 },
+                "text": { "type": ["string", "null"] },
+                "name": { "type": ["string", "null"] },
+                "media_id": { "type": ["string", "null"], "maxLength": 200 },
+                "component_status": { "enum": ["found", "pending", "invalid", null] },
+                "ref": { "type": ["string", "null"], "description": "Id do item de catálogo que implementa a camada, no formato <escopo>/<categoria>/<nome>. Reservado: sempre null nesta versão." }
+              }
+            }
+          },
+          "extensions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["plugin", "name", "args", "quoted", "line", "anchor", "word_offset", "at_s"],
+              "properties": {
+                "plugin": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$" },
+                "name": { "type": "string" },
+                "args": { "type": "array", "items": { "type": "string" } },
+                "quoted": { "type": "array", "items": { "type": "boolean" } },
+                "line": { "type": "integer", "minimum": 1 },
+                "anchor": { "type": ["integer", "string"] },
+                "word_offset": { "type": "integer", "minimum": 0 },
+                "at_s": { "type": "number", "minimum": 0 }
+              }
+            }
+          },
+          "direction": { "type": "array", "description": "Intenções de direção da cena (transição, ritmo, velocidade). Reservado: sempre vazio nesta versão." },
+          "speech_clean": { "type": "string" },
+          "notes": { "type": "array", "items": { "type": "string" } },
+          "content_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "media": {
+      "type": "object",
+      "description": "Chave = id lógico: clip:<candidato> | aroll:<cNN[-lado][-take]> | asset:<tipo>:<nome dobrado> | plugin:<plugin_id>:<tipo>:<nome dobrado>; até 200 caracteres, sem barra, contrabarra, espaço nem controle.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["kind", "source", "store", "origin", "ext", "available", "problem", "has_audio", "sha256", "duration_s", "width", "height", "credit", "expected"],
+        "properties": {
+          "kind": { "enum": ["video", "image", "audio"] },
+          "source": { "enum": ["clip", "aroll", "asset", "plugin_store"] },
+          "store": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$" },
+          "origin": { "enum": ["project", "personal", "client", null], "description": "De onde veio o componente: project, personal (biblioteca pessoal) ou client (reservado para a biblioteca do cliente, sem uso nesta versão); a ordem de busca será projeto, cliente, pessoal, host. null para clipe e mídia de plugin." },
+          "ext": { "type": ["string", "null"], "pattern": "^\\.[a-z0-9]{1,8}$" },
+          "available": { "type": "boolean" },
+          "problem": { "enum": ["missing", "unreadable", "no_ffprobe", "link", "changed", null] },
+          "has_audio": { "type": ["boolean", "null"] },
+          "sha256": { "type": ["string", "null"] },
+          "duration_s": { "type": ["number", "null"], "minimum": 0 },
+          "width": { "type": ["integer", "null"] },
+          "height": { "type": ["integer", "null"] },
+          "credit": { "type": ["string", "null"], "maxLength": 300 },
+          "expected": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

@@ -1,6 +1,94 @@
-# Configuração das ferramentas de qualidade (dev-only).
-# O runtime da CLI continua sem dependência nenhuma: ruff e pyright são
-# instalados só por quem desenvolve, via requirements-dev.txt.
+# Distribuição do pacote `getbrolls` e configuração das ferramentas de qualidade.
+# O runtime da CLI continua sem dependência nenhuma (`dependencies = []`); ruff,
+# pyright e pylint são dev-only, instalados por quem desenvolve via requirements-dev.txt.
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "getbrolls"
+dynamic = ["version"]
+description = "Coleta de b-roll com revisão humana: pesquisa, prévia, aprovação, direitos e entrega."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+authors = [{ name = "Bruno Moreira" }]
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Environment :: Console",
+]
+
+[project.urls]
+Homepage = "https://github.com/engenheirodevideo/get-brolls"
+Changelog = "https://github.com/engenheirodevideo/get-brolls/blob/main/CHANGELOG.md"
+
+[project.scripts]
+getbrolls = "getbrolls.cli:entrypoint"
+
+[tool.hatch.version]
+path = "scripts/getbrolls/__init__.py"
+
+# `force-include` ignora o `exclude`: pastas entram por `only-include` + `sources` (o
+# `exclude` abaixo vale para elas) e só arquivos com nome entram por `force-include`.
+[tool.hatch.build]
+exclude = ["**/__pycache__", "**/*.pyc", "**/.env", "**/.env.*"]
+
+[tool.hatch.build.targets.wheel]
+only-include = ["scripts/getbrolls", "assets", "schemas", "references", "examples", "plugins_official"]
+
+# Os dados vão para `getbrolls/_data/`; o `_data/MANIFEST` é a sentinela da
+# instalação por wheel (`getbrolls._paths.detect`).
+[tool.hatch.build.targets.wheel.sources]
+"scripts/getbrolls" = "getbrolls"
+"assets" = "getbrolls/_data/assets"
+"schemas" = "getbrolls/_data/schemas"
+"references" = "getbrolls/_data/references"
+"examples" = "getbrolls/_data/examples"
+"plugins_official" = "getbrolls/_data/plugins_official"
+
+[tool.hatch.build.targets.wheel.force-include]
+"docs/RULES.md" = "getbrolls/_data/docs/RULES.md"
+"docs/BRIEF.md" = "getbrolls/_data/docs/BRIEF.md"
+"requirements-bootstrap.txt" = "getbrolls/_data/requirements-bootstrap.txt"
+"requirements.txt" = "getbrolls/_data/requirements.txt"
+"package.json" = "getbrolls/_data/package.json"
+"package-lock.json" = "getbrolls/_data/package-lock.json"
+"packaging/data_manifest.txt" = "getbrolls/_data/MANIFEST"
+
+# `uv build` monta o sdist primeiro e o wheel a partir dele: tudo o que o wheel
+# força acima precisa estar nesta allowlist, senão o wheel sai sem dados.
+[tool.hatch.build.targets.sdist]
+only-include = [
+    "scripts/getbrolls",
+    "scripts/gb.py",
+    "assets",
+    "schemas",
+    "references",
+    "examples",
+    "plugins_official",
+    "docs/RULES.md",
+    "docs/BRIEF.md",
+    "packaging",
+    "requirements-bootstrap.txt",
+    "requirements.txt",
+    "package.json",
+    "package-lock.json",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "CHANGELOG.md",
+]
+exclude = ["**/__pycache__", "**/*.pyc", "**/.env", "**/.env.*"]
 
 [tool.ruff]
 line-length = 120
@@ -8,7 +96,17 @@ target-version = "py311"
 extend-exclude = ["**/__pycache__", ".venv"]
 
 [tool.ruff.lint]
-select = [
+# `extend-select` soma estas famílias ao conjunto padrão do ruff; `select` o trocaria. Assim a
+# configuração é sempre um superconjunto do padrão ("passa nas regras padrão" vale por
+# construção) e não precisa copiar para cá as regras padrão que as famílias abaixo não cobrem
+# (YTT, ASYNC, PYI, EXE, FLY002, algumas de TRY, PT, D...), lista que envelheceria no primeiro
+# bump do ruff. Só entra o que o padrão liga: TRY003, o resto de PT, D etc. seguem desligados.
+# TRY004 (padrão) pede `TypeError` para tipo errado. Aqui `ValueError` é o contrato do dado
+# inválido (docs/CLI_CONTRACT.md: INVALID_DATA, saída 1; `TypeError` sai como INTERNAL_ERROR,
+# saída 3, assinatura de bug) e quem chama o validador captura `ValueError` (`status`,
+# `client list`, o `ApiError` do SDK...). Esses pontos levam `# noqa: TRY004 - motivo` na
+# linha; só onde ninguém depende de `ValueError` o código levanta `TypeError`.
+extend-select = [
     "E",
     "F",
     "W",
@@ -73,14 +171,21 @@ ignore = ["E501", "RUF001", "RUF002", "RUF003", "PLC0415"]
 # próprio `gb.py`: todo argv é uma lista fixa (nunca shell=True nem string
 # montada), e o executável vem de caminho fixado/descoberto (`tool_path`,
 # `sys.executable`, `shutil.which`). S603/S607 aqui são o ruído esperado de
-# "isso roda um binário externo", não um alerta de comando não confiável.
+# invocar ffmpeg/ffprobe/yt-dlp/curl/taskkill/git, não um alerta de comando
+# não confiável.
 "scripts/getbrolls/media.py" = ["S603"]
 "scripts/getbrolls/social.py" = ["S603"]
-# O Python da `.venv` do próprio repositório, com argv fixo, para listar os pacotes instalados.
-"scripts/getbrolls/venv_check.py" = ["S603"]
 "scripts/getbrolls/instagram_pairs.py" = ["S603", "S607", "T201"]
 "scripts/getbrolls/serve.py" = ["S603", "S607", "T201"]
 "scripts/bump_version.py" = ["S603", "T201"]
+# PTH105: a troca de pasta do `update` usa `os.replace` (não `Path.replace`) de
+# propósito, para o teste de rollback poder trocar só essa chamada via
+# `patch("getbrolls.sdk.install.os.replace", ...)` sem capturar todo método
+# `Path.replace` usado por qualquer outro código nesse processo.
+"scripts/getbrolls/sdk/install.py" = ["S603", "PTH105"]
+# Todo processo git do SDK (ls-remote, fetch, ls-tree, cat-file) sai daqui: argv em
+# lista, executável de `shutil.which`, e `commit`/`ref`/`subdir` validados antes.
+"scripts/getbrolls/sdk/git_source.py" = ["S603"]
 
 # `print` é o mecanismo de saída legítimo destes programas: stdout/stderr são
 # a interface deles (CLI entrypoint, script de lote independente, aviso de
@@ -89,15 +194,85 @@ ignore = ["E501", "RUF001", "RUF002", "RUF003", "PLC0415"]
 "scripts/getbrolls/cli.py" = ["T201"]
 "scripts/getbrolls/runtime.py" = ["T201"]
 "scripts/gen_skill_mirror.py" = ["T201"]
+"scripts/gen_official_pins.py" = ["T201"]
 "scripts/check_anchors.py" = ["T201"]
+# O gate de cobertura roda a suíte e a combinação do `coverage` com argv em lista (sem shell) e
+# imprime o resumo e as lacunas: é a interface dele.
+"scripts/check_coverage.py" = ["S603", "T201"]
+
+# Módulos que receberam código de outro módulo na 2.6.0. Cada um herda só os ignores do módulo de onde o
+# código saiu, para que mover código não troque uma regra por uma supressão na linha. Quem não aparece
+# aqui não ganha ignore: passa pelas regras plenas.
+"scripts/getbrolls/diagnostics.py" = ["T201"]
+"scripts/getbrolls/cli_parser.py" = ["T201"]
+# `setup` roda `sys.executable -m venv`/pip (argv em lista, sem shell), encerra a árvore do passo com
+# `taskkill` no Windows e mostra o progresso em stderr.
+"scripts/getbrolls/bootstrap_steps.py" = ["S603", "S607", "T201"]
+"scripts/getbrolls/instagram_common.py" = ["S603", "S607", "T201"]
+"scripts/getbrolls/instagram_media.py" = ["S603", "S607", "T201"]
+"scripts/getbrolls/instagram_queue.py" = ["S603", "S607", "T201"]
+"scripts/getbrolls/sdk/materialize.py" = ["PTH105"]
+"scripts/getbrolls/sdk/staging.py" = ["PTH105"]
+
+[tool.getbrolls.coverage]
+# Metas do gate de cobertura (`python3 scripts/check_coverage.py`, CONTRIBUTING.md). Os
+# percentuais valem sem arredondamento: 99,99% não passa numa meta de 100%.
+# `source` é o que o coverage mede (o pacote e os scripts avulsos de scripts/*.py).
+source = "scripts"
+total_lines = 95
+total_branches = 90
+# Cada arquivo sob `file_prefix` (inclusive sdk/ e tools/) tem o seu piso próprio.
+file_prefix = "scripts/getbrolls"
+file_lines = 90
+file_branches = 85
+# Módulos de contrato: cada linha e cada ramo.
+strict_files = [
+    "scripts/getbrolls/cli.py",
+    "scripts/getbrolls/cli_parser.py",
+    "scripts/getbrolls/cli_project_args.py",
+    "scripts/getbrolls/cli_summaries.py",
+    "scripts/getbrolls/runtime.py",
+    "scripts/getbrolls/errors.py",
+    "scripts/getbrolls/_paths.py",
+    "scripts/getbrolls/runtime_parts.py",
+    "scripts/getbrolls/install_report.py",
+    "scripts/getbrolls/ledger.py",
+    "scripts/getbrolls/effects.py",
+    "scripts/getbrolls/logs.py",
+    "scripts/getbrolls/_salt_read.py",
+    "scripts/getbrolls/redaction.py",
+    "scripts/getbrolls/private_files.py",
+    "scripts/getbrolls/file_locks.py",
+    "scripts/getbrolls/error_codes.py",
+    "scripts/getbrolls/command_policy.py",
+    "scripts/getbrolls/diagnostics.py",
+    "scripts/getbrolls/effects_salt.py",
+]
+strict_lines = 100
+strict_branches = 100
 
 [tool.ruff.lint.isort]
 known-first-party = ["getbrolls"]
 
+[tool.pylint.main]
+py-version = "3.11"
+
+[tool.pylint.format]
+max-line-length = 120
+
+[tool.pylint."messages control"]
+disable = [
+    # Imports tardios são convenção de inicialização da CLI e de isolamento de
+    # testes (o mesmo motivo do PLC0415 desligado em ruff, acima).
+    "import-outside-toplevel",
+    # `type(x) is` rejeita `bool` e subclasses de propósito na validação de JSON.
+    "unidiomatic-typecheck",
+]
+
 [tool.pyright]
 typeCheckingMode = "basic"
 pythonVersion = "3.11"
-include = ["scripts", "tests"]
+include = ["scripts", "tests", "examples"]
 exclude = ["**/__pycache__", ".venv"]
 extraPaths = ["scripts"]
 

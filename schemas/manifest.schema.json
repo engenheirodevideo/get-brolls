@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls manifest v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/manifest.schema.json",
+  "description": "brolls/manifest.json do projeto. O objeto fica aberto (campos como project_id passam); cada item segue o schema candidate quando o escritor grava, e a leitura dos itens continua com validate_manifest (arquivos de 2.5 e edições à mão).",
+  "type": "object",
+  "required": [
+    "items"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}
