@@ -6,22 +6,33 @@ cópia quando o sistema não deixa linkar, ensaio sem gravar, caminho perigoso r
 arquivo editado pela pessoa preservado e `verify` que avisa em vez de reprovar.
 """
 
+import errno
 import json
 import os
+import re
+import shutil
 import stat
 import tempfile
 import types
 import unittest
 from pathlib import Path
 from typing import ClassVar
+from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT
+from _symlink import needs_symlink
 
-from getbrolls import delivery
+from getbrolls import delivery, delivery_files, delivery_sweep
+
+# Reimport com apelido só pra isolar o setup do teste que precisa dele
+# (mesmo motivo do redefined-outer-name em tests/pylintrc).
+from getbrolls import delivery as module  # pylint: disable=reimported
+from getbrolls.commands import execute
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, now, set_segment
+from getbrolls.runtime import audited
 
 
 def fetched(source_id, title, shot=None, clip: str | None = "clips/x.mp4", sheet: str | None = "previews/x.jpg"):
@@ -49,7 +60,6 @@ def fetched(source_id, title, shot=None, clip: str | None = "clips/x.mp4", sheet
 
 def with_brief(tmp):
     """BRIEF.md válido com um beat `abertura`, para a escada ter onde chegar."""
-    import re
 
     raw = (ROOT / "docs" / "BRIEF.md").read_text(encoding="utf-8")
     block = re.findall(r"```json\s*\n(.*?)\n```", raw, re.DOTALL)[0]
@@ -189,8 +199,6 @@ class Build(unittest.TestCase):
     def test_dry_run_leaves_the_manifest_byte_identical(self):
         # O ensaio passa pelo mesmo caminho de `deliver`, inclusive `sync_formats`:
         # nenhuma etapa dele pode reescrever o manifesto.
-        from getbrolls.commands import execute
-        from getbrolls.runtime import audited
 
         with tempfile.TemporaryDirectory() as tmp:
             project(tmp, [fetched("a", "Palco", shot="abertura")])
@@ -208,6 +216,28 @@ class Build(unittest.TestCase):
             self.assertEqual(before, manifest.read_bytes())
             self.assertFalse((Path(tmp) / "entrega").exists())
             self.assertEqual(["planned"], [i["method"] for i in report["items"]])
+
+    def test_dry_run_reports_the_conflict_the_real_run_raises(self):
+        """O ensaio enxerga o arquivo editado que a rodada real recusa."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project(tmp, [fetched("a", "Palco", shot="abertura")])
+            first = delivery.build_delivery(tmp)
+            media = Path(tmp) / first["items"][0]["path"]
+            media.chmod(0o644)
+            media.unlink()
+            media.write_bytes(b"edicao da pessoa")
+            snapshot = {
+                str(p.relative_to(tmp)): (p.read_bytes() if p.is_file() else None) for p in sorted(Path(tmp).rglob("*"))
+            }
+            dry = delivery.build_delivery(tmp, dry_run=True)
+            after_dry = {
+                str(p.relative_to(tmp)): (p.read_bytes() if p.is_file() else None) for p in sorted(Path(tmp).rglob("*"))
+            }
+            self.assertEqual(snapshot, after_dry)
+            with self.assertRaises(ValueError) as caught:
+                delivery.build_delivery(tmp)
+            self.assertEqual([str(caught.exception)], dry.get("conflicts"))
+            self.assertEqual(b"edicao da pessoa", media.read_bytes())
 
     def test_delivered_media_is_read_only_because_the_inode_is_shared(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -242,9 +272,152 @@ class Build(unittest.TestCase):
             index = (Path(tmp) / "entrega" / "README.md").read_text(encoding="utf-8")
             self.assertIn("cópia independente", index)
 
+    def test_forced_copy_replaces_a_hardlink_with_a_writable_copy(self):
+        """`GB_DELIVERY_COPY=1` depois de uma entrega por hardlink vira cópia de verdade."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project(tmp, [fetched("a", "Palco", shot="abertura")])
+            first = delivery.build_delivery(tmp)
+            self.assertEqual(["hardlink"], [i["method"] for i in first["items"]])
+            media = Path(tmp) / first["items"][0]["path"]
+            source = Path(tmp) / "brolls" / "clips" / "x.mp4"
+            original = source.read_bytes()
+            with patch.dict(os.environ, {"GB_DELIVERY_COPY": "1"}):
+                report = delivery.build_delivery(tmp)
+            self.assertEqual(["copy"], [i["method"] for i in report["items"]])
+            self.assertEqual(1, media.stat().st_nlink)
+            self.assertFalse(os.path.samestat(media.stat(), source.stat()))
+            # A cópia nasce editável, mesmo vindo de um clipe congelado pelo hardlink.
+            self.assertTrue(media.stat().st_mode & stat.S_IWUSR)
+            origin = (media.parent / "ORIGEM.md").read_text(encoding="utf-8")
+            self.assertIn("cópia independente", origin)
+            self.assertNotIn("editar o original", origin)
+            # O clipe canônico continua lá, com os mesmos bytes.
+            self.assertEqual(original, source.read_bytes())
+            media.write_bytes(b"editei a copia")
+            self.assertEqual(original, source.read_bytes())
+
+    @needs_symlink
+    def test_forced_copy_replaces_a_symlink_with_a_writable_copy(self):
+        """O symlink para o clipe também é o original; com cópia forçada ele sai."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project(tmp, [fetched("a", "Palco", shot="abertura")])
+            with patch.object(os, "link", side_effect=OSError("outro volume")):
+                first = delivery.build_delivery(tmp)
+            if first["items"][0]["method"] != "symlink":
+                self.skipTest("symlinks indisponíveis neste ambiente")
+            media = Path(tmp) / first["items"][0]["path"]
+            with patch.dict(os.environ, {"GB_DELIVERY_COPY": "1"}):
+                report = delivery.build_delivery(tmp)
+            self.assertEqual(["copy"], [i["method"] for i in report["items"]])
+            self.assertFalse(media.is_symlink())
+            self.assertTrue(media.stat().st_mode & stat.S_IWUSR)
+
+    def test_forced_copy_keeps_the_clip_frozen_when_unlinking_needs_the_write_bit(self):
+        """No Windows, apagar o nome somente-leitura em `entrega/` não destrava o clipe.
+
+        A troca do `.part` pelo nome recusa um destino somente-leitura no Windows, e o
+        `unlink` dele também: `thaw_unlink` devolve a escrita ao inode — que é o mesmo do
+        clipe em `brolls/`. O modo do clipe volta ao que era.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            project(tmp, [fetched("a", "Palco", shot="abertura")])
+            first = delivery.build_delivery(tmp)
+            # O mesmo caminho que `build_delivery` monta (raiz resolvida: /var → /private/var no macOS).
+            media = Path(tmp).resolve() / first["items"][0]["path"]
+            source = Path(tmp) / "brolls" / "clips" / "x.mp4"
+            frozen = stat.S_IMODE(source.stat().st_mode)
+            self.assertFalse(frozen & 0o222)
+            real_unlink = Path.unlink
+            real_replace = Path.replace
+            refused = []
+
+            def windows_unlink(path, missing_ok=False):
+                # O primeiro `unlink` do nome somente-leitura falha, como no Windows.
+                if path == media and not refused and not path.stat().st_mode & stat.S_IWUSR:
+                    refused.append(path)
+                    raise PermissionError(13, "Acesso negado", str(path))
+                return real_unlink(path, missing_ok=missing_ok)
+
+            def windows_replace(path, target):
+                # `MoveFileEx` recusa trocar por cima de um destino somente-leitura.
+                if Path(target) == media and media.exists() and not media.stat().st_mode & stat.S_IWUSR:
+                    raise PermissionError(13, "Acesso negado", str(target))
+                return real_replace(path, target)
+
+            with (
+                patch.dict(os.environ, {"GB_DELIVERY_COPY": "1"}),
+                patch.object(Path, "unlink", windows_unlink),
+                patch.object(Path, "replace", windows_replace),
+            ):
+                report = delivery.build_delivery(tmp)
+            self.assertEqual([media], refused)
+            self.assertEqual(["copy"], [i["method"] for i in report["items"]])
+            self.assertEqual(frozen, stat.S_IMODE(source.stat().st_mode))
+            self.assertTrue(media.stat().st_mode & stat.S_IWUSR)
+
+    def test_a_forced_copy_that_cannot_be_written_keeps_the_hardlink(self):
+        """Disco cheio ou Ctrl+C no meio da cópia forçada: o hardlink que funcionava continua lá.
+
+        A cópia nasce num `.part` e só toma o nome inteira; antes dela, nada sai. O disco
+        cheio é conflito do item (o resto da entrega segue), e o registro de entrega
+        continua apontando para um arquivo que existe.
+        """
+        for failure in (OSError(errno.ENOSPC, "No space left on device"), KeyboardInterrupt()):
+            with self.subTest(failure=type(failure).__name__), tempfile.TemporaryDirectory() as tmp:
+                project(tmp, [fetched("a", "Palco", shot="abertura")])
+                first = delivery.build_delivery(tmp)
+                media = Path(tmp) / first["items"][0]["path"]
+                source = Path(tmp) / "brolls" / "clips" / "x.mp4"
+                frozen = stat.S_IMODE(source.stat().st_mode)
+                expected = ValueError if isinstance(failure, OSError) else KeyboardInterrupt
+                with (
+                    patch.dict(os.environ, {"GB_DELIVERY_COPY": "1"}),
+                    patch.object(shutil, "copy2", side_effect=failure),
+                    self.assertRaises(expected) as caught,
+                ):
+                    delivery.build_delivery(tmp)
+                self.assertTrue(media.samefile(source))
+                self.assertEqual(frozen, stat.S_IMODE(source.stat().st_mode))
+                self.assertEqual([], list(media.parent.glob("*.part")))
+                stored = Ledger(tmp, recover=False).data["items"][0]["delivery"]
+                self.assertTrue((Path(tmp) / stored["path"]).samefile(source))
+                if expected is ValueError:
+                    self.assertIn(media.name, str(caught.exception))
+                    index = (Path(tmp) / "entrega" / "README.md").read_text(encoding="utf-8")
+                    self.assertIn(media.name, index.split("## Conflitos", 1)[1])
+
+    def test_forced_copy_makes_a_read_only_copy_from_an_older_run_editable(self):
+        """A cópia 0444 que a versão antiga deixou (mesmos bytes) volta a ser editável."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project(tmp, [fetched("a", "Palco", shot="abertura")])
+            plan = delivery.build_delivery(tmp, dry_run=True)
+            media = Path(tmp) / plan["items"][0]["path"]
+            source = Path(tmp) / "brolls" / "clips" / "x.mp4"
+            media.parent.mkdir(parents=True)
+            shutil.copy2(source, media)
+            media.chmod(0o444)
+            with patch.dict(os.environ, {"GB_DELIVERY_COPY": "1"}):
+                report = delivery.build_delivery(tmp)
+            self.assertEqual(["copy"], [i["method"] for i in report["items"]])
+            self.assertTrue(media.stat().st_mode & stat.S_IWUSR)
+
+    def test_a_same_bytes_hardlink_of_another_clip_stays_frozen(self):
+        """Mesmos bytes, mas outro nome de um clipe congelado: dar escrita ali destravaria `brolls/`."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project(tmp, [fetched("a", "Palco", shot="abertura")])
+            plan = delivery.build_delivery(tmp, dry_run=True)
+            media = Path(tmp) / plan["items"][0]["path"]
+            twin = Path(tmp) / "brolls" / "clips" / "x-r0.mp4"
+            shutil.copy2(Path(tmp) / "brolls" / "clips" / "x.mp4", twin)
+            twin.chmod(0o444)
+            media.parent.mkdir(parents=True)
+            os.link(twin, media)
+            with patch.dict(os.environ, {"GB_DELIVERY_COPY": "1"}):
+                report = delivery.build_delivery(tmp)
+            self.assertEqual(["copy"], [i["method"] for i in report["items"]])
+            self.assertEqual(0o444, stat.S_IMODE(twin.stat().st_mode))
+
     def test_the_index_points_at_what_comes_after_the_delivery(self):
-        from getbrolls.commands import execute
-        from getbrolls.runtime import audited
 
         with tempfile.TemporaryDirectory() as tmp:
             project(tmp, [fetched("a", "Palco", shot="abertura")])
@@ -266,8 +439,6 @@ class Build(unittest.TestCase):
 
     def test_the_index_never_points_at_a_candidate_the_human_never_saw(self):
         """Fricção 1 da rodada 2: o README nascia mandando inspecionar um descarte."""
-        from getbrolls.commands import execute
-        from getbrolls.runtime import audited
 
         with tempfile.TemporaryDirectory() as tmp:
             leftover = candidate("youtube", "descartado", "Livestream 24/7")
@@ -293,8 +464,6 @@ class Build(unittest.TestCase):
 
     def test_the_index_asks_for_the_pending_decision_instead_of_saying_it_is_done(self):
         """Entregar o que foi aprovado não fecha o fluxo enquanto houver prévia sem decisão."""
-        from getbrolls.commands import execute
-        from getbrolls.runtime import audited
 
         with tempfile.TemporaryDirectory() as tmp:
             waiting = candidate("local", "espera", "Prévia esperando decisão")
@@ -383,6 +552,80 @@ class Build(unittest.TestCase):
             self.assertEqual(b"corte que a pessoa mexeu na mao", media.read_bytes())
 
 
+def _json_block(path):
+    raw = Path(path).read_text(encoding="utf-8")
+    block = re.findall(r"```json\s*\n(.*?)\n```", raw, re.DOTALL)[0]
+    return raw, block, json.loads(block)
+
+
+class BriefOrder(unittest.TestCase):
+    """A ordem e os nomes de `entrega/` vêm do BRIEF.md validado com o RULES.md."""
+
+    def test_delivery_follows_the_brief_with_user_declaration_rules(self):
+        raw, block, data = _json_block(ROOT / "docs" / "BRIEF.md")
+        first = {**data["beats"][0], "id": "abertura", "target": "Ponte ao amanhecer"}
+        last = {**first, "id": "fechamento", "target": "Cristo visto do mar"}
+        data["beats"] = [first, last]
+        data["rights"]["posture"] = "user_declaration"
+        rules_raw, rules_block, rules = _json_block(ROOT / "docs" / "RULES.md")
+        rules["copyright"].update(
+            mode="user_declaration", responsible_person="Pessoa Exemplo", declaration="Assumo os direitos."
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "BRIEF.md").write_text(
+                raw.replace(block, json.dumps(data, ensure_ascii=False, indent=2), 1), encoding="utf-8"
+            )
+            Path(tmp, "RULES.md").write_text(
+                rules_raw.replace(rules_block, json.dumps(rules, ensure_ascii=False, indent=2), 1), encoding="utf-8"
+            )
+            # Ordem do manifesto ao contrário da do brief.
+            project(
+                tmp,
+                [
+                    fetched("b", "Titulo do video B", shot="fechamento", clip="clips/b.mp4", sheet="previews/b.jpg"),
+                    fetched("a", "Titulo do video A", shot="abertura", clip="clips/a.mp4", sheet="previews/a.jpg"),
+                ],
+            )
+            report = delivery.build_delivery(tmp)
+            self.assertEqual(["abertura", "fechamento"], [i["beat"] for i in report["items"]])
+            self.assertEqual(
+                ["entrega/01-abertura-ponte-ao-amanhecer", "entrega/02-fechamento-cristo-visto-do-mar"],
+                [i["path"].rsplit("/", 1)[0] for i in report["items"]],
+            )
+
+    def test_broken_brief_refuses_and_keeps_entrega(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with_brief(tmp)
+            project(tmp, [fetched("a", "Palco principal do evento", shot="abertura")])
+            delivery.build_delivery(tmp)
+            entrega = Path(tmp) / "entrega"
+            before = sorted(p.relative_to(entrega).as_posix() for p in entrega.rglob("*"))
+            brief = Path(tmp, "BRIEF.md")
+            brief.write_text(
+                brief.read_text(encoding="utf-8").replace('"version": 1,', '"version": 1,,', 1), encoding="utf-8"
+            )
+            for dry_run in (True, False):
+                with self.subTest(dry_run=dry_run):
+                    with self.assertRaises(ValueError) as caught:
+                        delivery.build_delivery(tmp, dry_run=dry_run)
+                    self.assertIn("BRIEF.md", str(caught.exception))
+                    self.assertIn("entrega/", str(caught.exception))
+                    # Nada foi renomeado nem varrido: a entrega anterior fica como estava.
+                    self.assertEqual(before, sorted(p.relative_to(entrega).as_posix() for p in entrega.rglob("*")))
+
+    def test_without_a_brief_the_manifest_order_still_applies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project(
+                tmp,
+                [
+                    fetched("b", "Plateia", shot="fechamento", clip="clips/b.mp4", sheet=None),
+                    fetched("a", "Palco", shot="abertura", clip="clips/a.mp4", sheet=None),
+                ],
+            )
+            report = delivery.build_delivery(tmp)
+            self.assertEqual(["fechamento", "abertura"], [i["beat"] for i in report["items"]])
+
+
 class FrozenFiles(unittest.TestCase):
     """O que `deliver` congela precisa continuar apagável — inclusive no Windows."""
 
@@ -390,9 +633,9 @@ class FrozenFiles(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "congelado.mp4"
             path.write_bytes(b"bytes")
-            delivery._freeze(path, "hardlink")
+            delivery_files._freeze(path, "hardlink")
             self.assertFalse(os.access(path, os.W_OK))
-            delivery._thaw_unlink(path)
+            delivery_sweep.thaw_unlink(path)
             self.assertFalse(path.exists())
 
     def test_thaw_unlink_gives_the_write_bit_back_when_unlink_is_refused(self):
@@ -400,7 +643,7 @@ class FrozenFiles(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "congelado.mp4"
             path.write_bytes(b"bytes")
-            delivery._freeze(path, "hardlink")
+            delivery_files._freeze(path, "hardlink")
             real = Path.unlink
             refused = []
 
@@ -412,7 +655,7 @@ class FrozenFiles(unittest.TestCase):
 
             Path.unlink = windowsish
             try:
-                delivery._thaw_unlink(path)
+                delivery_sweep.thaw_unlink(path)
             finally:
                 Path.unlink = real
             self.assertEqual([str(path)], refused)
@@ -453,9 +696,6 @@ class OriginAuthor(unittest.TestCase):
 
 class VerifyHook(unittest.TestCase):
     def test_delivery_failure_only_warns_and_verify_still_succeeds(self):
-        from getbrolls import delivery as module
-        from getbrolls.commands import execute
-        from getbrolls.runtime import audited
 
         with tempfile.TemporaryDirectory() as tmp:
             project(tmp, [fetched("a", "Palco", shot="abertura", clip=None)])
@@ -524,7 +764,6 @@ class MixedDeliveryIndex(unittest.TestCase):
         self.assertNotIn("Edição |", copies)
 
     def test_a_real_mixed_delivery_produces_the_column(self):
-        from unittest.mock import patch
 
         real = delivery.link_or_copy
         calls = {"n": 0}
@@ -534,8 +773,6 @@ class MixedDeliveryIndex(unittest.TestCase):
             # o sistema recusar o link de um arquivo só (outro volume, por exemplo).
             calls["n"] += 1
             if calls["n"] == 2:  # noqa: PLR2004 - second file of the pair (see the comment above)
-                import shutil
-
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dest)
                 return "copy"
