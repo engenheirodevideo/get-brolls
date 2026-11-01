@@ -30,8 +30,6 @@ from getbrolls import config, effects, file_locks, logs, private_files, runtime
 from getbrolls.errors import LockedError
 
 IS_ROOT = hasattr(os, "geteuid") and os.geteuid() == 0
-# `os.chflags` só existe no macOS/BSD; por `getattr` o pyright aceita o teste em todo sistema.
-_chflags = getattr(os, "chflags", None)
 
 
 def _fake_msvcrt(calls, fail=None):
@@ -320,15 +318,16 @@ class ForceRmtreeEdgeTests(unittest.TestCase):
             row = self.the_op_line(lambda: runtime.force_rmtree(root))
         self.assertEqual("ok", row["outcome"])
 
-    @unittest.skipUnless(_chflags is not None and hasattr(stat, "UF_IMMUTABLE"), "needs BSD file flags")
+    @unittest.skipUnless(hasattr(os, "chflags") and hasattr(stat, "UF_IMMUTABLE"), "needs BSD file flags")
     def test_an_immutable_file_leaves_the_tree_and_the_line_says_so(self):
         root = self.base / "immutable"
         root.mkdir()
         kept = root / "kept.txt"
         kept.write_text("k", encoding="utf-8")
-        assert _chflags is not None
-        _chflags(kept, stat.UF_IMMUTABLE)
-        self.addCleanup(_chflags, kept, 0)
+        # `os.chflags` só existe no macOS/BSD: por `getattr` nem pyright nem pylint inferem membro ausente.
+        chflags = getattr(os, "chflags")  # noqa: B009
+        chflags(kept, stat.UF_IMMUTABLE)
+        self.addCleanup(chflags, kept, 0)
         row = self.the_op_line(lambda: runtime.force_rmtree(root))
         self.assertEqual("error", row["outcome"])
         self.assertTrue(kept.exists())
