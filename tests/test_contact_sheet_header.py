@@ -5,6 +5,7 @@ tinha `%`: o `drawtext` lia o `textfile` com expansão ligada, tentava expandir 
 `%{...}` que não existe, e desistia do filtro — a folha saía, o cabeçalho não.
 """
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,10 +13,11 @@ from typing import Any
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import media
+from getbrolls.config import settings
 
 # Dois-pontos separam opções do filtro, aspas simples delimitam valores e `%` abre
 # uma expansão: os três caracteres que já quebraram o banner.
@@ -89,8 +91,66 @@ class DrawtextEscapingTests(unittest.TestCase):
         self.assertTrue(banner.startswith("Foguete decolando\n["))
 
 
+class FilterPathTests(unittest.TestCase):
+    """Um caminho entra no filtro do ffmpeg escapado em dois níveis: opção e filtergraph."""
+
+    def test_filter_path_escapes_the_option_and_the_filtergraph(self):
+        # Nível 1 (opção): `\`, `'` e `:` ganham `\`. Nível 2 (filtergraph): o valor vai entre
+        # aspas, e cada `'` fecha a aspa, entra escapado e abre outra; `[],;` ficam literais ali.
+        self.assertEqual(
+            "'C\\:/Projetos/Mike\\'\\''s [a],b;c.txt'",
+            media._filter_path("C:\\Projetos\\Mike's [a],b;c.txt", "nt"),  # pylint: disable=protected-access
+        )
+
+    def test_a_backslash_outside_windows_is_part_of_the_name(self):
+        # Fora do Windows, `\` não separa pastas: vai escapado (`\\`), nunca trocado por `/`.
+        self.assertEqual(
+            "'/tmp/back\\\\slash/f.txt'",
+            media._filter_path("/tmp/back\\slash/f.txt", "posix"),  # pylint: disable=protected-access
+        )
+
+    def test_preview_works_with_an_apostrophe_in_the_project_path(self):
+        self.assert_labelled_preview_in("Mike's reel")
+
+    @unittest.skipIf(os.name == "nt", "no Windows, `\\` separa pastas e não entra no nome")
+    def test_preview_works_with_a_backslash_in_the_project_path(self):
+        self.assert_labelled_preview_in("back\\slash")
+
+    def assert_labelled_preview_in(self, folder):
+        if not media.drawtext_available() or not media.find_font():
+            self.skipTest("ffmpeg com drawtext e uma fonte TrueType são necessários")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / folder
+            previews = root / "brolls" / "previews"
+            previews.mkdir(parents=True)
+            src = root / "src.mp4"
+            media.run(
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=320x180:rate=25",
+                    "-t",
+                    "3",
+                    str(src),
+                ]
+            )
+            config: dict[str, Any] = dict(media_settings())
+            config["frames"] = 4
+            config["mode"] = "static"
+            result = media.review_preview(
+                src, previews, "x", 0, 2, config, label={"title": "Mike's take", "id": "a1", "duration": 3}
+            )
+            self.assertTrue(result["sheet_labels"])
+            for key in ("poster_path", "contact_sheet_path"):
+                self.assertTrue((root / "brolls" / result[key]).is_file(), key)
+
+
 def media_settings():
-    from getbrolls.config import settings
 
     return settings()
 

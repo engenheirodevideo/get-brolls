@@ -1,5 +1,11 @@
 """Social acquisition using the existing yt-dlp/FFmpeg engine, without API keys."""
 
+# pylint: disable=invalid-name,missing-function-docstring,global-statement,too-many-locals,cyclic-import
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0); `_sleep_logged`
+# é módulo-privado (guarda de log único por processo), não uma constante real. O
+# ciclo (getbrolls.providers <-> getbrolls.social) já existia antes da 2.6.0: quem
+# quebra o ciclo em tempo de execução é o import tardio em `providers._youtube`.
+
 import hashlib
 import json
 import logging
@@ -8,14 +14,14 @@ import os
 import re
 import shutil
 import subprocess
-import tempfile
 import time
 from pathlib import Path
 
-from . import logs
+from . import _paths, effects, labels, logs
 from .config import executable_override, venv_override
+from .errors import PrerequisiteError
 from .http import ProviderError
-from .runtime import record_warning, redact, stderr_tail
+from .runtime import REDACT_LIMIT, record_warning, redact, stderr_tail
 
 _log = logs.get("social")
 
@@ -37,9 +43,38 @@ def sleep_settings():
         values = tuple(int(part.strip()) for part in parts)
     except ValueError:
         values = ()
-    if len(values) != 3 or any(v < 0 for v in values) or values[1] > values[2]:  # noqa: PLR2004 - "requests,min,max": exatamente 3 campos
+    bad_count = len(values) != 3  # noqa: PLR2004 - "requests,min,max": exatamente 3 campos
+    if bad_count or any(v < 0 for v in values) or values[1] > values[2]:
         raise ValueError('GB_YTDLP_SLEEP: use "requests,min,max" em segundos inteiros, com min <= max.')
     return values
+
+
+class MissingToolError(ProviderError, PrerequisiteError):
+    """Ferramenta externa ausente (yt-dlp): é falha de provedor e falta de pré-requisito ao mesmo tempo."""
+
+
+def _from_checkout():
+    return _paths.origin() == "checkout"
+
+
+def _ytdlp_missing_text():
+    if _from_checkout():
+        return (
+            "yt-dlp ausente: execute bash scripts/install.sh (ou install.ps1) na raiz da skill/plugin "
+            f"({_paths.cli_hint('setup')} faz o mesmo); o runtime fica em $GB_HOME/runtime e sobrevive "
+            f"ao /plugin update. Confira com {_paths.cli_hint('doctor')}."
+        )
+    return f"yt-dlp ausente: {_paths.installer_hint()}. Confira com {_paths.cli_hint('doctor')}."
+
+
+def _tool_not_found_text(name):
+    if _from_checkout():
+        return f"{name} não encontrado: execute bash scripts/install.sh (ou install.ps1) na raiz da skill/plugin."
+    return f"{name} não encontrado: {_paths.installer_hint()}."
+
+
+def _instagram_pairs_command():
+    return "scripts/getbrolls/instagram_pairs.py" if _from_checkout() else "python -P -m getbrolls.instagram_pairs"
 
 
 def local_ytdlp(root=None):
@@ -49,10 +84,10 @@ def local_ytdlp(root=None):
     base = venv_override()
     explicit = base is not None
     if not explicit:
-        root = Path(root) if root is not None else Path(__file__).resolve().parents[2]
-        base = root / ".venv"
+        base = Path(root) / ".venv" if root is not None else _paths.venv_dir().path
     for relative in LAYOUTS:
         candidate = base / relative
+        # lenient: tool discovery: try the next yt-dlp layout
         if candidate.is_file():
             return candidate
     if explicit:
@@ -78,18 +113,29 @@ def _log_sleep_settings_once(requests, low, high):
     logs.event(_log, logging.DEBUG, "ytdlp_sleep", requests=requests, min=low, max=high)
 
 
-def command():
-    # Same lookup order `local_ytdlp()` uses internally (env pin, then venv, then PATH);
-    # read here too only to classify which one supplied the binary, for `tool_path`.
+def ytdlp_in_use():
+    """O yt-dlp que `command()` usa e de onde veio: `(Path, "env" | "venv" | "path")`.
+
+    Ordem única: o pin `GB_YTDLP_PATH` (`env`), a venv do runtime ou de `GB_VENV_PATH`
+    (`venv`), o `PATH` (`path`); `(None, None)` sem nenhum. Pin quebrado levanta
+    `ValueError`. `doctor` e `setup --check` julgam este mesmo executável.
+    """
     pinned = executable_override("GB_YTDLP_PATH")
+    if pinned:
+        return Path(pinned), "env"
     local = local_ytdlp()
-    exe = str(local) if local else shutil.which("yt-dlp")
-    if not exe:
-        raise ProviderError(
-            "yt-dlp ausente: execute bash scripts/install.sh (ou install.ps1) na raiz da skill/plugin; "
-            "após /plugin update é preciso reinstalar. Confira com python3 scripts/gb.py doctor."
-        )
-    _log_tool_path("env" if pinned else "venv" if local else "path")
+    if local:
+        return Path(local), "venv"
+    found = shutil.which("yt-dlp")
+    return (Path(found), "path") if found else (None, None)
+
+
+def command():
+    exe, source = ytdlp_in_use()
+    if exe is None:
+        raise MissingToolError(_ytdlp_missing_text())
+    exe = str(exe)
+    _log_tool_path(source)
     requests, low, high = sleep_settings()
     _log_sleep_settings_once(requests, low, high)
     # --no-warnings would hide exactly the rate-limit/PO-token/fallback warnings we want to surface.
@@ -176,7 +222,7 @@ def _extract_warnings(stderr):
             # An indented line with no "WARNING" prefix of its own is a continuation of
             # the previous warning (yt-dlp wraps long warnings this way), not a new one.
             warnings[-1] = f"{warnings[-1]} {raw_line.strip()}"
-    return [redact(w) for w in warnings]
+    return [labels.for_log(redact(w, limit=None), REDACT_LIMIT) for w in warnings]  # redact and label, then cut
 
 
 def _log_subprocess(op, started, *, status, exit_code):
@@ -199,7 +245,7 @@ def run(arguments, timeout=180, *, op=None):
     cmd = command() + arguments
     started = time.monotonic()
     try:
-        proc = subprocess.run(
+        proc = effects.run(
             cmd, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout
         )
     except subprocess.TimeoutExpired as exc:
@@ -219,9 +265,7 @@ def run(arguments, timeout=180, *, op=None):
     except FileNotFoundError as exc:
         _log_subprocess(op, started, status="error", exit_code=None)
         name = exc.filename or (cmd[0] if cmd else "yt-dlp")
-        raise ProviderError(
-            f"{name} não encontrado: execute bash scripts/install.sh (ou install.ps1) na raiz da skill/plugin."
-        ) from exc
+        raise MissingToolError(_tool_not_found_text(name)) from exc
     except PermissionError as exc:
         _log_subprocess(op, started, status="error", exit_code=None)
         name = exc.filename or (cmd[0] if cmd else "yt-dlp")
@@ -229,7 +273,8 @@ def run(arguments, timeout=180, *, op=None):
     except (subprocess.SubprocessError, OSError) as exc:
         _log_subprocess(op, started, status="error", exit_code=None)
         raise ProviderError(
-            "yt-dlp não concluiu: confira dependências, disponibilidade do vídeo e sessão exigida pela fonte. Para Instagram, use o fluxo navegador → pares CDN descrito em docs/GUIDE.md."
+            "yt-dlp não concluiu: confira dependências, disponibilidade do vídeo e sessão exigida "
+            "pela fonte. Para Instagram, use o fluxo navegador → pares CDN descrito em docs/GUIDE.md."
         ) from exc
     _log_subprocess(op, started, status="ok", exit_code=proc.returncode)
     return proc.stdout, _extract_warnings(proc.stderr)
@@ -252,7 +297,8 @@ SUBTITLE_LANGS = ("pt", "en")
 def _language_from(name):
     """`probe.pt.vtt` → `pt`; `probe.pt-BR.vtt` → `pt-BR`."""
     parts = Path(name).name.split(".")
-    return parts[-2] if len(parts) >= 3 else "und"  # noqa: PLR2004 - "nome.idioma.vtt": pelo menos 3 partes (ver exemplo acima)
+    # "nome.idioma.vtt": pelo menos 3 partes (ver exemplo acima)
+    return parts[-2] if len(parts) >= 3 else "und"  # noqa: PLR2004
 
 
 # Teto da lista de idiomas na resposta: o YouTube anuncia centenas de traduções
@@ -267,13 +313,18 @@ def _write_private(path, text):
     escreveria através de um arquivo (ou link) plantado com esse nome.
     """
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.unlink(missing_ok=True)
-    with open(  # noqa: PTH123 - wraps an os.open() fd (explicit O_CREAT|O_EXCL flags/mode), no Path equivalent
-        os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600),
-        "w",
-        encoding="utf-8",
-    ) as stream:
+    effects.mkdir(path.parent, parents=True, exist_ok=True)
+    effects.unlink(path, missing_ok=True)
+    with (
+        effects.op("fs.write", path),
+        open(  # noqa: PTH123 - wraps an os.open() fd (explicit O_CREAT|O_EXCL flags/mode), no Path equivalent
+            os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600),
+            "w",
+            encoding="utf-8",
+            newline="\n",
+        ) as stream,
+    ):
+        effects.make_private(path)
         stream.write(text)
 
 
@@ -330,8 +381,9 @@ def metadata(url):
     try:
         data = json.loads(raw)
     except ValueError:
-        return {}
+        data = None
     if not isinstance(data, dict):
+        record_warning("YTDLP_WARNING", "metadados não vieram desta página: o yt-dlp devolveu metadados inválidos.")
         return {}
     duration = data.get("duration")
     # `uploader_id` do TikTok já vem como `@handle`; o do YouTube é o id do canal.
@@ -345,7 +397,9 @@ def metadata(url):
     }
 
 
-def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):  # noqa: C901 - existing size; one branch per cache/retry/subtitle-language outcome
+def probe_remote(  # noqa: C901 - existing size; one branch per cache/retry/subtitle-language outcome
+    url, langs=SUBTITLE_LANGS, cache=None
+):
     """O que a fonte conta sobre si: duração, capítulos, legendas e descrição.
 
     Um único pedido ao yt-dlp, sem baixar vídeo, com as mesmas pausas de
@@ -358,10 +412,10 @@ def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):  # noqa: C901 - existin
     resolve(url)
     cache = Path(cache) if cache is not None else None
     if cache is not None:
-        cache.mkdir(parents=True, exist_ok=True)
+        effects.mkdir(cache, parents=True, exist_ok=True, mode=0o700)
         cache.chmod(0o700)
     subtitles = {}
-    with tempfile.TemporaryDirectory(dir=str(cache) if cache else None) as work:
+    with effects.temp_dir(folder=str(cache) if cache else None) as work:
         info = Path(work) / "probe.info.json"
         # `--dump-single-json` implicaria `--simulate`, e em modo simulado o yt-dlp não
         # escreve arquivo nenhum: os `.vtt` nunca chegavam ao disco e o `inspect` voltava
@@ -397,6 +451,7 @@ def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):  # noqa: C901 - existin
         )
         for w in warnings:
             record_warning("YTDLP_WARNING", w)
+        # lenient: post-condition of yt-dlp in our temp folder
         if info.is_file():
             raw = info.read_text(encoding="utf-8", errors="replace")
         else:
@@ -436,6 +491,7 @@ def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):  # noqa: C901 - existin
                     logging.DEBUG,
                     "cache_reuse",
                     kind="subtitle",
+                    # lenient: log field only: cache hit or miss
                     status="hit" if destination.exists() else "miss",
                 )
                 _write_private(destination, text)
@@ -477,7 +533,10 @@ def probe_remote(url, langs=SUBTITLE_LANGS, cache=None):  # noqa: C901 - existin
 
 
 def download_segment(url, target, start, end):
-    from .media import probe
+    """Baixa `[start, end]` de uma página social para `target` (sem sobrescrever).
+
+    A duração entregue não é conferida aqui: quem chama (`acquisition`) aplica a mesma
+    regra de intervalo das outras fontes, inclusive o `tolerant` da varredura."""
     from .media import run as media_run
     from .providers import resolve
 
@@ -486,10 +545,10 @@ def download_segment(url, target, start, end):
     if not all(math.isfinite(v) for v in (start, end)) or start < 0 or end <= start:
         raise ProviderError("Intervalo inválido para download social.")
     target = Path(target)
-    if target.exists():
+    if _paths.strict_exists(target):
         raise ProviderError("Destino existente; não foi sobrescrito.")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=target.parent) as folder:
+    effects.mkdir(target.parent, parents=True, exist_ok=True)
+    with effects.temp_dir(folder=target.parent) as folder:
         output = Path(folder) / "source.mp4"
         _, warnings = run(
             [
@@ -511,26 +570,30 @@ def download_segment(url, target, start, end):
         )
         for w in warnings:
             record_warning("YTDLP_WARNING", w)
-        info = probe(output)
-        if abs(info["duration_s"] - (end - start)) > max(0.25, 2 / (info["fps"] or 10)):
-            raise ProviderError("O trecho social não corresponde ao intervalo solicitado.")
         media_run(["ffmpeg", "-v", "error", "-i", str(output), "-f", "null", "-"])
         # Exclusive publication also protects a target created while downloading.
-        with output.open("rb") as source, target.open("xb") as dest:
+        with (
+            effects.op("fs.copy", target, fallback=(FileExistsError,)),
+            output.open("rb") as source,
+            target.open("xb") as dest,
+        ):
             try:
                 shutil.copyfileobj(source, dest)
             except BaseException:
-                target.unlink(missing_ok=True)
+                effects.unlink(target, missing_ok=True)
                 raise
     return target
 
 
 def doctor():
+    exe, source = ytdlp_in_use()
     return {
         "engine": "yt-dlp",
-        "installed": bool(local_ytdlp() or shutil.which("yt-dlp")),
+        "installed": exe is not None,
+        "executable": str(exe) if exe is not None else None,
+        "source": source,
         "javascript_runtime": "deno" if shutil.which("deno") else "node" if shutil.which("node") else None,
         "youtube_api_key_required": False,
-        "instagram": "Navegador/Playwright → configs vídeo+áudio → scripts/getbrolls/instagram_pairs.py",
+        "instagram": "Navegador/Playwright → configs vídeo+áudio → " + _instagram_pairs_command(),
         "scope": "Disponibilidade de executáveis; não comprova extração ao vivo nem versão/runtime EJS.",
     }

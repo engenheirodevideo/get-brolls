@@ -1,17 +1,20 @@
+# pylint: disable=missing-module-docstring,missing-function-docstring,too-many-arguments
+# pylint: disable=too-many-positional-arguments,too-many-locals
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0).
+
 import hashlib
 import json
 import logging
 import math
 import os
 import re
-import shutil
 import subprocess
-import tempfile
 import time
 from pathlib import Path
 
-from . import logs
+from . import _paths, effects, logs
 from .config import CAP_EPSILON, cache_root, tool_path
+from .errors import PrerequisiteError
 from .runtime import record_warning, stderr_tail
 
 _logger = logs.get("media")
@@ -23,7 +26,7 @@ def run(args, *, op=None):
     args = [tool_path(name), *args[1:]]
     started = time.monotonic()
     try:
-        result = subprocess.run(
+        result = effects.run(
             args, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180
         )
         logs.event(
@@ -49,9 +52,9 @@ def run(args, *, op=None):
             exit=None,
         )
         # Executável ausente é outro problema que arquivo ou intervalo inválido.
-        raise ValueError(
+        raise PrerequisiteError(
             f"{name} não encontrado: instale FFmpeg/ffprobe ou aponte GB_FFMPEG_PATH/GB_FFPROBE_PATH; "
-            "verifique python3 scripts/gb.py doctor."
+            f"verifique {_paths.cli_hint('doctor')}."
         ) from e
     except subprocess.TimeoutExpired as e:
         logs.event(
@@ -78,7 +81,7 @@ def run(args, *, op=None):
         )
         tail = stderr_tail(e.stderr)
         raise ValueError(
-            f"{name} falhou (exit {e.returncode}); verifique python3 scripts/gb.py doctor."
+            f"{name} falhou (exit {e.returncode}); verifique {_paths.cli_hint('doctor')}."
             + (f" stderr: {tail}" if tail else "")
         ) from e
     except (subprocess.SubprocessError, OSError) as e:
@@ -92,7 +95,7 @@ def run(args, *, op=None):
             status="error",
             exit=None,
         )
-        raise ValueError("Falha de mídia: confirme arquivo e intervalo; verifique python3 scripts/gb.py doctor.") from e
+        raise ValueError(f"Falha de mídia: confirme arquivo e intervalo; verifique {_paths.cli_hint('doctor')}.") from e
 
 
 _DRAWTEXT = {}
@@ -106,6 +109,7 @@ def _drawtext_cache_path(ffmpeg_path):
     """Keyed by ffmpeg path + mtime so a replaced binary invalidates the cache."""
     try:
         mtime = Path(ffmpeg_path).stat().st_mtime
+    # lenient: cache key only: an ffmpeg it cannot stat gets mtime 0 and a fresh probe
     except OSError:
         mtime = 0
     key = hashlib.sha256(f"{ffmpeg_path}:{mtime}".encode()).hexdigest()
@@ -140,6 +144,7 @@ def drawtext_available():
         return _DRAWTEXT[name]
     cache_path = _drawtext_cache_path(name)
     try:
+        # lenient: optional drawtext probe cache: absent means probe again
         if cache_path.is_file():
             cached = json.loads(cache_path.read_text(encoding="utf-8"))
             _DRAWTEXT[name] = bool(cached.get("available"))
@@ -164,10 +169,13 @@ def drawtext_available():
     _DRAWTEXT[name] = available
     logs.event(_logger, logging.INFO, "drawtext_probe", available=available, source="probe")
     try:
-        cache_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        effects.mkdir(cache_path.parent, parents=True, exist_ok=True, mode=0o700)
         temp = cache_path.with_suffix(".tmp")
-        temp.write_text(json.dumps({"available": available, "checked_at": time.time()}), encoding="utf-8")
-        temp.replace(cache_path)
+        with effects.op("fs.write", cache_path):
+            temp.write_text(
+                json.dumps({"available": available, "checked_at": time.time()}), encoding="utf-8", newline="\n"
+            )
+            temp.replace(cache_path)
     except OSError:
         pass
     return available
@@ -178,11 +186,12 @@ def find_font():
     pinned = os.environ.get("GB_FONT_FILE", "").strip()
     if pinned:
         path = Path(pinned).expanduser()
-        if not path.is_file():
+        if not _paths.strict_is_file(path):
             raise ValueError(f"GB_FONT_FILE não aponta para uma fonte existente: {pinned}")
         logs.event(_logger, logging.DEBUG, "font", found=True, source="env")
         return str(path.resolve())
     for candidate in DEFAULT_FONTS:
+        # lenient: system font discovery: try the next candidate font
         if Path(candidate).is_file():
             logs.event(_logger, logging.DEBUG, "font", found=True, source="system")
             return str(Path(candidate).resolve())
@@ -190,9 +199,25 @@ def find_font():
     return None
 
 
-def _filter_path(path):
-    """Escape a path for use inside an ffmpeg filter option (colons, backslashes)."""
-    return str(path).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+# ffmpeg unescapes a filter option twice: first the filtergraph parser (`[],;` split the
+# graph; a quoted run is literal there), then the filter's own option parser (`:` splits
+# options; `\\` escapes). See ffmpeg-filters, "Notes on filtergraph escaping".
+_OPTION_SPECIAL = re.compile(r"([\\':])")
+
+
+def _filter_path(path, platform=None):
+    """Quote a path as one ffmpeg filter option value, escaped at both levels.
+
+    On Windows, backslashes become `/` first (ffmpeg accepts `C:/...`); elsewhere a
+    backslash is part of a file name and stays, escaped like any other `\\`. Level 1
+    escapes `\\`, `'` and `:` for the option parser; level 2 wraps it in quotes for the
+    filtergraph, where a quote cannot be quoted: it closes the run, goes escaped, and
+    a new run opens. A path without a quote comes out as before: `'C\\:/dir/file'`."""
+    text = str(path)
+    if (platform or os.name) == "nt":
+        text = text.replace("\\", "/")
+    option = _OPTION_SPECIAL.sub(r"\\\1", text)
+    return "'" + option.replace("'", "'\\''") + "'"
 
 
 # Caracteres de controle nunca chegam ao banner: um `\n` no título quebraria a linha
@@ -254,7 +279,7 @@ def probe(path):
 
 def cut(src, dst, start, end):
     dst = Path(dst)
-    if dst.exists():
+    if _paths.strict_exists(dst):
         raise ValueError("Arquivo final já existe; nenhum arquivo foi sobrescrito.")
     tmp = dst.with_suffix(".part.mp4")
     try:
@@ -264,10 +289,13 @@ def cut(src, dst, start, end):
                 "-v",
                 "error",
                 "-y",
-                "-i",
-                str(src),
+                # Input seek: ffmpeg jumps near `start` instead of decoding the source from
+                # its first frame (a cut near the end of a long source outran the 180 s
+                # budget of `run`). With the re-encode below it stays frame-accurate.
                 "-ss",
                 str(start),
+                "-i",
+                str(src),
                 "-t",
                 str(end - start),
                 "-map",
@@ -292,9 +320,9 @@ def cut(src, dst, start, end):
         if abs(info["duration_s"] - (end - start)) > max(0.25, 2 / (info["fps"] or 10)):
             raise ValueError("Duração do corte não corresponde ao intervalo aprovado.")
         run(["ffmpeg", "-v", "error", "-i", str(tmp), "-f", "null", "-"], op="decode_check")
-        tmp.replace(dst)
+        effects.replace(tmp, dst)
     finally:
-        tmp.unlink(missing_ok=True)
+        effects.unlink(tmp, missing_ok=True)
 
 
 def preview(src, dst, start, end):
@@ -318,11 +346,14 @@ def preview(src, dst, start, end):
         ],
         op="preview",
     )
+    # lenient: post-condition of our own ffmpeg write; absent means ffmpeg failed
     if not Path(dst).exists():
         raise ValueError("Não foi possível criar a prévia.")
 
 
-def review_preview(src, directory, stem, start, end, config, label=None):  # noqa: PLR0913, PLR0917 - existing size; one field per input the preview/contact-sheet/GIF build needs
+def review_preview(  # noqa: PLR0913, PLR0917 - existing size; one field per input the preview/GIF build needs
+    src, directory, stem, start, end, config, label=None
+):
     """Full selected interval, native aspect, static gallery and bounded GIF.
 
     The contact sheet follows the original gb_contact.sh: evenly sampled frames tiled
@@ -334,7 +365,7 @@ def review_preview(src, directory, stem, start, end, config, label=None):  # noq
     if end - start > config["max_seconds"] + CAP_EPSILON:
         raise ValueError("Trecho excede GB_PREVIEW_MAX_SECONDS; selecione um insert menor ou ajuste a configuração.")
     # Stage every output before replacing any prior preview.
-    with tempfile.TemporaryDirectory(dir=directory) as stage_dir:
+    with effects.temp_dir(folder=directory) as stage_dir:
         stage = Path(stage_dir)
         poster = stage / "poster.jpg"
         sheet = stage / "sheet.jpg"
@@ -375,21 +406,22 @@ def review_preview(src, directory, stem, start, end, config, label=None):  # noq
         if font:
             font_opt = _filter_path(font)
             cell = (
-                f"drawtext=fontfile='{font_opt}':text='%{{eif\\:n+1\\:d}}':x=8:y=8:fontsize=28:"
+                f"drawtext=fontfile={font_opt}:text='%{{eif\\:n+1\\:d}}':x=8:y=8:fontsize=28:"
                 "fontcolor=white:box=1:boxcolor=black@0.65:boxborderw=6,"
             )
             title_file = stage / "title.txt"
             title = _banner_text(label.get("title"))
             ident = _banner_text(label.get("id"))
-            title_file.write_text(
+            effects.write_text(
+                title_file,
                 f"{title}\n[{ident}]  corte {clock(src_start)}–{clock(src_end)}"
                 + (f" de {clock(label['duration'])}" if label.get("duration") else "")
                 + f"  ·  {n} quadros",
                 encoding="utf-8",
             )
             banner = (
-                f",pad=iw:ih+72:0:72:color=0x0b0b0b,drawtext=fontfile='{font_opt}':"
-                f"textfile='{_filter_path(title_file)}':x=16:y=12:fontsize=26:"
+                f",pad=iw:ih+72:0:72:color=0x0b0b0b,drawtext=fontfile={font_opt}:"
+                f"textfile={_filter_path(title_file)}:x=16:y=12:fontsize=26:"
                 # `expansion=none`: sem isso, um título com `%` (ou com `\`) faz o
                 # drawtext tentar expandir `%{...}`, falhar a análise e derrubar o
                 # banner inteiro — o cabeçalho sumia e o resto da folha saía normal.
@@ -424,7 +456,11 @@ def review_preview(src, directory, stem, start, end, config, label=None):  # noq
             w = config["width"]
             fps = config["fps"]
             colors = config["colors"]
-            filt = f"fps={fps},scale='min({w},iw)':-2:flags=lanczos,split[a][b];[a]palettegen=max_colors={colors}:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle"
+            filt = (
+                f"fps={fps},scale='min({w},iw)':-2:flags=lanczos,split[a][b];"
+                f"[a]palettegen=max_colors={colors}:stats_mode=diff[p];"
+                "[b][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle"
+            )
             run([*base, "-filter_complex", filt, "-loop", "0", str(gif)])
             size = gif.stat().st_size
             result["gif_bytes"] = size
@@ -433,14 +469,17 @@ def review_preview(src, directory, stem, start, end, config, label=None):  # noq
                 files.append((gif, result["gif_path"]))
             else:
                 result["warning"] = (
-                    "GIF excedeu o limite de tamanho; entregue estático. Reduza largura/FPS ou aumente GB_GIF_MAX_MB e gere novamente."
+                    "GIF excedeu o limite de tamanho; entregue estático. Reduza largura/FPS ou "
+                    "aumente GB_GIF_MAX_MB e gere novamente."
                 )
         for source, relative in files:
-            source.replace(directory.parent / relative)
+            effects.replace(source, directory.parent / relative)
     return result
 
 
-def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):  # noqa: PLR0913, PLR0917 - existing size; one field per input the full-video contact sheet needs
+def scan_sheet(  # noqa: PLR0913, PLR0917 - existing size; one field per input the full-video contact sheet needs
+    src, directory, stem, start, span, frames=12, source_offset=0
+):
     """Varredura do vídeo inteiro: um quadro a cada span/frames segundos, baixa resolução.
 
     Não é a prévia do trecho (essa é `review_preview`, presa a GB_PREVIEW_MAX_SECONDS):
@@ -451,14 +490,14 @@ def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):  
     é com esse número que a pessoa monta o `--start/--end` do `preview`.
     """
     directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=True)
+    effects.mkdir(directory, parents=True, exist_ok=True)
     if span <= 0:
         raise ValueError("Varredura exige duração conhecida maior que zero.")
     n = max(1, int(frames))
     cols = min(4, n)
     rows = math.ceil(n / cols)
     relative = "previews/" + stem + "-scan.jpg"
-    with tempfile.TemporaryDirectory(dir=directory) as stage:
+    with effects.temp_dir(folder=directory) as stage:
         sheet = Path(stage) / "scan.jpg"
         run(
             [
@@ -483,9 +522,10 @@ def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):  
             ],
             op="scan",
         )
+        # lenient: post-condition of our own ffmpeg write; absent means ffmpeg failed
         if not sheet.exists():
             raise ValueError("Não foi possível varrer o vídeo.")
-        sheet.replace(directory / (stem + "-scan.jpg"))
+        effects.replace(sheet, directory / (stem + "-scan.jpg"))
     return {
         "scan_path": relative,
         "span_s": round(span, 3),
@@ -495,10 +535,65 @@ def scan_sheet(src, directory, stem, start, span, frames=12, source_offset=0):  
     }
 
 
+# Extensões que já dizem que o arquivo é uma imagem estática.
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff", ".gif")
+
+# Assinaturas dos formatos que as fontes publicam, lidas do começo do arquivo. O
+# arquivo baixado chega sem extensão útil (`source.bin`, `download-….part`), e a
+# URL nem sempre diz o que o servidor entregou.
+_SIGNATURES = (
+    (0, b"\xff\xd8\xff", ".jpg"),
+    (0, b"\x89PNG\r\n\x1a\n", ".png"),
+    (0, b"GIF87a", ".gif"),
+    (0, b"GIF89a", ".gif"),
+    (0, b"II*\x00", ".tif"),
+    (0, b"MM\x00*", ".tif"),
+    (0, b"BM", ".bmp"),
+    (0, b"\x1a\x45\xdf\xa3", ".webm"),
+    (0, b"OggS", ".ogv"),
+    (4, b"ftyp", ".mp4"),
+)
+
+
+def sniff_suffix(path, default):
+    """Extensão pelo conteúdo real do arquivo; `default` quando nenhuma assinatura bate."""
+    try:
+        with Path(path).open("rb") as stream:
+            head = stream.read(16)
+    except OSError:
+        return default
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return ".webp"
+    for offset, magic, suffix in _SIGNATURES:
+        if head[offset : offset + len(magic)] == magic:
+            return suffix
+    return default
+
+
+# Fotos que eu reconheço pela assinatura: só estas ganham extensão em `clips/`.
+SNIFFED_IMAGE_SUFFIXES = (".jpg", ".png", ".webp", ".gif", ".tif", ".bmp")
+
+
+def image_suffix(path):
+    """Extensão da foto pelo conteúdo, só de formato conhecido; o resto é recusado.
+
+    A extensão da URL não entra: um PPM servido como `.jpg`, ou um AVIF/HEIC (que
+    começa com `ftyp`, como o MP4), sairia com um nome que mente sobre o arquivo.
+    """
+    found = sniff_suffix(path, None)
+    if found not in SNIFFED_IMAGE_SUFFIXES:
+        raise ValueError(
+            "Formato de imagem não reconhecido: o arquivo que a fonte entregou não é "
+            "JPG, PNG, WebP, GIF, TIFF nem BMP, e eu não gravo foto com extensão "
+            "inventada. Escolha outro arquivo ou outro candidato da fonte."
+        )
+    return found
+
+
 def image_preview(src, directory, stem):
     directory = Path(directory)
     rel = "previews/" + stem + "-poster.jpg"
-    with tempfile.TemporaryDirectory(dir=directory) as stage:
+    with effects.temp_dir(folder=directory) as stage:
         dest = Path(stage) / "poster.jpg"
         run(
             [
@@ -516,7 +611,7 @@ def image_preview(src, directory, stem):
             ],
             op="poster",
         )
-        dest.replace(directory.parent / rel)
+        effects.replace(dest, directory.parent / rel)
     return {
         "poster_path": rel,
         "contact_sheet_path": None,
@@ -527,15 +622,15 @@ def image_preview(src, directory, stem):
 
 def copy_image(src, dst):
     dst = Path(dst)
-    if dst.exists():
+    if _paths.strict_exists(dst):
         raise ValueError("Arquivo final já existe; não foi sobrescrito.")
-    with tempfile.TemporaryDirectory(dir=dst.parent) as stage:
+    with effects.temp_dir(folder=dst.parent) as stage:
         tmp = Path(stage) / dst.name
-        shutil.copyfile(src, tmp)
+        effects.copy_file(src, tmp)
         probe(tmp)
         run(["ffmpeg", "-v", "error", "-i", str(tmp), "-f", "null", "-"], op="decode_check")
         from .ledger import digest
 
         if digest(src) != digest(tmp):
             raise ValueError("Cópia da imagem não confere com o original.")
-        tmp.replace(dst)
+        effects.replace(tmp, dst)

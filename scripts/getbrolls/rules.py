@@ -1,17 +1,24 @@
 """User-editable, local declarative rules. No YAML dependency or code evaluation."""
 
+# pylint: disable=missing-function-docstring,cyclic-import
+# Legado: ocorrências pré-existentes em `domain_matches`, `allowed` e
+# `format_report` (corpo idêntico ao código anterior à 2.6.0). O ciclo
+# (getbrolls.queue <-> getbrolls.rules) já existia antes da 2.6.0: quem quebra
+# o ciclo em tempo de execução é o import tardio em `queue.report`.
+
+import json
 import logging
 import os
 import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from . import logs
+from . import _paths, effects, labels, logs, versioning, vocab
 from .brief import read_json_block
+from .errors import PrerequisiteError
 from .models import invalidate_approval
 from .queue import validate_pacing_block
 
-ROOT = Path(__file__).resolve().parents[2]
 TYPES = {"video", "image", "news_screenshot", "web_screenshot"}
 
 log = logs.get("rules")
@@ -43,7 +50,7 @@ NEVER_INHERITED = ("copyright",)
 
 def home_dir():
     """Pasta pessoal da skill; `GB_HOME` existe para os testes não tocarem a real."""
-    return Path(os.environ.get("GB_HOME") or Path.home() / ".getbrolls")
+    return _paths.gb_home()
 
 
 def _merge(base, extra):
@@ -62,13 +69,14 @@ def _merge(base, extra):
     return extra
 
 
-def _strip_never_inherited(path, data, warnings, label):
-    """Tira de uma camada de fora do projeto o que só o projeto pode dizer."""
+def _strip_never_inherited(shown, data, warnings, label):
+    """Tira de uma camada de fora do projeto o que só o projeto pode dizer; `shown` nomeia a camada
+    no aviso: a marca do RULES.md global, ou o `GB_RULES_FILE` como a pessoa o escreveu."""
     for key in NEVER_INHERITED:
         if key in data:
             del data[key]
             warnings.append(
-                f'"{key}" do RULES.md {label} ({path}) foi ignorado: '
+                f'"{key}" do RULES.md {label} ({shown}) foi ignorado: '
                 "responsabilidade e declaração valem só no projeto em que o "
                 "vídeo é feito. Preencha no RULES.md deste projeto."
             )
@@ -80,15 +88,15 @@ def rules_layers(project):
     """Camadas na ordem geral → específica, com os avisos do que foi ignorado."""
     layers, warnings = [], []
     project_path = Path(project) / "RULES.md"
-    template_base = not project_path.exists()
+    template_base = not _paths.strict_exists(project_path)
     if template_base:
         # Sem arquivo no projeto, o modelo da skill é só o piso: quem está por cima
         # (global, GB_RULES_FILE) continua valendo mais que ele.
-        template = ROOT / "docs" / "RULES.md"
+        template = _paths.data_path("docs", "RULES.md")
         layers.append((template, read_rules_block(template)))
         project_path = None
     global_path = home_dir() / "RULES.md"
-    if global_path.exists():
+    if _paths.strict_exists(global_path):
         # Uma camada global corrompida some, mas as restrições dela (blocked_domains,
         # asset_types...) somem junto — a pessoa continua achando que valem. Falha
         # travada: melhor parar o comando do que deixar de aplicar uma regra de
@@ -96,21 +104,23 @@ def rules_layers(project):
         # cobre isso); um arquivo presente e ilegível não pode ser tratado como ausente.
         try:
             data = read_rules_block(global_path)
+        except PrerequisiteError:
+            raise
         except ValueError as e:
             raise ValueError(
-                f"O RULES.md global ({global_path}) não pôde ser lido: {e} Conserte "
+                f"O RULES.md global ({labels.shown(global_path)}) não pôde ser lido: {labels.reason(e)} Conserte "
                 "esse arquivo ou apague-o para usar apenas as regras deste projeto."
             ) from None
         layers.append(
             (
                 global_path,
-                _strip_never_inherited(global_path, data, warnings, "global"),
+                _strip_never_inherited(labels.shown(global_path), data, warnings, "global"),
             )
         )
     middle = os.environ.get("GB_RULES_FILE")
     if middle:
         middle = Path(middle)
-        if not middle.exists():
+        if not _paths.strict_exists(middle):
             raise ValueError(
                 "GB_RULES_FILE aponta para um arquivo que não existe: corrija o caminho "
                 "ou apague essa variável para usar o RULES.md da pasta do trabalho."
@@ -119,7 +129,7 @@ def rules_layers(project):
         layers.append(
             (
                 middle,
-                _strip_never_inherited(middle, read_rules_block(middle), warnings, "de GB_RULES_FILE"),
+                _strip_never_inherited(str(middle), read_rules_block(middle), warnings, "de GB_RULES_FILE"),
             )
         )
     if project_path is not None:
@@ -128,6 +138,7 @@ def rules_layers(project):
         log,
         logging.DEBUG,
         "rules_layers",
+        # lenient: log field; the strict check above already answered for this path
         **{"global": global_path.exists()},
         env_file=bool(middle),
         project=project_path is not None,
@@ -136,15 +147,70 @@ def rules_layers(project):
     return layers, warnings
 
 
-def load_rules(project):  # noqa: C901, PLR0912 - existing size; validator with one check per RULES.md field
-    layers, warnings = rules_layers(project)
+def searchable_providers():
+    """Nomes de fonte com busca habilitada, entre as carregadas no registro do SDK."""
+    from .sdk.registry import get_registry
+
+    reg = get_registry()
+    return {
+        n
+        for n in reg.provider_names()
+        if reg.provider(n).capabilities.search  # type: ignore[union-attr] - name veio de provider_names()
+    }
+
+
+def _declared_by_plugin(name):
+    """Linha de status do plugin instalado que declara `name` em
+    `contributes.providers`, ou `None`. `searchable_providers()` já tocou
+    `get_registry()` logo acima, então este lookup só lê o que já foi montado —
+    nunca executa código de plugin por conta própria."""
+    from .sdk import loader
+
+    return loader.declared_by(name)
+
+
+def _merge_layers(layers):
+    """Funde as camadas de RULES.md em um único dict, registrando a origem de cada chave."""
     r, sources = {}, {}
     for path, data in layers:
         for key, value in data.items():
             r[key] = _merge(r[key], value) if key in r else value
             sources[key] = str(path)
-    if type(r.get("version")) is not int or r["version"] != 1:
-        raise ValueError('Em RULES.md, "version" tem que ser o número 1. Ajuste essa linha.')
+    return r, sources
+
+
+def _schemas():
+    from .sdk import schemas  # tardio: o sdk importa `rules` (home_dir)
+
+    return schemas
+
+
+def _validate_version(r):
+    """Normaliza `version` do RULES.md: ausente vale 1; versão mais nova que a do schema sai com a frase padrão.
+
+    `schema_version` não é sinônimo (saiu com a versão de testes da 2.6): é uma chave como outra
+    qualquer, que o getbrolls ignora, como a 2.5 fazia.
+    """
+    declared = {versioning.FIELD: r["version"]} if "version" in r else {}
+    r["version"] = versioning.read_version(
+        declared,
+        "RULES.md",
+        _schemas().version("rules_block"),
+        invalid='Em RULES.md, "version" tem que ser o número 1. Ajuste essa linha.',
+    )
+
+
+def _validate_schema(r):
+    """Confere as regras fundidas contra `schemas/rules_block.schema.json`, depois das conferências acima."""
+    from .sdk import jsonschema  # tardio: o sdk importa `rules` (home_dir)
+
+    problems = jsonschema.errors(r, _schemas().load("rules_block"))
+    if problems:
+        raise ValueError("Em RULES.md, o bloco json está fora do formato: " + "; ".join(problems[:3]) + ".")
+
+
+def _validate_asset_types(r):
+    """Exige `asset_types` como lista não vazia de tipos conhecidos."""
     if (
         not isinstance(r.get("asset_types"), list)
         or not r["asset_types"]
@@ -155,25 +221,61 @@ def load_rules(project):  # noqa: C901, PLR0912 - existing size; validator with 
             + ", ".join(sorted(TYPES))
             + "."
         )
-    if r.get("video_format") not in ("native", "reels", "horizontal"):
+
+
+def _validate_video_format(r):
+    """Exige `video_format` em um dos três valores aceitos."""
+    if r.get("video_format") not in vocab.FORMATS:
         raise ValueError('Em RULES.md, "video_format" tem que ser "native", "reels" ou "horizontal".')
-    providers = {"youtube", "pexels", "pixabay", "commons", "nasa"}
+
+
+def _effective_preferred_providers(intent, v, providers, warnings):
+    """Filtra `preferred_providers[intent]`, avisando (sem quebrar) fontes de plugin suspenso."""
+    base_error = ValueError(
+        'Em RULES.md, a lista de "preferred_providers.' + intent + '" só aceita, '
+        "sem repetir: " + ", ".join(sorted(providers)) + "."
+    )
+    if not isinstance(v, list) or any(not isinstance(x, str) for x in v) or len(set(v)) != len(v):
+        raise base_error
+    effective = []
+    for name in v:
+        if name in providers:
+            effective.append(name)
+            continue
+        # Fonte de um plugin instalado, só não carregada agora (falhou, está
+        # suspensa etc.): tirar da lista efetiva com aviso, não quebrar toda busca
+        # do projeto por causa de um plugin que vai voltar a carregar. Nome que
+        # nenhum plugin instalado declara continua sendo erro de verdade.
+        row = _declared_by_plugin(name)
+        if row is None:
+            raise base_error
+        from .sdk.loader import status_hint, status_phrase
+
+        hint = status_hint(row, "Rode plugins --action list / doctor.")
+        message = (
+            f'Em RULES.md, "preferred_providers.{intent}" listava "{name}", fonte do '
+            f"plugin {row['id']}, {status_phrase(row)}; removida da lista "
+            f"efetiva até o plugin voltar a carregar. {hint}"
+        )
+        warnings.append(message)
+        logs.event(log, logging.INFO, "rule_source_skipped", provider=name, plugin=row["id"], status=row["status"])
+    return effective
+
+
+def _validate_preferred_providers(r, warnings, providers):
+    """Valida e filtra `preferred_providers.literal`/`.illustrative` contra as fontes carregáveis."""
     if not isinstance(r.get("preferred_providers"), dict):
-        raise ValueError(
+        raise ValueError(  # noqa: TRY004 - contrato da CLI: dado inválido é ValueError (INVALID_DATA)
             'Em RULES.md, "preferred_providers" tem que ter as chaves "literal" e '
             '"illustrative", cada uma com uma lista de fontes.'
         )
     for intent in ("literal", "illustrative"):
         v = r["preferred_providers"].get(intent)
-        if (
-            not isinstance(v, list)
-            or any(not isinstance(x, str) or x not in providers for x in v)
-            or len(set(v)) != len(v)
-        ):
-            raise ValueError(
-                'Em RULES.md, a lista de "preferred_providers.' + intent + '" só aceita, '
-                "sem repetir: " + ", ".join(sorted(providers)) + "."
-            )
+        r["preferred_providers"][intent] = _effective_preferred_providers(intent, v, providers, warnings)
+
+
+def _validate_domains(r):
+    """Exige `preferred_domains`/`blocked_domains` como listas de domínios em minúsculas."""
     for key in ("preferred_domains", "blocked_domains"):
         if not isinstance(r.get(key), list) or any(
             not isinstance(v, str) or not re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", v)
@@ -183,8 +285,16 @@ def load_rules(project):  # noqa: C901, PLR0912 - existing size; validator with 
                 "Em RULES.md, " + key + " só aceita domínios em minúsculas como "
                 '"youtube.com" — sem "https://" e sem caminho depois da barra.'
             )
+
+
+def _validate_editorial_rules(r):
+    """Exige `editorial_rules` como lista de frases."""
     if not isinstance(r.get("editorial_rules"), list) or any(not isinstance(v, str) for v in r["editorial_rules"]):
         raise ValueError('Em RULES.md, "editorial_rules" tem que ser uma lista de frases entre aspas.')
+
+
+def _validate_copyright(r):
+    """Valida o bloco `copyright`, incluindo os campos exigidos no modo `user_declaration`."""
     rights = r.get("copyright", {})
     if not isinstance(rights, dict) or rights.get("mode") not in (
         "per_item_evidence",
@@ -208,6 +318,10 @@ def load_rules(project):  # noqa: C901, PLR0912 - existing size; validator with 
             '`init-rules --responsible "SEU NOME" --declaration "..." '
             "--mode user_declaration --force` ou preencha esses dois campos no RULES.md."
         )
+
+
+def _validate_browser(r):
+    """Valida o bloco `browser` (viewport, full_page e as quatro dimensões)."""
     browser = r.get("browser", {})
     if (
         not isinstance(browser, dict)
@@ -218,10 +332,27 @@ def load_rules(project):  # noqa: C901, PLR0912 - existing size; validator with 
             'Em RULES.md, "browser" precisa de "viewport" ("mobile" ou "desktop") e de "full_page" (true ou false).'
         )
     for key in ("mobile_width", "mobile_height", "desktop_width", "desktop_height"):
-        if type(browser.get(key)) is not int or not 240 <= browser[key] <= 3840:  # noqa: PLR2004 - matches the "entre 240 e 3840" message below
+        value = browser.get(key)
+        if type(value) is not int or not 240 <= value <= 3840:  # noqa: PLR2004 - ints do msg abaixo
             raise ValueError("Em RULES.md, " + key + " tem que ser um número inteiro entre 240 e 3840.")
+
+
+def load_rules(project):
+    """Lê, funde e valida RULES.md (mais overrides), devolvendo o dict pronto para uso."""
+    layers, warnings = rules_layers(project)
+    r, sources = _merge_layers(layers)
+    _validate_version(r)
+    _validate_asset_types(r)
+    _validate_video_format(r)
+    providers = searchable_providers()
+    _validate_preferred_providers(r, warnings, providers)
+    _validate_domains(r)
+    _validate_editorial_rules(r)
+    _validate_copyright(r)
+    _validate_browser(r)
     # Optional `pacing` block for the social queue; the environment still wins.
     validate_pacing_block(r.get("pacing"))
+    _validate_schema(r)
     # Aditivo: `sources` diz de que arquivo veio cada campo e `rules_warnings` o que
     # foi ignorado pelo caminho. Nenhum consumidor existente lê essas duas chaves.
     r["sources"] = sources
@@ -232,6 +363,52 @@ def load_rules(project):  # noqa: C901, PLR0912 - existing size; validator with 
         for message in warnings:
             record_warning("RULES_LAYER_IGNORED", message)
     return r
+
+
+def _template_path():
+    return _paths.data_path("docs", "RULES.md")
+
+
+def video_format_unchosen(project, rules):
+    """True quando ninguém escolheu o formato: sem RULES.md no projeto e `video_format` do modelo da skill.
+
+    Aí o `aspecto` do ROTEIRO.md é a única escolha que a pessoa fez; o `check` não trava nele.
+    """
+    project_file = Path(project) / "RULES.md"
+    if _paths.strict_lexists(project_file):
+        return False
+    return (rules or {}).get("sources", {}).get("video_format") == str(_template_path())
+
+
+def seed_project_rules(project, video_format):
+    """Cria o RULES.md do projeto a partir do modelo, com `video_format` do roteiro; None quando não precisa.
+
+    Nunca sobrescreve: com RULES.md no projeto (até link quebrado), não faz nada. Também
+    não cria quando as camadas em vigor (global, GB_RULES_FILE) já dão esse formato.
+    É o mesmo arquivo que `init-rules --format <formato>` gravaria.
+    """
+    dest = Path(project) / "RULES.md"
+    if _paths.strict_lexists(dest):
+        return None
+    try:
+        if load_rules(project).get("video_format") == video_format:
+            return None
+    except (ValueError, OSError):
+        return None  # camada externa quebrada: o `check` mostra o erro, aqui não se cria nada
+    template = _template_path().read_text(encoding="utf-8")
+    blocks = re.findall(r"```json\s*\n(.*?)\n```", template, re.DOTALL)
+    data = json.loads(blocks[0])
+    data["video_format"] = video_format
+    text = template.replace(blocks[0], json.dumps(data, ensure_ascii=False, indent=2), 1)
+    with effects.op("fs.write", dest) as writing:
+        try:
+            with dest.open("x", encoding="utf-8", newline="\n") as handle:
+                handle.write(text)
+        except FileExistsError:
+            writing.skip()
+            return None
+    logs.event(log, logging.INFO, "rules_seeded", video_format=video_format)
+    return dest
 
 
 def domain_matches(url, domains):
@@ -322,7 +499,13 @@ def sync_formats(ledger, rules, confirm=False):
     for c in ledger.data["items"]:
         new = format_report(c, rules)
         old = c.get("format", {}).get("target", "native")
-        if old != new["target"]:
+        if old != new["target"] and (c.get("approval") or {}).get("status") == "rejected":
+            # Uma rejeição é decisão humana sobre o material, não sobre o formato:
+            # o item só passa a mirar o formato novo. Nada foi invalidado, então
+            # também não há evento `format_invalidation`.
+            c["format"] = new
+            changed.append(c)
+        elif old != new["target"]:
             invalidate_approval(c, bump_revision=True)
             c["format"] = new
             changed.append(c)
