@@ -1,0 +1,10 @@
+requires = "==@VERSION@"
+home = ".getbrolls"
+cache_dir = ".cache/getbrolls"
+plugins = []
+
+[tools]
+venv = "@WS@/tools/beta/.venv"
+ytdlp = "@WS@/tools/beta/.venv/@BIN@/yt-dlp@EXE@"
+ffmpeg = "@FFMPEG@"
+ffprobe = "@FFPROBE@"
