@@ -32,7 +32,7 @@ seguem o [glossário](glossario.md).
 
 Só ofereça a rota do chat quando a pessoa for aprovar de fato: aprovação nunca é inferida
 de silêncio. Se ela disser "aprovei todos", registre exatamente os IDs que você mostrou:
-`approve --candidate ID1 --candidate ID2 … --by "<NOME>" --channel chat --statement "<frase exata dela>"`.
+`approve --candidate ID1 --candidate ID2 --by "NOME" --channel chat --statement "FRASE EXATA DELA"`.
 Use `--all` só quando todos os candidatos com prévia foram mostrados — "aprovei todos"
 quer dizer "todos os que você me mostrou", não "todo arquivo de prévia que ficou no disco".
 

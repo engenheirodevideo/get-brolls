@@ -2,13 +2,25 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-19
+updated: 2026-10-31
 tags: [get-brolls, quality, qa, evidence]
 ---
 
-# Qualidade e evidências — GET B-ROLLS 2.5.2
+# Qualidade e evidências — GET B-ROLLS 2.6.0
 
-Este documento reúne o estado de qualidade, as regressões cobertas, os limites conhecidos e as evidências reais por provedor. Resultados ao vivo são registros datados, não promessa de disponibilidade futura nem aprovação editorial.
+Este documento reúne o estado de qualidade, as regressões cobertas, os limites conhecidos e as evidências reais por provedor. As seções "QA da versão …" são registros datados de cada versão e não foram reescritas: valem para o que a versão daquela data entregou. Resultados ao vivo são registros datados, não promessa de disponibilidade futura nem aprovação editorial.
+
+## Portões da 2.6.0
+
+A 2.6.0 é medida por portões automáticos, todos offline e sem chave de API:
+
+- **Suíte inteira em Python 3.11 e 3.14.** `python3 -m unittest discover -s tests`, com `GB_HOME` numa pasta temporária. As duas versões precisam passar, porque falhas já apareceram só na 3.14. O CI roda a mesma suíte em macOS, Windows e Linux, com Python 3.11, 3.13 e 3.14, conforme a matriz de `.github/workflows/test.yml`.
+- **Lint e tipos em zero erro.** `ruff check`, `ruff format --check`, `pyright`, `pylint scripts examples` e `pylint tests` (régua em `tests/pylintrc`). `bash scripts/check.sh` roda a bateria que o job `quality` do CI roda.
+- **Espelho e âncoras.** `scripts/gen_skill_mirror.py --check` confirma que `skills/get-brolls/SKILL.md` espelha o `SKILL.md` da raiz, e `scripts/check_anchors.py` confirma que toda âncora e link relativo citados nos documentos resolvem.
+- **Golden da 2.5.** `tests/test_golden_v25.py` repete byte a byte a matriz de saídas gravada da 2.5; só a lista fechada de diferenças aceitas passa. Assim quem não migra não vê mudança.
+- **Cobertura dos módulos estritos.** `scripts/check_coverage.py` roda a suíte sob `coverage` e falha se alguma meta de `[tool.getbrolls.coverage]` (em `pyproject.toml`) ficar de fora, dizendo o arquivo e a lacuna.
+
+O que a 2.6.0 não mede: disponibilidade de fonte, Windows em máquina real (só a matriz do CI) e o comportamento do agente. Esse último fica nos testes cegos abaixo, cuja última rodada completa é a da 2.4.0; não houve rodada nova para a 2.6.0.
 
 ## Blind tests
 
@@ -20,13 +32,13 @@ Linha de base: [2026-09-16 — 2.3.7 — Claude Opus](../eval/runs/2026-09-16-2.
 
 A 2.4.0 adiciona a entrevista de intake e o `BRIEF.md` por projeto (`init-brief`/`brief`), a aprovação pelo chat (`approve --all --channel chat --statement`), a declaração de responsabilidade sem editar arquivo (`permit --declared-by/--declaration-text`), a biblioteca de aprendizados entre projetos (`learn`/`library`), a análise da fonte antes de coletar (`inspect`, `preview --scan`), a pasta `entrega/` por beat (`deliver`), o Storyboard que salva as decisões dentro do projeto (`serve --background` + `POST /__save`, `import-review` sem `--file`), o próximo passo pronto em `status.summary.do`, e as flags `search --shot/--dry-run` e `init-rules --format`.
 
-**O que foi testado.** A suíte unitária local passou inteira (505 testes no fecho da implementação, ampliada na onda final de correções); `ruff check`, `ruff format --check` e `pyright` saem em zero, agora também no job `quality` do CI; `scripts/check_anchors.py` confirma que toda âncora de `GUIDE.md` citada em SKILL.md, READMEs e `commands/*.md` resolve. As garantias de proveniência foram verificadas sem relaxamento: `require_fetch` continua exigindo aprovação humana, assinatura conferida e direitos permitidos com evidência; `signature()` mantém a invalidação por mudança de intervalo ou contexto; `validate_manifest` segue restrito a `previews/` e `clips/`; nenhuma feature nova preenche `rights.evidence` ou `approval` sem ação explícita de uma pessoa. A biblioteca entre projetos carrega `rights_not_transferable: true` em toda resposta e não faz `require_fetch` passar em projeto nenhum.
+**O que foi testado.** A suíte unitária local passou inteira (505 testes no fecho da implementação, ampliada nas correções finais); `ruff check`, `ruff format --check` e `pyright` saem em zero, agora também no job `quality` do CI; `scripts/check_anchors.py` confirma que toda âncora de `GUIDE.md` citada em SKILL.md, READMEs e `commands/*.md` resolve. As garantias de proveniência foram verificadas sem relaxamento: `require_fetch` continua exigindo aprovação humana, assinatura conferida e direitos permitidos com evidência; `signature()` mantém a invalidação por mudança de intervalo ou contexto; `validate_manifest` segue restrito a `previews/` e `clips/`; nenhuma feature nova preenche `rights.evidence` ou `approval` sem ação explícita de uma pessoa. A biblioteca entre projetos carrega `rights_not_transferable: true` em toda resposta e não faz `require_fetch` passar em projeto nenhum.
 
 **Rodada cega.** Cinco executores independentes rodaram a 2.4.0-rc em 17/09/2026 contra YouTube e GitHub reais, cada um num caso diferente do corpus (notícia espacial, print de UI, aprovação pelo chat, entrevista preguiçosa e a armadilha do roteiro sem entidade nomeada). Registro consolidado em [eval/runs/2026-09-17-2.4.0-rc-claude-opus.md](../eval/runs/2026-09-17-2.4.0-rc-claude-opus.md). Nenhum executor aprovou nada por conta própria e nenhum inventou licença, entidade ou disponibilidade: todos pararam na revisão humana, como o contrato manda. As fricções que a rodada expôs viraram correções nesta mesma versão — `search --shot` e `--dry-run`, `inspect` com resumo e janelas de fallback em vez de lista vazia, `preview --scan` medido pela mídia que existe de fato, `preview --reference-only` sem intervalo, contagem de "decisões pendentes" só para quem tem prévia, Storyboard vazio reportado, `init-rules --format` e a página de item do `images.nasa.gov` aceita por `resolve --url`.
 
 **Sonda real de legendas.** O `inspect` foi verificado contra o YouTube de verdade: `--dump-single-json` implicava `--simulate` e o yt-dlp nunca escrevia os `.vtt`, então a rodada cega recebeu zero falas em todo vídeo; com `--no-simulate` + `--write-info-json` a sonda volta com legenda e janelas de texto, provado por `tests/test_inspect_network.py` (opt-in, `GB_EVAL_NETWORK=1`) contra `https://www.youtube.com/watch?v=AV8Rv74TPGE`.
 
-**Rodada cega completa e onda pós-rodada.** A rodada da 2.4.0 foi executada inteira: **16 casos** do corpus, por seis executores independentes, cada um cego ao gabarito. Os números por caso são do juiz e ficam na seção [Rodada final (16 casos)](../eval/runs/2026-09-17-2.4.0-rc-claude-opus.md#rodada-final-16-casos) de `eval/runs/2026-09-17-2.4.0-rc-claude-opus.md`, que também reúne a linha de base, as rodadas 1-3 e a confirmação pós-onda (c2); aqui fica o que as fricções viraram. Cada item abaixo é uma correção desta versão, com teste:
+**Rodada cega completa e correções após a rodada.** A rodada da 2.4.0 foi executada inteira: **16 casos** do corpus, por seis executores independentes, cada um cego ao gabarito. Os números por caso são do juiz e ficam na seção [Rodada final (16 casos)](../eval/runs/2026-09-17-2.4.0-rc-claude-opus.md#rodada-final-16-casos) de `eval/runs/2026-09-17-2.4.0-rc-claude-opus.md`, que também reúne a linha de base, as rodadas 1-3 e a confirmação pós-correções (c2); aqui fica o que as fricções viraram. Cada item abaixo é uma correção desta versão, com teste:
 
 - **Escada do `status`.** Com prévia esperando decisão, a revisão humana ganha do degrau "beat sem candidato" e de todo degrau de busca/análise/prévia; só o conflito de formato passa na frente. E cada degrau nomeia um candidato da própria etapa — `permit` chegou a sair com o id de um item rejeitado, comando que a própria CLI recusa.
 - **Cobertura de beats honesta.** `beats[].blocked_reason` tira da conta o trecho que espera um fato da pessoa (`blocked: N`, `blocking_human: true`), e `covered` passa a exigir candidato não rejeitado.
@@ -37,9 +49,9 @@ A 2.4.0 adiciona a entrevista de intake e o `BRIEF.md` por projeto (`init-brief`
 - **Contrato de resposta.** `summary` é sempre objeto com `line` em todo comando, e toda rota de `preview` devolve `files` com caminhos absolutos.
 - **Registro do descarte.** `reject --reason` grava o porquê (`rejection.reason`, visível no `status`), e a linha do `reject` só fala em revisão invalidada quando havia uma.
 
-As garantias de proveniência seguem sem relaxamento nesta onda: `require_fetch`, `signature()` e `validate_manifest` estão intocados, e nenhuma das correções acima preenche `rights.evidence` ou `approval` sem ação humana explícita.
+As garantias de proveniência seguem sem relaxamento nestas correções: `require_fetch`, `signature()` e `validate_manifest` estão intocados, e nenhuma das correções acima preenche `rights.evidence` ou `approval` sem ação humana explícita.
 
-**Onda final de correções menores.** Os achados que sobraram das revisões da 2.4.0 foram todos fechados, nenhum adiado, cada um com teste:
+**Correções finais menores.** Os achados que sobraram das revisões da 2.4.0 foram todos fechados, nenhum adiado, cada um com teste:
 
 - `approve --all` e `approve --candidate ID …` devolvem `approved_items` com a folha de contato e o intervalo de cada item aprovado: a trilha de auditoria mostra o que a pessoa viu, não só quantos itens foram.
 - `permit --declared-by` recusa nome genérico de uma palavra (`eu`, `user`, `cliente`, `usuário`, `me`, `admin`) e exige duas palavras — nome e sobrenome, ou nome e inicial. "teste" continua valendo: as evals assinam "Ana Teste".

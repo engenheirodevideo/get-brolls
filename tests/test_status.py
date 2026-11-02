@@ -3,26 +3,34 @@
 import copy
 import hashlib
 import json
-import shlex
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from typing import ClassVar
+from unittest import mock
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import CLI, ROOT
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import CLI_ARGV, ROOT, split_command
+from test_brief import VALID, write_brief
+from test_brief_roteiro import fetched, store_at
+from test_guidance import LADDER_PHRASES, LADDER_STATES
 
+from getbrolls import delivery, serve
 from getbrolls.commands import (
     FLOW_SUMMARIES,
     STATUS_STAGES,
+    _flow_state,
+    _step_candidates,
     status_next,
+    summary_next,
     with_summary,
 )
+from getbrolls.guidance import next_action
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, now, set_segment
+from getbrolls.runtime import project_lock
 
 # Infraestrutura de auditoria: `audited()` grava estes arquivos em qualquer comando.
 AUDIT_FILES = {"diagnostics.jsonl", ".command.lock"}
@@ -31,7 +39,7 @@ AUDIT_FILES = {"diagnostics.jsonl", ".command.lock"}
 def run_cli(test, *args):
     """Chamada barata de CLI: o ciclo real com FFmpeg vive em tests/test_cli.py."""
     done = subprocess.run(
-        [sys.executable, str(CLI), *map(str, args)],
+        [*CLI_ARGV, *map(str, args)],
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -146,17 +154,17 @@ class StatusCommandTests(unittest.TestCase):
             # O item `d` tem prévia e ninguém decidiu: a decisão humana ganha do
             # degrau de gerar mais prévia para quem sobrou sem quadro.
             self.assertIn("decisão humana", summary["next"])
-            # `do` é aditivo e tem degraus a mais que `next`: sem BRIEF.md o passo
-            # real é fazer o brief, e `summary["brief"]` fica None.
-            self.assertEqual("init-brief", summary["do"]["step"])
-            self.assertIn("init-brief --project", summary["do"]["command"])
-            self.assertIn("/get-brolls-brief", summary["do"]["for_human"])
-            self.assertFalse(summary["do"]["blocking_human"])
+            # Sem BRIEF.md e com prévia esperando decisão, `do` segue a mesma regra de
+            # `next`: a decisão humana pendente ganha (o brief só lidera antes da
+            # primeira prévia), e `summary["brief"]` fica None.
+            self.assertEqual("approve", summary["do"]["step"])
+            self.assertIn("approve", summary["do"]["command"])
+            self.assertTrue(summary["do"]["for_human"])
+            self.assertTrue(summary["do"]["blocking_human"])
             self.assertIsNone(summary["do"]["url"])
             self.assertIsNone(summary["brief"])
 
     def test_status_counts_brief_coverage_without_writing(self):
-        from tests.test_brief import VALID, write_brief
 
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
@@ -173,7 +181,6 @@ class StatusCommandTests(unittest.TestCase):
             self.assertEqual(before, sorted(p.name for p in Path(tmp).iterdir()))
 
     def test_brief_search_comes_back_once_nobody_owes_a_decision(self):
-        from tests.test_brief import VALID, write_brief
 
         with tempfile.TemporaryDirectory() as tmp:
             ledger = fixture(tmp)
@@ -189,7 +196,6 @@ class StatusCommandTests(unittest.TestCase):
             self.assertIn("search --project", summary["do"]["command"])
 
     def test_status_tells_a_broken_brief_apart_from_a_missing_one(self):
-        from tests.test_brief import VALID, write_brief
 
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
@@ -208,10 +214,8 @@ class StatusCommandTests(unittest.TestCase):
             payload = self.call("status", "--project", tmp)
             # `project` do relatório é a pasta brolls/; o comando aponta para a raiz
             # dela, sem resolver links simbólicos por conta própria.
-            self.assertIn(
-                shlex.quote(str(Path(payload["project"]).parent)),
-                payload["summary"]["do"]["command"],
-            )
+            argv = split_command(payload["summary"]["do"]["command"])
+            self.assertEqual(str(Path(payload["project"]).parent), argv[argv.index("--project") + 1])
 
     def test_status_next_step_follows_the_flow(self):
         base = dict.fromkeys(
@@ -392,13 +396,13 @@ class StatusCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             absent = Path(tmp) / "projeto-inexistente"
             done = subprocess.run(
-                [sys.executable, str(CLI), "status", "--project", str(absent)],
+                [*CLI_ARGV, "status", "--project", str(absent)],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
                 check=False,
             )
-            self.assertEqual(2, done.returncode, done.stdout)
+            self.assertEqual(1, done.returncode, done.stdout)
             self.assertIn("Projeto não encontrado", done.stderr)
             self.assertIn("nenhum arquivo foi criado", done.stderr)
             self.assertEqual([], list(Path(tmp).iterdir()), "status criou arquivos")
@@ -421,7 +425,6 @@ class StatusCommandTests(unittest.TestCase):
             self.assertEqual(4, payload["counts"]["candidates"])
 
     def test_status_answers_while_another_command_holds_the_lock(self):
-        from getbrolls.runtime import project_lock
 
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
@@ -454,10 +457,30 @@ class StatusCommandTests(unittest.TestCase):
                 encoding="utf-8",
             )
             payload = self.call("status", "--project", tmp)
-            self.assertEqual(4, payload["format_pending"])
+            # O rejeitado só é realinhado (nada a invalidar nele): os outros três contam.
+            self.assertEqual(3, payload["format_pending"])
             self.assertIsNone(payload["rules_error"])
-            self.assertTrue(all(item["format_pending"] for item in payload["items"]))
+            pending = {item["id"]: item["format_pending"] for item in payload["items"]}
+            self.assertEqual({"local:a": True, "local:b": True, "local:c": False, "local:d": True}, pending)
             self.assertIn("regras editoriais mudaram", payload["summary"]["next"])
+
+    def test_a_rejected_item_is_not_an_approval_the_format_change_invalidates(self):
+        """A troca de formato só realinha o item rejeitado: o `status` não pede decisão sobre ele."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(tmp)
+            seen = candidate("local", "seen", "Rejeitado")
+            set_segment(seen, 0, 1)
+            seen["preview"]["contact_sheet_path"] = "previews/seen.jpg"
+            seen["approval"]["status"] = "rejected"
+            seen["state"] = "rejected"
+            ledger.add(seen)
+            ledger.save("fixture", seen)
+            self.call("init-rules", "--format", "reels", "--project", tmp)
+            payload = self.call("status", "--project", tmp)
+            self.assertEqual(0, payload["format_pending"])
+            self.assertFalse(payload["items"][0]["format_pending"])
+            self.assertNotEqual("format", payload["summary"]["do"]["step"])
+            self.assertNotIn("invalidará", payload["summary"]["next"])
 
     def test_status_reports_broken_rules_instead_of_failing(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -486,8 +509,6 @@ class BoardUrlTests(unittest.TestCase):
 
     def do(self, ledger):
         """Mesmo `summary.do` do `status`, com o brief já dado como válido."""
-        from getbrolls.commands import _flow_state
-        from getbrolls.guidance import next_action
 
         brief = {"beats": 1, "covered": 1, "missing": [], "conflicts": []}
         return next_action(_flow_state(ledger, None, brief=brief))
@@ -509,9 +530,6 @@ class BoardUrlTests(unittest.TestCase):
             self.assertNotIn("57114", do["for_human"])
 
     def test_a_running_server_lends_its_own_port(self):
-        from unittest import mock
-
-        from getbrolls import serve
 
         with tempfile.TemporaryDirectory() as tmp:
             record = {"pid": 4321, "port": 57219, "session": "s", "urls": []}
@@ -702,7 +720,6 @@ class StepCandidateTests(unittest.TestCase):
         return ledger
 
     def test_each_rung_names_an_item_of_its_own_stage(self):
-        from getbrolls.commands import _step_candidates
 
         with tempfile.TemporaryDirectory() as tmp:
             chosen = _step_candidates(self.project(tmp).data["items"])
@@ -719,7 +736,6 @@ class StepCandidateTests(unittest.TestCase):
         )
 
     def test_no_rung_ever_names_the_rejected_decoy(self):
-        from getbrolls.commands import _step_candidates
 
         with tempfile.TemporaryDirectory() as tmp:
             chosen = _step_candidates(self.project(tmp).data["items"])
@@ -729,8 +745,6 @@ class StepCandidateTests(unittest.TestCase):
 
     def test_the_permit_rung_command_carries_the_approved_item(self):
         """O bug real: `permit --candidate <rejeitado>` saía pronto no `status.do`."""
-        from getbrolls.commands import _flow_state
-        from getbrolls.guidance import next_action
 
         brief = {"beats": 1, "covered": 1, "missing": [], "conflicts": []}
         with tempfile.TemporaryDirectory() as tmp:
@@ -749,8 +763,6 @@ class StepCandidateTests(unittest.TestCase):
 
     def test_the_approve_rung_command_approves_instead_of_starting_a_server(self):
         """Degrau e comando têm que nomear a mesma ação."""
-        from getbrolls.commands import _flow_state
-        from getbrolls.guidance import next_action
 
         brief = {"beats": 1, "covered": 1, "missing": [], "conflicts": []}
         with tempfile.TemporaryDirectory() as tmp:
@@ -763,6 +775,42 @@ class StepCandidateTests(unittest.TestCase):
         self.assertNotIn(" serve ", action["command"])
         # A rota do board continua oferecida, mas na frase e na url, não no comando.
         self.assertIn("Storyboard", action["for_human"])
+
+
+class SummaryNextFollowsDo(unittest.TestCase):
+    """`summary.next` e `summary.do` são o mesmo degrau: a pessoa nunca ouve dois passos."""
+
+    # O que o texto de `next` cita em cada degrau; fora de `done`, nunca "Fluxo completo".
+    PHRASES: ClassVar = {
+        **LADDER_PHRASES,
+        "inspect": "inspect",
+        "init-brief": "BRIEF.md",
+        "brief-invalid": "BRIEF.md",
+        "format": "regras editoriais",
+        "brief-search": "abertura",
+    }
+
+    def test_summary_next_and_do_name_the_same_step(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data = json.loads(json.dumps(VALID))
+            data["defaults"]["allowed_sources"] = ["youtube"]
+            write_brief(tmp, data)
+            store_at(Path(tmp), [fetched("a0", "Clipe da abertura", "abertura")])
+            delivery.build_delivery(tmp)
+            summary = run_cli(self, "status", "--project", tmp)["summary"]
+        self.assertEqual("brief-search", summary["do"]["step"])
+        self.assertNotIn("Fluxo completo", summary["next"])
+        self.assertIn("reacao-publico", summary["next"])
+
+    def test_every_ladder_rung_reads_the_same_in_next(self):
+        for step, state in LADDER_STATES.items():
+            with self.subTest(step=step):
+                do = next_action(state)
+                self.assertEqual(step, do["step"])
+                text = summary_next(do, state)
+                self.assertIn(self.PHRASES[step].lower(), text.lower(), (step, text))
+                if step != "done":
+                    self.assertNotIn("Fluxo completo", text)
 
 
 if __name__ == "__main__":
