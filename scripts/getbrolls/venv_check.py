@@ -1,8 +1,10 @@
-"""Confere a `.venv` que o runtime usa contra os pinos de `requirements.txt` e `requirements-bootstrap.txt`.
+"""Confere a `.venv` que o runtime usa contra os pinos de `requirements-bootstrap.txt` e `requirements.txt`.
 
-Atualizar o código (git pull, `/plugin update`) sem rodar o instalador de novo, ou com um instalador que
-falhou no meio, deixa a venv com as versões antigas: o `doctor` precisa dizer isso em vez de "tudo certo".
-Só lê: roda o Python da venv para listar os pacotes instalados e não instala nem corrige nada.
+A venv em uso é a do runtime (`$GB_HOME/runtime/<sha>/.venv` ou `GB_RUNTIME_DIR`), a `.venv` antiga do
+checkout enquanto o runtime compartilhado não existe, ou a de `GB_VENV_PATH`. Atualizar o código (git pull,
+`/plugin update`) sem rodar o `setup`, ou um `setup` que falhou no meio, pode deixar em uso uma venv com as
+versões antigas: o `doctor` precisa dizer isso em vez de "tudo certo". Só lê: roda o Python da venv para
+listar os pacotes instalados e não instala nem corrige nada.
 """
 
 import json
@@ -10,10 +12,10 @@ import re
 import subprocess
 from pathlib import Path
 
+from . import _paths, effects
 from .config import executable_override, venv_override
+from .errors import DataRootError
 
-ROOT = Path(__file__).resolve().parents[2]
-REQUIREMENT_FILES = ("requirements-bootstrap.txt", "requirements.txt")
 PYTHON_LAYOUTS = ("Scripts/python.exe", "bin/python")
 LIST_TIMEOUT_S = 30
 
@@ -21,7 +23,12 @@ LIST_TIMEOUT_S = 30
 CERTIFI_FLOOR = "2026.10.19"
 CERTIFI_NOTE = (
     "o certifi desta venv ainda confia na raiz emSign ECC Root CA - G3 (GHSA-6q48-6c7w-9gw2); "
-    "a correção só vale depois do instalador"
+    "a correção só vale depois do `setup`"
+)
+
+PINNED_VENV_FIX = (
+    "A venv de GB_VENV_PATH é sua e o `setup` não mexe nela: instale nela os pinos de requirements.txt "
+    "(com --require-hashes) ou remova GB_VENV_PATH e rode {fix}"
 )
 
 # Pares [nome, versão] de tudo que o `importlib.metadata` do Python da venv enxerga, duplicados inclusive.
@@ -29,6 +36,7 @@ _LIST_SNIPPET = (
     "import importlib.metadata as m, json; "
     "print(json.dumps([[d.metadata['Name'], d.version] for d in m.distributions() if d.metadata['Name']]))"
 )
+_PAIR = 2  # cada linha da listagem é [nome, versão]
 _PIN = re.compile(r"([A-Za-z0-9_.\-]+)(?:\[[^\]]*\])?==([^\s;\\]+)\s*(;)?")
 
 
@@ -47,11 +55,13 @@ def _version_key(version):
 
 
 def pinned_versions(root=None):
-    """`{nome: versão}` dos dois arquivos de requisitos; linhas com marcador (só PyPy) ficam de fora."""
-    root = Path(root) if root is not None else ROOT
+    """`{nome: versão}` dos arquivos de requisitos da venv (os dados da instalação, ou `root`); linhas com
+    marcador (só PyPy) ficam de fora."""
+    root = Path(root) if root is not None else _paths.data_root()
     pins = {}
-    for name in REQUIREMENT_FILES:
+    for name in _paths.PART_FILES["venv"]:
         path = root / name
+        # lenient: a data file that is missing is reported by the doctor's own data check; no pins from it
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\\\n", " ")
@@ -70,13 +80,15 @@ def venv_python(base):
     for relative in PYTHON_LAYOUTS:
         candidate = Path(base) / relative
         # Link quebrado (o Python do sistema foi atualizado e sumiu) conta: a venv existe e está quebrada.
+        # lenient(2): tool discovery in the venv: no Python there is the `absent` answer
         if candidate.is_file() or candidate.is_symlink():
             return candidate
     return None
 
 
 def runtime_venv():
-    """`(pasta, motivo)` da venv que o runtime usaria; pasta None quando o yt-dlp não vem de venv nenhuma."""
+    """`(pasta, origem)` da venv que o runtime usaria: origem `GB_VENV_PATH`, `gb_home`, `GB_RUNTIME_DIR`,
+    `profile` ou `checkout`; pasta None (origem `pinned` ou `skipped`) quando o yt-dlp não vem de venv nenhuma."""
     try:
         if executable_override("GB_YTDLP_PATH"):
             return None, "pinned"
@@ -84,12 +96,15 @@ def runtime_venv():
     except ValueError:
         # Pin inválido (GB_YTDLP_PATH ou GB_VENV_PATH) já entra em `missing` pelo próprio pino.
         return None, "skipped"
-    return (base if base is not None else ROOT / ".venv"), None
+    if base is not None:
+        return base, "GB_VENV_PATH"
+    found = _paths.venv_dir()
+    return found.path, found.source
 
 
 def installed_versions(python):
     """`{nome: [versões]}` instalados na venv; levanta OSError/ValueError quando o Python dela não roda."""
-    done = subprocess.run(
+    done = effects.run(
         [str(python), "-I", "-c", _LIST_SNIPPET],
         capture_output=True,
         text=True,
@@ -101,7 +116,7 @@ def installed_versions(python):
         tail = done.stderr.strip().splitlines()[-1:] or [""]
         raise ValueError(f"saiu com código {done.returncode}: {tail[0][:200]}".rstrip(": "))
     rows = json.loads(done.stdout)
-    if not isinstance(rows, list) or not all(isinstance(row, list) and len(row) == 2 for row in rows):  # noqa: PLR2004 - par [nome, versão]
+    if not isinstance(rows, list) or not all(isinstance(row, list) and len(row) == _PAIR for row in rows):
         raise ValueError("a listagem de pacotes não veio no formato esperado")
     found = {}
     for name, version in rows:
@@ -109,14 +124,31 @@ def installed_versions(python):
     return found
 
 
+def _differences(installed, pins):
+    """As linhas de diferença entre o instalado e os pinos, na ordem dos nomes."""
+    found = []
+    for name, pinned in sorted(pins.items()):
+        versions = installed.get(name)
+        if not versions:
+            found.append(f"{name} ausente (fixado {pinned})")
+        elif len(versions) > 1:
+            # Qual o `import` acha depende da ordem do disco: dois `.dist-info` nunca passam por "ok".
+            found.append(f"{name} duplicado ({', '.join(sorted(versions))})")
+        elif normalize_version(versions[0]) != normalize_version(pinned):
+            found.append(f"{name} {versions[0]} (fixado {pinned})")
+    return found
+
+
 def venv_report(base=None, root=None):
-    """Estado da venv: `ok`, `stale` (versão diferente ou pacote ausente), `absent`, `broken`, `pinned`."""
-    reason = None
+    """Estado da venv: `ok`, `stale` (versão diferente ou pacote ausente), `absent`, `broken`, `pinned`,
+    `skipped` (pin inválido, ou `reason` `install_data_missing` quando faltam os pinos); `source` diz de onde
+    veio a venv (ver `runtime_venv`), None quando `base` foi dada."""
+    source = None
     if base is None:
-        base, reason = runtime_venv()
+        base, source = runtime_venv()
     if base is None:
-        return {"status": reason, "path": None, "python": None, "differences": []}
-    report = {"status": "ok", "path": str(base), "python": None, "differences": []}
+        return {"status": source, "path": None, "source": None, "python": None, "differences": []}
+    report = {"status": "ok", "path": str(base), "source": source, "python": None, "differences": []}
     python = venv_python(base)
     if python is None:
         report["status"] = "absent"
@@ -128,15 +160,14 @@ def venv_report(base=None, root=None):
         report["status"] = "broken"
         report["error"] = str(exc)
         return report
-    for name, pinned in sorted(pinned_versions(root).items()):
-        versions = installed.get(name)
-        if not versions:
-            report["differences"].append(f"{name} ausente (fixado {pinned})")
-        elif len(versions) > 1:
-            # Qual o `import` acha depende da ordem do disco: dois `.dist-info` nunca passam por "ok".
-            report["differences"].append(f"{name} duplicado ({', '.join(sorted(versions))})")
-        elif normalize_version(versions[0]) != normalize_version(pinned):
-            report["differences"].append(f"{name} {versions[0]} (fixado {pinned})")
+    try:
+        pins = pinned_versions(root)
+    except DataRootError:
+        # Sem os dados da instalação não há pinos: o item "dados da instalação" do `doctor` é quem avisa.
+        report["status"] = "skipped"
+        report["reason"] = "install_data_missing"
+        return report
+    report["differences"] = _differences(installed, pins)
     certifi = installed.get("certifi") or []
     report["certifi_distrusted_root"] = not certifi or any(
         _version_key(version) < _version_key(CERTIFI_FLOOR) for version in certifi
@@ -147,12 +178,16 @@ def venv_report(base=None, root=None):
 
 
 def missing_entries(report, fix):
-    """Itens de `summary.missing` para a venv: vazio quando ela bate com os pinos ou não é usada."""
+    """Itens de `summary.missing` para a venv: vazio quando ela bate com os pinos, não existe ou não é usada.
+
+    A venv de `GB_VENV_PATH` é da pessoa: o `setup` não mexe nela, então o conserto diz o que fazer com ela.
+    """
     status = report["status"]
-    if status == "absent":
-        note = f"A venv {report['path']} não existe: yt-dlp, EJS e o certifi corrigido não foram instalados"
-    elif status == "broken":
-        note = f"O Python da venv {report['python']} não roda ({report.get('error')}); refaça a venv pelo instalador"
+    if report.get("source") == "GB_VENV_PATH":
+        fix = PINNED_VENV_FIX.format(fix=fix)
+    # `absent` não entra: sem venv o yt-dlp vem do PATH (que vale) ou falta, e o item `yt-dlp` já diz o conserto.
+    if status == "broken":
+        note = f"O Python da venv {report['python']} não roda ({report.get('error')}); refaça a venv pelo `setup`"
     elif status == "stale":
         note = "A venv não bate com os pinos fixados: " + ", ".join(report["differences"])
         if report.get("certifi_distrusted_root"):

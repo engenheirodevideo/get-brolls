@@ -150,7 +150,9 @@ for path in tracked:
         continue
     # Sem PyYAML: mesma regra sintática de tests/test_skill_mirror.py — todo
     # valor de primeiro nível com `: ` ou ` #` precisa estar entre aspas, e
-    # aspas abertas precisam fechar na mesma linha.
+    # aspas abertas precisam fechar na mesma linha. Uma lista/mapa "flow"
+    # (`tags: [a, b]`, `meta: {a: 1}`) é aceita quando abre e fecha na mesma
+    # linha: não tem como confundir com um mapeamento YAML solto.
     for line in block.splitlines():
         if not line or line.startswith((" ", "\t")) or ":" not in line:
             continue
@@ -162,7 +164,12 @@ for path in tracked:
             if value[-1] != value[0]:
                 problems.append(f"{path}: aspas sem fechar em {key}")
             continue
-        if ": " in value or " #" in value or value[0] in "[]{}&*!|>%@`":
+        if value[0] in "[{":
+            closing = "]" if value[0] == "[" else "}"
+            if value[-1] != closing:
+                problems.append(f"{path}: {key} abre {value[0]!r} e não fecha na mesma linha")
+            continue
+        if ": " in value or " #" in value or value[0] in "&*!|>%@`":
             problems.append(f"{path}: valor sem aspas em {key}")
 
 if problems:
