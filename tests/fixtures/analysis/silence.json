@@ -1,0 +1,2 @@
+{"schema": "getbrolls.silence/1", "media_id": "9f86d081884c7d65", "status": "done", "reason": null, "created": "2026-09-30T12:00:00.000000+00:00", "time_unit": "s",
+ "threshold_db": -35, "min_duration_s": 0.3, "silences": [{"start": 3.2, "end": 3.9}]}
