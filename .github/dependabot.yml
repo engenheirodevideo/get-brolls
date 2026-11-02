@@ -7,6 +7,14 @@ updates:
     groups:
       python-runtime:
         patterns: ["*"]
+    ignore:
+      # ruff/pylint/astroid mudam a régua de lint sem ninguém tocar o repositório
+      # (o `extend-select` do ruff segue o conjunto padrão, que cresce nos minors 0.x);
+      # bump manual, junto com uma re-baseline das supressões existentes, para que
+      # regra nova nunca trave um PR de runtime do grupo acima.
+      - dependency-name: ruff
+      - dependency-name: pylint
+      - dependency-name: astroid
   - package-ecosystem: npm
     directory: /
     schedule:
