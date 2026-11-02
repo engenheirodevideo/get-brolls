@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls recipe v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/recipe.schema.json",
+  "description": "O getbrolls-recipe.json de uma versão selada de receita (<pasta do cliente>/recipes/<slug>/<N>/). A versão N é imutável: os arquivos ficam somente leitura e uma mudança vira N+1. Leva a estrutura do roteiro (títulos, diretivas de layout e camadas, sem a fala nem o texto entre aspas), os papéis de trilha, os modelos de etapa (steps sempre com as seis chaves), as regras, a identidade e o estilo (null ou [] enquanto não houver), e aponta o components.json. Licenças, aprovações, A-ROLL e clipes nunca entram (licence not_transferred). Conferido em código, além deste schema: dono, slug e versão iguais aos da pasta, ref canônica, o sha256 deste arquivo (no getbrolls-recipe.sha256 ao lado, formato do sha256sum), o sha256 do components.json e de cada componente, e files listando todo arquivo da versão fora este e o selo, e só o components.json e os componentes: arquivo a mais, pasta a mais (até vazia), qualquer link (listado ou não), arquivo listado que falta ou que não é nem o components.json nem um componente deixam a versão não íntegra. Uma pasta da versão que o sistema não deixa abrir é erro de E/S (o show recusa; o list marca a versão com um problema), nunca ausência. Objetos abertos: quem lê ignora chave desconhecida. A versão do arquivo mora em schema (getbrolls.recipe/<N>).",
+  "type": "object",
+  "required": ["schema", "ref", "owner", "slug", "version", "title", "genero", "aspecto", "canvas", "fps", "scenes", "tracks", "steps", "rules", "components", "identity", "style", "provenance", "files", "licence"],
+  "properties": {
+    "schema": { "const": "getbrolls.recipe/1" },
+    "ref": {
+      "type": "string",
+      "pattern": "^cat:getbrolls/recipe/[a-z0-9]+(-[a-z0-9]+)*\\.[a-z0-9]+(-[a-z0-9]+)*@[1-9][0-9]*$",
+      "maxLength": 256,
+      "description": "Referência canônica desta versão: cat:getbrolls/recipe/<dono>.<slug>@<N>."
+    },
+    "owner": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64, "description": "Slug do cliente dono." },
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64 },
+    "version": { "type": "integer", "minimum": 1, "description": "Número da versão, igual ao nome da pasta <N>." },
+    "title": { "type": ["string", "null"], "maxLength": 200 },
+    "genero": { "type": "string", "maxLength": 32 },
+    "aspecto": { "enum": ["9:16", "16:9", "4:5", "1:1"] },
+    "canvas": {
+      "type": ["object", "null"],
+      "required": ["width", "height"],
+      "properties": { "width": { "type": "integer", "minimum": 1 }, "height": { "type": "integer", "minimum": 1 } }
+    },
+    "fps": {
+      "type": ["object", "null"],
+      "required": ["num", "den"],
+      "properties": { "num": { "type": "integer", "minimum": 1 }, "den": { "type": "integer", "minimum": 1 } }
+    },
+    "scenes": {
+      "type": "array",
+      "maxItems": 999,
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "role", "layout_id", "layout", "layers"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^s[0-9]{2,3}$" },
+          "title": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "role": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9_-]{0,31}$", "description": "Papel da cena (enum aberto: gancho, prova, cta…); null quando a receita não diz." },
+          "layout_id": { "type": ["string", "null"], "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64, "description": "Frame da cena; null quando o layout não é um frame." },
+          "layout": { "type": "string", "pattern": "^\\[.*\\]$", "maxLength": 2000 },
+          "layers": { "type": "array", "items": { "type": "string", "pattern": "^\\[.*\\]$", "maxLength": 2000 } }
+        }
+      }
+    },
+    "tracks": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "required": ["id", "role"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Z]{1,2}[0-9]{1,2}$" },
+          "role": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$" }
+        }
+      }
+    },
+    "steps": {
+      "type": "object",
+      "required": ["briefing", "roteiro", "storyboard", "frame", "checklist", "plano"],
+      "properties": {
+        "briefing": { "type": ["object", "null"], "required": ["file", "sha256"], "properties": { "file": { "type": "string", "pattern": "^[^/\\\\:][^\\\\:]*$", "maxLength": 300 }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } } },
+        "roteiro": { "type": ["object", "null"], "required": ["file", "sha256"], "properties": { "file": { "type": "string", "pattern": "^[^/\\\\:][^\\\\:]*$", "maxLength": 300 }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } } },
+        "storyboard": { "type": ["object", "null"], "required": ["file", "sha256"], "properties": { "file": { "type": "string", "pattern": "^[^/\\\\:][^\\\\:]*$", "maxLength": 300 }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } } },
+        "frame": { "type": ["array", "null"], "items": { "type": "object", "required": ["file", "sha256"], "properties": { "file": { "type": "string", "pattern": "^[^/\\\\:][^\\\\:]*$", "maxLength": 300 }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } } } },
+        "checklist": { "type": ["object", "null"], "required": ["file", "sha256"], "properties": { "file": { "type": "string", "pattern": "^[^/\\\\:][^\\\\:]*$", "maxLength": 300 }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } } },
+        "plano": { "type": ["object", "null"], "required": ["file", "sha256"], "properties": { "file": { "type": "string", "pattern": "^[^/\\\\:][^\\\\:]*$", "maxLength": 300 }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } } }
+      }
+    },
+    "rules": { "type": ["object", "null"], "required": ["file", "sha256"], "properties": { "file": { "type": "string", "pattern": "^[^/\\\\:][^\\\\:]*$", "maxLength": 300 }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } } },
+    "components": {
+      "type": "object",
+      "required": ["file", "sha256"],
+      "properties": { "file": { "const": "components.json" }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } }
+    },
+    "identity": { "type": ["object", "null"], "required": ["file", "sha256"], "properties": { "file": { "type": "string", "pattern": "^[^/\\\\:][^\\\\:]*$", "maxLength": 300 }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } } },
+    "style": { "type": ["string", "null"], "maxLength": 256, "description": "Ref do estilo da receita; null sem estilo." },
+    "provenance": {
+      "type": "object",
+      "required": ["from"],
+      "properties": {
+        "from": {
+          "type": "object",
+          "required": ["kind", "foreign"],
+          "properties": {
+            "kind": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$", "description": "project (de um projeto do getbrolls) ou migrate (da versão de testes)." },
+            "foreign": { "type": "boolean", "description": "true quando a captura veio de outra máquina ou de outra pessoa." }
+          }
+        },
+        "project_id": { "type": ["string", "null"], "maxLength": 64 },
+        "sealed_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+        },
+        "getbrolls_version": { "type": "string", "maxLength": 64 },
+        "roteiro_sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+        "by": { "type": ["string", "null"], "maxLength": 200 }
+      }
+    },
+    "files": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 2000,
+      "items": { "type": "string", "minLength": 1, "maxLength": 300, "pattern": "^[^/\\\\:][^\\\\:]*$" }
+    },
+    "licence": { "const": "not_transferred" }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls components v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/components.schema.json",
+  "description": "O components.json de uma versão de receita (<pasta do cliente>/recipes/<slug>/<N>/components.json): um item por componente, com tipo, nome, arquivo e sha256. O tipo é enum aberto: quem lê avisa ENUM_UNKNOWN e não usa o item, mas confere os bytes dele como os de qualquer outro (o arquivo continua listado em files). A licença nunca viaja (licence not_transferred). Conferido em código, além deste schema: cada file é um caminho relativo seguro sob assets/<pasta do tipo>/ (nunca o A-ROLL), o sha256 de cada arquivo e o sha256 deste arquivo, guardado em components.sha256 do getbrolls-recipe.json. Objetos abertos: os campos do componente que chegarem depois (exec, fields, duration_s, sfx_cues, origin, licence_ref) são aditivos. A versão do arquivo mora em schema (getbrolls.components/<N>).",
+  "type": "object",
+  "required": ["schema", "scope", "owner", "items"],
+  "properties": {
+    "schema": { "const": "getbrolls.components/1" },
+    "scope": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$", "description": "Nível dono da lista (enum aberto): recipe nesta versão." },
+    "owner": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64 },
+    "items": {
+      "type": "array",
+      "maxItems": 999,
+      "items": {
+        "type": "object",
+        "required": ["kind", "name", "file", "sha256", "licence"],
+        "properties": {
+          "kind": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$", "description": "Tipo do componente (enum aberto): marca, lettering, sfx, musica, imagem, composicao…" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "file": {
+            "type": "string",
+            "pattern": "^assets/[a-z][a-z0-9_]{0,31}/(?!\\.)(?![^/]*\\.[Ll][Ii][Cc][Ee][Nn][Cc][Aa]\\.[Jj][Ss][Oo][Nn]$)[^/\\\\:]+$",
+            "maxLength": 300,
+            "description": "assets/<pasta do tipo>/<arquivo>: nunca começa com ponto nem é uma licença (.licenca.json)."
+          },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "licence": { "const": "not_transferred", "description": "A licença do componente nunca vai na receita." }
+        }
+      }
+    }
+  }
+}

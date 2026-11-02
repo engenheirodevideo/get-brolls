@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls queue v2",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/queue.schema.json",
+  "description": "work/queue.json: a fila de URLs públicas e o ritmo por fonte. Versões 1 e 2; sem schema_version (2.5) vale 1; o escritor grava a atual.",
+  "type": "object",
+  "required": [
+    "items",
+    "providers"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "added_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "providers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "last_action_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "next_allowed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cooldown_until": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cooldown_strikes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "stopped": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

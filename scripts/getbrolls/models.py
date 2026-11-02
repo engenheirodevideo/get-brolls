@@ -1,16 +1,31 @@
+# pylint: disable=missing-module-docstring,missing-function-docstring
+# Legado: ocorrências pré-existentes em `now`, `candidate`, `signature` e
+# `id_stem` (corpo idêntico ao código anterior à 2.6.0); módulo já não tinha docstring.
+
 import hashlib
 import json
 import math
 from datetime import UTC, datetime
+
+from . import vocab
+from .sdk import schemas
+
+# Reexport: os estados do candidato moram no vocabulário compartilhado.
+CANDIDATE_STATES = vocab.CANDIDATE_STATES
 
 
 def now():
     return datetime.now(UTC).isoformat()
 
 
+def pending_approval():
+    """Devolve o bloco `approval` zerado, à espera de decisão humana."""
+    return {"status": "pending", "by": None, "at": None, "revision": None}
+
+
 def candidate(provider, source_id, title, source_url=None):
     return {
-        "schema_version": 1,
+        "schema_version": schemas.version("candidate"),
         "id": f"{provider}:{source_id}",
         "provider": provider,
         "source_id": str(source_id),
@@ -76,7 +91,7 @@ def id_stem(candidate_id):
 
 def empty_output():
     """Shape shared by every path that stops a manifest item pointing at a clip:
-    `invalidate_approval` here, and the rejection paths in commands.py/review.py."""
+    `invalidate_approval` here, and the rejection paths in candidate_commands.py/review.py."""
     return {"path": None, "sha256": None, "verified": False}
 
 
@@ -90,6 +105,8 @@ def invalidate_approval(c, bump_revision=False):
     """
     c["approval"] = {"status": "pending", "by": None, "at": None, "revision": None}
     c.pop("review", None)
+    # `rejection` existe se e somente se a aprovação foi rejeitada: voltar a pendente a desfaz.
+    c.pop("rejection", None)
     c["output"] = empty_output()
     c["state"] = "awaiting_approval"
     if bump_revision:
@@ -98,13 +115,17 @@ def invalidate_approval(c, bump_revision=False):
 
 
 def set_segment(c, start, end):
+    """Grava o intervalo escolhido no candidato, invalidando a aprovação se ele mudou."""
     if not all(math.isfinite(x) for x in (start, end)) or start < 0 or end <= start:
         raise ValueError("Intervalo inválido: use segundos finitos, 0 <= início < fim.")
     duration = c["media"].get("duration_s")
     if duration and end > duration + 0.1:
         raise ValueError("Intervalo excede a duração do vídeo.")
     if (start, end) != (c["segment"]["start_s"], c["segment"]["end_s"]):
-        c["preview"] = {k: v for k, v in c["preview"].items() if k in ("poster_url", "embed_url", "seek_mode")}
+        # `route_stage` (só em candidato de rota de plugin) é fato da fonte, não da prévia.
+        c["preview"] = {
+            k: v for k, v in c["preview"].items() if k in ("poster_url", "embed_url", "seek_mode", "route_stage")
+        }
         invalidate_approval(c, bump_revision=False)
         c["segment"] = {
             "start_s": start,
@@ -143,9 +164,15 @@ def approve(c, by, channel="storyboard", statement=None):
 
 
 def require_fetch(c):
+    """Recusa `fetch` sem aprovação humana válida ou sem condições de uso registradas."""
     if c["approval"]["status"] != "approved" or c["approval"].get("signature") != signature(c):
         raise ValueError("Aprovação humana ausente ou inválida para esta fonte e intervalo.")
     if c["rights"]["status"] != "permitted" or not c["rights"]["evidence"]:
-        raise ValueError("Registre a autorização/condições de uso com permit --evidence antes de obter mídia.")
+        raise ValueError(
+            "Registre a autorização/condições de uso com permit antes de obter mídia: "
+            "--evidence com a condição real da fonte, --preset com as condições genéricas "
+            "da fonte (nasa, commons...) ou --declared-by/--declaration-text com a "
+            "declaração de quem responde pelo uso."
+        )
     if c["acquisition"]["status"] != "available":
         raise ValueError("Esta fonte é somente referência; forneça um original local autorizado.")

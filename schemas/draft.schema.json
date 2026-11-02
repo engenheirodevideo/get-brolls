@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls draft v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/draft.schema.json",
+  "description": "O getbrolls-draft.json de um rascunho (drafts/<NNN>/ de um projeto de layout 1): de onde ele saiu (origin), o que ele leu (inputs: a entrega recalcula e compara campo a campo, e uma diferença é DRAFT_STALE), o plano de export que ele decidiu (plan, export_version 2, conferido em código contra schemas/export_plan.schema.json), o que falta (missing) e as conferências (checks). Objetos abertos: quem lê ignora chave desconhecida. A versão do arquivo mora em schema (getbrolls.draft/<N>).",
+  "type": "object",
+  "required": ["schema", "origin", "inputs", "plan", "missing", "checks"],
+  "properties": {
+    "schema": { "const": "getbrolls.draft/1" },
+    "origin": {
+      "type": "object",
+      "required": ["getbrolls_version", "built_at", "project_id", "layout"],
+      "properties": {
+        "getbrolls_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "built_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$" },
+        "project_id": { "type": ["string", "null"], "maxLength": 64 },
+        "layout": { "const": 1 }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "required": ["roteiro_sha256", "shelf_sha256", "recipe"],
+      "properties": {
+        "roteiro_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "O review_hash do texto do roteiro no build." },
+        "shelf_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "sha256 da lista ordenada (media_id, sha256) de toda mídia que o plano usa." },
+        "recipe": {
+          "type": ["object", "null"],
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64, "description": "O slug da receita, sem o cliente." },
+            "version": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "required": ["export_version", "exporter", "out_dir", "scenes", "media"],
+      "additionalProperties": true,
+      "description": "Plano de export v2 inteiro (as chaves de schemas/export_plan.schema.json). Aberto aqui de propósito: quem grava confere o plano em código contra schemas/export_plan.schema.json; este nó confere o que o rascunho e a entrega leem (export_version, exporter, out_dir, scenes, media) e deixa o resto das chaves passar. out_dir é a gramática do export_plan: exports/<nome>/NNN na exportação, handoffs/<ambiente>/NNN no pacote.",
+      "properties": {
+        "export_version": { "const": 2 },
+        "exporter": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$" },
+        "out_dir": { "type": "string", "pattern": "^(exports|handoffs)/[a-z][a-z0-9_]{1,31}/[0-9]{3,}$" },
+        "scenes": { "type": "array" },
+        "media": { "type": "object" }
+      }
+    },
+    "missing": {
+      "type": "array",
+      "maxItems": 999,
+      "items": {
+        "type": "object",
+        "required": ["scene", "item", "do"],
+        "properties": {
+          "scene": { "type": "string", "pattern": "^c(?!0+$)[0-9]{2,3}$" },
+          "item": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "do": {
+            "type": "object",
+            "required": ["line", "command", "needs"],
+            "properties": {
+              "line": { "type": "string", "minLength": 1, "maxLength": 500 },
+              "command": { "type": ["string", "null"], "maxLength": 1000 },
+              "needs": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 200 } }
+            }
+          }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "maxItems": 999,
+      "items": {
+        "type": "object",
+        "required": ["code", "status", "line"],
+        "properties": {
+          "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$" },
+          "status": { "type": "string", "pattern": "^[a-z]{2,16}$", "description": "Enum aberto: warn nesta versão." },
+          "line": { "type": "string", "minLength": 1, "maxLength": 500 }
+        }
+      }
+    }
+  }
+}
