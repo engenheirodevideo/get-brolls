@@ -53,3 +53,43 @@ PERMIT_PRESETS = {
         ),
     },
 }
+
+
+def register_builtins(registry):
+    """Registra cada preset embutido de permit no registro do SDK."""
+    for name, row in PERMIT_PRESETS.items():
+        registry.add_preset(name, row["url"], row["text"])
+
+
+def names():
+    """Nomes aceitos por `permit --preset`. Lê os manifestos dos plugins habilitados,
+    sem executar código deles: a CLI monta o parser antes de qualquer comando."""
+    from .sdk import loader
+
+    try:
+        extra = loader.declared("presets")
+    except (ValueError, OSError):
+        extra = []
+    return sorted(set(PERMIT_PRESETS) | set(extra))
+
+
+def get(name):
+    """`{"url", "text"}` do preset. Preset de plugin: o texto sai saneado e marcado como
+    informado pelo plugin — nunca uma declaração ou outra evidência forjada."""
+    from .sdk import registry_state
+    from .sdk.contracts import CORE
+
+    registry = registry_state.get()
+    preset = registry.preset(name)
+    if preset is None:
+        raise ValueError(f"Preset desconhecido: {name}. Use um de: {', '.join(names())}.")
+    owner = registry.owner("preset", name)
+    if owner in (None, CORE):
+        return {"url": preset.url, "text": preset.text}
+    from .http import public_url
+    from .sdk.guard import PRESET_EVIDENCE_LABEL, plugin_evidence
+
+    return {
+        "url": public_url(preset.url, strict=True),
+        "text": plugin_evidence(PRESET_EVIDENCE_LABEL, owner, preset.text),
+    }

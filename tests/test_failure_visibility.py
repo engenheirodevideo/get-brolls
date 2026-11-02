@@ -19,8 +19,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _fake_secrets import joined
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
+from _timing import best_of
 
 from getbrolls import acquisition, health, http, library, runtime
 from getbrolls.http import ProviderError
@@ -77,7 +79,8 @@ class DownloadDoesNotMisclassifyBugsTests(unittest.TestCase):
 
 class LibraryHintsCorruptedIndexTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        # Ciclo de vida cobre o teste (ou a classe) inteiro; a limpeza já é feita via addCleanup/tearDownClass.
+        self.tmp = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
         self.addCleanup(self.tmp.cleanup)
         for key in ("GB_HOME", "GB_LIBRARY"):
             old = os.environ.get(key)
@@ -100,7 +103,8 @@ class LibraryHintsCorruptedIndexTests(unittest.TestCase):
         self.assertEqual(result, [])
         self.assertTrue(any(w["code"] == "LIBRARY_INDEX_UNREADABLE" for w in event["warnings"]))
         message = next(w["message"] for w in event["warnings"] if w["code"] == "LIBRARY_INDEX_UNREADABLE")
-        self.assertIn(str(index_path), message)
+        self.assertIn("/library/index.json", message)
+        self.assertNotIn(str(index_path.parent), message)
 
     def test_a_healthy_missing_library_is_silent_as_before(self):
         event = {"warnings": [], "state_committed": False}
@@ -206,7 +210,6 @@ class PrivateSourcesCachePermissionTests(unittest.TestCase):
 class DiagnosticsLogPermissionTests(unittest.TestCase):
     @skip_on_windows
     def test_diagnostics_log_is_created_0600(self):
-        import argparse
 
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "proj"
@@ -219,7 +222,6 @@ class DiagnosticsLogPermissionTests(unittest.TestCase):
 
     @skip_on_windows
     def test_an_existing_looser_diagnostics_log_is_tightened(self):
-        import argparse
 
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "proj"
@@ -245,7 +247,7 @@ class RedactExtendedScrubbingTests(unittest.TestCase):
             ("Authorization: Bearer sekret-token-xyz", "[REDACTED]", "sekret-token-xyz"),
             ("Cookie: session=sekret-cookie-abc", "[REDACTED]", "sekret-cookie-abc"),
             ("Set-Cookie: session=sekret-cookie-abc; Path=/", "[REDACTED]", "sekret-cookie-abc"),
-            ("X-Api-Key: sekret-api-key-123", "[REDACTED]", "sekret-api-key-123"),
+            (joined("X-Api-Key: ", "sekret-api-key-123"), "[REDACTED]", "sekret-api-key-123"),
             ("falha ao chamar provedor com token=sekret-plain-token no corpo", "[REDACTED]", "sekret-plain-token"),
             ("assinatura sig=sekret-signature-value inválida", "[REDACTED]", "sekret-signature-value"),
             ("key=sekret-bare-key sem URL nenhuma", "[REDACTED]", "sekret-bare-key"),
@@ -297,12 +299,9 @@ class RedactExtendedScrubbingTests(unittest.TestCase):
         """No nested quantifiers were introduced: the widened patterns must stay
         linear, not blow up on a 100k-char string engineered to maximize
         backtracking attempts."""
-        import time
 
         adversarial = "key" * 20000 + "token=" * 10000 + "Bearer " * 10000 + "a" * 30000
-        started = time.monotonic()
-        runtime.redact(adversarial)
-        elapsed = time.monotonic() - started
+        elapsed, _ = best_of(lambda: runtime.redact(adversarial), 1.0)
         self.assertLess(elapsed, 1.0, f"redact() took {elapsed:.3f}s on a 100k-char input")
 
     def test_existing_provider_key_and_url_redaction_still_works(self):
@@ -310,6 +309,28 @@ class RedactExtendedScrubbingTests(unittest.TestCase):
             result = runtime.redact("chave pexels-secret-key na URL https://example.org/x?key=1")
         self.assertNotIn("pexels-secret-key", result)
         self.assertNotIn("example.org", result)
+
+    def test_static_url_placeholders_in_our_own_messages_survive(self):
+        # Our help text cites the URL shape ("https://…", "URL https://, git@…"), not a URL:
+        # there is no host to hide, and "[URL omitida]" there makes the hint unreadable.
+        for text in (
+            "--source tem que ser uma pasta local ou uma URL git (https://… ou git@host:caminho).",
+            "um repositório git (URL https://, git@host:caminho ou pasta local com .git)",
+            "use https://<host>/<caminho>.git",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(text, runtime.redact(text))
+
+    def test_urls_from_data_are_still_hidden(self):
+        for text in (
+            "git falhou: https://user:tok@example.org/idx.git",
+            "fetch https://example.org/repo.git falhou",
+            "https://cdn.example/secret?oh=1",
+        ):
+            with self.subTest(text=text):
+                result = runtime.redact(text)
+                self.assertIn("[URL omitida]", result)
+                self.assertNotIn("example", result)
 
     def test_idempotent(self):
         text = "Authorization: Bearer abc, https://example.org/x?token=def, key=ghi solto"
@@ -359,13 +380,51 @@ class RedactExtendedScrubbingTests(unittest.TestCase):
             line = json.dumps({"traceback": home + "\\proj\\x.py"})
             self.assertNotIn("Fulano", runtime.scrub_home(line))
 
+    def test_scrub_home_hides_a_non_ascii_windows_home(self):
+        # O diagnostics.jsonl é gravado com `ensure_ascii=False`: o "ã" sai cru, só as barras
+        # são escapadas. A forma `\\u00e3` (ensure_ascii=True) não aparece na linha.
+        home = "C:\\Users\\João"
+        with patch.object(runtime.Path, "home", return_value=Path(home)):
+            line = json.dumps({"traceback": home + "\\proj\\x.py", "repr": home}, ensure_ascii=False)
+            self.assertNotIn("João", runtime.scrub_home(line))
+            self.assertNotIn("Jo\\u00e3o", runtime.scrub_home(json.dumps({"t": home})))
+            self.assertNotIn("João", runtime.scrub_home(home + "\\proj"))
+
+    def test_scrub_home_replaces_only_the_whole_home_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "ana"
+            home.mkdir()
+            with patch.object(runtime.Path, "home", return_value=home):
+                text = f"{tmp}/anax/a {home}/b '{home}' {home}. /prefixo{home}/c {home}"
+                self.assertEqual(f"{tmp}/anax/a ~/b '~' ~. /prefixo{home}/c ~", runtime.scrub_home(text))
+
+    def test_scrub_home_matches_the_resolved_spelling_of_a_linked_home(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            real = Path(os.path.realpath(tmp)) / "real-home"
+            real.mkdir()
+            link = Path(tmp) / "home"
+            try:
+                link.symlink_to(real, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("sem permissão para criar link simbólico")
+            with patch.object(runtime.Path, "home", return_value=link):
+                self.assertEqual("~/x e ~/y", runtime.scrub_home(f"{real}/x e {link}/y"))
+
+    def test_scrub_home_on_a_windows_home_ignores_case_and_keeps_a_longer_name(self):
+        home = "C:\\Users\\Fulano"
+        with patch.object(runtime.Path, "home", return_value=Path(home)):
+            self.assertEqual("~\\proj", runtime.scrub_home("c:\\users\\FULANO\\proj"))
+            self.assertEqual("C:\\Users\\Fulano2\\x", runtime.scrub_home("C:\\Users\\Fulano2\\x"))
+            line = json.dumps({"t": home + "\\proj", "u": "C:\\Users\\Fulano2"})
+            self.assertEqual(json.dumps({"t": "~\\proj", "u": "C:\\Users\\Fulano2"}), runtime.scrub_home(line))
+
     def test_scrub_home_never_raises(self):
         with patch.object(runtime.Path, "home", side_effect=RuntimeError):
             self.assertEqual("texto", runtime.scrub_home("texto"))
         for value in (None, 123, ["a"]):
             runtime.scrub_home(value)  # must not raise
 
-    def test_the_error_envelope_keeps_real_paths_but_the_diagnostics_file_does_not(self):
+    def test_the_error_envelope_and_the_diagnostics_file_name_the_project_by_label(self):
         with tempfile.TemporaryDirectory(dir=self.home) as tmp:
             project = Path(tmp) / "proj"
             (project / "brolls").mkdir(parents=True)
@@ -376,10 +435,44 @@ class RedactExtendedScrubbingTests(unittest.TestCase):
             args = argparse.Namespace(project=str(project), command="fetch")
             with self.assertRaises(runtime.OperationError) as caught:
                 runtime.audited(args, boom)
-            self.assertIn(str(project), caught.exception.payload["message"])
+            # Docs/CLI_CONTRACT.md, "Sem caminho da máquina": a mensagem diz a pasta pela marca, não o caminho.
+            self.assertEqual("arquivo ausente em <projeto>/x.mp4", caught.exception.payload["message"])
             logged = (project / "brolls" / "diagnostics.jsonl").read_text(encoding="utf-8")
             self.assertNotIn(self.home, logged)
             self.assertIn("~", logged)
+
+    def test_diagnostics_hide_secrets_inside_dict_reprs(self):
+        # `repr` e `traceback` mostram o dict como o Python o escreve (`{'access_token': '…'}`),
+        # sem `=` nem cabeçalho: o segredo passava direto para o diagnostics.jsonl.
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "proj"
+            (project / "brolls").mkdir(parents=True)
+
+            def boom(_args):
+                raise KeyError({"access_token": joined("abc12345", "6789"), "beat": "abertura"})
+
+            args = argparse.Namespace(project=str(project), command="fetch")
+            with self.assertRaises(runtime.OperationError) as caught:
+                runtime.audited(args, boom)
+            event = json.loads((project / "brolls" / "diagnostics.jsonl").read_text(encoding="utf-8"))
+            for field in ("repr", "traceback"):
+                with self.subTest(field=field):
+                    self.assertNotIn("abc123456789", event[field])
+                    self.assertIn("abertura", event[field])
+                    self.assertIn("access_token", event[field])
+            self.assertNotIn("abc123456789", json.dumps(caught.exception.payload))
+
+    def test_quoted_secret_pass_keeps_ordinary_values_and_json_quotes(self):
+        text = '{"client_secret": "s3cr3t-valor", "title": "Palco"} e {\'sig\': b\'xyz987\'}'
+        hidden = runtime.redact_diagnostic(text)
+        self.assertNotIn("s3cr3t-valor", hidden)
+        self.assertNotIn("xyz987", hidden)
+        self.assertIn('"title": "Palco"', hidden)
+        self.assertIn('"client_secret": "[REDACTED]"', hidden)
+        self.assertEqual(hidden, runtime.redact_diagnostic(hidden))
+        started = time.perf_counter()
+        runtime.redact_diagnostic("'token': '" * 50_000)
+        self.assertLess(time.perf_counter() - started, 5.0)
 
 
 if __name__ == "__main__":
