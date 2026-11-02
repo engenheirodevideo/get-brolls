@@ -1,0 +1,11 @@
+{
+  "id": "banco_http",
+  "name": "Banco HTTP (exemplo)",
+  "description": "Exemplo do SDK: banco de vídeos com API autenticada; o arquivo só é baixado no fetch, com Authorization.",
+  "version": "0.1.0",
+  "sdk_api": 1,
+  "requires_getbrolls": ">=2.5,<3",
+  "entry": "plugin.py",
+  "contributes": {"providers": ["banco_http"], "routes": ["banco_http"]},
+  "permissions": {"network": ["api.banco.example"], "env": ["BANCO_HTTP_TOKEN"]}
+}
