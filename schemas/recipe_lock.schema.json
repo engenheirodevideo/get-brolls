@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls recipe lock v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/recipe_lock.schema.json",
+  "description": "O recipe.lock.json na raiz de um projeto criado por init --recipe: qual versão de receita (ref canônica, com o dono) foi aplicada, o sha256 do getbrolls-recipe.json dela e, por item, tipo, nome, nível (tier: client quando a pasta do cliente já tem o mesmo arquivo, project quando foi copiado para assets/<tipo>/, sem licença), caminho relativo ao nível e sha256. kind e tier são enums abertos: valor desconhecido é pulado com ENUM_UNKNOWN. status e export avisam RECIPE_LOCK_DRIFT quando o item achado hoje tem outro sha256 ou sumiu; size e mtime_ns (opcionais) são só cache. A versão do arquivo mora em schema (getbrolls.recipe_lock/<N>).",
+  "type": "object",
+  "required": ["schema", "recipe", "recipe_sha256", "items", "style"],
+  "properties": {
+    "schema": { "const": "getbrolls.recipe_lock/1" },
+    "recipe": {
+      "type": "string",
+      "pattern": "^cat:getbrolls/recipe/[a-z0-9]+(-[a-z0-9]+)*\\.[a-z0-9]+(-[a-z0-9]+)*@[1-9][0-9]*$",
+      "maxLength": 256
+    },
+    "recipe_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "sha256 dos bytes do getbrolls-recipe.json aplicado." },
+    "applied": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "name", "tier", "path", "sha256"],
+        "properties": {
+          "kind": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "tier": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$", "description": "De onde o item vem (enum aberto): project ou client nesta versão." },
+          "path": {
+            "type": "string",
+            "pattern": "^assets/[a-z][a-z0-9_]{0,31}/(?!\\.)[^/\\\\:]+$",
+            "maxLength": 300,
+            "description": "Caminho relativo à raiz do nível: do projeto (project) ou da pasta do cliente (client)."
+          },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "size": { "type": "integer", "minimum": 0, "description": "Tamanho em bytes no init (cache do status)." },
+          "mtime_ns": { "type": "integer", "minimum": 0, "description": "mtime em ns no init: com o tamanho igual, o status não recalcula o sha256." }
+        }
+      }
+    },
+    "style": { "type": ["string", "null"], "maxLength": 256, "description": "Ref do estilo travado; null sem estilo." }
+  }
+}

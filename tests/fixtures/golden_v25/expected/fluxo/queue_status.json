@@ -1,0 +1,45 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"queue\", \"status\": \"success\", \"state_committed\": false, \"recovered\": false, \"warnings\": [], \"duration_ms\": \"<MS>\"}"
+  ]
+ },
+ "argv": [
+  "queue",
+  "--action",
+  "status",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "queue_status",
+ "exit": 0,
+ "files": {},
+ "stderr": null,
+ "stdout": {
+  "json": {
+   "action": "status",
+   "checked_at": "<TS>",
+   "counts": {
+    "active": 0,
+    "done": 1,
+    "failed": 0,
+    "pending": 0,
+    "skipped": 0
+   },
+   "providers": {
+    "instagram": {
+     "cooldown_strikes": 0,
+     "cooldown_until": null,
+     "hold": null,
+     "next_allowed_at": null,
+     "pending": 0,
+     "wait_seconds": 0
+    }
+   },
+   "queue": "<T>/work/proj/work/queue.json",
+   "summary": {
+    "line": "Fila: 0 pendente(s), 1 concluído(s), 0 com falha."
+   }
+  }
+ }
+}

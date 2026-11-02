@@ -1,8 +1,9 @@
 """Nenhum teste lê ou escreve a pasta pessoal real.
 
 `GB_HOME` aponta para um temporário por rodada, criado no primeiro import e
-apagado na saída. Quem já exportou `GB_HOME` no ambiente continua mandando —
-mas aí a pasta é dele, não a `~/.getbrolls` de verdade.
+apagado na saída; o cache local (`GB_CACHE_DIR`) fica dentro dele. Quem já
+exportou `GB_HOME` no ambiente continua mandando — mas aí a pasta é dele, não
+a `~/.getbrolls` de verdade.
 
 `discover -s tests` não importa `tests/__init__.py`, então cada módulo que
 toca a biblioteca (direta ou indiretamente, por `next_action`/`search`)
@@ -20,4 +21,50 @@ if not os.environ.get("GB_HOME"):
     os.environ["GB_HOME"] = _home
     atexit.register(shutil.rmtree, _home, ignore_errors=True)
 
+# Um GB_PLUGINS vazado do ambiente de quem roda os testes (ou deixado por um teste
+# anterior que esqueceu de limpar) selecionaria plugins por fora do plugins.json do
+# GB_HOME de mentira acima — mudando quais plugins um teste vê sem ele pedir isso.
+os.environ.pop("GB_PLUGINS", None)
+
+# Um `.env` herdado do shell de quem roda mudaria a resolução de configuração por fora do GB_HOME
+# de mentira. `GETBROLLS_*` não vale mais (só `GETBROLLS_CACHE_DIR`, da 2.5, tratado mais abaixo);
+# tirar os outros só evita confundir quem lê um teste que falhou.
+os.environ.pop("GB_ENV_FILE", None)
+for _key in [k for k in os.environ if k.startswith("GETBROLLS_") and k != "GETBROLLS_CACHE_DIR"]:
+    del os.environ[_key]
+
+# Um getbrolls.toml do workspace de quem roda os testes seria descoberto a partir da
+# pasta atual e mudaria pastas, executáveis e plugins por fora do GB_HOME de mentira.
+# Os testes do perfil ligam a descoberta de volta removendo a variável.
+os.environ["GB_PROFILE"] = "off"
+os.environ.pop("GB_PROFILE_SHA256", None)
+
+# No modo wheel o pacote instalado é o único getbrolls: um PYTHONPATH herdado poderia
+# devolver o checkout aos subprocessos.
+if os.environ.get("GB_TEST_CLI") == "wheel":
+    os.environ.pop("PYTHONPATH", None)
+
 GB_HOME = Path(os.environ["GB_HOME"])
+
+# O cache HTTP/drawtext cairia em `~/.cache/getbrolls` de verdade. Sem um
+# `GB_CACHE_DIR` de quem roda, ele fica dentro do GB_HOME de mentira; o nome antigo
+# (`GETBROLLS_CACHE_DIR`) sai do ambiente para não competir com ele.
+if not os.environ.get("GB_CACHE_DIR"):
+    os.environ["GB_CACHE_DIR"] = str(GB_HOME / "cache")
+    os.environ.pop("GETBROLLS_CACHE_DIR", None)
+
+# Nenhum teste chega à internet por acidente: o yt-dlp da suíte é o de mentira de `_offline` (uma máquina com
+# yt-dlp no PATH ou num runtime perguntaria ao YouTube de verdade, e um teste sem rede falharia à toa). O teste
+# que precisa do binário real já fixa o próprio `GB_YTDLP_PATH`. Só a rodada de rede (`GB_EVAL_NETWORK=1`) fica
+# de fora.
+if os.environ.get("GB_EVAL_NETWORK") != "1":
+    from _offline import OFFLINE_YTDLP
+
+    os.environ.update(OFFLINE_YTDLP)
+
+# `GB_TEST_OFFLINE=1` simula a máquina sem rede: qualquer nome pedido ao DNS é recusado (e, com
+# `GB_TEST_OFFLINE_LOG`, anotado). Loopback e endereço literal seguem valendo.
+if os.environ.get("GB_TEST_OFFLINE") == "1":
+    from _offline import install_dns_guard
+
+    install_dns_guard(os.environ.get("GB_TEST_OFFLINE_LOG"))

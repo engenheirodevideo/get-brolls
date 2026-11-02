@@ -1,0 +1,46 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"learn\", \"status\": \"error\", \"state_committed\": false, \"warnings\": [], \"recovery_pending\": false, \"type\": \"ValueError\", \"repr\": \"ValueError('<T>/gbhome/library/index.lock está travado há tempo demais por outro get-brolls. Espere a outra execução terminar ou apague esse arquivo.')\", \"traceback\": \"<TRACEBACK>\", \"error_code\": \"INVALID_DATA\", \"message\": \"<T>/gbhome/library/index.lock está travado há tempo demais por outro get-brolls. Espere a outra execução terminar ou apague esse arquivo.\", \"duration_ms\": \"<MS>\"}"
+  ],
+  "work/proj/brolls/getbrolls.log": [
+   "level=INFO logger=getbrolls.cli event=command_start command=learn read_only=False options=query,provider,outcome,project",
+   "level=WARNING logger=getbrolls.library event=library_lock waited_ms=<MS> timeout=True",
+   "level=INFO logger=getbrolls.cli event=command_end command=learn status=error error_code=INVALID_DATA ms=<MS>"
+  ]
+ },
+ "argv": [
+  "learn",
+  "--query",
+  "trava",
+  "--provider",
+  "youtube",
+  "--outcome",
+  "miss",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "err_library_locked",
+ "exit": 2,
+ "files": {},
+ "stderr": {
+  "json": {
+   "app_log": "<T>/work/proj/brolls/getbrolls.log",
+   "at": "<TS>",
+   "error": "<T>/gbhome/library/index.lock está travado há tempo demais por outro get-brolls. Espere a outra execução terminar ou apague esse arquivo.",
+   "error_code": "INVALID_DATA",
+   "hint": "Se recovery_pending=true, o próximo comando retoma a gravação. Se state_committed=true e não houver pendência, execute review para regenerar a página. Caso contrário, corrija o erro e repita.",
+   "log": "<T>/work/proj/brolls/diagnostics.jsonl",
+   "message": "<T>/gbhome/library/index.lock está travado há tempo demais por outro get-brolls. Espere a outra execução terminar ou apague esse arquivo.",
+   "operation": "learn",
+   "recovery_pending": false,
+   "repr": "ValueError('<T>/gbhome/library/index.lock está travado há tempo demais por outro get-brolls. Espere a outra execução terminar ou apague esse arquivo.')",
+   "state_committed": false,
+   "status": "error",
+   "traceback": "<TRACEBACK>",
+   "type": "ValueError",
+   "warnings": []
+  }
+ },
+ "stdout": null
+}

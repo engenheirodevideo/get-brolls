@@ -1,0 +1,82 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"remember\", \"status\": \"success\", \"state_committed\": true, \"warnings\": [], \"duration_ms\": \"<MS>\"}"
+  ],
+  "work/proj/brolls/events.jsonl": [
+   "{\"transaction\": \"<UUID:10>:0\", \"at\": \"<TS>\", \"operation\": \"remember\", \"id\": \"local:f6c96bb15a4f7e25:shot:abertura\", \"revision\": 1, \"state\": \"approved\"}"
+  ],
+  "work/proj/brolls/getbrolls.log": [
+   "level=INFO logger=getbrolls.cli event=command_start command=remember read_only=False options=candidate,project,decision,reason,by",
+   "level=INFO logger=getbrolls.cli event=command_end command=remember status=ok error_code=- ms=<MS>"
+  ]
+ },
+ "argv": [
+  "remember",
+  "--candidate",
+  "local:f6c96bb15a4f7e25:shot:abertura",
+  "--project",
+  "<T>/work/proj",
+  "--decision",
+  "approved",
+  "--reason",
+  "Serve na abertura",
+  "--by",
+  "Fixture humano"
+ ],
+ "case": "remember",
+ "exit": 0,
+ "files": {
+  "work/proj/brolls/references.json": {
+   "bytes": 581,
+   "lines": [
+    "{",
+    "  \"items\": [",
+    "    {",
+    "      \"id\": \"local:f6c96bb15a4f7e25:shot:abertura\",",
+    "      \"signature\": \"27564426df860bc7dffa7e764c1d127e7e8882ef2bb81c7d4bfbdbe68717998f\",",
+    "      \"source_url\": null,",
+    "      \"title\": \"original.mp4\",",
+    "      \"asset_type\": \"video\",",
+    "      \"format\": {",
+    "        \"target\": \"native\",",
+    "        \"source_width\": 160,",
+    "        \"source_height\": 90,",
+    "        \"fit\": \"native\",",
+    "        \"transform\": \"preserve_native\"",
+    "      },",
+    "      \"narration\": \"Linha um\",",
+    "      \"decision\": \"approved\",",
+    "      \"reason\": \"Serve na abertura\",",
+    "      \"by\": \"Fixture humano\",",
+    "      \"at\": \"<TS>\"",
+    "    }",
+    "  ]",
+    "}"
+   ],
+   "sha256": "a992a2754e87b3b40fae1debc8eca264b2bcab724268536dc34f9f757daff29c"
+  }
+ },
+ "stderr": null,
+ "stdout": {
+  "json": {
+   "asset_type": "video",
+   "at": "<TS>",
+   "by": "Fixture humano",
+   "decision": "approved",
+   "format": {
+    "fit": "native",
+    "source_height": 90,
+    "source_width": 160,
+    "target": "native",
+    "transform": "preserve_native"
+   },
+   "id": "local:f6c96bb15a4f7e25:shot:abertura",
+   "narration": "Linha um",
+   "reason": "Serve na abertura",
+   "signature": "27564426df860bc7dffa7e764c1d127e7e8882ef2bb81c7d4bfbdbe68717998f",
+   "source_url": null,
+   "title": "original.mp4"
+  }
+ }
+}

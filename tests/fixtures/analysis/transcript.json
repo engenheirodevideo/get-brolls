@@ -1,0 +1,5 @@
+{"schema": "getbrolls.transcript/1", "media_id": "9f86d081884c7d65", "status": "done", "reason": null,
+ "producer": {"tool": "whisper_local", "model": "large-v3", "version": "0.3.0"}, "created": "2026-09-30T12:00:00.000000+00:00", "time_unit": "s",
+ "language": "pt", "text": "Olá pessoal", "word_count": 2,
+ "words": [{"text": "Olá", "start": 0.12, "end": 0.4, "probability": 0.98, "speaker": null},
+           {"text": "pessoal", "start": 0.41, "end": 0.9, "probability": null, "speaker": null}]}

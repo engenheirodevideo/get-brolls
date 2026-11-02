@@ -1,16 +1,19 @@
 """Audited diagnostics, the CLI JSON error envelope and command-level error surfacing."""
 
 import argparse
+import errno
 import io
 import json
+import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import cli, commands, providers, runtime
 from getbrolls.acquisition import prepare_source
@@ -53,6 +56,94 @@ class InternalErrorClassificationTests(unittest.TestCase):
                 audited(self._args(project), boom)
             self.assertEqual(ctx.exception.payload["error_code"], "INTERNAL_ERROR")
 
+    def test_index_error_is_an_audited_internal_error(self):
+        # Uma exceção fora da lista que o `audited` conhecia (IndexError) deixava o evento preso
+        # em "running" e o fallback do entrypoint gravava um segundo evento, sem `operation`.
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "proj"
+            (project / "brolls").mkdir(parents=True)
+            err = io.StringIO()
+            with (
+                patch.object(commands, "execute", side_effect=IndexError("list index out of range")),
+                patch("sys.stderr", err),
+                patch("sys.stdout", io.StringIO()),
+                patch("sys.argv", ["getbrolls", "status", "--project", str(project)]),
+            ):
+                code = cli.entrypoint()
+            self.assertEqual(cli.EXIT_INTERNAL_ERROR, code)
+            payload = json.loads(err.getvalue().strip().splitlines()[-1])
+            self.assertEqual("status", payload["operation"])
+            self.assertEqual("error", payload["status"])
+            self.assertEqual("INTERNAL_ERROR", payload["error_code"])
+            self.assertEqual("IndexError", payload["type"])
+            lines = (project / "brolls" / "diagnostics.jsonl").read_text(encoding="utf-8").splitlines()
+            self.assertEqual(1, len(lines), lines)
+            event = json.loads(lines[0])
+            self.assertEqual("error", event["status"])
+            self.assertEqual("status", event["operation"])
+            self.assertEqual("INTERNAL_ERROR", event["error_code"])
+
+    def _logged_path(self, payload):
+        """O diagnostics.jsonl que a mensagem do erro interno cita, pela marca (`$GB_HOME/…`, `<projeto>/…`),
+        de volta ao caminho do arquivo: o `log` do envelope é que leva o caminho absoluto."""
+        found = re.search(r"\(([^()]*diagnostics\.jsonl)\)\.$", payload["message"])
+        self.assertIsNotNone(found, payload["message"])
+        assert found is not None
+        self.assertEqual("$GB_HOME/diagnostics.jsonl", found[1])
+        return str(Path(os.environ["GB_HOME"]) / "diagnostics.jsonl")
+
+    def test_error_message_names_the_log_that_was_written(self):
+        # `init` numa pasta nova: a pasta nunca chega a existir, e o evento vai para o
+        # diagnostics.jsonl de $GB_HOME. A mensagem tem que citar esse arquivo, não um
+        # `<projeto>/brolls/diagnostics.jsonl` que ninguém gravou.
+        def boom(args):
+            raise KeyError("x")
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"GB_HOME": str(Path(tmp) / "home")}):
+            project = Path(tmp) / "novo"
+            with self.assertRaises(OperationError) as ctx:
+                audited(argparse.Namespace(command="init", project=str(project)), boom)
+            payload = ctx.exception.payload
+            self.assertEqual(payload["log"], self._logged_path(payload))
+            self.assertTrue(Path(payload["log"]).is_file())
+            self.assertFalse(project.exists())
+
+    def test_read_only_error_outside_a_project_tree_names_the_log_that_was_written(self):
+        # `status` numa pasta sem `brolls/` nunca cria a árvore só para logar: o erro fica
+        # no diagnostics.jsonl de $GB_HOME, e é esse que a mensagem cita.
+        def boom(args):
+            raise KeyError("x")
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"GB_HOME": str(Path(tmp) / "home")}):
+            project = Path(tmp) / "pasta"
+            project.mkdir()
+            with self.assertRaises(OperationError) as ctx:
+                audited(self._args(project), boom)
+            payload = ctx.exception.payload
+            self.assertEqual(payload["log"], self._logged_path(payload))
+            self.assertTrue(Path(payload["log"]).is_file())
+            self.assertFalse((project / "brolls").exists())
+
+    def test_traceback_keeps_the_frame_that_raised(self):
+        # O fim do traceback (o frame que levantou e a linha `KeyError: …`) é o que importa
+        # para achar o bug; um corte pelo começo do texto jogava justamente essa parte fora.
+        def raise_from_the_deepest_frame():
+            raise KeyError("campo_que_faltou")
+
+        def descend(depth):
+            if depth == 0:
+                raise_from_the_deepest_frame()
+            descend(depth - 1)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "proj"
+            (project / "brolls").mkdir(parents=True)
+            with self.assertRaises(OperationError):
+                audited(self._args(project), lambda _args: descend(30))
+            event = json.loads((project / "brolls" / "diagnostics.jsonl").read_text(encoding="utf-8"))
+            self.assertIn("raise_from_the_deepest_frame", event["traceback"])
+            self.assertTrue(event["traceback"].rstrip().endswith("KeyError: 'campo_que_faltou'"), event["traceback"])
+
     def test_value_error_keeps_invalid_data_behavior(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "proj"
@@ -82,7 +173,7 @@ class CliEntrypointErrorEnvelopeTests(unittest.TestCase):
         self.assertEqual(payload["type"], "RuntimeError")
 
     def test_uses_named_exit_code_constants(self):
-        self.assertEqual(cli.EXIT_OPERATION_ERROR, 2)
+        self.assertEqual(cli.EXIT_OPERATION_ERROR, 1)
         self.assertEqual(cli.EXIT_INTERNAL_ERROR, 3)
         with (
             patch.object(cli, "main", side_effect=RuntimeError("kaboom")),
@@ -105,13 +196,84 @@ class CliEntrypointErrorEnvelopeTests(unittest.TestCase):
         self.assertNotEqual(code, cli.EXIT_INTERNAL_ERROR)
         self.assertNotIn("INTERNAL_ERROR", buf.getvalue())
 
-    def test_generic_fallback_includes_redacted_traceback(self):
+    def _closed_pipe_run(self, error):
+        """`entrypoint()` com stdout cujo write levanta `error`, como um pipe já fechado."""
+
+        class ClosedPipe(io.StringIO):
+            def write(self, s):
+                raise error
+
+        def ran(argv=None):
+            cli._RESULT_EXIT.set(cli.EXIT_PREREQUISITE)  # pylint: disable=protected-access
+            return {"ready": False}
+
         buf = io.StringIO()
-        with patch.object(cli, "main", side_effect=RuntimeError("kaboom")), patch("sys.stderr", buf):
-            cli.entrypoint()
-        payload = json.loads(buf.getvalue())
-        self.assertIn("traceback", payload)
-        self.assertIn("RuntimeError", payload["traceback"])
+        with patch.object(cli, "main", side_effect=ran), patch("sys.stdout", ClosedPipe()), patch("sys.stderr", buf):
+            code = cli.entrypoint()
+        return code, buf.getvalue()
+
+    def test_windows_closed_pipe_einval_keeps_the_pending_exit(self):
+        # No Windows o pipe fechado chega como `OSError: [Errno 22] Invalid argument`
+        # (ERROR_NO_DATA), não como BrokenPipeError: é o mesmo `| head`, não um bug.
+        code, stderr = self._closed_pipe_run(OSError(errno.EINVAL, "Invalid argument"))
+        self.assertEqual(cli.EXIT_PREREQUISITE, code)
+        self.assertNotIn("INTERNAL_ERROR", stderr)
+
+    def test_epipe_oserror_on_write_keeps_the_pending_exit(self):
+        code, stderr = self._closed_pipe_run(OSError(errno.EPIPE, "Broken pipe"))
+        self.assertEqual(cli.EXIT_PREREQUISITE, code)
+        self.assertNotIn("INTERNAL_ERROR", stderr)
+
+    def test_other_oserror_on_write_is_still_internal_error(self):
+        code, stderr = self._closed_pipe_run(OSError(errno.ENOSPC, "No space left on device"))
+        self.assertEqual(cli.EXIT_INTERNAL_ERROR, code)
+        self.assertIn("INTERNAL_ERROR", stderr)
+
+    def test_einval_from_the_command_itself_is_still_internal_error(self):
+        # Só a escrita do resultado em stdout é tratada como pipe fechado.
+        buf = io.StringIO()
+        with (
+            patch.object(cli, "main", side_effect=OSError(errno.EINVAL, "Invalid argument")),
+            patch("sys.stdout", io.StringIO()),
+            patch("sys.stderr", buf),
+        ):
+            code = cli.entrypoint()
+        self.assertEqual(cli.EXIT_INTERNAL_ERROR, code)
+        self.assertIn("INTERNAL_ERROR", buf.getvalue())
+
+    def test_generic_fallback_keeps_the_traceback_out_of_stderr(self):
+        with tempfile.TemporaryDirectory() as home:
+            buf = io.StringIO()
+            with (
+                patch.dict(os.environ, {"GB_HOME": home}),
+                patch.object(cli, "main", side_effect=RuntimeError("kaboom")),
+                patch("sys.stderr", buf),
+                patch("sys.argv", ["gb", "providers"]),
+            ):
+                cli.entrypoint()
+            payload = json.loads(buf.getvalue())
+            self.assertNotIn("traceback", payload)
+            self.assertNotIn("repr", payload)
+            event = json.loads((Path(home) / "diagnostics.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+            self.assertIn("RuntimeError", event["traceback"])
+
+    def test_generic_fallback_never_creates_a_project_tree_to_keep_the_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "pasta"
+            folder.mkdir()
+            home = Path(tmp) / "home"
+            buf = io.StringIO()
+            with (
+                patch.dict(os.environ, {"GB_HOME": str(home)}),
+                patch.object(cli, "main", side_effect=RuntimeError("kaboom")),
+                patch("sys.stderr", buf),
+                patch("sys.argv", ["gb", "status", "--project", str(folder)]),
+            ):
+                cli.entrypoint()
+            payload = json.loads(buf.getvalue())
+            self.assertFalse((folder / "brolls").exists())
+            self.assertEqual(str(home / "diagnostics.jsonl"), payload["log"])
+            self.assertTrue((home / "diagnostics.jsonl").is_file())
 
     def test_generic_fallback_writes_diagnostics_log_and_mentions_it(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,0 +1,4 @@
+# Ceilings for the allowlist and accepted-pair counts. Lower a ceiling when an entry goes away; never raise one.
+allow_module 0
+allow_function 19
+pairs 11

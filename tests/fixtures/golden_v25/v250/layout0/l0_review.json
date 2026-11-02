@@ -1,0 +1,56 @@
+{
+ "appends": {
+  "work/layout0/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"review\", \"status\": \"success\", \"state_committed\": false, \"warnings\": [], \"duration_ms\": \"<MS>\"}"
+  ],
+  "work/layout0/proj/brolls/getbrolls.log": [
+   "level=INFO logger=getbrolls.cli event=command_start command=review read_only=False options=project",
+   "level=INFO logger=getbrolls.cli event=command_end command=review status=ok error_code=- ms=<MS>"
+  ]
+ },
+ "argv": [
+  "review",
+  "--project",
+  "<T>/work/layout0/proj"
+ ],
+ "case": "l0_review",
+ "exit": 0,
+ "files": {
+  "work/layout0/proj/brolls/credits.md": {
+   "bytes": 370,
+   "lines": [
+    "---",
+    "type: credits",
+    "status: current",
+    "created: <TODAY>",
+    "updated: <TODAY>",
+    "tags: [get-brolls, credits]",
+    "---",
+    "",
+    "# Créditos da coleta",
+    "",
+    "## local:f6c96bb15a4f7e25:shot:abertura",
+    "- Arquivo: clips/61dd9e68d8fe00a4-r1.mp4",
+    "- Fonte: original local",
+    "- Autor: não informado",
+    "- Licença: ver evidência",
+    "- Licença URL: não informada",
+    "- Evidência: Vídeo sintético de teste gerado localmente"
+   ],
+   "sha256": "9b1a7ef6ead7c1a1a1741e973216b4b48311db4b14920523f14e1277318b7ee1"
+  },
+  "work/layout0/proj/brolls/review.html": {
+   "bytes": 65825,
+   "sha256": "7b953f8c413a6a0e7441659019d75d21a4e84fe0259ddd3a157160669653c70f"
+  }
+ },
+ "stderr": null,
+ "stdout": {
+  "json": {
+   "review": "<T>/work/layout0/proj/brolls/review.html",
+   "summary": {
+    "line": "Gerei o Storyboard em <T>/work/layout0/proj/brolls/review.html."
+   }
+  }
+ }
+}

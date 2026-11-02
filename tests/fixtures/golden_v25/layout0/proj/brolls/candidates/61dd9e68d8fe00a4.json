@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "id": "local:f6c96bb15a4f7e25:shot:abertura",
+  "provider": "local",
+  "source_id": "f6c96bb15a4f7e25",
+  "source_url": null,
+  "title": "original.mp4",
+  "creator": {
+    "name": null,
+    "url": null
+  },
+  "query": null,
+  "collected_at": "2026-10-08T17:36:33.270178+00:00",
+  "match": {
+    "kind": "literal",
+    "reason": null
+  },
+  "media": {
+    "duration_s": 3.0,
+    "width": 160,
+    "height": 90,
+    "fps": 10.0,
+    "kind": "video"
+  },
+  "preview": {
+    "embed_url": null,
+    "seek_mode": "local",
+    "poster_path": "previews/61dd9e68d8fe00a4-r1-39854a0c-poster.jpg",
+    "contact_sheet_path": "previews/61dd9e68d8fe00a4-r1-39854a0c-sheet.jpg",
+    "gif_path": "previews/61dd9e68d8fe00a4-r1-39854a0c.gif",
+    "frame_times_s": [
+      0.5,
+      0.583,
+      0.667,
+      0.75,
+      0.833,
+      0.917,
+      1.0,
+      1.083,
+      1.167,
+      1.25,
+      1.333,
+      1.417
+    ],
+    "sheet_grid": [
+      4,
+      3
+    ],
+    "sheet_labels": false,
+    "config": {
+      "scope": "broll",
+      "mode": "gif",
+      "width": 360,
+      "fps": 8,
+      "colors": 128,
+      "max_mb": 5,
+      "max_seconds": 10,
+      "frames": 12,
+      "scan_max_seconds": 900
+    },
+    "warning": null,
+    "gif_bytes": 14509,
+    "scope": "broll"
+  },
+  "segment": {
+    "start_s": 0.5,
+    "end_s": 1.5,
+    "revision": 1
+  },
+  "rights": {
+    "status": "permitted",
+    "license_name": null,
+    "license_url": null,
+    "evidence": [
+      "Vídeo sintético de teste gerado localmente"
+    ],
+    "attribution": null,
+    "basis": "per_item_evidence"
+  },
+  "acquisition": {
+    "status": "available",
+    "method": "local",
+    "evidence": []
+  },
+  "approval": {
+    "status": "approved",
+    "by": "Fixture humano",
+    "at": "2026-10-08T17:36:34.797730+00:00",
+    "revision": 1,
+    "channel": "chat",
+    "statement": "Aprovo este trecho para o vídeo.",
+    "signature": "27564426df860bc7dffa7e764c1d127e7e8882ef2bb81c7d4bfbdbe68717998f"
+  },
+  "output": {
+    "path": "clips/61dd9e68d8fe00a4-r1.mp4",
+    "sha256": "83b14033358266bada75119ea883ee53002d4fe7e1060fdb2f163555015f6772",
+    "verified": true
+  },
+  "state": "verified",
+  "errors": [],
+  "local_path": "<T>/work/media/original.mp4",
+  "local_sha256": "f6c96bb15a4f7e25d6520eef800c868ed38e126cca00ca4edddaec422203b2d4",
+  "asset_type": "video",
+  "shot": "abertura",
+  "format": {
+    "target": "native",
+    "source_width": 160,
+    "source_height": 90,
+    "fit": "native",
+    "transform": "preserve_native"
+  },
+  "preview_scope": "broll",
+  "narration": "Linha um",
+  "output_media": {
+    "duration_s": 1.0,
+    "width": 160,
+    "height": 90,
+    "fps": 10.0
+  },
+  "delivery": {
+    "path": "entrega/01-abertura-o-que-precisa-aparecer-na-tela-neste-trecho/01-abertura-o-que-precisa-aparecer-na-tela-neste-trecho.mp4",
+    "method": "hardlink"
+  }
+}

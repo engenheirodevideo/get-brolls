@@ -1,11 +1,15 @@
+import json
 import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
+from getbrolls import media
 from getbrolls.media import cut, preview, probe
 from getbrolls.models import approve, candidate, require_fetch, set_segment
 
@@ -71,6 +75,66 @@ class CoreTests(unittest.TestCase):
             bad.write_text("bad", encoding="utf-8")
             with self.assertRaises(ValueError):
                 probe(bad)
+
+
+class CutSeekTests(unittest.TestCase):
+    """`cut` busca na entrada (`-ss` antes do `-i`): o ffmpeg não decodifica a fonte desde o início."""
+
+    def test_cut_seeks_before_reading_the_input(self):
+        seen = {}
+
+        def fake_run(args, *, op=None):
+            if op == "cut":
+                seen["argv"] = list(args)
+                Path(args[-1]).write_bytes(b"x")
+                return ""
+            if op == "probe":
+                streams = [{"codec_type": "video", "width": 64, "height": 64, "avg_frame_rate": "10/1"}]
+                return json.dumps({"streams": streams, "format": {"duration": "1.0"}})
+            return ""
+
+        with tempfile.TemporaryDirectory() as d, patch.object(media, "run", side_effect=fake_run):
+            cut(Path(d) / "source.mp4", Path(d) / "clip.mp4", 3600.0, 3601.0)
+        argv = seen["argv"]
+        self.assertLess(argv.index("-ss"), argv.index("-i"))
+        self.assertEqual("3600.0", argv[argv.index("-ss") + 1])
+        self.assertEqual("1.0", argv[argv.index("-t") + 1])
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
+    def test_input_seek_still_lands_on_the_requested_frame(self):
+        """Um keyframe só, no quadro 0: a busca na entrada continua exata com re-encode."""
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d)
+            src, out = p / "ramp.mp4", p / "clip.mp4"
+            # Brilho cresce com o tempo (T*40): o 1º quadro do corte diz onde a busca caiu.
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-v",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "color=c=black:s=64x64:r=10:d=6,format=yuv420p,geq=lum='T*40':cb=128:cr=128",
+                    "-c:v",
+                    "libx264",
+                    "-g",
+                    "100",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(src),
+                ],
+                check=True,
+            )
+            cut(src, out, 4.0, 5.0)
+            self.assertAlmostEqual(probe(out)["duration_s"], 1, delta=0.15)
+            first = subprocess.run(
+                ["ffmpeg", "-v", "error", "-i", str(out), "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+                check=True,
+                capture_output=True,
+            ).stdout
+        # t=4 s → luma 160; um corte que caísse no início da fonte ficaria perto de 0.
+        self.assertGreater(sum(first) / len(first), 120)
 
 
 if __name__ == "__main__":

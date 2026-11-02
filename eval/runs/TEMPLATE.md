@@ -73,7 +73,7 @@ Notas por eixo (Reach / Literalidade / Preview / Disciplina): <médias da rodada
 ## Estado final do projeto
 
 ```
-<saída de: python3 scripts/gb.py status --project <projeto>>
+<saída do status --project <projeto>, rodado pela raiz da instalação em teste>
 ```
 
 <Confirme explicitamente: nada aprovado pelo agente, nenhum corte final coletado, `credits.md` no estado esperado.>

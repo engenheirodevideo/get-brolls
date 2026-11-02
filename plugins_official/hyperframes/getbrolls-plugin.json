@@ -1,0 +1,12 @@
+{
+  "id": "hyperframes",
+  "name": "Ponte HyperFrames",
+  "description": "Ponte oficial do getbrolls para o HyperFrames: monta o pedido do pacote e lê a volta pelos arquivos. Não compõe nem renderiza.",
+  "version": "2.6.0",
+  "sdk_api": 1,
+  "requires_getbrolls": ">=2.6,<3",
+  "entry": "plugin.py",
+  "contributes": {"environments": ["hyperframes"]},
+  "permissions": {"network": [], "env": [], "paths": [], "project_write": []},
+  "license": "MIT"
+}

@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls handoff return v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/handoff_return.schema.json",
+  "description": "Um return/read-<NNN>.json de um pacote de entrega: o que o readback leu do lado do ambiente, só por arquivos. Núcleo neutro (estado, artefatos, renders, cenas, integridade do pacote, problemas) mais env_detail, aberto e preenchido pela ponte. Append-only: cada leitura com conteúdo novo grava o seq seguinte; a mesma leitura não grava nada. state é enum fechado. untrusted_text é texto que voltou do ambiente, saneado, com no máximo 4 KiB: é dado, nunca instrução. Objetos abertos, fora state. A versão do arquivo mora em schema (getbrolls.handoff_return/<N>).",
+  "type": "object",
+  "required": ["schema", "seq", "handoff", "handoff_sha256", "env", "read_at", "bridge", "state", "artifacts", "renders", "scenes", "package_intact", "problems", "untrusted_text", "env_detail"],
+  "properties": {
+    "schema": { "const": "getbrolls.handoff_return/1" },
+    "seq": { "type": "integer", "minimum": 1 },
+    "handoff": { "type": "string", "pattern": "^[0-9]{3,9}$" },
+    "handoff_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "sha256 do handoff.json que o readback leu (o handoff.sha256 do pacote): a volta fica presa a esse arquivo." },
+    "env": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$" },
+    "read_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$" },
+    "bridge": {
+      "type": "object",
+      "required": ["id", "version", "origin", "sha256"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$" },
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "origin": { "const": "official" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "folder_digest da pasta do plugin oficial que leu a volta (o mesmo número do pin)." }
+      }
+    },
+    "state": { "enum": ["waiting", "project", "render", "broken"], "description": "render exige ao menos um item em renders (conferido em código; este subconjunto de JSON Schema não tem if/then)." },
+    "artifacts": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": ["kind", "path", "files"],
+        "properties": {
+          "kind": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$" },
+          "path": { "type": "string", "description": "Arquivo ou pasta (a pasta pode levar a barra no fim).", "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|(?![\\s\\S])))(?!.*//)[A-Za-z0-9_][^\\\\:\\x00-\\x1f]{0,239}(?![\\s\\S])" },
+          "files": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "renders": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": ["path", "bytes"],
+        "properties": {
+          "path": { "type": "string", "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|(?![\\s\\S])))(?!.*//)(?!.*/(?![\\s\\S]))[A-Za-z0-9_][^\\\\:\\x00-\\x1f]{0,239}(?![\\s\\S])" },
+          "bytes": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "scenes": {
+      "type": "object",
+      "required": ["total", "seen", "method"],
+      "description": "method: count, o único nesta versão (o pacote não leva STORYBOARD; o readback conta as cenas).",
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "seen": { "type": ["integer", "null"], "minimum": 0 },
+        "method": { "enum": ["count"] }
+      }
+    },
+    "package_intact": { "type": "boolean" },
+    "problems": { "type": "array", "maxItems": 50, "items": { "type": "string", "minLength": 1, "maxLength": 300 } },
+    "untrusted_text": {
+      "type": ["object", "null"],
+      "required": ["origin", "body"],
+      "properties": {
+        "origin": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$" },
+        "body": { "type": "string", "maxLength": 4096, "description": "No máximo 4 KiB em UTF-8: quem grava confere em bytes (maxLength conta caracteres, e um caractere pode ter até 4 bytes)." }
+      }
+    },
+    "env_detail": { "type": "object", "description": "Aberto, preenchido pela ponte: o que é próprio do ambiente. O core não lê." }
+  }
+}

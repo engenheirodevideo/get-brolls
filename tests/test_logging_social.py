@@ -10,20 +10,23 @@ import contextlib
 import io
 import logging
 import os
+import random
+import shutil as _shutil
 import socket
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import skip_unless_ffmpeg, synth_audio, synth_video
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
+from getbrolls import instagram_media, logs, social
 from getbrolls import instagram_pairs as ig
-from getbrolls import logs, social
 from getbrolls.http import ProviderError
 
 PUBLIC_DNS = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))]
@@ -160,8 +163,8 @@ class InstagramPairsPairStageLoggingTests(unittest.TestCase):
                 Path(cmd[cmd.index("--output") + 1]).write_bytes(payload)
 
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                patch.object(ig.subprocess, "run", side_effect=success),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(subprocess, "run", side_effect=success),
                 self.assertLogs("getbrolls.instagram_pairs", "DEBUG") as cm,
             ):
                 action = ig.download_or_reuse(
@@ -192,8 +195,8 @@ class InstagramPairsPairStageLoggingTests(unittest.TestCase):
                 raise subprocess.CalledProcessError(18, cmd, stderr=b"partial transfer")
 
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                patch.object(ig.subprocess, "run", side_effect=fail),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(subprocess, "run", side_effect=fail),
                 self.assertLogs("getbrolls.instagram_pairs", "DEBUG") as cm,
                 self.assertRaises(ig.CollectError),
             ):
@@ -219,8 +222,8 @@ class InstagramPairsPairStageLoggingTests(unittest.TestCase):
             conf.write_text(f'url = "https://example.org/media"\noutput = "{source}"\n', encoding="utf-8")
             target = root / "part.mp4"
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                patch.object(ig, "_reused_part_is_valid", return_value=True),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(instagram_media, "_reused_part_is_valid", return_value=True),
                 self.assertLogs("getbrolls.instagram_pairs", "DEBUG") as cm,
             ):
                 action = ig.download_or_reuse(
@@ -259,7 +262,7 @@ class InstagramPairsMediaUrlRefusedTests(unittest.TestCase):
 class InstagramPairsBlockedLoggingTests(unittest.TestCase):
     """`event=blocked` from _record_failure(), including the CDN-block detection path."""
 
-    def test_curl_403_sets_http_status_and_cooldown_flag(self):
+    def test_curl_429_sets_http_status_and_cooldown_flag(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             conf = root / "video.conf"
@@ -267,11 +270,11 @@ class InstagramPairsBlockedLoggingTests(unittest.TestCase):
             target = root / "part.mp4"
 
             def blocked_curl(cmd, **kwargs):
-                raise subprocess.CalledProcessError(22, cmd, stderr=b"curl: (22) The requested URL returned error: 403")
+                raise subprocess.CalledProcessError(22, cmd, stderr=b"curl: (22) The requested URL returned error: 429")
 
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                patch.object(ig.subprocess, "run", side_effect=blocked_curl),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(subprocess, "run", side_effect=blocked_curl),
                 self.assertRaises(ig.CollectError) as ctx,
             ):
                 ig.download_or_reuse(
@@ -284,6 +287,34 @@ class InstagramPairsBlockedLoggingTests(unittest.TestCase):
                 )
             exc = ctx.exception
             self.assertTrue(exc.cooldown)
+            self.assertEqual("429", exc.http_status)
+            self.assertFalse(exc.refused)
+
+    def test_curl_403_without_a_confirmed_expiry_is_a_refusal_not_a_cooldown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            conf = root / "video.conf"
+            conf.write_text('url = "https://example.org/media"\n', encoding="utf-8")
+
+            def refused_curl(cmd, **kwargs):
+                raise subprocess.CalledProcessError(22, cmd, stderr=b"curl: (22) The requested URL returned error: 403")
+
+            with (
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(subprocess, "run", side_effect=refused_curl),
+                self.assertRaises(ig.CollectError) as ctx,
+            ):
+                ig.download_or_reuse(
+                    cfg_path=conf,
+                    part_path=root / "part.mp4",
+                    config_output_root=root,
+                    force_download=False,
+                    prefer_config_output=False,
+                    stage="video",
+                )
+            exc = ctx.exception
+            self.assertTrue(exc.refused)
+            self.assertFalse(exc.cooldown)
             self.assertEqual("403", exc.http_status)
 
     def test_record_failure_logs_blocked_with_http_status_and_recorded_flag(self):
@@ -310,8 +341,8 @@ class InstagramPairsPaceLoggingTests(unittest.TestCase):
 
     def test_pace_logs_wait_s_and_not_the_stem(self):
         with (
-            patch.object(ig.random, "uniform", return_value=0.5),
-            patch.object(ig.time, "sleep", return_value=None),
+            patch.object(random, "uniform", return_value=0.5),
+            patch.object(time, "sleep", return_value=None),
             self.assertLogs("getbrolls.instagram_pairs", "DEBUG") as cm,
         ):
             ig._pause_before("creatorname_01_ABCDEF", 1, 1)
@@ -414,7 +445,7 @@ class InstagramPairsUnconfiguredLoggerTests(unittest.TestCase):
             ]
             logs._degrade()
             try:
-                with patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS):
+                with patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS):
                     # No --project: never triggers ffmpeg (fails first, on a non-media
                     # fixture) but logs.configure() must not have been called either way.
                     with patch.object(logs, "configure") as configure_spy:
@@ -468,7 +499,7 @@ class InstagramPairsStdoutParityTests(unittest.TestCase):
                 out, err = io.StringIO(), io.StringIO()
                 with (
                     patch.dict(os.environ, env, clear=False),
-                    patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                    patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
                     contextlib.redirect_stdout(out),
                     contextlib.redirect_stderr(err),
                 ):
@@ -476,18 +507,17 @@ class InstagramPairsStdoutParityTests(unittest.TestCase):
                 return code, out.getvalue(), err.getvalue()
 
             try:
-                code1, out1, err1 = run_once({"GB_LOG_LEVEL": "DEBUG", "GB_LOG_STDERR": ""})
-                self.assertEqual(0, code1)
-                import shutil as _shutil
+                first = run_once({"GB_LOG_LEVEL": "DEBUG", "GB_LOG_STDERR": ""})
+                self.assertEqual(0, first[0])
 
                 _shutil.rmtree(outdir)
                 _shutil.rmtree(partsdir)
-                code2, out2, err2 = run_once({"GB_LOG_LEVEL": "off", "GB_LOG_STDERR": ""})
-                self.assertEqual(0, code2)
+                second = run_once({"GB_LOG_LEVEL": "off", "GB_LOG_STDERR": ""})
+                self.assertEqual(0, second[0])
             finally:
                 logs._degrade()
-            self.assertEqual(out1, out2)
-            self.assertEqual(err1, err2)
+            self.assertEqual(first[1], second[1])
+            self.assertEqual(first[2], second[2])
 
 
 if __name__ == "__main__":

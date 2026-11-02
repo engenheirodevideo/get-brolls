@@ -3,17 +3,21 @@ import os
 import re
 import shutil
 import subprocess
+import tomllib
 import unicodedata
 import unittest
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT
+
+from getbrolls import bootstrap
 
 # Caminho local de máquina: Unix (/Users, /home, com usuário maiúsculo ou não) e
 # Windows (C:\Users\...), mais o marcador do worktree temporário do agente.
 LOCAL_PATH_PATTERN = re.compile(
-    r"/Users/[A-Za-z0-9._-]+/|[A-Za-z]:\\Users\\[A-Za-z0-9._-]+|/private/tmp/[A-Za-z0-9]|/home/[A-Za-z0-9._-]+/|claude-501"
+    r"/Users/[A-Za-z0-9._-]+/|[A-Za-z]:\\Users\\[A-Za-z0-9._-]+|"
+    r"/private/tmp/[A-Za-z0-9]|/home/[A-Za-z0-9._-]+/|claude-501"
 )
 
 # Extensões varridas pela procura de caminho local dentro do conteúdo rastreado.
@@ -37,10 +41,71 @@ LOCAL_PATH_SCAN_SUFFIXES = (
 )
 
 
+# Identificador de revisão interna (achado de ledger, rodada de conserto): não tem
+# significado para quem lê o repositório público. O motivo técnico fica no texto;
+# o id, não. `red[-]team` fica partido para o próprio padrão não casar consigo.
+INTERNAL_REVIEW_ID_PATTERN = re.compile(
+    r"\b(?:RT|BUG|B|M|I|D3|H4|C1|T2)-\d{1,2}\b(?![-\d])"
+    r"|\bC [HML]-\d+\b|\bA [IM]\d\b|\bMinor \d+\b|\b[Ff]ix round \d\b"
+    r"|\bred[-]team\b|\bFinding \d+\b|\bG\d{1,2}:(?!\d)"
+    # Onda de trabalho (W e um dígito), frente paralela (lane e uma letra) e rótulo de rodada.
+    r"|\bW\d\b|\blane-[abc]\b|\bblind[-]test\b"
+    # Forma sem hífen (letra + 1 ou 2 dígitos): só logo depois de "(", aspas, "#", espaço ou
+    # início da linha, e só antes de ":" ou ")" — "C3" em prosa, "H264", "M4A" e
+    # "I/O" não casam; o "Checkpoint C3:" do SKILL.md também não.
+    r"|(?:^|(?<=[\s(\"#]))(?<!Checkpoint )[BMIHLTDC]\d{1,2}(?=[:)])"
+)
+# Rodada/onda de revisão escrita por extenso, no começo de comentário ou docstring e
+# seguida de ":" ou "(": só em código — na prosa (CHANGELOG, eval/), "rodada" e
+# "onda" numeradas são histórico legítimo.
+INTERNAL_REVIEW_ROUND_PATTERN = re.compile(
+    r"(?:^\s*|(?<=[(\"])|(?<=#)\s?)(?:[Rr]ound|[Rr]odada|[Oo]nda|[Ww]ave|Task) \d+(?=:|\)| \()"
+)
+
+# Material de processo que apodrece: comparação com um branch específico (o
+# comentário fica desatualizado assim que a branch vira a própria main) e o
+# nome interno das frentes paralelas de trabalho. O motivo da supressão tem
+# que ser atemporal, não amarrado a como o código chegou até aqui.
+PROCESS_LANGUAGE_PATTERN = re.compile(r"origin/main|desta frente|novo nesta release")
+
+
 def github_slug(heading):
     value = unicodedata.normalize("NFC", heading.strip().lower())
     value = re.sub(r"[^\w\- ]", "", value, flags=re.UNICODE)
     return value.replace(" ", "-")
+
+
+def _logical_units(text):
+    """Linhas de bloco de código ```` ``` ```` ficam separadas (um comando por
+    linha); parágrafos de prosa têm a própria quebra de linha suave (o
+    `--yes`/`--expect` de uma frase que o autor embrulhou em três linhas)
+    juntada de volta numa unidade só — o mesmo jeito que o Markdown renderiza
+    um parágrafo. Sem isso, uma checagem "mesma linha" passaria por cima de
+    uma frase em prosa onde `--yes` caiu numa linha e `--expect` (ou a falta
+    dele) em outra."""
+    units = []
+    paragraph = []
+    in_fence = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            if paragraph:
+                units.append(" ".join(paragraph))
+                paragraph = []
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            units.append(line)
+            continue
+        if not stripped:
+            if paragraph:
+                units.append(" ".join(paragraph))
+                paragraph = []
+            continue
+        paragraph.append(stripped)
+    if paragraph:
+        units.append(" ".join(paragraph))
+    return units
 
 
 # Destinos que o hub de AGENTS.md precisa rotear: um por público/finalidade.
@@ -51,6 +116,8 @@ HUB_TARGETS = (
     "commands/get-brolls-setup.md",
     "GEMINI.md",
     "docs/GUIDE.md",
+    "docs/CLI_CONTRACT.md",
+    "docs/SCHEMAS.md",
     "docs/QUALITY.md",
     "CONTRIBUTING.md",
     "docs/SECURITY.md",
@@ -64,8 +131,9 @@ HUB_INVOCATIONS = (
     "$get-brolls",
     "/get-brolls",
     "/plugin marketplace add engenheirodevideo/get-brolls",
-    "/get-brolls:get-brolls",
-    "/get-brolls-setup",
+    "/plugin install getbrolls@engenheirodevideo",
+    "/getbrolls:get-brolls",
+    "/getbrolls:get-brolls-setup",
 )
 
 
@@ -143,7 +211,7 @@ class RepositoryDocumentationTests(unittest.TestCase):
         playwright = ROOT / "scripts/playwright.ps1"
         self.assertTrue(installer.is_file())
         self.assertTrue(playwright.is_file())
-        self.assertIn(".venv\\Scripts\\python.exe", installer.read_text(encoding="utf-8"))
+        self.assertIn("'setup'", installer.read_text(encoding="utf-8"))
         self.assertIn("playwright-cli.cmd", playwright.read_text(encoding="utf-8"))
         self.assertIn("Invoke-Native", installer.read_text(encoding="utf-8"))
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -182,6 +250,69 @@ class RepositoryDocumentationTests(unittest.TestCase):
         self.assertIn("\n  quality:\n", workflow)
         for step in ("ruff check .", "ruff format --check .", "pyright"):
             self.assertIn(step, workflow, step)
+
+    def test_dependabot_leaves_the_lint_tools_to_manual_bumps(self):
+        # ruff, pylint e astroid mudam a régua de lint num bump; no grupo `python-runtime`
+        # (patterns "*") uma regra nova travaria o PR que também leva os pins de runtime.
+        config = (ROOT / ".github/dependabot.yml").read_text(encoding="utf-8")
+        blocks = re.split(r"(?m)^  - package-ecosystem: ", config)[1:]
+        pip = next(block for block in blocks if block.startswith("pip\n"))
+        ignored = set(re.findall(r"(?m)^\s+- dependency-name: (\S+)\s*$", pip))
+        dev = (ROOT / "requirements-dev.txt").read_text(encoding="utf-8")
+        for tool in ("ruff", "pylint", "astroid"):
+            self.assertRegex(dev, rf"(?m)^{tool}==\d+\.\d+", tool)
+            self.assertIn(tool, ignored, f"dependabot propõe bump de {tool}")
+
+    def test_ruff_config_extends_the_default_rules_instead_of_replacing_them(self):
+        # `select` trocaria o conjunto padrão do ruff; `extend-select` soma a ele. Só assim o
+        # projeto é um superconjunto do padrão e "passa nas regras padrão" vale por construção.
+        ruff = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["ruff"]
+        self.assertIn("extend-select", ruff["lint"])
+        self.assertNotIn("select", ruff["lint"])
+        # O ruff ainda honra o `select` obsoleto no topo de `[tool.ruff]` (só avisa, sai 0), e
+        # `extend` herdaria a régua de outro arquivo: os dois trocariam o padrão em silêncio.
+        for key in ("select", "extend"):
+            self.assertNotIn(key, sorted(ruff), f"[tool.ruff] {key}")
+        # `ruff.toml`/`.ruff.toml` passam na frente do pyproject.toml da mesma pasta, e um
+        # pyproject.toml com `[tool.ruff]` numa subpasta vale para os arquivos dela.
+        tracked = (
+            subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True)
+            .stdout.decode("utf-8")
+            .split("\0")
+        )
+        others = [name for name in ("ruff.toml", ".ruff.toml") if (ROOT / name).exists()]
+        for path in filter(None, tracked):
+            name = path.rsplit("/", 1)[-1]
+            if name in {"ruff.toml", ".ruff.toml"}:
+                others.append(path)
+            elif name == "pyproject.toml" and path != "pyproject.toml" and (ROOT / path).is_file():
+                nested = tomllib.loads((ROOT / path).read_text(encoding="utf-8"))
+                if "ruff" in nested.get("tool", {}):
+                    others.append(path)
+        self.assertEqual([], sorted(set(others)), "configuração do ruff fora do pyproject.toml da raiz")
+
+    def test_tracked_python_files_are_executable_exactly_when_they_have_a_shebang(self):
+        # EXE001/EXE002 (do conjunto padrão do ruff) só valem no Unix: no Windows o `ruff check`
+        # do check.ps1 não as aplica, e um arquivo novo entra no índice como 100644. O modo vem
+        # do índice do git, então a matriz `Tests` confere isso nos três sistemas.
+        # Para acertar: `git update-index --chmod=+x <arquivo>` (ou `--chmod=-x`).
+        listing = subprocess.run(
+            ["git", "ls-files", "--stage", "-z", "--", "*.py"], cwd=ROOT, check=True, capture_output=True
+        ).stdout.decode("utf-8")
+        problems = []
+        for record in filter(None, listing.split("\0")):
+            meta, path = record.split("\t", 1)
+            mode = meta.split(" ", 1)[0]
+            if mode not in {"100644", "100755"}:
+                continue  # link simbólico ou submódulo: sem bit de execução para conferir
+            try:
+                with (ROOT / path).open("rb") as stream:
+                    shebang = stream.read(2) == b"#!"
+            except FileNotFoundError:
+                continue  # apagado do worktree sem commit
+            if shebang != (mode == "100755"):
+                problems.append(f"{path}: modo {mode} {'com' if shebang else 'sem'} shebang")
+        self.assertEqual([], problems, "shebang e bit de execução do git divergem")
 
     def test_local_quality_commands_exist_for_both_platforms(self):
         shell = ROOT / "scripts/check.sh"
@@ -260,25 +391,80 @@ class RepositoryDocumentationTests(unittest.TestCase):
         ):
             self.assertIn(marker, security, marker)
 
-    def test_installers_name_the_validated_python_range(self):
+    def test_plugin_install_update_yes_always_pairs_with_expect(self):
+        """`--yes` sozinho não instala nada em
+        `plugins --action install|update` (precisa de `--expect <sha256>` — ver
+        `getbrolls.sdk.install.check_expect`); um exemplo documentado sem `--expect`
+        é um comando que falha exatamente como escrito."""
+        action_re = re.compile(r"--action\s+(install|update)\b")
+        yes_re = re.compile(r"--yes\b")
+        for relative in (
+            "docs/SDK.md",
+            "docs/GUIDE.md",
+            "examples/plugins/banco_http/README.md",
+            "examples/plugins/pasta_local/README.md",
+        ):
+            path = ROOT / relative
+            for unit in _logical_units(path.read_text(encoding="utf-8")):
+                if action_re.search(unit) and yes_re.search(unit):
+                    self.assertIn("--expect", unit, f"{relative}: {unit!r}")
+
+    def test_the_validated_python_range_is_named_once(self):
+        # Os instaladores delegam ao `setup`: a faixa validada mora na falha do pip dele.
         shell = (ROOT / "scripts/install.sh").read_text(encoding="utf-8")
         powershell = (ROOT / "scripts/install.ps1").read_text(encoding="utf-8")
-        self.assertIn("validado em Python 3.11–3.13", shell)
-        self.assertIn("validado em Python 3.11-3.13", powershell)
-        self.assertIn("exit 1", shell)
+        self.assertIn("validado em Python 3.11–3.13", bootstrap.PIP_VERSION_FAILED)
+        for script in (shell, powershell):
+            self.assertNotIn("validado em Python", script)
+        self.assertIn("exit", shell)
         self.assertIn("throw", powershell)
+
+    def test_installers_delegate_to_setup(self):
+        shell = (ROOT / "scripts/install.sh").read_text(encoding="utf-8")
+        powershell = (ROOT / "scripts/install.ps1").read_text(encoding="utf-8")
+        self.assertIn('scripts/gb.py" setup', shell)
+        self.assertIn("setup_status=$?", shell)
+        self.assertIn("'setup'", powershell)
+        self.assertIn("$SetupStatus -ne 4", powershell)
+        for script in (shell, powershell):
+            self.assertNotIn("-m venv", script)
+            self.assertNotIn("'venv'", script)
+            self.assertNotIn("npm --cache", script)
+            self.assertNotIn("'--cache'", script)
+
+    def test_launchers_ask_setup_where(self):
+        runtime = (ROOT / "scripts/getbrolls/tools/youtube/_runtime.sh").read_text(encoding="utf-8")
+        self.assertIn("setup --where", runtime)
+        self.assertIn("gb_where_executable venv", runtime)
+        self.assertIn("in_use", runtime)
+        self.assertIn("set -o pipefail", runtime)
+        self.assertIn("--profile off", runtime)
+        shell = (ROOT / "scripts/playwright.sh").read_text(encoding="utf-8")
+        self.assertIn("gb_where_executable tools", shell)
+        powershell = (ROOT / "scripts/playwright.ps1").read_text(encoding="utf-8")
+        self.assertIn("'setup', '--where', 'tools'", powershell)
+        self.assertIn("'--profile', 'off'", powershell)
+        self.assertIn("in_use.executable", powershell)
+        for script in (runtime, shell, powershell):
+            self.assertNotIn(".tools/node_modules", script)
+            self.assertNotIn(".tools\\node_modules", script)
+            self.assertNotIn(".venv/bin/yt-dlp", script)
+
+    def test_ci_points_the_runtime_outside_the_checkout(self):
+        workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
+        self.assertEqual(2, workflow.count("GB_RUNTIME_DIR=$RUNNER_TEMP/gb-runtime"))
+        self.assertNotIn("GB_RUNTIME_DIR: ${{ github.workspace }}", workflow)
 
     def test_powershell_installer_python_snippets_have_no_double_quotes(self):
         # Windows PowerShell 5.1 strips inner double quotes when passing
         # arguments to native executables, so `python -c '... "x" ...'`
         # reaches Python as `... x ...` and raises SyntaxError (issue #23).
         # Single quotes escaped as '' survive in both 5.1 and 7.
-        import re
 
         powershell = (ROOT / "scripts/install.ps1").read_text(encoding="utf-8")
         snippets = re.findall(r"'-c',\s*'((?:[^']|'')*)'", powershell)
         snippets += re.findall(r"-c\s+'((?:[^']|'')*)'", powershell)
-        self.assertGreaterEqual(len(snippets), 3, powershell)
+        self.assertGreaterEqual(len(snippets), 1, powershell)
         for snippet in snippets:
             self.assertNotIn('"', snippet, snippet)
 
@@ -294,6 +480,19 @@ class RepositoryDocumentationTests(unittest.TestCase):
             self.assertIn("brew install python ffmpeg node git curl", readme)
             self.assertIn("winget install", readme)
             self.assertIn("contact_sheet.labels: true", readme)
+
+    def test_installers_surface_the_doctor_exit_code(self):
+        # O doctor sai 4 quando `summary.missing` não está vazio: o instalador repassa o
+        # código e diz o que ele significa, em vez de morrer calado pelo `set -e`/`throw`.
+        shell = (ROOT / "scripts/install.sh").read_text(encoding="utf-8")
+        powershell = (ROOT / "scripts/install.ps1").read_text(encoding="utf-8")
+        self.assertIn("status=$?", shell)
+        self.assertIn('exit "$status"', shell)
+        for script in (shell, powershell):
+            self.assertIn("doctor encontrou pendências", script)
+            self.assertIn("faltam itens", script)
+            self.assertIn("summary.missing", script)
+        self.assertIn("exit 4", powershell)
 
     def test_installers_warn_about_missing_drawtext(self):
         for name in ("scripts/install.sh", "scripts/install.ps1"):
@@ -377,6 +576,112 @@ class RepositoryDocumentationTests(unittest.TestCase):
         for suffix in (".canvas", ".svg", ".html"):
             self.assertIn(suffix, LOCAL_PATH_SCAN_SUFFIXES, suffix)
 
+    def test_tracked_text_has_no_internal_review_ids(self):
+        """Comentário, docstring, nome de teste e documentação explicam o motivo
+        técnico; id de revisão interna não entra no repositório público."""
+        tracked = (
+            subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True)
+            .stdout.decode("utf-8")
+            .split("\0")
+        )
+        problems = []
+        for path in filter(None, tracked):
+            try:
+                text = (ROOT / path).read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue  # binário, ou apagado do worktree sem commit
+            patterns = [INTERNAL_REVIEW_ID_PATTERN]
+            if path.endswith(".py"):
+                patterns.append(INTERNAL_REVIEW_ROUND_PATTERN)
+            for number, line in enumerate(text.splitlines(), 1):
+                match = next((m for pattern in patterns if (m := pattern.search(line))), None)
+                if match:
+                    problems.append(f"{path}:{number}: {match.group(0)}")
+        self.assertEqual([], problems)
+
+    def test_tracked_text_has_no_process_language(self):
+        """Comentário rastreado explica o motivo técnico da supressão de forma
+        atemporal: nada de comparar com `origin/main` (apodrece no próximo merge)
+        nem de nomear a frente de trabalho ("desta frente", "novo nesta
+        release") — quem lê a main não tem como saber o que isso significa."""
+        tracked = (
+            subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True)
+            .stdout.decode("utf-8")
+            .split("\0")
+        )
+        problems = []
+        for path in filter(None, tracked):
+            if path == "tests/test_repository.py":
+                continue  # o próprio padrão
+            try:
+                text = (ROOT / path).read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue  # binário, ou apagado do worktree sem commit
+            for number, line in enumerate(text.splitlines(), 1):
+                match = PROCESS_LANGUAGE_PATTERN.search(line)
+                if match:
+                    problems.append(f"{path}:{number}: {match.group(0)}")
+        self.assertEqual([], problems)
+
+    def test_internal_review_id_pattern_is_precise(self):
+        """Exemplos montados em partes, para este arquivo não casar consigo."""
+        matching = (
+            "RT" + "-07",
+            "BUG" + "-14",
+            "B" + "-06",
+            "(C M" + "-7)",
+            "A " + "I1",
+            "Minor " + "9",
+            "Fix " + "round 2",
+            "red" + "-team",
+            "Finding " + "3",
+            "G" + "11: texto",
+            "D3" + "-1",
+            "mesmo conteúdo (B" + "1).",
+            '    """B' + "2: a rota deixa",
+            "# M" + "4: GIT_SSL_CAINFO",
+            "rollback (M" + "2) poder",
+            "texto I" + "3: fim",
+        )
+        for sample in matching:
+            self.assertIsNotNone(INTERNAL_REVIEW_ID_PATTERN.search(sample), sample)
+        for sample in (
+            '    """Rodada' + " 3 (decisão): o gate",
+            "# round" + " 3: a idade",
+            "# Inclui as originais (round" + " 1) e",
+            "Task" + " 10: texto",
+            '"""Onda' + " 2: texto",
+        ):
+            self.assertIsNotNone(INTERNAL_REVIEW_ROUND_PATTERN.search(sample), sample)
+        legitimate = (
+            "B-roll",
+            "b-rolls do beat",
+            "2026-09-24",
+            "insert-02",
+            "H.264",
+            "Checkpoint C3",
+            "class Finding20NasaInvalidLinesTests",
+            "(finding #25: duplicado)",
+            "ISO-8601",
+            "12:30:00",
+            "mar, onda",
+            "Antes do C3, rejeite",
+            "**Checkpoint C3:** descreva",
+            "vídeo em H264: ok",
+            "áudio M4A (AAC)",
+            "erro de I/O: disco",
+            "(B-roll)",
+        )
+        for sample in legitimate:
+            self.assertIsNone(INTERNAL_REVIEW_ID_PATTERN.search(sample), sample)
+        for sample in (
+            "mar, onda",
+            '"""Fricção 1 da rodada 2: texto"""',
+            "(onda 2 de correções)",
+            "test_add_next_mark_status_round_trip",
+        ):
+            self.assertIsNone(INTERNAL_REVIEW_ROUND_PATTERN.search(sample), sample)
+
     def test_release_workflow_uses_gh_cli_and_the_pinned_checkout(self):
         release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
         tests = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
@@ -406,16 +711,17 @@ class RepositoryDocumentationTests(unittest.TestCase):
         # Disparo manual validaria um commit diferente da tag publicada;
         # só o push de tag pode acionar o release.
         self.assertNotIn("workflow_dispatch", release)
-        # O comentário da versão acompanha a Action; o contrato é só o SHA.
-        self.assertEqual(
-            [f"uses: {checkout}"],
-            [
-                re.sub(r"\s*#.*$", "", line).strip().lstrip("- ").strip()
-                for line in release.splitlines()
-                if "uses:" in line
-            ],
-            "release.yml deve usar apenas o checkout já fixado por SHA",
-        )
+        # O comentário da versão acompanha a Action; o contrato é só o SHA de 40 dígitos.
+        # Action que o test.yml também usa repete o mesmo SHA de lá.
+        used = [line.split("uses:", 1)[1].strip() for line in release.splitlines() if "uses:" in line]
+        for entry in used:
+            action = re.sub(r"\s*#.*$", "", entry)
+            self.assertRegex(action, r"@[0-9a-f]{40}$", f"{action} sem SHA de 40 dígitos")
+            name = action.split("@", 1)[0]
+            if f"{name}@" in tests:
+                self.assertIn(action, tests, f"{action} fixado por SHA diferente do test.yml")
+        self.assertIn("actions/attest-build-provenance", release)
+        self.assertIn("id-token: write", release)
 
     def test_preflight_script_exists_and_contains_the_release_gates(self):
         """`scripts/preflight.sh` é o portão de fato: quem lê `release.yml`

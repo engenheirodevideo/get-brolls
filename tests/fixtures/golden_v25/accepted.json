@@ -1,0 +1,960 @@
+{
+ "schema": "getbrolls.golden_accepted/1",
+ "items": [
+  {
+   "id": "caminho-da-maquina",
+   "lista": "acrescimo",
+   "changelog": "**Mensagens sem caminho da máquina.**",
+   "ratificado": "2026-10-10",
+   "diferencas_sha256": "80eb641ec9a9a6da3e438770f6b7f3a059fb850cb34de428bcc3c65a918a6292",
+   "match": [
+    {
+     "case": "fluxo/browser_plan",
+     "where": "stdout/json/commands/3/7",
+     "kind": "changed",
+     "new": "--filename=output/playwright/capture-<STAMP>.png"
+    },
+    {
+     "case": "fluxo/browser_plan",
+     "where": "stdout/json/cwd",
+     "kind": "added",
+     "new": "<T>/work/proj"
+    },
+    {
+     "case": "fluxo/browser_plan",
+     "where": "stdout/json/instructions/0",
+     "kind": "changed",
+     "new": "Rode os comandos na pasta do projeto (cwd)."
+    },
+    {
+     "case": "fluxo/browser_plan",
+     "where": "stdout/json/instructions/1",
+     "kind": "changed",
+     "new": "Execute open/resize e leia snapshot antes de interagir."
+    },
+    {
+     "case": "fluxo/browser_plan",
+     "where": "stdout/json/instructions/2",
+     "kind": "changed",
+     "new": "Confirme manchete, data, autor, URL e conteúdo carregado."
+    },
+    {
+     "case": "fluxo/browser_plan",
+     "where": "stdout/json/instructions/3",
+     "kind": "changed",
+     "new": "Se necessário, interaja por refs do snapshot e tire novo snapshot."
+    },
+    {
+     "case": "fluxo/browser_plan",
+     "where": "stdout/json/instructions/4",
+     "kind": "changed",
+     "new": "Captura não passa por paywall/login nem autentica autoria automaticamente."
+    },
+    {
+     "case": "fluxo/browser_plan",
+     "where": "stdout/json/instructions/5",
+     "kind": "changed",
+     "new": "Importe PNG com resolve --file --asset-type news_screenshot --source-url URL --title TITULO --captured-at ISO --shot ID."
+    },
+    {
+     "case": "fluxo/browser_plan",
+     "where": "stdout/json/instructions/6",
+     "kind": "added",
+     "new": "Preview, revisão humana, permit e fetch continuam obrigatórios."
+    },
+    {
+     "case": "fluxo/deliver",
+     "where": "stdout/json/summary/line",
+     "kind": "changed",
+     "new": "Organizei 1 trecho em 1 pasta dentro de <projeto>/entrega."
+    },
+    {
+     "case": "fluxo/deliver_dry",
+     "where": "stdout/json/summary/line",
+     "kind": "changed",
+     "new": "Organizaria 1 trecho em 1 pasta dentro de <projeto>/entrega."
+    },
+    {
+     "case": "fluxo/err_library_locked",
+     "where": "appends/work/proj/brolls/diagnostics.jsonl/0/message",
+     "kind": "changed",
+     "new": "$GB_HOME/library/index.lock está travado há tempo demais por outro getbrolls. Espere a outra execução terminar ou apague esse arquivo."
+    },
+    {
+     "case": "fluxo/err_library_locked",
+     "where": "appends/work/proj/brolls/diagnostics.jsonl/0/repr",
+     "kind": "changed",
+     "new": "LockedError('$GB_HOME/library/index.lock está travado há tempo demais por outro getbrolls. Espere a outra execução terminar ou apague esse arquivo.')"
+    },
+    {
+     "case": "fluxo/err_library_locked",
+     "where": "stderr/json/error",
+     "kind": "changed",
+     "new": "$GB_HOME/library/index.lock está travado há tempo demais por outro getbrolls. Espere a outra execução terminar ou apague esse arquivo."
+    },
+    {
+     "case": "fluxo/err_library_locked",
+     "where": "stderr/json/message",
+     "kind": "changed",
+     "new": "$GB_HOME/library/index.lock está travado há tempo demais por outro getbrolls. Espere a outra execução terminar ou apague esse arquivo."
+    },
+    {
+     "case": "fluxo/review",
+     "where": "stdout/json/summary/line",
+     "kind": "changed",
+     "new": "Gerei o Storyboard em <projeto>/brolls/review.html."
+    },
+    {
+     "case": "layout0/l0_deliver",
+     "where": "stdout/json/summary/line",
+     "kind": "changed",
+     "new": "Organizei 1 trecho em 1 pasta dentro de <projeto>/entrega."
+    },
+    {
+     "case": "layout0/l0_deliver_dry",
+     "where": "stdout/json/summary/line",
+     "kind": "changed",
+     "new": "Organizaria 1 trecho em 1 pasta dentro de <projeto>/entrega."
+    },
+    {
+     "case": "layout0/l0_review",
+     "where": "stdout/json/summary/line",
+     "kind": "changed",
+     "new": "Gerei o Storyboard em <projeto>/brolls/review.html."
+    }
+   ]
+  },
+  {
+   "id": "saidas",
+   "lista": "saidas",
+   "changelog": "**Erro de operação ou de dados sai com `1`, não mais `2`.**",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "9ea949f13652eba4c8274d07838ee2122415c13b8f77693fed8086b3d8c8f0b2",
+   "match": [
+    {
+     "case": [
+      "fluxo/err_library_locked",
+      "fluxo/err_missing_candidate",
+      "fluxo/err_project_locked",
+      "fluxo/fetch_no_permit",
+      "fluxo/fetch_unapproved",
+      "fluxo/inspect_local",
+      "fluxo/search_dry",
+      "fluxo/status_missing"
+     ],
+     "where": "exit",
+     "old": 2,
+     "new": 1
+    },
+    {
+     "case": "fluxo/doctor",
+     "where": "exit",
+     "old": 0,
+     "new": 4
+    },
+    {
+     "case": "fluxo/err_project_locked",
+     "where": "stderr/json/error_code",
+     "old": "INVALID_DATA",
+     "new": "LOCKED"
+    },
+    {
+     "case": "fluxo/err_project_locked",
+     "where": "stderr/json/type",
+     "old": "ValueError",
+     "new": "LockedError"
+    },
+    {
+     "case": "fluxo/err_project_locked",
+     "where": "appends/*getbrolls.log",
+     "kind": "changed",
+     "new": [
+      "level=INFO logger=getbrolls.cli event=command_start command=reject read_only=False options=candidate,project",
+      "level=WARNING logger=getbrolls.runtime event=lock_busy lock=.command.lock waited_ms=<MS> error_code=LOCKED duration_ms=<MS>",
+      "level=INFO logger=getbrolls.cli event=command_end command=reject status=error error_code=LOCKED ms=<MS> outcome=error duration_ms=<MS>"
+     ]
+    },
+    {
+     "case": "fluxo/err_project_locked",
+     "where": "appends/*diagnostics.jsonl/0/error_code",
+     "old": "INVALID_DATA",
+     "new": "LOCKED"
+    },
+    {
+     "case": "fluxo/err_project_locked",
+     "where": "appends/*diagnostics.jsonl/0/type",
+     "old": "ValueError",
+     "new": "LockedError"
+    },
+    {
+     "case": "fluxo/err_project_locked",
+     "where": "appends/*diagnostics.jsonl/0/repr",
+     "kind": "changed",
+     "new": "LockedError('Outro comando está usando este projeto. Aguarde terminar antes de repetir.')"
+    }
+   ]
+  },
+  {
+   "id": "comando-brief",
+   "lista": "comando-brief",
+   "changelog": "Os comandos viram `/getbrolls:…`",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "ea1978cc171b87ae71c11ded6870b45bfb250789321663e13d21bfcd8aa01cc7",
+   "match": [
+    {
+     "case": "fluxo/status_no_brief",
+     "where": "stdout/json/summary/do/for_human",
+     "kind": "changed",
+     "new": "O projeto já tem candidatos, mas ainda não tem o plano do vídeo (BRIEF.md) dizendo o que cada trecho precisa mostrar: rode `/getbrolls:get-brolls-brief` para eu te fazer as perguntas, ou `init-brief` para criar o modelo e preencher à mão."
+    }
+   ]
+  },
+  {
+   "id": "versao",
+   "lista": "versao",
+   "changelog": "`--version` passa a imprimir `getbrolls <versão> (Python …; dados: …)`",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "d734ac456c233f6447815499f08ef760fe856f9b53d1cf3fab159c017c48eb95",
+   "match": [
+    {
+     "case": "fluxo/version",
+     "where": "stdout/text",
+     "kind": "changed",
+     "new": [
+      "getbrolls <VERSION> (Python <PYV>; dados: checkout)"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "doctor-dados-sem-permissao",
+   "lista": "acrescimo",
+   "changelog": "**`doctor` separa os arquivos de dados sem permissão de leitura.**",
+   "ratificado": "2026-10-09",
+   "diferencas_sha256": "463130e16d21c54b4af462e8788ea38de7b8fb6aa94d2b09ef4bfa09b5cf80ab",
+   "match": [
+    {
+     "case": "fluxo/doctor",
+     "where": "stdout/json/install/data_unreadable",
+     "kind": "added",
+     "new": []
+    }
+   ]
+  },
+  {
+   "id": "doctor-sal-do-log",
+   "lista": "acrescimo",
+   "changelog": "**`doctor` mostra o sal do log.**",
+   "ratificado": "2026-10-09",
+   "diferencas_sha256": "a75e1bacd0287c43fd7070ad1d13cc8fa46aa684ec4f938e174f9e3d61d2934a",
+   "match": [
+    {
+     "case": "fluxo/doctor",
+     "where": "stdout/json/install/log_salt",
+     "kind": "added",
+     "new": "ok"
+    }
+   ]
+  },
+  {
+   "id": "doctor-ready-install",
+   "lista": "doctor-ready-install",
+   "changelog": "**`doctor` ganha `ready` e `install`.**",
+   "ratificado": "2026-10-10",
+   "diferencas_sha256": "e26186e94d940ed9e5a423c2e7edb5a1b38b406af2d51f35b1b38055a008e689",
+   "match": [
+    {
+     "case": "fluxo/doctor",
+     "where": "stdout/json/ready",
+     "kind": "added",
+     "new": false
+    },
+    {
+     "case": "fluxo/doctor",
+     "where": "stdout/json/install/*",
+     "kind": "added"
+    }
+   ]
+  },
+  {
+   "id": "trava-biblioteca",
+   "lista": "trava-biblioteca",
+   "changelog": "Trava ocupada sai com `LOCKED` (antes `INVALID_DATA`)",
+   "ratificado": "2026-10-10",
+   "diferencas_sha256": "98756c28ed61943a10a63222946ddffa7bd3c4433fa98d2da439c26847b27284",
+   "match": [
+    {
+     "case": "fluxo/err_library_locked",
+     "where": "stderr/json/error_code",
+     "old": "INVALID_DATA",
+     "new": "LOCKED"
+    },
+    {
+     "case": "fluxo/err_library_locked",
+     "where": "stderr/json/type",
+     "old": "ValueError",
+     "new": "LockedError"
+    },
+    {
+     "case": "fluxo/err_library_locked",
+     "where": "appends/*getbrolls.log",
+     "kind": "changed",
+     "new": [
+      "level=INFO logger=getbrolls.cli event=command_start command=learn read_only=False options=query,provider,outcome,project",
+      "level=WARNING logger=getbrolls.library event=library_lock waited_ms=<MS> timeout=True duration_ms=<MS>",
+      "level=INFO logger=getbrolls.cli event=command_end command=learn status=error error_code=LOCKED ms=<MS> outcome=error duration_ms=<MS>"
+     ]
+    },
+    {
+     "case": "fluxo/err_library_locked",
+     "where": "appends/*diagnostics.jsonl/0/error_code",
+     "old": "INVALID_DATA",
+     "new": "LOCKED"
+    },
+    {
+     "case": "fluxo/err_library_locked",
+     "where": "appends/*diagnostics.jsonl/0/type",
+     "old": "ValueError",
+     "new": "LockedError"
+    }
+   ]
+  },
+  {
+   "id": "brief-md",
+   "lista": "brief-md",
+   "changelog": "**O `BRIEF.md` do `init-brief` muda de texto.**",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "23171e29043e391c0066c1614be57cba8abe8bdfad58e60f92e7fad95800b57d",
+   "match": [
+    {
+     "case": "fluxo/init_brief",
+     "where": "files/work/proj/BRIEF.md",
+     "kind": "changed"
+    }
+   ]
+  },
+  {
+   "id": "status-layout",
+   "lista": "status-layout",
+   "changelog": "**`status` diz o layout do projeto.**",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "6c4cdc21be0d6797f3630382acead94071625c0f3e4c40583ffe640cb35d05e8",
+   "match": [
+    {
+     "case": [
+      "fluxo/status_approved",
+      "fluxo/status_done",
+      "fluxo/status_no_brief",
+      "fluxo/status_previewed",
+      "fluxo/status_url",
+      "layout0/l0_status",
+      "layout0/l0_status_done"
+     ],
+     "where": "stdout/json/layout/version",
+     "kind": "added",
+     "new": 0
+    },
+    {
+     "case": [
+      "fluxo/status_approved",
+      "fluxo/status_done",
+      "fluxo/status_no_brief",
+      "fluxo/status_previewed",
+      "fluxo/status_url",
+      "layout0/l0_status",
+      "layout0/l0_status_done"
+     ],
+     "where": "stdout/json/layout/source",
+     "kind": "added",
+     "new": "inferred"
+    },
+    {
+     "case": [
+      "fluxo/status_approved",
+      "fluxo/status_done",
+      "fluxo/status_no_brief",
+      "fluxo/status_previewed",
+      "fluxo/status_url",
+      "layout0/l0_status",
+      "layout0/l0_status_done"
+     ],
+     "where": "stdout/json/layout/problem",
+     "kind": "added",
+     "new": null
+    }
+   ]
+  },
+  {
+   "id": "hint",
+   "lista": "hint",
+   "changelog": "**`hint` só quando há o que fazer.**",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "27c9f3dd20ca31539f8ff543142c1dc6735a0f8e79c04975bfd30311725e1ea4",
+   "match": [
+    {
+     "case": [
+      "fluxo/err_library_locked",
+      "fluxo/err_missing_candidate",
+      "fluxo/err_project_locked",
+      "fluxo/fetch_no_permit",
+      "fluxo/fetch_unapproved",
+      "fluxo/inspect_local",
+      "fluxo/search_dry",
+      "fluxo/status_missing"
+     ],
+     "where": "stderr/json/hint",
+     "kind": "removed"
+    }
+   ]
+  },
+  {
+   "id": "erro-uso-json",
+   "lista": "acrescimo",
+   "changelog": "**Erro de uso em JSON.**",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "d9b05c4ebeac79d3e6a1bd9970bc30b8ecbb7ebfe31bcc36fcf9ad2f23bab1f6",
+   "match": [
+    {
+     "case": [
+      "fluxo/err_bad_int",
+      "fluxo/err_missing_project",
+      "fluxo/err_unknown_flag"
+     ],
+     "where": "stderr/text",
+     "kind": "removed"
+    },
+    {
+     "case": [
+      "fluxo/err_bad_int",
+      "fluxo/err_missing_project",
+      "fluxo/err_unknown_flag"
+     ],
+     "where": "stderr/json/error",
+     "kind": "added"
+    },
+    {
+     "case": [
+      "fluxo/err_bad_int",
+      "fluxo/err_missing_project",
+      "fluxo/err_unknown_flag"
+     ],
+     "where": "stderr/json/error_code",
+     "kind": "added",
+     "new": "USAGE_ERROR"
+    },
+    {
+     "case": [
+      "fluxo/err_bad_int",
+      "fluxo/err_missing_project",
+      "fluxo/err_unknown_flag"
+     ],
+     "where": "stderr/json/error_en",
+     "kind": "added"
+    },
+    {
+     "case": [
+      "fluxo/err_bad_int",
+      "fluxo/err_missing_project",
+      "fluxo/err_unknown_flag"
+     ],
+     "where": "stderr/json/prog",
+     "kind": "added"
+    },
+    {
+     "case": [
+      "fluxo/err_bad_int",
+      "fluxo/err_missing_project",
+      "fluxo/err_unknown_flag"
+     ],
+     "where": "stderr/json/suggestion",
+     "kind": "added"
+    },
+    {
+     "case": [
+      "fluxo/err_bad_int",
+      "fluxo/err_missing_project",
+      "fluxo/err_unknown_flag"
+     ],
+     "where": "stderr/json/usage",
+     "kind": "added"
+    }
+   ]
+  },
+  {
+   "id": "erro-sem-traceback",
+   "lista": "acrescimo",
+   "changelog": "**Erro sem `traceback` nem `repr`.**",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "bf8b188ba499f30793743d71866fd5dabc0a6d69a31a4fb02a2bd51ded415288",
+   "match": [
+    {
+     "case": [
+      "fluxo/err_library_locked",
+      "fluxo/err_missing_candidate",
+      "fluxo/err_project_locked",
+      "fluxo/fetch_no_permit",
+      "fluxo/fetch_unapproved",
+      "fluxo/inspect_local",
+      "fluxo/search_dry",
+      "fluxo/status_missing"
+     ],
+     "where": "stderr/json/traceback",
+     "kind": "removed"
+    },
+    {
+     "case": [
+      "fluxo/err_library_locked",
+      "fluxo/err_missing_candidate",
+      "fluxo/err_project_locked",
+      "fluxo/fetch_no_permit",
+      "fluxo/fetch_unapproved",
+      "fluxo/inspect_local",
+      "fluxo/search_dry",
+      "fluxo/status_missing"
+     ],
+     "where": "stderr/json/repr",
+     "kind": "removed"
+    }
+   ]
+  },
+  {
+   "id": "brief-texto-de-modelo",
+   "lista": "acrescimo",
+   "changelog": "**`brief` acusa o texto de exemplo do modelo.**",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "5a5346a85e9e760d73fb6c40b1b494736f16b3ece440896fe8d021b50b9fa618",
+   "match": [
+    {
+     "case": "fluxo/brief",
+     "where": "stdout/json/summary/problems",
+     "kind": "removed"
+    },
+    {
+     "case": "fluxo/brief_validate",
+     "where": "stdout/json/summary/problems",
+     "kind": "removed"
+    },
+    {
+     "case": "layout0/l0_brief",
+     "where": "stdout/json/summary/problems",
+     "kind": "removed"
+    },
+    {
+     "case": "fluxo/brief",
+     "where": "stdout/json/summary/problems/[0-3]",
+     "kind": "added"
+    },
+    {
+     "case": "fluxo/brief_validate",
+     "where": "stdout/json/summary/problems/[0-3]",
+     "kind": "added"
+    },
+    {
+     "case": "layout0/l0_brief",
+     "where": "stdout/json/summary/problems/[0-3]",
+     "kind": "added"
+    },
+    {
+     "case": "fluxo/brief_validate",
+     "where": "stdout/json/summary/line",
+     "kind": "changed",
+     "new": "Brief de \"Troque pelo nome real do vídeo\" lido, com 1 beat, mas 4 pontos para resolver antes de buscar."
+    },
+    {
+     "case": "fluxo/brief_validate",
+     "where": "stdout/json/summary/next",
+     "kind": "changed",
+     "new": "Resolva os pontos acima e repita `brief --validate --project ...`."
+    }
+   ]
+  },
+  {
+   "id": "fetch-sem-permissao",
+   "lista": "acrescimo",
+   "changelog": "**A recusa do `fetch` sem condições de uso cita as três formas.**",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "7d74cbbe94b6c04904439e74c2c0ddb4f8f059849010d785f3eeb4a1e71ddbd0",
+   "match": [
+    {
+     "case": "fluxo/fetch_no_permit",
+     "where": "stderr/json/error",
+     "kind": "changed",
+     "new": "Registre a autorização/condições de uso com permit antes de obter mídia: --evidence com a condição real da fonte, --preset com as condições genéricas da fonte (nasa, commons...) ou --declared-by/--declaration-text com a declaração de quem responde pelo uso."
+    },
+    {
+     "case": "fluxo/fetch_no_permit",
+     "where": "stderr/json/message",
+     "kind": "changed",
+     "new": "Registre a autorização/condições de uso com permit antes de obter mídia: --evidence com a condição real da fonte, --preset com as condições genéricas da fonte (nasa, commons...) ou --declared-by/--declaration-text com a declaração de quem responde pelo uso."
+    },
+    {
+     "case": "fluxo/fetch_no_permit",
+     "where": "appends/*diagnostics.jsonl/0/repr",
+     "kind": "changed",
+     "new": "ValueError('Registre a autorização/condições de uso com permit antes de obter mídia: --evidence com a condição real da fonte, --preset com as condições genéricas da fonte (nasa, commons...) ou --declared-by/--declaration-text com a declaração de quem responde pelo uso.')"
+    },
+    {
+     "case": "fluxo/fetch_no_permit",
+     "where": "appends/*diagnostics.jsonl/0/message",
+     "kind": "changed",
+     "new": "Registre a autorização/condições de uso com permit antes de obter mídia: --evidence com a condição real da fonte, --preset com as condições genéricas da fonte (nasa, commons...) ou --declared-by/--declaration-text com a declaração de quem responde pelo uso."
+    }
+   ]
+  },
+  {
+   "id": "references-versao",
+   "lista": "acrescimo",
+   "changelog": "**`references.json` ganha `schema_version`.**",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "efe3e2bddb96af328e67e60f6ecb73fa5cea8f188b606940ff71faa506254038",
+   "match": [
+    {
+     "case": "fluxo/references",
+     "where": "stdout/json/schema_version",
+     "kind": "added",
+     "new": 1
+    },
+    {
+     "case": "fluxo/remember",
+     "where": "files/work/proj/brolls/references.json",
+     "kind": "changed"
+    }
+   ]
+  },
+  {
+   "id": "doctor-social",
+   "lista": "acrescimo",
+   "changelog": "**`doctor.social` diz qual yt-dlp está em uso.**",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "5b43f62b8d39a703ffac46b4edcf60741c1c7b72ae4c76ddb94905b11349011e",
+   "match": [
+    {
+     "case": "fluxo/doctor",
+     "where": "stdout/json/social/executable",
+     "kind": "added",
+     "new": "<PY>"
+    },
+    {
+     "case": "fluxo/doctor",
+     "where": "stdout/json/social/source",
+     "kind": "added",
+     "new": "env"
+    }
+   ]
+  },
+  {
+   "id": "init-brief-linha",
+   "lista": "acrescimo",
+   "changelog": "**`init-brief` ganha `summary.line`.**",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "861e55e094ce016ec9ee168d665d4cb2ded1db7b8af26c2c475172965c022e73",
+   "match": [
+    {
+     "case": "fluxo/init_brief",
+     "where": "stdout/json/summary/line",
+     "kind": "added",
+     "new": "BRIEF.md criado do modelo: preencha o plano e os beats."
+    }
+   ]
+  },
+  {
+   "id": "rules-md",
+   "lista": "acrescimo",
+   "changelog": "**O `RULES.md` do `init-rules` muda de texto.**",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "5f172f2e021cdf5882331111358d7312c4781488b0972b0b60b21d16a5d2c2ea",
+   "match": [
+    {
+     "case": "fluxo/init_rules",
+     "where": "files/work/proj/RULES.md",
+     "kind": "changed"
+    }
+   ]
+  },
+  {
+   "id": "diagnostico-recovered",
+   "lista": "acrescimo",
+   "changelog": "**`recovered` no erro e no `diagnostics.jsonl`.**",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "1525f651cbf62a2da39ce63b67aaa7086d37a667c169300d8a77c47542d791c8",
+   "match": [
+    {
+     "case": "*",
+     "where": "appends/*diagnostics.jsonl/*/recovered",
+     "kind": "added",
+     "new": false
+    },
+    {
+     "case": [
+      "fluxo/err_library_locked",
+      "fluxo/err_missing_candidate",
+      "fluxo/err_project_locked",
+      "fluxo/fetch_no_permit",
+      "fluxo/fetch_unapproved",
+      "fluxo/inspect_local",
+      "fluxo/search_dry",
+      "fluxo/status_missing"
+     ],
+     "where": "stderr/json/recovered",
+     "kind": "added",
+     "new": false
+    }
+   ]
+  },
+  {
+   "id": "diagnostico-fora-do-projeto",
+   "lista": "acrescimo",
+   "changelog": "**Erro fora de um projeto vai para `$GB_HOME/diagnostics.jsonl`.**",
+   "ratificado": "2026-10-10",
+   "diferencas_sha256": "ed64757f3afed0fd9259a5634e0bfc817a9ea387fc278590e728df7761de2c72",
+   "match": [
+    {
+     "case": "fluxo/status_missing",
+     "where": "appends/gbhome/diagnostics.jsonl/0/*",
+     "kind": "added"
+    },
+    {
+     "case": "fluxo/status_missing",
+     "where": "stderr/json/log",
+     "kind": "changed",
+     "new": "<T>/gbhome/diagnostics.jsonl"
+    }
+   ]
+  },
+  {
+   "id": "leitura-sem-log",
+   "lista": "acrescimo",
+   "changelog": "**`rules`, `library --search` e `references` não escrevem no `getbrolls.log` do projeto.**",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "b3aaf4dbfd6dc1d73c2c9f0877e678a61a0a9de2b61ae8efe0116c5404f9abd4",
+   "match": [
+    {
+     "case": "fluxo/rules",
+     "where": "appends/work/proj/brolls/getbrolls.log",
+     "kind": "removed"
+    },
+    {
+     "case": "fluxo/library",
+     "where": "appends/work/proj/brolls/getbrolls.log",
+     "kind": "removed"
+    },
+    {
+     "case": "fluxo/references",
+     "where": "appends/work/proj/brolls/getbrolls.log",
+     "kind": "removed"
+    }
+   ]
+  },
+  {
+   "id": "entrega-sheet-sha256",
+   "lista": "acrescimo",
+   "changelog": "**O registro de entrega guarda o sha256 do contact sheet.**",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "b36935e52afe8313f1b6677c3a772145a9bc56f94d5543774d7159fd99af698a",
+   "match": [
+    {
+     "case": "fluxo/verify",
+     "where": "files/*brolls/manifest.json",
+     "kind": "changed"
+    },
+    {
+     "case": "fluxo/import_review",
+     "where": "files/*brolls/manifest.json",
+     "kind": "changed"
+    },
+    {
+     "case": "fluxo/resolve_url",
+     "where": "files/*brolls/manifest.json",
+     "kind": "changed"
+    },
+    {
+     "case": "fluxo/reject",
+     "where": "files/*brolls/manifest.json",
+     "kind": "changed"
+    },
+    {
+     "case": "layout0/l0_verify",
+     "where": "files/*brolls/manifest.json",
+     "kind": "changed"
+    },
+    {
+     "case": "fluxo/verify",
+     "where": "files/*brolls/candidates/*.json",
+     "kind": "changed"
+    },
+    {
+     "case": "fluxo/import_review",
+     "where": "files/*brolls/candidates/*.json",
+     "kind": "changed"
+    },
+    {
+     "case": "fluxo/reject",
+     "where": "files/*brolls/candidates/*.json",
+     "kind": "changed"
+    },
+    {
+     "case": "layout0/l0_verify",
+     "where": "files/*brolls/candidates/*.json",
+     "kind": "changed"
+    },
+    {
+     "case": "fluxo/reject",
+     "where": "stdout/json/delivery/sheet_sha256",
+     "kind": "added",
+     "new": "<SHA:work/proj/brolls/previews/61dd9e68d8fe00a4-r1-39854a0c-sheet.jpg>"
+    }
+   ]
+  },
+  {
+   "id": "storyboard-motivo",
+   "lista": "acrescimo",
+   "changelog": "**O aviso do Storyboard diz o motivo.**",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "f5c826f4f79757427c530445926d00181619822b90a5f632ee203b1228759fd6",
+   "match": [
+    {
+     "case": "fluxo/preview",
+     "where": "files/*brolls/review.html",
+     "kind": "changed",
+     "new": {
+      "bytes": 66388,
+      "sha256": "02b4391ec03212ce58207699b41d7d355b7741e23f3888c6d024f46a91cb6dab"
+     }
+    },
+    {
+     "case": "fluxo/approve",
+     "where": "files/*brolls/review.html",
+     "kind": "changed",
+     "new": {
+      "bytes": 66389,
+      "sha256": "4d6ac91486096fc315cb87f77aaf01976b75e22bfe57d91336027135db9d1b85"
+     }
+    },
+    {
+     "case": "fluxo/permit",
+     "where": "files/*brolls/review.html",
+     "kind": "changed",
+     "new": {
+      "bytes": 66390,
+      "sha256": "6fa1c3730b54d47eaf68171c92e2963ee573ae7c8041fb2508fb6ca55cb485b7"
+     }
+    },
+    {
+     "case": "fluxo/import_review",
+     "where": "files/*brolls/review.html",
+     "kind": "changed",
+     "new": {
+      "bytes": 66542,
+      "sha256": "1838773a69c54b414126b0dc2b59e388f0097f264ced23511b7958ba3a09f6c1"
+     }
+    },
+    {
+     "case": "fluxo/reject",
+     "where": "files/*brolls/review.html",
+     "kind": "changed",
+     "new": {
+      "bytes": 69585,
+      "sha256": "b65d2a9704a4da2e0e7032fa2b5b5c4726c1fedf4dcbe4654b71a98b73603afc"
+     }
+    },
+    {
+     "case": "layout0/l0_review",
+     "where": "files/*brolls/review.html",
+     "kind": "changed",
+     "new": {
+      "bytes": 66390,
+      "sha256": "52dc19be473c304d38604c9edd8299fc46622e50304202ac41520c0e7537e649"
+     }
+    }
+   ]
+  },
+  {
+   "id": "status-sem-brief-next",
+   "lista": "acrescimo",
+   "changelog": "**Texto de `summary.next`.**",
+   "ratificado": "2026-10-08",
+   "diferencas_sha256": "a2a99477336da1bd6d0d990b390e7cf8c7429fea36ac2842f44728ec573257f2",
+   "match": [
+    {
+     "case": "fluxo/status_no_brief",
+     "where": "stdout/json/summary/next",
+     "kind": "changed",
+     "new": "O projeto ainda não tem BRIEF.md, então nada define o que buscar."
+    }
+   ]
+  },
+  {
+   "id": "linhas-op-no-log",
+   "lista": "acrescimo",
+   "changelog": "**O `getbrolls.log` ganha uma linha `event=op` por efeito colateral e `duration_ms` em toda linha que mede tempo.**",
+   "ratificado": "2026-10-10",
+   "diferencas_sha256": "42f2e36a6cadf96f41e31e4b68e5b6cf8058102555882be5247565437a021cd5",
+   "match": [
+    {
+     "case": [
+      "fluxo/approve",
+      "fluxo/browser_plan",
+      "fluxo/deliver",
+      "fluxo/deliver_dry",
+      "fluxo/err_missing_candidate",
+      "fluxo/fetch",
+      "fluxo/fetch_no_permit",
+      "fluxo/fetch_unapproved",
+      "fluxo/import_review",
+      "fluxo/init_brief",
+      "fluxo/init_rules",
+      "fluxo/inspect_local",
+      "fluxo/learn",
+      "fluxo/permit",
+      "fluxo/preview",
+      "fluxo/queue_add",
+      "fluxo/queue_mark",
+      "fluxo/queue_next",
+      "fluxo/reject",
+      "fluxo/remember",
+      "fluxo/resolve_file",
+      "fluxo/resolve_url",
+      "fluxo/review",
+      "fluxo/search_dry",
+      "fluxo/verify",
+      "layout0/l0_deliver",
+      "layout0/l0_deliver_dry",
+      "layout0/l0_review",
+      "layout0/l0_verify"
+     ],
+     "where": "appends/*getbrolls.log",
+     "kind": "changed"
+    }
+   ]
+  },
+  {
+   "id": "fila-biblioteca-versao-2",
+   "lista": "acrescimo",
+   "changelog": "**Biblioteca e fila gravam `schema_version: 2`.**",
+   "ratificado": "2026-10-23",
+   "diferencas_sha256": "1663ba32a2bf3b54e0bff8233847fa0e38901bae9fbaffd532a77145f52c1965",
+   "match": [
+    {
+     "case": "fluxo/learn",
+     "where": "files/gbhome/library/index.json",
+     "kind": "changed"
+    },
+    {
+     "case": "fluxo/queue_add",
+     "where": "files/work/proj/work/queue.json",
+     "kind": "changed"
+    },
+    {
+     "case": "fluxo/queue_mark",
+     "where": "files/work/proj/work/queue.json",
+     "kind": "changed"
+    },
+    {
+     "case": "fluxo/queue_next",
+     "where": "files/work/proj/work/queue.json",
+     "kind": "changed"
+    }
+   ]
+  }
+ ]
+}

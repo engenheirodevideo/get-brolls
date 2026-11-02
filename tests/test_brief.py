@@ -3,18 +3,22 @@
 import copy
 import json
 import os
-import shlex
+import re
 import tempfile
 import unittest
 from pathlib import Path
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
-from _paths import ROOT, SKILLS
+from _paths import ROOT, SKILLS, suggested_argv
+from _timing import best_of
 
 from getbrolls import brief as brief_module
 from getbrolls.cli import SUMMARIES, build_parser
+from getbrolls.commands import brief_state
+from getbrolls.guidance import next_action
+from getbrolls.ledger import Ledger
 
 TEMPLATE = ROOT / "docs" / "BRIEF.md"
 
@@ -89,6 +93,7 @@ class LoadBriefTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, self.assertRaises(ValueError) as raised:
             brief_module.load_brief(tmp)
         self.assertIn("init-brief", str(raised.exception))
+        self.assertIn("/getbrolls:get-brolls-brief", str(raised.exception))
 
     def test_env_override_points_at_another_file(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -112,6 +117,85 @@ class LoadBriefTests(unittest.TestCase):
             with self.assertRaises(ValueError) as raised:
                 brief_module.load_brief(tmp)
         self.assertIn("exatamente um bloco", str(raised.exception))
+
+
+class NotUtf8Tests(unittest.TestCase):
+    """Arquivo salvo em cp1252 (Bloco de Notas antigo): recusa em português, sem texto de codec."""
+
+    @staticmethod
+    def save_cp1252(path, source):
+        Path(path).write_text(Path(source).read_text(encoding="utf-8"), encoding="cp1252", errors="replace")
+
+    def test_brief_not_in_utf8_is_refused_in_portuguese(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.save_cp1252(Path(tmp) / "BRIEF.md", ROOT / "docs" / "BRIEF.md")
+            failed = run_cli("brief", "--validate", "--project", tmp, expect=1)
+        self.assertEqual("INVALID_DATA", failed["error_code"])
+        self.assertIn("BRIEF.md", failed["error"])
+        self.assertIn("UTF-8", failed["error"])
+        self.assertNotIn("codec", failed["error"])
+
+    def test_rules_not_in_utf8_is_reported_in_portuguese_by_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            Ledger(tmp)
+            self.save_cp1252(Path(tmp) / "RULES.md", ROOT / "docs" / "RULES.md")
+            status = run_cli("status", "--project", tmp)
+        self.assertIn("RULES.md", status["rules_error"])
+        self.assertIn("UTF-8", status["rules_error"])
+        self.assertNotIn("codec", status["rules_error"])
+
+
+class JsonBlockScanTests(unittest.TestCase):
+    """O bloco ```json do BRIEF.md: a mesma leitura da regex antiga, em tempo linear."""
+
+    OLD = re.compile(r"```json\s*\n(.*?)\n```", re.DOTALL)
+    CASES = (
+        "# B\n\n```json\n{}\n```\n",
+        '```json\n{"a": 1}\n```',
+        '```json   \n\n  \n{"a": 1}\n```\n',
+        "```json\n\n```",
+        "```json\n```",
+        "```json\n\n\n```",
+        "x```json\n{}\n```python\nresto\n",
+        "```json {}\n```\n```json\n[1]\n```\n",
+        "```json\n{}\n```\n\n```json\n[]\n```\n",
+        "```json\n{}\n",
+        "```jsonx\n{}\n```",
+        "```json\t\r\n{}\r\n```",
+        "```json\n```json\n{}\n```\n",
+        "sem bloco nenhum",
+        "",
+    )
+
+    def test_same_blocks_as_the_old_regex(self):
+        for raw in self.CASES:
+            with self.subTest(raw=raw):
+                expected = [(m.start(1), m.end(1)) for m in self.OLD.finditer(raw)]
+                self.assertEqual(expected, brief_module.json_block_spans(raw))
+
+    def test_unclosed_fence_with_many_lines_is_linear(self):
+        for unit, count in (("\n", 200_000), ("x\n", 200_000), ("```json \n", 50_000)):
+            raw = "```json" + unit * count
+            with self.subTest(unit=unit):
+                small = "```json" + unit * 50
+                self.assertEqual(
+                    [(m.start(1), m.end(1)) for m in self.OLD.finditer(small)], brief_module.json_block_spans(small)
+                )
+                spent, _ = best_of(lambda raw=raw: brief_module.json_block_spans(raw), 0.5)
+                self.assertLess(spent, 0.5)
+
+    def test_read_json_block_refuses_a_huge_unclosed_fence_quickly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "BRIEF.md"
+            path.write_text("# B\n\n```json" + "\n" * 200_000, encoding="utf-8")
+
+            def refused():
+                with self.assertRaises(ValueError) as ctx:
+                    brief_module.read_json_block(path, missing="sem bloco", syntax="json ruim")
+                self.assertEqual("sem bloco", str(ctx.exception))
+
+            spent, _ = best_of(refused, 0.5)
+            self.assertLess(spent, 0.5)
 
 
 class ValidateBriefTests(unittest.TestCase):
@@ -255,9 +339,7 @@ class BeatCommandTests(unittest.TestCase):
         for name, line in commands.items():
             if name == "note":  # prosa para o agente, não comando
                 continue
-            tokens = shlex.split(line)
-            self.assertTrue(tokens[1].endswith("gb.py"), line)
-            out[name] = parser.parse_args(tokens[2:])
+            out[name] = parser.parse_args(suggested_argv(line))
         return commands, out
 
     def test_every_command_parses_and_carries_the_beat_identity(self):
@@ -343,7 +425,6 @@ class BlockedBeatTests(unittest.TestCase):
         self.assertIn("blocked_reason", str(caught.exception))
 
     def test_a_blocked_beat_is_neither_covered_nor_missing(self):
-        from getbrolls.commands import brief_state
 
         with tempfile.TemporaryDirectory() as tmp:
             write_brief(tmp, self.blocked())
@@ -358,7 +439,6 @@ class BlockedBeatTests(unittest.TestCase):
         self.assertEqual(state["beats"], int(state["covered"]) + len(missing) + len(blocked))
 
     def test_the_rung_asks_the_human_instead_of_promising_a_search(self):
-        from getbrolls.guidance import next_action
 
         state = {
             "project": "/tmp/projeto",
@@ -380,7 +460,6 @@ class BlockedBeatTests(unittest.TestCase):
         self.assertIsNone(action["command"])
 
     def test_status_reports_the_blocked_count(self):
-        from getbrolls.ledger import Ledger
 
         with tempfile.TemporaryDirectory() as tmp:
             Ledger(tmp)
@@ -414,7 +493,6 @@ class RejectedCandidatesDoNotCoverABeatTests(unittest.TestCase):
         self.assertEqual(["youtube:bbb"], progress["reacao-publico"])
 
     def test_a_beat_whose_candidates_were_all_rejected_goes_back_to_missing(self):
-        from getbrolls.commands import brief_state
 
         items = [{"id": "youtube:aaa", "shot": "abertura", "approval": {"status": "rejected"}}]
         with tempfile.TemporaryDirectory() as tmp:
@@ -486,7 +564,6 @@ class StockOnlyBeatWithoutKeyTests(unittest.TestCase):
         self.assertTrue(any("PEXELS_API_KEY" in w for w in payload["warnings"]))
 
     def test_the_rung_asks_for_the_key_not_for_the_company_or_the_date(self):
-        from getbrolls.ledger import Ledger
 
         with tempfile.TemporaryDirectory() as tmp:
             Ledger(tmp)
@@ -523,7 +600,7 @@ class BriefCommandTests(unittest.TestCase):
                 TEMPLATE.read_text(encoding="utf-8"),
                 (Path(tmp) / "BRIEF.md").read_text(encoding="utf-8"),
             )
-            again = run_cli("init-brief", "--project", tmp, expect=2)
+            again = run_cli("init-brief", "--project", tmp, expect=1)
             self.assertIn("já existe", again["error"])
 
     def test_brief_puts_the_summary_first_and_lists_ready_commands(self):
@@ -534,7 +611,6 @@ class BriefCommandTests(unittest.TestCase):
             self.assertEqual(["line", "problems", "next"], list(result["summary"]))
             # `next` vem da mesma escada de `status` (guidance.next_action): nenhum
             # beat tem candidato ainda, então o passo é buscar pelo primeiro.
-            from getbrolls.guidance import next_action
 
             self.assertTrue(result["summary"]["next"])
             self.assertEqual(
@@ -568,7 +644,7 @@ class BriefCommandTests(unittest.TestCase):
             broken = copy.deepcopy(VALID)
             broken["beats"][0]["target"] = ""
             write_brief(tmp, broken)
-            failure = run_cli("brief", "--project", tmp, "--validate", expect=2)
+            failure = run_cli("brief", "--project", tmp, "--validate", expect=1)
             self.assertIn("target", failure["error"])
 
     def test_validate_does_not_call_a_brief_with_problems_valid(self):
@@ -597,7 +673,7 @@ class BriefCommandTests(unittest.TestCase):
             result = run_cli("brief", "--project", tmp, "--beat", "abertura")
             self.assertEqual(1, len(result["beats"]))
             self.assertEqual("abertura", result["beats"][0]["id"])
-            missing = run_cli("brief", "--project", tmp, "--beat", "inexistente", expect=2)
+            missing = run_cli("brief", "--project", tmp, "--beat", "inexistente", expect=1)
             self.assertIn("reacao-publico", missing["error"])
 
     def test_brief_never_creates_the_project_tree(self):
@@ -626,7 +702,7 @@ class BriefDocumentationTests(unittest.TestCase):
         for path in SKILLS:
             body = path.read_text(encoding="utf-8")
             self.assertIn("BRIEF.md", body)
-            self.assertIn("/get-brolls-brief", body)
+            self.assertIn("/getbrolls:get-brolls-brief", body)
 
     def test_the_lazy_interview_case_is_in_the_eval_corpus(self):
         case = ROOT / "eval/corpus/brief-entrevista-preguicosa.md"

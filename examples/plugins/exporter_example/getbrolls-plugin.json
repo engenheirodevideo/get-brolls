@@ -1,0 +1,11 @@
+{
+  "id": "exporter_example",
+  "name": "Exemplo de exportador",
+  "description": "Exemplo do SDK: transforma o roteiro revisado numa lista de cortes em CSV e num EXPORT.md com as cenas e as pendências.",
+  "version": "0.1.0",
+  "sdk_api": 1,
+  "requires_getbrolls": ">=2.6,<3",
+  "entry": "plugin.py",
+  "contributes": {"exporters": ["exporter_example"]},
+  "permissions": {"network": [], "env": [], "paths": []}
+}

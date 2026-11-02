@@ -1,0 +1,75 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"queue\", \"status\": \"success\", \"state_committed\": false, \"warnings\": [], \"duration_ms\": \"<MS>\"}"
+  ],
+  "work/proj/brolls/getbrolls.log": [
+   "level=INFO logger=getbrolls.cli event=command_start command=queue read_only=False options=action,project",
+   "level=INFO logger=getbrolls.queue event=queue_claim provider=instagram item=instagram:ABC123",
+   "level=INFO logger=getbrolls.cli event=command_end command=queue status=ok error_code=- ms=<MS>"
+  ]
+ },
+ "argv": [
+  "queue",
+  "--action",
+  "next",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "queue_next",
+ "exit": 0,
+ "files": {
+  "work/proj/work/queue.json": {
+   "bytes": 472,
+   "lines": [
+    "{",
+    "  \"schema_version\": 1,",
+    "  \"items\": [",
+    "    {",
+    "      \"id\": \"instagram:ABC123\",",
+    "      \"provider\": \"instagram\",",
+    "      \"url\": \"https://www.instagram.com/reel/ABC123/\",",
+    "      \"status\": \"active\",",
+    "      \"added_at\": \"<TS>\",",
+    "      \"started_at\": \"<TS>\",",
+    "      \"finished_at\": null,",
+    "      \"reason\": null",
+    "    }",
+    "  ],",
+    "  \"providers\": {",
+    "    \"instagram\": {",
+    "      \"last_action_at\": \"<TS>\",",
+    "      \"next_allowed_at\": \"<TS>\",",
+    "      \"cooldown_until\": null,",
+    "      \"cooldown_strikes\": 0",
+    "    }",
+    "  }",
+    "}"
+   ],
+   "sha256": "f6bec4d5713c4b2c63624deb2ee984a02388473ce4ada201282c56552336da9b"
+  }
+ },
+ "stderr": null,
+ "stdout": {
+  "json": {
+   "action": "next",
+   "item": {
+    "added_at": "<TS>",
+    "finished_at": null,
+    "id": "instagram:ABC123",
+    "provider": "instagram",
+    "reason": null,
+    "started_at": "<TS>",
+    "status": "active",
+    "url": "https://www.instagram.com/reel/ABC123/"
+   },
+   "queue": "<T>/work/proj/work/queue.json",
+   "reason": null,
+   "resume_at": null,
+   "summary": {
+    "line": "Próximo item: instagram:ABC123 (https://www.instagram.com/reel/ABC123/)."
+   },
+   "wait_seconds": 0
+  }
+ }
+}

@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 823 1452" width="823" height="1452" role="img" aria-label="Mapa da skill: seu pedido, brief, Get B-rolls, fontes, candidatos, sua aprovação, direitos, coleta e verificação, entrega">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 823 1452" width="823" height="1452" role="img" aria-label="Mapa da skill: seu pedido, brief, getbrolls, fontes, candidatos, sua aprovação, direitos, coleta e verificação, entrega">
   <defs>
     <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse">
       <circle cx="4" cy="4" r="1.2" fill="#ffffff" fill-opacity="0.06"/>
@@ -36,7 +36,7 @@
   <text class="s" x="411" y="306">beats, formato e o que evitar</text>
   <path class="ln" d="M411 324 V376" marker-end="url(#arr)"/>
   <rect x="271" y="382" width="280" height="96" rx="14" fill="#f0a175" stroke="#d97d4a"/>
-  <text class="t" x="411" y="418">Get B-rolls</text>
+  <text class="t" x="411" y="418">getbrolls</text>
   <text class="s" x="411" y="442">Busca por beat e identifica</text>
   <text class="s" x="411" y="460">a fonte e a forma de coleta</text>
   <path class="ln" d="M411 478 V506"/>

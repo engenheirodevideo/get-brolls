@@ -12,16 +12,28 @@ de erro lá).
 `test_library.py`. `project` é conveniência: quando informado, acrescenta
 `--project <project>` ao fim dos argumentos, para quem não quer repetir o par
 em toda chamada.
+
+`doctor` e `setup` são a exceção do código de saída: com `expect=0`, saem 0 quando
+`ready` é verdadeiro e 4 quando falta algo (o JSON vai para stdout nos dois casos).
+`ready_exit(payload)` diz qual dos dois o resultado exige; `run_cli` confere isso.
 """
 
 import json
 import os
 import subprocess
-import sys
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import CLI
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import CLI_ARGV
+
+# Comandos cujo resultado com `"ready": false` sai com 4, e não com 0.
+READY_COMMANDS = ("doctor", "setup")
+NOT_READY = 4
+
+
+def ready_exit(payload):
+    """Código de saída que um resultado de `doctor`/`setup` exige: 0 pronto, 4 com pendências."""
+    return 0 if payload.get("ready") else NOT_READY
 
 
 def run_cli(*args, project=None, expect=0, env=None):
@@ -35,12 +47,16 @@ def run_cli(*args, project=None, expect=0, env=None):
         environment.update(env)
 
     done = subprocess.run(
-        [sys.executable, str(CLI), *map(str, command_args)],
+        [*CLI_ARGV, *map(str, command_args)],
         capture_output=True,
         text=True,
         encoding="utf-8",
         env=environment,
         check=False,
     )
+    if expect == 0 and any(arg in READY_COMMANDS for arg in command_args) and done.returncode == NOT_READY:
+        payload = json.loads(done.stdout)
+        assert ready_exit(payload) == NOT_READY, done.stdout
+        return payload
     assert done.returncode == expect, done.stderr or done.stdout
     return json.loads(done.stdout if expect == 0 else done.stderr)

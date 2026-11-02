@@ -1,0 +1,88 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"browser-plan\", \"status\": \"success\", \"state_committed\": false, \"warnings\": [], \"duration_ms\": \"<MS>\"}"
+  ],
+  "work/proj/brolls/getbrolls.log": [
+   "level=INFO logger=getbrolls.cli event=command_start command=browser-plan read_only=False options=url,project",
+   "level=INFO logger=getbrolls.cli event=command_end command=browser-plan status=ok error_code=- ms=<MS>"
+  ]
+ },
+ "argv": [
+  "browser-plan",
+  "--url",
+  "https://example.org/noticia",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "browser_plan",
+ "exit": 0,
+ "files": {},
+ "stderr": null,
+ "stdout": {
+  "json": {
+   "asset_type": "news_screenshot",
+   "commands": [
+    [
+     "npx",
+     "--yes",
+     "--package",
+     "@playwright/cli",
+     "playwright-cli",
+     "-s=gb-<UUID:4>",
+     "open",
+     "https://example.org/noticia",
+     "--headed"
+    ],
+    [
+     "npx",
+     "--yes",
+     "--package",
+     "@playwright/cli",
+     "playwright-cli",
+     "-s=gb-<UUID:4>",
+     "resize",
+     "390",
+     "844"
+    ],
+    [
+     "npx",
+     "--yes",
+     "--package",
+     "@playwright/cli",
+     "playwright-cli",
+     "-s=gb-<UUID:4>",
+     "snapshot"
+    ],
+    [
+     "npx",
+     "--yes",
+     "--package",
+     "@playwright/cli",
+     "playwright-cli",
+     "-s=gb-<UUID:4>",
+     "screenshot",
+     "--filename=<T>/work/proj/output/playwright/capture-<STAMP>.png"
+    ]
+   ],
+   "editorial_rules": [],
+   "instructions": [
+    "Execute open/resize e leia snapshot antes de interagir.",
+    "Confirme manchete, data, autor, URL e conteúdo carregado.",
+    "Se necessário, interaja por refs do snapshot e tire novo snapshot.",
+    "Captura não passa por paywall/login nem autentica autoria automaticamente.",
+    "Importe PNG com resolve --file --asset-type news_screenshot --source-url URL --title TITULO --captured-at ISO --shot ID.",
+    "Preview, revisão humana, permit e fetch continuam obrigatórios."
+   ],
+   "output": "<T>/work/proj/output/playwright/capture-<STAMP>.png",
+   "preferred_domains": [],
+   "url": "https://example.org/noticia",
+   "viewport": {
+    "emulates_device": false,
+    "height": 844,
+    "kind": "mobile",
+    "width": 390
+   }
+  }
+ }
+}

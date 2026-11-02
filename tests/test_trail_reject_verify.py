@@ -1,7 +1,7 @@
 """Regression tests for six approval/rights-trail defects fixed together:
 
 1. Rejecting an already-fetched candidate must clear `output` (both
-   `commands.mark_rejected` and the Storyboard rejection branch inside
+   `candidate_commands.mark_rejected` and the Storyboard rejection branch inside
    `review.import_review`), so a rejected item stops counting as
    delivered/verified in `status`.
 2. `approve()` (models.py) must drop a stale `rejection` dict left by an
@@ -36,15 +36,20 @@ from pathlib import Path
 from unittest.mock import patch
 
 # The skill's personal folder goes to a temp dir: no test touches ~/.getbrolls.
-import _isolation  # noqa: F401  (import side effect: defines GB_HOME)
+import _isolation  # noqa: F401  (import side effect: defines GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
 from _media import skip_unless_ffmpeg, synth_video
-from _paths import ROOT  # noqa: F401  (import side effect: inserts scripts/ into sys.path)
 
+# import side effect: inserts scripts/ into sys.path
+from _paths import ROOT  # noqa: F401  # pylint: disable=unused-import
+
+from getbrolls import fetch_commands
+from getbrolls.cli import main
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, set_segment
 from getbrolls.rendering import render
 from getbrolls.review import latest_review_file
+from getbrolls.runtime import OperationError
 
 APPROVAL_STATEMENT = "Aprovo este trecho para o vídeo."
 EVIDENCE = "Material próprio de teste sintético."
@@ -131,6 +136,24 @@ class RejectAfterFetchClearsOutputTests(unittest.TestCase):
             self.assertEqual(1, status["counts"]["rejected"])
             self.assertEqual(0, status["counts"]["delivered"])
             self.assertEqual(0, status["counts"]["verified"])
+
+    def test_deliver_after_reject_sweeps_the_untouched_delivered_link(self):
+        """O hardlink que sobrou em `entrega/` é nosso; o `deliver` seguinte o varre com exit 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root, src = _project(tmp)
+            cid, _base, out = _collected_candidate(root, src)
+            first = run_cli("deliver", project=root)
+            delivered = root / first["items"][0]["path"]
+            self.assertTrue(delivered.is_file())
+
+            run_cli("reject", "--candidate", cid, "--reason", "Não serve mais.", "--project", root)
+            again = run_cli("deliver", project=root)
+
+            self.assertFalse(delivered.exists())
+            self.assertIn(delivered.relative_to(root / "entrega").as_posix(), again["removed"])
+            self.assertEqual([], again["kept"])
+            # O clipe canônico continua em brolls/.
+            self.assertTrue((root / "brolls" / out["output"]["path"]).is_file())
 
     def test_import_review_rejection_clears_output_too(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -232,7 +255,7 @@ class VerifyRestoresVerifiedFlagTests(unittest.TestCase):
             tampered[len(tampered) // 2] ^= 0xFF
             clip.write_bytes(bytes(tampered))
 
-            error = run_cli("verify", project=root, expect=2)
+            error = run_cli("verify", project=root, expect=1)
             self.assertEqual("INVALID_DATA", error["error_code"])
             failed = _item(root, cid)
             self.assertFalse(failed["output"]["verified"])
@@ -249,9 +272,6 @@ class VerifyRestoresVerifiedFlagTests(unittest.TestCase):
 
     def test_a_clip_that_matches_its_hash_but_does_not_decode_is_not_marked_verified(self):
         """The flag only goes back to True after probe, hash AND decode all pass."""
-        from getbrolls import commands
-        from getbrolls.cli import main
-        from getbrolls.runtime import OperationError
 
         with tempfile.TemporaryDirectory() as tmp:
             root, src = _project(tmp)
@@ -268,9 +288,9 @@ class VerifyRestoresVerifiedFlagTests(unittest.TestCase):
                     raise ValueError("decode failed")
                 return real_run(args)
 
-            real_run = commands.run
+            real_run = fetch_commands.run
             with (
-                patch.object(commands, "run", side_effect=decode_fails),
+                patch.object(fetch_commands, "run", side_effect=decode_fails),
                 contextlib.redirect_stdout(io.StringIO()),
                 self.assertRaises(OperationError),
             ):
@@ -297,7 +317,7 @@ class VerifyChecksEveryClipTests(unittest.TestCase):
                 data[len(data) // 2] ^= 0xFF
                 clip.write_bytes(bytes(data))
 
-            run_cli("verify", project=root, expect=2)
+            run_cli("verify", project=root, expect=1)
             self.assertFalse(_item(root, first)["output"]["verified"])
             self.assertFalse(_item(root, second)["output"]["verified"])
 
@@ -314,7 +334,7 @@ class VerifyChecksEveryClipTests(unittest.TestCase):
             data = bytearray(clip.read_bytes())
             data[len(data) // 2] ^= 0xFF
             clip.write_bytes(bytes(data))
-            run_cli("verify", project=root, expect=2)
+            run_cli("verify", project=root, expect=1)
 
             clip.unlink()
             run_cli("fetch", *base)
@@ -391,7 +411,7 @@ class ManifestItemSchemaVersionTests(unittest.TestCase):
             raw = json.dumps({"schema_version": 1, "items": [item]})
             path.write_text(raw, encoding="utf-8")
 
-            error = run_cli("status", project=tmp, expect=2)
+            error = run_cli("status", project=tmp, expect=1)
             self.assertEqual("INVALID_DATA", error["error_code"])
             self.assertIn("manifest.json inválido", error["error"])
             self.assertEqual(raw, path.read_text(encoding="utf-8"))
@@ -409,7 +429,7 @@ class ManifestItemSchemaVersionTests(unittest.TestCase):
                 raw = json.dumps({"schema_version": 1, "items": [item]})
                 path.write_text(raw, encoding="utf-8")
 
-                error = run_cli("status", project=tmp, expect=2)
+                error = run_cli("status", project=tmp, expect=1)
                 self.assertEqual("INVALID_DATA", error["error_code"])
                 self.assertIn("manifest.json inválido", error["error"])
 
@@ -448,7 +468,7 @@ class ReviewTemplateVersionTypeConfusionTests(unittest.TestCase):
             payload = self._payload(ledger)
             payload["templateVersion"] = 2.0
             path = _save_review(ledger, payload, "20260918-100000.json")
-            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=2)
+            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=1)
             self.assertIn("outra coleta", error["error"])
 
     def test_a_boolean_template_version_is_refused(self):
@@ -461,7 +481,7 @@ class ReviewTemplateVersionTypeConfusionTests(unittest.TestCase):
             payload = self._payload(ledger)
             payload["templateVersion"] = True
             path = _save_review(ledger, payload, "20260918-100000.json")
-            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=2)
+            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=1)
             self.assertIn("outra coleta", error["error"])
 
     def test_the_real_int_template_version_still_works(self):
@@ -496,7 +516,7 @@ class PermitOnPendingCandidateTests(unittest.TestCase):
             self.assertEqual("permitted", permitted["rights"]["status"])
             self.assertEqual("pending", permitted["approval"]["status"])
 
-            refused = run_cli("fetch", *base, expect=2)
+            refused = run_cli("fetch", *base, expect=1)
             self.assertEqual("INVALID_DATA", refused["error_code"])
             self.assertIn("Aprovação humana ausente ou inválida", refused["message"])
             self.assertIsNone(_item(root, cid)["output"]["path"])
