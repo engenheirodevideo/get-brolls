@@ -1,0 +1,44 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"learn\", \"status\": \"error\", \"state_committed\": false, \"recovered\": false, \"warnings\": [], \"recovery_pending\": false, \"type\": \"LockedError\", \"repr\": \"LockedError('$GB_HOME/library/index.lock está travado há tempo demais por outro getbrolls. Espere a outra execução terminar ou apague esse arquivo.')\", \"traceback\": \"<TRACEBACK>\", \"error_code\": \"LOCKED\", \"message\": \"$GB_HOME/library/index.lock está travado há tempo demais por outro getbrolls. Espere a outra execução terminar ou apague esse arquivo.\", \"duration_ms\": \"<MS>\"}"
+  ],
+  "work/proj/brolls/getbrolls.log": [
+   "level=INFO logger=getbrolls.cli event=command_start command=learn read_only=False options=query,provider,outcome,project",
+   "level=WARNING logger=getbrolls.library event=library_lock waited_ms=<MS> timeout=True duration_ms=<MS>",
+   "level=INFO logger=getbrolls.cli event=command_end command=learn status=error error_code=LOCKED ms=<MS> outcome=error duration_ms=<MS>"
+  ]
+ },
+ "argv": [
+  "learn",
+  "--query",
+  "trava",
+  "--provider",
+  "youtube",
+  "--outcome",
+  "miss",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "err_library_locked",
+ "exit": 1,
+ "files": {},
+ "stderr": {
+  "json": {
+   "app_log": "<T>/work/proj/brolls/getbrolls.log",
+   "at": "<TS>",
+   "error": "$GB_HOME/library/index.lock está travado há tempo demais por outro getbrolls. Espere a outra execução terminar ou apague esse arquivo.",
+   "error_code": "LOCKED",
+   "log": "<T>/work/proj/brolls/diagnostics.jsonl",
+   "message": "$GB_HOME/library/index.lock está travado há tempo demais por outro getbrolls. Espere a outra execução terminar ou apague esse arquivo.",
+   "operation": "learn",
+   "recovered": false,
+   "recovery_pending": false,
+   "state_committed": false,
+   "status": "error",
+   "type": "LockedError",
+   "warnings": []
+  }
+ },
+ "stdout": null
+}

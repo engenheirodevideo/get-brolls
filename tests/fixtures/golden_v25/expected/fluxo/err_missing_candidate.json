@@ -1,0 +1,39 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"fetch\", \"status\": \"error\", \"state_committed\": false, \"recovered\": false, \"warnings\": [], \"recovery_pending\": false, \"type\": \"ValueError\", \"repr\": \"ValueError('Candidato não encontrado neste projeto.')\", \"traceback\": \"<TRACEBACK>\", \"error_code\": \"INVALID_DATA\", \"message\": \"Candidato não encontrado neste projeto.\", \"duration_ms\": \"<MS>\"}"
+  ],
+  "work/proj/brolls/getbrolls.log": [
+   "level=INFO logger=getbrolls.cli event=command_start command=fetch read_only=False options=candidate,project",
+   "level=INFO logger=getbrolls.cli event=command_end command=fetch status=error error_code=INVALID_DATA ms=<MS> outcome=error duration_ms=<MS>"
+  ]
+ },
+ "argv": [
+  "fetch",
+  "--candidate",
+  "local:nao-existe",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "err_missing_candidate",
+ "exit": 1,
+ "files": {},
+ "stderr": {
+  "json": {
+   "app_log": "<T>/work/proj/brolls/getbrolls.log",
+   "at": "<TS>",
+   "error": "Candidato não encontrado neste projeto.",
+   "error_code": "INVALID_DATA",
+   "log": "<T>/work/proj/brolls/diagnostics.jsonl",
+   "message": "Candidato não encontrado neste projeto.",
+   "operation": "fetch",
+   "recovered": false,
+   "recovery_pending": false,
+   "state_committed": false,
+   "status": "error",
+   "type": "ValueError",
+   "warnings": []
+  }
+ },
+ "stdout": null
+}

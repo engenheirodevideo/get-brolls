@@ -4,6 +4,11 @@
 *.sh text eol=lf
 *.ps1 text eol=crlf
 *.cmd text eol=crlf
+# Plugins oficiais: o pin é o hash dos bytes, então o checkout do Windows não pode trocar o fim de linha.
+plugins_official/** text eol=lf
+# Modelos que `init-rules`/`init-brief` copiam: o mesmo texto (e hash) no checkout do Windows e no wheel.
+docs/RULES.md text eol=lf
+docs/BRIEF.md text eol=lf
 
 # Defesa em profundidade: material de trabalho interno fica fora de qualquer
 # `git archive`, mesmo que um dia volte a ser versionado por engano. A defesa
@@ -15,3 +20,5 @@ docs/discovery/ export-ignore
 .agents/ export-ignore
 .codex/ export-ignore
 .playwright-cli/ export-ignore
+# Ouro da 2.5: bytes exatos em todo sistema (sem conversão de fim de linha).
+tests/fixtures/golden_v25/** -text

@@ -1,9 +1,14 @@
 """Garante que toda âncora `GUIDE.md#...` citada nos docs do plugin resolve
 para um heading real de `docs/GUIDE.md` (contrato de docs, não de código)."""
 
+import tempfile
 import unittest
 from pathlib import Path
 
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+import _paths  # noqa: F401  (põe scripts/ em sys.path)  # pylint: disable=unused-import
+
+# isort: split
 import check_anchors as anchors
 
 
@@ -25,15 +30,7 @@ class TestDocAnchors(unittest.TestCase):
         )
 
     def test_extract_headings_ignores_fenced_code(self):
-        markdown = "\n".join(
-            [
-                "## Real heading",
-                "```text",
-                "## Not a heading",
-                "```",
-                "### Another real heading",
-            ]
-        )
+        markdown = "## Real heading\n```text\n## Not a heading\n```\n### Another real heading"
         self.assertEqual(
             anchors.extract_headings(markdown),
             {"real-heading", "another-real-heading"},
@@ -41,7 +38,6 @@ class TestDocAnchors(unittest.TestCase):
 
     def test_check_reports_broken_anchor_against_a_fake_guide(self):
         """check() must actually flag a bad anchor end-to-end, not just parse it."""
-        import tempfile
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

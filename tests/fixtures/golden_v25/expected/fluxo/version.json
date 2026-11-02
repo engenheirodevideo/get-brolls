@@ -1,0 +1,15 @@
+{
+ "appends": {},
+ "argv": [
+  "--version"
+ ],
+ "case": "version",
+ "exit": 0,
+ "files": {},
+ "stderr": null,
+ "stdout": {
+  "text": [
+   "getbrolls <VERSION> (Python <PYV>; dados: checkout)"
+  ]
+ }
+}

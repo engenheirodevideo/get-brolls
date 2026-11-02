@@ -23,8 +23,13 @@ node_modules/
 # Never part of the public skill.
 docs/superpowers/
 docs/discovery/
+# Internal kit (INTENT, ARCHITECTURE, ADRs...): link to the owner's vault.
+docs/internal
 .superpowers/
 .claude/
 .agents/
 .codex/
 .playwright-cli/
+# Ouro da 2.5: projeto de layout 0 e mídia de teste versionados de propósito.
+!tests/fixtures/golden_v25/**
+tests/fixtures/golden_v25/**/.DS_Store

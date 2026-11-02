@@ -12,7 +12,7 @@ python3 scripts/gb.py doctor
 python3 -m unittest discover -s tests -v
 ```
 
-No Windows PowerShell, troque o primeiro comando por `powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -Check` e use `python` nos dois seguintes.
+No Windows PowerShell, troque o primeiro comando por `powershell -ExecutionPolicy RemoteSigned -File scripts/install.ps1 -Check` e use `python` nos dois seguintes.
 
 - [ ] Suíte completa passou localmente (informe o total de testes).
 - [ ] Regressão adicionada para o defeito corrigido ou para o comportamento novo.
