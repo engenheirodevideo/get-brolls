@@ -3,15 +3,15 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
+from html.parser import HTMLParser
 from pathlib import Path
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _media import synth_image, synth_video
-from _paths import CLI
+from _paths import CLI_ARGV
 
 
 def _review_payload(page):
@@ -23,25 +23,26 @@ def _review_payload(page):
 class CliTest(unittest.TestCase):
     def call(self, *args, ok=True):
         p = subprocess.run(
-            [sys.executable, str(CLI), *map(str, args)],
+            [*CLI_ARGV, *map(str, args)],
             capture_output=True,
             text=True,
             encoding="utf-8",
             check=False,
         )
-        self.assertEqual(p.returncode, 0 if ok else 2, p.stderr)
+        self.assertEqual(p.returncode, 0 if ok else 1, p.stderr)
         return json.loads(p.stdout if ok else p.stderr)
 
     def test_cli_forces_utf8_when_parent_requests_cp1252(self):
         environment = {**os.environ, "PYTHONIOENCODING": "cp1252"}
         result = subprocess.run(
-            [sys.executable, str(CLI), "doctor"],
+            [*CLI_ARGV, "doctor"],
             capture_output=True,
             env=environment,
             check=False,
         )
-        self.assertEqual(0, result.returncode, result.stderr)
         output = result.stdout.decode("utf-8")
+        # 0 pronto, 4 com `summary.missing`: nos dois casos o JSON sai em stdout.
+        self.assertEqual(0 if json.loads(output)["ready"] else 4, result.returncode, result.stderr)
         self.assertIn("→", output)
         self.assertNotIn("�", output)
         self.assertEqual("broll", json.loads(output)["preview"]["scope"])
@@ -58,37 +59,38 @@ class CliTest(unittest.TestCase):
             # Cada comando do fluxo também diz, em uma linha, o que acabou de fazer.
             self.assertIn("Registrei o candidato", c["summary"]["line"])
             self.call("fetch", *base, ok=False)
-            preview = self.call("preview", *base, "--start", 0.5, "--end", 1.5)
-            self.assertIn("Gerei a prévia", preview["summary"]["line"])
-            approved = self.call(
-                "approve",
-                *base,
-                "--start",
-                0.5,
-                "--end",
-                1.5,
-                "--by",
-                "Fixture humano",
-                "--statement",
-                "Aprovo este trecho para o vídeo.",
+            self.assertIn(
+                "Gerei a prévia", self.call("preview", *base, "--start", 0.5, "--end", 1.5)["summary"]["line"]
             )
-            self.assertIn("Registrei a aprovação humana", approved["summary"]["line"])
+            self.assertIn(
+                "Registrei a aprovação humana",
+                self.call(
+                    "approve",
+                    *base,
+                    "--start",
+                    0.5,
+                    "--end",
+                    1.5,
+                    "--by",
+                    "Fixture humano",
+                    "--statement",
+                    "Aprovo este trecho para o vídeo.",
+                )["summary"]["line"],
+            )
             self.call("fetch", *base, ok=False)
-            permitted = self.call(
-                "permit",
-                *base,
-                "--evidence",
-                "Vídeo sintético de teste gerado localmente",
+            self.assertIn(
+                "condições de uso",
+                self.call("permit", *base, "--evidence", "Vídeo sintético de teste gerado localmente")["summary"][
+                    "line"
+                ],
             )
-            self.assertIn("condições de uso", permitted["summary"]["line"])
             out = self.call("fetch", *base)
             self.assertTrue(out["output"]["verified"])
             self.assertIn("Coletei o corte final", out["summary"]["line"])
             verified = self.call("verify", "--project", root)
             self.assertEqual(verified["count"], 1)
             self.assertIn("1 arquivo coletado: íntegro e decodificável", verified["summary"]["line"])
-            reviewed = self.call("review", "--project", root)
-            self.assertIn("Gerei o Storyboard", reviewed["summary"]["line"])
+            self.assertIn("Gerei o Storyboard", self.call("review", "--project", root)["summary"]["line"])
             state = self.call("status", "--project", root)
             self.assertEqual(1, state["counts"]["verified"])
             self.assertIn("completo", state["summary"]["next"])
@@ -214,21 +216,14 @@ class CliTest(unittest.TestCase):
             self.assertEqual(1, state["counts"]["previews"])
             self.assertEqual([c["id"]], state["stages"]["previews"])
 
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
     def test_a_video_without_an_interval_is_told_about_reference_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             src = root / "original.mp4"
-            src.write_bytes(b"not a real video")
-            resolved = subprocess.run(
-                [sys.executable, str(CLI), "resolve", "--file", str(src), "--project", str(root)],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                check=False,
-            )
-            if resolved.returncode != 0:
-                self.skipTest("resolve recusou o arquivo sintético")
-            candidate_id = json.loads(resolved.stdout)["id"]
+            # Um vídeo de verdade: o `resolve` confere o arquivo com o ffprobe e recusa bytes que não são mídia.
+            synth_video(src, size="160x90", duration=3, rate=10)
+            candidate_id = self.call("resolve", "--file", src, "--project", root)["id"]
             failed = self.call("preview", "--candidate", candidate_id, "--project", root, ok=False)
             self.assertIn("--reference-only", json.dumps(failed, ensure_ascii=False))
 
@@ -259,7 +254,6 @@ class CliTest(unittest.TestCase):
                 self.assertIn("não pode ser vazio", failure["message"])
 
     def test_youtube_review_inline_segment_safe(self):
-        from html.parser import HTMLParser
 
         class DOM(HTMLParser):
             def __init__(self):

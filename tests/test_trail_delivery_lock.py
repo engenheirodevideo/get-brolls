@@ -16,9 +16,9 @@ import unittest
 from pathlib import Path
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, now, set_segment
@@ -74,9 +74,9 @@ class DeliveryDestinationConflictTests(unittest.TestCase):
     unit level (`test_a_file_the_person_edited_is_never_overwritten`,
     `test_one_edited_file_does_not_abort_the_rest_of_the_batch`). What is new
     here is driving the same collision through the real CLI subprocess (exit
-    code, JSON envelope) and pinning that `--dry-run` reports the same plan
-    without ever touching the foreign file, even when the collision already
-    exists on disk.
+    code, JSON envelope) and pinning that `--dry-run` reports the same
+    conflict the real run raises without ever touching the foreign file,
+    even when the collision already exists on disk.
     """
 
     def _plant_conflict(self, tmp):
@@ -94,7 +94,7 @@ class DeliveryDestinationConflictTests(unittest.TestCase):
             deliverable_project(tmp)
             dest = self._plant_conflict(tmp)
 
-            error = run_cli("deliver", project=tmp, expect=2)
+            error = run_cli("deliver", project=tmp, expect=1)
 
             self.assertEqual("INVALID_DATA", error["error_code"])
             self.assertEqual("ValueError", error["type"])
@@ -102,7 +102,7 @@ class DeliveryDestinationConflictTests(unittest.TestCase):
             # The person's file survives exactly as they left it.
             self.assertEqual(b"corte que a pessoa mexeu na mao", dest.read_bytes())
 
-    def test_dry_run_reports_the_same_plan_without_touching_the_conflict(self):
+    def test_dry_run_reports_the_same_conflict_without_touching_it(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = deliverable_project(tmp)
             manifest_before = (ledger.root / "manifest.json").read_bytes()
@@ -111,10 +111,12 @@ class DeliveryDestinationConflictTests(unittest.TestCase):
             plan = run_cli("deliver", "--dry-run", project=tmp)
 
             self.assertTrue(plan["dry_run"])
-            self.assertEqual(
-                [{"id": "local:a:shot:abertura", "beat": "abertura", "method": "planned"}],
-                [{k: v for k, v in item.items() if k != "path"} for item in plan["items"]],
-            )
+            # The dry run sees the conflict the real run raises, so it no
+            # longer promises to deliver the item the real run refuses.
+            self.assertEqual([], plan["items"])
+            self.assertEqual(1, len(plan["conflicts"]))
+            self.assertIn(dest.name, plan["conflicts"][0])
+            self.assertIn("parece edição sua", plan["conflicts"][0])
             self.assertEqual(b"corte que a pessoa mexeu na mao", dest.read_bytes())
             self.assertFalse((Path(tmp) / "entrega" / "README.md").exists())
             self.assertEqual(manifest_before, (ledger.root / "manifest.json").read_bytes())
@@ -122,7 +124,7 @@ class DeliveryDestinationConflictTests(unittest.TestCase):
 
 class ConcurrentWriteCommandTests(unittest.TestCase):
     """Two write commands competing for the same project's lock
-    (`runtime.project_lock`/`runtime._acquire_lock`, a non-blocking flock on
+    (`runtime.project_lock`/`file_locks._acquire_lock`, a non-blocking flock on
     `brolls/.command.lock`).
 
     tests/test_queue_integrity.py::QueueActionReadOnlyTests already proves,
@@ -153,10 +155,10 @@ class ConcurrentWriteCommandTests(unittest.TestCase):
                     "--url",
                     "https://www.instagram.com/reel/ABC123xyz/",
                     project=tmp,
-                    expect=2,
+                    expect=1,
                 )
-            self.assertEqual("INVALID_DATA", error["error_code"])
-            self.assertEqual("ValueError", error["type"])
+            self.assertEqual("LOCKED", error["error_code"])
+            self.assertEqual("LockedError", error["type"])
             # Nothing got queued: the write never reached queue.json.
             queue_file = Path(tmp) / "work" / "queue.json"
             self.assertFalse(queue_file.exists())
@@ -198,7 +200,7 @@ class ManifestSchemaVersionTests(unittest.TestCase):
                 raw = json.dumps({"schema_version": schema_version, "items": []})
                 path.write_text(raw, encoding="utf-8")
 
-                error = run_cli("status", project=tmp, expect=2)
+                error = run_cli("status", project=tmp, expect=1)
 
                 self.assertEqual("INVALID_DATA", error["error_code"])
                 self.assertEqual("ValueError", error["type"])
@@ -213,11 +215,50 @@ class ManifestSchemaVersionTests(unittest.TestCase):
             raw = json.dumps({"schema_version": 1, "items": [item]})
             path.write_text(raw, encoding="utf-8")
 
-            error = run_cli("status", project=tmp, expect=2)
+            error = run_cli("status", project=tmp, expect=1)
 
             self.assertEqual("INVALID_DATA", error["error_code"])
             self.assertEqual("ValueError", error["type"])
             self.assertEqual(raw, path.read_text(encoding="utf-8"))
+
+    def test_a_wrong_type_is_refused_as_invalid_data_not_as_an_internal_error(self):
+        # `validate_manifest` levanta `TypeError` para tipo errado e ele mesmo o captura:
+        # o manifesto da pessoa sai com o `ValueError` de sempre (INVALID_DATA, saída 1),
+        # nunca como INTERNAL_ERROR (saída 3).
+        def manifest(**fields):
+            return {"schema_version": 1, "items": [{**candidate("local", "a", "Tipo errado"), **fields}]}
+
+        cases = {
+            "items_is_text": {"schema_version": 1, "items": "itens"},
+            "provider_is_a_number": manifest(provider=7),
+            "media_is_null": manifest(media=None),
+            "segment_is_a_list": manifest(segment=[]),
+        }
+        for label, data in cases.items():
+            with self.subTest(label), tempfile.TemporaryDirectory() as tmp:
+                path = self._manifest_path(tmp)
+                raw = json.dumps(data)
+                path.write_text(raw, encoding="utf-8")
+
+                error = run_cli("status", project=tmp, expect=1)
+
+                self.assertEqual("INVALID_DATA", error["error_code"])
+                self.assertEqual("ValueError", error["type"])
+                self.assertIn("manifest.json inválido", error["error"])
+                self.assertEqual(raw, path.read_text(encoding="utf-8"))
+
+    def test_a_wrong_type_in_the_recovery_journal_is_refused_as_invalid_data(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pending = self._manifest_path(tmp).with_name(".pending-transaction.json")
+            raw = json.dumps({"data": {"schema_version": 1, "items": "itens"}, "events": []})
+            pending.write_text(raw, encoding="utf-8")
+
+            error = run_cli("permit", "--candidate", "fantasma", "--evidence", "evidência", project=tmp, expect=1)
+
+            self.assertEqual("INVALID_DATA", error["error_code"])
+            self.assertEqual("ValueError", error["type"])
+            self.assertIn("Journal de recuperação inválido", error["error"])
+            self.assertEqual(raw, pending.read_text(encoding="utf-8"))
 
 
 class FailureEnvelopeClassesTests(unittest.TestCase):
@@ -241,19 +282,19 @@ class FailureEnvelopeClassesTests(unittest.TestCase):
 
     def test_invalid_argument_value_is_invalid_data(self):
         with tempfile.TemporaryDirectory() as tmp:
-            error = run_cli("resolve", "--file", str(Path(tmp) / "missing.mp4"), project=tmp, expect=2)
+            error = run_cli("resolve", "--file", str(Path(tmp) / "missing.mp4"), project=tmp, expect=1)
         self.assertEqual("INVALID_DATA", error["error_code"])
         self.assertEqual("ValueError", error["type"])
 
     def test_missing_project_folder_is_invalid_data(self):
         with tempfile.TemporaryDirectory() as tmp:
-            error = run_cli("status", project=str(Path(tmp) / "never-created"), expect=2)
+            error = run_cli("status", project=str(Path(tmp) / "never-created"), expect=1)
         self.assertEqual("INVALID_DATA", error["error_code"])
         self.assertEqual("ValueError", error["type"])
 
     def test_unknown_candidate_id_is_invalid_data(self):
         with tempfile.TemporaryDirectory() as tmp:
-            error = run_cli("permit", "--candidate", "does-not-exist", "--evidence", "x", project=tmp, expect=2)
+            error = run_cli("permit", "--candidate", "does-not-exist", "--evidence", "x", project=tmp, expect=1)
         self.assertEqual("INVALID_DATA", error["error_code"])
         self.assertEqual("ValueError", error["type"])
 
@@ -262,17 +303,17 @@ class FailureEnvelopeClassesTests(unittest.TestCase):
             root = Path(tmp) / "brolls"
             root.mkdir(parents=True)
             (root / "manifest.json").write_text("{not json", encoding="utf-8")
-            error = run_cli("status", project=tmp, expect=2)
+            error = run_cli("status", project=tmp, expect=1)
         self.assertEqual("INVALID_DATA", error["error_code"])
         self.assertEqual("ValueError", error["type"])
 
-    def test_lock_held_is_invalid_data(self):
+    def test_lock_held_is_locked_and_exits_1(self):
         with tempfile.TemporaryDirectory() as tmp:
             Ledger(tmp)
             with project_lock(tmp):
-                error = run_cli("permit", "--candidate", "x", "--evidence", "y", project=tmp, expect=2)
-        self.assertEqual("INVALID_DATA", error["error_code"])
-        self.assertEqual("ValueError", error["type"])
+                error = run_cli("permit", "--candidate", "x", "--evidence", "y", project=tmp, expect=1)
+        self.assertEqual("LOCKED", error["error_code"])
+        self.assertEqual("LockedError", error["type"])
 
     def test_io_error_from_a_project_path_that_cannot_hold_a_folder(self):
         """A regular file where the project directory should be: the project
@@ -281,7 +322,7 @@ class FailureEnvelopeClassesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             blocked = Path(tmp) / "im-a-file"
             blocked.write_text("not a directory", encoding="utf-8")
-            error = run_cli("init-rules", project=str(blocked), expect=2)
+            error = run_cli("init-rules", project=str(blocked), expect=1)
         self.assertEqual("IO_ERROR", error["error_code"])
         self.assertIn(error["type"], ("NotADirectoryError", "FileExistsError"))
 

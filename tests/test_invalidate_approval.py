@@ -11,8 +11,9 @@ import copy
 import tempfile
 import unittest
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _cli import run_cli
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls.ledger import Ledger
 from getbrolls.models import approve, candidate, set_segment
@@ -147,6 +148,60 @@ class SyncFormatsInvalidationTests(unittest.TestCase):
             self.assertEqual(c.get("review"), before.get("review"))
             self.assertEqual(c["segment"], before["segment"])
             self.assertEqual(c["preview"], before["preview"])
+
+
+class RejectedSurvivesFormatChangeTests(unittest.TestCase):
+    """Trocar o `video_format` nunca desfaz uma rejeição humana."""
+
+    def test_format_change_keeps_a_rejected_candidate_rejected(self):
+        with tempfile.TemporaryDirectory() as folder:
+            ledger = Ledger(folder)
+            rules = load_rules(folder)
+            c = candidate("local", "seen", "Synthetic", "https://example.org/a")
+            c["media"].update(kind="image", width=1920, height=1080)
+            c["format"] = format_report(c, rules)
+            c["preview"]["poster_path"] = "previews/seen.jpg"
+            ledger.add(c)
+            ledger.save("fixture", c)
+            run_cli("reject", "--candidate", "local:seen", "--reason", "a pessoa disse não", project=folder)
+            before = Ledger(folder, recover=False).get("local:seen")
+
+            run_cli("init-rules", "--format", "reels", project=folder)
+            run_cli("review", project=folder)
+
+            after = Ledger(folder, recover=False).get("local:seen")
+            self.assertEqual("rejected", after["approval"]["status"])
+            self.assertEqual("rejected", after["state"])
+            self.assertEqual(before["rejection"], after["rejection"])
+            self.assertEqual(before["segment"], after["segment"])
+            self.assertEqual("reels", after["format"]["target"])
+            approved = run_cli(
+                "approve", "--all", "--by", "Ana", "--statement", "Aprovo todos os que vi.", project=folder
+            )
+            self.assertEqual([], approved["approved"])
+            self.assertEqual("rejected", Ledger(folder, recover=False).get("local:seen")["approval"]["status"])
+
+    def test_format_change_logs_no_invalidation_for_a_rejected_candidate(self):
+        with tempfile.TemporaryDirectory() as folder:
+            ledger = Ledger(folder)
+            rules = load_rules(folder)
+            c = candidate("local", "seen", "Synthetic", "https://example.org/a")
+            c["media"].update(width=1920, height=1080)
+            set_segment(c, 0, 1)
+            c["format"] = format_report(c, rules)
+            c["approval"]["status"] = "rejected"
+            c["state"] = "rejected"
+            ledger.add(c)
+            ledger.save("fixture", c)
+
+            rules["video_format"] = "reels"
+            with self.assertNoLogs("getbrolls.rules", level="INFO"):
+                sync_formats(ledger, rules)
+
+            c = ledger.data["items"][0]
+            self.assertEqual("rejected", c["approval"]["status"])
+            self.assertEqual(1, c["segment"]["revision"])
+            self.assertEqual("reels", c["format"]["target"])
 
 
 class BothPathsDifferenceTests(unittest.TestCase):

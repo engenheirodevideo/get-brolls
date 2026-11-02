@@ -2,18 +2,22 @@
 
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import CLI, ROOT
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import CLI_ARGV, ROOT, WHEEL_MODE
 
-from getbrolls import venv_check
+from getbrolls import _paths as gb_paths
+from getbrolls import cli, runtime_parts, venv_check
 from getbrolls.config import PATH_KEYS
+from getbrolls.errors import DataRootError
 
 # O `requirements.txt` da 2.5.0: a venv de quem atualizou o código sem rodar o instalador de novo.
 PINS_2_5_0 = {
@@ -60,11 +64,11 @@ def make_venv(folder, versions, ytdlp=True):
 class VenvReportTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
-        self.addCleanup(__import__("shutil").rmtree, self.tmp, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         self.pins = venv_check.pinned_versions(ROOT)
 
     def test_the_pins_come_from_both_requirements_files(self):
-        self.assertEqual("2026.10.19", self.pins["certifi"])
+        self.assertEqual("2026.10.23", self.pins["certifi"])
         self.assertEqual("26.2.2", self.pins["pip"])
         for pypy_only in ("brotlicffi", "cffi", "pycparser"):
             self.assertNotIn(pypy_only, self.pins, "dependência só do PyPy não é cobrada no CPython")
@@ -80,7 +84,7 @@ class VenvReportTests(unittest.TestCase):
         base = make_venv(self.tmp, PINS_2_5_0)
         report = venv_check.venv_report(base, ROOT)
         self.assertEqual("stale", report["status"])
-        self.assertIn("certifi 2026.7.22 (fixado 2026.10.19)", report["differences"])
+        self.assertIn("certifi 2026.7.22 (fixado 2026.10.23)", report["differences"])
         self.assertIn("pip 24.0 (fixado 26.2.2)", report["differences"])
         [entry] = venv_check.missing_entries(report, "INSTALLER")
         self.assertEqual("venv", entry["item"])
@@ -90,23 +94,22 @@ class VenvReportTests(unittest.TestCase):
 
     def test_versions_compare_without_leading_zeros(self):
         # O certifi publica `2026.07.22` no __version__ e `2026.7.22` no METADATA: é a mesma versão.
-        pins = {**self.pins, "certifi": "2026.10.19"}
-        base = make_venv(self.tmp, {**pins, "certifi": "2026.010.019"})
+        pins = {**self.pins, "certifi": "2026.10.23"}
+        base = make_venv(self.tmp, {**pins, "certifi": "2026.010.023"})
         self.assertEqual("ok", venv_check.venv_report(base, ROOT)["status"])
 
     def test_a_half_built_venv_lists_what_is_absent(self):
         base = make_venv(self.tmp, {"pip": self.pins["pip"]}, ytdlp=False)
         report = venv_check.venv_report(base, ROOT)
         self.assertEqual("stale", report["status"])
-        self.assertIn("certifi ausente (fixado 2026.10.19)", report["differences"])
+        self.assertIn("certifi ausente (fixado 2026.10.23)", report["differences"])
         self.assertIn("yt-dlp ausente (fixado 2026.10.21)", report["differences"])
 
-    def test_no_venv_at_all_is_reported(self):
+    def test_no_venv_at_all_is_reported_but_left_to_the_ytdlp_entry(self):
+        # Sem venv nenhuma o yt-dlp vem do PATH (que vale) ou falta, e aí o item `yt-dlp` já leva o conserto.
         report = venv_check.venv_report(self.tmp / ".venv", ROOT)
         self.assertEqual("absent", report["status"])
-        [entry] = venv_check.missing_entries(report, "INSTALLER")
-        self.assertEqual("venv", entry["item"])
-        self.assertIn("não existe", entry["note"])
+        self.assertEqual([], venv_check.missing_entries(report, "INSTALLER"))
 
     @unittest.skipIf(os.name == "nt", "stub de shell")
     def test_a_venv_whose_python_no_longer_runs_is_broken(self):
@@ -130,7 +133,7 @@ class VenvReportTests(unittest.TestCase):
         (old / "METADATA").write_text("Metadata-Version: 2.1\nName: certifi\nVersion: 2026.7.22\n", encoding="utf-8")
         report = venv_check.venv_report(base, ROOT)
         self.assertEqual("stale", report["status"])
-        self.assertIn("certifi duplicado (2026.10.19, 2026.7.22)", report["differences"])
+        self.assertIn("certifi duplicado (2026.10.23, 2026.7.22)", report["differences"])
         self.assertTrue(report["certifi_distrusted_root"])
 
     @unittest.skipIf(os.name == "nt", "symlink")
@@ -153,17 +156,15 @@ class VenvReportTests(unittest.TestCase):
         self.assertEqual("broken", report["status"])
 
     def test_an_invalid_ytdlp_pin_skips_the_venv_instead_of_raising(self):
-        from unittest import mock
-
         with mock.patch.dict(os.environ, {"GB_YTDLP_PATH": str(self.tmp / "gb-inexistente-yt-dlp")}):
             report = venv_check.venv_report()
         self.assertEqual("skipped", report["status"])
 
 
 class DoctorVenvTests(unittest.TestCase):
-    """O `doctor` de verdade, pela CLI, numa venv apontada por GB_VENV_PATH."""
+    """O `doctor` de verdade, pela CLI: a venv do runtime (ou a de GB_VENV_PATH) contra os pinos."""
 
-    def doctor(self, tmp, venv, path_ytdlp=True, cli=CLI, **extra):
+    def doctor(self, tmp, venv, path_ytdlp=True, argv=CLI_ARGV, **extra):
         empty = Path(tmp) / "vazio.env"
         empty.write_text("", encoding="utf-8")
         decoy = Path(tmp) / "path-bin"
@@ -176,11 +177,14 @@ class DoctorVenvTests(unittest.TestCase):
         env = {k: v for k, v in os.environ.items() if k not in PATH_KEYS}
         env.update(PATH=str(decoy) + os.pathsep + env.get("PATH", ""))
         env.pop("GB_VENV_PATH", None)
+        env.pop("GB_RUNTIME_DIR", None)
+        # Uma pasta pessoal só deste teste: o runtime compartilhado dela começa vazio.
+        env["GB_HOME"] = str(Path(tmp).resolve() / "gbhome")
         if venv is not None:
             env["GB_VENV_PATH"] = str(venv)
         env.update(extra)
         done = subprocess.run(
-            [sys.executable, str(cli), "--env-file", str(empty), "doctor"],
+            [*argv, "--env-file", str(empty), "doctor"],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -188,8 +192,10 @@ class DoctorVenvTests(unittest.TestCase):
             timeout=120,
             check=False,
         )
-        self.assertEqual(0, done.returncode, done.stderr)
-        return json.loads(done.stdout), decoy
+        payload = json.loads(done.stdout)
+        # `doctor` sai 4 quando falta item obrigatório (`summary.missing`), 0 quando não falta nada.
+        self.assertEqual(4 if payload["summary"]["missing"] else 0, done.returncode, done.stderr)
+        return payload, decoy
 
     def test_code_of_2_5_1_on_a_venv_of_2_5_0_is_flagged(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -197,12 +203,34 @@ class DoctorVenvTests(unittest.TestCase):
             payload, _decoy = self.doctor(tmp, venv)
             entries = [e for e in payload["summary"]["missing"] if e["item"] == "venv"]
             self.assertEqual(1, len(entries), payload["summary"])
-            self.assertIn("certifi 2026.7.22 (fixado 2026.10.19)", entries[0]["note"])
-            self.assertIn(str(ROOT / "scripts" / "install.sh"), entries[0]["fix"])
-            self.assertIn("instalador", payload["summary"]["do"])
-            self.assertIn(str(ROOT / "scripts" / "install.sh"), payload["summary"]["do"])
+            self.assertIn("certifi 2026.7.22 (fixado 2026.10.23)", entries[0]["note"])
+            # A venv é a de GB_VENV_PATH: o `setup` não mexe nela, então o conserto diz o que fazer com ela.
+            self.assertIn("GB_VENV_PATH", entries[0]["fix"])
+            self.assertIn("setup", entries[0]["fix"])
+            self.assertEqual(entries[0]["fix"], payload["summary"]["do"])
             self.assertEqual("stale", payload["venv"]["status"])
+            self.assertEqual("GB_VENV_PATH", payload["venv"]["source"])
             self.assertNotIn("venv", payload["summary"]["ok"])
+            self.assertFalse(payload["ready"])
+
+    def test_a_stale_managed_runtime_is_flagged_with_the_setup_fix(self):
+        # A venv gerenciada em $GB_HOME/runtime/<sha>/ pronta (marcador `ready`) mas com versões antigas.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve() / "gbhome" / "runtime" / str(gb_paths.part_sha("venv"))
+            venv = make_venv(root, PINS_2_5_0)
+            runtime_parts.write_marker("venv", root, "ready")
+            payload, _decoy = self.doctor(tmp, None)
+            self.assertEqual(str(venv), payload["venv"]["path"])
+            self.assertEqual("gb_home", payload["venv"]["source"])
+            self.assertEqual("stale", payload["venv"]["status"])
+            [entry] = [e for e in payload["summary"]["missing"] if e["item"] == "venv"]
+            self.assertIn("certifi 2026.7.22 (fixado 2026.10.23)", entry["note"])
+            # O conserto é o instalador desta instalação: o `install.sh` no checkout, o `setup` no pacote.
+            installer = "getbrolls setup" if WHEEL_MODE else str(ROOT / "scripts" / "install.sh")
+            self.assertIn(installer, entry["fix"])
+            self.assertIn(installer, payload["summary"]["do"])
+            if WHEEL_MODE:
+                self.assertNotIn("install.sh", entry["fix"], "o pacote instalado não tem os scripts do checkout")
 
     @unittest.skipIf(os.name == "nt", "stub de shell no PATH")
     def test_resolved_ytdlp_is_the_one_the_runtime_uses(self):
@@ -221,19 +249,21 @@ class DoctorVenvTests(unittest.TestCase):
             self.assertIn("venv", payload["summary"]["ok"])
 
     @unittest.skipIf(os.name == "nt", "stub de shell no PATH")
-    def test_a_venv_without_ytdlp_falls_back_to_path_and_is_still_flagged(self):
-        # Variante do F01: a `.venv` padrão pela metade faz o runtime cair no yt-dlp do PATH (com outro
-        # certifi). Uma cópia da skill numa raiz temporária, para a `.venv` padrão ser a do teste.
-        import shutil
-
+    @unittest.skipIf(WHEEL_MODE, "a `.venv` antiga é a de um checkout")
+    def test_a_checkout_venv_without_ytdlp_falls_back_to_path_and_is_still_flagged(self):
+        # Variante do F01: sem runtime compartilhado pronto, a `.venv` antiga do checkout vale; pela metade, o
+        # runtime cai no yt-dlp do PATH (com outro certifi). Uma cópia da skill numa raiz temporária.
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve() / "skill"
             shutil.copytree(ROOT / "scripts", root / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
-            for name in ("requirements.txt", "requirements-bootstrap.txt"):
+            for name in ("requirements.txt", "requirements-bootstrap.txt", "docs/RULES.md", "assets/brand-logo.png"):
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy(ROOT / name, root / name)
-            make_venv(root, {"pip": "26.2.2"}, ytdlp=False)
-            payload, decoy = self.doctor(tmp, None, cli=root / "scripts" / "gb.py")
+            venv = make_venv(root, {"pip": "26.2.2"}, ytdlp=False)
+            payload, decoy = self.doctor(tmp, None, argv=(sys.executable, str(root / "scripts" / "gb.py")))
             self.assertEqual(str((decoy / "yt-dlp").resolve()), payload["resolved"]["yt-dlp"])
+            self.assertEqual(str(venv), payload["venv"]["path"])
+            self.assertEqual("checkout", payload["venv"]["source"])
             self.assertIn("venv", {e["item"] for e in payload["summary"]["missing"]})
 
     def test_an_invalid_ytdlp_pin_is_a_missing_entry_not_a_crash(self):
@@ -242,7 +272,28 @@ class DoctorVenvTests(unittest.TestCase):
             missing = str(Path(tmp).resolve() / "gb-inexistente-yt-dlp")
             payload, _decoy = self.doctor(tmp, None, GB_YTDLP_PATH=missing)
             self.assertIn("GB_YTDLP_PATH", {e["item"] for e in payload["summary"]["missing"]})
-            self.assertEqual("skipped", payload["venv"]["status"])
+            # Sem venv em uso o `doctor` não ganha o bloco `venv` (o ouro da 2.5 fixa o yt-dlp e segue igual).
+            self.assertNotIn("venv", payload)
+            self.assertNotIn("venv", {e["item"] for e in payload["summary"]["missing"]})
+
+    def test_doctor_without_the_install_data_still_answers_with_an_explicit_venv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            venv = make_venv(tmp, PINS_2_5_0)
+            env = {k: v for k, v in os.environ.items() if k not in PATH_KEYS}
+            env.update(GB_VENV_PATH=str(venv), GB_HOME=str(Path(tmp).resolve() / "gbhome"))
+            with (
+                mock.patch.dict(os.environ, env, clear=True),
+                mock.patch.object(gb_paths, "data_root", side_effect=DataRootError("sem dados")),
+                mock.patch.object(gb_paths, "data_inventory", return_value=(["docs/RULES.md"], [])),
+            ):
+                result = cli.main(["doctor"])
+            self.assertIs(False, result["ready"])
+            self.assertEqual(4, cli.result_exit("doctor", result))
+            self.assertIn("dados da instalação", {e["item"] for e in result["summary"]["missing"]})
+            self.assertNotIn("venv", {e["item"] for e in result["summary"]["missing"]})
+            self.assertEqual("skipped", result["venv"]["status"])
+            self.assertEqual("install_data_missing", result["venv"]["reason"])
+            self.assertEqual(str(venv), result["venv"]["path"])
 
 
 if __name__ == "__main__":

@@ -6,22 +6,26 @@ read-only.
 
 import json
 import os
+import random
 import subprocess
-import sys
 import tempfile
 import textwrap
 import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import CLI, ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+
+# efeito de import: insere scripts/ em sys.path
+from _paths import CLI, CLI_ARGV, ROOT  # noqa: F401  # pylint: disable=unused-import
 
 from getbrolls import commands, queue
+from getbrolls.ledger import Ledger
+from getbrolls.rules import load_rules
 from getbrolls.runtime import READ_ONLY_ACTIONS, audited, project_lock
 
 T0 = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
@@ -31,7 +35,6 @@ TIKTOK = "https://www.tiktok.com/@user/video/1234567890"
 
 
 def rng(value=0.0):
-    import random
 
     generator = random.Random(1)
     generator.uniform = lambda a, b: a + value * (b - a)
@@ -54,7 +57,10 @@ VALID_RULES = textwrap.dedent(
       "blocked_domains": [],
       "editorial_rules": [],
       "copyright": {"mode": "per_item_evidence", "responsible_person": null, "declaration": null},
-      "browser": {"viewport": "mobile", "mobile_width": 390, "mobile_height": 844, "desktop_width": 1440, "desktop_height": 900, "full_page": false},
+      "browser": {
+        "viewport": "mobile", "mobile_width": 390, "mobile_height": 844,
+        "desktop_width": 1440, "desktop_height": 900, "full_page": false
+      },
       "pacing": {"instagram": {"min_s": 1, "max_s": 2, "max_per_hour": 20, "max_per_day": 4}}
     }
     ```
@@ -275,8 +281,7 @@ class ActiveItemNextTests(unittest.TestCase):
             env = {**clean_env(), "GB_PACE_MIN_S": "30", "GB_PACE_MAX_S": "30"}
             subprocess.run(
                 [
-                    sys.executable,
-                    str(CLI),
+                    *CLI_ARGV,
                     "queue",
                     "--project",
                     tmp,
@@ -295,7 +300,7 @@ class ActiveItemNextTests(unittest.TestCase):
                 check=True,
             )
             subprocess.run(
-                [sys.executable, str(CLI), "queue", "--project", tmp, "--action", "next"],
+                [*CLI_ARGV, "queue", "--project", tmp, "--action", "next"],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -305,7 +310,7 @@ class ActiveItemNextTests(unittest.TestCase):
             path = Path(tmp) / "work/queue.json"
             before = (path.stat().st_mtime_ns, path.read_bytes())
             blocked = subprocess.run(
-                [sys.executable, str(CLI), "queue", "--project", tmp, "--action", "next"],
+                [*CLI_ARGV, "queue", "--project", tmp, "--action", "next"],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -374,15 +379,13 @@ class Schema99StatusStaysExit0Tests(unittest.TestCase):
 
     def test_status_exit_0_and_hint_returns_error_without_rewriting(self):
         with tempfile.TemporaryDirectory() as tmp:
-            from getbrolls.ledger import Ledger
-
             Ledger(tmp)
             path = queue.queue_path(tmp)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps({"schema_version": 99, "items": [], "providers": {}}), encoding="utf-8")
             before = (path.stat().st_mtime_ns, path.read_bytes())
             done = subprocess.run(
-                [sys.executable, str(CLI), "status", "--project", tmp],
+                [*CLI_ARGV, "status", "--project", tmp],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -490,8 +493,6 @@ class QueueActionReadOnlyTests(unittest.TestCase):
 
     def test_queue_status_succeeds_while_another_command_holds_the_lock(self):
         with tempfile.TemporaryDirectory() as tmp:
-            from getbrolls.ledger import Ledger
-
             Ledger(tmp)
             with project_lock(tmp):
                 args = queue_args(tmp, "status")
@@ -532,7 +533,6 @@ class RulesPacingReachesQueueTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             invalid = VALID_RULES.replace('"max_s": 2', '"max_s": "not-a-number"')
             (Path(tmp) / "RULES.md").write_text(invalid, encoding="utf-8")
-            from getbrolls.rules import load_rules
 
             with self.assertRaises(ValueError):
                 load_rules(tmp)
@@ -550,20 +550,158 @@ if __name__ == "__main__":
 
 
 class CooldownReasonSkillMessagesTests(unittest.TestCase):
-    """As mensagens de bloqueio que a própria skill emite (social.py) abrem cooldown."""
+    """As mensagens de bloqueio que a própria skill emite (social.py): limite abre cooldown, recusa para a fila."""
 
     def test_skill_messages_trigger_and_local_errors_do_not(self):
-        from getbrolls import queue
-
-        positives = [
-            "A fonte exige uma sessão de acesso. Use o navegador autorizado.",
-            "A fonte bloqueou o IP desta rede para esse post; download não concluído.",
+        cooldowns = [
             "limite de requisições da fonte (429); aguarde e tente de novo",
             "rate-limit atingido",
+            "HTTP 429",
+        ]
+        refusals = [
+            "A fonte exige uma sessão de acesso. Use o navegador autorizado.",
+            "A fonte bloqueou o IP desta rede para esse post; download não concluído.",
             "HTTP 403",
         ]
         negatives = ["ffmpeg falhou: bitrate inválido", "inaccurate seek", "frame= 429 fps=30 is not here"]
-        for text in positives:
+        for text in cooldowns:
             self.assertTrue(queue.is_cooldown_reason(text), text)
+            self.assertEqual("rate_limit", queue.failure_kind(text), text)
+        for text in refusals:
+            self.assertFalse(queue.is_cooldown_reason(text), text)
+            self.assertEqual("access_refused", queue.failure_kind(text), text)
         for text in negatives[:2]:
             self.assertFalse(queue.is_cooldown_reason(text), text)
+            self.assertIsNone(queue.failure_kind(text), text)
+
+
+def pending_item():
+    return {
+        "id": "instagram:ABC123xyz",
+        "provider": "instagram",
+        "url": REEL,
+        "status": "pending",
+        "added_at": T0.isoformat(),
+        "started_at": None,
+        "finished_at": None,
+        "reason": None,
+    }
+
+
+class MalformedShapesAreInvalidEverywhereTests(unittest.TestCase):
+    """A bad `providers.<p>` shape or a naive timestamp is INVALID_DATA at load, in every command."""
+
+    SHAPES: ClassVar[dict[str, dict]] = {
+        "provider_state_a_list": {"instagram": [1]},
+        "provider_state_a_string": {"instagram": "x"},
+        "naive_cooldown": {"instagram": {"cooldown_until": "2999-01-01T00:00:00", "cooldown_strikes": 1}},
+        "naive_next_allowed": {"instagram": {"next_allowed_at": "2026-09-17T12:00:00"}},
+        "naive_last_action": {"instagram": {"last_action_at": "2026-09-17T12:00:00"}},
+        "naive_stop": {"instagram": {"stopped": {"at": "2026-09-17T12:00:00", "class": "http_403"}}},
+        "strikes_not_an_integer": {"instagram": {"cooldown_strikes": "many"}},
+    }
+
+    def project_with(self, tmp, providers, items=None):
+        Ledger(tmp)
+        path = queue.queue_path(tmp)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {"schema_version": 1, "items": items or [pending_item()], "providers": providers}
+        path.write_text(json.dumps(data), encoding="utf-8")
+        return path
+
+    def test_load_refuses_every_malformed_provider_shape(self):
+        for name, providers in self.SHAPES.items():
+            with self.subTest(shape=name), tempfile.TemporaryDirectory() as tmp:
+                path = self.project_with(tmp, providers)
+                with self.assertRaises(ValueError):
+                    queue.load(path)
+
+    def test_load_refuses_a_naive_item_timestamp(self):
+        for key in ("added_at", "started_at", "finished_at"):
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as tmp:
+                item = {**pending_item(), key: "2026-09-17T12:00:00"}
+                path = self.project_with(tmp, {}, [item])
+                with self.assertRaisesRegex(ValueError, "fuso"):
+                    queue.load(path)
+
+    def test_a_null_provider_state_and_aware_timestamps_still_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            providers = {
+                "tiktok": None,
+                "instagram": {"cooldown_until": T0.isoformat(), "cooldown_strikes": 1, "next_allowed_at": None},
+            }
+            path = self.project_with(tmp, providers)
+            self.assertEqual(2, len(queue.load(path)["providers"]))
+
+    def test_status_and_queue_actions_agree_on_invalid_data(self):
+        for name, providers in self.SHAPES.items():
+            with self.subTest(shape=name), tempfile.TemporaryDirectory() as tmp:
+                self.project_with(tmp, providers)
+                for argv in (
+                    ["queue", "--action", "next"],
+                    ["queue", "--action", "status"],
+                    ["queue", "--action", "add", "--provider", "instagram", "--url", REEL_2],
+                ):
+                    done = subprocess.run(
+                        [*CLI_ARGV, *argv, "--project", tmp],
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        check=False,
+                    )
+                    self.assertEqual(1, done.returncode, (name, argv, done.stdout, done.stderr))
+                    self.assertEqual("INVALID_DATA", json.loads(done.stderr or done.stdout)["error_code"])
+                status = subprocess.run(
+                    [*CLI_ARGV, "status", "--project", tmp],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    check=False,
+                )
+                self.assertEqual(0, status.returncode, (name, status.stderr))
+                self.assertIn("error", json.loads(status.stdout)["queue"])
+
+
+class NextRefusesOnAnInvalidRulesMdTests(unittest.TestCase):
+    """`queue next` fails closed when RULES.md is invalid; the other actions keep the warning."""
+
+    def setUp(self):
+        patcher = patch.dict(os.environ, clean_env(), clear=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def run_queue(self, tmp, action):
+        return subprocess.run(
+            [*CLI_ARGV, "queue", "--action", action, "--project", tmp],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            env=clean_env(),
+        )
+
+    def test_next_with_an_invalid_rules_md_is_invalid_data_and_hands_out_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            audited(queue_args(tmp, "add", provider="instagram", urls=[REEL]), commands.execute)
+            (Path(tmp) / "RULES.md").write_text("garbage, not even a code block", encoding="utf-8")
+            before = queue.queue_path(tmp).read_bytes()
+            done = self.run_queue(tmp, "next")
+            self.assertEqual(1, done.returncode, done.stdout)
+            self.assertEqual("INVALID_DATA", json.loads(done.stderr or done.stdout)["error_code"])
+            self.assertEqual(before, queue.queue_path(tmp).read_bytes(), "no item is claimed")
+
+    def test_next_without_a_rules_md_keeps_the_default_pacing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            audited(queue_args(tmp, "add", provider="instagram", urls=[REEL]), commands.execute)
+            done = self.run_queue(tmp, "next")
+            self.assertEqual(0, done.returncode, done.stderr)
+            self.assertEqual("instagram:ABC123xyz", json.loads(done.stdout)["item"]["id"])
+
+    def test_the_other_actions_keep_the_warning_with_an_invalid_rules_md(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            audited(queue_args(tmp, "add", provider="instagram", urls=[REEL]), commands.execute)
+            (Path(tmp) / "RULES.md").write_text("garbage, not even a code block", encoding="utf-8")
+            done = self.run_queue(tmp, "status")
+            self.assertEqual(0, done.returncode, done.stderr)
+            codes = [w["code"] for w in json.loads(done.stdout).get("warnings", [])]
+            self.assertIn("RULES_UNAVAILABLE", codes)

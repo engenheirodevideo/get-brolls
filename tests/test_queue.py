@@ -5,7 +5,6 @@ import os
 import random
 import stat
 import subprocess
-import sys
 import tempfile
 import unittest
 from datetime import UTC, datetime, timedelta
@@ -13,8 +12,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import CLI, ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+
+# efeito de import: insere scripts/ em sys.path
+from _paths import CLI, CLI_ARGV, ROOT  # noqa: F401  # pylint: disable=unused-import
 
 from getbrolls import queue
 from getbrolls.cli import SUMMARIES, build_parser
@@ -187,7 +188,9 @@ class QueueStateTests(unittest.TestCase):
             self.assertIsNone(plain["cooldown"])
             got = queue.next_item(data, at=at, rng=rng())
             challenge = queue.mark(data, got["item"]["id"], "skipped", reason="login challenge", at=at)
-            self.assertEqual(1800, challenge["cooldown"]["seconds"])
+            # A login challenge is not a wait: no cooldown, the provider stops (tests/test_queue_refusal.py).
+            self.assertIsNone(challenge["cooldown"])
+            self.assertEqual("access_refused", challenge["stop"]["kind"])
         with self.assertRaises(ValueError):
             queue.mark(data, "instagram:missing", "done", at=at)
 
@@ -233,14 +236,14 @@ class QueueStateTests(unittest.TestCase):
 class QueueCliTests(unittest.TestCase):
     def run_cli(self, *args, ok=True):
         done = subprocess.run(
-            [sys.executable, str(CLI), *map(str, args)],
+            [*CLI_ARGV, *map(str, args)],
             capture_output=True,
             text=True,
             encoding="utf-8",
             env={**clean_env(), "GB_PACE_MIN_S": "30", "GB_PACE_MAX_S": "30"},
             check=False,
         )
-        self.assertEqual(0 if ok else 2, done.returncode, done.stderr)
+        self.assertEqual(0 if ok else 1, done.returncode, done.stderr)
         return json.loads(done.stdout if ok else done.stderr)
 
     def test_queue_is_a_documented_subcommand(self):
@@ -249,7 +252,7 @@ class QueueCliTests(unittest.TestCase):
         args = parser.parse_args(["queue", "--project", "p", "--action", "add", "--provider", "instagram", REEL])
         self.assertEqual([REEL], args.urls)
         help_run = subprocess.run(
-            [sys.executable, str(CLI), "queue", "--help"],
+            [*CLI_ARGV, "queue", "--help"],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -321,6 +324,27 @@ class QueueCliTests(unittest.TestCase):
             empty = tempfile.mkdtemp()
             Ledger(empty)
             self.assertIsNone(self.run_cli("status", "--project", empty)["queue"])
+
+
+class QueueProvidersComeFromTheRegistryTests(unittest.TestCase):
+    def test_every_queued_provider_is_a_builtin_that_resolves_urls(self):
+        from getbrolls.sdk import registry  # pylint: disable=import-outside-toplevel  # só aqui
+
+        builtins = registry._builtins_only()  # pylint: disable=protected-access
+        for name in queue.PROVIDERS:
+            provider = builtins.provider(name)
+            self.assertIsNotNone(provider, name)
+            assert provider is not None
+            self.assertTrue(provider.capabilities.resolve_url, name)
+
+    def test_queued_providers_are_the_pacing_table(self):
+        self.assertEqual(tuple(queue.DEFAULT_PACE), queue.PROVIDERS)
+
+    def test_brief_has_no_static_source_lists(self):
+        from getbrolls import brief  # pylint: disable=import-outside-toplevel  # só aqui
+
+        for name in ("SOURCES", "STOCK_SOURCES", "SEARCHABLE", "STILL_SOURCES"):
+            self.assertFalse(hasattr(brief, name), name)
 
 
 if __name__ == "__main__":

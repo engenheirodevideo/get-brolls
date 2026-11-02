@@ -11,10 +11,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import inspecting, social
+from getbrolls import inspecting, providers, social
+from getbrolls.commands import scan_candidate
+from getbrolls.config import settings
+from getbrolls.ledger import Ledger
 
 # 95 s, legenda automática em pt, sobre conta de luz.
 URL = "https://www.youtube.com/watch?v=AV8Rv74TPGE"
@@ -47,10 +50,6 @@ class ScanOverTheNetworkTests(unittest.TestCase):
     DURATION_S = 95
 
     def test_the_grid_covers_the_whole_source_with_labels_inside_the_span(self):
-        from getbrolls import providers
-        from getbrolls.commands import scan_candidate
-        from getbrolls.config import settings
-        from getbrolls.ledger import Ledger
 
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Ledger(tmp)

@@ -1,4 +1,4 @@
-"""Legible failures across the subprocess and network boundaries (issue #31 waves B/C).
+"""Legible failures across the subprocess and network boundaries (issue #31, parts B/C).
 
 Covers yt-dlp error classification in social.py, http.download/get_json error separation,
 provider refresh(), media.run and the Instagram pair collector.
@@ -10,6 +10,7 @@ import email.utils
 import errno
 import hashlib
 import io
+import json
 import os
 import socket
 import subprocess
@@ -17,14 +18,22 @@ import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
-from typing import Any, cast
+
+# Any só aparece citado em cast("Any", ...); o pyright resolve a string, o pylint não.
+from typing import Any, cast  # pylint: disable=unused-import
 from unittest.mock import MagicMock, patch
 
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _cli import run_cli
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
+from _portable import unlink_frozen
 
-from getbrolls import cli, http, media, providers, runtime, social
+from getbrolls import cli, http, instagram_media, media, providers, queue, runtime, social
 from getbrolls import instagram_pairs as ig
 from getbrolls.http import ProviderError
+from getbrolls.ledger import Ledger
+from getbrolls.models import candidate, now, set_segment
+from getbrolls.rules import format_report, load_rules
 
 PUBLIC_DNS = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))]
 
@@ -52,7 +61,6 @@ class SocialErrorClassificationTests(unittest.TestCase):
         msg = self._run_with_stderr("ERROR: HTTP Error 429: Too Many Requests")
         self.assertIn("429", msg)
         self.assertIn("limite de requisições da fonte (429); aguarde e tente de novo", msg)
-        from getbrolls import queue  # local: only this assertion needs it
 
         self.assertTrue(queue.is_cooldown_reason(msg))
 
@@ -270,7 +278,8 @@ class MediaErrorSeparationTests(unittest.TestCase):
 class DrawtextCacheTests(unittest.TestCase):
     def setUp(self):
         media._DRAWTEXT.clear()
-        self.tmp = tempfile.TemporaryDirectory()
+        # Ciclo de vida cobre o teste inteiro; a limpeza já é feita via addCleanup.
+        self.tmp = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
         self.addCleanup(self.tmp.cleanup)
         self.env_patch = patch.dict("os.environ", {"GB_CACHE_DIR": self.tmp.name})
         self.env_patch.start()
@@ -336,7 +345,7 @@ class RunErrorTests(unittest.TestCase):
         with (
             contextlib.redirect_stderr(io.StringIO()),
             patch.object(
-                ig.subprocess,
+                subprocess,
                 "run",
                 side_effect=subprocess.CalledProcessError(7, ["ffmpeg", "x"], output="", stderr="boom detail"),
             ),
@@ -356,8 +365,9 @@ class ReuseValidityTests(unittest.TestCase):
             part = root / "p.mp4"
             part.write_bytes(b"not-really-media")
             with (
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
                 contextlib.redirect_stderr(io.StringIO()),
-                patch.object(ig.subprocess, "run", side_effect=subprocess.CalledProcessError(1, ["ffprobe"])),
+                patch.object(subprocess, "run", side_effect=subprocess.CalledProcessError(1, ["ffprobe"])),
                 self.assertRaises(ig.CollectError) as ctx,
             ):
                 ig.download_or_reuse(
@@ -377,7 +387,10 @@ class ReuseValidityTests(unittest.TestCase):
             conf.write_text('url = "https://example.org/v"\n', encoding="utf-8")
             part = root / "p.mp4"
             part.write_bytes(b"looks-fine")
-            with patch.object(ig.subprocess, "run", return_value=subprocess.CompletedProcess(["ffprobe"], 0)):
+            with (
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(["ffprobe"], 0)),
+            ):
                 action = ig.download_or_reuse(
                     cfg_path=conf,
                     part_path=part,
@@ -399,8 +412,8 @@ class TimeoutTests(unittest.TestCase):
                 raise subprocess.TimeoutExpired(cmd, 600)
 
             with (
-                patch.object(ig.socket, "getaddrinfo", return_value=PUBLIC_DNS),
-                patch.object(ig.subprocess, "run", side_effect=timeout),
+                patch.object(socket, "getaddrinfo", return_value=PUBLIC_DNS),
+                patch.object(subprocess, "run", side_effect=timeout),
                 contextlib.redirect_stderr(io.StringIO()),
                 self.assertRaises(ig.CollectError) as ctx,
             ):
@@ -418,7 +431,7 @@ class AudioHashOptionalTests(unittest.TestCase):
     def test_verify_output_hash_is_null_when_not_requested(self):
         with (
             patch.object(
-                ig,
+                instagram_media,
                 "ffprobe_json",
                 return_value={
                     "format": {"duration": "1.0", "size": "10"},
@@ -428,7 +441,7 @@ class AudioHashOptionalTests(unittest.TestCase):
                     ],
                 },
             ),
-            patch.object(ig, "audio_hash") as hash_fn,
+            patch.object(instagram_media, "audio_hash") as hash_fn,
         ):
             report = ig.verify_output(Path("/dev/null"), compute_audio_hash=False)
         hash_fn.assert_not_called()
@@ -528,7 +541,8 @@ class Finding41MultilineWarningsTests(unittest.TestCase):
 class Finding27DrawtextProbeFailureNotCachedTests(unittest.TestCase):
     def setUp(self):
         media._DRAWTEXT.clear()
-        self.tmp = tempfile.TemporaryDirectory()
+        # Ciclo de vida cobre o teste inteiro; a limpeza já é feita via addCleanup.
+        self.tmp = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
         self.addCleanup(self.tmp.cleanup)
         self.env_patch = patch.dict("os.environ", {"GB_CACHE_DIR": self.tmp.name})
         self.env_patch.start()
@@ -677,6 +691,7 @@ class Finding36CacheAndBodyReadNarrowingTests(unittest.TestCase):
             token = runtime.ACTIVE.set(event)
             try:
                 with patch.dict("os.environ", {"GETBROLLS_CACHE_DIR": tmp}):
+                    os.environ.pop("GB_CACHE_DIR", None)  # o nome novo venceria o antigo
                     cache_path = Path(tmp) / (hashlib.sha256(b"https://example.org/api").hexdigest() + ".json")
                     cache_path.parent.mkdir(parents=True, exist_ok=True)
                     cache_path.write_bytes(b"not valid json")
@@ -692,7 +707,7 @@ class Finding36CacheAndBodyReadNarrowingTests(unittest.TestCase):
 
 class Finding10CliExitCodeConstantsTests(unittest.TestCase):
     def test_cli_defines_named_exit_code_constants(self):
-        self.assertEqual(cli.EXIT_OPERATION_ERROR, 2)
+        self.assertEqual(cli.EXIT_OPERATION_ERROR, 1)
         self.assertEqual(cli.EXIT_INTERNAL_ERROR, 3)
 
 
@@ -701,6 +716,123 @@ class Finding63StderrTailTotalLengthCapTests(unittest.TestCase):
         stderr = "\n".join(f"WARNING line {i} " + ("x" * 200) for i in range(10))
         tail = runtime.stderr_tail(stderr)
         self.assertLessEqual(len(tail), 600)
+
+
+class RecoveredWriteReportingTests(unittest.TestCase):
+    """A gravação interrompida que um comando retoma não é a gravação desse comando."""
+
+    def test_recovery_is_not_reported_as_this_commands_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(tmp)
+            event = {
+                "transaction": "interrompida:0",
+                "at": "2026-10-07T12:00:00+00:00",
+                "operation": "fixture",
+                "id": None,
+                "revision": None,
+                "state": None,
+            }
+            ledger.pending.write_text(json.dumps({"data": ledger.data, "events": [event]}), encoding="utf-8")
+            error = run_cli(
+                "approve", "--candidate", "nope", "--by", "Ana Teste", "--statement", "aprovo", project=tmp, expect=1
+            )
+            self.assertFalse(ledger.pending.exists())
+        self.assertIs(False, error["state_committed"])
+        self.assertIs(True, error["recovered"])
+        self.assertIn("RECOVERED_WRITE", [w["code"] for w in error["warnings"]])
+        self.assertNotIn("review para regenerar", error.get("hint", ""))
+        self.assertIn("recovered=true", error["hint"])
+
+    def test_the_commit_hint_wins_when_the_command_also_recovered(self):
+        # `roteiro` abre o Ledger (que pode concluir a gravação de outro) e grava: com os dois,
+        # a dica não pode dizer que este comando não gravou nada.
+        both = {"state_committed": True, "recovered": True}
+        hint = runtime._error_hint  # pylint: disable=protected-access
+        self.assertIsNone(hint("roteiro", both))
+        self.assertIn("review", hint("approve", both) or "")
+        self.assertIn("deliver", hint("deliver", {**both, "delivery_conflicts": True}) or "")
+        # Sem conflito de entrega, o `deliver` que gravou o estado (a troca de formato) leva a de `review`.
+        self.assertIn("review", hint("deliver", both) or "")
+
+    def test_the_recovered_hint_does_not_promise_that_nothing_was_written(self):
+        # Prévias e GIFs vão para o disco antes do journal: `state_committed=false` só diz que
+        # o estado do projeto (o manifesto) não foi gravado.
+        text = runtime._error_hint("preview", {"recovered": True}) or ""  # pylint: disable=protected-access
+        self.assertIn("recovered=true", text)
+        self.assertIn("state_committed=false", text)
+        self.assertNotIn("não gravou nada", text)
+
+    def test_a_plain_failure_is_not_recovered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            Ledger(tmp)
+            error = run_cli(
+                "approve", "--candidate", "nope", "--by", "Ana Teste", "--statement", "aprovo", project=tmp, expect=1
+            )
+        self.assertIs(False, error["recovered"])
+        self.assertNotIn("hint", error)
+
+
+def _delivered_candidate(source_id, title):
+    """Candidato já coletado e conferido, com clipe e contact sheet próprios."""
+    c = candidate("local", source_id, title, source_url="https://example.org/" + source_id)
+    set_segment(c, 0, 2)
+    c["creator"]["name"] = "Autora Exemplo"
+    c["preview"]["contact_sheet_path"] = f"previews/{source_id}.jpg"
+    c["approval"] = {"status": "approved", "by": "Humano", "at": now(), "revision": 1}
+    c["approval"].update({"channel": "chat", "statement": "aprovo"})
+    c["rights"]["status"] = "permitted"
+    c["rights"]["evidence"] = ["Condições conferidas na página da fonte"]
+    c["output"] = {"path": f"clips/{source_id}.mp4", "sha256": "a" * 64, "verified": True}
+    c["state"] = "verified"
+    return c
+
+
+def _store(ledger, c):
+    stored = ledger.add(c)
+    ledger.save_many("fixture", [stored])
+    for rel in (stored["output"]["path"], stored["preview"]["contact_sheet_path"]):
+        (ledger.root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (ledger.root / rel).write_bytes(b"conteudo de " + rel.encode())
+
+
+class DeliverConflictHintTests(unittest.TestCase):
+    def test_deliver_conflict_hint_talks_about_the_conflict(self):
+        # Os itens sem conflito já foram entregues (state_committed=true), mas regenerar o
+        # Storyboard não resolve nada: o que falta é resolver o arquivo em conflito.
+        with tempfile.TemporaryDirectory() as tmp:
+            _store(Ledger(tmp), _delivered_candidate("a", "Palco"))
+            first = run_cli("deliver", project=tmp)
+            media = Path(tmp) / first["items"][0]["path"]
+            unlink_frozen(media)
+            media.write_bytes(b"edicao da pessoa")
+            _store(Ledger(tmp), _delivered_candidate("b", "Outro"))
+            error = run_cli("deliver", project=tmp, expect=1)
+        self.assertIs(True, error["state_committed"])
+        self.assertNotIn("review", error["hint"])
+        self.assertIn("deliver", error["hint"])
+        self.assertIn("conflito", error["hint"])
+        # A marca que escolhe a dica é interna: não entra no JSON de erro.
+        self.assertNotIn("delivery_conflicts", error)
+
+    def test_a_deliver_refused_after_a_format_commit_gets_the_review_hint(self):
+        # A troca de formato grava `format_changed` antes de o `deliver` recusar o BRIEF.md
+        # inválido: o estado foi gravado, mas nada foi entregue e não há conflito nenhum.
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(tmp)
+            c = candidate("local", "seen", "Synthetic", "https://example.org/a")
+            c["media"].update(width=1920, height=1080)
+            set_segment(c, 0, 1)
+            c["format"] = format_report(c, load_rules(tmp))
+            ledger.add(c)
+            ledger.save("fixture", c)
+            run_cli("init-rules", "--format", "reels", project=tmp)
+            Path(tmp, "BRIEF.md").write_text('# Brief\n\n```json\n{"version": 1,,}\n```\n', encoding="utf-8")
+            error = run_cli("deliver", project=tmp, expect=1)
+            self.assertFalse((Path(tmp) / "entrega").exists())
+        self.assertIs(True, error["state_committed"])
+        self.assertIn("BRIEF.md", error["error"])
+        self.assertNotIn("conflito", error["hint"])
+        self.assertIn("review", error["hint"])
 
 
 if __name__ == "__main__":

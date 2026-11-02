@@ -1,17 +1,82 @@
 """Synthetic offline API fixtures; no secrets and no network calls."""
 
+import io
 import json
 import os
 import tempfile
 import unittest
 import urllib.error
+from http.client import HTTPResponse
 from pathlib import Path
-from typing import Any, cast
+
+# Any só aparece citado em cast("Any", ...); o pyright resolve a string, o pylint não.
+from typing import Any, cast  # pylint: disable=unused-import
 from unittest.mock import MagicMock, patch
 
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import http, providers
+from getbrolls import cli, http, providers, rules
+
+
+class _Socket:
+    """Socket falso: o `HTTPResponse` da stdlib lê a resposta crua daqui."""
+
+    def __init__(self, raw):
+        self.raw = raw
+
+    def makefile(self, *_args, **_kwargs):
+        return io.BytesIO(self.raw)
+
+
+def _response(raw):
+    """Resposta HTTP de verdade (parse da stdlib) sobre bytes fixos."""
+    response = HTTPResponse(cast("Any", _Socket(raw)), method="GET")
+    response.begin()
+    return response
+
+
+# Corpo chunked que anuncia 0x40 bytes e termina antes: `read()` levanta IncompleteRead.
+TRUNCATED_CHUNKED = (
+    b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n"
+    b'40\r\n{"query": {"pages": {}'
+)
+
+
+# Linha de status quebrada, longa e com cara de segredo: `BadStatusLine` traz ela crua, com CR/LF.
+GARBLED_STATUS = b"XHTTP/1.1 " + b"a" * 5000 + b" api_key=SECRET123456\r\n\r\n"
+
+
+class _GarbledOpener:
+    """Opener falso cujo servidor responde sempre a mesma linha de status quebrada."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def open(self, request, timeout=30):
+        del request, timeout
+        self.calls += 1
+        return _response(GARBLED_STATUS)
+
+
+def _json_response(payload):
+    body = json.dumps(payload).encode()
+    head = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n" % len(body)
+    return _response(head + body)
+
+
+class _Opener:
+    """Opener falso: o Commons devolve o corpo truncado; a NASA responde a busca e os arquivos."""
+
+    def __init__(self):
+        self.hosts = []
+
+    def open(self, request, timeout=30):
+        del timeout
+        self.hosts.append(request.host)
+        if "nasa" not in request.host:
+            return _response(TRUNCATED_CHUNKED)
+        return _json_response(NASA_SEARCH if "/search" in request.full_url else NASA_ASSETS)
 
 
 class ProvidersTests(unittest.TestCase):
@@ -269,6 +334,7 @@ class HTTPTests(unittest.TestCase):
             tempfile.TemporaryDirectory() as cache,
             patch.dict(os.environ, {"GETBROLLS_CACHE_DIR": cache}),
         ):
+            os.environ.pop("GB_CACHE_DIR", None)  # o nome novo venceria o antigo
             first = http.get_json("https://example.org/api", {"key": "secret"}, cache_ttl=86400)
             second = http.get_json("https://example.org/api", {"key": "secret"}, cache_ttl=86400)
             self.assertEqual(first, second)
@@ -322,6 +388,58 @@ class HTTPTests(unittest.TestCase):
         with self.assertRaises(http.ProviderError):
             http.get_json("https://example.org/")
         self.assertEqual(builder.return_value.open.call_count, 3)
+
+    @patch.object(http.time, "sleep")
+    def test_truncated_chunked_json_is_a_provider_error_after_retries(self, _sleep):
+        opener = _Opener()
+        with patch.object(http, "_opener", return_value=opener), self.assertRaises(http.ProviderError) as caught:
+            http.get_json("https://commons.wikimedia.org/w/api.php", {"q": "fix0-f18"})
+        self.assertEqual(3, len(opener.hosts))
+        self.assertIn("IncompleteRead", str(caught.exception))
+
+    @patch.object(http.time, "sleep")
+    def test_a_garbled_status_line_reaches_the_message_redacted_and_short(self, _sleep):
+        """O texto cru do servidor chega cortado, numa linha, sem segredo; com `quiet_errors`, só o tipo."""
+        url = "https://commons.wikimedia.org/w/api.php"
+        opener = _GarbledOpener()
+        with patch.object(http, "_opener", return_value=opener), self.assertRaises(http.ProviderError) as caught:
+            http.get_json(url)
+        message = str(caught.exception)
+        self.assertEqual(3, opener.calls)
+        self.assertIn("BadStatusLine", message)
+        self.assertNotIn("SECRET123456", message)
+        self.assertNotIn("\r", message)
+        self.assertNotIn("\n", message)
+        self.assertLess(len(message), 800)
+        with (
+            patch.object(http, "_opener", return_value=_GarbledOpener()),
+            self.assertRaises(http.ProviderError) as quiet,
+        ):
+            http.get_json(url, quiet_errors=True)
+        self.assertIn("BadStatusLine", str(quiet.exception))
+        self.assertNotIn("aaaa", str(quiet.exception))
+
+    @patch.object(http.time, "sleep")
+    def test_auto_search_moves_on_after_a_truncated_response(self, _sleep):
+        opener = _Opener()
+        real_rules = rules.load_rules
+
+        def commons_then_nasa(project):
+            loaded = real_rules(project)
+            loaded["preferred_providers"]["literal"] = ["commons", "nasa"]
+            return loaded
+
+        with tempfile.TemporaryDirectory() as tmp:
+            argv = ["search", "--project", str(Path(tmp) / "p"), "--provider", "auto", "--intent", "literal"]
+            with (
+                patch.object(http, "_opener", return_value=opener),
+                patch.object(rules, "load_rules", side_effect=commons_then_nasa),
+            ):
+                result = cli.main([*argv, "--query", "fix0 f18 truncated", "--dry-run"])
+        self.assertTrue(any("nasa" in host for host in opener.hosts), opener.hosts)
+        self.assertIn("PROVIDER_FAILED", [w["code"] for w in result["warnings"]])
+        self.assertTrue(any("commons" in str(e) for e in result["errors"]), result["errors"])
+        self.assertEqual(cli.EXIT_OK, cli.result_exit("search", result))
 
 
 COMMONS_FILE = {

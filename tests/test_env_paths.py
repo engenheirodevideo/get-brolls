@@ -5,18 +5,20 @@ import os
 import re
 import stat
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
-from _paths import CLI, ROOT
+from _paths import CLI_ARGV, ROOT, WHEEL_MODE
 
-from getbrolls import config, media, social
+from getbrolls import _paths as paths
+from getbrolls import config, env_loader, media, profile, social
+from getbrolls.errors import UsageError
+from getbrolls.rules import load_rules
 
 PATH_KEYS = config.PATH_KEYS
 
@@ -184,7 +186,7 @@ class EnvFileTests(unittest.TestCase):
             env_file = Path(d) / ".env"
             env_file.write_text("GB_FFMPEG_PATH=" + str(ffmpeg) + "\nGB_VENV_PATH=\n", encoding="utf-8")
             with clean_env():
-                config.load_env(env_file)
+                env_loader.load_env(env_file)
                 self.assertEqual(os.environ["GB_FFMPEG_PATH"], str(ffmpeg))
                 self.assertEqual(config.tool_path("ffmpeg"), str(ffmpeg))
 
@@ -195,7 +197,7 @@ class EnvFileTests(unittest.TestCase):
             env_file = Path(d) / ".env"
             env_file.write_text("GB_FFMPEG_PATH=" + str(from_file) + "\n", encoding="utf-8")
             with clean_env(GB_FFMPEG_PATH=str(from_process)):
-                config.load_env(env_file)
+                env_loader.load_env(env_file)
                 self.assertEqual(config.tool_path("ffmpeg"), str(from_process))
 
 
@@ -205,7 +207,7 @@ class EnvFileVocabularyTests(unittest.TestCase):
             env_file = Path(d) / ".env"
             env_file.write_text("GB_INVENTADA=1\n", encoding="utf-8")
             with self.assertRaises(ValueError) as raised:
-                config.load_env(env_file)
+                env_loader.load_env(env_file)
         message = str(raised.exception)
         self.assertIn("GB_INVENTADA", message)
         self.assertIn("GB_FONT_FILE", message)
@@ -219,7 +221,7 @@ class EnvFileVocabularyTests(unittest.TestCase):
             env_file.write_text(f"GB_FONT_FILE={font}\n", encoding="utf-8")
             environment = {k: v for k, v in os.environ.items() if k != "GB_FONT_FILE"}
             with patch.dict(os.environ, environment, clear=True):
-                config.load_env(env_file)
+                env_loader.load_env(env_file)
                 self.assertEqual(str(font), os.environ["GB_FONT_FILE"])
         self.assertIn("GB_FONT_FILE", config.KEYS)
 
@@ -230,7 +232,7 @@ class DoctorReportTests(unittest.TestCase):
         empty = Path(directory) / "vazio.env"
         empty.write_text("", encoding="utf-8")
         done = subprocess.run(
-            [sys.executable, str(CLI), "--env-file", str(empty), "doctor"],
+            [*CLI_ARGV, "--env-file", str(empty), "doctor"],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -238,8 +240,10 @@ class DoctorReportTests(unittest.TestCase):
             timeout=120,
             check=False,
         )
-        self.assertEqual(done.returncode, 0, done.stderr)
-        return json.loads(done.stdout)
+        payload = json.loads(done.stdout)
+        # 4 é o `doctor` dizendo que falta algo obrigatório, com o JSON em stdout.
+        self.assertEqual(4 if payload["summary"]["missing"] else 0, done.returncode, done.stderr)
+        return payload
 
     def test_doctor_reports_active_override(self):
         with tempfile.TemporaryDirectory() as d:
@@ -268,8 +272,13 @@ class DoctorReportTests(unittest.TestCase):
             entries = [e for e in payload["summary"]["missing"] if e["item"] == "GB_VENV_PATH"]
             self.assertTrue(entries, payload["summary"]["missing"])
             for entry in entries:
-                self.assertIn("install.sh", entry["fix"])
-                self.assertIn(str(ROOT / "scripts" / "install.sh"), entry["fix"])
+                if WHEEL_MODE:
+                    # O pacote instalado não tem `scripts/install.sh`: o conserto é o `setup`.
+                    self.assertIn("getbrolls setup", entry["fix"])
+                    self.assertNotIn("install.sh", entry["fix"])
+                else:
+                    self.assertIn("install.sh", entry["fix"])
+                    self.assertIn(str(ROOT / "scripts" / "install.sh"), entry["fix"])
 
     def test_doctor_resolves_each_tool_to_an_absolute_executable(self):
         with tempfile.TemporaryDirectory() as d:
@@ -284,6 +293,55 @@ class DoctorReportTests(unittest.TestCase):
                     self.assertTrue(Path(path).is_absolute(), name)
 
 
+class GbHomeTildeTests(unittest.TestCase):
+    def test_gb_home_with_tilde_is_expanded(self):
+        # Entre aspas num `.env`, ou vindo do PowerShell, o `~` chega cru: sem expandir, a
+        # pasta pessoal virava `./~/x`, relativa à pasta atual.
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"HOME": tmp, "USERPROFILE": tmp}):
+            os.environ["GB_HOME"] = "~/x"
+            self.assertEqual(Path(tmp) / "x", paths.gb_home())
+            self.assertTrue(paths.gb_home().is_absolute())
+
+    def test_gb_home_with_tilde_in_a_given_environment_is_expanded(self):
+        # O `GB_HOME` lido de um ambiente que não é o do processo (o da ativação do perfil,
+        # onde mora o `trusted-profiles.json`) também vale a pasta pessoal com o `~` cru.
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"HOME": tmp, "USERPROFILE": tmp}):
+            self.assertEqual(Path(tmp) / "x", profile.trust_home({"GB_HOME": "~/x"}))
+
+
+# Variável de prévia → campo de `config.settings()`.
+PREVIEW_SETTINGS = {
+    "GB_GIF_SCOPE": "scope",
+    "GB_PREVIEW_MODE": "mode",
+    "GB_GIF_WIDTH": "width",
+    "GB_GIF_FPS": "fps",
+    "GB_GIF_COLORS": "colors",
+    "GB_GIF_MAX_MB": "max_mb",
+    "GB_PREVIEW_MAX_SECONDS": "max_seconds",
+    "GB_STATIC_FRAMES": "frames",
+    "GB_SCAN_MAX_SECONDS": "scan_max_seconds",
+}
+
+
+class EmptySettingTests(unittest.TestCase):
+    # `GB_GIF_WIDTH=` (vazio) num `.env` vale o padrão, como `GB_LOG_LEVEL=` e `GB_CACHE_DIR=`
+    # já valiam: um `int("")` derrubava todo comando.
+
+    def test_empty_setting_means_default(self):
+        unset = {k: v for k, v in os.environ.items() if k not in PREVIEW_SETTINGS}
+        with patch.dict(os.environ, unset, clear=True):
+            defaults = config.settings()
+        for key, field in PREVIEW_SETTINGS.items():
+            with self.subTest(key=key), patch.dict(os.environ, {**unset, key: ""}, clear=True):
+                self.assertEqual(defaults[field], config.settings()[field])
+
+    def test_a_blank_value_still_means_default_and_a_wrong_one_still_fails(self):
+        with patch.dict(os.environ, {"GB_GIF_WIDTH": "  "}):
+            self.assertEqual(360, config.settings()["width"])
+        with patch.dict(os.environ, {"GB_GIF_WIDTH": "largo"}), self.assertRaises(ValueError):
+            config.settings()
+
+
 class DeclaredKeys(unittest.TestCase):
     """Toda `GB_*` lida pelo código precisa estar em `config.KEYS` e no `.env.example`.
 
@@ -291,7 +349,8 @@ class DeclaredKeys(unittest.TestCase):
     no arquivo a variável que a documentação promete e todo comando para de rodar.
     """
 
-    READER = re.compile(r'(?:os\.environ\.get|os\.getenv|os\.environ\[)\(?"(GB_[A-Z0-9_]+)"')
+    # `_setting`/`integer` são os leitores das configurações de prévia em `config.settings`.
+    READER = re.compile(r'(?:os\.environ\.get|os\.getenv|os\.environ\[|_setting|integer)\(?"(GB_[A-Z0-9_]+)"')
 
     def _read_keys(self):
         found = {}
@@ -303,7 +362,10 @@ class DeclaredKeys(unittest.TestCase):
     def test_every_gb_variable_the_code_reads_is_declared_in_keys(self):
         found = self._read_keys()
         self.assertTrue(found)
-        undeclared = {key: where for key, where in found.items() if key not in config.KEYS}
+        self.assertLessEqual(set(PREVIEW_SETTINGS), set(found))
+        undeclared = {
+            key: where for key, where in found.items() if key not in config.KEYS and key not in config.PROCESS_ONLY_KEYS
+        }
         self.assertEqual({}, undeclared)
 
     def test_every_declared_key_appears_in_the_env_example(self):
@@ -327,17 +389,33 @@ class DeclaredKeys(unittest.TestCase):
         self.assertTrue(english)
         self.assertEqual(english, self._settings(".env.example.pt-BR"))
 
+    def test_both_examples_name_both_log_files_gb_log_level_controls(self):
+        for name in (".env.example", ".env.example.pt-BR"):
+            with self.subTest(example=name):
+                text = (ROOT / name).read_text(encoding="utf-8")
+                self.assertIn("brolls/getbrolls.log", text)
+                self.assertIn("$GB_HOME/logs/getbrolls.log", text)
+
     def test_both_examples_load_as_they_are(self):
         for name in (".env.example", ".env.example.pt-BR"):
             with self.subTest(example=name), patch.dict(os.environ, {}, clear=False):
-                config.load_env(ROOT / name)
+                env_loader.load_env(ROOT / name)
+
+    def test_gb_profile_in_a_dot_env_is_refused(self):
+        for key in ("GB_PROFILE", "GB_PROFILE_SHA256"):
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as tmp:
+                env_file = Path(tmp) / ".env"
+                env_file.write_text(f"{key}=off\n", encoding="utf-8")
+                with patch.dict(os.environ, {}, clear=False), self.assertRaises(UsageError) as caught:
+                    env_loader.load_env(env_file)
+                self.assertIn("só vale no ambiente do processo", str(caught.exception))
 
     def test_gb_brief_file_in_a_dot_env_does_not_break_every_command(self):
         with tempfile.TemporaryDirectory() as tmp:
             env_file = Path(tmp) / ".env"
             env_file.write_text("GB_BRIEF_FILE=\nGB_SCAN_MAX_SECONDS=120\n", encoding="utf-8")
             with patch.dict(os.environ, {}, clear=False):
-                config.load_env(env_file)
+                env_loader.load_env(env_file)
 
 
 class BriefAndRulesOutsideTheProjectTests(unittest.TestCase):
@@ -373,7 +451,6 @@ class BriefAndRulesOutsideTheProjectTests(unittest.TestCase):
             self.assertTrue((Path(tmp) / "RULES.md").is_file())
 
     def test_a_missing_gb_rules_file_fails_naming_the_variable(self):
-        from getbrolls.rules import load_rules
 
         with tempfile.TemporaryDirectory() as tmp:
             missing = str(Path(tmp) / "nao" / "existe" / "RULES.md")
@@ -384,7 +461,7 @@ class BriefAndRulesOutsideTheProjectTests(unittest.TestCase):
     def test_a_missing_gb_brief_file_fails_naming_the_variable(self):
         with tempfile.TemporaryDirectory() as tmp:
             missing = str(Path(tmp) / "nao" / "existe" / "BRIEF.md")
-            error = run_cli("brief", "--project", tmp, env={"GB_BRIEF_FILE": missing}, expect=2)
+            error = run_cli("brief", "--project", tmp, env={"GB_BRIEF_FILE": missing}, expect=1)
             self.assertIn("GB_BRIEF_FILE", error["error"])
 
 
