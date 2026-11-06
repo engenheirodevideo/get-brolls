@@ -269,6 +269,18 @@ class RepositoryDocumentationTests(unittest.TestCase):
             self.assertRegex(dev, rf"(?m)^{tool}==\d+\.\d+", tool)
             self.assertIn(tool, ignored, f"dependabot propõe bump de {tool}")
 
+    def test_dependabot_groups_the_actions_and_leaves_the_playwright_cli_pin(self):
+        # Um PR por Action separa codeql init/analyze, que só funcionam na mesma versão;
+        # o @playwright/cli sobe à mão junto com docs/GUIDE.md e os testes que citam a versão.
+        config = (ROOT / ".github/dependabot.yml").read_text(encoding="utf-8")
+        blocks = {block.split("\n", 1)[0]: block for block in re.split(r"(?m)^  - package-ecosystem: ", config)[1:]}
+        actions = blocks["github-actions"]
+        self.assertRegex(actions, r"(?m)^    groups:\n      github-actions:\n        patterns: \[\"\*\"\]$")
+        npm_ignored = set(re.findall(r"(?m)^\s+- dependency-name: \"?([^\"\s]+)\"?\s*$", blocks["npm"]))
+        self.assertIn("@playwright/cli", npm_ignored)
+        for name, block in blocks.items():
+            self.assertRegex(block, r"(?m)^    cooldown:\n      default-days: \d+$", name)
+
     def test_codeql_init_and_analyze_share_one_pin(self):
         # O analyze lê a configuração gravada pelo init e recusa versão diferente
         # ("Loaded a configuration file for version X, but running version Y").
