@@ -17,4 +17,4 @@ astroid==4.0.4
 # coverage: o gate de cobertura (python3 scripts/check_coverage.py; metas em
 # [tool.getbrolls.coverage] do pyproject.toml). A 7.16 instala o gancho de subprocesso
 # (a1_coverage.pth) que mede cada CLI que a suíte sobe.
-coverage==7.16.2
+coverage==7.17.0
