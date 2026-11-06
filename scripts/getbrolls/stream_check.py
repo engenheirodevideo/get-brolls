@@ -48,7 +48,7 @@ _LINE_BREAK = re.compile(r"\r\n|\r|\n")
 # Controle C0 (menos tab e as quebras acima), DEL, controle C1, os separadores Unicode de linha e parágrafo e o
 # U+FFFD que o `web_text` põe no lugar de um byte que não é UTF-8: o yt-dlp lê os bytes com
 # `decode('utf-8', 'ignore')` e simplesmente descarta esse byte (`#\xffEXT-X-KEY:…` vira uma chave para ele).
-_CONTROL = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u2028\u2029\ufffd]")
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u2028\u2029\ufffd]")
 # Endereço é ASCII visível: espaço, Unicode ou controle num endereço é recusado em vez de interpretado.
 _URI_TEXT = re.compile(r"[\x21-\x7e]+")
 # O atributo `URI` (não o `…-URI` de outro atributo), contado no texto cru da tag: dois na mesma tag são recusados.
