@@ -1,14 +1,22 @@
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT
 
-from getbrolls import providers
+from getbrolls import providers, runtime, social
+from getbrolls.acquisition import prepare_source
+from getbrolls.cli import main
+from getbrolls.commands import _local_playwright
+from getbrolls.http import ProviderError
+from getbrolls.ledger import Ledger
+from getbrolls.media import probe
 
 
 class SocialRecoveryTests(unittest.TestCase):
@@ -48,7 +56,6 @@ class SocialRecoveryTests(unittest.TestCase):
         self.assertFalse((ROOT / "scripts/instagram").exists())
 
     def test_doctor_checks_download_dependencies(self):
-        from getbrolls.cli import main
 
         result = main(["doctor"])
         for name in ("yt-dlp", "curl", "bash"):
@@ -62,9 +69,10 @@ if __name__ == "__main__":
 
 class RemotePreviewTests(unittest.TestCase):
     def test_local_ytdlp_accepts_windows_and_posix_virtualenv_layouts(self):
-        from getbrolls import social
 
-        with tempfile.TemporaryDirectory() as tmp:
+        # A suíte fixa `GB_YTDLP_PATH` num yt-dlp de mentira (`_isolation`); aqui é a descoberta pela venv que se testa.
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ):
+            os.environ.pop("GB_YTDLP_PATH", None)
             root = Path(tmp)
             windows = root / ".venv/Scripts/yt-dlp.exe"
             windows.parent.mkdir(parents=True)
@@ -77,7 +85,6 @@ class RemotePreviewTests(unittest.TestCase):
             self.assertEqual(posix, social.local_ytdlp(root))
 
     def test_local_playwright_accepts_windows_command_shim(self):
-        from getbrolls.commands import _local_playwright
 
         with tempfile.TemporaryDirectory() as tmp:
             shim = Path(tmp) / ".tools/node_modules/.bin/playwright-cli.cmd"
@@ -86,7 +93,6 @@ class RemotePreviewTests(unittest.TestCase):
             self.assertTrue(_local_playwright(tmp))
 
     def test_youtube_search_without_key_uses_ytdlp_metadata(self):
-        from getbrolls import social
 
         with (
             patch.dict(os.environ, {}, clear=True),
@@ -102,12 +108,6 @@ class RemotePreviewTests(unittest.TestCase):
             self.assertEqual(c["acquisition"]["method"], "yt-dlp")
 
     def test_preview_caches_remote_interval_and_fetch_uses_same_bytes(self):
-        import shutil
-        import subprocess
-
-        from getbrolls import social
-        from getbrolls.cli import main
-        from getbrolls.media import probe
 
         if not shutil.which("ffmpeg"):
             self.skipTest("FFmpeg required")
@@ -167,12 +167,69 @@ class RemotePreviewTests(unittest.TestCase):
             self.assertAlmostEqual(probe(root / "brolls" / c["output"]["path"])["duration_s"], 2, delta=0.1)
             self.assertEqual(main(["verify", "--project", str(root)])["count"], 1)
 
+    def test_scan_accepts_a_short_ytdlp_download_when_tolerant(self):
+        """A varredura pede 0–6 s e o yt-dlp entrega 5,5 s: com `tolerant`, isso passa."""
+        if not shutil.which("ffmpeg"):
+            self.skipTest("FFmpeg required")
+        for tolerant in (True, False):
+            with self.subTest(tolerant=tolerant), tempfile.TemporaryDirectory() as tmp:
+                ledger = Ledger(Path(tmp) / "proj")
+                c = providers.resolve("https://youtube.com/watch?v=abcdefghijk")
+                with patch.object(social, "run", side_effect=ytdlp_delivering(5.5)):
+                    if tolerant:
+                        prepare_source(ledger, c, 0, 6, tolerant=True, stage="scan")
+                        self.assertAlmostEqual(c["local_duration_s"], 5.5, delta=0.2)
+                    else:
+                        with self.assertRaisesRegex(ValueError, "Original não contém o intervalo solicitado"):
+                            prepare_source(ledger, c, 0, 6, tolerant=False, stage="scan")
+
+    def test_a_ytdlp_segment_longer_than_asked_is_refused(self):
+        """Pedido 2–4 s e o yt-dlp entrega 10 s: ele pode ter começado antes de 2 s, e a timeline
+        ficaria deslocada. A varredura (`tolerant`) começa em 0, então ali o arquivo mais longo passa."""
+        if not shutil.which("ffmpeg"):
+            self.skipTest("FFmpeg required")
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(Path(tmp) / "proj")
+            c = providers.resolve("https://youtube.com/watch?v=abcdefghijk")
+            with patch.object(social, "run", side_effect=ytdlp_delivering(10)):
+                with self.assertRaisesRegex(ProviderError, "não corresponde ao intervalo solicitado"):
+                    prepare_source(ledger, c, 2, 4)
+                self.assertNotIn("local_path", c)
+                prepare_source(ledger, c, 0, 6, tolerant=True, stage="scan")
+            self.assertAlmostEqual(c["local_duration_s"], 10, delta=0.2)
+
+
+def ytdlp_delivering(duration):
+    """`social.run` falso: o "yt-dlp" grava um vídeo de `duration` s, seja qual for o trecho pedido."""
+
+    def download(args, op=None, **_kwargs):
+        del op
+        output = args[args.index("-o") + 1]
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                f"testsrc2=size=160x90:rate=10:duration={duration}",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                output,
+            ],
+            check=True,
+        )
+        return None, []
+
+    return download
+
 
 class HelperRuntimeTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "Helpers Bash são opcionais no Windows nativo.")
     def test_original_helper_enables_node_without_deno(self):
-        import shutil
-        import subprocess
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -198,8 +255,6 @@ class HelperRuntimeTests(unittest.TestCase):
 
     @unittest.skipIf(os.name == "nt", "Helpers Bash são opcionais no Windows nativo.")
     def test_contact_helper_uses_portable_mktemp_and_linux_font(self):
-        import shutil
-        import subprocess
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -215,8 +270,13 @@ class HelperRuntimeTests(unittest.TestCase):
             font = root / "DejaVuSans.ttf"
             font.write_bytes(b"fixture")
             for name, body in {
-                "yt-dlp": '#!/bin/sh\ncase "$*" in *"%(title)s"*) echo "Fixture title";; *) echo "https://example.org/video.mp4";; esac\n',
-                "mktemp": '#!/bin/sh\ncase "$1" in *XXXXXX) p="${1%XXXXXX}ABC123"; : > "$p"; echo "$p";; *) exit 64;; esac\n',
+                "yt-dlp": (
+                    '#!/bin/sh\ncase "$*" in *"%(title)s"*) echo "Fixture title";; '
+                    '*) echo "https://example.org/video.mp4";; esac\n'
+                ),
+                "mktemp": (
+                    '#!/bin/sh\ncase "$1" in *XXXXXX) p="${1%XXXXXX}ABC123"; : > "$p"; echo "$p";; *) exit 64;; esac\n'
+                ),
                 "ffmpeg": '#!/bin/sh\nprintf "%s\\n" "$@" > "$FFMPEG_ARGS_FILE"\nfor last do :; done\n: > "$last"\n',
             }.items():
                 path = bindir / name
@@ -247,8 +307,6 @@ class HelperRuntimeTests(unittest.TestCase):
 class InstallerTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "O Windows usa scripts/install.ps1.")
     def test_rejects_old_node_before_installing_dependencies(self):
-        import shutil
-        import subprocess
 
         with tempfile.TemporaryDirectory() as tmp:
             bindir = Path(tmp)
@@ -273,9 +331,6 @@ class InstallerTests(unittest.TestCase):
 
 class SocialErrorTests(unittest.TestCase):
     def test_ip_block_is_reported_without_signed_urls(self):
-        import subprocess
-
-        from getbrolls import social
 
         with (
             patch.object(social, "command", return_value=["yt-dlp"]),
@@ -292,3 +347,31 @@ class SocialErrorTests(unittest.TestCase):
             with self.assertRaisesRegex(Exception, "bloqueou o IP") as caught:
                 social.run([])
             self.assertNotIn("secret", str(caught.exception))
+
+
+class MetadataWarningTests(unittest.TestCase):
+    URL = "https://www.tiktok.com/@fixture/video/12345"
+
+    def metadata_with(self, raw):
+        """`social.metadata` with yt-dlp answering `raw`: the result and the warnings the command recorded."""
+        event = {"warnings": []}
+        token = runtime.ACTIVE.set(event)
+        try:
+            with patch.object(social, "run", return_value=(raw, [])):
+                found = social.metadata(self.URL)
+        finally:
+            runtime.ACTIVE.reset(token)
+        return found, event["warnings"]
+
+    def test_invalid_json_gives_no_metadata_and_a_warning(self):
+        for raw in ("not json at all", "", '["a", "list"]', "42"):
+            with self.subTest(raw=raw):
+                found, warnings = self.metadata_with(raw)
+                self.assertEqual({}, found)
+                self.assertEqual(["YTDLP_WARNING"], [w["code"] for w in warnings])
+                self.assertIn("metadados não vieram desta página", warnings[0]["message"])
+
+    def test_valid_metadata_records_no_warning(self):
+        found, warnings = self.metadata_with('{"title": "T", "duration": 12.5}')
+        self.assertEqual("T", found["title"])
+        self.assertEqual([], warnings)

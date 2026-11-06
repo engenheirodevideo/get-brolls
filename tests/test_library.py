@@ -3,11 +3,18 @@
 import json
 import os
 import re
+import shlex
 import stat
 import tempfile
+
+# Reimport com apelido só pra isolar o setup do teste que precisa dele
+# (mesmo motivo do redefined-outer-name em tests/pylintrc).
+import tempfile as tf  # pylint: disable=reimported
+import threading
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
 import _isolation
@@ -16,6 +23,8 @@ from _paths import ROOT
 
 from getbrolls import library
 from getbrolls.cli import SUMMARIES, build_parser
+from getbrolls.commands import execute
+from getbrolls.guidance import next_action
 from getbrolls.ledger import Ledger
 from getbrolls.memory import remember
 from getbrolls.models import approve, candidate, require_fetch, set_segment
@@ -29,14 +38,15 @@ def approved_candidate(project, source_url="https://www.youtube.com/watch?v=abc"
     c["media"]["duration_s"] = 120.0
     set_segment(c, 10.0, 14.0)
     c["preview"]["contact_sheet_path"] = "previews/abc.jpg"
-    approve(c, "Bruno", channel="chat", statement="Aprovo esse, pode usar.")
+    approve(c, "reviewer", channel="chat", statement="Aprovo esse, pode usar.")
     ledger.save("approve", c)
     return ledger, c
 
 
 class LibraryBase(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        # Ciclo de vida cobre o teste (ou a classe) inteiro; a limpeza já é feita via addCleanup/tearDownClass.
+        self.tmp = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
         self.addCleanup(self.tmp.cleanup)
         self.home = Path(self.tmp.name) / "home"
         self.project = Path(self.tmp.name) / "project"
@@ -59,6 +69,15 @@ class LibraryTests(LibraryBase):
         ):
             self.assertTrue(answer["rights_not_transferable"])
 
+    def test_a_query_is_capped_and_stripped_of_control_characters_before_it_is_stored(self):
+        raw = "foguete\x00 de\ncolar\r\tvermelho\x1b[31m " + "z" * 500
+        entry = library.learn_query(raw, "youtube", "hit")["entry"]
+        stored = json.loads(library.index_path().read_text(encoding="utf-8"))["queries"][0]["query"]
+        self.assertEqual(stored, entry["query"])
+        self.assertLessEqual(len(stored), library.MAX_QUERY_CHARS)
+        self.assertTrue(stored.startswith("foguete de colar vermelho"))
+        self.assertTrue(all(ch.isprintable() for ch in stored))
+
     def test_the_index_is_written_atomically_and_private(self):
         library.learn_query("foguete decolando", "youtube", "hit")
         path = library.index_path()
@@ -66,7 +85,7 @@ class LibraryTests(LibraryBase):
             self.assertEqual(0o600, stat.S_IMODE(path.stat().st_mode))
         self.assertFalse(list(path.parent.glob("*.tmp")))
         data = json.loads(path.read_text(encoding="utf-8"))
-        self.assertEqual(1, data["schema_version"])
+        self.assertEqual(2, data["schema_version"])
         self.assertEqual("hit", data["queries"][0]["outcome"])
         self.assertEqual({"hit": 1, "miss": 0}, data["providers"]["youtube"]["outcomes"])
 
@@ -87,7 +106,7 @@ class LibraryTests(LibraryBase):
 
     def test_from_candidate_copies_the_pointer_and_never_the_rights(self):
         ledger, c = approved_candidate(self.project)
-        remember(ledger, c, "approved", "Plano aberto exato da fala.", "Bruno")
+        remember(ledger, c, "approved", "Plano aberto exato da fala.", "reviewer")
         answer = library.learn_from_candidate(self.project, c["id"])
         entry = answer["entry"]
         self.assertTrue(answer["rights_not_transferable"])
@@ -100,7 +119,7 @@ class LibraryTests(LibraryBase):
 
     def test_the_ledger_of_a_project_never_names_another_project_path(self):
         ledger, c = approved_candidate(self.project)
-        remember(ledger, c, "approved", "Plano aberto exato da fala.", "Bruno")
+        remember(ledger, c, "approved", "Plano aberto exato da fala.", "reviewer")
         identity = project_id(ledger)
         library.learn_from_candidate(self.project, c["id"], shot="beat-01")
         raw = library.index_path().read_text(encoding="utf-8")
@@ -113,7 +132,7 @@ class LibraryTests(LibraryBase):
 
     def test_reusing_the_same_asset_only_adds_a_use(self):
         ledger, c = approved_candidate(self.project)
-        remember(ledger, c, "approved", "Plano aberto exato da fala.", "Bruno")
+        remember(ledger, c, "approved", "Plano aberto exato da fala.", "reviewer")
         first = library.learn_from_candidate(self.project, c["id"], shot="beat-01")
         second = library.learn_from_candidate(self.project, c["id"], shot="beat-02")
         self.assertEqual(first["entry"]["asset_id"], second["entry"]["asset_id"])
@@ -128,7 +147,7 @@ class LibraryTests(LibraryBase):
 
     def test_a_library_entry_never_makes_fetch_pass_in_another_project(self):
         ledger, c = approved_candidate(self.project)
-        remember(ledger, c, "approved", "Plano aberto exato da fala.", "Bruno")
+        remember(ledger, c, "approved", "Plano aberto exato da fala.", "reviewer")
         library.learn_from_candidate(self.project, c["id"])
         other = Path(self.tmp.name) / "outro"
         other.mkdir()
@@ -141,14 +160,14 @@ class LibraryTests(LibraryBase):
         self.assertEqual("pending", fresh["approval"]["status"])
 
     def test_two_writers_at_once_keep_both_entries(self):
-        import threading
 
         errors = []
 
         def write(n):
             try:
                 library.learn_query(f"busca {n}", "youtube", "hit")
-            except Exception as e:  # noqa: BLE001 - the test wants the real failure to assert none occurred
+            # O teste quer a falha real, para garantir que nenhuma ocorreu.
+            except Exception as e:  # noqa: BLE001  # pylint: disable=broad-exception-caught
                 errors.append(e)
 
         threads = [threading.Thread(target=write, args=(n,)) for n in range(8)]
@@ -180,7 +199,7 @@ class LibraryTests(LibraryBase):
 
     def test_hints_never_repeat_free_text_from_another_project(self):
         ledger, c = approved_candidate(self.project)
-        remember(ledger, c, "approved", "Cliente X pediu esse plano.", "Bruno")
+        remember(ledger, c, "approved", "Cliente X pediu esse plano.", "reviewer")
         library.learn_from_candidate(self.project, c["id"])
         for hint in library.hints("foguete"):
             self.assertNotIn("reason", hint)
@@ -194,17 +213,18 @@ class LibraryTests(LibraryBase):
         self.assertEqual([], library.hints("foguete"))
 
     def test_the_tests_never_point_at_the_real_home(self):
-        import tempfile as tf
 
         os.environ.pop("GB_HOME", None)
 
         os.environ["GB_HOME"] = str(_isolation.GB_HOME)
-        self.assertTrue(str(library.home_dir()).startswith(tf.gettempdir()), library.home_dir())
+        # `GB_HOME` may be spelled through a link (`/var` is `/private/var` on macOS) while `gettempdir()` is not.
+        home, temp = (os.path.realpath(path) for path in (library.home_dir(), tf.gettempdir()))
+        self.assertTrue(home.startswith(temp), library.home_dir())
         self.assertNotEqual(Path.home() / ".getbrolls", library.home_dir())
 
     def test_search_finds_assets_queries_and_preferences(self):
         ledger, c = approved_candidate(self.project)
-        remember(ledger, c, "approved", "Plano aberto exato da fala.", "Bruno")
+        remember(ledger, c, "approved", "Plano aberto exato da fala.", "reviewer")
         library.learn_from_candidate(self.project, c["id"])
         library.learn_query("foguete decolando", "youtube", "hit")
         library.learn_preference("Foguete sempre em plano aberto.")
@@ -243,9 +263,6 @@ class LibraryCommandTests(LibraryBase):
         self.assertEqual(1, len(found["queries"]))
 
     def test_search_appends_hints_and_records_a_failed_provider(self):
-        from unittest.mock import patch
-
-        from getbrolls.commands import execute
 
         args = build_parser().parse_args(
             [
@@ -276,9 +293,6 @@ class LibraryCommandTests(LibraryBase):
         self.assertIn("foguete decolando", [h.get("query") for h in hints])
 
     def test_the_search_rung_mentions_the_library_without_changing_the_command(self):
-        import shlex
-
-        from getbrolls.guidance import next_action
 
         state = {
             "project": str(self.project),
@@ -294,7 +308,7 @@ class LibraryCommandTests(LibraryBase):
         build_parser().parse_args(shlex.split(with_library["command"])[2:])
 
     def test_the_cli_refuses_learn_without_anything_to_learn(self):
-        error = run_cli("learn", "--project", self.project, expect=2)
+        error = run_cli("learn", "--project", self.project, expect=1)
         self.assertIn("--query", error["error"])
 
 

@@ -4,9 +4,9 @@ import tempfile
 import unittest
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, set_segment
@@ -32,7 +32,7 @@ class PermitDeclarationTests(unittest.TestCase):
                 "--candidate",
                 ident,
                 "--declared-by",
-                "Bruno Moreira",
+                "reviewer team",
                 "--declaration-text",
                 TEXT,
                 "--project",
@@ -41,10 +41,10 @@ class PermitDeclarationTests(unittest.TestCase):
             rights = result["rights"]
             self.assertEqual("permitted", rights["status"])
             self.assertEqual("user_declaration", rights["basis"])
-            self.assertEqual("Bruno Moreira", rights["responsible_person"])
+            self.assertEqual("reviewer team", rights["responsible_person"])
             self.assertEqual("chat", rights["declaration_channel"])
             self.assertEqual(1, len(rights["evidence"]))
-            self.assertIn("Bruno Moreira", rights["evidence"][0])
+            self.assertIn("reviewer team", rights["evidence"][0])
             self.assertIn(TEXT, rights["evidence"][0])
 
     def test_declaration_requires_real_name_and_real_text(self):
@@ -57,19 +57,19 @@ class PermitDeclarationTests(unittest.TestCase):
                 "usuário",
                 "--declaration-text",
                 TEXT,
-                expect=2,
+                expect=1,
             )
             self.assertIn("nome", error["error"].lower())
             short = run_cli(
                 *base,
                 "--declared-by",
-                "Bruno Moreira",
+                "reviewer team",
                 "--declaration-text",
                 "curto demais",
-                expect=2,
+                expect=1,
             )
             self.assertIn("20", short["error"])
-            alone = run_cli(*base, "--declared-by", "Bruno Moreira", expect=2)
+            alone = run_cli(*base, "--declared-by", "reviewer team", expect=1)
             self.assertIn("--declaration-text", alone["error"])
 
     def test_generic_single_word_names_are_refused_by_name(self):
@@ -77,7 +77,7 @@ class PermitDeclarationTests(unittest.TestCase):
             ident = fixture(tmp)
             base = ["permit", "--candidate", ident, "--project", tmp, "--declaration-text", TEXT]
             for generic in ("eu", "user", "cliente", "usuário", "usuario", "me", "admin", "Admin"):
-                refused = run_cli(*base, "--declared-by", generic, expect=2)
+                refused = run_cli(*base, "--declared-by", generic, expect=1)
                 self.assertIn("--declared-by", refused["error"])
                 self.assertIn("não identifica ninguém", refused["error"])
 
@@ -93,13 +93,13 @@ class PermitDeclarationTests(unittest.TestCase):
                 "--declaration-text",
                 TEXT,
                 "--declared-by",
-                "Bruno",
-                expect=2,
+                "reviewer",
+                expect=1,
             )
             self.assertIn("duas palavras", refused["error"])
 
     def test_name_plus_surname_or_initial_is_accepted_and_teste_still_passes(self):
-        for name in ("Bruno Moreira", "Bruno M.", "Ana Teste"):
+        for name in ("reviewer team", "Reviewer R.", "reviewer teste"):
             with tempfile.TemporaryDirectory() as tmp:
                 ident = fixture(tmp)
                 result = run_cli(
@@ -123,9 +123,9 @@ class PermitDeclarationTests(unittest.TestCase):
             result = run_cli(*base, "--evidence", "Material próprio do teste")
             self.assertEqual("per_item_evidence", result["rights"]["basis"])
             self.assertIsNone(result["rights"].get("declaration_channel"))
-            nothing = run_cli(*base, expect=2)
+            nothing = run_cli(*base, expect=1)
             self.assertIn("--evidence", nothing["error"])
-            declaration = run_cli(*base, "--declaration", expect=2)
+            declaration = run_cli(*base, "--declaration", expect=1)
             self.assertIn("RULES.md", declaration["error"])
 
 

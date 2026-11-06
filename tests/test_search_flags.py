@@ -13,12 +13,16 @@ from pathlib import Path
 from unittest.mock import patch
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _cli import run_cli
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
-from getbrolls import library, providers
+from getbrolls import library, providers, social
+from getbrolls.brief import beat_commands, search_query
 from getbrolls.commands import execute
+from getbrolls.ledger import Ledger
 from getbrolls.models import candidate
+from getbrolls.rules import format_report, load_rules
 from getbrolls.runtime import OperationError, audited
 
 
@@ -135,6 +139,39 @@ class DryRun(unittest.TestCase):
             self.assertTrue(rows[0]["auto"])
             self.assertEqual("miss", rows[0]["outcome"])
 
+    def test_search_dry_run_never_rewrites_the_manifest(self):
+        """Nem o portão de formato nem a recuperação gravam numa busca de diagnóstico."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(tmp)
+            c = candidate("local", "seen", "Synthetic", "https://example.org/a")
+            c["media"].update(kind="image", width=1920, height=1080)
+            c["format"] = format_report(c, load_rules(tmp))
+            c["preview"]["poster_path"] = "previews/seen.jpg"
+            ledger.add(c)
+            ledger.save("fixture", c)
+            run_cli("init-rules", "--format", "reels", project=tmp)
+            brolls = Path(tmp) / "brolls"
+            for folder in ("previews", "candidates"):
+                for child in (brolls / folder).iterdir():
+                    child.unlink()
+                (brolls / folder).rmdir()
+
+            logs = ("getbrolls.log", "diagnostics.jsonl")
+
+            def snapshot():
+                # Os logs mudam a cada comando; o resto de `brolls/` não pode mudar.
+                return {
+                    str(path.relative_to(brolls)): None if path.is_dir() or path.name in logs else path.read_bytes()
+                    for path in brolls.rglob("*")
+                }
+
+            before = snapshot()
+            self.assertIn("events.jsonl", before)
+            with patch.object(providers, "search", return_value=found(1)):
+                result = audited(args(tmp, dry_run=True), execute)
+            self.assertTrue(result["dry_run"])
+            self.assertEqual(before, snapshot())
+
     def test_a_normal_search_reports_dry_run_false(self):
         with tempfile.TemporaryDirectory() as tmp:
             with patch.object(providers, "search", return_value=found(1)):
@@ -169,7 +206,6 @@ class ProviderFactsInTheListing(unittest.TestCase):
     """O que o YouTube já responde na busca: canal e duração, sem outra chamada."""
 
     def stub(self, tmp, **extra):
-        from getbrolls import social
 
         with patch.object(social, "run", return_value=(json.dumps(YTDLP_FLAT), [])):
             return audited(args(tmp, limit=5, **extra), execute)
@@ -222,6 +258,31 @@ class ProviderFactsInTheListing(unittest.TestCase):
             self.assertIn("Diagnóstico", dry["summary"]["line"])
 
 
+class RerunTests(unittest.TestCase):
+    """A mesma busca de novo: o que já está no manifesto fica como foi registrado."""
+
+    def test_rerun_after_the_source_edited_a_title_reuses_the_candidate(self):
+        titles = {"v1": "Primeiro vídeo", "v2": "Segundo vídeo"}
+
+        def fake(name, query, limit, media="any"):
+            return [
+                candidate("commons", sid, title, f"https://commons.wikimedia.org/wiki/File:{sid}.webm")
+                for sid, title in titles.items()
+            ]
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(providers, "search", side_effect=fake):
+            audited(args(tmp, provider="commons", query="teste"), execute)
+            titles["v2"] = "Segundo vídeo (versão oficial)"
+            titles["v3"] = "Terceiro vídeo"
+            result = audited(args(tmp, provider="commons", query="teste"), execute)
+            self.assertEqual(["commons:v1", "commons:v2", "commons:v3"], sorted(item["id"] for item in result["items"]))
+            saved = {c["id"]: c for c in manifest(tmp)["items"]}
+            self.assertEqual(["commons:v1", "commons:v2", "commons:v3"], sorted(saved))
+            self.assertEqual("Segundo vídeo", saved["commons:v2"]["title"])
+            rows = {item["id"]: item for item in result["items"]}
+            self.assertEqual("Segundo vídeo", rows["commons:v2"]["title"])
+
+
 class LongQueryRetry(unittest.TestCase):
     """Frase inteira volta vazia; a busca encurta uma vez e conta que encurtou."""
 
@@ -232,7 +293,8 @@ class LongQueryRetry(unittest.TestCase):
 
         def fake(name, query, limit, media="any"):
             seen.append(query)
-            return found(2) if len(query.split()) <= 6 else []  # noqa: PLR2004 - SEARCH_QUERY_TOKENS em commands.py
+            # SEARCH_QUERY_TOKENS (6) em search_commands.py
+            return found(2) if len(query.split()) <= 6 else []  # noqa: PLR2004
 
         with tempfile.TemporaryDirectory() as tmp, patch.object(providers, "search", side_effect=fake):
             result = audited(args(tmp, query=self.LONG), execute)
@@ -242,6 +304,46 @@ class LongQueryRetry(unittest.TestCase):
         self.assertEqual("print página preços concorrente valor destaque", result["query_used"])
         self.assertEqual(self.LONG, result["retry"]["from"])
         self.assertIn("repeti uma vez", result["summary"]["line"])
+
+    def test_shortened_retry_keeps_the_excluded_count(self):
+        """O que as regras barraram na frase inteira continua contado depois do retry."""
+        seen = []
+
+        def fake(name, query, limit, media="any"):
+            seen.append(query)
+            if len(seen) > 1:
+                return []
+            return [candidate("youtube", f"id{i}", f"Vídeo {i}", f"https://bloqueado.example/v{i}") for i in range(5)]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            rules = {**load_rules(tmp), "blocked_domains": ["bloqueado.example"]}
+            Path(tmp, "RULES.md").write_text("```json\n" + json.dumps(rules) + "\n```\n", encoding="utf-8")
+            with patch.object(providers, "search", side_effect=fake):
+                result = audited(args(tmp, query=self.LONG), execute)
+        self.assertEqual(2, len(seen))
+        self.assertEqual([], result["items"])
+        self.assertEqual(5, result["excluded_by_rules"])
+        self.assertIn("5 excluídos pelas regras", result["summary"]["line"])
+
+    def test_shortened_retry_counts_each_excluded_video_once(self):
+        """A query curta é mais ampla e devolve os mesmos barrados: cada vídeo conta uma vez."""
+        seen = []
+
+        def fake(name, query, limit, media="any"):
+            seen.append(query)
+            return [candidate("youtube", f"id{i}", f"Vídeo {i}", f"https://bloqueado.example/v{i}") for i in range(5)]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            rules = {**load_rules(tmp), "blocked_domains": ["bloqueado.example"]}
+            Path(tmp, "RULES.md").write_text("```json\n" + json.dumps(rules) + "\n```\n", encoding="utf-8")
+            with patch.object(providers, "search", side_effect=fake):
+                result = audited(args(tmp, query=self.LONG), execute)
+        self.assertEqual(2, len(seen))
+        self.assertEqual(5, result["excluded_by_rules"])
+        self.assertIn("5 excluídos pelas regras", result["summary"]["line"])
+        # Vieram resultados, todos barrados: a nota não diz que a busca "não trouxe nada".
+        self.assertNotIn("não trouxe nada", result["retry"]["note"])
+        self.assertIn("barrado", result["retry"]["note"])
 
     def test_a_short_query_is_never_retried(self):
         seen = []
@@ -287,7 +389,6 @@ class BeatQueryIsEntityAndAction(unittest.TestCase):
         }
 
     def test_a_long_target_is_trimmed_to_six_meaningful_tokens(self):
-        from getbrolls.brief import beat_commands, search_query
 
         beat = self.beat("print da página de preços do concorrente com o valor em destaque")
         self.assertEqual("print página preços concorrente valor destaque", search_query(beat))
@@ -297,7 +398,6 @@ class BeatQueryIsEntityAndAction(unittest.TestCase):
         self.assertNotIn("da página", command)
 
     def test_an_explicit_query_from_the_person_goes_through_untouched(self):
-        from getbrolls.brief import search_query
 
         beat = self.beat("qualquer coisa", queries=["exatamente o que eu quero buscar aqui agora"])
         self.assertEqual("exatamente o que eu quero buscar aqui agora", search_query(beat))

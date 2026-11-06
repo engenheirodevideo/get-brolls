@@ -2,17 +2,22 @@
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import unittest
+from unittest import mock
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-from _paths import CLI, ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 
-from getbrolls import __version__
+# efeito de import: insere scripts/ em sys.path
+from _paths import CLI, CLI_ARGV, ROOT, WHEEL_MODE  # noqa: F401  # pylint: disable=unused-import
+
+from getbrolls import __version__, media, social
 from getbrolls.cli import FORMAT_GATE_SUBCOMMANDS, SUMMARIES, build_parser
 from getbrolls.commands import doctor_summary
+from getbrolls.http import ProviderError
 
 
 def subparsers(parser):
@@ -49,28 +54,31 @@ class HelpContractTests(unittest.TestCase):
 
     def test_version_flag_prints_package_version(self):
         done = subprocess.run(
-            [sys.executable, str(CLI), "--version"],
+            [*CLI_ARGV, "--version"],
             capture_output=True,
             text=True,
             encoding="utf-8",
             check=False,
         )
         self.assertEqual(0, done.returncode, done.stderr)
-        self.assertEqual(f"get-brolls {__version__}", done.stdout.strip())
+        self.assertTrue(done.stdout.startswith(f"getbrolls {__version__} (Python "), done.stdout)
+        self.assertIn("dados: wheel" if WHEEL_MODE else "dados: checkout", done.stdout)
 
 
 class DoctorVerdictTests(unittest.TestCase):
     def payload(self):
         done = subprocess.run(
-            [sys.executable, str(CLI), "doctor"],
+            [*CLI_ARGV, "doctor"],
             capture_output=True,
             text=True,
             encoding="utf-8",
             timeout=120,
             check=False,
         )
-        self.assertEqual(0, done.returncode, done.stderr)
-        return json.loads(done.stdout)
+        payload = json.loads(done.stdout)
+        # 4 é o `doctor` dizendo que falta algo obrigatório, com o JSON em stdout.
+        self.assertEqual(4 if payload["summary"]["missing"] else 0, done.returncode, done.stderr)
+        return payload
 
     def test_doctor_reports_skill_version_and_python(self):
         payload = self.payload()
@@ -100,8 +108,6 @@ class DoctorVerdictTests(unittest.TestCase):
         self.assertIn("ffmpeg", summary["ok"])
 
     def test_unset_provider_keys_are_optional_not_missing(self):
-        import os
-        from unittest import mock
 
         environment = {
             key: value for key, value in os.environ.items() if key not in ("PEXELS_API_KEY", "PIXABAY_API_KEY")
@@ -116,9 +122,9 @@ class DoctorVerdictTests(unittest.TestCase):
 
 class ActionableErrorTests(unittest.TestCase):
     def test_missing_ytdlp_names_the_installer(self):
-        from getbrolls import social
-        from getbrolls.http import ProviderError
-
+        # A suíte fixa `GB_YTDLP_PATH` num yt-dlp de mentira (`_isolation`); aqui é a falta do yt-dlp que se testa.
+        self.enterContext(mock.patch.dict(os.environ))
+        os.environ.pop("GB_YTDLP_PATH", None)
         original_local = social.local_ytdlp
         original_which = social.shutil.which
         social.local_ytdlp = lambda root=None: None
@@ -133,9 +139,10 @@ class ActionableErrorTests(unittest.TestCase):
         self.assertIn("install.sh", message)
         self.assertIn("install.ps1", message)
         self.assertIn("/plugin update", message)
+        self.assertIn("$GB_HOME/runtime", message)
+        self.assertNotIn("é preciso reinstalar", message)
 
     def test_absent_ffmpeg_is_distinguishable_from_bad_range(self):
-        from getbrolls import media
 
         with self.assertRaises(ValueError) as absent:
             media.run(["ffmpeg-inexistente-getbrolls", "-version"])
