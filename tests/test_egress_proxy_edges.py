@@ -189,7 +189,15 @@ class HandlerTests(unittest.TestCase):
             egress_proxy.GuardedProxy() as proxy,
             self.assertLogs("getbrolls.egress_proxy", level="WARNING") as cm,
         ):
-            line = exchange(proxy.url, CONNECT)
+            # Nothing is sent: the refusal precedes reading the request; unread bytes make Windows reset the connection.
+            with dial(proxy.url) as client:
+                data = b""
+                while b"\r\n" not in data:
+                    chunk = client.recv(1024)
+                    if not chunk:
+                        break
+                    data += chunk
+            line = data.split(b"\r\n", 1)[0].decode("latin-1")
         self.assertIn("503", line)
         self.assertIn("reason=too_many_tunnels", "\n".join(cm.output))
 
