@@ -1,0 +1,217 @@
+{
+  "subcommands": {
+    "approve": [
+      "--all",
+      "--by",
+      "--candidate",
+      "--channel",
+      "--confirm-format-change",
+      "--end",
+      "--help",
+      "--project",
+      "--start",
+      "--statement"
+    ],
+    "brief": [
+      "--beat",
+      "--confirm-format-change",
+      "--help",
+      "--project",
+      "--validate"
+    ],
+    "browser-plan": [
+      "--confirm-format-change",
+      "--help",
+      "--project",
+      "--url"
+    ],
+    "deliver": [
+      "--confirm-format-change",
+      "--dry-run",
+      "--help",
+      "--project"
+    ],
+    "doctor": [
+      "--help",
+      "--live",
+      "--project"
+    ],
+    "fetch": [
+      "--candidate",
+      "--confirm-format-change",
+      "--help",
+      "--project"
+    ],
+    "import-review": [
+      "--by",
+      "--confirm-format-change",
+      "--file",
+      "--help",
+      "--project"
+    ],
+    "init-brief": [
+      "--confirm-format-change",
+      "--help",
+      "--project"
+    ],
+    "init-rules": [
+      "--confirm-format-change",
+      "--declaration",
+      "--force",
+      "--format",
+      "--help",
+      "--mode",
+      "--project",
+      "--responsible"
+    ],
+    "inspect": [
+      "--candidate",
+      "--confirm-format-change",
+      "--help",
+      "--max-windows",
+      "--project",
+      "--query",
+      "--url"
+    ],
+    "learn": [
+      "--by",
+      "--confirm-format-change",
+      "--from-candidate",
+      "--help",
+      "--note",
+      "--outcome",
+      "--preference",
+      "--project",
+      "--provider",
+      "--query",
+      "--shot"
+    ],
+    "library": [
+      "--confirm-format-change",
+      "--help",
+      "--limit",
+      "--project",
+      "--search"
+    ],
+    "permit": [
+      "--candidate",
+      "--confirm-format-change",
+      "--declaration",
+      "--declaration-text",
+      "--declared-by",
+      "--evidence",
+      "--help",
+      "--preset",
+      "--project"
+    ],
+    "preview": [
+      "--candidate",
+      "--confirm-format-change",
+      "--end",
+      "--help",
+      "--narration",
+      "--project",
+      "--reason",
+      "--reference-only",
+      "--scan",
+      "--start"
+    ],
+    "providers": [
+      "--help"
+    ],
+    "queue": [
+      "--action",
+      "--confirm-format-change",
+      "--done",
+      "--failed",
+      "--help",
+      "--id",
+      "--project",
+      "--provider",
+      "--reason",
+      "--skipped",
+      "--url"
+    ],
+    "references": [
+      "--confirm-format-change",
+      "--help",
+      "--project"
+    ],
+    "reject": [
+      "--candidate",
+      "--confirm-format-change",
+      "--help",
+      "--project",
+      "--reason"
+    ],
+    "remember": [
+      "--by",
+      "--candidate",
+      "--confirm-format-change",
+      "--decision",
+      "--help",
+      "--project",
+      "--reason"
+    ],
+    "resolve": [
+      "--asset-type",
+      "--captured-at",
+      "--confirm-format-change",
+      "--context-image",
+      "--creator",
+      "--file",
+      "--full-preview-file",
+      "--help",
+      "--intent",
+      "--project",
+      "--shot",
+      "--source-url",
+      "--title",
+      "--url"
+    ],
+    "review": [
+      "--confirm-format-change",
+      "--help",
+      "--project"
+    ],
+    "rules": [
+      "--confirm-format-change",
+      "--help",
+      "--project"
+    ],
+    "search": [
+      "--confirm-format-change",
+      "--dry-run",
+      "--help",
+      "--intent",
+      "--limit",
+      "--media",
+      "--project",
+      "--provider",
+      "--query",
+      "--shot"
+    ],
+    "serve": [
+      "--background",
+      "--confirm-format-change",
+      "--help",
+      "--port",
+      "--project",
+      "--stop"
+    ],
+    "status": [
+      "--help",
+      "--project"
+    ],
+    "verify": [
+      "--confirm-format-change",
+      "--help",
+      "--project"
+    ]
+  },
+  "top_level": [
+    "--env-file",
+    "--help",
+    "--version"
+  ]
+}

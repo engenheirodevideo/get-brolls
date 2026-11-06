@@ -1,9 +1,15 @@
 import base64
+import re
+import tempfile
 import unittest
 from pathlib import Path
 
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _paths import ROOT
 
+from getbrolls.ledger import Ledger
+from getbrolls.models import candidate, set_segment
+from getbrolls.rendering import render
 from getbrolls.storyboard import render_page
 
 
@@ -43,11 +49,6 @@ class StoryboardTest(unittest.TestCase):
 
 def render_one(**overrides):
     """Um candidato de YouTube renderizado pelo pipeline real, do ledger ao HTML."""
-    import tempfile
-
-    from getbrolls.ledger import Ledger
-    from getbrolls.models import candidate, set_segment
-    from getbrolls.rendering import render
 
     with tempfile.TemporaryDirectory() as d:
         ledger = Ledger(d)
@@ -104,11 +105,6 @@ class StoryboardV2Test(unittest.TestCase):
     """The generator ships the approved V2 template (source card, speech bubble, decisions)."""
 
     def render_two(self):
-        import tempfile
-
-        from getbrolls.ledger import Ledger
-        from getbrolls.models import candidate, set_segment
-        from getbrolls.rendering import render
 
         with tempfile.TemporaryDirectory() as d:
             ledger = Ledger(d)
@@ -210,7 +206,8 @@ class PanelStringsSnapshotTest(unittest.TestCase):
         page = self.page()
         self.assertIn('title="Marca o trecho como aprovado. Depois eu baixo ele pra sua pasta.">Aprovar</button>', page)
         self.assertIn(
-            'title="Você escreve o que mudar (outro pedaço do vídeo, ou outro vídeo) e eu refaço.">Pedir ajuste</button>',
+            'title="Você escreve o que mudar (outro pedaço do vídeo, ou outro vídeo) e eu refaço.">'
+            "Pedir ajuste</button>",
             page,
         )
         self.assertIn('title="Descarta o trecho. Eu não baixo ele.">Reprovar</button>', page)
@@ -219,7 +216,8 @@ class PanelStringsSnapshotTest(unittest.TestCase):
         js = (self.ASSETS / "review.js").read_text(encoding="utf-8")
         self.assertIn('status.textContent = "Me conta em uma linha o que você queria.";', js)
         self.assertIn('wanted() === "changes" ? "Confirmar pedido de ajuste" : "Confirmar: procure outro vídeo"', js)
-        self.assertIn('note("Não consegui salvar no projeto; baixei o arquivo em vez disso.");', js)
+        self.assertIn('const fallback = "Não consegui salvar no projeto; baixei o arquivo em vez disso.";', js)
+        self.assertIn('note(error.reason ? fallback + " Motivo: " + error.reason : fallback);', js)
         self.assertIn('"Decisões salvas em getbrolls-review.json (na sua pasta de Downloads). "', js)
         self.assertIn('"Agora volte à conversa e diga onde salvou."', js)
         self.assertIn('copy.textContent = "Copiar caminho";', js)
@@ -231,6 +229,16 @@ class PanelStringsSnapshotTest(unittest.TestCase):
             ("alternative", "Pedi outro vídeo"),
         ):
             self.assertIn(f'{state}: "{label}"', js)
+
+    def test_a_refused_save_shows_the_server_reason_after_the_download(self):
+        """O `serve` responde a gravação recusada com `{"error": …}`; a página lê esse
+        motivo e só o escreve depois do download, que limpa o aviso ao terminar."""
+        js = (self.ASSETS / "review.js").read_text(encoding="utf-8")
+        self.assertIn(".catch(() => ({}))", js)
+        self.assertIn("throw Object.assign(new Error(String(response.status)), { reason: body.error });", js)
+        failure = js[js.index(".catch((error) => {") :]
+        failure = failure[: failure.index("return;")]
+        self.assertLess(failure.index("download(result);"), failure.index("note(error.reason"))
 
     def test_the_live_region_is_mounted_empty_at_load_without_a_timer(self):
         """Determinismo: a região viva existe desde o load e o export só troca o texto."""
@@ -248,7 +256,6 @@ class PanelStringsSnapshotTest(unittest.TestCase):
 
     def test_the_panel_column_has_no_fixed_width_that_would_overflow_375px(self):
         """375 px sem overflow: nada no painel pode ter largura fixa maior que isso."""
-        import re
 
         css = (self.ASSETS / "review.css").read_text(encoding="utf-8")
         for value in re.findall(r"(?:^|[;{])\s*(?:min-)?width:\s*(\d+)px", css):

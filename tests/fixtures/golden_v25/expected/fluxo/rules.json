@@ -1,0 +1,67 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"rules\", \"status\": \"success\", \"state_committed\": false, \"recovered\": false, \"warnings\": [], \"duration_ms\": \"<MS>\"}"
+  ]
+ },
+ "argv": [
+  "rules",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "rules",
+ "exit": 0,
+ "files": {},
+ "stderr": null,
+ "stdout": {
+  "json": {
+   "asset_types": [
+    "video",
+    "image",
+    "news_screenshot",
+    "web_screenshot"
+   ],
+   "blocked_domains": [],
+   "browser": {
+    "desktop_height": 900,
+    "desktop_width": 1440,
+    "full_page": false,
+    "mobile_height": 844,
+    "mobile_width": 390,
+    "viewport": "mobile"
+   },
+   "copyright": {
+    "declaration": null,
+    "mode": "per_item_evidence",
+    "responsible_person": null
+   },
+   "editorial_rules": [],
+   "preferred_domains": [],
+   "preferred_providers": {
+    "illustrative": [
+     "pexels",
+     "pixabay"
+    ],
+    "literal": [
+     "youtube",
+     "commons",
+     "nasa"
+    ]
+   },
+   "rules_warnings": [],
+   "sources": {
+    "asset_types": "<T>/work/proj/RULES.md",
+    "blocked_domains": "<T>/work/proj/RULES.md",
+    "browser": "<T>/work/proj/RULES.md",
+    "copyright": "<T>/work/proj/RULES.md",
+    "editorial_rules": "<T>/work/proj/RULES.md",
+    "preferred_domains": "<T>/work/proj/RULES.md",
+    "preferred_providers": "<T>/work/proj/RULES.md",
+    "version": "<T>/work/proj/RULES.md",
+    "video_format": "<T>/work/proj/RULES.md"
+   },
+   "version": 1,
+   "video_format": "native"
+  }
+ }
+}

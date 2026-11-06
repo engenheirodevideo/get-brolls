@@ -1,0 +1,4 @@
+{"schema": "getbrolls.markers/1", "updated": "2026-09-30T12:00:00.000000+00:00", "time_unit": "s",
+ "markers": [{"id": "m_3f9a0c1d2e", "media_id": "9f86d081884c7d65", "scene": null, "start": 4.2, "end": null,
+              "name": "gancho forte", "color": "GREEN", "comment": null,
+              "producer": {"tool": "whisper_local", "model": "large-v3", "version": "0.3.0"}}]}

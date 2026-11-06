@@ -1,24 +1,25 @@
 import json
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
-import _paths  # noqa: F401  (efeito de import: insere scripts/ em sys.path; ROOT é de getbrolls.rules, não deste helper)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+
+# efeito de import: insere scripts/ em sys.path; ROOT é de getbrolls.rules, não deste helper
+import _paths  # noqa: F401  # pylint: disable=unused-import
 from _media import synth_image
+from _paths import CLI_ARGV
 
 from getbrolls.browser import plan
 from getbrolls.http import _scrub
 from getbrolls.ledger import Ledger
 from getbrolls.memory import remember
-from getbrolls.models import approve, candidate, set_segment
-from getbrolls.rules import ROOT, allowed, format_report, load_rules
-
-CLI = ROOT / "scripts/gb.py"
+from getbrolls.models import approve, candidate, set_segment, signature
+from getbrolls.review import import_review, project_id, review_epoch
+from getbrolls.rules import allowed, format_report, load_rules, sync_formats
 
 
 class RulesTests(unittest.TestCase):
@@ -69,19 +70,16 @@ class RulesTests(unittest.TestCase):
             set_segment(c, 0, 1)
             led.add(c)
             with self.assertRaises(ValueError):
-                remember(led, c, "approved", "Good", "Human")
-            approve(c, "Human")
-            remember(led, c, "approved", "Good", "Human")
-            remember(led, c, "rejected", "Bad fit elsewhere", "Human")
+                remember(led, c, "approved", "Good", "reviewer")
+            approve(c, "reviewer")
+            remember(led, c, "approved", "Good", "reviewer")
+            remember(led, c, "rejected", "Bad fit elsewhere", "reviewer")
             self.assertEqual(
                 len(json.loads((led.root / "references.json").read_text(encoding="utf-8"))["items"]),
                 2,
             )
 
     def test_rule_changes_invalidate_and_block_import(self):
-        from getbrolls.models import signature
-        from getbrolls.review import import_review, project_id, review_epoch
-        from getbrolls.rules import sync_formats
 
         with tempfile.TemporaryDirectory() as d:
             led = Ledger(d)
@@ -89,7 +87,7 @@ class RulesTests(unittest.TestCase):
             c = candidate("local", "x", "x", "https://example.org/a")
             set_segment(c, 0, 1)
             led.add(c)
-            approve(c, "Human")
+            approve(c, "reviewer")
             led.save("fixture")
             data = {
                 "type": "getbrolls-review",
@@ -103,7 +101,7 @@ class RulesTests(unittest.TestCase):
             path.write_text(json.dumps(data), encoding="utf-8")
             r["blocked_domains"] = ["example.org"]
             with self.assertRaisesRegex(ValueError, "bloqueado"):
-                import_review(led, path, "Human", r)
+                import_review(led, path, "reviewer", r)
             r["video_format"] = "reels"
             # A mudança derruba uma aprovação humana: só passa com o sim explícito.
             sync_formats(led, r, confirm=True)
@@ -122,13 +120,13 @@ class RulesTests(unittest.TestCase):
 
             def call(*args, ok=True):
                 run = subprocess.run(
-                    [sys.executable, str(CLI), *map(str, args), "--project", d],
+                    [*CLI_ARGV, *map(str, args), "--project", d],
                     text=True,
                     capture_output=True,
                     encoding="utf-8",
                     check=False,
                 )
-                self.assertEqual(run.returncode, 0 if ok else 2, run.stderr)
+                self.assertEqual(run.returncode, 0 if ok else 1, run.stderr)
                 return json.loads(run.stdout if ok else run.stderr)
 
             call("init-rules")
@@ -152,7 +150,7 @@ class RulesTests(unittest.TestCase):
                 "approve",
                 *base,
                 "--by",
-                "Human",
+                "reviewer",
                 "--statement",
                 "Aprovo esta imagem para o vídeo.",
             )
@@ -160,7 +158,7 @@ class RulesTests(unittest.TestCase):
             r = load_rules(d)
             r["copyright"] = {
                 "mode": "user_declaration",
-                "responsible_person": "Fixture User",
+                "responsible_person": "reviewer",
                 "declaration": "Synthetic test image authored locally.",
             }
             (root / "RULES.md").write_text("```json\n" + json.dumps(r) + "\n```", encoding="utf-8")
@@ -186,13 +184,12 @@ class FormatChangeGateTests(unittest.TestCase):
         c["media"].update(width=1920, height=1080)
         set_segment(c, 0, 1)
         c["format"] = format_report(c, rules)
-        approve(c, "Human", "chat", "Aprovo este trecho para o vídeo.")
+        approve(c, "reviewer", "chat", "Aprovo este trecho para o vídeo.")
         ledger.add(c)
         ledger.save("approve", c)
         return ledger, rules
 
     def test_change_that_invalidates_approvals_aborts_and_lists_the_items(self):
-        from getbrolls.rules import sync_formats
 
         with tempfile.TemporaryDirectory() as folder:
             ledger, rules = self._project_with_approved_item(folder)
@@ -206,7 +203,6 @@ class FormatChangeGateTests(unittest.TestCase):
             self.assertEqual("approved", ledger.data["items"][0]["approval"]["status"])
 
     def test_the_same_change_goes_through_once_confirmed(self):
-        from getbrolls.rules import sync_formats
 
         with tempfile.TemporaryDirectory() as folder:
             ledger, rules = self._project_with_approved_item(folder)
@@ -216,7 +212,6 @@ class FormatChangeGateTests(unittest.TestCase):
             self.assertEqual("reels", ledger.data["items"][0]["format"]["target"])
 
     def test_a_change_without_approvals_never_needs_the_flag(self):
-        from getbrolls.rules import sync_formats
 
         with tempfile.TemporaryDirectory() as folder:
             ledger = Ledger(folder)
@@ -237,9 +232,10 @@ class FormatChangeGateTests(unittest.TestCase):
             rules["video_format"] = "reels"
             path.write_text("```json\n" + json.dumps(rules) + "\n```", encoding="utf-8")
             proc = subprocess.run(
-                [sys.executable, str(CLI), "status", "--project", folder],
+                [*CLI_ARGV, "status", "--project", folder],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 check=False,
             )
             self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
@@ -256,17 +252,19 @@ class FormatChangeGateTests(unittest.TestCase):
             path.write_text("```json\n" + json.dumps(rules) + "\n```", encoding="utf-8")
             for command in (["references"], ["inspect", "--url", "https://example.org/a"]):
                 with self.subTest(command=command[0]):
-                    proc = subprocess.run(  # noqa: PLW1510 - only stdout/stderr matter here, exit code is not asserted
-                        [sys.executable, str(CLI), *command, "--project", folder],
+                    # Só stdout/stderr importam aqui; o código de saída não é verificado.
+                    proc = subprocess.run(  # noqa: PLW1510  # pylint: disable=subprocess-run-check
+                        [*CLI_ARGV, *command, "--project", folder],
                         capture_output=True,
                         text=True,
+                        encoding="utf-8",
                     )
                     self.assertNotIn("--confirm-format-change", proc.stdout + proc.stderr)
             # A aprovação segue de pé: a consulta não sincroniza formato nenhum.
             self.assertEqual("approved", Ledger(folder).data["items"][0]["approval"]["status"])
             # Um comando de escrita continua barrado até o sim explícito.
             blocked = subprocess.run(
-                [sys.executable, str(CLI), "review", "--project", folder],
+                [*CLI_ARGV, "review", "--project", folder],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

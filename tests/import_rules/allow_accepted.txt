@@ -1,0 +1,21 @@
+# Function-level imports that go up a layer: deferred seams, each a lazy lookup.
+# Moving the target down would force the caller up a layer and create a module-level cycle.
+F brief -> sdk.loader | Deferred seam: lazy function-level lookup of a higher-layer module.
+F config -> env_loader | Deferred seam: lazy function-level lookup of a higher-layer module, for `installed_env`, which `sdk.loader` (below `env_loader`) still reads through `config`. The target also imports the caller, so a module-level import would close a cycle.
+F delivery_render -> providers | Deferred seam: lazy function-level lookup of a higher-layer module.
+F delivery_render -> sdk.loader | Deferred seam: lazy function-level lookup of a higher-layer module.
+F delivery_sweep -> ledger | Deferred seam: lazy function-level lookup of a higher-layer module.
+F guidance -> library | Deferred seam: lazy function-level lookup of a higher-layer module.
+F media -> ledger | Deferred seam: lazy function-level lookup of a higher-layer module.
+F providers -> sdk.loader | Deferred seam: lazy function-level lookup of a higher-layer module.
+F refs -> assets | Deferred seam: lazy function-level lookup of a higher-layer module.
+F roteiro -> sdk.loader | Deferred seam: lazy function-level lookup of a higher-layer module.
+F rules -> sdk.loader | Deferred seam: upward L4->L5 edge, kept function-level so rules stays below the sdk loader.
+F runtime -> layout | Deferred seam: lazy function-level lookup of a higher-layer module. The target also imports the caller, so a module-level import would close a cycle.
+F sdk.contracts -> analysis | Deferred seam: lazy function-level lookup of a higher-layer module.
+F sdk.contracts -> ledger | Deferred seam: lazy function-level lookup of a higher-layer module.
+F sdk.registry -> presets | Deferred seam: lazy function-level lookup of a higher-layer module.
+F sdk.registry -> providers | Deferred seam: lazy function-level lookup of a higher-layer module. The target also imports the caller, so a module-level import would close a cycle.
+F sdk.registry -> sdk.loader | Deferred seam: lazy function-level lookup of a higher-layer module.
+F sdk.testing -> export_folder | Deferred seam: lazy function-level lookup of a higher-layer module.
+F sdk.testing -> presets | Deferred seam: lazy function-level lookup of a higher-layer module.

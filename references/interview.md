@@ -26,6 +26,12 @@ Para quando o projeto ainda não tem `BRIEF.md` e alguém pediu b-roll. O objeti
 - Pare no teto de **sete perguntas**, sempre.
 - **Dois "tanto faz" / "faz aí" / "confia" seguidos**: pare de perguntar, aplique os defaults, escreva o arquivo e **mostre o que você assumiu** em três a cinco linhas, pedindo só correção. Não repita a pergunta com outras palavras.
 
+## Se já houver ROTEIRO.md do getbrolls
+
+Vale só para o `ROTEIRO.md` cujo frontmatter tem `type: roteiro` (o que `roteiro --action new` cria). Um roteiro que a pessoa escreveu por conta própria, sem esse frontmatter, não muda nada: siga a entrevista completa, com pelo menos um beat.
+
+O roteiro é dono dos beats. Pule as perguntas 3 e 4 (fala e alvo vêm das cenas), faça só 1, 2, 5, 6 e 7, pare quando 1 e 7 estiverem respondidas e escreva `"beats": []` no BRIEF.md. O `brief --validate` aceita a lista vazia porque o projeto tem o roteiro do getbrolls; os beats entram com `roteiro --action sync` depois da revisão da pessoa. Não copie cena para beat à mão: o sync criaria beat repetido.
+
 ## Defaults quando a pessoa não decide
 
 | Campo | Default |
@@ -39,14 +45,14 @@ Para quando o projeto ainda não tem `BRIEF.md` e alguém pediu b-roll. O objeti
 
 Default não é invenção: ele fica visível no arquivo e na mensagem de devolução, e a pessoa pode mudar qualquer um. O que **nunca** tem default é declaração de responsabilidade preenchida em nome de alguém.
 
-**Quando a pessoa nomeia a plataforma, o RULES.md muda junto.** Se ela disse "Reel", "Stories", "Shorts" (→ `reels`) ou "vídeo horizontal", "YouTube", "TikTok no computador" (→ `horizontal`), esse é o formato do vídeo — e o `video_format` do RULES.md, que nasce em `native`, tem que dizer o mesmo **antes** de você validar. Rode `init-rules --format reels --force --project ...` (ou `--format horizontal`) junto com o `init-brief`, e só então `brief --validate`. Pular isso faz o `brief` devolver um conflito de formato que parece um erro do arquivo quando é só o default do RULES.md que ninguém alinhou — e o conflito bloqueia a revisão mais adiante.
+**Quando a pessoa nomeia a plataforma, o RULES.md muda junto.** Se ela disse "Reel", "Stories", "Shorts" (→ `reels`) ou "vídeo horizontal", "YouTube", "TikTok no computador" (→ `horizontal`), esse é o formato do vídeo — e o `video_format` do RULES.md, que nasce em `native`, tem que dizer o mesmo **antes** de você validar. Rode `init-rules --format reels --force --project PROJETO` (ou `--format horizontal`) junto com o `init-brief`, e só então `brief --validate`. Pular isso faz o `brief` devolver um conflito de formato que parece um erro do arquivo quando é só o default do RULES.md que ninguém alinhou — e o conflito bloqueia a revisão mais adiante.
 
 ## Depois da entrevista
 
-1. Escreva o `BRIEF.md` na pasta do projeto (use `init-brief --project ...` para partir do modelo, ou escreva o arquivo direto — um único bloco ```json).
-2. Rode `brief --validate --project ...` e conserte o que ele apontar. **Só busque depois que isso passar.**
+1. Escreva o `BRIEF.md` na pasta do projeto (use `init-brief --project PROJETO` para partir do modelo, ou escreva o arquivo direto — um único bloco ```json).
+2. Rode `brief --validate --project PROJETO` e conserte o que ele apontar. **Só busque depois que isso passar.**
 3. Devolva o brief em poucas linhas usando o formato de `templates-de-resposta.md` (a mesma voz dos outros retornos): o que você entendeu, quantos beats, o que assumiu por default e o que falta.
-4. Colete beat a beat com `brief --beat ID --project ...`: ele entrega `search`, `resolve --shot <id>` e `preview --narration` prontos. Todo material de um beat entra com `--shot <beat.id>` — é esse campo que liga o beat ao candidato.
+4. Colete beat a beat com `brief --beat ID --project PROJETO`: ele entrega `search`, `resolve --shot ID` e `preview --narration` prontos. Todo material de um beat entra com `search --shot BEAT_ID` ou `resolve --shot BEAT_ID` — é esse campo que liga o beat ao candidato.
 5. Feche pela decisão humana de sempre: Storyboard (`review` + `import-review --by NOME`) ou fala explícita no chat (`approve --candidate ID --by NOME --channel chat --statement "frase exata"`). Nunca deduza aprovação de silêncio.
 
 ## Checkpoints — as três paradas com a pessoa
@@ -71,10 +77,11 @@ Cada checkpoint cabe em poucas linhas e termina numa pergunta fechada. Não repi
 
 - Um resumo por contact sheet, citando as células e os tempos que você olhou.
 - "Aprova todos, ou quais?"
-- Aprove exatamente os IDs que você mostrou: `approve --candidate ID1 --candidate ID2 … --by NOME --channel chat --statement "frase exata"`.
+- Aprove exatamente os IDs que você mostrou: `approve --candidate ID1 --candidate ID2 --by NOME --channel chat --statement "frase exata"`.
 - `--all` só quando todos os candidatos com prévia foram mostrados: ele pega o que ficou em disco, inclusive o que você descartou sem rejeitar.
+- Um ID rejeitado que entrar na lista volta aprovado e perde o motivo do descarte; o `--all` nunca aprova um rejeitado.
 - Silêncio nunca é aprovação. Com revisor terceiro, prefira o Storyboard (`review` + `import-review --by NOME`).
 
 ## Biblioteca entre projetos
 
-Antes de sair buscando, rode `library --search TERMO --project ...`: ela lembra buscas que renderam, fontes que falharam e trechos já usados em outros vídeos. É memória editorial, não licença — toda resposta traz `rights_not_transferable: true`, e aprovação e `permit` continuam por projeto. Depois de uma decisão útil, guarde com `learn --from-candidate ID` (exige `remember` antes), `learn --query "..." --provider FONTE --outcome hit|miss` ou `learn --preference "frase da pessoa"`. `GB_LIBRARY=off` desliga leitura e escrita.
+Antes de sair buscando, rode `library --search TERMO --project PROJETO`: ela lembra buscas que renderam, fontes que falharam e trechos já usados em outros vídeos. É memória editorial, não licença — toda resposta traz `rights_not_transferable: true`, e aprovação e `permit` continuam por projeto. Depois de uma decisão útil, guarde com `learn --from-candidate ID` (exige `remember` antes), `learn --query "…" --provider FONTE --outcome hit` (ou `miss`) ou `learn --preference "frase da pessoa"`. `GB_LIBRARY=off` desliga leitura e escrita.

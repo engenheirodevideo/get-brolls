@@ -1,0 +1,31 @@
+{
+ "appends": {},
+ "argv": [
+  "status",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "status_missing",
+ "exit": 2,
+ "files": {},
+ "stderr": {
+  "json": {
+   "app_log": null,
+   "at": "<TS>",
+   "error": "Projeto não encontrado em <T>/work/proj; nenhum arquivo foi criado.",
+   "error_code": "INVALID_DATA",
+   "hint": "Se recovery_pending=true, o próximo comando retoma a gravação. Se state_committed=true e não houver pendência, execute review para regenerar a página. Caso contrário, corrija o erro e repita.",
+   "log": "<T>/work/proj/brolls/diagnostics.jsonl",
+   "message": "Projeto não encontrado em <T>/work/proj; nenhum arquivo foi criado.",
+   "operation": "status",
+   "recovery_pending": false,
+   "repr": "ValueError('Projeto não encontrado em <T>/work/proj; nenhum arquivo foi criado.')",
+   "state_committed": false,
+   "status": "error",
+   "traceback": "<TRACEBACK>",
+   "type": "ValueError",
+   "warnings": []
+  }
+ },
+ "stdout": null
+}

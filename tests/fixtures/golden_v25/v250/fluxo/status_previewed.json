@@ -1,0 +1,160 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"status\", \"status\": \"success\", \"state_committed\": false, \"warnings\": [], \"duration_ms\": \"<MS>\"}"
+  ]
+ },
+ "argv": [
+  "status",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "status_previewed",
+ "exit": 0,
+ "files": {},
+ "stderr": null,
+ "stdout": {
+  "json": {
+   "counts": {
+    "approved": 0,
+    "candidates": 1,
+    "delivered": 0,
+    "pending": 1,
+    "permitted": 0,
+    "previews": 1,
+    "rejected": 0,
+    "verified": 0
+   },
+   "format_pending": 0,
+   "items": [
+    {
+     "approval": "pending",
+     "format_pending": false,
+     "id": "local:f6c96bb15a4f7e25:shot:abertura",
+     "output": null,
+     "preview": true,
+     "provider": "local",
+     "rejection_reason": null,
+     "rights": "unknown",
+     "segment": {
+      "end_s": 1.5,
+      "revision": 1,
+      "start_s": 0.5
+     },
+     "source_url": null,
+     "state": "awaiting_approval",
+     "title": "original.mp4"
+    }
+   ],
+   "journal": {
+    "events": 3,
+    "last": {
+     "at": "<TS>",
+     "id": null,
+     "operation": "project_identity",
+     "revision": null,
+     "state": null,
+     "transaction": "<UUID:3>:0"
+    },
+    "recovered_write": false
+   },
+   "log": "<T>/work/proj/brolls/getbrolls.log",
+   "project": "<T>/work/proj/brolls",
+   "queue": null,
+   "references": 0,
+   "references_error": null,
+   "review_page": "<T>/work/proj/brolls/review.html",
+   "rules_error": null,
+   "serve": {
+    "pid": null,
+    "pid_file": null,
+    "port": null,
+    "running": false,
+    "urls": []
+   },
+   "stages": {
+    "approved": [],
+    "candidates": [
+     "local:f6c96bb15a4f7e25:shot:abertura"
+    ],
+    "delivered": [],
+    "pending": [
+     "local:f6c96bb15a4f7e25:shot:abertura"
+    ],
+    "permitted": [],
+    "previews": [
+     "local:f6c96bb15a4f7e25:shot:abertura"
+    ],
+    "rejected": [],
+    "verified": []
+   },
+   "summary": {
+    "brief": {
+     "beats": 1,
+     "blocked": 0,
+     "covered": 1,
+     "missing": 0
+    },
+    "do": {
+     "blocking_human": true,
+     "command": "<PYNAME> \"<CODE>/scripts/gb.py\" approve --project <T>/work/proj --candidate local:f6c96bb15a4f7e25:shot:abertura --by NOME --channel chat --statement \"FRASE EXATA DITA POR ELE\"",
+     "for_human": "Agora é com você: vou subir o Storyboard com `serve --background` e te mandar o endereço que esse comando imprimir (a porta muda quando a padrão está ocupada). Decida lá e clique em “Salvar decisões” — elas ficam dentro do projeto, é só voltar aqui e dizer “salvei” que eu rodo `import-review --by SEU NOME`. Se preferir resolver pelo chat, me diga quem aprova e a frase exata. Sem isso eu não coleto nada.",
+     "step": "approve",
+     "url": null,
+     "why": "Há 1 item(ns) com prévia esperando a decisão de uma pessoa."
+    },
+    "line": "Resumi o projeto: 1 candidato encontrado, 1 prévia gerada, 1 decisão pendente, 0 decisões aprovadas, 0 decisões rejeitadas, 0 itens com permit registrado, 0 itens entregues, 0 itens verificados.",
+    "next": "Peça a decisão humana: há prévia esperando alguém decidir, pelo Storyboard (review + import-review) ou pela fala no chat (approve --candidate ID --by NOME --channel chat --statement \"frase\").",
+    "stages": [
+     {
+      "count": 1,
+      "items": [
+       "local:f6c96bb15a4f7e25:shot:abertura"
+      ],
+      "stage": "candidatos encontrados"
+     },
+     {
+      "count": 1,
+      "items": [
+       "local:f6c96bb15a4f7e25:shot:abertura"
+      ],
+      "stage": "prévias geradas"
+     },
+     {
+      "count": 1,
+      "items": [
+       "local:f6c96bb15a4f7e25:shot:abertura"
+      ],
+      "stage": "decisões pendentes"
+     },
+     {
+      "count": 0,
+      "items": [],
+      "stage": "decisões aprovadas"
+     },
+     {
+      "count": 0,
+      "items": [],
+      "stage": "decisões rejeitadas"
+     },
+     {
+      "count": 0,
+      "items": [],
+      "stage": "itens com permit registrado"
+     },
+     {
+      "count": 0,
+      "items": [],
+      "stage": "itens entregues"
+     },
+     {
+      "count": 0,
+      "items": [],
+      "stage": "itens verificados"
+     }
+    ],
+    "warnings": []
+   }
+  }
+ }
+}

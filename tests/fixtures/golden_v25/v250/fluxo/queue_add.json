@@ -1,0 +1,63 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"queue\", \"status\": \"success\", \"state_committed\": false, \"warnings\": [], \"duration_ms\": \"<MS>\"}"
+  ],
+  "work/proj/brolls/getbrolls.log": [
+   "level=INFO logger=getbrolls.cli event=command_start command=queue read_only=False options=action,provider,url,project",
+   "level=INFO logger=getbrolls.cli event=command_end command=queue status=ok error_code=- ms=<MS>"
+  ]
+ },
+ "argv": [
+  "queue",
+  "--action",
+  "add",
+  "--provider",
+  "instagram",
+  "--url",
+  "https://www.instagram.com/reel/ABC123/",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "queue_add",
+ "exit": 0,
+ "files": {
+  "work/proj/work/queue.json": {
+   "bytes": 320,
+   "lines": [
+    "{",
+    "  \"schema_version\": 1,",
+    "  \"items\": [",
+    "    {",
+    "      \"id\": \"instagram:ABC123\",",
+    "      \"provider\": \"instagram\",",
+    "      \"url\": \"https://www.instagram.com/reel/ABC123/\",",
+    "      \"status\": \"pending\",",
+    "      \"added_at\": \"<TS>\",",
+    "      \"started_at\": null,",
+    "      \"finished_at\": null,",
+    "      \"reason\": null",
+    "    }",
+    "  ],",
+    "  \"providers\": {}",
+    "}"
+   ],
+   "sha256": "52b07b6c75925b7ccfe53af5667936d5f81f50742e2179dae114ab084f45d9f2"
+  }
+ },
+ "stderr": null,
+ "stdout": {
+  "json": {
+   "action": "add",
+   "added": [
+    "instagram:ABC123"
+   ],
+   "duplicates": [],
+   "pending": 1,
+   "queue": "<T>/work/proj/work/queue.json",
+   "summary": {
+    "line": "Enfileirei 1 URL(s); 0 repetida(s); 1 pendente(s)."
+   }
+  }
+ }
+}

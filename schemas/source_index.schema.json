@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls source index v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/source_index.schema.json",
+  "description": "`.getbrolls-sources/index.json`: o cache privado de fontes, `{id do candidato: [entradas]}` mais o campo de versão. Segue leniente na leitura: o que não lê vira índice vazio; o escritor valida.",
+  "type": "object",
+  "additionalProperties": {
+    "type": "array",
+    "items": {
+      "type": "object"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    }
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls instagram summary v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/instagram_summary.schema.json",
+  "description": "O resumo (--summary-json) do lote do Instagram, regravado a cada passo: quantos pares o lote tinha (count), quantos terminaram (done), falharam (failed) ou foram pulados (skipped), o resultado de cada par em results, o que parou o lote (stopped_by, null quando terminou) e se uma recusa 401/403/429 deixou de ser registrada em work/queue.json porque o projeto estava ocupado (refusal_not_recorded). Só o core grava; o objeto fica aberto porque cada resultado traz os campos do par.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "done": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "failed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "skipped": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "stopped_by": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "refusal_not_recorded": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema_version",
+    "count",
+    "done",
+    "failed",
+    "skipped",
+    "results",
+    "stopped_by",
+    "refusal_not_recorded"
+  ]
+}

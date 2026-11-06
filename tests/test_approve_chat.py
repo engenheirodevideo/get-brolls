@@ -2,15 +2,16 @@
 
 import json
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
-from _paths import CLI, ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+
+# efeito de import: insere scripts/ em sys.path
+from _paths import CLI, CLI_ARGV, ROOT  # noqa: F401  # pylint: disable=unused-import
 
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, now, set_segment, signature
@@ -59,7 +60,7 @@ class ApproveChatTests(unittest.TestCase):
                 "--candidate",
                 "local:b",
                 "--by",
-                "Ana",
+                "reviewer",
                 "--statement",
                 "Aprovo esses dois que você me mostrou.",
                 "--project",
@@ -81,7 +82,7 @@ class ApproveChatTests(unittest.TestCase):
                 "--candidate",
                 "local:a",
                 "--by",
-                "Ana",
+                "reviewer",
                 "--statement",
                 "Aprovo o primeiro.",
                 "--project",
@@ -91,6 +92,42 @@ class ApproveChatTests(unittest.TestCase):
             self.assertEqual("local:a", result["id"])
             self.assertEqual("approved", result["approval"]["status"])
             self.assertEqual(1, result["segment"]["revision"])
+
+    def test_single_approve_refuses_a_candidate_without_preview(self):
+        """Um ID só passa pelo mesmo portão do lote; sem prévia, ninguém viu o trecho."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            failed = run_cli(
+                "approve", "--candidate", "local:c", "--by", "reviewer", "--statement", "Aprovo.", project=tmp, expect=1
+            )
+            self.assertEqual("INVALID_DATA", failed["error_code"])
+            self.assertIn("local:c", failed["message"])
+            self.assertIn("sem prévia gerada; rode preview antes", failed["message"])
+            self.assertEqual("pending", Ledger(tmp).get("local:c")["approval"]["status"])
+
+    def test_single_approve_with_a_new_interval_needs_a_new_preview(self):
+        """Mudar o intervalo no `approve` derruba a prévia: o trecho novo ninguém viu."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(tmp)
+            failed = run_cli(
+                "approve",
+                "--candidate",
+                "local:a",
+                "--start",
+                "0",
+                "--end",
+                "0.5",
+                "--by",
+                "reviewer",
+                "--statement",
+                "Aprovo.",
+                project=tmp,
+                expect=1,
+            )
+            self.assertIn("sem prévia gerada; rode preview antes", failed["message"])
+            fresh = Ledger(tmp).get("local:a")
+            self.assertEqual("pending", fresh["approval"]["status"])
+            self.assertEqual({"start_s": 0, "end_s": 1, "revision": 1}, fresh["segment"])
 
     def test_an_unknown_id_in_the_list_is_an_error_not_a_silent_skip(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -102,12 +139,12 @@ class ApproveChatTests(unittest.TestCase):
                 "--candidate",
                 "local:inexistente",
                 "--by",
-                "Ana",
+                "reviewer",
                 "--statement",
                 "Aprovo os dois.",
                 "--project",
                 tmp,
-                expect=2,
+                expect=1,
             )
             self.assertIn("local:inexistente", json.dumps(failed, ensure_ascii=False))
             self.assertEqual("pending", Ledger(tmp).get("local:a")["approval"]["status"])
@@ -119,7 +156,7 @@ class ApproveChatTests(unittest.TestCase):
                 "approve",
                 "--all",
                 "--by",
-                "Ana",
+                "reviewer",
                 "--statement",
                 "Aprovei todos.",
                 "--project",
@@ -140,7 +177,7 @@ class ApproveChatTests(unittest.TestCase):
                 "approve",
                 "--all",
                 "--by",
-                "Ana",
+                "reviewer",
                 "--statement",
                 "Aprovo os dois primeiros trechos.",
                 "--project",
@@ -163,7 +200,7 @@ class ApproveChatTests(unittest.TestCase):
                 "approve",
                 "--all",
                 "--by",
-                "Ana",
+                "reviewer",
                 "--statement",
                 "Aprovo os dois primeiros trechos.",
                 "--project",
@@ -187,7 +224,7 @@ class ApproveChatTests(unittest.TestCase):
                 "--end",
                 1,
                 "--by",
-                "Ana",
+                "reviewer",
                 "--channel",
                 "chat",
                 "--statement",
@@ -204,7 +241,7 @@ class ApproveChatTests(unittest.TestCase):
                 "--end",
                 2,
                 "--by",
-                "Ana",
+                "reviewer",
                 "--channel",
                 "storyboard",
                 "--project",
@@ -231,15 +268,15 @@ class ApproveChatTests(unittest.TestCase):
                 "--candidate",
                 "local:a",
                 "--by",
-                "Ana",
+                "reviewer",
                 "--statement",
                 "Aprovo.",
                 "--project",
                 tmp,
-                expect=2,
+                expect=1,
             )
             self.assertIn("--all", error["error"])
-            missing = run_cli("approve", "--by", "Ana", "--statement", "Aprovo.", "--project", tmp, expect=2)
+            missing = run_cli("approve", "--by", "reviewer", "--statement", "Aprovo.", "--project", tmp, expect=1)
             self.assertIn("--candidate", missing["error"])
 
 
@@ -286,7 +323,7 @@ class RejectManyTests(unittest.TestCase):
                 "local:nao-existe",
                 "--project",
                 tmp,
-                expect=2,
+                expect=1,
             )
             self.assertIn("local:nao-existe", error["error"])
             # Validação antes da escrita: o item válido da mesma leva não mudou.
@@ -309,7 +346,7 @@ class RejectManyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fixture(tmp)
             done = subprocess.run(
-                [sys.executable, str(CLI), "reject", "--project", tmp],
+                [*CLI_ARGV, "reject", "--project", tmp],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -329,7 +366,7 @@ class ApprovedItemsCarryTheAuditTrailTests(unittest.TestCase):
                 "approve",
                 "--all",
                 "--by",
-                "Ana Moreira",
+                "reviewer",
                 "--statement",
                 "Aprovo os dois que você mostrou.",
                 "--project",
@@ -356,7 +393,7 @@ class ApprovedItemsCarryTheAuditTrailTests(unittest.TestCase):
                 "--candidate",
                 "local:b",
                 "--by",
-                "Ana Moreira",
+                "reviewer",
                 "--statement",
                 "Aprovo esses dois.",
                 "--project",
@@ -380,13 +417,13 @@ class ChatStatementRequiredTests(unittest.TestCase):
                 "--end",
                 1,
                 "--by",
-                "Ana",
+                "reviewer",
                 "--project",
                 tmp,
-                expect=2,
+                expect=1,
             )
             self.assertIn("--statement", single["error"])
-            batch = run_cli("approve", "--all", "--by", "Ana", "--project", tmp, expect=2)
+            batch = run_cli("approve", "--all", "--by", "reviewer", "--project", tmp, expect=1)
             self.assertIn("--statement", batch["error"])
             # Nada foi gravado: a recusa acontece antes de tocar no ledger.
             self.assertEqual("pending", Ledger(tmp).get("local:a")["approval"]["status"])
@@ -400,7 +437,7 @@ class ChatStatementRequiredTests(unittest.TestCase):
                 "--channel",
                 "storyboard",
                 "--by",
-                "Ana",
+                "reviewer",
                 "--project",
                 tmp,
             )
@@ -414,7 +451,7 @@ class ReviewEpochCompatibilityTests(unittest.TestCase):
         c["preview"]["gif_path"] = "previews/a.gif"
         c["approval"] = {
             "status": "approved",
-            "by": "Ana",
+            "by": "reviewer",
             "at": now(),
             "revision": c["segment"]["revision"],
             "signature": signature(c),
@@ -458,7 +495,7 @@ class ReviewEpochCompatibilityTests(unittest.TestCase):
             }
             path = Path(tmp) / "board.json"
             path.write_text(json.dumps(export), encoding="utf-8")
-            result = import_review(Ledger(tmp), str(path), "Ana")
+            result = import_review(Ledger(tmp), str(path), "reviewer")
             self.assertEqual(1, result["imported"])
             self.assertEqual("storyboard", Ledger(tmp).get(c["id"])["approval"]["channel"])
 

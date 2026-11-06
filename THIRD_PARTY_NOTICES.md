@@ -2,7 +2,7 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-09-15
+updated: 2026-10-31
 tags: [get-brolls]
 ---
 
@@ -18,3 +18,4 @@ A distribuição contém instruções, comandos, scripts customizados e interfac
 - yt-dlp e EJS são dependências externas, instaladas pelo instalador via PyPI; licenças próprias.
 - Os utilitários Bash e o coletor Instagram são código próprio do projeto. Não são cópias das bibliotecas yt-dlp, Playwright ou FFmpeg.
 - Playwright/navegador, Node/Deno e curl são dependências externas, não incluídas como binários.
+- O plugin oficial `hyperframes` (`plugins/bridges/`) é código próprio do projeto e só faz a ponte: não inclui o HyperFrames nem nenhuma dependência dele. O HyperFrames é instalado e executado pela pessoa, sob a licença dele; o getbrolls não o distribui nem baixa nada em nome dele.

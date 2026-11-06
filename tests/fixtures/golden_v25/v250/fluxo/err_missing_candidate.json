@@ -1,0 +1,41 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"fetch\", \"status\": \"error\", \"state_committed\": false, \"warnings\": [], \"recovery_pending\": false, \"type\": \"ValueError\", \"repr\": \"ValueError('Candidato não encontrado neste projeto.')\", \"traceback\": \"<TRACEBACK>\", \"error_code\": \"INVALID_DATA\", \"message\": \"Candidato não encontrado neste projeto.\", \"duration_ms\": \"<MS>\"}"
+  ],
+  "work/proj/brolls/getbrolls.log": [
+   "level=INFO logger=getbrolls.cli event=command_start command=fetch read_only=False options=candidate,project",
+   "level=INFO logger=getbrolls.cli event=command_end command=fetch status=error error_code=INVALID_DATA ms=<MS>"
+  ]
+ },
+ "argv": [
+  "fetch",
+  "--candidate",
+  "local:nao-existe",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "err_missing_candidate",
+ "exit": 2,
+ "files": {},
+ "stderr": {
+  "json": {
+   "app_log": "<T>/work/proj/brolls/getbrolls.log",
+   "at": "<TS>",
+   "error": "Candidato não encontrado neste projeto.",
+   "error_code": "INVALID_DATA",
+   "hint": "Se recovery_pending=true, o próximo comando retoma a gravação. Se state_committed=true e não houver pendência, execute review para regenerar a página. Caso contrário, corrija o erro e repita.",
+   "log": "<T>/work/proj/brolls/diagnostics.jsonl",
+   "message": "Candidato não encontrado neste projeto.",
+   "operation": "fetch",
+   "recovery_pending": false,
+   "repr": "ValueError('Candidato não encontrado neste projeto.')",
+   "state_committed": false,
+   "status": "error",
+   "traceback": "<TRACEBACK>",
+   "type": "ValueError",
+   "warnings": []
+  }
+ },
+ "stdout": null
+}

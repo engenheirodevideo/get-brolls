@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls runtime marker v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/runtime_marker.schema.json",
+  "description": "O marcador .getbrolls-runtime-<parte>.json na raiz de uma parte do runtime ($GB_HOME/runtime/<sha da parte>/ ou a pasta explícita de GB_RUNTIME_DIR). Quem instala grava building (ou upgrading) antes e ready por último, com troca atômica; quem lê só aceita uma parte ready do sha atual. A versão é o inteiro schema, que o código também guarda numa constante de inicialização (MARKER_SCHEMA_VERSION, lida antes de a pasta de dados existir; um teste mantém as duas iguais). schema ausente vale 1; um schema maior que o suportado é de outra versão do getbrolls: a parte não está pronta e não é desta versão (o setup recusa com o conflito de runtime em vez de montar por cima). Objeto aberto: upgraded e outros campos informativos são aditivos.",
+  "type": "object",
+  "required": [
+    "part",
+    "sha",
+    "status",
+    "python",
+    "getbrolls"
+  ],
+  "properties": {
+    "schema": {
+      "type": "integer",
+      "const": 1
+    },
+    "part": {
+      "enum": [
+        "venv",
+        "tools"
+      ]
+    },
+    "sha": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Versão da parte (sha dos arquivos de dependência); null sem os dados da instalação."
+    },
+    "status": {
+      "enum": [
+        "building",
+        "upgrading",
+        "ready"
+      ]
+    },
+    "python": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Python base que criou a .venv; null na .tools."
+    },
+    "getbrolls": {
+      "type": "string"
+    },
+    "upgraded": {
+      "type": "object",
+      "description": "O último setup --upgrade ytdlp que mudou a versão: {yt-dlp, at}."
+    }
+  }
+}

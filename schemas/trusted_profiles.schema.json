@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls trusted profiles v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/trusted_profiles.schema.json",
+  "description": "O $GB_HOME/trusted-profiles.json: o sha256 de cada getbrolls.toml em que a pessoa confiou (profile --action trust), pela chave do caminho resolvido do arquivo. Gravado de uma vez (temporário + troca, 0600) sob a trava do sistema e lido a cada comando que acha um perfil. Estrito: schema_version ausente ou diferente do suportado, ou um documento fora deste schema, deixa o arquivo corrompido (store_corrupt) e nenhum perfil vale por ele; um store de confiança nunca afrouxa. Sem a pasta de dados do getbrolls, a leitura confere só a forma e nenhum perfil vale pelo store. Objetos abertos para campos novos.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "profiles"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "profiles": {
+      "type": "object",
+      "description": "{chave do caminho resolvido: entrada}; a chave segue o normcase do sistema.",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "sha256"
+        ],
+        "properties": {
+          "sha256": {
+            "type": "string",
+            "description": "sha256 dos bytes do getbrolls.toml confiado."
+          },
+          "trusted_at": {
+            "type": "string",
+            "description": "Quando a confiança foi gravada (ISO 8601, UTC)."
+          }
+        }
+      }
+    }
+  }
+}

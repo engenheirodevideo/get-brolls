@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls handoff v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/handoff.schema.json",
+  "description": "O handoff.json de um pacote de entrega. A raiz do pacote é handoffs/<ambiente>/<NNN>/ de um projeto de layout 1 e guarda handoff.json (este arquivo), os arquivos do core (mídia sob assets/), a pasta <ambiente>/ com os arquivos da ponte, project/ (criada pelo ambiente) e return/ (as voltas). Todo caminho é relativo à raiz do pacote; nenhum caminho absoluto, nome de pasta da máquina ou slug de cliente aparece aqui ou em outro arquivo do pacote. A mídia é citada por media_id no plano e por arquivo só em media_files (sempre sob assets/); licença nunca viaja, só licence_ref. A fala do A-ROLL viaja como áudio mais sha256 (um arquivo de media_files, apontado por speech), nunca como texto exigido no projeto do ambiente. bridge diz qual ponte escreveu a pasta <ambiente>/ e de onde ela veio (origin official; sha256 = o folder_digest da pasta do plugin oficial, o mesmo número do pin da instalação; version = a versão X.Y.Z do getbrolls). O sha256 deste arquivo fica em handoff.sha256, ao lado. Uma segunda entrega é um NNN novo que aponta a anterior em previous; nunca sobrescreve. O que é próprio de um ambiente vai em env_detail, aberto. Este subconjunto de JSON Schema não tem $ref, propertyNames, if/then nem not: o que ele não expressa é conferido em código por quem grava e por quem lê (o plano contra schemas/export_plan.schema.json; cada chave de media_files como media_id do plano, na gramática de media_id e sem dois media_id no mesmo arquivo; speech.media_id entre as chaves de media_files; files listando todo arquivo do core e da ponte fora de project/ e return/; canvas e canvas_source os dois nulos ou os dois preenchidos; o pacote sem storyboard). Objetos abertos, fora review: quem lê ignora chave desconhecida. A versão do arquivo mora em schema (getbrolls.handoff/<N>).",
+  "type": "object",
+  "required": ["schema", "id", "env", "created_at", "getbrolls_version", "project_id", "draft", "review", "recipe", "timeline", "plan", "missing", "checks", "media_files", "files", "bridge"],
+  "properties": {
+    "schema": { "const": "getbrolls.handoff/1" },
+    "id": { "type": "string", "pattern": "^[0-9]{3,9}$" },
+    "env": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$" },
+    "created_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$" },
+    "getbrolls_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "project_id": { "type": ["string", "null"], "maxLength": 64 },
+    "previous": {
+      "type": ["object", "null"],
+      "required": ["id"],
+      "description": "Opcional. A entrega anterior do mesmo ambiente, quando esta é uma segunda entrega (NNN novo; a anterior fica intacta). null ou ausente na primeira.",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[0-9]{3,9}$" }
+      }
+    },
+    "draft": {
+      "type": "object",
+      "required": ["id", "sha256"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[0-9]{3,9}$" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "review": {
+      "type": "object",
+      "required": ["sha256", "by", "channel", "at"],
+      "additionalProperties": false,
+      "description": "A última revisão válida do texto atual do roteiro. Fechado de propósito: a frase dita (statement) não viaja, e um campo a mais é recusado.",
+      "properties": {
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "by": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "channel": { "enum": ["chat"] },
+        "at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$" }
+      }
+    },
+    "recipe": {
+      "type": ["object", "null"],
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64 },
+        "version": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "timeline": {
+      "type": "object",
+      "required": ["fps", "canvas", "canvas_source", "duration_s"],
+      "description": "canvas e canvas_source são os dois nulos ou os dois preenchidos (conferido em código; este subconjunto não tem if/then).",
+      "properties": {
+        "fps": {
+          "description": "Fração num/den; null = desconhecido (o getbrolls ainda não produz fps).",
+          "type": ["object", "null"],
+          "required": ["num", "den"],
+          "properties": { "num": { "type": "integer", "minimum": 1 }, "den": { "type": "integer", "minimum": 1 } }
+        },
+        "canvas": {
+          "description": "null quando nem o project.json nem o aspecto do roteiro dizem o tamanho.",
+          "type": ["object", "null"],
+          "required": ["width", "height"],
+          "properties": { "width": { "type": "integer", "minimum": 1 }, "height": { "type": "integer", "minimum": 1 } }
+        },
+        "canvas_source": { "enum": ["project", "aspecto", null], "description": "project: o canvas do project.json; aspecto: derivado do aspecto do roteiro." },
+        "duration_s": { "type": "number", "minimum": 0 }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "required": ["export_version", "exporter", "out_dir", "scenes", "media"],
+      "additionalProperties": true,
+      "description": "Plano de export v2 inteiro (as chaves de schemas/export_plan.schema.json). Aberto aqui de propósito: quem grava confere o plano em código contra schemas/export_plan.schema.json; este nó confere o que o rascunho e a entrega leem (export_version, exporter, out_dir, scenes, media) e deixa o resto das chaves passar. out_dir é a gramática do export_plan: exports/<nome>/NNN na exportação, handoffs/<ambiente>/NNN no pacote.",
+      "properties": {
+        "export_version": { "const": 2 },
+        "exporter": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$" },
+        "out_dir": { "type": "string", "pattern": "^(exports|handoffs)/[a-z][a-z0-9_]{1,31}/[0-9]{3,}$" },
+        "scenes": { "type": "array" },
+        "media": { "type": "object" }
+      }
+    },
+    "missing": {
+      "type": "array",
+      "maxItems": 999,
+      "items": {
+        "type": "object",
+        "required": ["scene", "item", "do"],
+        "properties": {
+          "scene": { "type": "string", "pattern": "^c(?!0+$)[0-9]{2,3}$" },
+          "item": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "do": {
+            "type": "object",
+            "required": ["line", "command", "needs"],
+            "properties": {
+              "line": { "type": "string", "minLength": 1, "maxLength": 500 },
+              "command": { "type": ["string", "null"], "maxLength": 1000 },
+              "needs": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 200 } }
+            }
+          }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "maxItems": 999,
+      "items": {
+        "type": "object",
+        "required": ["code", "status", "line"],
+        "properties": {
+          "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$" },
+          "status": { "type": "string", "pattern": "^[a-z]{2,16}$", "description": "Enum aberto: warn nesta versão." },
+          "line": { "type": "string", "minLength": 1, "maxLength": 500 }
+        }
+      }
+    },
+    "media_files": {
+      "type": "object",
+      "description": "media_id → arquivo do pacote. A chave é um media_id do plano: conferido em código (plano, gramática de media_id e dois media_id nunca no mesmo arquivo), porque este subconjunto de JSON Schema não tem propertyNames. O ambiente copia estes arquivos para dentro do projeto dele e o pacote os referencia só aqui, sempre um nível sob assets/.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["file", "sha256", "bytes", "licence_ref"],
+        "properties": {
+          "file": { "type": "string", "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|(?![\\s\\S])))(?!.*//)(?!.*/(?![\\s\\S]))assets/(?!\\.)[^/\\\\:\\x00-\\x1f]{1,200}(?![\\s\\S])" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "licence_ref": {
+            "description": "null = sem arquivo de licença registrado; o pacote marca a mídia como pendente.",
+            "type": ["object", "null"],
+            "required": ["tier", "sidecar_sha256"],
+            "properties": {
+              "tier": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$" },
+              "sidecar_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            }
+          }
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "maxItems": 2000,
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": { "type": "string", "pattern": "^(?!project/|return/|handoff\\.json(?![\\s\\S]))(?!.*(?:^|/)\\.\\.?(?:/|(?![\\s\\S])))(?!.*//)(?!.*/(?![\\s\\S]))[A-Za-z0-9_][^\\\\:\\x00-\\x1f]{0,239}(?![\\s\\S])" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "bridge": {
+      "type": "object",
+      "required": ["id", "version", "origin", "sha256", "files"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$" },
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "origin": { "const": "official" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "folder_digest da pasta do plugin oficial da ponte: o mesmo número do pin que a instalação confere antes de rodá-la." },
+        "files": { "type": "array", "maxItems": 50, "items": { "type": "string", "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|(?![\\s\\S])))(?!.*//)(?!.*/(?![\\s\\S]))[a-z][a-z0-9_]{1,31}/[^\\\\:\\x00-\\x1f]{1,200}(?![\\s\\S])" } }
+      }
+    },
+    "speech": {
+      "type": ["object", "null"],
+      "required": ["media_id", "sha256"],
+      "description": "Opcional. A fala do A-ROLL: o media_id de um arquivo de media_files (conferido em código) e o sha256 dele; null quando o projeto não tem A-ROLL.",
+      "properties": {
+        "media_id": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "env_detail": { "type": "object", "description": "Opcional, aberto: o que é próprio do ambiente e a ponte quer deixar no pacote. O core não lê." }
+  }
+}

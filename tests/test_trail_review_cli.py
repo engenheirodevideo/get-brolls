@@ -12,15 +12,16 @@ produce them today, ahead of a refactor of `commands.py` `execute()`.
 import json
 import re
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 # A pasta pessoal da skill vai para um temporário: nenhum teste toca ~/.getbrolls.
-import _isolation  # noqa: F401  (efeito de import: define GB_HOME)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
 from _cli import run_cli
-from _paths import CLI, ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+
+# efeito de import: insere scripts/ em sys.path
+from _paths import CLI, CLI_ARGV, ROOT  # noqa: F401  # pylint: disable=unused-import
 
 from getbrolls.ledger import Ledger
 from getbrolls.models import candidate, set_segment
@@ -66,7 +67,7 @@ class ImportReviewHappyPathTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = project_with(tmp, "one")
             path = save_review(ledger, exported(ledger))
-            result = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp)
+            result = run_cli("import-review", "--file", str(path), "--by", "reviewer", project=tmp)
             self.assertEqual(1, result["imported"])
             self.assertEqual([], result["skipped"])
             self.assertIn("Importei 1 decisão", result["summary"]["line"])
@@ -78,7 +79,7 @@ class ImportReviewHappyPathTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = project_with(tmp, "one")
             path = save_review(ledger, exported(ledger), "20260917-120000.json")
-            result = run_cli("import-review", "--by", "Ana", project=tmp)
+            result = run_cli("import-review", "--by", "reviewer", project=tmp)
             self.assertEqual(1, result["imported"])
             self.assertEqual(str(path), result["file"])
             self.assertEqual("approved", Ledger(tmp).get("local:one")["approval"]["status"])
@@ -103,7 +104,7 @@ class ImportReviewRejectionTests(unittest.TestCase):
             )
             path = save_review(ledger, payload)
             before = ledger.path.read_bytes()
-            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=2)
+            error = run_cli("import-review", "--file", str(path), "--by", "reviewer", project=tmp, expect=1)
             self.assertEqual("Candidato não encontrado neste projeto.", error["error"])
             self.assertEqual("INVALID_DATA", error["error_code"])
             self.assertEqual(before, ledger.path.read_bytes())
@@ -114,7 +115,7 @@ class ImportReviewRejectionTests(unittest.TestCase):
             payload = exported(ledger)
             payload["items"][0]["signature"] = "0" * 64
             path = save_review(ledger, payload)
-            result = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp)
+            result = run_cli("import-review", "--file", str(path), "--by", "reviewer", project=tmp)
             self.assertEqual(1, result["imported"])
             self.assertEqual(
                 [{"id": "local:one", "reason": "signature_mismatch"}],
@@ -130,7 +131,7 @@ class ImportReviewRejectionTests(unittest.TestCase):
             payload = exported(ledger)
             payload["items"][0]["reviewEpoch"] = "0" * 64
             path = save_review(ledger, payload)
-            result = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp)
+            result = run_cli("import-review", "--file", str(path), "--by", "reviewer", project=tmp)
             self.assertEqual(1, result["imported"])
             self.assertEqual("stale_epoch", result["skipped"][0]["reason"])
             self.assertEqual("pending", Ledger(tmp).get("local:one")["approval"]["status"])
@@ -141,7 +142,7 @@ class ImportReviewRejectionTests(unittest.TestCase):
             payload = exported(ledger)
             payload["items"][0]["state"] = "bogus"
             path = save_review(ledger, payload)
-            result = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp)
+            result = run_cli("import-review", "--file", str(path), "--by", "reviewer", project=tmp)
             self.assertEqual(1, result["imported"])
             self.assertEqual("invalid_item", result["skipped"][0]["reason"])
             self.assertEqual("pending", Ledger(tmp).get("local:one")["approval"]["status"])
@@ -156,7 +157,7 @@ class ImportReviewRejectionTests(unittest.TestCase):
             path = save_review(ledger, payload)
             self.assertGreater(path.stat().st_size, 2_000_000)
             before = ledger.path.read_bytes()
-            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=2)
+            error = run_cli("import-review", "--file", str(path), "--by", "reviewer", project=tmp, expect=1)
             self.assertIn("2 MB", error["error"])
             self.assertEqual(before, ledger.path.read_bytes())
 
@@ -166,7 +167,7 @@ class ImportReviewRejectionTests(unittest.TestCase):
             path = save_review(ledger, exported(ledger))
             path.write_text("{not valid json", encoding="utf-8")
             before = ledger.path.read_bytes()
-            error = run_cli("import-review", "--file", str(path), "--by", "Ana", project=tmp, expect=2)
+            error = run_cli("import-review", "--file", str(path), "--by", "reviewer", project=tmp, expect=1)
             self.assertEqual("INVALID_DATA", error["error_code"])
             self.assertEqual(before, ledger.path.read_bytes())
 
@@ -178,7 +179,7 @@ class ImportReviewRejectionTests(unittest.TestCase):
             path = save_review(ledger, exported(ledger))
             before = ledger.path.read_bytes()
             done = subprocess.run(
-                [sys.executable, str(CLI), "import-review", "--file", str(path), "--project", tmp],
+                [*CLI_ARGV, "import-review", "--file", str(path), "--project", tmp],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -222,7 +223,7 @@ class ApproveAllMixedBatchTests(unittest.TestCase):
                 "--candidate",
                 "local:d",
                 "--by",
-                "Ana",
+                "reviewer",
                 "--statement",
                 "Aprovo d de antemão.",
                 "--project",
@@ -233,7 +234,7 @@ class ApproveAllMixedBatchTests(unittest.TestCase):
                 "approve",
                 "--all",
                 "--by",
-                "Ana",
+                "reviewer",
                 "--statement",
                 "Aprovo tudo que apareceu.",
                 "--project",
@@ -281,14 +282,14 @@ class RejectThenApproveTests(unittest.TestCase):
                 "--candidate",
                 "local:x",
                 "--by",
-                "Ana",
+                "reviewer",
                 "--statement",
                 "Aprovo este trecho agora.",
                 "--project",
                 tmp,
             )
             self.assertEqual("approved", result["approval"]["status"])
-            self.assertEqual("Ana", result["approval"]["by"])
+            self.assertEqual("reviewer", result["approval"]["by"])
 
             fresh = Ledger(tmp).get("local:x")
             self.assertEqual("approved", fresh["approval"]["status"])
@@ -297,6 +298,95 @@ class RejectThenApproveTests(unittest.TestCase):
             # successful approval supersedes it, so the item is not left looking
             # rejected and approved at the same time.
             self.assertNotIn("rejection", fresh)
+
+
+class RejectThenApproveManyTests(unittest.TestCase):
+    """Explicit ids, one or many, may re-approve a rejected item; `--all` never does."""
+
+    def project(self, tmp):
+        """`local:a` rejected with a reason, `local:b` pending; both previewed, both with an interval."""
+        ledger = Ledger(tmp)
+        for name in ("a", "b"):
+            c = candidate("local", name, f"Previewed {name}")
+            set_segment(c, 0, 1)
+            c["preview"]["gif_path"] = f"previews/{name}.gif"
+            ledger.add(c)
+        ledger.save("fixture")
+        run_cli("reject", "--candidate", "local:a", "--reason", "Motivo do descarte.", "--project", tmp)
+        return Ledger(tmp).get("local:a")["rejection"]
+
+    def test_two_explicit_ids_reapprove_a_rejected_item(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.project(tmp)
+            result = run_cli(
+                "approve",
+                "--candidate",
+                "local:a",
+                "--candidate",
+                "local:b",
+                "--by",
+                "reviewer",
+                "--statement",
+                "Aprovo os dois que vi.",
+                "--project",
+                tmp,
+            )
+            self.assertEqual(["local:a", "local:b"], result["approved"])
+            self.assertEqual([], result["skipped"])
+            fresh = Ledger(tmp).get("local:a")
+            self.assertEqual("approved", fresh["approval"]["status"])
+            self.assertEqual("approved", fresh["state"])
+            self.assertEqual("reviewer", fresh["approval"]["by"])
+            self.assertNotIn("rejection", fresh)
+
+    def test_explicit_ids_still_pass_the_gate_when_they_reapprove(self):
+        """Re-approving by id is not a way around the gate: a rejected item without a preview stays out."""
+        with tempfile.TemporaryDirectory() as tmp:
+            self.project(tmp)
+            ledger = Ledger(tmp)
+            unseen = candidate("local", "c", "Never previewed")
+            set_segment(unseen, 0, 1)
+            ledger.add(unseen)
+            ledger.save("fixture")
+            run_cli("reject", "--candidate", "local:c", "--project", tmp)
+
+            result = run_cli(
+                "approve",
+                "--candidate",
+                "local:a",
+                "--candidate",
+                "local:c",
+                "--by",
+                "reviewer",
+                "--statement",
+                "Aprovo os dois.",
+                "--project",
+                tmp,
+            )
+            self.assertEqual(["local:a"], result["approved"])
+            self.assertEqual([{"id": "local:c", "reason": "sem prévia gerada; rode preview antes"}], result["skipped"])
+            self.assertEqual("rejected", Ledger(tmp).get("local:c")["approval"]["status"])
+
+    def test_all_never_reapproves_a_rejected_item_and_says_so(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rejection = self.project(tmp)
+            result = run_cli(
+                "approve",
+                "--all",
+                "--by",
+                "reviewer",
+                "--statement",
+                "Aprovo tudo que apareceu.",
+                "--project",
+                tmp,
+            )
+            self.assertEqual(["local:b"], result["approved"])
+            self.assertEqual([{"id": "local:a", "reason": "rejeitado por decisão humana"}], result["skipped"])
+            self.assertIn("1 item pulado", result["summary"]["line"])
+            fresh = Ledger(tmp).get("local:a")
+            self.assertEqual("rejected", fresh["approval"]["status"])
+            self.assertEqual("rejected", fresh["state"])
+            self.assertEqual(rejection, fresh["rejection"])
 
 
 if __name__ == "__main__":

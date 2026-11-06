@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls marketplaces v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/marketplaces.schema.json",
+  "description": "O $GB_HOME/marketplaces.json: cada marketplace adicionado, fixado num commit, com o sha256 dos bytes do índice guardado em $GB_HOME/marketplaces/<nome>/getbrolls-marketplace.json. Gravado de uma vez (temporário + troca) por plugins --action marketplace-add|update|remove e conferido em código (scripts/getbrolls/sdk/marketplace.py) a cada leitura: o nome segue a regra de nome de marketplace e o registro tem exatamente as seis chaves. A versão mora em schema (getbrolls.marketplaces/<n>); um número maior que o suportado é recusado.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "marketplaces"
+  ],
+  "properties": {
+    "schema": {
+      "const": "getbrolls.marketplaces/1"
+    },
+    "marketplaces": {
+      "type": "object",
+      "description": "{nome do marketplace: registro}.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "ref",
+          "commit",
+          "index_sha256",
+          "added_at",
+          "updated_at"
+        ],
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "commit": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "index_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "added_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

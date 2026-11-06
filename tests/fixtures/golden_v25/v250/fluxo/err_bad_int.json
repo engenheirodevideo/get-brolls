@@ -1,0 +1,22 @@
+{
+ "appends": {},
+ "argv": [
+  "library",
+  "--search",
+  "x",
+  "--limit",
+  "abc",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "err_bad_int",
+ "exit": 2,
+ "files": {},
+ "stderr": {
+  "text": [
+   "usage: gb.py library [-h] --project PROJECT --search SEARCH [--limit LIMIT]",
+   "gb.py library: error: argument --limit: invalid int value: 'abc'"
+  ]
+ },
+ "stdout": null
+}

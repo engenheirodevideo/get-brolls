@@ -1,0 +1,33 @@
+{
+ "appends": {
+  "gbhome/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"status\", \"status\": \"error\", \"state_committed\": false, \"recovered\": false, \"warnings\": [], \"recovery_pending\": false, \"type\": \"ValueError\", \"repr\": \"ValueError('Projeto não encontrado em <projeto>; nenhum arquivo foi criado.')\", \"traceback\": \"<TRACEBACK>\", \"error_code\": \"INVALID_DATA\", \"message\": \"Projeto não encontrado em <projeto>; nenhum arquivo foi criado.\", \"duration_ms\": \"<MS>\"}"
+  ]
+ },
+ "argv": [
+  "status",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "status_missing",
+ "exit": 1,
+ "files": {},
+ "stderr": {
+  "json": {
+   "app_log": null,
+   "at": "<TS>",
+   "error": "Projeto não encontrado em <T>/work/proj; nenhum arquivo foi criado.",
+   "error_code": "INVALID_DATA",
+   "log": "<T>/gbhome/diagnostics.jsonl",
+   "message": "Projeto não encontrado em <T>/work/proj; nenhum arquivo foi criado.",
+   "operation": "status",
+   "recovered": false,
+   "recovery_pending": false,
+   "state_committed": false,
+   "status": "error",
+   "type": "ValueError",
+   "warnings": []
+  }
+ },
+ "stdout": null
+}

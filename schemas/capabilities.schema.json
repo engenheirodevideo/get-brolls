@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls capabilities v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/capabilities.schema.json",
+  "description": "A saída de capabilities --json (stdout): o manifesto dos comandos desta instalação, derivado do parser e das tabelas do runtime, sem rodar código de plugin. Não é arquivo gravado: é contrato de saída, que só cresce (docs/CLI_CONTRACT.md); por isso todo objeto fica aberto para chaves novas. plugins_error e marketplaces_error só aparecem quando o estado de plugins ou de marketplaces não deu para ler.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "name",
+    "version",
+    "prog",
+    "invocation",
+    "output",
+    "global_options",
+    "commands",
+    "exit_codes",
+    "error_codes",
+    "plugin_commands",
+    "plugins_problems",
+    "environments",
+    "marketplaces"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "name": {
+      "const": "getbrolls"
+    },
+    "version": {
+      "type": "string"
+    },
+    "prog": {
+      "type": "string"
+    },
+    "invocation": {
+      "type": "object",
+      "required": [
+        "argv",
+        "module"
+      ],
+      "properties": {
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "module": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "output": {
+      "type": "object"
+    },
+    "global_options": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "summary",
+          "requires_project",
+          "project_alternatives",
+          "read_only",
+          "read_only_actions",
+          "options",
+          "positionals"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "requires_project": {
+            "type": "boolean"
+          },
+          "project_alternatives": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "read_only": {
+            "type": [
+              "boolean",
+              "string"
+            ],
+            "description": "true, false ou by_action."
+          },
+          "read_only_actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "positionals": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "exit_codes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "code",
+          "name",
+          "meaning"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "meaning": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "error_codes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "code",
+          "exit"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "exit": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "plugin_commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "plugin",
+          "command",
+          "status",
+          "argv"
+        ],
+        "properties": {
+          "plugin": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "argv": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "plugins_problems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "plugin",
+          "status",
+          "reason"
+        ],
+        "properties": {
+          "plugin": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "plugins_error": {
+      "type": "string"
+    },
+    "environments": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "marketplaces": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "marketplaces_error": {
+      "type": "string"
+    }
+  }
+}
