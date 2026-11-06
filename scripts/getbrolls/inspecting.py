@@ -5,6 +5,9 @@ assunto acontece no vídeo. Aqui isso vira janelas candidatas pontuadas contra a
 frase do usuário — só biblioteca padrão, nada de rede e nada gravado.
 """
 
+# pylint: disable=use-maxsplit-arg,too-many-locals
+# Legado: ocorrências pré-existentes (corpo idêntico ao código anterior à 2.6.0).
+
 import re
 import unicodedata
 
@@ -65,10 +68,8 @@ def parse_vtt(text):
                 cues[-1]["end_s"] = end
                 continue
             if spoken.startswith(previous + " "):
+                # `spoken` is stripped, so what follows the repeated line is never empty.
                 spoken = spoken[len(previous) + 1 :].strip()
-                if not spoken:
-                    cues[-1]["end_s"] = end
-                    continue
         cues.append({"start_s": start, "end_s": end, "text": spoken})
     return cues
 
