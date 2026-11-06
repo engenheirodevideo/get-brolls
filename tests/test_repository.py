@@ -289,6 +289,17 @@ class RepositoryDocumentationTests(unittest.TestCase):
         self.assertEqual(sorted(step for step, _ in pins), ["analyze", "init"], "init/analyze sem pin por SHA")
         self.assertEqual(len({pin for _, pin in pins}), 1, pins)
 
+    def test_codeql_skips_only_the_tests_folder(self):
+        # A pasta tests/ não entra no pacote; o código distribuído continua todo analisado.
+        workflow = (ROOT / ".github/workflows/codeql.yml").read_text(encoding="utf-8")
+        found = re.search(r"(?m)^          config-file: \./(\S+)$", workflow)
+        self.assertIsNotNone(found, "init do CodeQL sem config-file")
+        assert found is not None
+        config = (ROOT / found.group(1)).read_text(encoding="utf-8")
+        ignored = re.findall(r"(?m)^  - (\S+)$", config.split("paths-ignore:", 1)[-1])
+        self.assertEqual(["tests"], ignored)
+        self.assertNotRegex(config, r"(?m)^paths:")
+
     def test_ruff_config_extends_the_default_rules_instead_of_replacing_them(self):
         # `select` trocaria o conjunto padrão do ruff; `extend-select` soma a ele. Só assim o
         # projeto é um superconjunto do padrão e "passa nas regras padrão" vale por construção.

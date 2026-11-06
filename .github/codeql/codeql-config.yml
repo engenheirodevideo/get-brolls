@@ -1,0 +1,4 @@
+name: getbrolls CodeQL config
+# tests/ não entra no pacote distribuído; o resto do código continua analisado.
+paths-ignore:
+  - tests
