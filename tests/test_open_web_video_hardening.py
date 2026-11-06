@@ -19,6 +19,9 @@ from test_open_web_video import PAGE, PLAYER, PLAYER_JS, PLAYER_TAG, fake_get_te
 from getbrolls import http, providers, web_text
 from getbrolls.http import ProviderError
 
+# Piso do timeout por operação no fio de teste: bem acima do prazo de 0,6 s e do teto de 2 s da asserção.
+WIRE_TIMEOUT_S = 5
+
 
 class TrickleSocket(socket.socket):
     """Uma ponta de `socketpair` no lugar do socket TCP: já está ligada, e o HTTP do urllib roda de verdade."""
@@ -28,6 +31,12 @@ class TrickleSocket(socket.socket):
 
     def setsockopt(self, *args):
         pass
+
+    def settimeout(self, value):
+        # O cliente limita o timeout por operação ao que resta do prazo; no segundo salto ele fica
+        # perto do intervalo entre bytes e venceria junto com o timer do prazo, e quem chega
+        # primeiro depende do relógio do runner. Com o piso, só o timer do prazo corta a leitura.
+        super().settimeout(None if value is None else max(value, WIRE_TIMEOUT_S))
 
 
 class TotalDeadlineOnTheWireTests(unittest.TestCase):
