@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+WORKSPACE_ROOT="@WS@"
+source "$WORKSPACE_ROOT/env/get-brolls.env"
+
+mkdir -p "$GB_HOME" "$GB_CACHE_DIR"
+exec python3 "$GET_BROLLS_ROOT/scripts/gb.py" "$@"
