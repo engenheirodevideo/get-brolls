@@ -269,6 +269,14 @@ class RepositoryDocumentationTests(unittest.TestCase):
             self.assertRegex(dev, rf"(?m)^{tool}==\d+\.\d+", tool)
             self.assertIn(tool, ignored, f"dependabot propõe bump de {tool}")
 
+    def test_codeql_init_and_analyze_share_one_pin(self):
+        # O analyze lê a configuração gravada pelo init e recusa versão diferente
+        # ("Loaded a configuration file for version X, but running version Y").
+        workflow = (ROOT / ".github/workflows/codeql.yml").read_text(encoding="utf-8")
+        pins = re.findall(r"github/codeql-action/(init|analyze)@([0-9a-f]{40} # v\d\S*)", workflow)
+        self.assertEqual(sorted(step for step, _ in pins), ["analyze", "init"], "init/analyze sem pin por SHA")
+        self.assertEqual(len({pin for _, pin in pins}), 1, pins)
+
     def test_ruff_config_extends_the_default_rules_instead_of_replacing_them(self):
         # `select` trocaria o conjunto padrão do ruff; `extend-select` soma a ele. Só assim o
         # projeto é um superconjunto do padrão e "passa nas regras padrão" vale por construção.
