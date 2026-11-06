@@ -2,13 +2,160 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-10-23
+updated: 2026-11-06
 tags: [get-brolls]
 ---
 
 # Changelog
 
-## Unreleased
+## 2.6.0 — 2026-11-05
+
+O getbrolls vira um comando instalável (`getbrolls`), com runtime gerenciado, perfil de workspace, projeto com `project.json`, pastas de cliente e receitas, análise de mídia em `analysis/` e plugins do SDK com marketplace. O vídeo também pode nascer de um roteiro (`ROTEIRO.md`) revisado por uma pessoa, seguir para a coleta de b-roll de sempre e sair como projeto de edição por um exportador de plugin; esse caminho é experimental. O `resolve --url` passa a aceitar link direto de vídeo e página com player embutido. Projeto da 2.5 continua funcionando sem mudança.
+
+### Destaques
+
+- **Instale como comando.** `uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0` (ou `pipx install …`) instala o `getbrolls`; o checkout (`python3 scripts/gb.py`) e o plugin do Claude Code continuam iguais.
+- **`setup` instala o runtime.** A venv do yt-dlp e o Playwright CLI vão para `$GB_HOME/runtime`, compartilhado entre instalações; `doctor` e `setup --check` dizem se está tudo pronto (`ready`) e saem com `4` quando falta algo.
+- **Roteiro e export (experimental).** `roteiro --action new|check|review|plan|sync` escreve o vídeo por cenas no `ROTEIRO.md`, registra a revisão humana do texto exato e transforma as cenas em beats do `BRIEF.md`; `export --to <exportador>` gera um projeto de edição numa pasta nova `exports/<exportador>/NNN/`, por um exportador de plugin (o exemplo do SDK é `exporter_example`). Só o gênero `reels`.
+- **Projeto de layout 1.** `init` cria um projeto com `project.json`, `aroll/`, `assets/`, `broll/` (os clipes finais) e `analysis/`; `migrate` adota um projeto antigo acrescentando só o `project.json`.
+- **Clientes e receitas.** `client` registra pastas de cliente, com a prateleira de componentes em `assets/`; `recipe --action list|show` lista e confere as receitas seladas na pasta do cliente, e `init --recipe` cria um projeto novo a partir de uma.
+- **Análise de mídia.** `analysis --action register|list|check` registra cada mídia do projeto com um `media_id` calculado pelo conteúdo; plugins podem gravar transcrição, cenas, silêncio, falantes, visual e marcadores, em formatos publicados.
+- **Plugins do SDK e marketplace (experimental).** Fontes, rotas de download, comandos (`getbrolls x`), presets de licença e exportadores, instalados de uma pasta, de um git fixado por commit ou de um marketplace, sempre em dois passos (prévia, depois `--yes --expect <sha256>`).
+- **Ponte oficial HyperFrames.** O pacote leva a ponte `hyperframes` (`plugins/bridges/`), conferida pelo hash que o core fixa; `environment --action list` mostra a versão e o estado. O getbrolls coleta e entrega os clipes; quem monta e renderiza é o HyperFrames.
+- **Link aberto no `resolve --url`.** Um link HTTPS direto `.m3u8`/`.mp4` (fonte `direct_stream`) e uma página com player embutido (fonte `embedded_player`) viram candidato, com cada conexão do yt-dlp conferida por um proxy local.
+- **Contrato de CLI.** Códigos de saída por tipo de erro, erro de uso em JSON com sugestão, `capabilities --json` para agentes e nenhum traceback para a pessoa. Referência em [`docs/CLI_CONTRACT.md`](docs/CLI_CONTRACT.md); formatos de arquivo em [`docs/SCHEMAS.md`](docs/SCHEMAS.md).
+
+### Migração
+
+O que muda para quem usa a 2.5.2.
+
+- **Erro de operação ou de dados sai com `1`, não mais `2`.** Um ID errado, falta de aprovação ou link fora do ar saía com `2`, o mesmo código de flag errada; agora sai com `1`, e `2` fica só para erro de uso. Pré-requisito faltando sai com `4` e interrupção com `130` (antes, `2`). Quem só confere "diferente de 0" (`set -e`) não precisa mudar nada.
+- **`doctor` sai com `4` quando falta algo.** Antes saía sempre com `0`.
+- **`doctor` ganha `ready` e `install`.** O JSON traz `ready` logo depois de `summary` e `install` com a origem, as versões, a pasta de dados, o runtime, o `.env` lido e o perfil; as chaves da 2.5 continuam iguais.
+- **`doctor` separa os arquivos de dados sem permissão de leitura.** `install.data_unreadable` lista os arquivos de dados que existem mas não abrem, com uma linha própria em `summary.missing` que manda conferir as permissões em vez de reinstalar.
+- **`doctor` mostra o sal do log.** `install.log_salt` diz o estado de `$GB_HOME/.log-salt`, a chave dos hashes do `event=op`. Chave nova; nenhuma existente muda.
+- **`doctor.social` diz qual yt-dlp está em uso.** Ganha `executable` e `source`.
+- **`providers` e `doctor` listam as fontes `direct_stream` e `embedded_player`.** As duas entram no fim da lista, depois de `local`, com os mesmos campos das outras fontes; script que conferia a lista exata de fontes precisa aceitar as duas.
+- **Projeto da 2.5 segue igual (layout 0).** Sem `project.json`, tudo continua em `brolls/`. Um projeto só passa ao layout 1 com `init` ou `migrate --action apply`, e aí exige o getbrolls 2.6 ou mais novo: a 2.5 não acharia os clipes finais em `broll/`.
+- **`status` diz o layout do projeto.** A chave `layout` (`version`, `source`, `problem`) aparece também no projeto da 2.5, com `version: 0` e `source: "inferred"`.
+- **Onde o `.env` é lido.** `--env-file` > `GB_ENV_FILE` > `.env` da pasta da instalação (como na 2.5) > `$GB_HOME/.env`. Com dois, o primeiro vale e todo comando avisa `ENV_FILE_SHADOWED`. `GB_HOME` dentro de `$GB_HOME/.env` é recusado e, em outro `.env`, sai com o aviso `DEPRECATED` (a leitura some na 2.7).
+- **`.env` fora do UTF-8 sai com `2`** (`USAGE_ERROR`); um `.env` "UTF-8 com BOM" passa a ser lido normalmente.
+- **O plugin do Claude Code mantém o nome `get-brolls`.** Nada muda na instalação. Os comandos viram `/get-brolls:…` nas mensagens e nos documentos (por exemplo, `/get-brolls:get-brolls-setup`).
+- **Python 3.11 ou mais novo.** Abaixo disso, `scripts/gb.py` e os instaladores dizem a versão que falta e saem com `4`.
+- **Saídas renomeadas.** `--version` passa a imprimir `getbrolls <versão> (Python …; dados: …)` e a ajuda e os erros de uso chamam a CLI de `getbrolls`.
+- **Erro de uso em JSON.** Comando, flag ou valor errado sai em stderr como uma linha JSON (`error`, `error_en`, `error_code: "USAGE_ERROR"`, `usage`, `prog`, `suggestion`); o código continua `2`, e o texto original do argparse fica em `error_en`.
+- **Erro sem `traceback` nem `repr`.** Nenhum JSON de erro traz os dois; eles seguem, redigidos, no `diagnostics.jsonl`. O erro interno (saída `3`) cita o tipo (`[type: KeyError]`).
+- **Erro fora de um projeto vai para `$GB_HOME/diagnostics.jsonl`.** Um comando que falha numa pasta sem `brolls/` grava o evento ali, e o campo `log` aponta esse arquivo.
+- **`recovered` no erro e no `diagnostics.jsonl`.** `true` quando o comando concluiu a gravação interrompida de outro; `false` no resto.
+- **`hint` só quando há o que fazer.** O JSON de erro só traz `hint` com `recovery_pending: true`, `state_committed: true` ou `recovered: true`.
+- **`error_code` mais preciso.** Trava ocupada sai com `LOCKED` (antes `INVALID_DATA`) e `.env` recusado com `USAGE_ERROR`; os códigos de saída desses dois não mudam. Uma recusa de dados com motivo estável traz `reason_code` ao lado de `error_code: "INVALID_DATA"`.
+- **Mensagens sem caminho da máquina.** Toda mensagem, aviso e linha de log nomeia a pasta pela marca da pasta conhecida que a guarda (`<projeto>/…`, `<cliente>/…`, `$GB_HOME/…`, `~/…`); um caminho fora de todas sai como hash. Só os campos da tabela "Campos que ficam absolutos" de `docs/CLI_CONTRACT.md` seguem absolutos; o caminho que a pessoa digitou (`--project` de uma recusa, `--root` do `client add`) volta como foi digitado.
+- **O `getbrolls.log` ganha uma linha `event=op` por efeito colateral e `duration_ms` em toda linha que mede tempo.** Quem lê o log por `event=` não muda nada; `ms` continua nesta versão e sai na 2.7. Esquema em [`docs/CLI_CONTRACT.md`](docs/CLI_CONTRACT.md#linhas-eventop-do-getbrollslog).
+- **`rules`, `library --search` e `references` não escrevem no `getbrolls.log` do projeto.** Como os outros comandos que só leem.
+- **Biblioteca e fila gravam `schema_version: 2`.** O `library/index.json` passa a levar o escopo de cliente e o `work/queue.json` a parada do provedor; a 2.6 lê as versões 1 e 2, e uma 2.5 recusa o arquivo novo.
+- **`references.json` ganha `schema_version`.** O arquivo e a saída de `references` trazem `schema_version: 1`.
+- **A fila separa limite de ritmo e recusa.** Só um limite de ritmo (`429`, `rate limit`) abre o cooldown. Login, desafio, CAPTCHA e `401`/`403` de causa desconhecida **param** a fila daquele provedor até a pessoa declarar a retomada com `queue --action resume --provider P --by NOME --phrase "FRASE EXATA" --expect AT`. Quem automatiza e contava com a espera depois de um `403` precisa tratar a parada.
+- **O `BRIEF.md` do `init-brief` muda de texto.** O bloco JSON é o mesmo.
+- **`init-brief` ganha `summary.line`.** A linha diz que o `BRIEF.md` saiu do modelo e precisa ser preenchido.
+- **`brief` acusa o texto de exemplo do modelo.** `brief` e `brief --validate` listam em `summary.problems` cada campo que ainda tem o texto do modelo.
+- **O `RULES.md` do `init-rules` muda de texto.** A primeira frase cita o `init-rules --project ./video-01`; o bloco JSON é o mesmo.
+- **Texto de `summary.next`.** No `status`, `summary.next` sai do mesmo degrau de `summary.do`; quem comparava o texto antigo em alguns degraus precisa ajustar.
+- **A recusa do `fetch` sem condições de uso cita as três formas.** `--evidence`, `--preset` ou `--declared-by`/`--declaration-text`.
+- **`approve` de um ID só pede prévia.** `approve --candidate ID` passa pelo mesmo portão do lote: sem `preview` antes, sai com `1`.
+- **`approve` com vários IDs reaprova um item rejeitado.** O ID explícito, um ou vários, reaprova o rejeitado pelo mesmo portão de sempre; `approve --all` continua sem aprovar item rejeitado.
+- **Trocar o formato não desfaz mais uma rejeição.** Itens que uma troca de `video_format` já desfez numa versão anterior continuam `pending` com o motivo antigo: rejeite-os de novo com `reject`.
+- **Etapa num `--project` que não existe recusa.** As etapas saem com `1` sem criar nada, em vez de criar a pasta e um projeto vazio.
+- **`~` cru em `--project` e em `GB_HOME`.** `--project '~/x'` e `GB_HOME=~/x` passam a valer a pasta `x` dentro da pasta pessoal em todo comando, não mais uma pasta `./~/x`.
+- **`deliver` recusa antes e falha onde antes "entregava".** Com um BRIEF.md inválido o `deliver` sai com `1` antes de tocar em `entrega/`; um clipe que sumiu de `brolls/` vira conflito nomeado.
+- **O registro de entrega guarda o sha256 do contact sheet.** `delivery` ganha `sheet_sha256`.
+- **`GB_DELIVERY_COPY=1` vale também para o que já estava em `entrega/`.** Um hardlink de uma entrega anterior vira cópia independente no próximo `deliver`.
+- **O aviso do Storyboard diz o motivo.** Quando salvar no projeto falha, a página baixa o arquivo e mostra o motivo que o servidor deu.
+- **`serve --port` fora de 1 a 65535 sai com `2`**, inclusive `0`, que antes virava a porta padrão em silêncio.
+- **Um clipe coletado de novo pode ter outros bytes.** O corte do `fetch` busca o início direto na fonte (`-ss` antes do `-i`): continua exato, mas o sha256 pode diferir do gerado pela 2.5 para o mesmo intervalo.
+
+### Limites
+
+- O único gênero de roteiro é `reels`, e take contínuo (uma cena só, sem corte) não existe: toda cena vira um clipe.
+- `sdk_api` do SDK é experimental e pode mudar em versão minor. Plugin não é caixa de areia: roda com as permissões de quem executa a CLI.
+- O `export` só roda com um exportador de plugin habilitado; `export --to hyperframes` (e `--to davinci`) é recusado com saída `2`. O getbrolls não exporta timeline do HyperFrames: quem monta e renderiza é o próprio HyperFrames, e a ponte só faz a passagem. Nesta versão nenhum comando chama as funções da ponte. `davinci`, `asr` e `analysis_*` são ids oficiais reservados, sem plugin no pacote.
+- O getbrolls não sela receitas: `recipe` só lista e mostra as versões que já estão na pasta do cliente.
+- O `tier` de um marketplace é o que o dono do índice declara, não uma verificação.
+- Link aberto baixa o vídeo inteiro antes do corte (até 1080p), e uma fonte com vídeo e áudio em faixas separadas sai sem áudio. Licença e autoria ficam desconhecidas: o `permit` humano continua obrigatório.
+- Playwright CLI fica em 0.1.21: as versões publicadas do `@playwright/cli` de 0.1.20 a 0.1.22 dependem de uma alpha do Playwright 1.64.0, e a 0.1.21 é o conjunto com que a 2.6 foi testada.
+- No Windows, `curl`, `ffmpeg` e `ffprobe` são procurados pelo nome simples, e o Windows pode achar um executável com esse nome na pasta atual antes do `PATH`. Rode o getbrolls de uma pasta em que você confia, ou fixe `GB_FFMPEG_PATH`, `GB_FFPROBE_PATH` e `GB_YTDLP_PATH`.
+
+### Instalação e runtime
+
+- **`setup`** cria a venv com o Python que roda o getbrolls e instala o `requirements.txt` fixado com `--require-hashes --only-binary :all:`, e o Playwright CLI com `npm ci --ignore-scripts`, cada parte em `$GB_HOME/runtime/<versão>/` (ou `GB_RUNTIME_DIR`). É idempotente, refaz uma instalação interrompida, refaz a venv quebrada e nunca apaga pasta que não criou. FFmpeg, ffprobe, curl e Node só são conferidos, com o comando do sistema operacional. `--check` só confere, `--where` mostra as pastas e `--upgrade ytdlp` atualiza o yt-dlp além da versão fixada.
+- **Instaladores viram atalho do `setup`.** `scripts/install.sh`/`install.ps1` conferem o sistema, chamam o `setup` e terminam com o código do `doctor`; um `.venv`/`.tools` antigo no checkout continua valendo enquanto o runtime compartilhado não existe.
+- **`/get-brolls:get-brolls-setup`** usa `setup --check`, `setup` e `doctor`; o runtime sobrevive ao `/plugin update`.
+- **Perfil de workspace.** Um `getbrolls.toml` fixa `home`, `cache_dir`, `runtime_dir`, `plugins` (um teto sobre `GB_PLUGINS`), `tools` e `requires`, e só vale depois de `profile --action trust` (prévia, depois `--yes --expect <sha256>`). Precedência: flag > ambiente (e `.env`) > perfil > padrão.
+- **`GB_LOCK_WAIT_S`** faz um comando esperar o projeto ocupado por outro antes de sair com `LOCKED`; **`GB_LIBRARY=off`** desliga a biblioteca entre projetos.
+
+### Contrato da CLI
+
+- **`capabilities --json`** descreve comandos, flags, o que só lê, códigos de saída e de erro, comandos de plugin, pontes e marketplaces desta instalação, gerado do próprio parser.
+- **"Você quis dizer …?"** Subcomando, flag ou valor digitado quase certo ganha a sugestão do nome parecido (`serch` → `search`).
+- **`--json` em todo comando** e `GB_OUTPUT=json`: a saída já é JSON, então nada muda. O `--help` de todo comando sai em pt-BR.
+- **`| head` sem traceback.** Quem fecha o pipe antes do fim não vê mais "BrokenPipeError" no stderr.
+
+### Projeto, clientes e receitas
+
+- **`project.json`** (`getbrolls.project/1`) declara o layout, o id, o cliente, a receita, o quadro e o fps. No layout 1, o `fetch` grava o corte final em `broll/`, e `verify`, `deliver`, `export` e o `serve` leem o clipe de lá.
+- **Componentes.** As pastas de `assets/` são `marca`, `lettering`, `sfx`, `musica`, `imagem`, `composicao` e `outros`; cada componente resolve no projeto, depois na pasta do cliente e por fim na biblioteca pessoal `$GB_HOME/assets/<tipo>/`, com a licença em `<nome>.licenca.json`. `assets --action list|where` mostra onde cada um está.
+- **Pastas de cliente.** `client --action add --slug <cliente> --root <pasta>` cria a pasta do cliente com `client.json`, `assets/`, `recipes/` e `projetos/`, e a registra em `$GB_HOME/clients.json`; `list`, `show` e `remove` (que só desregistra).
+- **Receitas.** Cada versão mora em `<pasta do cliente>/recipes/<slug>/<N>/`, somente leitura, sem licenças, aprovações, A-ROLL nem clipes. `recipe --action show` confere o sha256 de cada arquivo; `init --recipe` só roda com a receita íntegra, copia os componentes sem licença (aviso `LICENCE_NOT_TRANSFERRED`) e grava o `recipe.lock.json`, que `status` e `export` conferem (`RECIPE_LOCK_DRIFT`).
+- **Biblioteca por cliente.** O que é guardado com `learn` num projeto de cliente só volta em projetos do mesmo cliente.
+
+### Roteiro, análise e export
+
+- **Roteiro.** Um layout por cena (`[A-ROLL]`, `[BROLL: alvo]`, `[SPLIT: esquerda | direita]`, `[FULL: alvo]`, `[UGC: descrição]`), camadas (`[LETTERING]`, `[SFX]`, `[MUSICA]`, `[COMP]`) e a fala. A revisão (`review --expect <sha256>`) fica presa ao texto exato; o `sync` grava ids de cena que nunca voltam e beats `cNN`; cena removida deixa o beat aposentado, com candidatos e clipes intactos. Comentário escondido, elemento HTML e caractere invisível no corpo são erro.
+- **Análise.** `analysis/index.json` e `analysis/media/<media_id>/media.json` (duração, quadro, fps, codecs pelo ffprobe); `check` sai com `1` quando acha problema. Plugins com `project_write` gravam as outras camadas.
+- **Export.** Cada export é uma pasta nova `exports/<exportador>/NNN/` com o `getbrolls-plan.json` que o exportador recebeu, e `LATEST` guarda a mais nova; o core nunca apaga nem sobrescreve uma pasta de export. O A-ROLL gravado manda na duração da cena, e a legenda vem do `aroll/<nome>.transcript.json` ao lado do vídeo ou da transcrição em `analysis/`.
+
+### Plugins do SDK e marketplace
+
+- **Uma árvore só.** No repositório, `plugins/bridges/` guarda as pontes oficiais, `plugins/getbrolls/` os plugins oficiais do getbrolls (nenhum nesta versão), `plugins/community/` o lugar dos plugins da comunidade e `plugins/examples/` os exemplos `pasta_local`, `banco_http` e `exporter_example`. Na máquina, todo plugin instalado mora em `$GB_HOME/plugins/`.
+- **Opt-in e pin.** Nenhum plugin liga sozinho: `install --yes --expect` ou `enable` gravam um pin sha256 da pasta, e qualquer mudança no conteúdo deixa o plugin `suspended` até nova revisão. `plugins --action list` mostra o estado e a origem de cada um, com as pontes oficiais à parte. Um plugin local com o id de uma ponte ou de um plugin oficial é recusado.
+- **Comando `plugins`.** `list`, `enable`, `disable`, `check`, `install`, `update`, `remove`, `new` e, para marketplaces, `marketplace-add`, `marketplace-list`, `marketplace-update`, `marketplace-remove` e `search` (sem rede). `getbrolls x` roda o comando de um plugin habilitado, só lendo o projeto.
+- **Marketplaces.** Um marketplace é um repositório git com um `getbrolls-marketplace.json` na raiz, fixado num commit; `install --id <id>@<marketplace>` instala da origem e do commit da entrada e recusa o conteúdo que não bate com o `content_sha256` dela.
+
+### Segurança
+
+- **Link aberto conferido de ponta a ponta.** Na rota `direct_stream`/`embedded_player`, o yt-dlp sai por um proxy local que só deixa passar HTTPS público na porta 443, a playlist é conferida antes do download, e o FFmpeg só corta o arquivo local. Só o DRM de navegador declarado na playlist (Widevine, FairPlay, PlayReady) para a rota; o getbrolls nunca extrai nem deriva chave.
+- **Uma regra só de destino público** para o transporte interno, o proxy da rota aberta e o curl do coletor do Instagram.
+- **Plugins:** pin sha256 da pasta inteira; pasta com link, bytecode ou controle de versão aninhado é recusada; `install`/`update` fixam todo repositório git por commit e nunca rodam código do plugin; o `.env` só entrega a um plugin as variáveis do espaço de nomes dele.
+- **Perfil:** só vale com confiança de dois passos, e a prévia avisa quando `home`, `runtime_dir` ou `cache_dir` caem dentro da pasta do toml.
+- **Dependências Python com hash, só rodas**, e o pip da venv do runtime vem de `requirements-bootstrap.txt` com hash.
+- **Privado de verdade no Windows.** Arquivo e pasta que o getbrolls cria como privados ganham ACL própria no Windows, não só `chmod`.
+- **Segredos fora da lista de processos.** A URL assinada do CDN vai ao `curl` do coletor do Instagram por um config no stdin, e o `serve --background` não relê as chaves do `.env`.
+- **Arquivos de fora e de estado recusam JSON hostil** (aninhado demais, grande demais, `NaN`/`Infinity`, chave repetida), também no `import-review`.
+
+### Formatos de arquivo
+
+- Todo JSON que o getbrolls grava tem schema e versão em `schemas/`: as famílias novas declaram `schema` (`getbrolls.<família>/<N>`), as que já existiam seguem com `schema_version`; arquivo antigo sem o campo carrega como versão 1. Lista e layouts dos dois tipos de projeto em [`docs/SCHEMAS.md`](docs/SCHEMAS.md).
+- No Windows, todo arquivo de texto que o getbrolls grava sai com fim de linha LF.
+
+### Correções em relação à 2.5.2
+
+- `search --dry-run` não grava mais nada (nem a troca de formato); repetir uma busca depois que a fonte editou um título não aborta a busca inteira; `search --shot` respeita as fontes permitidas do beat.
+- `fetch` interrompido não deixa clipe órfão nem `.part` que travava o seguinte; `verify` sem ffprobe sai com `4` sem desmarcar os clipes conferidos.
+- `deliver` não apaga mais uma cópia que você editou em `entrega/`, troca o arquivo pela revisão nova do mesmo item, copia por `.part` e mostra no `--dry-run` os mesmos conflitos da execução real.
+- Fotos do Commons e da NASA: prévia estática prometida, versão original da NASA no `fetch` e extensão do arquivo pelo conteúdo real.
+- `inspect` de um vídeo do Commons não baixa mais o arquivo inteiro antes de qualquer confirmação.
+- `preview --scan` aceita o arquivo alguns segundos mais curto que o anunciado; um apóstrofo no caminho do projeto não derruba mais a prévia rotulada.
+- Coletor do Instagram: todos os endereços conferidos da CDN passados ao curl (IPv4 primeiro), um pedido por item, e entradas ruins de um lote falham só aquele item.
+- `init-rules --force --format reels` num RULES.md parcial não sai mais com erro interno; BRIEF.md ou RULES.md fora do UTF-8 são recusados em português.
+- `brief` e `status` dizem o mesmo próximo passo; o `inspect` sugerido pelo `status` roda como veio.
+- `serve`: falha ao salvar decisões responde com o motivo, sem traceback; o ping de saúde ignora o proxy do ambiente.
+- Um erro interno de qualquer tipo sai como `INTERNAL_ERROR` com o envelope completo; o traceback guardado mostra a cauda, onde está a linha do erro.
+
+### Manutenção
+
+- Dependências: `@playwright/cli` 0.1.22 → 0.1.21, de propósito (veja Limites); `ruff` 0.16.8 → 0.17.2; `certifi` 2026.10.19 → 2026.10.23.
+- CI: job `package` monta o wheel de um checkout limpo e roda a suíte no modo pacote (macOS, Windows, Linux × Python 3.11/3.14); o job `test` ganha Python 3.14 nos três sistemas; o `pyright` roda também com `--pythonplatform Windows`; workflow CodeQL para Python.
+- Release: o workflow de tag monta sdist e wheel de um checkout limpo, roda o smoke do wheel e atesta a procedência dos arquivos.
+- Docs: README e README.en para a 2.6, com a seção Plugins; `docs/README.md` separa a documentação para quem usa da referência técnica; MANUAL e GUIDE atualizados; os READMEs dos plugins, `docs/CLI_CONTRACT.md`, `docs/SCHEMAS.md`, `docs/SDK.md`, `docs/PLUGIN_DEV_QUICKSTART.md`, `docs/CHECKLIST.md`, `docs/CODE_STYLE.md`, `references/roteiro.md` e `references/generos/reels.md` são novos.
 
 ## 2.5.2 — 2026-10-23
 
@@ -99,7 +246,7 @@ tags: [get-brolls]
 - **Novo caso cego de TikTok público (`eval/corpus/social-tiktok-publico.md`).** O corpus passa a 16 casos e ganha a rota de rede social: o roteiro descreve o post do perfil `@nasa` sem dar o link, então o executor precisa descobrir a URL canônica no navegador, registrar com `resolve --url` e provar `inspect`/`preview` sobre a fonte TikTok. O gabarito traz a verificação real (`yt-dlp --dump-single-json`: uploader `nasa`, 58 s, 4 formatos, sem login), marca stock como inaceitável no beat que tenta o preenchimento genérico e transforma em regressão de comportamento declarar que TikTok "exige sessão" quando o vídeo é público.
 - **Onda final de correções menores: nenhum achado adiado.** Um item por linha, cada um com teste:
   - `approve --all` e `approve --candidate ID …` devolvem `approved_items` com a folha de contato e o intervalo de cada item aprovado: a trilha de auditoria mostra o que a pessoa viu, não só quantos itens foram.
-  - `permit --declared-by` recusa nome genérico de uma palavra (`eu`, `user`, `cliente`, `usuário`, `me`, `admin`) e exige duas palavras — nome e sobrenome, ou nome e inicial. "teste" continua valendo: as evals assinam "Ana Teste".
+  - `permit --declared-by` recusa nome genérico de uma palavra (`eu`, `user`, `cliente`, `usuário`, `me`, `admin`) e exige duas palavras — nome e sobrenome, ou nome e inicial. "teste" continua valendo como segunda palavra (`reviewer teste`).
   - A região viva do Storyboard nasce montada e vazia (`role="status"`, `aria-live="polite"`) no load, e o export só troca o texto — sem o `setTimeout(…, 100)` que tornava o anúncio não determinístico. Payload do export e os 375 px sem overflow intactos.
   - A miniatura da galeria sem imagem diz só "só imagem", a mesma frase da tarja; a explicação comprida ficou no painel de detalhe.
   - `preview --scan` contra fonte real ganhou prova opt-in em `tests/test_inspect_network.py` (`GB_EVAL_NETWORK=1`): grade de 12 células cobrindo `start_s=0` a `end_s=95` do vídeo de 95 s, todos os rótulos dentro do trecho.
