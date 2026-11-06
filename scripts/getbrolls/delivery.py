@@ -3,9 +3,11 @@
 `brolls/` continua canônico — nada aqui apaga, renomeia ou move o que está lá. Esta
 camada é derivada e regenerável: cada arquivo de `clips/` aparece em `entrega/` por
 hardlink (ou symlink, ou cópia, nessa ordem), com o contact sheet ao lado e um
-`ORIGEM.md` dizendo de onde veio. Rodar de novo não estraga nada, e um arquivo que a
-pessoa editou à mão nunca é sobrescrito: o comando termina o trabalho e então falha
-nomeando todos os arquivos em conflito.
+`ORIGEM.md` dizendo de onde veio. Rodar de novo não estraga nada, e uma mídia que a
+pessoa editou à mão nunca é sobrescrita: o comando termina o trabalho e então falha
+nomeando todos os arquivos em conflito. O `ORIGEM.md` é derivado e refeito a cada rodada;
+o contact sheet também, enquanto ainda tiver os bytes que o `deliver` entregou (o sha256
+fica em `c["delivery"]["sheet_sha256"]`): um sheet editado é conflito, como a mídia.
 
 Hardlink é o padrão porque vídeo pesa e duas cópias de cada corte dobram o projeto —
 mas hardlink é o *mesmo* arquivo, com dois nomes: editar em `entrega/` editaria o
@@ -21,16 +23,32 @@ contrário de `c["output"]["path"]`, que é relativo a `brolls/`.
 
 import logging
 import os
-import re
-import shutil
-import stat
-import unicodedata
-from collections import namedtuple
-from datetime import date
 from pathlib import Path
 
-from . import logs
-from .runtime import record_warning
+from . import delivery_files, delivery_render, delivery_sweep, effects, labels, logs
+from ._paths import strict_exists, strict_is_dir, strict_is_file
+from .delivery_sweep import INDEX, Pristine, confined
+from .delivery_sweep import sweep as _sweep
+from .delivery_sweep import unlink_keeping_mode as _unlink_keeping_mode
+from .runtime import record_delivery_conflicts
+
+# Nomes que moraram aqui e continuam valendo (a mesma função, o mesmo objeto): quem chama
+# `delivery.link_or_copy` e afins não muda, e um teste que troca o nome aqui troca o que `deliver` usa.
+MAX_NAME = delivery_files.MAX_NAME
+slug = delivery_files.slug
+beat_dir_name = delivery_files.beat_dir_name
+copies_forced = delivery_files.copies_forced
+link_or_copy = delivery_files.link_or_copy
+COPY_NOTE = delivery_render.COPY_NOTE
+EDIT_WARNING = delivery_render.EDIT_WARNING
+MIXED_NOTE = delivery_render.MIXED_NOTE
+EDIT_LABELS = delivery_render.EDIT_LABELS
+plugin_label = delivery_render.plugin_label
+inert = delivery_render.inert
+evidence_line = delivery_render.evidence_line
+source_label = delivery_render.source_label
+render_origin = delivery_render.render_origin
+render_index = delivery_render.render_index
 
 log = logs.get("delivery")
 
@@ -38,389 +56,73 @@ log = logs.get("delivery")
 DELIVERY_DIR = "entrega"
 # Onde ficam os trechos coletados que nenhum beat reivindicou.
 NO_BEAT = "00-sem-beat"
-INDEX = "README.md"
 ORIGIN = "ORIGEM.md"
 SHEET = "contact-sheet"
-# Nome de pasta que ainda cabe num Finder/Explorer sem virar reticências.
-MAX_NAME = 60
-# Só o que o gerador escreve pode ser apagado quando vira órfão.
-GENERATED = re.compile(r"^(ORIGEM(-\d+)?\.md|contact-sheet(-\d+)?\.[a-z0-9]+)$")
-BEAT_DIR_RE = re.compile(r"^\d{2}-[a-z0-9-]*$")
-# Aviso do ORIGEM.md quando o arquivo é uma cópia independente.
-COPY_NOTE = (
-    "**Esta é uma cópia independente** (`GB_DELIVERY_COPY`, ou porque o sistema não "
-    "deixou criar link): edite à vontade, o original em `brolls/` não é afetado. Rodar "
-    "`deliver` de novo não mexe numa cópia que você editou — ele para e diz o nome dela."
-)
-
-# Aviso que vai no README.md e em cada ORIGEM.md: hardlink é o mesmo arquivo.
-EDIT_WARNING = (
-    "**Editar aqui é editar o original.** Estes arquivos são o mesmo arquivo de "
-    "`brolls/` com outro nome (hardlink), e por isso vêm marcados como somente-leitura: "
-    "copie antes de mexer. Se você quiser editar dentro de `entrega/`, rode o `deliver` "
-    "com `GB_DELIVERY_COPY=1` e receba cópias independentes."
-)
 
 
-def slug(text):
-    """Texto humano vira pedaço de caminho: ASCII, minúsculo, só letras/números/hífen."""
-    normal = unicodedata.normalize("NFKD", str(text or ""))
-    ascii_only = normal.encode("ascii", "ignore").decode("ascii").lower()
-    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", ascii_only)).strip("-")
+def _brief_beats(project, rules=None):
+    """Beats do BRIEF.md validado com o RULES.md (`rules`, lido do projeto quando falta).
 
-
-def _safe(value, field):
-    """Recusa qualquer coisa que tentaria sair da pasta de entrega."""
-    text = str(value or "")
-    if ".." in text or "/" in text or "\\" in text or os.sep in text:
-        raise ValueError(
-            f'Valor inválido para o nome da pasta de entrega ({field}): "{text}". '
-            "Ids de beat usam só letras minúsculas, números e hífen; corrija o BRIEF.md "
-            "ou o --shot do candidato."
-        )
-    return text
-
-
-def beat_dir_name(nn, beat_id, target):
-    """`NN-<beat.id>-<slug(alvo)>`: estável entre execuções e seguro como caminho."""
-    _safe(beat_id, "id do beat")
-    _safe(target, "alvo do beat")
-    prefix = f"{int(nn):02d}"
-    parts = [prefix, slug(beat_id), slug(target)]
-    name = "-".join(p for p in parts if p)
-    name = re.sub(r"-+", "-", name).strip("-")[:MAX_NAME].rstrip("-")
-    if not name or name in (".", "..") or not BEAT_DIR_RE.match(name):
-        raise ValueError(
-            f'Não consegui montar um nome de pasta seguro para o beat "{beat_id}". '
-            "Use um id com letras minúsculas, números e hífen."
-        )
-    return name
-
-
-class _CompareError(Exception):
-    """Raised when a comparison could not complete because of an OSError.
-
-    Kept distinct from a real content difference: `link_or_copy` must never report
-    "parece edição sua" when it simply failed to read one of the two files.
+    Sem BRIEF.md, lista vazia: a entrega segue a ordem do manifesto. Com um BRIEF.md
+    inválido, recusa: a ordem e o nome das pastas sairiam do manifesto, e a varredura
+    apagaria a entrega que o brief tinha organizado.
     """
+    from .brief import brief_path, load_brief, validate_brief
 
-
-def _same_file(a, b):
-    try:
-        return os.path.samestat(Path(a).stat(), Path(b).stat())
-    except OSError as exc:
-        raise _CompareError(str(exc)) from exc
-
-
-def _same_bytes(a, b, block=1024 * 1024):
-    """Compara em blocos, nunca carregando um vídeo inteiro na memória."""
-    try:
-        if Path(a).stat().st_size != Path(b).stat().st_size:
-            return False
-        with Path(a).open("rb") as left, Path(b).open("rb") as right:
-            while True:
-                chunk = left.read(block)
-                if chunk != right.read(block):
-                    return False
-                if not chunk:
-                    return True
-    except OSError as exc:
-        raise _CompareError(str(exc)) from exc
-
-
-def _compared(compare, dest, src):
-    """Run one comparison; an I/O failure is reported as such, never as a user edit."""
-    try:
-        return compare(dest, src)
-    except _CompareError as exc:
-        raise ValueError(
-            f"Não consegui comparar {dest} com o arquivo coletado ({exc}): confira "
-            "permissão ou disponibilidade do arquivo e rode `deliver` de novo."
-        ) from exc
-
-
-def copies_forced():
-    """`GB_DELIVERY_COPY=1`: cópias independentes para quem quer editar em `entrega/`."""
-    return (os.environ.get("GB_DELIVERY_COPY") or "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
-
-
-def _freeze(path, method):
-    """Tira a escrita só de quem compartilha bytes com o original.
-
-    Hardlink e symlink são o mesmo arquivo com outro nome: editar ali editaria
-    `brolls/`. Uma cópia é independente — congelá-la quebraria a promessa de
-    `GB_DELIVERY_COPY=1`, que existe justamente para quem quer editar em `entrega/`.
-
-    Uma falha aqui fica não fatal (o resto da entrega continua), mas nunca some: vai
-    para `record_warning`, o mesmo canal de aviso que o resto do projeto usa, para que
-    a promessa de "somente-leitura" não fique silenciosamente falsa.
-    """
-    if method not in ("hardlink", "symlink"):
-        return
-    try:
-        mode = Path(path).stat().st_mode
-        Path(path).chmod(mode & ~0o222)
-    except OSError as exc:
-        record_warning(
-            "DELIVERY_FREEZE_FAILED",
-            f"Não consegui deixar {path} somente-leitura ({exc}): o arquivo entregue "
-            "compartilha o inode com o original em brolls/, mas ficou editável.",
-        )
-
-
-def _thaw_unlink(path):
-    """Apaga o que este gerador congelou, inclusive no Windows.
-
-    `_freeze` tira o bit de escrita; no Windows isso vira o atributo somente-leitura
-    e `unlink` levanta `PermissionError`. Devolver a escrita antes é o único jeito de
-    `deliver` regenerar `entrega/` depois de um beat renomeado.
-    """
-    path = Path(path)
-    try:
-        path.unlink()
-        return
-    except PermissionError:
-        pass
-    path.chmod(stat.S_IWRITE | stat.S_IREAD)
-    path.unlink()
-
-
-def link_or_copy(src, dest, read_only=False):  # noqa: C901 - existing size; hardlink/reflink/copy fallback ladder across OSes
-    """Liga `dest` a `src` pelo jeito mais barato que o sistema aceitar.
-
-    Hardlink primeiro (não ocupa disco e não quebra ao mover a pasta de dentro),
-    symlink depois (no Windows pode faltar privilégio) e cópia por último. Devolve o
-    método usado. Se `dest` já é o mesmo arquivo, não faz nada; se é um arquivo comum
-    com conteúdo diferente, é obra da pessoa e o erro nomeia o arquivo.
-    """
-    src, dest = Path(src), Path(dest)
-    methods = (
-        (("copy", shutil.copy2),)
-        if copies_forced()
-        else (
-            ("hardlink", os.link),
-            ("symlink", os.symlink),
-            ("copy", shutil.copy2),
-        )
-    )
-    if dest.is_symlink():
-        try:
-            if dest.resolve() == src.resolve():
-                return "symlink"
-        except OSError:
-            pass
-        _thaw_unlink(dest)
-    elif dest.exists():
-        if _compared(_same_file, dest, src):
-            if read_only:
-                _freeze(dest, "hardlink")
-            return "hardlink"
-        if _compared(_same_bytes, dest, src):
-            return "copy"
-        raise ValueError(
-            f"{dest} já existe com conteúdo diferente do arquivo coletado: parece edição "
-            "sua e eu não sobrescrevo. Renomeie ou apague esse arquivo e rode `deliver` "
-            "de novo."
-        )
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    for method, make in methods:
-        try:
-            make(str(src), str(dest))
-            if read_only:
-                _freeze(dest, method)
-            return method
-        except (OSError, NotImplementedError, AttributeError):
-            if dest.is_symlink() or dest.exists():
-                _thaw_unlink(dest)
-    raise OSError(
-        f"Não consegui ligar nem copiar {src} para {dest}. Confira espaço e permissão de escrita na pasta do projeto."
-    )
-
-
-def _frontmatter(kind, created, tags):
-    today = date.today().isoformat()  # noqa: DTZ011 - local date in the frontmatter; timezone-aware would shift the day near midnight
-    return [
-        "---",
-        f"type: {kind}",
-        "status: current",
-        f"created: {created or today}",
-        f"updated: {today}",
-        f"tags: [{', '.join(tags)}]",
-        "---",
-        "",
-    ]
-
-
-def _created_in(path):
-    """Preserva o `created` de um arquivo já gerado: repetir não muda o histórico."""
-    try:
-        for line in path.read_text(encoding="utf-8").splitlines()[:8]:
-            if line.startswith("created:"):
-                return line.split(":", 1)[1].strip()
-    except OSError:
-        pass
-    return None
-
-
-def _segment_label(c):
-    start = (c.get("segment") or {}).get("start_s")
-    end = (c.get("segment") or {}).get("end_s")
-    if start is None or end is None:
-        return "não definido"
-    return f"{start:g}s → {end:g}s"
-
-
-def _author(c):
-    """Quem assina a fonte: `creator.name` quando existe, senão o canal/uploader bruto.
-
-    Provedores de vídeo costumam devolver só `channel`/`uploader`; dizer "não
-    informado" com o nome do canal na mão esconde crédito que existe.
-    """
-    for value in (
-        (c.get("creator") or {}).get("name"),
-        c.get("channel"),
-        c.get("uploader"),
-        (c.get("media") or {}).get("channel"),
-        (c.get("media") or {}).get("uploader"),
-    ):
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    return "não informado"
-
-
-def render_origin(c, media_name, created=None, method="hardlink"):
-    """`ORIGEM.md` do trecho: fonte, autor, intervalo, direitos e sha256 do arquivo."""
-    rights = c.get("rights") or {}
-    approval = c.get("approval") or {}
-    lines = _frontmatter("delivery-origin", created, ["get-brolls", "entrega"])
-    lines += [
-        f"# Origem de {media_name}",
-        "",
-        f"- Arquivo: `{media_name}`",
-        f"- Candidato: `{c['id']}`",
-        f"- Título na fonte: {c.get('title') or 'não informado'}",
-        f"- Fonte: {c.get('source_url') or 'original local'}",
-        f"- Autor: {_author(c)}",
-        f"- Trecho usado: {_segment_label(c)}",
-        f"- Direitos: {rights.get('status') or 'unknown'}",
-        f"- Licença: {rights.get('license_name') or 'ver evidência'}",
-        f"- Licença URL: {rights.get('license_url') or 'não informada'}",
-        "- Evidência: " + ("; ".join(rights.get("evidence") or []) or "não registrada"),
-        f"- Aprovado por: {approval.get('by') or 'não registrado'}"
-        + (f" ({approval.get('channel')})" if approval.get("channel") else ""),
-        f"- sha256 do arquivo coletado: `{(c.get('output') or {}).get('sha256') or 'não calculado'}`",
-        f"- Original canônico: `brolls/{(c.get('output') or {}).get('path')}`",
-        "",
-        EDIT_WARNING if method in ("hardlink", "symlink") else COPY_NOTE,
-        "",
-        (
-            "Este arquivo é gerado por `deliver`. A pasta `entrega/` inteira pode ser apagada "
-            "e refeita: o que vale é `brolls/`."
-        ),
-        "",
-    ]
-    return "\n".join(lines)
-
-
-# Numa entrega misturada (parte link, parte cópia), nenhum aviso global é verdade: um
-# diz "editar aqui é editar o original" sobre arquivos que são cópias independentes, o
-# outro diz o contrário sobre hardlinks. A resposta vira coluna, linha a linha.
-MIXED_NOTE = (
-    "**Esta entrega tem os dois casos.** Parte dos arquivos é o mesmo arquivo de "
-    "`brolls/` com outro nome (hardlink) e parte é cópia independente — o sistema não "
-    "deixou criar link para todos. A coluna **Edição** diz qual é qual: "
-    "`original compartilhado` vem somente-leitura e editar ali edita o original "
-    "(copie antes de mexer); `editável` você muda à vontade. Para receber tudo como "
-    "cópia, rode o `deliver` com `GB_DELIVERY_COPY=1`."
-)
-# Rótulo por linha quando a entrega é misturada.
-EDIT_LABELS = {"copy": "editável", "hardlink": "original compartilhado", "symlink": "original compartilhado"}
-
-
-def _mixed(rows):
-    """A entrega tem cópia e link ao mesmo tempo? Aí nenhum aviso global serve."""
-    kinds = {"copy" if row.get("method") == "copy" else "link" for row in rows if row.get("method")}
-    return len(kinds) > 1
-
-
-def render_index(rows, for_human=None, created=None, conflicts=(), copies=False):
-    """`entrega/README.md`: a tabela que responde “onde estão meus arquivos”."""
-    mixed = _mixed(rows)
-    columns = ["beat", "narration", "target", "file", "state", "rights"]
-    headers = ["Beat", "Narração", "Alvo", "Arquivo", "Estado", "Direitos"]
-    if mixed:
-        columns.append("edit")
-        headers.append("Edição")
-    lines = _frontmatter("delivery-index", created, ["get-brolls", "entrega"])
-    lines += [
-        "# Seus trechos",
-        "",
-        (
-            "Cada pasta é um trecho do vídeo, na ordem do BRIEF.md. É só arrastar o `.mp4` "
-            "para o seu editor; o `ORIGEM.md` ao lado diz de onde ele veio e o que você me "
-            "disse sobre poder usar."
-        ),
-        "",
-        MIXED_NOTE if mixed else (COPY_NOTE if copies else EDIT_WARNING),
-        "",
-        "| " + " | ".join(headers) + " |",
-        "|" + "---|" * len(headers),
-    ]
-    for row in rows:
-        cells = dict(row)
-        if mixed:
-            cells["edit"] = EDIT_LABELS.get(row.get("method") or "", "—")
-        lines.append(
-            "| " + " | ".join(str(cells.get(key) or "—").replace("|", "/").replace("\n", " ") for key in columns) + " |"
-        )
-    if not rows:
-        # A linha vazia sai das mesmas colunas do cabeçalho: contar células à mão
-        # deixava a tabela torta (5 células para 6 colunas) em todo projeto sem clipe.
-        empty = dict.fromkeys(columns, "—")
-        empty["file"] = "nenhum trecho coletado ainda"
-        lines.append("| " + " | ".join(empty[key] for key in columns) + " |")
-    if conflicts:
-        lines += [
-            "",
-            "## Conflitos",
-            "",
-            (
-                "Estes trechos não foram refeitos porque o arquivo em `entrega/` tem conteúdo "
-                "diferente do que está em `brolls/` — parece edição sua e eu não sobrescrevo. "
-                "Renomeie ou apague o arquivo e rode `deliver` de novo:"
-            ),
-            "",
-        ]
-        lines += [f"- `{item}`" for item in conflicts]
-    lines += ["", "## Próximo passo", "", for_human or "Nada pendente por aqui.", ""]
-    return "\n".join(lines)
-
-
-def _brief_beats(project):
-    """Beats do BRIEF.md quando ele existe e é válido; lista vazia quando não dá."""
-    try:
-        from .brief import load_brief, validate_brief
-
-        data, _ = validate_brief(load_brief(project))
-        return [b["resolved"] for b in data["beats"]]
-    except (ValueError, OSError):
+    if not os.environ.get("GB_BRIEF_FILE") and not strict_exists(brief_path(project)):
         return []
+    if rules is None:
+        from .rules import load_rules
+
+        rules = load_rules(project)
+    try:
+        data, _ = validate_brief(load_brief(project), rules, project=project)
+    except ValueError as exc:
+        raise ValueError(
+            f"Não refiz entrega/ (nada foi mexido nela): o BRIEF.md é que diz a ordem e o nome "
+            f"das pastas, e ele não está válido. {labels.reason(exc)}"
+        ) from exc
+    return [b["resolved"] for b in data["beats"]]
 
 
-def _plan(project, items):
-    """Um grupo por beat, na ordem do brief; sem brief, na ordem do manifesto.
+RETIRED_REASON = "beat aposentado pelo roteiro"
+
+
+def _drop_retired(project, collected, retired=None, log_event="deliver_skipped"):
+    """`collected` sem os clipes de beat aposentado; cada um vai para `retired`, se for lista.
+
+    `log_event` nomeia o evento de log de cada clipe deixado de fora (o export usa o dele).
+    """
+    from .brief import retired_beat_ids
+
+    gone = retired_beat_ids(project)
+    if not gone:
+        return collected
+    kept = []
+    for c in collected:
+        if c.get("shot") not in gone:
+            kept.append(c)
+            continue
+        if retired is not None:
+            retired.append({"id": c["id"], "shot": c["shot"], "reason": RETIRED_REASON})
+        logs.event(log, logging.INFO, log_event, candidate=c["id"], reason="retired_beat")
+    return kept
+
+
+def deliverable(project, items, retired=None, log_event="deliver_skipped"):
+    """(clipes entregáveis na ordem do manifesto, pulados com o motivo): o predicado do `deliver`.
+
+    Clipe cujo `shot` é um beat aposentado (`"retired": true`, gravado pelo sync do
+    roteiro) sai e, quando `retired` é uma lista, entra nela com o motivo. O arquivo
+    em `brolls/` fica como está.
 
     Fica de fora quem não tem `output.path`, quem tem a chave `output.verified`
     presente com um valor falso (`False`, `0`, `None` — verificação de sha256 que
     falhou ou nunca rodou) e quem foi rejeitado na aprovação — mesmo que `reject` já
     limpe `output` nesses casos, a checagem aqui é defesa extra. Um item sem a chave
     `verified` (manifesto antigo) segue endereçado normalmente; a mesma regra que
-    `STAGE_TESTS["verified"]` usa em `commands.py`.
+    `STAGE_TESTS["verified"]` usa em `summaries.py`. `log_event` nomeia o evento de
+    log de cada pulo (`deliver_skipped` no `deliver`, `export_skipped` no export).
     """
     collected, skipped = [], []
     for c in items:
@@ -437,36 +139,63 @@ def _plan(project, items):
                     ),
                 }
             )
-            logs.event(log, logging.INFO, "deliver_skipped", candidate=c["id"], reason="unverified")
+            logs.event(log, logging.INFO, log_event, candidate=c["id"], reason="unverified")
             continue
         if (c.get("approval") or {}).get("status") == "rejected":
             skipped.append({"id": c["id"], "reason": "candidato foi rejeitado: não entra na entrega."})
-            logs.event(log, logging.INFO, "deliver_skipped", candidate=c["id"], reason="rejected")
+            logs.event(log, logging.INFO, log_event, candidate=c["id"], reason="rejected")
             continue
         collected.append(c)
-    beats = _brief_beats(project)
+    return _drop_retired(project, collected, retired, log_event), skipped
+
+
+def _plan_group_order(project, collected, rules=None):
+    """Ordem dos beats (do brief, mais os shots extras que não estão nele) e seus metadados."""
+    beats = _brief_beats(project, rules)
     order = [b["id"] for b in beats]
     meta = {b["id"]: b for b in beats}
     for c in collected:
         shot = c.get("shot")
         if shot and shot not in order:
             order.append(shot)
+    return order, meta
+
+
+def _plan_beat_group(position, beat_id, beat, collected):
+    """Grupo de um beat: membros, alvo (com plugin inerte quando vem do título) e pasta; None se vazio."""
+    members = [c for c in collected if c.get("shot") == beat_id]
+    if not members:
+        return None
+    target = beat.get("target") or members[0].get("title") or beat_id
+    # Alvo que veio do título na fonte de um plugin: sai inerte na tabela do README
+    # (a pasta continua saindo do texto original, por `slug`).
+    from_title = not beat.get("target") and members[0].get("title")
+    title_plugin = plugin_label(members[0]) if from_title else None
+    return {
+        "beat": beat_id,
+        "narration": beat.get("narration"),
+        "target": target,
+        "target_label": inert(target, title_plugin) if title_plugin else target,
+        # O alvo é texto humano (do brief, ou o título do candidato quando o beat
+        # não tem alvo): "AC/DC ao vivo" tem barra e não é caminho. A pasta sai do
+        # slug; o texto de verdade segue em `target` e no ORIGEM.md.
+        "dir": beat_dir_name(position, beat_id, slug(target)),
+        "items": members,
+    }
+
+
+def _plan(project, items, retired=None, rules=None):
+    """Um grupo por beat, na ordem do brief; sem brief, na ordem do manifesto.
+
+    Quem entra é decidido por `deliverable` (o mesmo predicado do export).
+    """
+    collected, skipped = deliverable(project, items, retired)
+    order, meta = _plan_group_order(project, collected, rules)
     groups = []
     for position, beat_id in enumerate(order, start=1):
-        beat = meta.get(beat_id) or {}
-        members = [c for c in collected if c.get("shot") == beat_id]
-        if not members:
-            continue
-        target = beat.get("target") or members[0].get("title") or beat_id
-        groups.append(
-            {
-                "beat": beat_id,
-                "narration": beat.get("narration"),
-                "target": target,
-                "dir": beat_dir_name(position, beat_id, target),
-                "items": members,
-            }
-        )
+        group = _plan_beat_group(position, beat_id, meta.get(beat_id) or {}, collected)
+        if group is not None:
+            groups.append(group)
     orphans = [c for c in collected if not c.get("shot")]
     if orphans:
         groups.append(
@@ -490,128 +219,526 @@ def _names(group_dir, index, source_suffix, sheet_suffix):
     }
 
 
-def _symlink_targets_brolls(path, brolls_root):
-    """Um symlink só é nosso quando aponta para um clipe dentro do `brolls/` deste projeto.
-
-    Um link que a pessoa criou (para a própria mídia, um atalho, outra pasta) não bate
-    com isso e não pode ser tratado como órfão do gerador.
-    """
-    try:
-        target = path.resolve()
-        brolls_real = Path(brolls_root).resolve()
-    except OSError:
-        return False
-    return target == brolls_real or brolls_real in target.parents
-
-
-def _ours(rel, path, owned, brolls_root):
-    """Só é órfão o que este gerador escreveu; o resto é da pessoa e fica.
-
-    Reconhecemos três assinaturas: um caminho que o próprio manifesto registra em
-    `c["delivery"]`, os nomes que o gerador usa (`README.md`, `ORIGEM*.md`,
-    `contact-sheet*.*` e a mídia, que repete o nome da pasta do beat) e, só quando o
-    nome já bateu com uma dessas assinaturas, um symlink que resolve para dentro de
-    `brolls/`. Um bilhete — ou um link — que a pessoa deixou dentro da pasta não casa
-    com nada disso e é preservado.
-    """
-    if rel in owned or rel == INDEX:
-        return True
-    name = path.name
-    parent = path.parent.name
-    name_matches = bool(GENERATED.match(name)) or (
-        bool(BEAT_DIR_RE.match(parent)) and re.fullmatch(re.escape(parent) + r"(-\d+)?\.[A-Za-z0-9]+", name) is not None
+def _deliver_refuse_symlink(root):
+    """Recusa `deliver` se `entrega/` já existe como link simbólico (varrer seguiria o alvo)."""
+    # lenient: refuses entrega/ as a link; a locked entrega/ fails in the sweep's strict_is_dir
+    if not root.is_symlink():
+        return
+    logs.event(log, logging.WARNING, "deliver_refusal", reason="entrega_is_symlink")
+    raise ValueError(
+        f"{labels.shown(root)} é um link simbólico: apague o link antes de rodar `deliver`. A pasta "
+        "de entrega precisa ser uma pasta real dentro do projeto, nunca um atalho para "
+        "outro lugar."
     )
-    if not name_matches:
+
+
+class _DeliverCtx:  # pylint: disable=too-few-public-methods
+    # Contêiner simples de estado, não um objeto com comportamento.
+    """Ledger, pasta de entrega e modo dry-run, compartilhados por todo `build_delivery`."""
+
+    def __init__(self, ledger, root, dry_run, pristine=None):
+        self.ledger = ledger
+        self.root = root
+        self.dry_run = dry_run
+        # Os clipes de `brolls/` (todas as revisões) que um arquivo de `entrega/` pode ainda ser.
+        self.pristine = pristine or Pristine(())
+
+
+class _ClipMissingError(ValueError):
+    """O manifesto diz que o clipe foi coletado e conferido, mas o arquivo não está no disco."""
+
+    def __init__(self, label):
+        # Linha curta para o README; a mensagem inteira vai para o erro do `deliver`.
+        self.note = f"o clipe `{label}` sumiu; rode `verify` e depois `fetch` de novo"
+        super().__init__(
+            f"O clipe {label} sumiu: o manifesto diz que ele foi coletado e conferido, mas o "
+            "arquivo não está lá. Restaure o arquivo, ou rode `verify` (ele marca o clipe "
+            "como não conferido) e depois `fetch` de novo."
+        )
+
+
+def _clip_label(ctx, c, source):
+    """Onde o clipe deveria estar, relativo ao projeto, para a mensagem."""
+    try:
+        return source.resolve().relative_to(ctx.ledger.root.parent.resolve()).as_posix()
+    except (OSError, ValueError):
+        return f"brolls/{c['output']['path']}"
+
+
+def _deliver_materialize_item(ctx, group, c, names, sheet):
+    """Liga/copia mídia e contact sheet deste item (no ensaio, só confere o destino).
+
+    Devolve (método ou None, conflito ou None, motivo para o README ou None, sha256 do
+    contact sheet entregue ou None): o motivo só existe quando o conflito não é um
+    arquivo editado pela pessoa.
+    """
+    media_rel = f"{group['dir']}/{names['media']}"
+    sheet_rel_out = f"{group['dir']}/{names['sheet']}" if sheet else None
+    method = sheet_sha = None
+    try:
+        # O `ValueError` daqui vira conflito do item, e o `deliver` segue: a recusa que
+        # chegar ao log não traz `error_code` (`logs.handled`).
+        with logs.handled():
+            # O mesmo nome em `broll/` e na antiga `brolls/clips/` sem desempate pelo
+            # sha256 vira conflito nomeado, como o arquivo editado à mão.
+            source = _clip_source(ctx, c)
+            if not strict_is_file(source):
+                # Pular calado deixava o item "entregue" com `method: None` e nada em
+                # `entrega/`: vira conflito, e o registro de entrega fica como estava.
+                raise _ClipMissingError(_clip_label(ctx, c, source))
+            if ctx.dry_run:
+                # O ensaio só lê, mas vê o mesmo conflito que a rodada real levantaria,
+                # na mídia e no contact sheet (`_place_sheet` também só confere).
+                try:
+                    delivery_files.refuse_if_edited(source, ctx.root / media_rel)
+                except delivery_files.EditedError:
+                    if not _drop_stale_revision(ctx, ctx.root / media_rel):
+                        raise
+                method = "planned"
+            else:
+                # Só hardlink/symlink são congelados: cópia é independente.
+                method = _place_media(ctx, source, ctx.root / media_rel)
+                logs.event(
+                    log,
+                    logging.INFO,
+                    "deliver_item",
+                    beat=group["beat"] or "no_beat",
+                    mode=method,
+                    # `link_or_copy` doesn't report a per-attempt failure reason
+                    # (its signature is shared with tests that stub it out with a
+                    # 3-arg fake), so only the one fallback cause this call site
+                    # can know for certain — a forced copy — is named here.
+                    reason="env_copy" if copies_forced() else None,
+                )
+            if sheet and sheet_rel_out and strict_is_file(sheet):
+                # O contact sheet não é congelado: `preview` regrava o arquivo
+                # de origem no mesmo caminho quando a pessoa muda o intervalo.
+                sheet_sha = _place_sheet(ctx, c, sheet, ctx.root / sheet_rel_out)
+    except ValueError as exc:
+        from .layout import ClipConflictError
+
+        conflict = str(exc)
+        if isinstance(exc, ClipConflictError):
+            kind = "clip_conflict"
+        elif isinstance(exc, _ClipMissingError):
+            kind = "clip_missing"
+        else:
+            kind = "foreign_file" if "parece edição sua" in conflict else "io_error"
+        logs.event(log, logging.WARNING, "deliver_conflict", beat=group["beat"] or "no_beat", kind=kind)
+        return method, conflict, getattr(exc, "note", None), None
+    return method, None, None, sheet_sha
+
+
+def _drop_stale_revision(ctx, dest):
+    """Tira de `entrega/` o arquivo planejado que ainda é outra revisão de um clipe; diz se tirou.
+
+    O nome em `entrega/` não muda entre revisões do mesmo item: depois de um corte novo
+    (ou de `reject` e outro `fetch`), o que está ali ainda é o link ou a cópia intocada do
+    clipe antigo, que continua em `brolls/` — nosso, não edição da pessoa. No ensaio, só
+    diz. Um hardlink sai sem destravar o clipe que compartilha o inode. Só dentro da
+    `entrega/` real: atrás de uma pasta de beat virada link, o arquivo fica e é conflito.
+    """
+    if not _inside_delivery(ctx, dest):
         return False
-    if path.is_symlink():
-        return _symlink_targets_brolls(path, brolls_root)
+    match = ctx.pristine.match(dest)
+    if match is None:
+        return False
+    clip, same_inode = match
+    if not ctx.dry_run:
+        _make_room(dest, "a revisão nova", clip if same_inode else None)
     return True
 
 
-def _confined(path, real_root):
-    """A exclusão só é segura quando o local real de `path` está dentro de `real_root`.
+def _make_room(dest, what, linked=None):
+    """Tira `dest` de `entrega/` (sem destravar `linked`, o clipe do mesmo inode); a falha é conflito do item.
 
-    `entrega/` em si já foi recusada como symlink em `build_delivery`, mas uma pasta de
-    beat marcada à mão como link ainda poderia levar `rglob` para fora do projeto — esta
-    checagem confirma o caminho físico antes de qualquer `unlink`/`rmdir`.
+    No Windows, um arquivo aberto no editor não sai (e uma pasta de beat sem escrita, em
+    qualquer sistema): o `OSError` passaria por cima do `except ValueError` do item e
+    abortaria o `deliver` antes dos outros beats, do manifesto e do README.
     """
     try:
-        parent_real = path.parent.resolve()
-    except OSError:
-        return False
-    return parent_real == real_root or real_root in parent_real.parents
-
-
-_SweepContext = namedtuple("_SweepContext", "expected dry_run owned brolls_root real_root")
-
-
-def _sweep_empty_directory(path, rel, ctx):
-    """One orphaned-beat-directory candidate for `_sweep`: `"removed"`, `"kept"`, or
-    `None` (not a candidate at all — same gate `_sweep` used to apply inline).
-
-    A symlinked "directory" needs its own removal path: `rmdir` on a symlink to an
-    empty directory raises `NotADirectoryError` on POSIX, and blindly removing it
-    could take someone else's folder with it. It is only `unlink()`'d (never
-    `rmdir()`'d) when the same rules that already cover a symlinked FILE — `_ours`
-    and `_symlink_targets_brolls` — recognize it as this generator's own; otherwise
-    it is foreign and stays. A real empty directory that fails to `rmdir`
-    (permissions, a race) is left in place and reported as a warning, never an
-    aborted delivery.
-    """
-    if not (
-        BEAT_DIR_RE.match(path.name)
-        and not any(path.iterdir())
-        and rel not in ctx.expected
-        and _confined(path, ctx.real_root)
-    ):
-        return None
-    if path.is_symlink():
-        if not _ours(rel, path, ctx.owned, ctx.brolls_root):
-            return "kept"
-        if not ctx.dry_run:
-            _thaw_unlink(path)
-        return "removed"
-    if not ctx.dry_run:
-        try:
-            path.rmdir()
-        except OSError as exc:
-            record_warning(
-                "DELIVERY_SWEEP_RMDIR_FAILED",
-                f"Não consegui apagar a pasta vazia {path} ({exc}); ela continua em entrega/.",
-            )
-            return None
-    return "removed"
-
-
-def _sweep(root, expected, dry_run, owned=(), brolls_root=None):
-    """Apaga só o que este gerador escreveu e que deixou de existir no plano."""
-    removed, kept = [], []
-    owned = set(owned)
-    if not root.is_dir():
-        return removed, kept
-    ctx = _SweepContext(expected, dry_run, owned, brolls_root, root.resolve())
-    for path in sorted(root.rglob("*"), reverse=True):
-        rel = path.relative_to(root).as_posix()
-        if path.is_dir():
-            outcome = _sweep_empty_directory(path, rel, ctx)
-            if outcome == "removed":
-                removed.append(rel)
-            elif outcome == "kept":
-                kept.append(rel)
-            continue
-        if rel in expected:
-            continue
-        if _ours(rel, path, owned, brolls_root) and _confined(path, ctx.real_root):
-            if not dry_run:
-                _thaw_unlink(path)
-            removed.append(rel)
+        if linked is None:
+            delivery_sweep.thaw_unlink(dest)
         else:
-            kept.append(rel)
-    logs.event(log, logging.INFO, "sweep", removed=len(removed), kept_foreign=len(kept))
+            _unlink_keeping_mode(dest, linked)
+    except OSError as exc:
+        raise ValueError(
+            f"Não consegui tirar {labels.shown(dest)} de entrega/ para pôr {what} ({labels.reason(exc)}): "
+            "se ele está aberto num "
+            "editor, feche e rode `deliver` de novo."
+        ) from exc
+
+
+def _place_media(ctx, source, dest):
+    """`link_or_copy` da mídia; o link ou a cópia intocada de outra revisão dá lugar à revisão nova.
+
+    Uma linha `deliver.place` por mídia posta em `entrega/`, além das de cada link ou cópia."""
+    with effects.op("deliver.place", dest):
+        try:
+            return link_or_copy(source, dest, read_only=True)
+        except delivery_files.EditedError:
+            if not _drop_stale_revision(ctx, dest):
+                raise
+        return link_or_copy(source, dest, read_only=True)
+
+
+def _inside_delivery(ctx, dest):
+    """`dest` mora de fato dentro de `entrega/`: o mesmo confinamento da varredura antes de apagar."""
+    return confined(dest, ctx.root.resolve())
+
+
+def _place_sheet(ctx, c, sheet, dest):
+    """`link_or_copy` do contact sheet; o sheet que o `deliver` deixou ali dá lugar ao novo.
+
+    O `preview` regrava o sheet no mesmo caminho (inode novo) quando o intervalo muda; o
+    que estava em `entrega/` só é a prévia velha quando ainda tem os bytes que o último
+    `deliver` deste item entregou (`delivery.sheet_sha256`). Um sheet que a pessoa editou
+    (a cópia do `GB_DELIVERY_COPY=1`, ou salvo por cima do link) não bate com isso e é
+    conflito, como a mídia; atrás de uma pasta de beat virada link para fora de
+    `entrega/`, também. No ensaio, só confere. Devolve o sha256 do sheet entregue.
+    """
+    try:
+        if ctx.dry_run:
+            delivery_files.refuse_if_edited(sheet, dest)
+            return None
+        link_or_copy(sheet, dest)
+    except delivery_files.EditedError:
+        if not (_inside_delivery(ctx, dest) and _sheet_we_left(c, dest)):
+            raise
+        if ctx.dry_run:
+            return None
+        _make_room(dest, "o contact sheet novo")
+        link_or_copy(sheet, dest)
+    from .ledger import digest
+
+    try:
+        return digest(sheet)
+    except OSError:
+        # Sem o sha256 no registro, a próxima troca do sheet vira conflito: o lado seguro.
+        return None
+
+
+def _sheet_we_left(c, dest):
+    """`dest` ainda tem os bytes do contact sheet que o último `deliver` deste item entregou."""
+    from .ledger import digest
+
+    recorded = (c.get("delivery") or {}).get("sheet_sha256")
+    if not recorded:
+        # Entrega de uma versão anterior, sem o registro: nada prova que é a prévia velha.
+        return False
+    try:
+        return digest(dest) == recorded
+    except OSError as exc:
+        raise ValueError(
+            f"Não consegui comparar {labels.shown(dest)} com o contact sheet entregue antes "
+            f"({labels.reason(exc)}): confira "
+            "permissão ou disponibilidade do arquivo e rode `deliver` de novo."
+        ) from exc
+
+
+def _clip_source(ctx, c):
+    """Arquivo coletado deste item, na pasta de clipes do layout do projeto."""
+    from . import layout
+
+    return layout.output_file(ctx.ledger.root.parent, c["output"]["path"], sha256=c["output"].get("sha256"))
+
+
+def _canonical_label(ctx, c):
+    """Onde o original está, relativo ao projeto, só quando não é `brolls/<caminho lógico>`."""
+    source = _clip_source(ctx, c)
+    project = ctx.ledger.root.parent
+    if source == ctx.ledger.root / c["output"]["path"]:
+        return None
+    try:
+        return source.relative_to(project).as_posix()
+    except ValueError:
+        return None
+
+
+def _deliver_write_origin(ctx, origin_rel, c, names, method):
+    """Grava ORIGEM.md deste item, com a data de criação preservada se o arquivo já existia."""
+    from .ledger import atomic_write
+
+    target = ctx.root / origin_rel
+    atomic_write(
+        target,
+        render_origin(
+            c,
+            names["media"],
+            delivery_render.created_in(target),
+            method or "hardlink",
+            canonical=_canonical_label(ctx, c),
+        ),
+    )
+
+
+def _deliver_process_item(ctx, group, index, c, acc):
+    """Processa um item do grupo: liga/copia arquivos, grava ORIGEM.md e atualiza os acumuladores."""
+    sheet_rel = (c.get("preview") or {}).get("contact_sheet_path")
+    sheet = ctx.ledger.root / sheet_rel if sheet_rel else None
+    names = _names(
+        group["dir"],
+        index,
+        Path(c["output"]["path"]).suffix or ".mp4",
+        Path(sheet_rel).suffix if sheet_rel else ".jpg",
+    )
+    media_rel = f"{group['dir']}/{names['media']}"
+    acc["expected"].add(media_rel)
+    sheet_rel_out = f"{group['dir']}/{names['sheet']}" if sheet else None
+    if sheet_rel_out:
+        acc["expected"].add(sheet_rel_out)
+    # No ensaio, o método sai `"planned"` e o conflito é o mesmo da rodada real.
+    method, conflict, note, sheet_sha = _deliver_materialize_item(ctx, group, c, names, sheet)
+    if conflict:
+        acc["conflicts"].append(conflict)
+        acc["conflicted"].append((media_rel, note) if note else media_rel)
+        # O que já estava entregue deste item fica, mesmo que o nome planejado mude.
+        acc["expected"].update(_delivered_files(ctx.root, c))
+    origin_rel = f"{group['dir']}/{names['origin']}"
+    acc["expected"].add(origin_rel)
+    if not ctx.dry_run and not conflict:
+        _deliver_write_origin(ctx, origin_rel, c, names, method)
+    if conflict:
+        # Não entregamos este: manter o registro antigo (ou nenhum) é o que
+        # mantém o item fora de "entregue" no `status` e fora da tabela.
+        return
+    if not ctx.dry_run:
+        _record_delivery(c, media_rel, method, sheet_sha, acc["changed"])
+    acc["listed"].append(
+        {
+            "id": c["id"],
+            "beat": group["beat"],
+            "path": f"{DELIVERY_DIR}/{media_rel}",
+            "method": method,
+        }
+    )
+    acc["rows"].append(
+        {
+            "beat": group["beat"] or "sem beat",
+            "narration": group["narration"],
+            "target": group.get("target_label", group["target"]),
+            "file": f"{group['dir']}/{names['media']}",
+            "state": c.get("state"),
+            "rights": (c.get("rights") or {}).get("status"),
+            # Como este arquivo chegou aqui: é o que decide se editar nele
+            # editaria o original.
+            "method": method,
+        }
+    )
+
+
+def _record_delivery(c, media_rel, method, sheet_sha, changed):
+    """Grava em `c["delivery"]` o que foi entregue; o item entra em `changed` só quando o registro mudou."""
+    record = {"path": f"{DELIVERY_DIR}/{media_rel}", "method": method}
+    if sheet_sha:
+        # O que prova, na próxima rodada, que o sheet em `entrega/` ainda é o que entregamos.
+        record["sheet_sha256"] = sheet_sha
+    if c.get("delivery") != record:
+        c["delivery"] = record
+        changed.append(c)
+
+
+def _delivered_files(root, c):
+    """Caminhos (relativos a `entrega/`) do que já foi entregue deste item: mídia, ORIGEM e contact sheet."""
+    recorded = (c.get("delivery") or {}).get("path") or ""
+    if not recorded.startswith(DELIVERY_DIR + "/"):
+        return set()
+    media = recorded[len(DELIVERY_DIR) + 1 :]
+    folder, _, name = media.rpartition("/")
+    stem = Path(name).stem
+    tail = stem[len(folder) :] if folder and stem.startswith(folder) else ""
+    found = {media, f"{folder}/ORIGEM{tail}.md"}
+    # lenient: link test after strict_is_dir on the same line
+    if strict_is_dir(root / folder) and not (root / folder).is_symlink():
+        found.update(f"{folder}/{p.name}" for p in (root / folder).glob(f"{SHEET}{tail}.*"))
+    return found
+
+
+def _unresolved_conflicts(ctx, skipped, acc):
+    """Itens pulados como não verificados cujo clipe está em conflito de pasta: viram conflito, não pulo.
+
+    O `verify` derruba `verified` quando as duas cópias divergem; sem isto o `deliver`
+    seguinte pularia o item e a varredura apagaria o link já entregue, calado.
+    """
+    from .layout import ClipConflictError
+
+    by_id = {c["id"]: c for c in ctx.ledger.data["items"]}
+    kept = []
+    for entry in skipped:
+        c = by_id.get(entry["id"])
+        if c is None or not (c.get("output") or {}).get("path"):
+            kept.append(entry)
+            continue
+        try:
+            with logs.handled():  # o conflito vai para `conflicts`; o `deliver` decide no fim
+                _clip_source(ctx, c)
+        except ClipConflictError as exc:
+            acc["conflicts"].append(f"{c['id']}: {labels.reason(exc)}")
+            acc["expected"].update(_delivered_files(ctx.root, c))
+            logs.event(log, logging.WARNING, "deliver_conflict", beat=c.get("shot") or "no_beat", kind="clip_conflict")
+            continue
+        except ValueError:
+            pass
+        kept.append(entry)
+    return kept
+
+
+def _deliver_write_index(root, for_human, rows, conflicted, listed):
+    """Grava o índice (README) da entrega, com o próximo passo já refletindo o estado novo."""
+    from .ledger import atomic_write
+
+    index = root / INDEX
+    # O "próximo passo" é lido agora, com `c["delivery"]` já preenchido: senão o
+    # índice mandaria a pessoa rodar exatamente o comando que acabou de rodar.
+    text = for_human() if callable(for_human) else for_human
+    atomic_write(
+        index,
+        render_index(
+            rows,
+            text,
+            delivery_render.created_in(index),
+            conflicted,
+            # Quando tudo virou cópia, o aviso de "é o mesmo arquivo" seria mentira.
+            copies=bool(listed) and all(i["method"] == "copy" for i in listed),
+        ),
+    )
+
+
+def _deliver_forget_retired(items, retired, changed):
+    """Apaga o registro de entrega dos itens de beats aposentados, para reativar pedir `deliver` de novo."""
+    gone = {entry["id"] for entry in retired}
+    for c in items:
+        if c["id"] in gone and "delivery" in c:
+            del c["delivery"]
+            changed.append(c)
+
+
+def _deliver_forget_swept(items, removed, changed):
+    """Apaga o registro de entrega de todo item cuja mídia a varredura acabou de tirar de `entrega/`.
+
+    Sem isso, um item entregue que deixou de valer (desverificado, rejeitado) mantinha o registro de
+    um arquivo que não existe mais, e o fluxo nunca voltava a oferecer `deliver` para ele. O arquivo
+    que ficou (edição da pessoa) não está em `removed`, e o registro dele fica.
+    """
+    gone = {f"{DELIVERY_DIR}/{rel}" for rel in removed}
+    for c in items:
+        if (c.get("delivery") or {}).get("path") in gone:
+            del c["delivery"]
+            if all(c is not other for other in changed):
+                changed.append(c)
+
+
+def _deliver_process_groups(ctx, groups, acc):
+    """Processa todos os grupos do plano, item a item, preenchendo os acumuladores."""
+    for group in groups:
+        acc["expected"].add(group["dir"])
+        for index, c in enumerate(group["items"], start=1):
+            _deliver_process_item(ctx, group, index, c, acc)
+
+
+def _deliver_owned_paths(items):
+    """Caminhos relativos a `entrega/` que o próprio manifesto já diz que foram entregues."""
+    return {
+        (c.get("delivery") or {}).get("path", "")[len(DELIVERY_DIR) + 1 :]
+        for c in items
+        if (c.get("delivery") or {}).get("path", "").startswith(DELIVERY_DIR + "/")
+    }
+
+
+def _clip_link_roots(ledger):
+    """Pastas para onde um symlink de `entrega/` gerado por nós pode apontar: `brolls/` e as de clipe."""
+    from . import layout
+
+    try:
+        with logs.handled():
+            return (ledger.root, *layout.clip_roots(ledger.root.parent))
+    except ValueError:
+        # Pasta de clipes recusada (link): só `brolls/` conta, e nenhum link para fora é nosso.
+        return (ledger.root,)
+
+
+def _mirrored_sources(ledger, items):
+    """Clipes de `brolls/` que a mídia de `entrega/` pode espelhar: todo arquivo das pastas de clipe.
+
+    Não só o `output.path` de agora: `reject`, um corte novo, a troca de formato e o
+    `fetch` de outra revisão tiram o caminho do manifesto, mas o clipe nunca sai de
+    `brolls/` — e o link (ou a cópia) que sobrou dele em `entrega/` continua sendo nosso.
+    Também o caminho do manifesto, para um `output.path` fora de `clips/`; com `..` ou
+    barra invertida, fica de fora. Gerador: só é percorrido se a varredura achar mídia
+    fora do plano.
+    """
+    for folder in _clip_link_roots(ledger)[1:]:
+        try:
+            # lenient(2): best-effort mirror listing inside try/except OSError (see below)
+            if folder.is_dir() and not folder.is_symlink():
+                # Uma fonte que não dá para conferir não entra como intocada: o espelho dela fica.
+                # lenient(2): the except OSError below catches it as on 3.11; its mirror is kept
+                yield from (p for p in folder.iterdir() if p.is_file() and not p.is_symlink())
+        except OSError:
+            continue
+    for c in items:
+        value = (c.get("output") or {}).get("path")
+        if isinstance(value, str) and value and "\\" not in value and ".." not in Path(value).parts:
+            yield ledger.root / value
+
+
+def _vanished_clip(ctx, c):
+    """Onde estava o clipe de `c`, relativo ao projeto, quando ele sumiu de `brolls/`; senão `None`."""
+    if c is None or not (c.get("output") or {}).get("path"):
+        return None
+    try:
+        with logs.handled():
+            source = _clip_source(ctx, c)
+    except ValueError:
+        return None
+    return None if strict_exists(source) else _clip_label(ctx, c, source)
+
+
+def _edited_orphan(ctx, rel, c):
+    """(mensagem do erro, motivo para o README) de mídia nossa, fora do plano, que não bate com nenhum clipe.
+
+    Ela fica e o `deliver` falha. Sem um clipe que confira, apagar poderia perder a
+    edição da pessoa — ou a única cópia de um clipe que sumiu de `brolls/` —, então
+    nenhuma das duas mensagens sugere apagar.
+    """
+    vanished = _vanished_clip(ctx, c)
+    logs.event(
+        log, logging.WARNING, "deliver_conflict", beat="orphan", kind="clip_missing" if vanished else "foreign_file"
+    )
+    if vanished:
+        return (
+            f"{(ctx.root / rel).as_posix()} saiu do plano da entrega e o clipe dele sumiu de brolls/ ({vanished}): "
+            "este arquivo pode ser a única cópia, e eu não apago. Copie esse arquivo de volta para "
+            f"{vanished} e rode `verify`, ou guarde-o fora de `entrega/`; depois rode `deliver` de novo."
+        ), (f"o clipe `{vanished}` sumiu e este pode ser a única cópia dele; não apaguei")
+    return (
+        f"{(ctx.root / rel).as_posix()} saiu do plano da entrega e não bate com nenhum arquivo de brolls/ "
+        "(pode ser edição sua): eu não apago. Guarde esse arquivo fora de `entrega/` e rode "
+        "`deliver` de novo."
+    ), "saiu do plano e não bate com nenhum arquivo de `brolls/` (pode ser edição sua); não apaguei"
+
+
+def _deliver_sweep(ctx, items, acc):
+    """Varre `entrega/`; cada cópia editada fora do plano vira conflito. Devolve (removidos, mantidos)."""
+    edited = []
+    removed, kept = _sweep(
+        ctx.root,
+        acc["expected"],
+        ctx.dry_run,
+        _deliver_owned_paths(items),
+        _clip_link_roots(ctx.ledger),
+        sources=_mirrored_sources(ctx.ledger, items),
+        edited=edited,
+    )
+    by_path = {(c.get("delivery") or {}).get("path"): c for c in items if c.get("delivery")}
+    for rel in edited:
+        conflict, note = _edited_orphan(ctx, rel, by_path.get(f"{DELIVERY_DIR}/{rel}"))
+        acc["conflicts"].append(conflict)
+        acc["conflicted"].append((rel, note))
     return removed, kept
 
 
-def build_delivery(project, dry_run=False, ledger=None, for_human=None):  # noqa: C901, PLR0912, PLR0915 - existing size; rebuilds `entrega/` through every item/state combination
+def build_delivery(project, dry_run=False, ledger=None, for_human=None, rules=None):
     """Refaz `entrega/` a partir do que já está coletado em `brolls/`.
 
     Não toca em `brolls/`, não decide nada e não inventa direito de uso: só reorganiza
@@ -624,151 +751,58 @@ def build_delivery(project, dry_run=False, ledger=None, for_human=None):  # noqa
     passo que acabou de ser executado.
 
     Um arquivo que a pessoa editou não interrompe o trabalho pela metade: o conflito é
-    anotado, os demais itens são materializados, o índice e o manifesto são gravados, a
-    varredura roda, e só então o comando falha nomeando todos os arquivos em conflito.
+    anotado, os demais itens são materializados, a varredura roda, o índice e o manifesto
+    são gravados, e só então o comando falha nomeando todos os arquivos em conflito.
+
+    `rules` é o RULES.md já carregado (o `deliver` e o `verify` passam o deles); sem ele,
+    é lido do projeto. Com ele, o BRIEF.md é validado como o `brief` valida: um BRIEF.md
+    inválido recusa antes de tocar em `entrega/`.
 
     `entrega/` precisa ser uma pasta real: se o caminho já existe como link simbólico,
     seguir ele poderia varrer e apagar arquivos de outro lugar (o alvo do link), então o
     comando recusa antes de tocar em qualquer arquivo, mesmo em `dry_run`.
     """
-    from .ledger import Ledger, atomic_write
+    from .ledger import Ledger
 
     ledger = ledger or Ledger(project, recover=False)
     items = ledger.data["items"]
     root = Path(project).expanduser().resolve() / DELIVERY_DIR
-    if root.is_symlink():
-        logs.event(log, logging.WARNING, "deliver_refusal", reason="entrega_is_symlink")
-        raise ValueError(
-            f"{root} é um link simbólico: apague o link antes de rodar `deliver`. A pasta "
-            "de entrega precisa ser uma pasta real dentro do projeto, nunca um atalho para "
-            "outro lugar."
-        )
-    groups, skipped = _plan(project, items)
-    expected, listed, rows, changed = set(), [], [], []
-    conflicts, conflicted = [], []
-    for group in groups:
-        expected.add(group["dir"])
-        for index, c in enumerate(group["items"], start=1):
-            source = ledger.root / c["output"]["path"]
-            sheet_rel = (c.get("preview") or {}).get("contact_sheet_path")
-            sheet = ledger.root / sheet_rel if sheet_rel else None
-            names = _names(
-                group["dir"],
-                index,
-                Path(c["output"]["path"]).suffix or ".mp4",
-                Path(sheet_rel).suffix if sheet_rel else ".jpg",
-            )
-            media_rel = f"{group['dir']}/{names['media']}"
-            expected.add(media_rel)
-            method = "planned" if dry_run else None
-            sheet_rel_out = f"{group['dir']}/{names['sheet']}" if sheet else None
-            if sheet_rel_out:
-                expected.add(sheet_rel_out)
-            conflict = None
-            if not dry_run:
-                try:
-                    if source.is_file():
-                        # Só hardlink/symlink são congelados: cópia é independente.
-                        method = link_or_copy(source, root / media_rel, read_only=True)
-                        logs.event(
-                            log,
-                            logging.INFO,
-                            "deliver_item",
-                            beat=group["beat"] or "no_beat",
-                            mode=method,
-                            # `link_or_copy` doesn't report a per-attempt failure reason
-                            # (its signature is shared with tests that stub it out with a
-                            # 3-arg fake), so only the one fallback cause this call site
-                            # can know for certain — a forced copy — is named here.
-                            reason="env_copy" if copies_forced() else None,
-                        )
-                    if sheet and sheet_rel_out and sheet.is_file():
-                        # O contact sheet não é congelado: `preview` regrava o arquivo
-                        # de origem no mesmo caminho quando a pessoa muda o intervalo.
-                        link_or_copy(sheet, root / sheet_rel_out)
-                except ValueError as exc:
-                    conflict = str(exc)
-                    conflicts.append(conflict)
-                    conflicted.append(media_rel)
-                    logs.event(
-                        log,
-                        logging.WARNING,
-                        "deliver_conflict",
-                        beat=group["beat"] or "no_beat",
-                        kind="foreign_file" if "parece edição sua" in conflict else "io_error",
-                    )
-            origin_rel = f"{group['dir']}/{names['origin']}"
-            expected.add(origin_rel)
-            if not dry_run and not conflict:
-                target = root / origin_rel
-                atomic_write(
-                    target,
-                    render_origin(c, names["media"], _created_in(target), method or "hardlink"),
-                )
-            record = {"path": f"{DELIVERY_DIR}/{media_rel}", "method": method}
-            if conflict:
-                # Não entregamos este: manter o registro antigo (ou nenhum) é o que
-                # mantém o item fora de "entregue" no `status` e fora da tabela.
-                continue
-            if not dry_run and c.get("delivery") != record:
-                c["delivery"] = record
-                changed.append(c)
-            listed.append(
-                {
-                    "id": c["id"],
-                    "beat": group["beat"],
-                    "path": f"{DELIVERY_DIR}/{media_rel}",
-                    "method": method,
-                }
-            )
-            rows.append(
-                {
-                    "beat": group["beat"] or "sem beat",
-                    "narration": group["narration"],
-                    "target": group["target"],
-                    "file": f"{group['dir']}/{names['media']}",
-                    "state": c.get("state"),
-                    "rights": (c.get("rights") or {}).get("status"),
-                    # Como este arquivo chegou aqui: é o que decide se editar nele
-                    # editaria o original.
-                    "method": method,
-                }
-            )
-    expected.add(INDEX)
+    _deliver_refuse_symlink(root)
+    retired = []
+    groups, skipped = _plan(project, items, retired, rules)
+    ctx = _DeliverCtx(ledger, root, dry_run, Pristine(_mirrored_sources(ledger, items)))
+    acc = {"expected": set(), "listed": [], "rows": [], "changed": [], "conflicts": [], "conflicted": []}
+    _deliver_process_groups(ctx, groups, acc)
+    skipped = _unresolved_conflicts(ctx, skipped, acc)
+    acc["expected"].add(INDEX)
+    # A varredura vem antes do índice: a cópia editada que ela preserva entra em "Conflitos".
+    removed, kept = _deliver_sweep(ctx, items, acc)
     if not dry_run:
-        root.mkdir(parents=True, exist_ok=True)
-        index = root / INDEX
-        # O "próximo passo" é lido agora, com `c["delivery"]` já preenchido: senão o
-        # índice mandaria a pessoa rodar exatamente o comando que acabou de rodar.
-        text = for_human() if callable(for_human) else for_human
-        atomic_write(
-            index,
-            render_index(
-                rows,
-                text,
-                _created_in(index),
-                conflicted,
-                # Quando tudo virou cópia, o aviso de "é o mesmo arquivo" seria mentira.
-                copies=bool(listed) and all(i["method"] == "copy" for i in listed),
-            ),
-        )
-    owned = {
-        (c.get("delivery") or {}).get("path", "")[len(DELIVERY_DIR) + 1 :]
-        for c in items
-        if (c.get("delivery") or {}).get("path", "").startswith(DELIVERY_DIR + "/")
-    }
-    removed, kept = _sweep(root, expected, dry_run, owned, ledger.root)
-    if changed:
-        ledger.save_many("deliver", changed)
-    if conflicts:
-        raise ValueError(" ".join(conflicts))
+        effects.mkdir(root, parents=True, exist_ok=True)
+        _deliver_write_index(root, for_human, acc["rows"], acc["conflicted"], acc["listed"])
+    if not dry_run and retired:
+        # A pasta do beat aposentado acabou de ser varrida: o registro de entrega dela
+        # sai também, senão o beat reativado depois nunca pediria `deliver` de novo.
+        _deliver_forget_retired(items, retired, acc["changed"])
+    if not dry_run:
+        _deliver_forget_swept(items, removed, acc["changed"])
+    if acc["changed"]:
+        ledger.save_many("deliver", acc["changed"])
+    if acc["conflicts"] and not dry_run:
+        # Só esta falha leva a dica do conflito; uma recusa anterior (brief, link) leva a de sempre.
+        record_delivery_conflicts()
+        raise ValueError(" ".join(acc["conflicts"]))
     return {
         "delivery": str(root),
         "readme": str(root / INDEX),
         "dry_run": bool(dry_run),
-        "items": listed,
-        "rows": rows,
+        "items": acc["listed"],
+        "rows": acc["rows"],
         "removed": removed,
         "kept": kept,
         "skipped": skipped,
+        # Só aparece com beat aposentado no brief: sem ele, o relatório é o de sempre.
+        **({"retired": retired} if retired else {}),
+        # Só no dry-run: fora dele, um conflito faz o comando falhar nomeando cada um.
+        **({"conflicts": acc["conflicts"]} if acc["conflicts"] else {}),
     }
