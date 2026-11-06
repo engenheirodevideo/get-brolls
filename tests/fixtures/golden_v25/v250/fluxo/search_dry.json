@@ -1,0 +1,52 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"search\", \"status\": \"error\", \"state_committed\": false, \"warnings\": [{\"code\": \"PROVIDER_FAILED\", \"message\": \"youtube: yt-dlp não concluiu a extração; confira disponibilidade do post e siga o guia da plataforma.; stderr: <STDERR_TAIL>\"}], \"recovery_pending\": false, \"type\": \"ValueError\", \"repr\": \"ValueError(\\\"youtube: yt-dlp não concluiu a extração; confira disponibilidade do post e siga o guia da plataforma.; stderr: <STDERR_TAIL>\", \"traceback\": \"<TRACEBACK>\", \"error_code\": \"INVALID_DATA\", \"message\": \"youtube: yt-dlp não concluiu a extração; confira disponibilidade do post e siga o guia da plataforma.; stderr: <STDERR_TAIL>\", \"duration_ms\": \"<MS>\"}"
+  ],
+  "work/proj/brolls/getbrolls.log": [
+   "level=INFO logger=getbrolls.cli event=command_start command=search read_only=False options=provider,query,dry-run,project",
+   "level=WARNING logger=getbrolls.social event=ytdlp_error class=unknown provider=yt-dlp",
+   "level=WARNING logger=getbrolls.social event=subprocess tool=yt-dlp op=search ms=<MS> status=error exit=2",
+   "level=WARNING logger=getbrolls.runtime event=warning code=PROVIDER_FAILED",
+   "level=INFO logger=getbrolls.cli event=command_end command=search status=error error_code=INVALID_DATA ms=<MS>"
+  ]
+ },
+ "argv": [
+  "search",
+  "--provider",
+  "youtube",
+  "--query",
+  "foguete",
+  "--dry-run",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "search_dry",
+ "exit": 2,
+ "files": {},
+ "stderr": {
+  "json": {
+   "app_log": "<T>/work/proj/brolls/getbrolls.log",
+   "at": "<TS>",
+   "error": "youtube: yt-dlp não concluiu a extração; confira disponibilidade do post e siga o guia da plataforma.; stderr: <STDERR_TAIL>",
+   "error_code": "INVALID_DATA",
+   "hint": "Se recovery_pending=true, o próximo comando retoma a gravação. Se state_committed=true e não houver pendência, execute review para regenerar a página. Caso contrário, corrija o erro e repita.",
+   "log": "<T>/work/proj/brolls/diagnostics.jsonl",
+   "message": "youtube: yt-dlp não concluiu a extração; confira disponibilidade do post e siga o guia da plataforma.; stderr: <STDERR_TAIL>",
+   "operation": "search",
+   "recovery_pending": false,
+   "repr": "ValueError(\"youtube: yt-dlp não concluiu a extração; confira disponibilidade do post e siga o guia da plataforma.; stderr: <STDERR_TAIL>",
+   "state_committed": false,
+   "status": "error",
+   "traceback": "<TRACEBACK>",
+   "type": "ValueError",
+   "warnings": [
+    {
+     "code": "PROVIDER_FAILED",
+     "message": "youtube: yt-dlp não concluiu a extração; confira disponibilidade do post e siga o guia da plataforma.; stderr: <STDERR_TAIL>"
+    }
+   ]
+  }
+ },
+ "stdout": null
+}

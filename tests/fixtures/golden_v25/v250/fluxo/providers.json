@@ -1,0 +1,102 @@
+{
+ "appends": {},
+ "argv": [
+  "providers"
+ ],
+ "case": "providers",
+ "exit": 0,
+ "files": {},
+ "stderr": null,
+ "stdout": {
+  "json": {
+   "commons": {
+    "account_library": false,
+    "configured": true,
+    "download": true,
+    "embed": false,
+    "env_key": null,
+    "resolve_url": false,
+    "search": true,
+    "seek": "unsupported",
+    "transport": "commons"
+   },
+   "instagram": {
+    "account_library": false,
+    "configured": true,
+    "download": true,
+    "embed": false,
+    "env_key": null,
+    "resolve_url": true,
+    "search": false,
+    "seek": "unsupported",
+    "transport": "browser-cdn-pairs / yt-dlp"
+   },
+   "local": {
+    "account_library": false,
+    "configured": true,
+    "download": true,
+    "embed": false,
+    "env_key": null,
+    "resolve_url": false,
+    "search": false,
+    "seek": "local",
+    "transport": "local"
+   },
+   "nasa": {
+    "account_library": false,
+    "configured": true,
+    "download": true,
+    "embed": false,
+    "env_key": null,
+    "resolve_url": false,
+    "search": true,
+    "seek": "unsupported",
+    "transport": "nasa"
+   },
+   "pexels": {
+    "account_library": false,
+    "configured": false,
+    "download": true,
+    "embed": false,
+    "env_key": "PEXELS_API_KEY",
+    "resolve_url": false,
+    "search": true,
+    "seek": "unsupported",
+    "transport": "pexels"
+   },
+   "pixabay": {
+    "account_library": false,
+    "configured": false,
+    "download": true,
+    "embed": false,
+    "env_key": "PIXABAY_API_KEY",
+    "resolve_url": false,
+    "search": true,
+    "seek": "unsupported",
+    "transport": "pixabay"
+   },
+   "tiktok": {
+    "account_library": false,
+    "configured": true,
+    "download": true,
+    "embed": false,
+    "env_key": null,
+    "resolve_url": true,
+    "search": false,
+    "seek": "unsupported",
+    "transport": "yt-dlp"
+   },
+   "youtube": {
+    "account_library": false,
+    "configured": true,
+    "download": true,
+    "embed": false,
+    "env_key": null,
+    "resolve_url": true,
+    "search": true,
+    "seek": "unsupported",
+    "transport": "yt-dlp"
+   }
+  }
+ }
+}

@@ -1,0 +1,26 @@
+{
+ "appends": {},
+ "argv": [
+  "library",
+  "--search",
+  "x",
+  "--limit",
+  "abc",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "err_bad_int",
+ "exit": 2,
+ "files": {},
+ "stderr": {
+  "json": {
+   "error": "argumento --limit: valor int inválido: 'abc'",
+   "error_code": "USAGE_ERROR",
+   "error_en": "argument --limit: invalid int value: 'abc'",
+   "prog": "getbrolls library",
+   "suggestion": null,
+   "usage": "usage: getbrolls library [-h] --project PROJECT --search SEARCH [--limit LIMIT]"
+  }
+ },
+ "stdout": null
+}

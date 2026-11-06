@@ -1,0 +1,39 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"inspect\", \"status\": \"error\", \"state_committed\": false, \"recovered\": false, \"warnings\": [], \"recovery_pending\": false, \"type\": \"ValueError\", \"repr\": \"ValueError('Este candidato não tem URL pública para analisar; use `inspect --url` ou importe o original local com `resolve --file`.')\", \"traceback\": \"<TRACEBACK>\", \"error_code\": \"INVALID_DATA\", \"message\": \"Este candidato não tem URL pública para analisar; use `inspect --url` ou importe o original local com `resolve --file`.\", \"duration_ms\": \"<MS>\"}"
+  ],
+  "work/proj/brolls/getbrolls.log": [
+   "level=INFO logger=getbrolls.cli event=command_start command=inspect read_only=False options=candidate,project",
+   "level=INFO logger=getbrolls.cli event=command_end command=inspect status=error error_code=INVALID_DATA ms=<MS> outcome=error duration_ms=<MS>"
+  ]
+ },
+ "argv": [
+  "inspect",
+  "--candidate",
+  "local:f6c96bb15a4f7e25:shot:abertura",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "inspect_local",
+ "exit": 1,
+ "files": {},
+ "stderr": {
+  "json": {
+   "app_log": "<T>/work/proj/brolls/getbrolls.log",
+   "at": "<TS>",
+   "error": "Este candidato não tem URL pública para analisar; use `inspect --url` ou importe o original local com `resolve --file`.",
+   "error_code": "INVALID_DATA",
+   "log": "<T>/work/proj/brolls/diagnostics.jsonl",
+   "message": "Este candidato não tem URL pública para analisar; use `inspect --url` ou importe o original local com `resolve --file`.",
+   "operation": "inspect",
+   "recovered": false,
+   "recovery_pending": false,
+   "state_committed": false,
+   "status": "error",
+   "type": "ValueError",
+   "warnings": []
+  }
+ },
+ "stdout": null
+}

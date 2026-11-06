@@ -1,0 +1,47 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"library\", \"status\": \"success\", \"state_committed\": false, \"recovered\": false, \"warnings\": [], \"duration_ms\": \"<MS>\"}"
+  ]
+ },
+ "argv": [
+  "library",
+  "--search",
+  "foguete",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "library",
+ "exit": 0,
+ "files": {},
+ "stderr": null,
+ "stdout": {
+  "json": {
+   "assets": [],
+   "enabled": true,
+   "preferences": [],
+   "providers": {
+    "youtube": {
+     "last_at": "<TS>",
+     "outcomes": {
+      "hit": 1,
+      "miss": 0
+     }
+    }
+   },
+   "queries": [
+    {
+     "at": "<TS>",
+     "count": 1,
+     "note": null,
+     "outcome": "hit",
+     "provider": "youtube",
+     "query": "foguete decolando",
+     "score": 1.0
+    }
+   ],
+   "rights_not_transferable": true,
+   "term": "foguete"
+  }
+ }
+}

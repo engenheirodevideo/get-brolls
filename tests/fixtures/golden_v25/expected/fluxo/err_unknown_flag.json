@@ -1,0 +1,22 @@
+{
+ "appends": {},
+ "argv": [
+  "status",
+  "--projct",
+  "<T>/work/proj"
+ ],
+ "case": "err_unknown_flag",
+ "exit": 2,
+ "files": {},
+ "stderr": {
+  "json": {
+   "error": "faltam argumentos obrigatórios: --project",
+   "error_code": "USAGE_ERROR",
+   "error_en": "the following arguments are required: --project",
+   "prog": "getbrolls status",
+   "suggestion": "--project",
+   "usage": "usage: getbrolls status [-h] --project PROJECT"
+  }
+ },
+ "stdout": null
+}

@@ -17,7 +17,7 @@ Comandos que rodou e o trecho da documentação que consultou (`README.md`, `doc
 ## Ambiente
 
 - Sistema operacional e versão:
-- Instalação: clone como skill (Codex) ou plugin do Claude Code:
-- `summary` do `python3 scripts/gb.py doctor` (no Windows, `python scripts/gb.py doctor`):
+- Instalação: pacote (`uv tool install` ou `pipx install`), clone como skill (Codex) ou plugin do Claude Code:
+- `summary` do `doctor` da instalação que você usou: no pacote, `getbrolls doctor`; num clone ou no plugin, `python3 <pasta da instalação>/scripts/gb.py doctor` (no Windows, `python`):
 
 Não cole chaves, URLs assinadas, cookies ou dados de clientes.

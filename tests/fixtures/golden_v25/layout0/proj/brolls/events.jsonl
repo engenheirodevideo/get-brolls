@@ -1,0 +1,7 @@
+{"transaction": "cb0841b4-2ee8-44a5-8874-7e796b01d971:0", "at": "2026-10-08T17:36:33.337604+00:00", "operation": "resolve", "id": "local:f6c96bb15a4f7e25:shot:abertura", "revision": 0, "state": "candidate"}
+{"transaction": "1a11246e-b424-42c0-81a4-105727eb4587:0", "at": "2026-10-08T17:36:34.534076+00:00", "operation": "preview", "id": "local:f6c96bb15a4f7e25:shot:abertura", "revision": 1, "state": "awaiting_approval"}
+{"transaction": "87713504-9da2-4b16-90b9-a02b48e2917d:0", "at": "2026-10-08T17:36:34.539304+00:00", "operation": "project_identity", "id": null, "revision": null, "state": null}
+{"transaction": "bb02f04b-b442-4a67-8d5a-1914feb474d1:0", "at": "2026-10-08T17:36:34.797834+00:00", "operation": "approve-chat", "id": "local:f6c96bb15a4f7e25:shot:abertura", "revision": 1, "state": "approved"}
+{"transaction": "40f80edd-b73e-4492-b9fe-4a2cbf5644c5:0", "at": "2026-10-08T17:36:35.141885+00:00", "operation": "permit", "id": "local:f6c96bb15a4f7e25:shot:abertura", "revision": 1, "state": "approved"}
+{"transaction": "efac35c2-0d1b-415f-921c-56862b2c2143:0", "at": "2026-10-08T17:36:35.438104+00:00", "operation": "fetch", "id": "local:f6c96bb15a4f7e25:shot:abertura", "revision": 1, "state": "verified"}
+{"transaction": "9114c11c-ac99-4a65-8bf9-c59c6e16fd31:0", "at": "2026-10-08T17:36:35.682042+00:00", "operation": "deliver", "id": "local:f6c96bb15a4f7e25:shot:abertura", "revision": 1, "state": "verified"}

@@ -1,0 +1,12 @@
+# Mutual pairs (a < b). Edges of any kind. Module-level edges both ways are R1 and cannot be listed.
+config labels | config -> labels is M; labels -> config is F (M module level, F inside a function)
+config env_loader | config -> env_loader is F; env_loader -> config is M: config still answers for `installed_env`, which sdk.loader reads there (M module level, F inside a function)
+effects private_files | effects -> private_files is M; private_files -> effects is F: the ACL and rmtree operations of private_files log through effects.op (M module level, F inside a function)
+file_locks logs | file_locks -> logs is F; logs -> file_locks is M: lock_busy writes the lock_busy line through logs, which takes the lock around every line (M module level, F inside a function)
+labels logs | labels -> logs is F; logs -> labels is M (M module level, F inside a function)
+layout runtime | layout -> runtime is F; runtime -> layout is F (M module level, F inside a function)
+providers sdk.registry | providers -> sdk.registry is F; sdk.registry -> providers is F (M module level, F inside a function)
+providers social | providers -> social is F; social -> providers is F (M module level, F inside a function)
+queue rules | queue -> rules is F; rules -> queue is M (M module level, F inside a function)
+sdk sdk.contracts | sdk -> sdk.contracts is F; sdk.contracts -> sdk is M (M module level, F inside a function)
+sdk sdk.registry | sdk -> sdk.registry is F; sdk.registry -> sdk is F+M (M module level, F inside a function)

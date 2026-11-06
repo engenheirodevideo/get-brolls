@@ -1,0 +1,76 @@
+{
+ "appends": {
+  "work/proj/brolls/diagnostics.jsonl": [
+   "{\"at\": \"<TS>\", \"operation\": \"queue\", \"status\": \"success\", \"state_committed\": false, \"warnings\": [], \"duration_ms\": \"<MS>\"}"
+  ],
+  "work/proj/brolls/getbrolls.log": [
+   "level=INFO logger=getbrolls.cli event=command_start command=queue read_only=False options=action,id,done,project",
+   "level=INFO logger=getbrolls.queue event=queue_mark item=instagram:ABC123 from=active to=done",
+   "level=INFO logger=getbrolls.cli event=command_end command=queue status=ok error_code=- ms=<MS>"
+  ]
+ },
+ "argv": [
+  "queue",
+  "--action",
+  "mark",
+  "--id",
+  "instagram:ABC123",
+  "--done",
+  "--project",
+  "<T>/work/proj"
+ ],
+ "case": "queue_mark",
+ "exit": 0,
+ "files": {
+  "work/proj/work/queue.json": {
+   "bytes": 472,
+   "lines": [
+    "{",
+    "  \"schema_version\": 1,",
+    "  \"items\": [",
+    "    {",
+    "      \"id\": \"instagram:ABC123\",",
+    "      \"provider\": \"instagram\",",
+    "      \"url\": \"https://www.instagram.com/reel/ABC123/\",",
+    "      \"status\": \"done\",",
+    "      \"added_at\": \"<TS>\",",
+    "      \"started_at\": \"<TS>\",",
+    "      \"finished_at\": \"<TS>\",",
+    "      \"reason\": null",
+    "    }",
+    "  ],",
+    "  \"providers\": {",
+    "    \"instagram\": {",
+    "      \"last_action_at\": \"<TS>\",",
+    "      \"next_allowed_at\": \"<TS>\",",
+    "      \"cooldown_until\": null,",
+    "      \"cooldown_strikes\": 0",
+    "    }",
+    "  }",
+    "}"
+   ],
+   "sha256": "9c8e0a20d82a9594e126c1859be60320b3e02fe47e10d6bdacaa18162fb085c9"
+  }
+ },
+ "stderr": null,
+ "stdout": {
+  "json": {
+   "action": "mark",
+   "cooldown": null,
+   "item": {
+    "added_at": "<TS>",
+    "finished_at": "<TS>",
+    "id": "instagram:ABC123",
+    "provider": "instagram",
+    "reason": null,
+    "started_at": "<TS>",
+    "status": "done",
+    "url": "https://www.instagram.com/reel/ABC123/"
+   },
+   "queue": "<T>/work/proj/work/queue.json",
+   "summary": {
+    "line": "Marquei instagram:ABC123 como done."
+   }
+  }
+ }
+}
