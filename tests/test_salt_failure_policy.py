@@ -95,13 +95,21 @@ class PassingFailureTests(SaltFailureCase):
         def repair():
             results.append(effects_salt._settle_salt(self.salt_file()))
 
-        with self.replace_failing(effects_salt._SHARING_TRIES * 3), mock.patch.object(effects_salt.time, "sleep"):
+        # `sleep` is patched process-wide, so the five repairers waiting for the lock poll it without pausing: on a
+        # loaded runner the wall-clock budgets (settle and lock wait) could run out, and a repairer would then end
+        # `busy` by design. Budgets no runner exhausts keep the outcome a matter of the repair protocol alone.
+        with (
+            self.replace_failing(effects_salt._SHARING_TRIES * 3),
+            mock.patch.object(effects_salt.time, "sleep"),
+            mock.patch.object(effects_salt, "_SALT_SETTLE_S", 600.0),
+            mock.patch.object(effects_salt, "_SALT_LOCK_WAIT_S", 600.0),
+        ):
             workers = [threading.Thread(target=repair) for _ in range(6)]
             for worker in workers:
                 worker.start()
             for worker in workers:
                 worker.join()
-        self.assertEqual({self.persisted()}, {found for found, _reason, _last in results})
+        self.assertEqual({self.persisted()}, {found for found, _reason, _last in results}, [row[1:] for row in results])
         self.assertEqual([("ok", effects_salt._NOTHING)] * 6, [(reason, last) for _found, reason, last in results])
 
     def test_a_hardlink_denied_by_a_sharing_violation_is_read_again_not_answered_in_place(self):
