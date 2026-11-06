@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "getbrolls marketplace index v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/marketplace_index.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.1/schemas/marketplace_index.schema.json",
   "description": "O getbrolls-marketplace.json na raiz do repositório de um marketplace de plugins, lido no commit fixado pelo plugins --action marketplace-add. Este schema é a forma que quem monta o índice grava (estrita). O getbrolls lê com tolerância: chave desconhecida no topo é ignorada, e a entrada que ele não entende fica de fora, com o aviso MARKETPLACE_ENTRY_INCOMPATIBLE. Id de plugin oficial (hyperframes, davinci, asr, ...) e o prefixo <oficial>_ são recusados em qualquer tier e em renames: plugin oficial vem só da instalação do getbrolls. A versão mora em schema (getbrolls.marketplace_index/<n>): um número maior que o suportado é recusado. O validador do core (scripts/getbrolls/sdk/marketplace_index.py) é a autoridade e confere também o que este schema não expressa: ids únicos, contributes em ordem, renames sem ciclo e com alvo em plugins, e as regras de permissions, requires e requires_getbrolls do manifesto.",
   "type": "object",
   "additionalProperties": false,

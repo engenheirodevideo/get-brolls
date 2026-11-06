@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "getbrolls draft v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/draft.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.1/schemas/draft.schema.json",
   "description": "O getbrolls-draft.json de um rascunho (drafts/<NNN>/ de um projeto de layout 1): de onde ele saiu (origin), o que ele leu (inputs: a entrega recalcula e compara campo a campo, e uma diferença é DRAFT_STALE), o plano de export que ele decidiu (plan, export_version 2, conferido em código contra schemas/export_plan.schema.json), o que falta (missing) e as conferências (checks). Objetos abertos: quem lê ignora chave desconhecida. A versão do arquivo mora em schema (getbrolls.draft/<N>).",
   "type": "object",
   "required": ["schema", "origin", "inputs", "plan", "missing", "checks"],

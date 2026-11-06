@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "getbrolls analysis speakers v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/speakers.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.1/schemas/speakers.schema.json",
   "description": "analysis/media/<media_id>/speakers.json: quem fala quando. Todo turns[].speaker existe em speakers[].id (conferido em código). Schema mínimo, sem producer. Objetos abertos: campo novo opcional entra fora de required e o leitor ignora chave desconhecida; remover, renomear ou mudar o significado de um campo sobe o N de schema. Leitor recusa N maior do que conhece.",
   "type": "object",
   "required": [

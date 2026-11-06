@@ -48,7 +48,7 @@ Instale a stack inteira antes de rodar o instalador: Python 3.11+, FFmpeg/ffprob
 
 ### Instalar como pacote
 
-Além do checkout e do plugin, o getbrolls instala como comando: `uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0` (ou `pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0`), seguido de `getbrolls setup` e `getbrolls doctor`. `python -m getbrolls` também funciona. Os exemplos deste guia usam o comando `getbrolls …`. Num clone, sem instalar o pacote, `python3 scripts/gb.py …` roda os mesmos comandos (no Windows, `python scripts/gb.py …`; de outra pasta, use o caminho absoluto de `scripts/gb.py`). No plugin do Claude Code nada muda: o agente roda a CLI pela raiz do plugin. No pacote não existe `.env` de checkout: use `$GB_HOME/.env`. O runtime (yt-dlp e Playwright) fica em `$GB_RUNTIME_DIR` ou, sem ela, em `$GB_HOME/runtime/<versão das dependências>/`.
+Além do checkout e do plugin, o getbrolls instala como comando: `uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.1` (ou `pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.1`), seguido de `getbrolls setup` e `getbrolls doctor`. `python -m getbrolls` também funciona. Os exemplos deste guia usam o comando `getbrolls …`. Num clone, sem instalar o pacote, `python3 scripts/gb.py …` roda os mesmos comandos (no Windows, `python scripts/gb.py …`; de outra pasta, use o caminho absoluto de `scripts/gb.py`). No plugin do Claude Code nada muda: o agente roda a CLI pela raiz do plugin. No pacote não existe `.env` de checkout: use `$GB_HOME/.env`. O runtime (yt-dlp e Playwright) fica em `$GB_RUNTIME_DIR` ou, sem ela, em `$GB_HOME/runtime/<versão das dependências>/`.
 
 `getbrolls setup` instala esse runtime, sem perguntar nada:
 
@@ -178,7 +178,7 @@ GB_FFMPEG_PATH=/opt/homebrew/bin/ffmpeg getbrolls doctor
 Em vez de um script que exporta `GB_HOME`, `GB_CACHE_DIR`, `GB_VENV_PATH`, `GB_YTDLP_PATH`, `GB_FFMPEG_PATH`, `GB_FFPROBE_PATH` e `GB_PLUGINS`, um `getbrolls.toml` na raiz do workspace fixa os mesmos valores para quem trabalha ali:
 
 ```toml
-requires = "==2.6.0"
+requires = "==2.6.1"
 home = ".getbrolls"
 cache_dir = ".cache/getbrolls"
 plugins = []

@@ -11,6 +11,7 @@ from _cli import run_cli
 from _paths import ROOT
 from test_sdk_loader import MANIFEST, LoaderTestCase
 
+from getbrolls import __version__
 from getbrolls.sdk import environments, official, official_pins
 
 DOOR = "`hyperframes` é plugin oficial e vem com o getbrolls: veja `environment --action list`"
@@ -26,7 +27,7 @@ class EnvironmentListTests(LoaderTestCase):
             [
                 {
                     "id": "hyperframes",
-                    "version": "2.6.0",
+                    "version": __version__,  # a ponte oficial sobe junto com o getbrolls (bump_version)
                     "kind": "bridge",
                     "readback": "files",
                     "origin": "official",

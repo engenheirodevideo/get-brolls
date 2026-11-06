@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "getbrolls analysis visual v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/visual.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.1/schemas/visual.schema.json",
   "description": "analysis/media/<media_id>/visual.json: amostras visuais com etiquetas. human_reviewed diz se uma pessoa conferiu; evidência automática nunca vale como revisão. Schema mínimo, sem producer. Objetos abertos: campo novo opcional entra fora de required e o leitor ignora chave desconhecida; remover, renomear ou mudar o significado de um campo sobe o N de schema. Leitor recusa N maior do que conhece.",
   "type": "object",
   "required": [

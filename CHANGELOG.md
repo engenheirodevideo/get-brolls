@@ -8,6 +8,16 @@ tags: [get-brolls]
 
 # Changelog
 
+## 2.6.1 — 2026-11-06
+
+Versão de manutenção: dependências, CI e um teste instável. Nenhuma mudança de comportamento da CLI.
+
+- Dependências: `yt-dlp` 2026.10.21 → 2026.10.26 (`requirements.txt` regerado pela receita do CONTRIBUTING, com as linhas só do PyPy); `coverage` 7.16.2 → 7.17.2 no `requirements-dev.txt`.
+- CI: `github/codeql-action` 4.38.2 → 4.39.3, com `init` e `analyze` no mesmo SHA; `actions/attest-build-provenance` 3.2.0 → 4.2.2 no workflow de release. O CodeQL deixa de analisar `tests/` (`.github/codeql/codeql-config.yml`); o código do pacote continua todo analisado.
+- Dependabot: as GitHub Actions chegam num PR só (grupo `github-actions`), e o `@playwright/cli` sai das atualizações automáticas: o pino em 0.1.21 (veja Limites da 2.6.0) sobe à mão, junto com a documentação e os testes.
+- Testes: `test_the_deadline_spans_the_redirects` deixa de depender do relógio do runner; no fio de teste, só o timer do prazo corta a leitura.
+- README e README.en: o título do cabeçalho passa a ser GET BROLLS.
+
 ## 2.6.0 — 2026-11-05
 
 O getbrolls vira um comando instalável (`getbrolls`), com runtime gerenciado, perfil de workspace, projeto com `project.json`, pastas de cliente e receitas, análise de mídia em `analysis/` e plugins do SDK com marketplace. O vídeo também pode nascer de um roteiro (`ROTEIRO.md`) revisado por uma pessoa, seguir para a coleta de b-roll de sempre e sair como projeto de edição por um exportador de plugin; esse caminho é experimental. O `resolve --url` passa a aceitar link direto de vídeo e página com player embutido. Projeto da 2.5 continua funcionando sem mudança.

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "getbrolls client registry v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/clients.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.1/schemas/clients.schema.json",
   "description": "O registro $GB_HOME/clients.json: cada cliente e a pasta dele. Gravado de uma vez (temporário + troca) sob $GB_HOME/.clients.lock pelo client --action add|remove e conferido em código (scripts/getbrolls/clients.py) a cada leitura. Desregistrar nunca apaga a pasta do cliente. A versão mora em schema (getbrolls.clients/<n>): ausente vale 1, e um número maior que o suportado é recusado. Os objetos ficam abertos para campos novos.",
   "type": "object",
   "required": ["schema", "clients"],
