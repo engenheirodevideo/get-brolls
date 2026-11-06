@@ -1,8 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Get B-rolls Brief v1",
+  "title": "getbrolls Brief v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/brief.schema.json",
   "description": "Documental: a validação real é manual, em scripts/getbrolls/brief.py.",
   "type": "object",
+  "additionalProperties": false,
   "required": ["version", "video", "rights", "defaults", "beats"],
   "properties": {
     "version": { "const": 1 },
@@ -42,16 +44,9 @@
           "minItems": 1,
           "uniqueItems": true,
           "items": {
-            "enum": [
-              "youtube",
-              "instagram",
-              "tiktok",
-              "pexels",
-              "pixabay",
-              "commons",
-              "nasa",
-              "local"
-            ]
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{1,31}$",
+            "description": "Nome de fonte do registro: built-in ou de plugin habilitado; o runtime confere contra o registro."
           }
         },
         "intent": { "enum": ["literal", "illustrative"] },
@@ -59,11 +54,17 @@
         "stock": { "type": "boolean" }
       }
     },
+    "ext": {
+      "type": "object",
+      "description": "Dados de plugins, uma chave por id de plugin: reservado para versões futuras; ignorado pelo runtime atual.",
+      "additionalProperties": { "type": "object" }
+    },
     "beats": {
       "type": "array",
-      "minItems": 1,
+      "description": "Pelo menos um beat; vazio só vale quando o projeto tem ROTEIRO.md (o sync do roteiro gera os beats).",
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["id", "target"],
         "properties": {
           "id": { "type": "string", "pattern": "^[a-z0-9-]{1,40}$" },
@@ -75,23 +76,25 @@
             "minItems": 1,
             "uniqueItems": true,
             "items": {
-              "enum": [
-                "youtube",
-                "instagram",
-                "tiktok",
-                "pexels",
-                "pixabay",
-                "commons",
-                "nasa",
-                "local"
-              ]
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{1,31}$",
+              "description": "Nome de fonte do registro: built-in ou de plugin habilitado; o runtime confere contra o registro."
             }
           },
           "stock": { "type": "boolean" },
           "duration_hint_s": { "type": ["number", "null"], "minimum": 0.5, "maximum": 120 },
           "queries": { "type": "array", "items": { "type": "string" } },
           "notes": { "type": ["string", "null"] },
-          "blocked_reason": { "type": ["string", "null"] }
+          "blocked_reason": { "type": ["string", "null"] },
+          "retired": {
+            "type": "boolean",
+            "description": "Gravado pelo sync do roteiro quando a cena some: o beat sai de brief e deliver, mas o id continua reservado e candidatos/clipes ficam."
+          },
+          "ext": {
+            "type": "object",
+            "description": "Dados de plugins, uma chave por id de plugin: reservado para versões futuras; ignorado pelo runtime atual.",
+            "additionalProperties": { "type": "object" }
+          }
         }
       }
     }

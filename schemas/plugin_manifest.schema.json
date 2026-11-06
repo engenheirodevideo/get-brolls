@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls plugin manifest v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/plugin_manifest.schema.json",
+  "description": "O getbrolls-plugin.json na raiz da pasta de um plugin, lido sem rodar código do plugin. Os campos de topo do sdk_api 1 são congelados: campo novo só dentro de metadata ou com um sdk_api novo. O código (scripts/getbrolls/sdk/manifest.py) é a autoridade das mensagens e confere também o que este schema não expressa: id igual ao nome da pasta e fora dos reservados, entry existente, requires_getbrolls legível, contributes por tipo, permissions, requires, platforms e license. Um manifesto que declara outro sdk_api é lido e fica incompatível (não roda), com o motivo; só o sdk_api desta versão é conferido contra este schema. schema e signed_fields são reservados ({}), engines saiu.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "version",
+    "sdk_api",
+    "requires_getbrolls",
+    "entry"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "sdk_api": {
+      "type": "integer",
+      "const": 1
+    },
+    "requires_getbrolls": {
+      "type": "string"
+    },
+    "entry": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_]{1,64}\\.py$"
+    },
+    "contributes": {
+      "type": "object"
+    },
+    "permissions": {
+      "type": "object"
+    },
+    "schema": {
+      "type": "object"
+    },
+    "signed_fields": {
+      "type": "object"
+    },
+    "engines": {
+      "type": "object"
+    },
+    "homepage": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "license": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "author": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "platforms": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "requires": {
+      "type": "object"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

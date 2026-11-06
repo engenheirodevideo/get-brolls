@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls profile toml v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/profile_toml.schema.json",
+  "description": "O getbrolls.toml do workspace, lido com tomllib e conferido como este objeto. A pessoa escreve o arquivo; o getbrolls nunca grava. O código (scripts/getbrolls/profile.py) é a autoridade das mensagens: campo desconhecido sugere o nome certo, caminho de pasta é texto não vazio sem ~, ferramenta é caminho absoluto, plugins e marketplaces são listas de ids sem repetição. Este schema confere a mesma forma depois do código. schema_version ausente vale 1; outro valor é recusado (USAGE_ERROR).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "requires": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Faixa de versões do getbrolls, como \">=2.6,<3\"."
+    },
+    "home": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cache_dir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime_dir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "plugins": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      },
+      "description": "Teto dos plugins da sessão; [] desliga todos."
+    },
+    "marketplaces": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      },
+      "description": "Teto dos marketplaces; [] desliga todos."
+    },
+    "tools": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ffmpeg": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ffprobe": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ytdlp": {
+          "type": "string",
+          "minLength": 1
+        },
+        "venv": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

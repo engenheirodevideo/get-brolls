@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls library index v2",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/library_index.schema.json",
+  "description": "library/index.json da pasta pessoal. Versões 1 e 2; sem schema_version (2.5) vale 1; o escritor grava a atual. A leitura completa as chaves que faltam com o valor vazio antes de validar.",
+  "type": "object",
+  "required": [
+    "assets",
+    "queries",
+    "providers",
+    "preferences"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "asset_id",
+          "used_by"
+        ],
+        "properties": {
+          "asset_id": {},
+          "used_by": {
+            "type": "array"
+          }
+        }
+      }
+    },
+    "queries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "query",
+          "provider",
+          "outcome"
+        ]
+      }
+    },
+    "providers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "outcomes",
+          "last_at"
+        ],
+        "properties": {
+          "outcomes": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "preferences": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}

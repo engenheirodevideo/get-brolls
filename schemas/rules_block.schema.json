@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls rules block v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/rules_block.schema.json",
+  "description": "O bloco ```json de um RULES.md (o modelo da instalação, o global em $GB_HOME, o de GB_RULES_FILE e o do projeto), depois de fundir as camadas. A pessoa edita o arquivo; init-rules e o seed do projeto gravam a partir do modelo. O código (scripts/getbrolls/rules.py) é a autoridade das mensagens e confere também o que este schema não expressa: fontes conhecidas em preferred_providers, domínios em minúsculas, os campos do modo user_declaration e o bloco de ritmo. version ausente vale 1; um número maior que o suportado é recusado com a frase padrão. Objeto aberto: chave desconhecida é ignorada (como na 2.5).",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "asset_types": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "enum": [
+          "video",
+          "image",
+          "news_screenshot",
+          "web_screenshot"
+        ]
+      }
+    },
+    "video_format": {
+      "enum": [
+        "native",
+        "reels",
+        "horizontal"
+      ]
+    },
+    "preferred_providers": {
+      "type": "object",
+      "properties": {
+        "literal": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "illustrative": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "preferred_domains": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "blocked_domains": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "editorial_rules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "copyright": {
+      "type": "object",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "per_item_evidence",
+            "user_declaration"
+          ]
+        },
+        "responsible_person": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "declaration": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "browser": {
+      "type": "object",
+      "required": [
+        "viewport",
+        "full_page",
+        "mobile_width",
+        "mobile_height",
+        "desktop_width",
+        "desktop_height"
+      ],
+      "properties": {
+        "viewport": {
+          "enum": [
+            "mobile",
+            "desktop"
+          ]
+        },
+        "full_page": {
+          "type": "boolean"
+        },
+        "mobile_width": {
+          "type": "integer",
+          "minimum": 240,
+          "maximum": 3840
+        },
+        "mobile_height": {
+          "type": "integer",
+          "minimum": 240,
+          "maximum": 3840
+        },
+        "desktop_width": {
+          "type": "integer",
+          "minimum": 240,
+          "maximum": 3840
+        },
+        "desktop_height": {
+          "type": "integer",
+          "minimum": 240,
+          "maximum": 3840
+        }
+      }
+    }
+  }
+}

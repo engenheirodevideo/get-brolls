@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls roteiro state v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/roteiro_state.schema.json",
+  "description": "brolls/roteiro-state.json: o próximo número de cena e a assinatura de cada cena (title, layout e args). Sem schema_version (2.5) vale 1.",
+  "type": "object",
+  "required": [
+    "next_id"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "next_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "scenes": {
+      "type": "object",
+      "additionalProperties": {
+        "description": "Assinatura da cena: {title, layout, args}; a leitura não restringe o tipo do valor."
+      }
+    }
+  }
+}

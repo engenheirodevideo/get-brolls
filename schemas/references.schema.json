@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "getbrolls references v1",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/references.schema.json",
+  "description": "brolls/references.json: a memória editorial do projeto (decisões `remember`). Sem schema_version (2.5) vale 1.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "asset_type": {
+            "type": "string"
+          },
+          "format": {
+            "type": "object"
+          },
+          "narration": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "decision": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "by": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
