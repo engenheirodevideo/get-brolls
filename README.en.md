@@ -1,7 +1,7 @@
 <div align="center">
   <p><a href="README.md">Português</a> · <strong>English</strong></p>
   <img src="assets/brand-logo.png" alt="Engenheiro de Vídeo" width="104">
-  <h1>GET B-ROLLS</h1>
+  <h1>GET BROLLS</h1>
   <p><strong>From an idea to the right shot for your edit.</strong></p>
   <p>Find supporting footage, preview the motion, and review every choice<br>before receiving the final clips with their sources.</p>
   <p>Created by <a href="https://www.instagram.com/zbrunomoreira/"><strong>Bruno Moreira (@zbrunomoreira)</strong></a>, Video Engineer</p>

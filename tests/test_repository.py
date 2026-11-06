@@ -201,8 +201,8 @@ class RepositoryDocumentationTests(unittest.TestCase):
         english = (ROOT / "README.en.md").read_text(encoding="utf-8")
         self.assertIn('href="README.en.md">English</a>', portuguese)
         self.assertIn('href="README.md">Português</a>', english)
-        self.assertIn("<h1>GET B-ROLLS</h1>", portuguese)
-        self.assertIn("<h1>GET B-ROLLS</h1>", english)
+        self.assertIn("<h1>GET BROLLS</h1>", portuguese)
+        self.assertIn("<h1>GET BROLLS</h1>", english)
         for readme in (portuguese, english):
             self.assertIn("Bruno Moreira — Engenheiro de Vídeo", readme)
             self.assertIn("https://www.instagram.com/zbrunomoreira/", readme)
