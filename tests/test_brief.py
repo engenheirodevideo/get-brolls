@@ -148,7 +148,7 @@ class ValidateBriefTests(unittest.TestCase):
 
     def test_unknown_source_is_refused_and_unknown_keys_are_ignored(self):
         bad = copy.deepcopy(VALID)
-        bad["beats"][0]["allowed_sources"] = ["vimeo"]
+        bad["beats"][0]["allowed_sources"] = ["unknown_source"]
         with self.assertRaises(ValueError) as raised:
             loaded(bad)
         self.assertIn("allowed_sources", str(raised.exception))

@@ -88,7 +88,7 @@ class PermitPresetTests(unittest.TestCase):
                 "--candidate",
                 c["id"],
                 "--preset",
-                "vimeo",
+                "unknown_preset",
                 "--project",
                 tmp,
                 ok=False,

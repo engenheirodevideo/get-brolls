@@ -15,7 +15,7 @@ from getbrolls.models import id_stem
 KNOWN_DIGESTS = {
     "youtube:abc123": "55d06e3305b71a49",
     "pexels:42": "b77684504182e336",
-    "vimeo:zzz-999": "6b35c8d7728a19ec",
+    "example:zzz-999": "5621926fee9e567f",
 }
 
 
