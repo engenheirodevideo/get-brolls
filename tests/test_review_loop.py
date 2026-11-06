@@ -6,12 +6,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls.ledger import Ledger
-from getbrolls.models import candidate, set_segment
+from getbrolls.models import approve, candidate, set_segment, signature
 from getbrolls.rendering import render
-from getbrolls.review import import_review, latest_review_file
+from getbrolls.review import import_review, latest_review_file, legacy_review_epoch
 
 
 def _review_payload(page):
@@ -51,7 +52,7 @@ class AutoDiscoveryTests(unittest.TestCase):
             ledger = project_with(folder, "one")
             save_review(ledger, exported(ledger, "rejected"), "20260917-100000.json")
             save_review(ledger, exported(ledger), "20260917-110000.json")
-            result = import_review(ledger, None, "Human")
+            result = import_review(ledger, None, "reviewer")
             self.assertEqual(1, result["imported"])
             self.assertEqual("approved", ledger.data["items"][0]["review"]["state"])
             self.assertTrue(result["file"].endswith("20260917-110000.json"))
@@ -65,7 +66,7 @@ class AutoDiscoveryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             ledger = project_with(folder, "one")
             with self.assertRaisesRegex(ValueError, "Salvar decisões"):
-                import_review(ledger, None, "Human")
+                import_review(ledger, None, "reviewer")
 
 
 class PartialImportTests(unittest.TestCase):
@@ -75,7 +76,7 @@ class PartialImportTests(unittest.TestCase):
             payload = exported(ledger)
             payload["items"][1]["reviewEpoch"] = "0" * 64
             path = save_review(ledger, payload)
-            result = import_review(ledger, path, "Human")
+            result = import_review(ledger, path, "reviewer")
             self.assertEqual(1, result["imported"])
             self.assertEqual(
                 [{"id": payload["items"][1]["id"], "reason": "stale_epoch"}],
@@ -91,7 +92,7 @@ class PartialImportTests(unittest.TestCase):
             payload = exported(ledger)
             payload["items"][0]["signature"] = "0" * 64
             path = save_review(ledger, payload)
-            result = import_review(ledger, path, "Human")
+            result = import_review(ledger, path, "reviewer")
             self.assertEqual(1, result["imported"])
             self.assertEqual("signature_mismatch", result["skipped"][0]["reason"])
 
@@ -103,8 +104,6 @@ class PartialImportTests(unittest.TestCase):
         se o item mudou depois do export, a decisão dele não vale mais. Aqui são os
         dois jeitos de o item mudar, e nenhum dos dois é aplicado.
         """
-        from getbrolls.models import approve, signature
-        from getbrolls.review import legacy_review_epoch
 
         # 1) Mudou a aprovação (mesmo intervalo): a assinatura ainda bate, a época não.
         with tempfile.TemporaryDirectory() as folder:
@@ -112,15 +111,15 @@ class PartialImportTests(unittest.TestCase):
             target = ledger.data["items"][0]
             payload = exported(ledger)
             payload["items"][0]["reviewEpoch"] = legacy_review_epoch(target)
-            approve(target, "Outra Pessoa", "chat", "aprovo agora")
+            approve(target, "reviewer-2", "chat", "aprovo agora")
             ledger.save("fixture", target)
-            result = import_review(ledger, save_review(ledger, payload), "Human")
+            result = import_review(ledger, save_review(ledger, payload), "reviewer")
             skipped = {s["id"]: s["reason"] for s in result["skipped"]}
             self.assertEqual("stale_epoch", skipped[payload["items"][0]["id"]])
             self.assertEqual(signature(target), payload["items"][0]["signature"])
             # Nada de replay: quem assina continua sendo a decisão mais nova.
             fresh = Ledger(folder).get(payload["items"][0]["id"])
-            self.assertEqual("Outra Pessoa", fresh["approval"]["by"])
+            self.assertEqual("reviewer-2", fresh["approval"]["by"])
             self.assertNotIn("review", fresh)
 
         # 2) Mudou o intervalo: aí nem a assinatura bate, e a recusa vem antes.
@@ -131,7 +130,7 @@ class PartialImportTests(unittest.TestCase):
             payload["items"][0]["reviewEpoch"] = legacy_review_epoch(target)
             set_segment(target, 3, 9)
             ledger.save("fixture", target)
-            result = import_review(ledger, save_review(ledger, payload), "Human")
+            result = import_review(ledger, save_review(ledger, payload), "reviewer")
             skipped = {s["id"]: s["reason"] for s in result["skipped"]}
             self.assertEqual("signature_mismatch", skipped[payload["items"][0]["id"]])
             fresh = Ledger(folder).get(payload["items"][0]["id"])
@@ -145,7 +144,7 @@ class PartialImportTests(unittest.TestCase):
             payload["items"][0]["state"] = "changes"
             payload["items"][0]["comment"] = "  "
             path = save_review(ledger, payload)
-            result = import_review(ledger, path, "Human")
+            result = import_review(ledger, path, "reviewer")
             self.assertEqual(1, result["imported"])
             self.assertEqual("invalid_item", result["skipped"][0]["reason"])
 
@@ -157,7 +156,7 @@ class PartialImportTests(unittest.TestCase):
             path = save_review(ledger, payload)
             before = ledger.path.read_bytes()
             with self.assertRaises(ValueError):
-                import_review(ledger, path, "Human")
+                import_review(ledger, path, "reviewer")
             self.assertEqual(before, ledger.path.read_bytes())
 
 

@@ -11,7 +11,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)
+import _isolation  # noqa: F401  (efeito de import: define GB_HOME)  # pylint: disable=unused-import
+from _paths import ROOT  # noqa: F401  (efeito de import: insere scripts/ em sys.path)  # pylint: disable=unused-import
 
 from getbrolls import http
 from getbrolls.ledger import Ledger
@@ -49,7 +50,7 @@ class ReviewRegressionTests(unittest.TestCase):
             path = Path(folder) / "old.json"
             path.write_text(json.dumps(payload), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "mudou depois que você decidiu"):
-                import_review(ledger, path, "Human")
+                import_review(ledger, path, "reviewer")
             self.assertEqual(ledger.path.read_bytes(), before)
             self.assertEqual(ledger.get(c["id"])["approval"]["status"], "rejected")
 
@@ -66,7 +67,7 @@ class ReviewRegressionTests(unittest.TestCase):
             path.write_text(json.dumps(payload), encoding="utf-8")
             before = ledger.path.read_bytes()
             with self.assertRaisesRegex(ValueError, "mudou depois que você decidiu"):
-                import_review(ledger, path, "Human")
+                import_review(ledger, path, "reviewer")
             self.assertEqual(ledger.path.read_bytes(), before)
             self.assertTrue(all(c["approval"]["status"] == "pending" for c in ledger.data["items"]))
 
@@ -78,15 +79,15 @@ class ReviewRegressionTests(unittest.TestCase):
             ledger.add(c)
             path = Path(folder) / "review.json"
             path.write_text(json.dumps(exported_review(ledger)), encoding="utf-8")
-            import_review(ledger, path, "First reviewer")
-            self.assertEqual(ledger.get(c["id"])["approval"]["by"], "First reviewer")
+            import_review(ledger, path, "reviewer")
+            self.assertEqual(ledger.get(c["id"])["approval"]["by"], "reviewer")
             before = ledger.path.read_bytes()
             with self.assertRaisesRegex(ValueError, "mudou depois que você decidiu"):
-                import_review(ledger, path, "Second reviewer")
+                import_review(ledger, path, "reviewer-2")
             self.assertEqual(ledger.path.read_bytes(), before)
             path.write_text(json.dumps(exported_review(ledger)), encoding="utf-8")
-            import_review(ledger, path, "Second reviewer")
-            self.assertEqual(ledger.get(c["id"])["approval"]["by"], "Second reviewer")
+            import_review(ledger, path, "reviewer-2")
+            self.assertEqual(ledger.get(c["id"])["approval"]["by"], "reviewer-2")
 
 
 class WireSocket:
