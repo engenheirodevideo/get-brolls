@@ -18,6 +18,16 @@ function Invoke-Native {
 }
 
 $Root = Split-Path -Parent $PSScriptRoot
+# Python antes de tudo: abaixo do 3.11 o getbrolls nem importa; sai 4 (pré-requisito), com mensagem legível.
+if (Get-Command 'python' -CommandType Application -ErrorAction SilentlyContinue) {
+    & python -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        $PythonVersion = (& python -c 'import sys; print(''%d.%d'' % sys.version_info[:2])' 2>$null | Out-String).Trim()
+        if (-not $PythonVersion) { $PythonVersion = '?' }
+        [Console]::Error.WriteLine("getbrolls precisa de Python 3.11 ou mais novo; você tem $PythonVersion.")
+        exit 4
+    }
+}
 $Missing = $false
 foreach ($Tool in @('python', 'ffmpeg', 'ffprobe', 'curl', 'node', 'npm', 'npx')) {
     if (-not (Get-Command $Tool -CommandType Application -ErrorAction SilentlyContinue)) {
@@ -28,8 +38,6 @@ foreach ($Tool in @('python', 'ffmpeg', 'ffprobe', 'curl', 'node', 'npm', 'npx')
 if ($Missing) {
     throw 'Instale os executáveis conforme docs/GUIDE.md e repita.'
 }
-
-Invoke-Native -Label 'Verificação do Python' -File 'python' -Arguments @('-c', 'import sys; assert sys.version_info >= (3,11), ''Python 3.11+ obrigatório''')
 
 $Filters = (& ffmpeg -hide_banner -filters 2>$null | Out-String)
 if ($Filters -notmatch ' drawtext ') {
@@ -46,56 +54,45 @@ if ($Check) {
     exit 0
 }
 
-Invoke-Native -Label 'Criação da venv' -File 'python' -Arguments @('-m', 'venv', (Join-Path $Root '.venv'))
-$VenvPython = Join-Path $Root '.venv\Scripts\python.exe'
-$PythonVersion = (& $VenvPython -c 'import sys; print(''%d.%d.%d'' % sys.version_info[:3])').Trim()
-# The interpreter's bundled pip vendors an older certifi: the first thing it downloads is the pip in
-# requirements-bootstrap.txt, refused unless its sha256 matches. Both steps install wheels only, since
-# pip does not hash-check the build tools an sdist pulls in.
-$PipLog = Join-Path $Root '.venv\pip-install.log'
-# Name the cause the pip log shows (network, hash, Python range) instead of one guess for every failure.
-function Write-PipFailure {
-    param(
-        [string]$Message,
-        [string]$File
-    )
-    Write-Host $Message
-    $Log = ''
-    if (Test-Path -LiteralPath $PipLog) { $Log = [string](Get-Content -LiteralPath $PipLog -Raw) }
-    # Hash first: it is the final error, and a retried connection earlier in the same log must not hide it.
-    if ($Log -match 'DO NOT MATCH THE HASHES|Hashes are required') {
-        Write-Host "Causa: um arquivo baixado não confere com o sha256 fixado em $File. Não instale por fora: atualize o get-brolls (git pull ou /plugin update) e rode o instalador de novo; se repetir, algo na rede pode estar alterando os downloads."
-    } elseif ($Log -match 'NewConnectionError|Failed to establish a new connection|Max retries exceeded|ConnectTimeout|Read timed out|ProxyError|Temporary failure in name resolution|getaddrinfo failed|SSLError|CERTIFICATE_VERIFY_FAILED|Connection refused|Network is unreachable') {
-        Write-Host 'Causa: o pip não alcançou o índice de pacotes (rede, proxy, VPN, firewall ou PIP_INDEX_URL). Confira a conexão e rode o instalador de novo.'
-    } elseif ($Log -match 'No matching distribution|requires a different Python|Could not find a version') {
-        Write-Host "Causa provável: seu Python é $PythonVersion; o conjunto fixado foi validado em Python 3.11-3.13. Crie a venv com um interpretador dessa faixa e rode o instalador de novo."
-    } else {
-        Write-Host "Veja a mensagem do pip acima; o registro completo está em $PipLog."
+$Gb = Join-Path $Root 'scripts\gb.py'
+# A CLI escreve UTF-8; sem isto o Windows PowerShell 5.1 decodificaria na página OEM.
+$ConsoleEncoding = [Console]::OutputEncoding
+# setup instala em $GB_HOME\runtime (ou GB_RUNTIME_DIR); sai 4 quando falta item do
+# sistema (FFmpeg, Node...), e o runtime sai do mesmo jeito.
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    & python $Gb 'setup'
+    $SetupStatus = $LASTEXITCODE
+} finally {
+    [Console]::OutputEncoding = $ConsoleEncoding
+}
+if ($SetupStatus -ne 0 -and $SetupStatus -ne 4) {
+    throw "setup falhou (código $SetupStatus); veja a mensagem acima."
+}
+if ($SetupStatus -eq 0) {
+    Invoke-Native -Label 'Verificação Playwright CLI' -File (Join-Path $PSScriptRoot 'playwright.ps1') -Arguments @('--version')
+}
+# doctor sai 4 quando summary.missing não está vazio (faltam itens), com o JSON em stdout.
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $DoctorOutput = & python $Gb 'doctor'
+    $DoctorStatus = $LASTEXITCODE
+} finally {
+    [Console]::OutputEncoding = $ConsoleEncoding
+}
+$DoctorOutput | Write-Output
+if ($DoctorStatus -eq 4) {
+    Write-Host ''
+    Write-Host 'doctor encontrou pendências (código 4: faltam itens). O que falta e como resolver, de summary.missing:'
+    $Doctor = ($DoctorOutput | Out-String) | ConvertFrom-Json
+    foreach ($Item in $Doctor.summary.missing) {
+        Write-Host "- $($Item.item): $($Item.fix)"
     }
+    exit 4
 }
-Set-Content -LiteralPath $PipLog -Value ''
-try {
-    Invoke-Native -Label 'Instalação do pip (requirements-bootstrap.txt, com hash)' -File $VenvPython -Arguments @('-m', 'pip', 'install', '--require-hashes', '--only-binary', ':all:', '-r', (Join-Path $Root 'requirements-bootstrap.txt'), '--log', $PipLog)
-} catch {
-    Write-PipFailure -Message 'Falha ao instalar o pip da venv (requirements-bootstrap.txt, com hash).' -File 'requirements-bootstrap.txt'
-    throw
+if ($DoctorStatus -ne 0) {
+    throw "Doctor falhou com código $DoctorStatus."
 }
-Set-Content -LiteralPath $PipLog -Value ''
-try {
-    Invoke-Native -Label 'Instalação Python' -File $VenvPython -Arguments @('-m', 'pip', 'install', '--require-hashes', '--only-binary', ':all:', '-r', (Join-Path $Root 'requirements.txt'), '--log', $PipLog)
-} catch {
-    Write-PipFailure -Message 'Falha ao instalar as dependências Python (requirements.txt, com hash).' -File 'requirements.txt'
-    throw
-}
-Invoke-Native -Label 'Importação yt-dlp/EJS' -File $VenvPython -Arguments @('-c', 'import yt_dlp, yt_dlp_ejs; print(''yt-dlp e EJS importados'')')
-$Tools = Join-Path $Root '.tools'
-New-Item -ItemType Directory -Path $Tools -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $Root 'package.json'), (Join-Path $Root 'package-lock.json') -Destination $Tools -Force
-Invoke-Native -Label 'Instalação Playwright CLI' -File 'npm' -Arguments @('--cache', (Join-Path $Root '.tools\npm-cache'), 'ci', '--prefix', $Tools, '--ignore-scripts', '--no-audit', '--no-fund')
-$Playwright = Join-Path $Root '.tools\node_modules\.bin\playwright-cli.cmd'
-Invoke-Native -Label 'Verificação Playwright CLI' -File $Playwright -Arguments @('--version')
-$env:PATH = "$(Join-Path $Root '.venv\Scripts');$env:PATH"
-Invoke-Native -Label 'Doctor' -File $VenvPython -Arguments @((Join-Path $Root 'scripts\gb.py'), 'doctor')
 
-Write-Host "`nDependências instaladas em .venv\ e .tools\; não fazem parte do repositório."
+Write-Host "`nDependências em `$GB_HOME\runtime\ (ou GB_RUNTIME_DIR), compartilhadas entre instalações; fora do repositório."
 Write-Host 'Navegador existente: siga docs/GUIDE.md para reutilizar a sessão autorizada.'
