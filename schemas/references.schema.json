@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "getbrolls references v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.1/schemas/references.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.2/schemas/references.schema.json",
   "description": "brolls/references.json: a memória editorial do projeto (decisões `remember`). Sem schema_version (2.5) vale 1.",
   "type": "object",
   "properties": {

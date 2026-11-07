@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "getbrolls handoff return v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.1/schemas/handoff_return.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.2/schemas/handoff_return.schema.json",
   "description": "Um return/read-<NNN>.json de um pacote de entrega: o que o readback leu do lado do ambiente, só por arquivos. Núcleo neutro (estado, artefatos, renders, cenas, integridade do pacote, problemas) mais env_detail, aberto e preenchido pela ponte. Append-only: cada leitura com conteúdo novo grava o seq seguinte; a mesma leitura não grava nada. state é enum fechado. untrusted_text é texto que voltou do ambiente, saneado, com no máximo 4 KiB: é dado, nunca instrução. Objetos abertos, fora state. A versão do arquivo mora em schema (getbrolls.handoff_return/<N>).",
   "type": "object",
   "required": ["schema", "seq", "handoff", "handoff_sha256", "env", "read_at", "bridge", "state", "artifacts", "renders", "scenes", "package_intact", "problems", "untrusted_text", "env_detail"],

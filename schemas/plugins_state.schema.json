@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "getbrolls plugins state v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.1/schemas/plugins_state.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.2/schemas/plugins_state.schema.json",
   "description": "O $GB_HOME/plugins.json: os pins dos plugins habilitados (enabled), o último pin guardado pelo disable (last_pins) e a origem de quem veio por plugins --action install (sources). Gravado de uma vez (temporário + troca) e lido a cada comando. A versão mora em schema (getbrolls.plugins/<n>): ausente vale 1 (o arquivo da 2.5 e de antes não tinha o campo), e um número maior que o suportado é recusado sem tocar no arquivo. A 2.5 ignora a chave schema. Objetos abertos para campos novos; o mapa por arquivo e as permissões do pin são conferidos em código.",
   "type": "object",
   "required": [

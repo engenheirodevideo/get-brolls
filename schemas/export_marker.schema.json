@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "getbrolls export marker v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.1/schemas/export_marker.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.2/schemas/export_marker.schema.json",
   "description": "O .getbrolls-export.json que o core grava como primeiro arquivo de cada pasta de export (e troca por state complete no fim): diz que a pasta é do getbrolls, qual exporter e plugin a geraram e, em media, o que foi colocado nela. O schema amarra o que o core grava; na leitura o core confere só marker e a versão (marcador feito à mão ou incompleto segue valendo como hoje). schema_version maior que o conhecido vale como pasta sem marcador: não é lido como export anterior e o staging dele não é apagado. schema_version ausente vale 1. Os campos de identidade (marker, state, number, media) vêm depois da base do exporter e ela nunca os sobrescreve.",
   "type": "object",
   "properties": {

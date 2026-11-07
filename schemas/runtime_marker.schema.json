@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "getbrolls runtime marker v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.1/schemas/runtime_marker.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.2/schemas/runtime_marker.schema.json",
   "description": "O marcador .getbrolls-runtime-<parte>.json na raiz de uma parte do runtime ($GB_HOME/runtime/<sha da parte>/ ou a pasta explícita de GB_RUNTIME_DIR). Quem instala grava building (ou upgrading) antes e ready por último, com troca atômica; quem lê só aceita uma parte ready do sha atual. A versão é o inteiro schema, que o código também guarda numa constante de inicialização (MARKER_SCHEMA_VERSION, lida antes de a pasta de dados existir; um teste mantém as duas iguais). schema ausente vale 1; um schema maior que o suportado é de outra versão do getbrolls: a parte não está pronta e não é desta versão (o setup recusa com o conflito de runtime em vez de montar por cima). Objeto aberto: upgraded e outros campos informativos são aditivos.",
   "type": "object",
   "required": [
