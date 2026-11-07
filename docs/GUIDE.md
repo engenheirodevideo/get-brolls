@@ -48,7 +48,7 @@ Instale a stack inteira antes de rodar o instalador: Python 3.11+, FFmpeg/ffprob
 
 ### Instalar como pacote
 
-Além do checkout e do plugin, o getbrolls instala como comando: `uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0` (ou `pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0`), seguido de `getbrolls setup` e `getbrolls doctor`. `python -m getbrolls` também funciona. Os exemplos deste guia usam o comando `getbrolls …`. Num clone, sem instalar o pacote, `python3 scripts/gb.py …` roda os mesmos comandos (no Windows, `python scripts/gb.py …`; de outra pasta, use o caminho absoluto de `scripts/gb.py`). No plugin do Claude Code nada muda: o agente roda a CLI pela raiz do plugin. No pacote não existe `.env` de checkout: use `$GB_HOME/.env`. O runtime (yt-dlp e Playwright) fica em `$GB_RUNTIME_DIR` ou, sem ela, em `$GB_HOME/runtime/<versão das dependências>/`.
+Além do checkout e do plugin, o getbrolls instala como comando: `uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.1` (ou `pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.1`), seguido de `getbrolls setup` e `getbrolls doctor`. `python -m getbrolls` também funciona. Os exemplos deste guia usam o comando `getbrolls …`. Num clone, sem instalar o pacote, `python3 scripts/gb.py …` roda os mesmos comandos (no Windows, `python scripts/gb.py …`; de outra pasta, use o caminho absoluto de `scripts/gb.py`). No plugin do Claude Code nada muda: o agente roda a CLI pela raiz do plugin. No pacote não existe `.env` de checkout: use `$GB_HOME/.env`. O runtime (yt-dlp e Playwright) fica em `$GB_RUNTIME_DIR` ou, sem ela, em `$GB_HOME/runtime/<versão das dependências>/`.
 
 `getbrolls setup` instala esse runtime, sem perguntar nada:
 
@@ -178,7 +178,7 @@ GB_FFMPEG_PATH=/opt/homebrew/bin/ffmpeg getbrolls doctor
 Em vez de um script que exporta `GB_HOME`, `GB_CACHE_DIR`, `GB_VENV_PATH`, `GB_YTDLP_PATH`, `GB_FFMPEG_PATH`, `GB_FFPROBE_PATH` e `GB_PLUGINS`, um `getbrolls.toml` na raiz do workspace fixa os mesmos valores para quem trabalha ali:
 
 ```toml
-requires = "==2.6.0"
+requires = "==2.6.1"
 home = ".getbrolls"
 cache_dir = ".cache/getbrolls"
 plugins = []
@@ -229,7 +229,7 @@ A entrada da skill segue o padrão Agent Skills (`name`, `description`, `license
 
 Após instalar, confirme `yt-dlp` e `playwright-cli` em `doctor`. Para a CLI Playwright local, execute `bash scripts/playwright.sh --version` no macOS ou `& .\scripts\playwright.ps1 --version` no Windows; os dois (e os helpers de YouTube) acham o runtime por `setup --where tools` (ou `venv`). Um status positivo indica disponibilidade, não que todas as URLs serão acessíveis.
 
-O conjunto de referência é yt-dlp 2026.10.21, EJS 0.8.0 e Playwright CLI 0.1.21. A partir da 2.3.5, `requirements.txt` fixa também as dependências Python transitivas; a partir da 2.5.1, cada uma com o sha256 de todos os arquivos que o PyPI publica, gerado de `requirements.in`. O `setup` instala primeiro o pip de `requirements-bootstrap.txt` e depois o `requirements.txt`, os dois com `--require-hashes --only-binary :all:`: arquivo com hash diferente é recusado e nenhum sdist é construído. `package.json` e `package-lock.json` registram o conjunto npm; o `setup` copia esses manifestos para a `.tools/` do runtime e executa `npm ci --ignore-scripts`. Nenhuma biblioteca é incluída no repositório. Os executáveis Python, Node, FFmpeg e curl continuam sendo instalados pelo usuário.
+O conjunto de referência é yt-dlp 2026.10.26, EJS 0.8.0 e Playwright CLI 0.1.21. A partir da 2.3.5, `requirements.txt` fixa também as dependências Python transitivas; a partir da 2.5.1, cada uma com o sha256 de todos os arquivos que o PyPI publica, gerado de `requirements.in`. O `setup` instala primeiro o pip de `requirements-bootstrap.txt` e depois o `requirements.txt`, os dois com `--require-hashes --only-binary :all:`: arquivo com hash diferente é recusado e nenhum sdist é construído. `package.json` e `package-lock.json` registram o conjunto npm; o `setup` copia esses manifestos para a `.tools/` do runtime e executa `npm ci --ignore-scripts`. Nenhuma biblioteca é incluída no repositório. Os executáveis Python, Node, FFmpeg e curl continuam sendo instalados pelo usuário.
 
 Atualizações de dependências devem entrar por PR, com instalação completa e testes; o Dependabot está configurado para propor essas mudanças semanalmente. Preserve configurações privadas antes de atualizar a skill e repita um ensaio da rota utilizada se as dependências mudarem. Se você personalizou a `.tools/node_modules` do runtime, `npm ci` substituirá essa árvore pela versão registrada no lockfile; mantenha ferramentas próprias fora da pasta gerenciada da skill.
 

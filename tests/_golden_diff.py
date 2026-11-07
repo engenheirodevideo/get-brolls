@@ -38,6 +38,7 @@ CLOSED_LIST = {
 ADDED = "acrescimo"
 _DATE = re.compile(r"^\d{4}-\d\d-\d\d$")
 _HEADING = re.compile(r"^(#{1,6}) (.*?)[ \t]*$")
+_SERIES = re.compile(r"(\d+\.\d+)\.\d+\b")  # `2.6.1 — …` → `2.6`
 _VERSION_LEVEL = 2  # `## 2.6.0 — …`
 UNRELEASED = "Unreleased"  # `## Unreleased`: o que ainda não saiu, acima da versão mais nova
 CELL_MAX = 160
@@ -156,14 +157,15 @@ def drifted(taken, accepted):
 
 
 def migration_section(text):
-    """O texto de toda seção "Migração" da versão mais nova do CHANGELOG (a primeira `## ` com versão).
+    """O texto de toda seção "Migração" da série mais nova do CHANGELOG (o X.Y da primeira `## ` com versão).
 
     Vale o título que é a linha inteira (`### Migração`, ou `#### Migração` dentro de uma
     subseção, como a das correções de uma revisão); cada seção vai até o próximo título do
     mesmo nível ou acima. `## Unreleased`, o que ainda não saiu (onde `bump_version.py` põe a
-    versão nova), conta junto com a versão mais nova.
+    versão nova), conta junto com a versão mais nova. Uma versão de correção (2.6.1) não
+    substitui a Migração da 2.6.0: as versões da mesma série X.Y contam juntas.
     """
-    parts, level, version_seen, in_scope = [], None, False, False
+    parts, level, series, in_scope = [], None, None, False
     for line in text.splitlines(keepends=True):
         heading = _HEADING.match(line)
         if heading is None:
@@ -172,9 +174,12 @@ def migration_section(text):
             continue
         depth = len(heading.group(1))
         if depth == _VERSION_LEVEL:
-            if version_seen:
+            found = _SERIES.match(heading.group(2))
+            current = found.group(1) if found else None
+            if series is not None and current != series:
                 break
-            version_seen = heading.group(2) != UNRELEASED
+            if heading.group(2) != UNRELEASED:
+                series = current
             in_scope = True
         if level is not None and depth <= level:
             level = None

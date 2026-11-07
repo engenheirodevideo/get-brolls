@@ -49,3 +49,4 @@ Uma regravação que muda o que o `accepted.json` leva entra com o item sem data
 - 2026-11-04: fluxo: providers e doctor listam as fontes direct_stream e embedded_player (rota open_web) no fim, com os campos de sempre (2.6.0)
 - 2026-11-04: layout0: providers e doctor listam as fontes direct_stream e embedded_player (rota open_web) no fim, com os campos de sempre (2.6.0)
 - 2026-11-05: open-web-route — providers e doctor listam direct_stream e embedded_player (data em `ratificado` no accepted.json; regravações de 2026-11-04)
+- 2026-11-06: fluxo: doctor mostra a chave nova das ferramentas do runtime (o sha de package.json e package-lock.json, que levam a versão 2.6.1)

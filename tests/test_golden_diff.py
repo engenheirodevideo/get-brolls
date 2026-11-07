@@ -211,6 +211,17 @@ class MigrationSectionTests(unittest.TestCase):
         self.assertIn("**Da revisão.**", section)
         self.assertNotIn("**Versão velha.**", section)
 
+    def test_a_patch_release_keeps_the_migration_of_its_minor(self):
+        # O ouro mede a saída contra a 2.5.0: numa 2.6.x a Migração continua a da 2.6.0, e a da 2.5 fica de fora.
+        text = self.CHANGELOG.replace(
+            "## 2.6.0 — 2026-09-26\n", "## 2.6.1 — 2026-09-30\n\n- **Manutenção.** p\n\n## 2.6.0 — 2026-09-26\n"
+        )
+        section = _golden_diff.migration_section(text)
+        self.assertIn("**Principal.**", section)
+        self.assertIn("**Da revisão.**", section)
+        self.assertNotIn("**Manutenção.**", section)
+        self.assertNotIn("**Versão velha.**", section)
+
     def test_the_summary_next_line_counts_in_the_real_changelog(self):
         section = _golden_diff.migration_section(_golden_diff.CHANGELOG.read_text(encoding="utf-8"))
         self.assertIn("**Texto de `summary.next`.**", section)

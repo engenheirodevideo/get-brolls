@@ -23,9 +23,17 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    ignore:
+      # Fixado de propósito (CHANGELOG 2.6.0, Limites); sobe à mão, junto com docs/GUIDE.md
+      # e os testes que citam a versão.
+      - dependency-name: "@playwright/cli"
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
+    # Um PR só para todas as Actions: codeql-action/init e /analyze precisam da mesma versão.
+    groups:
+      github-actions:
+        patterns: ["*"]

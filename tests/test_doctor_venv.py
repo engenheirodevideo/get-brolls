@@ -103,7 +103,7 @@ class VenvReportTests(unittest.TestCase):
         report = venv_check.venv_report(base, ROOT)
         self.assertEqual("stale", report["status"])
         self.assertIn("certifi ausente (fixado 2026.10.23)", report["differences"])
-        self.assertIn("yt-dlp ausente (fixado 2026.10.21)", report["differences"])
+        self.assertIn("yt-dlp ausente (fixado 2026.10.26)", report["differences"])
 
     def test_no_venv_at_all_is_reported_but_left_to_the_ytdlp_entry(self):
         # Sem venv nenhuma o yt-dlp vem do PATH (que vale) ou falta, e aí o item `yt-dlp` já leva o conserto.

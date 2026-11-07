@@ -260,8 +260,9 @@
    "id": "doctor-ready-install",
    "lista": "doctor-ready-install",
    "changelog": "**`doctor` ganha `ready` e `install`.**",
-   "ratificado": "2026-10-10",
-   "diferencas_sha256": "e26186e94d940ed9e5a423c2e7edb5a1b38b406af2d51f35b1b38055a008e689",
+   "ratificado": null,
+   "pendente": "regravação de 2026-11-06: a chave das ferramentas do runtime (sha de package.json e package-lock.json) muda com a versão 2.6.1",
+   "diferencas_sha256": "6b2622d13394c5e06f1d22ae8903c03aa9caed23d3ab0466041ab19ea6a6f3d6",
    "match": [
     {
      "case": "fluxo/doctor",

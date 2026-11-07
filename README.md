@@ -1,7 +1,7 @@
 <div align="center">
   <p><strong>Português</strong> · <a href="README.en.md">English</a></p>
   <img src="assets/brand-logo.png" alt="Engenheiro de vídeo" width="104">
-  <h1>GET B-ROLLS</h1>
+  <h1>GET BROLLS</h1>
   <p><strong>Da ideia ao trecho certo para a sua edição.</strong></p>
   <p>Encontre imagens de apoio, veja o movimento e revise cada escolha<br>antes de receber os cortes finais com suas fontes.</p>
   <p>Criado por <a href="https://www.instagram.com/zbrunomoreira/"><strong>Bruno Moreira (@zbrunomoreira)</strong></a>, Engenheiro de Vídeo</p>
@@ -16,7 +16,7 @@
     <img src="https://img.shields.io/badge/Playwright-browser-2EAD33?style=flat-square" alt="Playwright para fontes que pedem navegador">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="Licença MIT">
     <img src="https://img.shields.io/github/actions/workflow/status/engenheirodevideo/get-brolls/test.yml?branch=main&style=flat-square&label=tests" alt="Status dos testes">
-    <img src="https://img.shields.io/badge/version-2.6.0-blue?style=flat-square" alt="Versão 2.6.0">
+    <img src="https://img.shields.io/badge/version-2.6.1-blue?style=flat-square" alt="Versão 2.6.1">
     <a href="https://www.instagram.com/zbrunomoreira/"><img src="https://img.shields.io/badge/Instagram-@zbrunomoreira-E4405F?style=flat-square&logo=instagram&logoColor=white" alt="Instagram de Bruno Moreira, @zbrunomoreira"></a>
   </p>
 </div>
@@ -117,12 +117,12 @@ Depois peça `/get-brolls:get-brolls-setup`. Ele instala o runtime em `$GB_HOME/
 #### Como comando no terminal
 
 ```sh
-uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0
+uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.1
 getbrolls setup
 getbrolls doctor
 ```
 
-Com o pipx, troque a primeira linha por `pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.0`. Apareceu `getbrolls: command not found`? Rode `uv tool update-shell` (ou `pipx ensurepath`) e abra um terminal novo.
+Com o pipx, troque a primeira linha por `pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.1`. Apareceu `getbrolls: command not found`? Rode `uv tool update-shell` (ou `pipx ensurepath`) e abra um terminal novo.
 
 Os exemplos deste README usam o comando `getbrolls …`. Num clone, sem instalar o pacote, `python3 scripts/gb.py …` roda os mesmos comandos (no Windows, `python scripts/gb.py …`; de outra pasta, use o caminho absoluto de `scripts/gb.py`).
 

@@ -201,8 +201,8 @@ class RepositoryDocumentationTests(unittest.TestCase):
         english = (ROOT / "README.en.md").read_text(encoding="utf-8")
         self.assertIn('href="README.en.md">English</a>', portuguese)
         self.assertIn('href="README.md">Português</a>', english)
-        self.assertIn("<h1>GET B-ROLLS</h1>", portuguese)
-        self.assertIn("<h1>GET B-ROLLS</h1>", english)
+        self.assertIn("<h1>GET BROLLS</h1>", portuguese)
+        self.assertIn("<h1>GET BROLLS</h1>", english)
         for readme in (portuguese, english):
             self.assertIn("Bruno Moreira — Engenheiro de Vídeo", readme)
             self.assertIn("https://www.instagram.com/zbrunomoreira/", readme)
@@ -268,6 +268,37 @@ class RepositoryDocumentationTests(unittest.TestCase):
         for tool in ("ruff", "pylint", "astroid"):
             self.assertRegex(dev, rf"(?m)^{tool}==\d+\.\d+", tool)
             self.assertIn(tool, ignored, f"dependabot propõe bump de {tool}")
+
+    def test_dependabot_groups_the_actions_and_leaves_the_playwright_cli_pin(self):
+        # Um PR por Action separa codeql init/analyze, que só funcionam na mesma versão;
+        # o @playwright/cli sobe à mão junto com docs/GUIDE.md e os testes que citam a versão.
+        config = (ROOT / ".github/dependabot.yml").read_text(encoding="utf-8")
+        blocks = {block.split("\n", 1)[0]: block for block in re.split(r"(?m)^  - package-ecosystem: ", config)[1:]}
+        actions = blocks["github-actions"]
+        self.assertRegex(actions, r"(?m)^    groups:\n      github-actions:\n        patterns: \[\"\*\"\]$")
+        npm_ignored = set(re.findall(r"(?m)^\s+- dependency-name: \"?([^\"\s]+)\"?\s*$", blocks["npm"]))
+        self.assertIn("@playwright/cli", npm_ignored)
+        for name, block in blocks.items():
+            self.assertRegex(block, r"(?m)^    cooldown:\n      default-days: \d+$", name)
+
+    def test_codeql_init_and_analyze_share_one_pin(self):
+        # O analyze lê a configuração gravada pelo init e recusa versão diferente
+        # ("Loaded a configuration file for version X, but running version Y").
+        workflow = (ROOT / ".github/workflows/codeql.yml").read_text(encoding="utf-8")
+        pins = re.findall(r"github/codeql-action/(init|analyze)@([0-9a-f]{40} # v\d\S*)", workflow)
+        self.assertEqual(sorted(step for step, _ in pins), ["analyze", "init"], "init/analyze sem pin por SHA")
+        self.assertEqual(len({pin for _, pin in pins}), 1, pins)
+
+    def test_codeql_skips_only_the_tests_folder(self):
+        # A pasta tests/ não entra no pacote; o código distribuído continua todo analisado.
+        workflow = (ROOT / ".github/workflows/codeql.yml").read_text(encoding="utf-8")
+        found = re.search(r"(?m)^          config-file: \./(\S+)$", workflow)
+        self.assertIsNotNone(found, "init do CodeQL sem config-file")
+        assert found is not None
+        config = (ROOT / found.group(1)).read_text(encoding="utf-8")
+        ignored = re.findall(r"(?m)^  - (\S+)$", config.split("paths-ignore:", 1)[-1])
+        self.assertEqual(["tests"], ignored)
+        self.assertNotRegex(config, r"(?m)^paths:")
 
     def test_ruff_config_extends_the_default_rules_instead_of_replacing_them(self):
         # `select` trocaria o conjunto padrão do ruff; `extend-select` soma a ele. Só assim o

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "getbrolls recipe lock v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.0/schemas/recipe_lock.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.1/schemas/recipe_lock.schema.json",
   "description": "O recipe.lock.json na raiz de um projeto criado por init --recipe: qual versão de receita (ref canônica, com o dono) foi aplicada, o sha256 do getbrolls-recipe.json dela e, por item, tipo, nome, nível (tier: client quando a pasta do cliente já tem o mesmo arquivo, project quando foi copiado para assets/<tipo>/, sem licença), caminho relativo ao nível e sha256. kind e tier são enums abertos: valor desconhecido é pulado com ENUM_UNKNOWN. status e export avisam RECIPE_LOCK_DRIFT quando o item achado hoje tem outro sha256 ou sumiu; size e mtime_ns (opcionais) são só cache. A versão do arquivo mora em schema (getbrolls.recipe_lock/<N>).",
   "type": "object",
   "required": ["schema", "recipe", "recipe_sha256", "items", "style"],

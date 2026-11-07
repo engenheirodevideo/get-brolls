@@ -3,11 +3,11 @@ name: get-brolls
 description: 'Coleta, pré-visualiza e entrega B-rolls com revisão humana e origem registrada. Use quando alguém pedir b-roll, vídeos de apoio, imagens de apoio, cutaways, inserts, footage, "um corte do X falando Y", um print da tela de um site ou de uma notícia, ou material para ilustrar um vídeo, Reel ou aula — buscando em YouTube, Instagram, TikTok, Wikimedia Commons, NASA ou bancos (Pexels, Pixabay), gerando prévias para revisão humana e entregando os trechos com origem e condições de uso. Também escreve e organiza roteiros de reels (`ROTEIRO.md`) com revisão humana e exporta o projeto para editores por exporters de plugin. Also in English: collect B-roll, cutaways, inserts, supporting footage, stock video, screen grabs. Also writes reels scripts (ROTEIRO.md) and exports them to editors via plugin. Não renderiza nem edita o vídeo final. Does not render or edit the finished video.'
 license: MIT
 metadata:
-  version: "2.6.0"
+  version: "2.6.1"
   type: "skill"
   status: "current"
   created: "2026-09-15"
-  updated: "2026-10-31"
+  updated: "2026-11-06"
   tags: "b-roll, youtube, instagram, tiktok, storyboard"
 ---
 

@@ -21,6 +21,8 @@ from _paths import ROOT
 import bump_version
 from gen_skill_mirror import ROOT_SYNC_COMMENT
 
+from getbrolls import __version__
+
 OLD = "1.0.0"
 NEW = "2.3.4"
 DATE = "2026-05-06"
@@ -119,10 +121,9 @@ class BumpWriteTests(BumpFixture):
         """A ponte HyperFrames em `OLD`, copiada para `folder` (uma das pastas oficiais)."""
         source = ROOT / "plugins" / "bridges" / "hyperframes"
         manifest = (source / "getbrolls-plugin.json").read_text(encoding="utf-8")
-        self.put(
-            f"{folder}/hyperframes/getbrolls-plugin.json",
-            manifest.replace('"version": "2.6.0"', f'"version": "{OLD}"'),
-        )
+        current = f'"version": "{__version__}"'
+        self.assertIn(current, manifest)
+        self.put(f"{folder}/hyperframes/getbrolls-plugin.json", manifest.replace(current, f'"version": "{OLD}"'))
         for name in ("plugin.py", "README.md"):
             self.put(f"{folder}/hyperframes/{name}", (source / name).read_text(encoding="utf-8"))
         self.put("scripts/getbrolls/sdk/official_pins.py", "PINS = {}\n")
