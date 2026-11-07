@@ -262,12 +262,30 @@ class RepositoryDocumentationTests(unittest.TestCase):
         # (patterns "*") uma regra nova travaria o PR que também leva os pins de runtime.
         config = (ROOT / ".github/dependabot.yml").read_text(encoding="utf-8")
         blocks = re.split(r"(?m)^  - package-ecosystem: ", config)[1:]
-        pip = next(block for block in blocks if block.startswith("pip\n"))
-        ignored = set(re.findall(r"(?m)^\s+- dependency-name: (\S+)\s*$", pip))
+        python = next(block for block in blocks if block.startswith("uv\n"))
+        ignored = set(re.findall(r"(?m)^\s+- dependency-name: (\S+)\s*$", python))
         dev = (ROOT / "requirements-dev.txt").read_text(encoding="utf-8")
         for tool in ("ruff", "pylint", "astroid"):
             self.assertRegex(dev, rf"(?m)^{tool}==\d+\.\d+", tool)
             self.assertIn(tool, ignored, f"dependabot propõe bump de {tool}")
+
+    def test_dependabot_regenerates_requirements_txt_with_the_uv_ecosystem(self):
+        # O ecossistema `pip` recompila o requirements.txt com pip-compile: sem `--universal` some o
+        # bloco do PyPy e sem `--strip-extras` o `yt-dlp==` vira `yt-dlp[default]==`. O ecossistema `uv`
+        # roda `uv pip compile` com as opções que acha no próprio arquivo e mantém os comentários do topo.
+        config = (ROOT / ".github/dependabot.yml").read_text(encoding="utf-8")
+        ecosystems = re.findall(r"(?m)^  - package-ecosystem: (\S+)$", config)
+        self.assertIn("uv", ecosystems)
+        self.assertNotIn("pip", ecosystems, "dois ecossistemas Python abririam PRs repetidos")
+        text = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+        header = "".join(line for line in text.splitlines(keepends=True) if line.startswith("#"))
+        for option in ("--universal", "--generate-hashes", "--python-version 3.11"):
+            self.assertIn(option, header, option)
+        # Opções que o Dependabot liga só por achar o texto no arquivo e que mudariam a saída.
+        for option in ("--pre", "--no-strip-extras", "index-url http"):
+            self.assertNotIn(option, text, option)
+        self.assertRegex(text, r"(?m)^yt-dlp==\S+ \\$")
+        self.assertRegex(text, r"(?m)^cffi==\S+ ; implementation_name != 'cpython' \\$")
 
     def test_dependabot_groups_the_actions_and_leaves_the_playwright_cli_pin(self):
         # Um PR por Action separa codeql init/analyze, que só funcionam na mesma versão;
