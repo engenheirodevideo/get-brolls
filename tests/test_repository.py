@@ -281,6 +281,23 @@ class RepositoryDocumentationTests(unittest.TestCase):
         for name, block in blocks.items():
             self.assertRegex(block, r"(?m)^    cooldown:\n      default-days: \d+$", name)
 
+    def test_each_action_has_one_pin_across_the_workflows(self):
+        # Dois SHAs da mesma Action deixam um job numa versão antiga e reabrem o PR do Dependabot
+        # a cada semana; toda referência vem fixada por SHA de 40 dígitos com a tag no comentário.
+        pins: dict[str, set[str]] = {}
+        for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
+            for line in workflow.read_text(encoding="utf-8").splitlines():
+                if "uses:" not in line or line.lstrip().startswith("#"):
+                    continue
+                found = re.match(r"\s*(?:- )?uses: (\S+)$|\s*(?:- )?uses: (\S+)@([0-9a-f]{40}) # (v\d\S*)$", line)
+                self.assertIsNotNone(found, f"{workflow.name}: {line.strip()}")
+                assert found is not None
+                self.assertIsNone(found.group(1), f"{workflow.name}: Action sem pin por SHA: {line.strip()}")
+                pins.setdefault(found.group(2), set()).add(f"{found.group(3)} # {found.group(4)}")
+        self.assertIn("actions/setup-node", pins)
+        for action, refs in pins.items():
+            self.assertEqual(1, len(refs), f"{action}: {sorted(refs)}")
+
     def test_codeql_init_and_analyze_share_one_pin(self):
         # O analyze lê a configuração gravada pelo init e recusa versão diferente
         # ("Loaded a configuration file for version X, but running version Y").
