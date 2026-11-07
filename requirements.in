@@ -11,4 +11,4 @@ mutagen==1.48.1
 pycryptodomex==3.24.1
 requests==2.34.2
 urllib3==2.8.0
-websockets==17.3
+websockets==17.4
