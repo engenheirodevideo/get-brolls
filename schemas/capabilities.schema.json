@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "getbrolls capabilities v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.1/schemas/capabilities.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.2/schemas/capabilities.schema.json",
   "description": "A saída de capabilities --json (stdout): o manifesto dos comandos desta instalação, derivado do parser e das tabelas do runtime, sem rodar código de plugin. Não é arquivo gravado: é contrato de saída, que só cresce (docs/CLI_CONTRACT.md); por isso todo objeto fica aberto para chaves novas. plugins_error e marketplaces_error só aparecem quando o estado de plugins ou de marketplaces não deu para ler.",
   "type": "object",
   "required": [

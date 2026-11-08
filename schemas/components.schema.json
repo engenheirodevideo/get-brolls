@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "getbrolls components v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.1/schemas/components.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.2/schemas/components.schema.json",
   "description": "O components.json de uma versão de receita (<pasta do cliente>/recipes/<slug>/<N>/components.json): um item por componente, com tipo, nome, arquivo e sha256. O tipo é enum aberto: quem lê avisa ENUM_UNKNOWN e não usa o item, mas confere os bytes dele como os de qualquer outro (o arquivo continua listado em files). A licença nunca viaja (licence not_transferred). Conferido em código, além deste schema: cada file é um caminho relativo seguro sob assets/<pasta do tipo>/ (nunca o A-ROLL), o sha256 de cada arquivo e o sha256 deste arquivo, guardado em components.sha256 do getbrolls-recipe.json. Objetos abertos: os campos do componente que chegarem depois (exec, fields, duration_s, sfx_cues, origin, licence_ref) são aditivos. A versão do arquivo mora em schema (getbrolls.components/<N>).",
   "type": "object",
   "required": ["schema", "scope", "owner", "items"],

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "getbrolls pending transaction v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.1/schemas/pending_transaction.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.2/schemas/pending_transaction.schema.json",
   "description": "brolls/.pending-transaction.json: o journal de uma gravação em andamento. Sem schema_version (2.5) vale 1. `data` é o manifesto novo; `events` são as linhas do events.jsonl; `publish` guarda os clipes a publicar.",
   "type": "object",
   "required": [

@@ -262,12 +262,30 @@ class RepositoryDocumentationTests(unittest.TestCase):
         # (patterns "*") uma regra nova travaria o PR que também leva os pins de runtime.
         config = (ROOT / ".github/dependabot.yml").read_text(encoding="utf-8")
         blocks = re.split(r"(?m)^  - package-ecosystem: ", config)[1:]
-        pip = next(block for block in blocks if block.startswith("pip\n"))
-        ignored = set(re.findall(r"(?m)^\s+- dependency-name: (\S+)\s*$", pip))
+        python = next(block for block in blocks if block.startswith("uv\n"))
+        ignored = set(re.findall(r"(?m)^\s+- dependency-name: (\S+)\s*$", python))
         dev = (ROOT / "requirements-dev.txt").read_text(encoding="utf-8")
         for tool in ("ruff", "pylint", "astroid"):
             self.assertRegex(dev, rf"(?m)^{tool}==\d+\.\d+", tool)
             self.assertIn(tool, ignored, f"dependabot propõe bump de {tool}")
+
+    def test_dependabot_regenerates_requirements_txt_with_the_uv_ecosystem(self):
+        # O ecossistema `pip` recompila o requirements.txt com pip-compile: sem `--universal` some o
+        # bloco do PyPy e sem `--strip-extras` o `yt-dlp==` vira `yt-dlp[default]==`. O ecossistema `uv`
+        # roda `uv pip compile` com as opções que acha no próprio arquivo e mantém os comentários do topo.
+        config = (ROOT / ".github/dependabot.yml").read_text(encoding="utf-8")
+        ecosystems = re.findall(r"(?m)^  - package-ecosystem: (\S+)$", config)
+        self.assertIn("uv", ecosystems)
+        self.assertNotIn("pip", ecosystems, "dois ecossistemas Python abririam PRs repetidos")
+        text = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+        header = "".join(line for line in text.splitlines(keepends=True) if line.startswith("#"))
+        for option in ("--universal", "--generate-hashes", "--python-version 3.11"):
+            self.assertIn(option, header, option)
+        # Opções que o Dependabot liga só por achar o texto no arquivo e que mudariam a saída.
+        for option in ("--pre", "--no-strip-extras", "index-url http"):
+            self.assertNotIn(option, text, option)
+        self.assertRegex(text, r"(?m)^yt-dlp==\S+ \\$")
+        self.assertRegex(text, r"(?m)^cffi==\S+ ; implementation_name != 'cpython' \\$")
 
     def test_dependabot_groups_the_actions_and_leaves_the_playwright_cli_pin(self):
         # Um PR por Action separa codeql init/analyze, que só funcionam na mesma versão;
@@ -280,6 +298,23 @@ class RepositoryDocumentationTests(unittest.TestCase):
         self.assertIn("@playwright/cli", npm_ignored)
         for name, block in blocks.items():
             self.assertRegex(block, r"(?m)^    cooldown:\n      default-days: \d+$", name)
+
+    def test_each_action_has_one_pin_across_the_workflows(self):
+        # Dois SHAs da mesma Action deixam um job numa versão antiga e reabrem o PR do Dependabot
+        # a cada semana; toda referência vem fixada por SHA de 40 dígitos com a tag no comentário.
+        pins: dict[str, set[str]] = {}
+        for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
+            for line in workflow.read_text(encoding="utf-8").splitlines():
+                if "uses:" not in line or line.lstrip().startswith("#"):
+                    continue
+                found = re.match(r"\s*(?:- )?uses: (\S+)$|\s*(?:- )?uses: (\S+)@([0-9a-f]{40}) # (v\d\S*)$", line)
+                self.assertIsNotNone(found, f"{workflow.name}: {line.strip()}")
+                assert found is not None
+                self.assertIsNone(found.group(1), f"{workflow.name}: Action sem pin por SHA: {line.strip()}")
+                pins.setdefault(found.group(2), set()).add(f"{found.group(3)} # {found.group(4)}")
+        self.assertIn("actions/setup-node", pins)
+        for action, refs in pins.items():
+            self.assertEqual(1, len(refs), f"{action}: {sorted(refs)}")
 
     def test_codeql_init_and_analyze_share_one_pin(self):
         # O analyze lê a configuração gravada pelo init e recusa versão diferente

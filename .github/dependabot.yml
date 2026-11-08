@@ -1,6 +1,16 @@
 version: 2
 updates:
-  - package-ecosystem: pip
+  # requirements.txt is compiled from requirements.in by `uv pip compile --universal --generate-hashes
+  # --python-version 3.11` (header of the file; recipe in CONTRIBUTING.md). The `pip` ecosystem
+  # recompiles it with pip-compile, which has no `--universal` (the PyPy-only entries brotlicffi,
+  # cffi and pycparser disappear) and keeps extras (`yt-dlp==` becomes `yt-dlp[default]==`), so
+  # its PRs fail the hashed install tests. The `uv` ecosystem reads the same requirements.in/.txt
+  # pair, reruns `uv pip compile` with the options found in requirements.txt (`--universal`,
+  # `--generate-hashes`, `--python-version`), keeps the leading comment block and updates the
+  # hashed requirements-bootstrap.txt/requirements-dev.txt pins as before. Security updates are
+  # supported for `uv` as for `pip` (GitHub docs, "Dependabot supported ecosystems and
+  # repositories"). Only one Python ecosystem is listed: two would open duplicate PRs.
+  - package-ecosystem: uv
     directory: /
     schedule:
       interval: weekly

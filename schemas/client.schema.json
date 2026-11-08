@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "getbrolls client folder v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.1/schemas/client.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.2/schemas/client.schema.json",
   "description": "O arquivo client.json da pasta de um cliente (<raiz>/<cliente>/client.json), ao lado de assets/<tipo>/, projetos/ e templates/. Gravado pelo client --action add e conferido em código (scripts/getbrolls/clients.py) a cada leitura. A versão mora em schema (getbrolls.client/<n>): ausente vale 1, e um número maior que o suportado é recusado. Os objetos ficam abertos para campos novos.",
   "type": "object",
   "required": ["schema", "slug", "name", "created"],

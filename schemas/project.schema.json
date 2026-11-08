@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "getbrolls project v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.1/schemas/project.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.2/schemas/project.schema.json",
   "description": "O project.json na raiz de um projeto de layout 1. Layout 0 nunca é gravado: é a ausência deste arquivo, e o projeto continua com brolls/clips/ como sempre. O id é o mesmo project_id de brolls/manifest.json, uma identidade só por projeto. A versão do arquivo mora em schema (getbrolls.project/<N>); quem lê recusa N maior do que conhece. Conferido em código, além deste schema: id em uuid canônico (minúsculas), NaN e Infinity recusados em qualquer lugar, e canvas/fps só com inteiros positivos. Objetos abertos: campo novo opcional é aditivo; o que não é do core vai em ext.",
   "type": "object",
   "required": ["schema", "id", "layout", "client", "recipe", "canvas", "fps", "created"],

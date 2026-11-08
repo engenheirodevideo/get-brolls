@@ -2,13 +2,13 @@
 type: documentation
 status: current
 created: 2026-09-23
-updated: 2026-11-06
+updated: 2026-11-07
 tags: [get-brolls, manual, tutorial, commands]
 ---
 
 # getbrolls: manual e tutorial
 
-Versão 2.6.1. Feito para **videomaker que está começando a mexer com código**.
+Versão 2.6.2. Feito para **videomaker que está começando a mexer com código**.
 
 Você pede o B-roll, vê a prévia, aprova, e **só o trecho aprovado** vira corte final, com a fonte anotada. O getbrolls não edita nem renderiza o vídeo: ele coleta, mostra e entrega os clipes com origem e condições de uso. Quem monta é o seu editor (ou o HyperFrames).
 
@@ -56,12 +56,12 @@ São três jeitos. O passo a passo completo, com a lista de ferramentas do siste
 **Como comando no terminal:**
 
 ```bash
-uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.1
+uv tool install git+https://github.com/engenheirodevideo/get-brolls@v2.6.2
 getbrolls setup
 getbrolls doctor
 ```
 
-Com o pipx, a primeira linha é `pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.1`.
+Com o pipx, a primeira linha é `pipx install git+https://github.com/engenheirodevideo/get-brolls@v2.6.2`.
 
 **Como skill de outro agente (Codex e outros):** clone o repositório e rode o instalador da pasta, como no [README](../README.md#como-skill-codex-claude-code-e-outros-agentes).
 
@@ -655,7 +655,7 @@ O primeiro mostra o que ele fixaria e o `sha256`; o segundo confirma. Editou o a
 # Lista todos os comandos
 getbrolls --help
 
-# Mostra a versão, o Python e de onde vêm os dados: getbrolls 2.6.1 (Python 3.12.4; dados: wheel)
+# Mostra a versão, o Python e de onde vêm os dados: getbrolls 2.6.2 (Python 3.12.4; dados: wheel)
 # (num clone, o script dele diz dados: checkout)
 getbrolls --version
 

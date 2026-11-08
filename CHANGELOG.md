@@ -2,11 +2,19 @@
 type: documentation
 status: current
 created: 2026-09-15
-updated: 2026-11-06
+updated: 2026-11-07
 tags: [get-brolls]
 ---
 
 # Changelog
+
+## 2.6.2 — 2026-11-07
+
+Versão de manutenção: dependências, CI e a configuração do Dependabot. Nenhuma mudança de comportamento da CLI.
+
+- Dependências: `websockets` 17.3 → 17.4 e `pycryptodomex` 3.24.1 → 3.24.2 (`requirements.txt` regerado pela receita do CONTRIBUTING, com as linhas só do PyPy); o pip da venv (`requirements-bootstrap.txt`) 26.2.2 → 26.3, com os sha256 que o PyPI publica.
+- CI: `actions/setup-node` 7.0.0 → 7.1.0 nos passos que ainda estavam na 7.0.0, fixado por SHA; um teste exige um único pin por Action em todos os workflows.
+- Dependabot: as atualizações de Python passam do ecossistema `pip` para o `uv`. O `pip` recompila o `requirements.txt` com pip-compile, sem `--universal`: o PR perdia as linhas só do PyPy e trocava `yt-dlp==` por `yt-dlp[default]==`. O `uv` roda o `uv pip compile` com as opções do cabeçalho do arquivo e mantém o cabeçalho escrito à mão.
 
 ## 2.6.1 — 2026-11-06
 

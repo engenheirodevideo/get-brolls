@@ -69,7 +69,7 @@ class VenvReportTests(unittest.TestCase):
 
     def test_the_pins_come_from_both_requirements_files(self):
         self.assertEqual("2026.10.23", self.pins["certifi"])
-        self.assertEqual("26.2.2", self.pins["pip"])
+        self.assertEqual("26.3", self.pins["pip"])
         for pypy_only in ("brotlicffi", "cffi", "pycparser"):
             self.assertNotIn(pypy_only, self.pins, "dependência só do PyPy não é cobrada no CPython")
 
@@ -85,7 +85,7 @@ class VenvReportTests(unittest.TestCase):
         report = venv_check.venv_report(base, ROOT)
         self.assertEqual("stale", report["status"])
         self.assertIn("certifi 2026.7.22 (fixado 2026.10.23)", report["differences"])
-        self.assertIn("pip 24.0 (fixado 26.2.2)", report["differences"])
+        self.assertIn("pip 24.0 (fixado 26.3)", report["differences"])
         [entry] = venv_check.missing_entries(report, "INSTALLER")
         self.assertEqual("venv", entry["item"])
         self.assertEqual("INSTALLER", entry["fix"])
@@ -259,7 +259,7 @@ class DoctorVenvTests(unittest.TestCase):
             for name in ("requirements.txt", "requirements-bootstrap.txt", "docs/RULES.md", "assets/brand-logo.png"):
                 (root / name).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy(ROOT / name, root / name)
-            venv = make_venv(root, {"pip": "26.2.2"}, ytdlp=False)
+            venv = make_venv(root, {"pip": "26.3"}, ytdlp=False)
             payload, decoy = self.doctor(tmp, None, argv=(sys.executable, str(root / "scripts" / "gb.py")))
             self.assertEqual(str((decoy / "yt-dlp").resolve()), payload["resolved"]["yt-dlp"])
             self.assertEqual(str(venv), payload["venv"]["path"])

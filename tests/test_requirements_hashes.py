@@ -41,15 +41,15 @@ def entries(name):
 
 class BootstrapPinTests(unittest.TestCase):
     def test_the_bootstrap_pins_the_pip_that_pypi_publishes(self):
-        # sha256 de https://pypi.org/pypi/pip/26.2.2/json (roda e sdist), conferidos na adoção.
+        # sha256 de https://pypi.org/pypi/pip/26.3/json (roda e sdist), conferidos na adoção.
         self.assertEqual(
             {
                 "pip": (
-                    "26.2.2",
+                    "26.3",
                     "",
                     [
-                        "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70",
-                        "3a8e5c800492787f33a4114ef54444546c340df428974ebba17e0fd47e11af2f",
+                        "f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13",
+                        "6c36ae7da8695be67e3cd9f7d87919667ced53f57ce2ede75d89b5912ed2bc4c",
                     ],
                 )
             },

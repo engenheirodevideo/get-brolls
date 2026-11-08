@@ -6,7 +6,7 @@ updated: 2026-11-06
 tags: [get-brolls, quality, qa, evidence]
 ---
 
-# Qualidade e evidências — GET B-ROLLS 2.6.1
+# Qualidade e evidências — GET B-ROLLS 2.6.2
 
 Este documento diz como a qualidade da versão atual é conferida: os portões automáticos, as garantias que eles cobrem, o que fica fora deles e onde ficam os ensaios reais. Resultado ao vivo é registro datado, não promessa de disponibilidade futura nem aprovação editorial. O que cada versão anterior entregou e corrigiu está no [CHANGELOG](../CHANGELOG.md).
 

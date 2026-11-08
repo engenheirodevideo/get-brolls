@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "getbrolls queue v2",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.1/schemas/queue.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.2/schemas/queue.schema.json",
   "description": "work/queue.json: a fila de URLs públicas e o ritmo por fonte. Versões 1 e 2; sem schema_version (2.5) vale 1; o escritor grava a atual.",
   "type": "object",
   "required": [

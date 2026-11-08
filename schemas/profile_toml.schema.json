@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "getbrolls profile toml v1",
-  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.1/schemas/profile_toml.schema.json",
+  "$id": "https://raw.githubusercontent.com/engenheirodevideo/get-brolls/v2.6.2/schemas/profile_toml.schema.json",
   "description": "O getbrolls.toml do workspace, lido com tomllib e conferido como este objeto. A pessoa escreve o arquivo; o getbrolls nunca grava. O código (scripts/getbrolls/profile.py) é a autoridade das mensagens: campo desconhecido sugere o nome certo, caminho de pasta é texto não vazio sem ~, ferramenta é caminho absoluto, plugins e marketplaces são listas de ids sem repetição. Este schema confere a mesma forma depois do código. schema_version ausente vale 1; outro valor é recusado (USAGE_ERROR).",
   "type": "object",
   "additionalProperties": false,
