@@ -5,7 +5,7 @@
   <p><strong>From an idea to the right shot for your edit.</strong></p>
   <p>Find supporting footage, preview the motion, and review every choice<br>before receiving the final clips with their sources.</p>
   <p>Created by <a href="https://www.instagram.com/zbrunomoreira/"><strong>Bruno Moreira (@zbrunomoreira)</strong></a>, Video Engineer</p>
-  <p><a href="#getting-started">Getting started</a> · <a href="#plugins">Plugins</a> · <a href="#documentation">Documentation</a> · <a href="docs/MANUAL.md">Manual and tutorial</a> · <a href="docs/GUIDE.md#instalação">Full guide</a></p>
+  <p><a href="#getting-started">Getting started</a> · <a href="#plugins">Plugins</a> · <a href="#documentation">Documentation</a> · <a href="docs/MANUAL.md">Manual and tutorial</a> · <a href="docs/GUIDE.md#instalação">Full guide</a> · <a href="https://engenheirodevideo.com.br/comunidade/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=get-brolls">Community</a></p>
   <p align="center">
     <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey?style=flat-square" alt="macOS and Windows">
     <img src="https://img.shields.io/badge/agents-Codex%20%7C%20Claude%20Code-orange?style=flat-square" alt="Codex and Claude Code">
