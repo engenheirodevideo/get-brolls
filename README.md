@@ -48,6 +48,15 @@ São oito passos, como num fluxo de edição: ingest, seleção, aprovação do 
 7. **Baixar** só o trecho aprovado, conferido por hash.
 8. **Entregar** uma pasta por beat, com um `ORIGEM.md` ao lado de cada corte.
 
+## Como ter acesso
+
+O acesso ao GET B-ROLLS é dado pela Comunidade dos Engenheiros de Vídeo. Quem entra recebe o convite para o repositório do software e para a biblioteca de plugins.
+
+O código é fechado por um motivo: a Comunidade quer continuar expandindo e trabalhando na ferramenta. Ela é importante para nós, e é o acesso dos membros que mantém o desenvolvimento, os plugins e as atualizações.
+
+<p align="center"><a href="https://engenheirodevideo.com.br/comunidade/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=get-brolls&amp;utm_content=cta-acesso"><strong>Entrar na Comunidade →</strong></a></p>
+<p align="center">7 dias de garantia · acesso no Circle · não precisa saber programar</p>
+
 ## Propriedade intelectual
 
 O GET B-ROLLS é software proprietário. Copyright (c) 2026 Bruno Moreira (Engenheiro de Vídeo) e Soma Spacial Studio Ltda. Todos os direitos reservados.
