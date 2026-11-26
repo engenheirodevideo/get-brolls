@@ -1,6 +1,6 @@
 <div align="center">
   <p><strong>Português</strong> · <a href="README.en.md">English</a></p>
-  <img src="assets/brand-logo.png" alt="Engenheiro de vídeo" width="104">
+  <img src="assets/brand-logo.png" alt="Engenheiro de Vídeo" width="104">
   <h1>GET B-ROLLS</h1>
   <p><strong>Da ideia ao trecho certo para a sua edição.</strong></p>
   <p>Encontre imagens de apoio, veja o movimento e revise cada escolha<br>antes de receber os cortes finais com suas fontes.</p>
