@@ -58,7 +58,7 @@ O código é fechado por um motivo: a Comunidade quer continuar expandindo e tra
 
 ## Propriedade intelectual
 
-O GET B-ROLLS é software proprietário. Copyright (c) 2026 Bruno Moreira (Engenheiro de Vídeo) e Soma Spacial Studio Ltda. Todos os direitos reservados.
+O GET B-ROLLS é software proprietário. Copyright (c) 2026 Soma Spacial Studio Ltda. Todos os direitos reservados.
 
 O código-fonte não é público. Uso, cópia, modificação, distribuição, instalação e desenvolvimento de plugins dependem de autorização escrita do titular. Copiar, redistribuir ou publicar o software ou partes dele sem essa autorização viola os direitos do titular. Os termos completos estão no [LICENSE](LICENSE).
 
