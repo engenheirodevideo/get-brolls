@@ -1,5 +1,4 @@
 <div align="center">
-  <p><a href="https://engenheirodevideo.com.br/comunidade/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=get-brolls"><strong>Engenheiro de Vídeo / Community</strong></a></p>
   <p><a href="README.md">Português</a> · <strong>English</strong></p>
   <img src="assets/brand-logo.png" alt="Engenheiro de Vídeo" width="104">
   <h1>GET BROLLS</h1>
