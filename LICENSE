@@ -1,10 +1,13 @@
 PROPRIETARY LICENSE NOTICE
 
-Copyright (c) 2026 Bruno Moreira (Engenheiro de Vídeo) e Soma Spacial Studio Ltda. All rights reserved.
+Copyright (c) 2026 Soma Spacial Studio Ltda. All rights reserved.
+
+GET B-ROLLS is a product of Engenheiro de Vídeo, a brand of Soma Spacial
+Studio Ltda. Created by Bruno Moreira (@zbrunomoreira).
 
 1. Ownership. The software, source code, documentation, assets and plugins in
    this repository (the "Software") are proprietary. They are owned by the
-   copyright holders named above.
+   copyright holder named above.
 
 2. No license by publication or access. Making the Software publicly
    available, or being able to access, view or download it, does not grant
@@ -13,11 +16,11 @@ Copyright (c) 2026 Bruno Moreira (Engenheiro de Vídeo) e Soma Spacial Studio Lt
 3. Authorization required. Any use, copying, modification, distribution,
    sublicensing, sale, creation of derivative works, or use of the Software to
    train or build competing products requires prior written authorization from
-   the copyright holders.
+   the copyright holder.
 
 4. Viewing on GitHub. Viewing the source code on GitHub does not grant any
    rights, other than those that the GitHub Terms of Service require the
-   copyright holders to grant to other GitHub users (such as viewing and
+   copyright holder to grant to other GitHub users (such as viewing and
    forking within the GitHub service).
 
 5. Third-party components. Third-party components remain under their own
@@ -31,7 +34,7 @@ Copyright (c) 2026 Bruno Moreira (Engenheiro de Vídeo) e Soma Spacial Studio Lt
 7. Disclaimer. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
    EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-   NO EVENT SHALL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+   NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR
    OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
    ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
    OTHER DEALINGS IN THE SOFTWARE.
@@ -42,11 +45,14 @@ Contact for authorization requests: https://engenheirodevideo.com.br/comunidade/
 
 AVISO DE LICENÇA PROPRIETÁRIA (tradução em português do Brasil)
 
-Copyright (c) 2026 Bruno Moreira (Engenheiro de Vídeo) e Soma Spacial Studio Ltda. Todos os direitos reservados.
+Copyright (c) 2026 Soma Spacial Studio Ltda. Todos os direitos reservados.
+
+GET B-ROLLS é um produto do Engenheiro de Vídeo, marca da Soma Spacial
+Studio Ltda. Criado por Bruno Moreira (@zbrunomoreira).
 
 1. Titularidade. O software, o código-fonte, a documentação, os recursos e os
-   plugins deste repositório (o "Software") são proprietários e pertencem aos
-   titulares dos direitos autorais indicados acima.
+   plugins deste repositório (o "Software") são proprietários e pertencem ao
+   titular dos direitos autorais indicado acima.
 
 2. Nenhuma licença por publicação ou acesso. Tornar o Software publicamente
    disponível, ou poder acessá-lo, visualizá-lo ou baixá-lo, não concede
@@ -55,11 +61,11 @@ Copyright (c) 2026 Bruno Moreira (Engenheiro de Vídeo) e Soma Spacial Studio Lt
 3. Autorização necessária. Qualquer uso, cópia, modificação, distribuição,
    sublicenciamento, venda, criação de obras derivadas, ou uso do Software
    para treinar ou construir produtos concorrentes exige autorização prévia e
-   por escrito dos titulares dos direitos autorais.
+   por escrito do titular dos direitos autorais.
 
 4. Visualização no GitHub. Visualizar o código-fonte no GitHub não concede
-   direitos, além dos que os Termos de Serviço do GitHub exigem que os
-   titulares concedam a outros usuários do GitHub (como visualizar e fazer
+   direitos, além dos que os Termos de Serviço do GitHub exigem que o
+   titular conceda a outros usuários do GitHub (como visualizar e fazer
    fork dentro do próprio serviço).
 
 5. Componentes de terceiros. Os componentes de terceiros permanecem sob as
@@ -73,8 +79,8 @@ Copyright (c) 2026 Bruno Moreira (Engenheiro de Vídeo) e Soma Spacial Studio Lt
 7. Isenção de garantia. O SOFTWARE É FORNECIDO "NO ESTADO EM QUE SE ENCONTRA",
    SEM GARANTIA DE QUALQUER TIPO, EXPRESSA OU IMPLÍCITA, INCLUINDO, SEM
    LIMITAÇÃO, AS GARANTIAS DE COMERCIALIZAÇÃO, ADEQUAÇÃO A UM FIM ESPECÍFICO E
-   NÃO VIOLAÇÃO. EM NENHUMA HIPÓTESE OS TITULARES DOS DIREITOS AUTORAIS SERÃO
-   RESPONSÁVEIS POR QUALQUER RECLAMAÇÃO, DANO OU OUTRA RESPONSABILIDADE,
+   NÃO VIOLAÇÃO. EM NENHUMA HIPÓTESE O TITULAR DOS DIREITOS AUTORAIS SERÁ
+   RESPONSÁVEL POR QUALQUER RECLAMAÇÃO, DANO OU OUTRA RESPONSABILIDADE,
    SEJA EM AÇÃO CONTRATUAL, ATO ILÍCITO OU OUTRA FORMA, DECORRENTE DO
    SOFTWARE OU RELACIONADA A ELE, AO SEU USO OU A OUTRAS NEGOCIAÇÕES COM ELE.
 
