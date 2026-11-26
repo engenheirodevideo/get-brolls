@@ -9,11 +9,44 @@
   <p align="center">
     <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey?style=flat-square" alt="macOS and Windows">
     <img src="https://img.shields.io/badge/agents-Codex%20%7C%20Claude%20Code-orange?style=flat-square" alt="Codex and Claude Code">
+    <img src="https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square" alt="Python 3.11+">
+    <img src="https://img.shields.io/badge/node-22%2B-green?style=flat-square" alt="Node 22+">
+    <img src="https://img.shields.io/badge/FFmpeg-required-007808?style=flat-square" alt="FFmpeg required">
+    <img src="https://img.shields.io/badge/yt--dlp-downloader-red?style=flat-square" alt="yt-dlp">
+    <img src="https://img.shields.io/badge/Playwright-browser-2EAD33?style=flat-square" alt="Playwright for sources that need a browser">
     <img src="https://img.shields.io/badge/license-all%20rights%20reserved-red?style=flat-square" alt="All rights reserved">
+    <img src="https://img.shields.io/badge/version-2.7.4-blue?style=flat-square" alt="Version 2.7.4">
+    <a href="https://www.instagram.com/zbrunomoreira/"><img src="https://img.shields.io/badge/Instagram-@zbrunomoreira-E4405F?style=flat-square&logo=instagram&logoColor=white" alt="Instagram of Bruno Moreira, @zbrunomoreira"></a>
   </p>
 </div>
 
-GET B-ROLLS is a skill for collecting the videos and images that support a line, illustrate an idea, or show the exact person, product, or event mentioned in a script. You describe what you need; the agent researches, prepares previews, and gathers the options into a storyboard for your review.
+getbrolls is a skill for collecting the videos and images that support a line, illustrate an idea, or show the exact person, product, or event mentioned in a script. You describe what you need; the agent researches, prepares previews, and gathers the options into a storyboard for your review.
+
+- **Choose with context.** Each shot can include the supplied narration, selection rationale, time range, creator, and original source.
+- **See it before deciding.** GIFs and contact sheets help you evaluate action, framing, and on-screen text.
+- **Receive an organized collection.** Final clips are delivered with a record of their origin, review decision, and conditions of use.
+- **From script to your editor's folder.** A video can start from a `ROTEIRO.md` you review and leave as an editing project through a plugin (experimental).
+
+The agent looks for the literal source of what you mention: the actual fact, person, product, news item, or screen. Stock-footage libraries are used only when you explicitly ask for stock. You do not need a complete script to request a single insert: simply explain what should appear.
+
+A preview may download working media so you can see the motion. Final delivery requires a human decision and a record of the source's conditions of use. If the time range or context changes, the shot returns to review.
+
+getbrolls does not edit or render the video. It collects, previews and delivers the clips with their origin and conditions of use; your editor or HyperFrames assembles and renders.
+
+## How it works
+
+<p align="center"><img src="assets/flow.en.svg" alt="Skill map: from the request and brief to approval, rights, verified collection and per-beat delivery" width="700"></p>
+
+There are eight steps, like an editing workflow: ingest, selection, client approval and delivery.
+
+1. **Check** that the machine is ready (`doctor`).
+2. **Plan** the video: channel rules (`RULES.md`), a per-beat plan (`BRIEF.md`) or the script (`ROTEIRO.md`).
+3. **Search** for candidates. Nothing is downloaded yet.
+4. **Preview** as a GIF and contact sheet, and build the Storyboard.
+5. **Approve** the shot (first lock).
+6. **Record the rights** to use it (second lock).
+7. **Download** only the approved range, checked by hash.
+8. **Deliver** one folder per beat, with an `ORIGEM.md` next to each clip.
 
 ## Intellectual property
 

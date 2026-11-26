@@ -1,7 +1,7 @@
 <div align="center">
   <p><a href="https://engenheirodevideo.com.br/comunidade/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=get-brolls"><strong>Engenheiro de Vídeo / Comunidade</strong></a></p>
   <p><strong>Português</strong> · <a href="README.en.md">English</a></p>
-  <img src="assets/brand-logo.png" alt="Engenheiro de Vídeo" width="104">
+  <img src="assets/brand-logo.png" alt="Engenheiro de vídeo" width="104">
   <h1>GET BROLLS</h1>
   <p><strong>Da ideia ao trecho certo para a sua edição.</strong></p>
   <p>Encontre imagens de apoio, veja o movimento e revise cada escolha<br>antes de receber os cortes finais com suas fontes.</p>
@@ -9,11 +9,44 @@
   <p align="center">
     <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey?style=flat-square" alt="macOS e Windows">
     <img src="https://img.shields.io/badge/agents-Codex%20%7C%20Claude%20Code-orange?style=flat-square" alt="Codex e Claude Code">
+    <img src="https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square" alt="Python 3.11+">
+    <img src="https://img.shields.io/badge/node-22%2B-green?style=flat-square" alt="Node 22+">
+    <img src="https://img.shields.io/badge/FFmpeg-required-007808?style=flat-square" alt="FFmpeg obrigatório">
+    <img src="https://img.shields.io/badge/yt--dlp-downloader-red?style=flat-square" alt="yt-dlp">
+    <img src="https://img.shields.io/badge/Playwright-browser-2EAD33?style=flat-square" alt="Playwright para fontes que pedem navegador">
     <img src="https://img.shields.io/badge/license-all%20rights%20reserved-red?style=flat-square" alt="Todos os direitos reservados">
+    <img src="https://img.shields.io/badge/version-2.7.4-blue?style=flat-square" alt="Versão 2.7.4">
+    <a href="https://www.instagram.com/zbrunomoreira/"><img src="https://img.shields.io/badge/Instagram-@zbrunomoreira-E4405F?style=flat-square&logo=instagram&logoColor=white" alt="Instagram de Bruno Moreira, @zbrunomoreira"></a>
   </p>
 </div>
 
-O GET B-ROLLS é uma skill para coletar os vídeos e imagens que apoiam uma fala, ilustram uma ideia ou mostram exatamente a pessoa, o produto e o acontecimento citados no roteiro. Você descreve o que precisa; o agente pesquisa, prepara as prévias e reúne as escolhas em um storyboard para sua revisão.
+O getbrolls é uma skill para coletar os vídeos e imagens que apoiam uma fala, ilustram uma ideia ou mostram exatamente a pessoa, o produto e o acontecimento citados no roteiro. Você descreve o que precisa; o agente pesquisa, prepara as prévias e reúne as escolhas em um storyboard para sua revisão.
+
+- **Escolha com contexto.** Cada trecho pode reunir fala, motivo da escolha, intervalo, autor e fonte original.
+- **Veja antes de decidir.** GIFs e sequências de quadros ajudam a avaliar ação, enquadramento e textos sobrepostos.
+- **Receba uma coleta organizada.** Os cortes finais ficam junto de um registro de origem, revisão e condições de uso.
+- **Do roteiro à pasta do editor.** O vídeo pode nascer de um `ROTEIRO.md` revisado por você e sair como projeto de edição por um plugin (experimental).
+
+O agente procura a fonte literal do que você cita: o fato, a pessoa, o produto, a notícia ou a tela reais. Bancos de vídeo entram somente quando você pedir stock explicitamente. Um único insert funciona sem roteiro completo: basta explicar o que precisa aparecer.
+
+A prévia pode baixar mídia de trabalho para mostrar o movimento. A entrega final depende da decisão humana e do registro das condições de uso da fonte. Se o intervalo ou o contexto mudar, o trecho volta para revisão.
+
+O getbrolls não edita nem renderiza o vídeo. Ele coleta, mostra a prévia e entrega os clipes com origem e condições de uso; quem monta e renderiza é o seu editor ou o HyperFrames.
+
+## Como funciona
+
+<p align="center"><img src="assets/flow.svg" alt="Mapa da skill: do pedido e do brief à aprovação, aos direitos, à coleta verificada e à entrega por beat" width="700"></p>
+
+São oito passos, como num fluxo de edição: ingest, seleção, aprovação do cliente e entrega.
+
+1. **Conferir** se a máquina está pronta (`doctor`).
+2. **Planejar** o vídeo: regras do canal (`RULES.md`), plano por beat (`BRIEF.md`) ou o roteiro (`ROTEIRO.md`).
+3. **Buscar** candidatos. Nada é baixado ainda.
+4. **Ver a prévia** em GIF e folha de quadros, e montar o Storyboard.
+5. **Aprovar** o trecho (primeira trava).
+6. **Registrar os direitos** de uso (segunda trava).
+7. **Baixar** só o trecho aprovado, conferido por hash.
+8. **Entregar** uma pasta por beat, com um `ORIGEM.md` ao lado de cada corte.
 
 ## Propriedade intelectual
 
