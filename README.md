@@ -14,7 +14,7 @@
     <img src="https://img.shields.io/badge/yt--dlp-downloader-red?style=flat-square" alt="yt-dlp">
     <img src="https://img.shields.io/badge/Playwright-browser-2EAD33?style=flat-square" alt="Playwright para fontes que pedem navegador">
     <img src="https://img.shields.io/badge/license-all%20rights%20reserved-red?style=flat-square" alt="Todos os direitos reservados">
-    <img src="https://img.shields.io/badge/version-2.7.4-blue?style=flat-square" alt="Versão 2.7.4">
+    <img src="https://img.shields.io/badge/version-2.7.6-blue?style=flat-square" alt="Versão 2.7.6">
     <a href="https://www.instagram.com/zbrunomoreira/"><img src="https://img.shields.io/badge/Instagram-@zbrunomoreira-E4405F?style=flat-square&logo=instagram&logoColor=white" alt="Instagram de Bruno Moreira, @zbrunomoreira"></a>
   </p>
 </div>
