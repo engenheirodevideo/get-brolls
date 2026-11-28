@@ -62,8 +62,6 @@ O GET B-ROLLS é software proprietário. Copyright (c) 2026 Soma Spacial Studio 
 
 O código-fonte não é público. Uso, cópia, modificação, distribuição, instalação e desenvolvimento de plugins dependem de autorização escrita do titular. Copiar, redistribuir ou publicar o software ou partes dele sem essa autorização viola os direitos do titular. Os termos completos estão no [LICENSE](LICENSE).
 
-Políticas: [Segurança](SECURITY.md) · [Código de conduta](CODE_OF_CONDUCT.md) · [Como contribuir](CONTRIBUTING.md) · [Suporte](SUPPORT.md)
-
 ### Cópias, derivados e engenharia reversa
 
 O titular não autoriza nem reconhece nenhuma cópia, fork, espelho, reupload, versão modificada, port, reescrita ou engenharia reversa do GET B-ROLLS, nem nenhum projeto que use o nome GET B-ROLLS ou qualquer variação dele (veja a lista abaixo) ou que reproduza o seu fluxo de coleta de b-roll com prévia, storyboard e revisão humana, qualquer que seja a licença declarada nesse projeto. Esses projetos não são versões oficiais e não devem ser instalados, executados, distribuídos nem oferecidos como serviço.
